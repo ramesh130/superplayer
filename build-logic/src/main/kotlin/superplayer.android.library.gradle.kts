@@ -42,6 +42,15 @@ extensions.configure<LibraryExtension> {
         // barring @UnstableApi types from SuperPlayer's own public API, and the tracked API
         // signature check is what will enforce it mechanically.
         disable += "UnsafeOptInUsageError"
+
+        // Explicit rather than inherited: a lint error fails the build, in CI and locally.
+        abortOnError = true
+
+        // Warnings are deliberately not errors. Some lint checks are time-dependent rather
+        // than change-dependent — GradleDependency fires when a newer version of a
+        // dependency is published — so promoting warnings would redden CI on changes that
+        // are not at fault, and a check that cries wolf is a check that gets turned off.
+        warningsAsErrors = false
     }
 
     // One publication per module, built from the release variant.

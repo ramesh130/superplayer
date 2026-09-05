@@ -25,7 +25,7 @@ of truth. This file records *what* is depended on and under *what license*.
 
 | Dependency | License | Used by |
 | --- | --- | --- |
-| `junit:junit` | Eclipse Public License 1.0 | all modules (test) |
+| `junit:junit` | Eclipse Public License 1.0 | all modules (test), `build-logic` (test) |
 | `androidx.media3:media3-test-utils` | Apache-2.0 | `superplayer-testkit` |
 | `androidx.media3:media3-test-utils-robolectric` | Apache-2.0 | `superplayer-testkit` |
 | `org.robolectric:robolectric` | MIT | transitive, via `media3-test-utils-robolectric` |

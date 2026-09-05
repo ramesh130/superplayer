@@ -131,6 +131,30 @@ them in code, tests, ADRs, issues, and commit messages rather than drifting to s
 follow Media3's own terminology for engine concepts. `CONTEXT.md` is written lazily, as terms are
 actually settled, rather than up front.
 
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push and every pull request: it builds every module,
+runs the unit tests, runs Android Lint and the repo-wide Media3 version verification, publishes to
+the local Maven repository, and builds the demo against those published artifacts. Its result
+appears as a status check on the pull request.
+
+Run the same thing before pushing:
+
+```
+./gradlew assemble check
+./gradlew publishToMavenLocal
+(cd demo && ./gradlew assembleDebug)
+```
+
+`check` is the complete definition of the library's checks — lint, the repo verification, the
+module tests, and the `build-logic` test suite (an included build, so a plain `./gradlew test`
+misses it). A new check that can be a Gradle task belongs in `check`, not only in the workflow, so
+local and CI cannot disagree about what passing means.
+
+The last two commands are separate because the demo is a separate Gradle build, deliberately: it
+resolves SuperPlayer from published coordinates rather than as a source dependency, so no root
+task can reach it.
+
 ## Pull requests
 
 - CI must pass: build, tests, lint, and the public API compatibility check. Each of these applies

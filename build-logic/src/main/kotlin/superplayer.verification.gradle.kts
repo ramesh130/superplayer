@@ -21,4 +21,9 @@ tasks.register("check") {
     group = "verification"
     description = "Runs repo-wide verification."
     dependsOn(verifyNoHardcodedMedia3Versions)
+
+    // build-logic is an included build, so its tests are invisible to the root build's
+    // aggregate tasks. Hooking them in here keeps `./gradlew check` — and therefore CI —
+    // a single, complete definition of "the checks pass".
+    dependsOn(gradle.includedBuild("build-logic").task(":check"))
 }

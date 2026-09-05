@@ -53,6 +53,15 @@ extensions.configure<LibraryExtension> {
         warningsAsErrors = false
     }
 
+    testOptions {
+        unitTests {
+            // Robolectric reads the merged manifest and resources out of the unit-test APK-less
+            // build. Without this it starts against an empty resource table and every test that
+            // touches a resource or the application context fails obscurely.
+            isIncludeAndroidResources = true
+        }
+    }
+
     // One publication per module, built from the release variant.
     publishing {
         singleVariant("release") {

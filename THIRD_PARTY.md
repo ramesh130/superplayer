@@ -26,9 +26,17 @@ of truth. This file records *what* is depended on and under *what license*.
 | Dependency | License | Used by |
 | --- | --- | --- |
 | `junit:junit` | Eclipse Public License 1.0 | all modules (test), `build-logic` (test) |
-| `androidx.media3:media3-test-utils` | Apache-2.0 | `superplayer-testkit` |
-| `androidx.media3:media3-test-utils-robolectric` | Apache-2.0 | `superplayer-testkit` |
+| `androidx.media3:media3-test-utils` | Apache-2.0 | `superplayer-core`, `superplayer-testkit` |
+| `androidx.media3:media3-test-utils-robolectric` | Apache-2.0 | `superplayer-core`, `superplayer-testkit` |
 | `org.robolectric:robolectric` | MIT | transitive, via `media3-test-utils-robolectric` |
+| `com.google.truth:truth` | Apache-2.0 | transitive, via `media3-test-utils` |
+| `org.mockito:mockito-core` | MIT | transitive, via `media3-test-utils` |
+| `androidx.test:core`, `androidx.test.ext:junit` | Apache-2.0 | transitive, via `media3-test-utils` |
+
+The three transitive rows are listed because the tests use them directly — Truth for assertions,
+Mockito through Media3's forwarding-contract helper, `androidx.test` for the Robolectric runner —
+even though no build file names them. They arrive with `media3-test-utils`, which is the only
+declaration; pinning them separately would create a second place for a version to drift.
 
 **On JUnit 4 and EPL-1.0.** EPL-1.0 is a weak, file-scoped copyleft license. `CONTRIBUTING.md`
 admits weak copyleft for test-only and build-time dependencies specifically: JUnit is not

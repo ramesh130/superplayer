@@ -163,6 +163,7 @@ task can reach it.
 - A change to the public API surface must include the corresponding update to the tracked API
   signature files, as an explicit, reviewable edit.
 - Tests assert externally observable behavior through the public API. Do not assert on private
-  state or on which internal method was called.
+  state or on which internal method was called. `docs/testing.md` describes the seam this repository
+  tests through, and it applies to every change, not only to playback code.
 - Keep the change and its documentation in the same pull request: new dependency and
   `THIRD_PARTY.md`, new decision and its ADR, new public API and its KDoc.

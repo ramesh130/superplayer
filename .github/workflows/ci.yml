@@ -57,12 +57,31 @@ jobs:
       # download makes the build fail late and obscurely when the platform is missing. The
       # level is read from the version catalog rather than written here, so it cannot drift
       # from what the modules actually compile against.
+      #
+      # The package id is looked up rather than constructed: platforms are published both
+      # unsuffixed and minor-versioned — `platforms;android-36` but `platforms;android-37.0`
+      # — so `android-$compile_sdk` is not reliably a real package name. Where an API level
+      # has several minors, the lowest is the base SDK for that level, which is what a bare
+      # `compileSdk = 37` means, so the sort takes the first and not the last. On no match this
+      # prints what the channel does offer, because "the pinned compileSdk is not available"
+      # is a fact worth reading directly rather than inferring from a later build failure.
       - name: Install the pinned compileSdk platform
         run: |
           compile_sdk="$(sed -n 's/^compileSdk = "\(.*\)"$/\1/p' gradle/libs.versions.toml)"
           test -n "$compile_sdk" || { echo "compileSdk not found in gradle/libs.versions.toml"; exit 1; }
-          echo "Installing platforms;android-$compile_sdk"
-          sdkmanager --install "platforms;android-$compile_sdk"
+
+          package="$(sdkmanager --list 2>/dev/null \
+            | sed -n "s/^ *\(platforms;android-${compile_sdk}\(\.[0-9][0-9]*\)*\) .*/\1/p" \
+            | sort -Vu | head -1)"
+
+          if [ -z "$package" ]; then
+            echo "No SDK platform package matches compileSdk $compile_sdk. Available platforms:"
+            sdkmanager --list 2>/dev/null | sed -n 's/^ *\(platforms;[^ ]*\) .*/  \1/p' | sort -Vu
+            exit 1
+          fi
+
+          echo "Installing $package"
+          sdkmanager --install "$package"
 
       # Caches the Gradle user home — the dependency cache and the local build cache — so a
       # run reuses the previous one's downloads and task outputs. Only default-branch runs

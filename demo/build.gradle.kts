@@ -38,6 +38,19 @@ extensions.configure<ApplicationExtension> {
             isMinifyEnabled = false
         }
     }
+
+    lint {
+        // Media3's PlayerView is @UnstableApi, and @UnstableApi is an androidx RequiresOptIn marker
+        // enforced by Android Lint. Any app that puts a Media3 view on screen opts in like this —
+        // it is Media3's instability, reached directly, not something SuperPlayer added.
+        //
+        // Note what is NOT here: nothing in this app opts in on SuperPlayer's account. The facade is
+        // consumed entirely through stable `Player` types, which is ADR-0001 rule 2 holding.
+        disable += "UnsafeOptInUsageError"
+
+        abortOnError = true
+        warningsAsErrors = false
+    }
 }
 
 extensions.configure<KotlinAndroidProjectExtension> {

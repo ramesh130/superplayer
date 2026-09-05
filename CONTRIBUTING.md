@@ -20,12 +20,22 @@ That file is created by the first change that adds a dependency.
 **Accepted:** permissive licenses without a field-of-use restriction — Apache-2.0, MIT, BSD-2/3-
 Clause, ISC, and equivalents.
 
-**Not accepted, in any module, including test-only and build-time dependencies:**
+**Not accepted in any published artifact:**
 
 - Copyleft licenses — GPL, LGPL, AGPL, SSPL, and derivatives.
 - Any license carrying a field-of-use restriction, a non-commercial clause, or an "ethical" or
   behavioral use restriction.
+
+**Not accepted anywhere, including test-only and build-time dependencies:**
+
+- Strong copyleft — GPL, AGPL, SSPL — whose reach is not limited to the licensed files.
+- Any license carrying a field-of-use, non-commercial, or behavioral use restriction.
 - Any dependency whose license cannot be identified.
+
+**Weak, file-scoped copyleft (EPL, MPL, LGPL) is accepted for test-only and build-time
+dependencies**, which are never distributed in a published artifact and whose copyleft reaches only
+modifications to the dependency's own files. This is what allows JUnit, which is EPL-1.0, and it is
+the narrowest carve-out that does. It does not extend to anything that ships to a consumer.
 
 Adding a dependency means adding its entry to `THIRD_PARTY.md` in the same change, creating the
 file if it does not exist yet.

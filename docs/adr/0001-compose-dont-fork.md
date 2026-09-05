@@ -71,6 +71,53 @@ Three rules follow, and they are binding:
    version catalog — and every module resolves through it. Modules document the Media3 version
    range they support.
 
+## Applying rule 2 in practice
+
+Media3 splits roughly in two. `media3-common`'s core integration types — `Player`, `MediaItem`,
+`Tracks`, `PlaybackException` — are stable. Most of `media3-exoplayer` is not: `ExoPlayer` itself,
+`LoadControl`, `TrackSelector`, `DataSource.Factory`, and `AnalyticsListener` are all
+`@UnstableApi`. Read the exact per-class status off the pinned version rather than from memory;
+annotations move between releases.
+
+That split is the reason rule 2 is phrased the way it is. SuperPlayer's entire subject matter lives
+in the second half — buffer policy is `LoadControl`, bitrate policy is `TrackSelector`, telemetry is
+`AnalyticsListener`, content-keyed caching is `DataSource.Factory`. A rule that said "avoid
+`@UnstableApi`" would leave nothing to build on. The rule is narrower: use it freely inside, never
+let it appear in SuperPlayer's own public API.
+
+**Internal use is unrestricted.** Each module opts in once, at the Gradle compiler-argument level,
+rather than scattering `@OptIn(UnstableApi::class)` through the source. Implementation classes touch
+Media3's unstable surface as much as they need to.
+
+**The boundary translates.** Anything crossing into public API is expressed in SuperPlayer's own
+types. A `PlaybackProfile` is our type; internally it resolves to Media3 configuration the consumer
+never sees. Playback failures surface as SuperPlayer's error taxonomy rather than a raw
+`PlaybackException` carrying an integer code. The consumer's compile classpath never needs
+`@UnstableApi` at all:
+
+```kotlin
+// public — SuperPlayer's vocabulary
+data class PlaybackProfile(val minBufferMs: Long, /* … */)
+
+// internal — @UnstableApi enters here and stops here
+internal fun PlaybackProfile.toLoadControl(): LoadControl = …
+```
+
+**Wrappers carry a shim and a pinning test.** Where an unstable surface is genuinely required, the
+interface is SuperPlayer's and the implementation is versioned. When Media3 changes a signature
+between supported versions, the shim absorbs the difference and the test fails in this repository
+rather than in a consumer's app.
+
+**Enforcement is mechanical, not remembered.** The tracked public API signature files are checked in
+and validated in CI, so an `@UnstableApi` type reaching a public signature appears as a diff that
+must be explicitly approved. Review discipline alone would not hold this rule; the signature check
+is what does.
+
+**What this does not prevent.** Media3 can change unstable *behavior* without changing a signature,
+and the signature check sees nothing at all. Only a pinning test catches that, and only where
+someone thought to write one. This is the sharpest limit on the mechanism, and it is why the
+wrapper maintenance in Consequences below is unavoidable rather than merely tidy.
+
 ## Consequences
 
 **Easier.** Upgrading Media3 is a version-catalog edit plus a test run, not a merge. Upstream bug

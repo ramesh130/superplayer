@@ -1,2 +1,16 @@
 .braindump-scratch/
 PLAN.md
+
+# Local machine config
+local.properties
+.idea/
+*.iml
+
+# Gradle build output. These are anchored deliberately: a bare `build/` pattern also
+# matches any Kotlin package directory named `build`, which silently untracks source.
+.gradle/
+.kotlin/
+/build/
+/build-logic/build/
+/demo/build/
+/superplayer-*/build/

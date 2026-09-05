@@ -85,9 +85,12 @@ in the second half — buffer policy is `LoadControl`, bitrate policy is `TrackS
 `@UnstableApi`" would leave nothing to build on. The rule is narrower: use it freely inside, never
 let it appear in SuperPlayer's own public API.
 
-**Internal use is unrestricted.** Each module opts in once, at the Gradle compiler-argument level,
-rather than scattering `@OptIn(UnstableApi::class)` through the source. Implementation classes touch
-Media3's unstable surface as much as they need to.
+**Internal use is unrestricted.** Each module opts in once, in the shared convention plugin, rather
+than scattering `@OptIn(UnstableApi::class)` through the source. Note that Media3's `@UnstableApi`
+is an *androidx* `RequiresOptIn` marker, enforced by Android Lint rather than by the Kotlin
+compiler, so a Kotlin `-opt-in=` compiler argument has no effect on it — the module-wide opt-in is
+a lint configuration (`lint { disable += "UnsafeOptInUsageError" }`). Implementation classes then
+touch Media3's unstable surface as much as they need to.
 
 **The boundary translates.** Anything crossing into public API is expressed in SuperPlayer's own
 types. A `PlaybackProfile` is our type; internally it resolves to Media3 configuration the consumer

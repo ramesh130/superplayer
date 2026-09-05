@@ -1,0 +1,52 @@
+# The single source of truth for every dependency version in this build.
+#
+# ADR-0001 rule 3: Media3's version is declared in exactly one place. No module may pin a
+# Media3 version in its own build script; every module resolves it from this catalog.
+# `./gradlew verifyNoHardcodedMedia3Versions` enforces that mechanically.
+
+[versions]
+# --- The published version of SuperPlayer itself. Both builds read it from here. ---
+superplayer = "0.1.0-SNAPSHOT"
+
+# --- Build toolchain ---
+agp = "9.4.0"
+kotlin = "2.4.10"
+jvmTarget = "17"
+
+# --- Android SDK levels ---
+compileSdk = "37"
+minSdk = "24"
+targetSdk = "37"
+
+# --- The pinned Media3 version. Change it here and nowhere else. ---
+media3 = "1.11.0"
+
+# --- Libraries ---
+coroutines = "1.11.0"
+androidxAnnotation = "1.9.1"
+junit = "4.13.2"
+
+[libraries]
+# Media3. Every entry resolves `media3` above.
+media3-common = { module = "androidx.media3:media3-common", version.ref = "media3" }
+media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "media3" }
+media3-exoplayer-hls = { module = "androidx.media3:media3-exoplayer-hls", version.ref = "media3" }
+media3-exoplayer-dash = { module = "androidx.media3:media3-exoplayer-dash", version.ref = "media3" }
+media3-datasource = { module = "androidx.media3:media3-datasource", version.ref = "media3" }
+media3-ui = { module = "androidx.media3:media3-ui", version.ref = "media3" }
+media3-test-utils = { module = "androidx.media3:media3-test-utils", version.ref = "media3" }
+media3-test-utils-robolectric = { module = "androidx.media3:media3-test-utils-robolectric", version.ref = "media3" }
+
+androidx-annotation = { module = "androidx.annotation:annotation", version.ref = "androidxAnnotation" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+
+junit = { module = "junit:junit", version.ref = "junit" }
+
+# Gradle plugin artifacts, so build-logic can depend on them.
+android-gradlePlugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }
+kotlin-gradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+
+[plugins]
+android-library = { id = "com.android.library", version.ref = "agp" }
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }

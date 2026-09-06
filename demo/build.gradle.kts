@@ -14,6 +14,10 @@ plugins {
     // build-logic puts the Kotlin Gradle plugin on its own classpath. If an AGP upgrade
     // changes how the built-in Kotlin version is chosen, this is the line to revisit.
     alias(libs.plugins.kotlin.android) apply false
+    // Applied, unlike the line above: the Compose compiler is a Kotlin compiler plugin and the
+    // UI does not compile without it. Its version is the catalog's Kotlin version, because the
+    // Compose compiler is released as part of Kotlin.
+    alias(libs.plugins.kotlin.compose)
 }
 
 extensions.configure<ApplicationExtension> {
@@ -31,6 +35,10 @@ extensions.configure<ApplicationExtension> {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        compose = true
     }
 
     buildTypes {
@@ -68,4 +76,18 @@ dependencies {
     // actually publishes.
     implementation("com.superplayer:superplayer-core:${libs.versions.superplayer.get()}")
     implementation(libs.media3.ui)
+    // For `androidx.annotation.OptIn`, the form of opt-in that works on Media3's Java
+    // `@UnstableApi` marker. Declared rather than taken transitively, because it is used in
+    // source here. See MainActivity.showBufferingSpinner.
+    implementation(libs.androidx.annotation)
+
+    // The BOM pins every androidx.compose.* artifact from one catalog version.
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.foundation)
+    implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.activity.compose)
+    // `LifecycleStartEffect`: the demo acquires the player on the activity's start, not on
+    // composition. See MainActivity.
+    implementation(libs.androidx.lifecycle.runtime.compose)
 }

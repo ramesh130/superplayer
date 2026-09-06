@@ -9,6 +9,7 @@
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@android:color/black"
@@ -21,6 +22,19 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:padding="8dp" />
+
+    <!--
+      What the player was last asked for. Switching streams and switching back is the demo's
+      resume-from-position exercise, and this says which of the two just happened.
+    -->
+    <TextView
+        android:id="@+id/status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="8dp"
+        android:paddingBottom="8dp"
+        android:textColor="@android:color/white"
+        tools:text="HLS — resuming from 1:04" />
 
     <androidx.media3.ui.PlayerView
         android:id="@+id/player_view"

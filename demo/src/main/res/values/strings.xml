@@ -3,4 +3,9 @@
     <string name="app_name">SuperPlayer Demo</string>
     <string name="stream_hls">HLS</string>
     <string name="stream_dash">DASH</string>
+
+    <!-- The status line under the picker. It reports what the *player* was asked to do, so that
+         resume is visible as an intent and not only as a frame that happens to look familiar. -->
+    <string name="status_from_start">%1$s \u2014 playing from the start</string>
+    <string name="status_resuming">%1$s \u2014 resuming from %2$s</string>
 </resources>

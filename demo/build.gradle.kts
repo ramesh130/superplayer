@@ -77,8 +77,9 @@ dependencies {
     implementation("com.superplayer:superplayer-core:${libs.versions.superplayer.get()}")
     implementation(libs.media3.ui)
     // For `androidx.annotation.OptIn`, the form of opt-in that works on Media3's Java
-    // `@UnstableApi` marker. Declared rather than taken transitively, because it is used in
-    // source here. See MainActivity.showBufferingSpinner.
+    // `@UnstableApi` marker — see MainActivity.showBufferingSpinner. Named here rather than
+    // resolved through media3-common, so that the demo's one opt-in does not depend on a Media3
+    // POM continuing to export the annotation that expresses it.
     implementation(libs.androidx.annotation)
 
     // The BOM pins every androidx.compose.* artifact from one catalog version.

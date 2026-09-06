@@ -1,6 +1,5 @@
 package com.superplayer.demo
 
-import android.graphics.Color as AndroidColor
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -71,9 +70,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // From API 35 an app is laid out edge to edge whether it asks or not. Opting in explicitly
-        // makes every API level behave the same way, so the `safeDrawing` inset padding in DemoApp
-        // is the one thing keeping the picker out from under the status bar, old devices included.
+        // From API 35 an app targeting 35+ is laid out edge to edge whether it asks or not. Opting
+        // in explicitly makes every API level behave the same way, so the `safeDrawing` inset
+        // padding in DemoApp is the one thing keeping the picker out from under the status bar, old
+        // devices included.
+        // ref: https://developer.android.com/develop/ui/views/layout/edge-to-edge
         enableEdgeToEdge()
         setContent { DemoApp() }
     }
@@ -89,14 +90,17 @@ class MainActivity : ComponentActivity() {
 private fun DemoApp() {
     val context = LocalContext.current
 
-    // Survives rotation without a declared view id and without `onSaveInstanceState`. Saved as the
-    // enum's name rather than relying on `Bundle`'s serializable support, so what crosses process
-    // death is a string this file can read.
+    // Survives rotation without a declared view id and without `onSaveInstanceState`.
     var selectedStream by rememberSaveable(stateSaver = DemoStreamSaver) {
         mutableStateOf(DemoStream.HLS)
     }
     var player by remember { mutableStateOf<SuperPlayer?>(null) }
     var status by remember { mutableStateOf<Status?>(null) }
+
+    // The surface is remembered here, not created inside [PlayerSurface], because attaching and
+    // detaching the player has to happen on the *lifecycle's* schedule and not on a recomposition's.
+    // See the release ordering below.
+    val playerView = remember { PlayerView(context).apply { showBufferingSpinner() } }
 
     // Acquire on the activity's START and release on its STOP — not on composition. From API 24
     // onwards an activity can be visible while not resumed (multi-window), so a resume-scoped
@@ -106,9 +110,17 @@ private fun DemoApp() {
     LifecycleStartEffect(Unit) {
         val superPlayer = SuperPlayer.Builder(context).build()
         superPlayer.playWhenReady = true
+        // No adapter, no wrapper, no `asMedia3Player()`: SuperPlayer *is* a `Player`, so Media3's
+        // own view takes it as it is. This is the assignment the whole facade exists to make
+        // ordinary, and Compose does not change it.
+        playerView.player = superPlayer
         player = superPlayer
 
         onStopOrDispose {
+            // Detach before releasing, and do it here rather than by writing state that some later
+            // recomposition would act on. While the window is stopped nothing recomposes, so a
+            // state write would leave the view holding a released player until the next start.
+            playerView.player = null
             player = null
             superPlayer.release()
         }
@@ -120,7 +132,10 @@ private fun DemoApp() {
     // surface it is attached to — survives both the protocol change and the resume.
     LaunchedEffect(player, selectedStream) {
         val current = player ?: return@LaunchedEffect
-        status = Status(selectedStream, startedAtMs = current.load(selectedStream))
+        current.load(selectedStream)
+        // Where the request landed, read straight off the player. Media3 applies a new item's start
+        // position to the reported state at once, without waiting for the content to load.
+        status = Status(selectedStream, startedAtMs = current.currentPosition)
     }
 
     MaterialTheme(colorScheme = darkColorScheme()) {
@@ -141,7 +156,7 @@ private fun DemoApp() {
                 )
                 StatusLine(status)
                 PlayerSurface(
-                    player = player,
+                    playerView = playerView,
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
@@ -170,19 +185,21 @@ private fun StreamPicker(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         DemoStream.entries.forEach { stream ->
+            val isSelected = stream == selected
             Row(
                 modifier = Modifier
                     .selectable(
-                        selected = stream == selected,
+                        selected = isSelected,
                         role = Role.RadioButton,
-                        // The whole row is the target, so the label is tappable and not only the
-                        // button. `selectable` handles the click, so the button itself takes none.
+                        // The whole row is the target, which is what the old `RadioButton` gave for
+                        // free by carrying its own label. `selectable` handles the click, so the
+                        // button itself takes none.
                         onClick = { onSelect(stream) },
                     )
                     .padding(end = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                RadioButton(selected = stream == selected, onClick = null)
+                RadioButton(selected = isSelected, onClick = null)
                 Text(
                     text = stringResource(stream.labelRes),
                     modifier = Modifier.padding(start = 4.dp),
@@ -230,21 +247,14 @@ private fun StatusLine(status: Status?) {
  * it, and the one opt-in the rewrite does need is confined to [showBufferingSpinner], which touches
  * no SuperPlayer type.
  *
- * The interop boundary is the cost, and it is one composable wide. Note that [player] is a
- * [SuperPlayer] and the assignment below is direct: no adapter, no wrapper, no `asMedia3Player()`.
+ * The interop boundary is the cost, and it is one composable wide — and it is only the *placing* of
+ * the view. What plays in it is attached and detached in DemoApp's start effect, so this composable
+ * takes an already-configured [playerView] rather than owning one.
  */
 @Composable
-private fun PlayerSurface(player: SuperPlayer?, modifier: Modifier = Modifier) {
+private fun PlayerSurface(playerView: PlayerView, modifier: Modifier = Modifier) {
     AndroidView(
-        factory = { context ->
-            PlayerView(context).apply {
-                setBackgroundColor(AndroidColor.BLACK)
-                showBufferingSpinner()
-            }
-        },
-        // Re-runs whenever `player` changes, including the null a stop leaves behind: the surface
-        // must let go of a released player.
-        update = { view -> view.player = player },
+        factory = { playerView },
         onRelease = { view -> view.player = null },
         modifier = modifier.background(Color.Black),
     )
@@ -257,7 +267,7 @@ private fun PlayerSurface(player: SuperPlayer?, modifier: Modifier = Modifier) {
  * that the opt-in it needs covers nothing else. That matters: the demo is the only place
  * `UnsafeOptInUsageError` is left on, so an opt-in appearing here has to stay attributable to
  * Media3. Every SuperPlayer call in this file — the builder, `setMediaRequest`, `prepare`, and the
- * `view.player = player` assignment above — is outside this function and therefore still checked.
+ * `playerView.player = superPlayer` assignment — is outside this function and still checked.
  */
 @OptIn(markerClass = [UnstableApi::class])
 private fun PlayerView.showBufferingSpinner() {
@@ -278,11 +288,8 @@ private data class Status(val stream: DemoStream, val startedAtMs: Long)
 /**
  * The whole of what protocol support and resume cost a consumer: a request and a `prepare`.
  * There is no branch here, and there is nowhere else in this app that one could hide.
- *
- * The position it returns is available immediately because Media3 applies a new item's start
- * position to the player's reported state at once, without waiting for the content to load.
  */
-private fun SuperPlayer.load(stream: DemoStream): Long {
+private fun SuperPlayer.load(stream: DemoStream) {
     setMediaRequest(
         MediaRequest.Builder(stream.contentId)
             .addSource(stream.uri)
@@ -290,7 +297,6 @@ private fun SuperPlayer.load(stream: DemoStream): Long {
             .build(),
     )
     prepare()
-    return currentPosition
 }
 
 private fun format(positionMs: Long): String {
@@ -298,5 +304,15 @@ private fun format(positionMs: Long): String {
     return String.format(Locale.getDefault(), "%d:%02d", totalSeconds / 60, totalSeconds % 60)
 }
 
-private val DemoStreamSaver: Saver<DemoStream, String> =
-    Saver(save = { it.name }, restore = DemoStream::valueOf)
+/**
+ * Saves the picked stream as the enum's name rather than relying on `Bundle`'s serializable support,
+ * so what crosses process death is a string this file can read.
+ *
+ * `restore` returns null — the supported "could not restore this" answer, which falls back to the
+ * initial value — for a name no longer in the enum, rather than throwing at a renamed stream the way
+ * `valueOf` would.
+ */
+private val DemoStreamSaver: Saver<DemoStream, String> = Saver(
+    save = { it.name },
+    restore = { name -> DemoStream.entries.firstOrNull { it.name == name } },
+)

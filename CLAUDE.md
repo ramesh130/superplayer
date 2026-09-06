@@ -60,8 +60,12 @@ forwarding-contract assertion over both and is what catches the next one Media3 
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core` and `build-logic` are the only modules with test
-sources. The roadmap is `PLAN.md`, which is untracked and local-only, so it is absent from a fresh
-clone.
+sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
+requirements, and the phase table are what the issues are cut from.
+
+`PLAN.md` is an untracked, local-only scratch draft that `PRD.md` supersedes. **Do not read it, cite
+it, or copy from it** — it names third parties and framings that must not reach a tracked file, and
+where the two disagree `PRD.md` is right.
 
 ## Commands
 

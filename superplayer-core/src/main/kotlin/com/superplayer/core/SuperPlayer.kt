@@ -2,7 +2,9 @@ package com.superplayer.core
 
 import android.content.Context
 import androidx.annotation.VisibleForTesting
+import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
+import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import java.lang.reflect.InvocationTargetException
@@ -83,6 +85,75 @@ public class SuperPlayer private constructor(
      */
     private val wrappedListeners = IdentityHashMap<Player.Listener, Player.Listener>()
 
+    /**
+     * Where each piece of content was left, keyed by [MediaRequest.contentId] — what
+     * [MediaRequest.StartPosition.ResumeFromLastKnown] reads.
+     *
+     * In memory and for the life of this player only. Persisting it would mean choosing a storage
+     * mechanism on a consumer's behalf, and surviving a configuration change is `#10`'s subject.
+     *
+     * Bounded, and least-recently-used first out. A feed UI can move through thousands of items in a
+     * session, and an unbounded map of ids a consumer chose the length of is a slow leak in exactly
+     * the kind of app the player pool exists for. [MAX_REMEMBERED_POSITIONS] is generous next to any
+     * plausible back-stack of things a viewer might return to, and cheap: a few kilobytes at worst.
+     * Eviction is documented on [MediaRequest.StartPosition.ResumeFromLastKnown], because it is a
+     * limit of that promise rather than an implementation detail a consumer can ignore.
+     *
+     * Not synchronized, unlike [wrappedListeners]: this is only touched from [setMediaRequest],
+     * which is a [Player] method call and therefore already on the application looper.
+     */
+    private val lastKnownPositions =
+        object : LinkedHashMap<String, Long>(0, 0.75f, /* accessOrder= */ true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>): Boolean =
+                size > MAX_REMEMBERED_POSITIONS
+        }
+
+    /**
+     * Plays what [request] describes: the first of its sources, starting where its
+     * [MediaRequest.StartPosition] says, identified by its [MediaRequest.contentId].
+     *
+     * The counterpart of [Player.setMediaItem], and the same contract: it replaces the current item
+     * and [prepare] still has to be called. What it adds is the identity and the start position,
+     * neither of which a `MediaItem` can express — see [MediaRequest] for why that matters.
+     *
+     * The outgoing content's position is remembered first, so a later
+     * [MediaRequest.StartPosition.ResumeFromLastKnown] for it returns here.
+     */
+    public fun setMediaRequest(request: MediaRequest) {
+        rememberPositionOfCurrentContent()
+        delegate.setMediaItem(request.toMediaItem(), request.resolvedStartPositionMs())
+    }
+
+    /**
+     * Records where the currently-playing content has got to, if it is content this player can name.
+     *
+     * An item set through [Player.setMediaItem] rather than [setMediaRequest] carries Media3's
+     * default media id, which says nothing about identity and is shared by every such item — so it
+     * is skipped rather than remembered under a key that would collide with the next one.
+     *
+     * Content that has ended is recorded at the beginning: see
+     * [MediaRequest.StartPosition.ResumeFromLastKnown].
+     */
+    private fun rememberPositionOfCurrentContent() {
+        val contentId = delegate.currentMediaItem?.mediaId ?: return
+        if (contentId == MediaItem.DEFAULT_MEDIA_ID) return
+
+        lastKnownPositions[contentId] =
+            if (delegate.playbackState == Player.STATE_ENDED) 0L else delegate.contentPosition
+    }
+
+    /**
+     * The start position in the form [Player.setMediaItem] takes: milliseconds, or [C.TIME_UNSET]
+     * for "the content's own default position", which is the start of on-demand content and the live
+     * edge of a live stream.
+     */
+    private fun MediaRequest.resolvedStartPositionMs(): Long = when (val position = startPosition) {
+        is MediaRequest.StartPosition.Beginning -> C.TIME_UNSET
+        is MediaRequest.StartPosition.At -> position.positionMs
+        is MediaRequest.StartPosition.ResumeFromLastKnown ->
+            lastKnownPositions[contentId] ?: C.TIME_UNSET
+    }
+
     override fun addListener(listener: Player.Listener) {
         val wrapper = synchronized(wrappedListeners) {
             wrappedListeners.getOrPut(listener) { listener.reportingSourceAs(this) }
@@ -105,6 +176,7 @@ public class SuperPlayer private constructor(
     override fun release() {
         delegate.release()
         synchronized(wrappedListeners) { wrappedListeners.clear() }
+        lastKnownPositions.clear()
     }
 
     /**
@@ -123,6 +195,17 @@ public class SuperPlayer private constructor(
      * that later configuration — profiles, telemetry, cache policy — arrives as builder methods
      * rather than as a widening constructor.
      */
+    public companion object {
+        /**
+         * How many pieces of content one player remembers a position for.
+         *
+         * Public because it bounds what [MediaRequest.StartPosition.ResumeFromLastKnown] promises,
+         * and a consumer sizing a feed against it should be able to read the number rather than
+         * guess it.
+         */
+        public const val MAX_REMEMBERED_POSITIONS: Int = 128
+    }
+
     public class Builder(private val context: Context) {
 
         private var engineConfigurator: ((ExoPlayer.Builder) -> Unit)? = null

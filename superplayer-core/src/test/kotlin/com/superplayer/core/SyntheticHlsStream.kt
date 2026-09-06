@@ -32,6 +32,9 @@ internal object SyntheticHlsStream {
 
     private const val SEGMENT_DURATION_SECONDS = 2.0
 
+    /** The whole stream: one segment, so the segment's own duration. */
+    const val DURATION_MS: Long = (SEGMENT_DURATION_SECONDS * 1_000).toLong()
+
     // spec: ISO/IEC 13818-7 §6.2 — sampling_frequency_index 4 is 44100 Hz, channel_configuration 2
     // is stereo. They are encoded into every ADTS frame header below and are what Media3's
     // AdtsExtractor reads the track format out of.

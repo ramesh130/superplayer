@@ -27,6 +27,15 @@ and Compose surfaces take it unchanged — the demo assigns it to a `PlayerView`
 which is the point. `player.exoPlayer` is public, and ADR-0001 rule 2 explains why that one
 `@UnstableApi` type is allowed out.
 
+The second public type is `MediaRequest`: what to play, as content rather than as a URL. It carries a
+stable `contentId` (not a URL — that is the point, and the `MediaRequest` KDoc says which defects it
+closes), an ordered `sources` list of which **only the first is used** until failover arrives, and a
+`StartPosition` of `Beginning`, `At(ms)` or `ResumeFromLastKnown`. `player.setMediaRequest(request)`
+is the counterpart of `setMediaItem`, and the identity travels as the `MediaItem`'s `mediaId`.
+Resume positions are held in memory for the life of one `SuperPlayer`, bounded to the
+`SuperPlayer.MAX_REMEMBERED_POSITIONS` most recently used ids, and are not persisted; surviving a
+configuration change is issue #10's subject, not this one's.
+
 The facade *implements* `Player` by Kotlin delegation rather than extending `ForwardingPlayer`;
 ADR-0003 records why, and the shape is load-bearing rather than stylistic. Kotlin delegation does
 not override Java `default` methods and gives no warning that it hasn't: `Player` has one such member

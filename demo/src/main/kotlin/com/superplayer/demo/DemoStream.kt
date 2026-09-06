@@ -4,13 +4,23 @@ package com.superplayer.demo
  * The public test streams the demo offers, and the only place a streaming protocol is named.
  *
  * Note what this type does *not* carry: no source factory, no protocol flag, no per-protocol
- * construction. A stream is a label and a URI, because that is genuinely all SuperPlayer needs to
- * play one — the demo would look the same if a third protocol were added to the list.
+ * construction. A stream is a label, an identity and a URI, because that is genuinely all SuperPlayer
+ * needs to play one — the demo would look the same if a third protocol were added to the list.
  *
  * [viewId] is the id of the picker button that selects this stream. It lives here rather than being
  * derived from the ordinal so that the ids are the app's own declared resources: see `res/values/ids.xml`.
+ *
+ * [contentId] is what the stream *is*, as opposed to where it is served from — the identifier
+ * SuperPlayer keys a resume position on. Written in a namespace of the demo's own, and deliberately
+ * not derived from [uri]: a second CDN host for the same title has to be the same content id, which
+ * is the entire point of `MediaRequest` carrying one.
  */
-internal enum class DemoStream(val viewId: Int, val labelRes: Int, val uri: String) {
+internal enum class DemoStream(
+    val viewId: Int,
+    val labelRes: Int,
+    val contentId: String,
+    val uri: String,
+) {
 
     /**
      * Apple's public "Advanced stream (HEVC/H.264, fMP4)" HLS example — the reference stream the HLS
@@ -22,6 +32,7 @@ internal enum class DemoStream(val viewId: Int, val labelRes: Int, val uri: Stri
     HLS(
         viewId = R.id.stream_hls,
         labelRes = R.string.stream_hls,
+        contentId = "demo:bipbop-advanced",
         uri = "https://devstreaming-cdn.apple.com/videos/streaming/examples/" +
             "img_bipbop_adv_example_fmp4/master.m3u8",
     ),
@@ -36,6 +47,7 @@ internal enum class DemoStream(val viewId: Int, val labelRes: Int, val uri: Stri
     DASH(
         viewId = R.id.stream_dash,
         labelRes = R.string.stream_dash,
+        contentId = "demo:tears-of-steel",
         uri = "https://storage.googleapis.com/wvmedia/clear/h264/tears/tears.mpd",
     ),
 }

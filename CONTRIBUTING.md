@@ -116,6 +116,8 @@ them.
 
 - **[ADR-0001](docs/adr/0001-compose-dont-fork.md) — Compose on Media3, do not fork it.**
 - **[ADR-0002](docs/adr/0002-no-local-http-proxy.md) — No local HTTP proxy.**
+- **[ADR-0003](docs/adr/0003-implement-player-by-delegation.md) — Implement `Player` by delegation,
+  never extend a Media3 base class.**
 
 If a change contradicts an ADR, say so explicitly in the pull request and argue the case. Do not
 work around an ADR silently. If the argument wins, the outcome is a new ADR that supersedes the old
@@ -143,21 +145,43 @@ Run the same thing before pushing:
 ```
 ./gradlew assemble check
 ./gradlew publishToMavenLocal
-(cd demo && ./gradlew assembleDebug)
+(cd demo && ./gradlew assembleDebug lintDebug)
 ```
 
 `check` is the complete definition of the library's checks — lint, the repo verification, the
-module tests, and the `build-logic` test suite (an included build, so a plain `./gradlew test`
-misses it). A new check that can be a Gradle task belongs in `check`, not only in the workflow, so
-local and CI cannot disagree about what passing means.
+tracked API surface, the module tests, and the `build-logic` test suite (an included build, so a
+plain `./gradlew test` misses it). A new check that can be a Gradle task belongs in `check`, not
+only in the workflow, so local and CI cannot disagree about what passing means.
+
+The demo is linted as well as built, and that is not incidental: it is the only place
+`UnsafeOptInUsageError` is enabled, so it is where ADR-0001 rule 2 is proved from a consumer's side
+rather than asserted. See `docs/api-surface.md`.
 
 The last two commands are separate because the demo is a separate Gradle build, deliberately: it
 resolves SuperPlayer from published coordinates rather than as a source dependency, so no root
 task can reach it.
 
+## The public API surface
+
+Every published module's public API is checked into the repository as `<module>/api/<module>.api`,
+and `check` fails when what the module builds no longer matches it. Regenerating it is a deliberate
+step, never automatic:
+
+```
+./gradlew updateApiSurface                     # every module
+./gradlew :superplayer-core:updateApiSurface   # one module
+```
+
+Commit the regenerated file in the same change as the API edit that caused it. The diff is the
+review: it is how a widened surface gets agreed to rather than discovered after a release.
+
+`check` also fails if an `@UnstableApi` Media3 type reaches public API, which is ADR-0001 rule 2
+enforced mechanically rather than remembered. `docs/api-surface.md` explains both checks, the two
+things the second one permits, and why the tooling is wired the way it is.
+
 ## Pull requests
 
-- CI must pass: build, tests, lint, and the public API compatibility check. Each of these applies
+- CI must pass: build, tests, lint, and the public API surface check. Each of these applies
   from the change that introduces it; the scaffold lands them early precisely so they are never
   optional afterwards.
 - A change to the public API surface must include the corresponding update to the tracked API

@@ -1,8 +1,7 @@
 # Continuous integration: build, test, lint.
 #
 # Runs on every push and every pull request, so a broken change is caught before review
-# rather than after merge. Binary-compatibility validation is deliberately absent; it
-# arrives in its own change once there is a public API worth snapshotting.
+# rather than after merge.
 #
 # The steps are the same commands a contributor runs locally; CONTRIBUTING.md lists them and
 # is the place that explains what belongs in `check`. The narrower steps before `check` exist
@@ -100,10 +99,15 @@ jobs:
       - name: Unit tests
         run: ./gradlew test
 
-      # `check` runs Android Lint, the repo-wide Media3 version verification, and the
-      # build-logic test suite, which is an included build and therefore invisible to the
-      # root build's `test` above.
-      - name: Lint and repo verification
+      # `check` runs Android Lint, the repo-wide Media3 version verification, the tracked
+      # public API surface checks, and the build-logic test suite, which is an included build
+      # and therefore invisible to the root build's `test` above.
+      #
+      # The API surface checks are why there is no separate step for them: `check` is the whole
+      # definition of passing, so a contributor running it locally sees exactly what CI sees.
+      # A public API change that has not been regenerated with `./gradlew updateApiSurface`
+      # fails here, as does an @UnstableApi Media3 type reaching public API.
+      - name: Lint, API surface, and repo verification
         run: ./gradlew check
 
       - name: Publish to the local Maven repository
@@ -113,7 +117,10 @@ jobs:
       # exactly as an adopter would, so a broken POM or a missing transitive dependency
       # fails here rather than in someone else's app.
       # Linted as well as built: lint configuration lives in the library convention plugin,
-      # which the demo does not apply, so this is the only thing that lints it.
+      # which the demo does not apply, so this is the only thing that lints it. It is also the
+      # only place `UnsafeOptInUsageError` is enabled, which makes this step the proof of
+      # ADR-0001 rule 2 from a consumer's side — a leaked @UnstableApi type that the library's
+      # own checks somehow missed still fails here, at the call site, where it would hurt.
       - name: Build and lint the demo against the published artifacts
         working-directory: demo
         run: ./gradlew assembleDebug lintDebug

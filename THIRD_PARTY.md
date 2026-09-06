@@ -45,5 +45,19 @@ files, which this project does not make. No EPL-licensed code ships to consumers
 
 ## Build-time only
 
+| Dependency | License | Used by |
+| --- | --- | --- |
+| `org.jetbrains.kotlinx:binary-compatibility-validator` | Apache-2.0 | `build-logic` |
+| `org.ow2.asm:asm` | BSD-3-Clause | `build-logic` |
+| `io.github.java-diff-utils:java-diff-utils` | Apache-2.0 | transitive, via `binary-compatibility-validator` |
+
+`binary-compatibility-validator` is depended on as a *library*, not applied as its Gradle plugin:
+`build-logic` calls its signature loader to render each module's tracked public API surface. ASM
+reads Media3's `@UnstableApi` annotations off the pinned compile classpath for the same check.
+`docs/api-surface.md` explains why the plugin cannot be used as published.
+
+Neither reaches a published artifact: they are on `build-logic`'s classpath, which is an included
+build that produces convention plugins and nothing consumers resolve.
+
 The Android Gradle Plugin (Apache-2.0), the Kotlin Gradle Plugin (Apache-2.0), and Gradle itself
 (Apache-2.0) are build tooling. They are not distributed in published artifacts.

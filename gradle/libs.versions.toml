@@ -26,6 +26,13 @@ coroutines = "1.11.0"
 androidxAnnotation = "1.9.1"
 junit = "4.13.2"
 
+# --- Build-time only: the engine behind the tracked public API surface ---
+# `binary-compatibility-validator` is used as a library, not as its Gradle plugin: the plugin
+# keys on the `kotlin-android` plugin id, which AGP 9's built-in Kotlin support does not apply.
+# build-logic drives its signature loader directly instead. See docs/api-surface.md.
+binaryCompatibilityValidator = "0.18.2"
+asm = "9.9"
+
 [libraries]
 # Media3. Every entry resolves `media3` above.
 media3-common = { module = "androidx.media3:media3-common", version.ref = "media3" }
@@ -41,6 +48,9 @@ androidx-annotation = { module = "androidx.annotation:annotation", version.ref =
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 
 junit = { module = "junit:junit", version.ref = "junit" }
+
+binary-compatibility-validator = { module = "org.jetbrains.kotlinx:binary-compatibility-validator", version.ref = "binaryCompatibilityValidator" }
+asm = { module = "org.ow2.asm:asm", version.ref = "asm" }
 
 # Gradle plugin artifacts, so build-logic can depend on them.
 android-gradlePlugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }

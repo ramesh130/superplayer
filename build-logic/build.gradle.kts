@@ -9,6 +9,8 @@ plugins {
 dependencies {
     implementation(libs.android.gradlePlugin)
     implementation(libs.kotlin.gradlePlugin)
+    implementation(libs.binary.compatibility.validator)
+    implementation(libs.asm)
 
     testImplementation(libs.junit)
 }

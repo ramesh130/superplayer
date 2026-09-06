@@ -40,14 +40,17 @@ extensions.configure<ApplicationExtension> {
     }
 
     lint {
-        // Media3's PlayerView is @UnstableApi, and @UnstableApi is an androidx RequiresOptIn marker
-        // enforced by Android Lint. Any app that puts a Media3 view on screen opts in like this —
-        // it is Media3's instability, reached directly, not something SuperPlayer added.
+        // `UnsafeOptInUsageError` is deliberately left ON, and this app is the only place that
+        // proves ADR-0001 rule 2 from a consumer's side: the library modules disable the check
+        // module-wide, because their job is to use Media3's unstable surface.
         //
-        // Note what is NOT here: nothing in this app opts in on SuperPlayer's account. The facade is
-        // consumed entirely through stable `Player` types, which is ADR-0001 rule 2 holding.
-        disable += "UnsafeOptInUsageError"
-
+        // It used to be disabled here, and that suppression was hiding a real leak. `SuperPlayer`
+        // extended Media3's `@UnstableApi` ForwardingPlayer, so every call below resolved to an
+        // annotated declaration and lint demanded `@OptIn(UnstableApi::class)` from the consumer —
+        // five errors from five calls. The facade now implements `Player` by delegation, so the
+        // methods a consumer reaches are SuperPlayer's own and carry no marker.
+        //
+        // If this ever needs an opt-in again, that is the news, not the fix.
         abortOnError = true
         warningsAsErrors = false
     }

@@ -1,4 +1,12 @@
+import com.android.build.api.artifact.ScopedArtifact
 import com.android.build.api.dsl.LibraryExtension
+import com.android.build.api.variant.LibraryAndroidComponentsExtension
+import com.android.build.api.variant.ScopedArtifacts
+import com.superplayer.build.CheckApiSurface
+import com.superplayer.build.DumpApiSurface
+import com.superplayer.build.UpdateApiSurface
+import com.superplayer.build.VerifyNoUnstableMedia3InPublicApi
+import org.gradle.api.attributes.Attribute
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.dsl.KotlinAndroidProjectExtension
 
@@ -66,6 +74,81 @@ extensions.configure<LibraryExtension> {
     publishing {
         singleVariant("release") {
             withSourcesJar()
+        }
+    }
+}
+
+// The consumer-facing API surface, tracked in `api/<module>.api` and validated by `check`.
+//
+// Read off the release variant's own compiled classes, which is what a consumer resolves.
+// `updateApiSurface` regenerates the tracked file; nothing regenerates it implicitly, because the
+// point of tracking it is that widening the surface produces a reviewable diff. ADR-0001 rule 2
+// depends on this: an `@UnstableApi` Media3 type reaching public API cannot land unnoticed.
+val trackedApiSurfaceFile = layout.projectDirectory.file("api/${project.name}.api")
+val builtApiSurfaceFile = layout.buildDirectory.file("api-surface/${project.name}.api")
+
+val dumpApiSurface = tasks.register<DumpApiSurface>("dumpApiSurface") {
+    group = "verification"
+    description = "Writes the release variant's public API surface into the build directory."
+    apiFile.set(builtApiSurfaceFile)
+}
+
+val updateApiSurface = tasks.register<UpdateApiSurface>("updateApiSurface") {
+    group = "verification"
+    description = "Rewrites api/${project.name}.api from what this module currently builds."
+    builtApiFile.set(dumpApiSurface.flatMap { it.apiFile })
+    trackedApiFile.set(trackedApiSurfaceFile)
+}
+
+val checkApiSurface = tasks.register<CheckApiSurface>("checkApiSurface") {
+    group = "verification"
+    description = "Fails if the built public API surface differs from the tracked api/${project.name}.api."
+    builtApiFile.set(dumpApiSurface.flatMap { it.apiFile })
+    trackedApiFile.from(trackedApiSurfaceFile)
+    trackedApiFilePath.set("${project.name}/api/${project.name}.api")
+    updateTaskPath.set("${project.path}:updateApiSurface")
+    stampFile.set(layout.buildDirectory.file("verification/api-surface.txt"))
+
+    // `./gradlew updateApiSurface check` is the natural "regenerate, then verify" invocation, and
+    // both tasks touch the tracked file. Without an ordering Gradle refuses the pair outright.
+    mustRunAfter(updateApiSurface)
+}
+
+val verifyNoUnstableMedia3InPublicApi =
+    tasks.register<VerifyNoUnstableMedia3InPublicApi>("verifyNoUnstableMedia3InPublicApi") {
+        group = "verification"
+        description = "Fails if an @UnstableApi Media3 type has reached this module's public API."
+        apiSurfaceFile.set(dumpApiSurface.flatMap { it.apiFile })
+        stampFile.set(layout.buildDirectory.file("verification/no-unstable-media3-in-public-api.txt"))
+    }
+
+tasks.named("check") {
+    dependsOn(checkApiSurface, verifyNoUnstableMedia3InPublicApi)
+}
+
+extensions.configure<LibraryAndroidComponentsExtension> {
+    onVariants(selector().withBuildType("release")) { variant ->
+        variant.artifacts
+            .forScope(ScopedArtifacts.Scope.PROJECT)
+            .use(dumpApiSurface)
+            .toGet(
+                ScopedArtifact.CLASSES,
+                DumpApiSurface::classJars,
+                DumpApiSurface::classDirectories,
+            )
+
+        // The compile classpath hands out `.aar` files, and Media3's annotations sit inside their
+        // nested `classes.jar`. AGP publishes that unpacked jar as an artifact view, so the check
+        // asks for it by artifact type rather than learning to open an archive inside an archive.
+        verifyNoUnstableMedia3InPublicApi.configure {
+            media3Classpath.from(
+                variant.compileConfiguration.incoming.artifactView {
+                    attributes.attribute(
+                        Attribute.of("artifactType", String::class.java),
+                        "android-classes-jar",
+                    )
+                }.files
+            )
         }
     }
 }

@@ -102,9 +102,17 @@ class SuperPlayerPlaybackTest {
     fun theWrappedEngineIsReachableAndIsWhatTheFacadeDelegatesTo() {
         prepareUntilReady()
 
-        // ADR-0001 rule 2's named exception. The point of the escape hatch is that it is the same
-        // instance, still under the facade's control — not a copy and not a detached engine.
-        assertThat(player.exoPlayer).isSameInstanceAs(player.wrappedPlayer)
+        // ADR-0001 rule 2's named exception. The point of the escape hatch is that it is the live
+        // engine the facade drives — not a copy and not a detached one — so the check is that state
+        // set through the facade is observable on it, and that its state is what the facade reports.
+        //
+        // Asserted behaviourally rather than by identity: the facade delegates through a private
+        // ForwardingPlayer, so `exoPlayer === someExposedDelegate` is not a claim the public API can
+        // make any more, and it was never the claim that mattered.
+        player.playWhenReady = true
+
+        assertThat(player.exoPlayer.playWhenReady).isTrue()
         assertThat(player.exoPlayer.playbackState).isEqualTo(player.playbackState)
+        assertThat(player.exoPlayer.currentMediaItem).isEqualTo(player.currentMediaItem)
     }
 }

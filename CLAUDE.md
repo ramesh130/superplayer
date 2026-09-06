@@ -21,11 +21,18 @@ inward toward core, and no module may depend on one from a later phase. `docs/mo
 the module table, the phases, and that rule — read it before adding a module dependency.
 
 `superplayer-core` holds the only library code so far: `SuperPlayer`, a Media3 `Player` that
-delegates to a wrapped `ExoPlayer` through Media3's own `ForwardingPlayer`, built by
+delegates to a wrapped `ExoPlayer` through a private `ForwardingPlayer`, built by
 `SuperPlayer.Builder(context)`. Because it *is* a `Player`, existing `PlayerView`, `MediaSession`
 and Compose surfaces take it unchanged — the demo assigns it to a `PlayerView` with no adapter,
 which is the point. `player.exoPlayer` is public, and ADR-0001 rule 2 explains why that one
 `@UnstableApi` type is allowed out.
+
+The facade *implements* `Player` by Kotlin delegation rather than extending `ForwardingPlayer`;
+ADR-0003 records why, and the shape is load-bearing rather than stylistic. Kotlin delegation does
+not override Java `default` methods and gives no warning that it hasn't: `Player` has one such member
+(`getAudioSessionId()`, forwarded by hand) and `Player.Listener` is 37 of them, which is why the
+listener wrapper forwards reflectively. `SuperPlayerForwardingTest` drives Media3's own
+forwarding-contract assertion over both and is what catches the next one Media3 adds.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core` and `build-logic` are the only modules with test
@@ -35,7 +42,8 @@ clone.
 ## Commands
 
 ```bash
-./gradlew assemble check          # build, lint, tests, repo verification
+./gradlew assemble check          # build, lint, tests, repo verification, tracked API surface
+./gradlew updateApiSurface        # regenerate api/<module>.api after a deliberate API change
 ./gradlew publishToMavenLocal     # required before the demo will build
 (cd demo && ./gradlew assembleDebug lintDebug)
 ```
@@ -71,6 +79,13 @@ Style preferences these are not. A change violating one is not accepted, whateve
   puts Media3's version in `gradle/libs.versions.toml` and nowhere else, enforced mechanically by
   `./gradlew verifyNoHardcodedMedia3Versions`.
 - **[ADR-0002](docs/adr/0002-no-local-http-proxy.md)** — no local HTTP proxy.
+- **[ADR-0003](docs/adr/0003-implement-player-by-delegation.md)** — the facade implements `Player`
+  by Kotlin delegation and extends no Media3 class. Every Media3 `Player` base class is
+  `@UnstableApi`; extending one puts that marker on every method a consumer calls.
+- **[`docs/api-surface.md`](docs/api-surface.md)** — every published module's public API is tracked
+  in `<module>/api/<module>.api` and validated by `check`. Changing it means running
+  `./gradlew updateApiSurface` and committing the diff in the same change. A leaked `@UnstableApi`
+  Media3 type fails the build rather than merely showing up in a diff.
 - **[`docs/testing.md`](docs/testing.md)** — tests drive the library through its public API under
   Robolectric, against Media3's own fakes, with no device and no network. Nothing asserts past the
   facade, and `player.exoPlayer` is an escape hatch for consumers rather than a way in for tests.

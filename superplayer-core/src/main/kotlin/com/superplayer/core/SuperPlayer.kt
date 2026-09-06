@@ -49,9 +49,9 @@ import java.util.IdentityHashMap
  * forwarding behaviour Media3 defines. `SuperPlayerForwardingTest` pins all of it with Media3's own
  * forwarding-contract assertion.
  *
- * This is deliberately the whole of it for now. Playback profiles, content identity, the player
- * pool, and lifecycle each arrive as their own change; what exists here is the path from public API
- * to a frame on screen, and the boundary that everything else is built inside.
+ * The player pool and lifecycle each arrive as their own change; what exists here is the path from
+ * public API to a frame on screen, the content identity that travels along it ([MediaRequest]), and
+ * the policy that shapes it ([PlaybackProfile]).
  */
 public class SuperPlayer private constructor(
     /**
@@ -67,10 +67,42 @@ public class SuperPlayer private constructor(
      * an issue when you do.
      */
     public val exoPlayer: ExoPlayer,
+    /**
+     * The profile this player was built with — what kind of playback this is.
+     *
+     * Read-only: a profile is chosen at construction and does not change, because half of what it
+     * decides can only be applied to an engine as it is built. An app that offers the choice at
+     * runtime — a data-saver switch in settings, say — builds a new player, which is what the demo
+     * does.
+     */
+    public val profile: PlaybackProfile,
+    /**
+     * The configuration [profile]'s policy produced, and what this player is running.
+     *
+     * Reported rather than merely applied, because half of it is otherwise invisible. The selection
+     * half is observable as Media3's own [Player.getTrackSelectionParameters]; the buffer half is
+     * handed to a `LoadControl` at construction and Media3 offers no way to read it back, so without
+     * this a consumer — or a test — has no way to see what their profile actually asked for.
+     */
+    public val playbackDecision: PlaybackDecision,
     private val delegate: ForwardingPlayer,
 ) : Player by delegate {
 
-    internal constructor(exoPlayer: ExoPlayer) : this(exoPlayer, ForwardingPlayer(exoPlayer))
+    /**
+     * Wraps an engine that has already been built.
+     *
+     * The profile and its decision are passed in rather than derived, because a decision is applied
+     * to an engine as it is constructed and this constructor is downstream of that. They default to
+     * what [Builder] would have produced with no profile set, for the one caller that has no engine
+     * construction of its own to speak of: Media3's forwarding-contract harness, which hands this
+     * class a mock.
+     */
+    internal constructor(
+        exoPlayer: ExoPlayer,
+        profile: PlaybackProfile = PlaybackProfile.VIDEO_ON_DEMAND,
+        playbackDecision: PlaybackDecision =
+            PlaybackPolicy.forProfile(profile).decide(PlaybackConditions()),
+    ) : this(exoPlayer, profile, playbackDecision, ForwardingPlayer(exoPlayer))
 
     /**
      * Listeners are wrapped so that callbacks report *this* player as their source.
@@ -209,6 +241,16 @@ public class SuperPlayer private constructor(
     public class Builder(private val context: Context) {
 
         private var engineConfigurator: ((ExoPlayer.Builder) -> Unit)? = null
+        private var profile: PlaybackProfile = PlaybackProfile.VIDEO_ON_DEMAND
+
+        /**
+         * Chooses the kind of playback this player is for — one call, and the only one policy takes.
+         *
+         * Defaults to [PlaybackProfile.VIDEO_ON_DEMAND]. What the profile decides, and why each
+         * profile decides it differently, is [PlaybackProfile] and [PlaybackPolicy]'s subject; the
+         * result is readable afterwards as [SuperPlayer.playbackDecision].
+         */
+        public fun setProfile(profile: PlaybackProfile): Builder = apply { this.profile = profile }
 
         /**
          * The single seam through which tests reach the engine's construction.
@@ -224,9 +266,30 @@ public class SuperPlayer private constructor(
             apply { engineConfigurator = configurator }
 
         public fun build(): SuperPlayer {
+            // The policy boundary, consulted at its one call site. Nothing about buffering or track
+            // selection is decided below this line — see PlaybackPolicy for why it is asked once,
+            // and asked with conditions that are empty because no content has been described yet.
+            val decision = PlaybackPolicy.forProfile(profile).decide(PlaybackConditions())
+
+            // The two halves of a decision are applied at the two moments Media3 accepts them, and
+            // that asymmetry is Media3's rather than a choice: a `LoadControl` is taken by the
+            // builder and fixed once the engine exists, while track selection parameters can only
+            // be read and set on a built engine.
             val engineBuilder = ExoPlayer.Builder(context)
+                .setLoadControl(decision.buffer.toLoadControl())
+            // After the profile, so that a test's engine configuration wins over it. Nothing else
+            // reaches this seam, and a test that needs a load control of its own is testing the
+            // engine rather than the policy.
             engineConfigurator?.invoke(engineBuilder)
-            return SuperPlayer(engineBuilder.build())
+
+            val engine = engineBuilder.build()
+            // Built upon rather than replaced, so the engine's own device-derived defaults survive
+            // the profile's ceilings. A consumer setting their own parameters afterwards overrides
+            // this, and nothing puts it back — the policy is not consulted again.
+            engine.trackSelectionParameters =
+                decision.trackSelection.applyTo(engine.trackSelectionParameters)
+
+            return SuperPlayer(engine, profile, decision)
         }
     }
 }

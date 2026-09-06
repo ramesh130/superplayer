@@ -36,6 +36,21 @@ Resume positions are held in memory for the life of one `SuperPlayer`, bounded t
 `SuperPlayer.MAX_REMEMBERED_POSITIONS` most recently used ids, and are not persisted; surviving a
 configuration change is issue #10's subject, not this one's.
 
+The third public type is `PlaybackProfile`: what kind of playback this is, chosen by
+`SuperPlayer.Builder.setProfile(...)` and fixed for a player's lifetime. It names a use case —
+`VIDEO_ON_DEMAND` (the default), `LIVE_LINEAR`, `SHORT_FORM`, `DATA_SAVER` — rather than carrying
+numbers. The numbers, and a written rationale for every one that departs from Media3's own default,
+live in `StaticProfilePolicy`, which is internal.
+
+That policy is reached through `PlaybackPolicy`, the boundary ADR-0005 establishes: observed
+`PlaybackConditions` in, a `PlaybackDecision` (a `BufferPolicy` and a `TrackSelectionPolicy`) out,
+with no Media3 type anywhere in it. `EngineBinding.kt` is the one place a decision becomes Media3
+configuration. The implementation that ships is a static per-profile lookup, deliberately not
+adaptive — adaptive policy is `superplayer-abr`'s, behind this same interface. The policy is
+consulted once, at construction, because `DefaultLoadControl` cannot be re-configured afterwards;
+`player.playbackDecision` reports what was applied, which is the only way to see the buffer half at
+all.
+
 The facade *implements* `Player` by Kotlin delegation rather than extending `ForwardingPlayer`;
 ADR-0003 records why, and the shape is load-bearing rather than stylistic. Kotlin delegation does
 not override Java `default` methods and gives no warning that it hasn't: `Player` has one such member
@@ -91,6 +106,10 @@ Style preferences these are not. A change violating one is not accepted, whateve
 - **[ADR-0003](docs/adr/0003-implement-player-by-delegation.md)** — the facade implements `Player`
   by Kotlin delegation and extends no Media3 class. Every Media3 `Player` base class is
   `@UnstableApi`; extending one puts that marker on every method a consumer calls.
+- **[ADR-0005](docs/adr/0005-decide-playback-policy-behind-an-engine-agnostic-boundary.md)** — all
+  buffering and track-selection policy is decided behind `PlaybackPolicy`, in types that name no
+  Media3 class. A policy constant at a Media3 call site, in a listener, or in a builder is a bug
+  against this ADR whatever it is worth.
 - **[`docs/api-surface.md`](docs/api-surface.md)** — every published module's public API is tracked
   in `<module>/api/<module>.api` and validated by `check`. Changing it means running
   `./gradlew updateApiSurface` and committing the diff in the same change. A leaked `@UnstableApi`

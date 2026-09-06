@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.MaterialTheme
@@ -41,7 +43,10 @@ import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import com.superplayer.core.MediaRequest
+import com.superplayer.core.PlaybackDecision
+import com.superplayer.core.PlaybackProfile
 import com.superplayer.core.SuperPlayer
+import com.superplayer.core.TrackSelectionPolicy
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
@@ -61,7 +66,13 @@ import java.util.concurrent.TimeUnit
  * switching between HLS and DASH is one [MediaRequest] replacing another on the *same* player, so an
  * app that supports both is not an app that has two playback paths in it.
  *
- * The second is resume. Every request asks for
+ * The second picker is the policy one. A [PlaybackProfile] is chosen when a player is *built*, so
+ * switching it here builds a new player — and the app hands the outgoing player's position to the
+ * incoming one, which is what a consumer has to do for anything that must outlive one player. The
+ * profile's effect is on screen twice over: as the numbers it decided, read back off the player, and
+ * as the picture itself, since data-saver caps what track selection may choose.
+ *
+ * The third claim is resume. Every request asks for
  * [MediaRequest.StartPosition.ResumeFromLastKnown], so switching away from a stream and back returns
  * to where it was left — with no seek-on-ready listener, no position bookkeeping, and no `onReady`
  * callback anywhere in this file. Watch a minute of one, switch, switch back.
@@ -81,10 +92,11 @@ class MainActivity : ComponentActivity() {
 }
 
 /**
- * The whole app: a picker, a status line, and a playback surface.
+ * The whole app: two pickers, two status lines, and a playback surface.
  *
- * There is no `ViewModel` and no state holder class. What the screen remembers is one enum value;
- * inventing a layer to hold it would say something about SuperPlayer that is not true.
+ * There is no `ViewModel` and no state holder class. What the screen remembers is two enum values
+ * and the position it is carrying between players; inventing a layer to hold that would say
+ * something about SuperPlayer that is not true.
  */
 @Composable
 private fun DemoApp() {
@@ -94,8 +106,16 @@ private fun DemoApp() {
     var selectedStream by rememberSaveable(stateSaver = DemoStreamSaver) {
         mutableStateOf(DemoStream.HLS)
     }
+    var selectedProfile by rememberSaveable(stateSaver = PlaybackProfileSaver) {
+        mutableStateOf(PlaybackProfile.VIDEO_ON_DEMAND)
+    }
     var player by remember { mutableStateOf<SuperPlayer?>(null) }
     var status by remember { mutableStateOf<Status?>(null) }
+    // Where the player that is about to be released had got to. See [Handoff]. Saveable, because a
+    // rotation releases the player too: without it the position would survive a profile switch but
+    // not a turn of the device, which is the sort of inconsistency that reads as a bug in the
+    // library rather than in the screen holding it.
+    var handoff by rememberSaveable(stateSaver = HandoffSaver) { mutableStateOf<Handoff?>(null) }
 
     // The surface is remembered here, not created inside [PlayerSurface], because attaching and
     // detaching the player has to happen on the *lifecycle's* schedule and not on a recomposition's.
@@ -107,8 +127,14 @@ private fun DemoApp() {
     // lifecycle would tear playback down while the user can still see it. `DisposableEffect` is not
     // an equivalent either: it is scoped to the composition, which outlives a stop.
     // ref: https://developer.android.com/media/media3/exoplayer/hello-world#a-note-on-releasing
-    LifecycleStartEffect(Unit) {
-        val superPlayer = SuperPlayer.Builder(context).build()
+    // Keyed on the profile as well as on the lifecycle, because a profile is chosen when a player is
+    // built and cannot be changed afterwards — half of what it decides is handed to the engine as it
+    // is constructed. So picking a profile releases this player and builds the next one, which is
+    // exactly what an app with a data-saver switch in its settings has to do.
+    LifecycleStartEffect(selectedProfile) {
+        val superPlayer = SuperPlayer.Builder(context)
+            .setProfile(selectedProfile)
+            .build()
         superPlayer.playWhenReady = true
         // No adapter, no wrapper, no `asMedia3Player()`: SuperPlayer *is* a `Player`, so Media3's
         // own view takes it as it is. This is the assignment the whole facade exists to make
@@ -117,6 +143,15 @@ private fun DemoApp() {
         player = superPlayer
 
         onStopOrDispose {
+            // The one thing that has to outlive this player: where it had got to. A SuperPlayer
+            // remembers positions for its own lifetime and deliberately does not persist them, so
+            // carrying one across a rebuild is the consumer's job — and this is what that job looks
+            // like at its smallest. The identity comes back off the player as the item's media id,
+            // which is the content id the request was made with.
+            handoff = superPlayer.currentMediaItem?.mediaId?.let { contentId ->
+                Handoff(contentId, superPlayer.currentPosition)
+            }
+
             // Detach before releasing, and do it here rather than by writing state that some later
             // recomposition would act on. While the window is stopped nothing recomposes, so a
             // state write would leave the view holding a released player until the next start.
@@ -132,7 +167,18 @@ private fun DemoApp() {
     // surface it is attached to — survives both the protocol change and the resume.
     LaunchedEffect(player, selectedStream) {
         val current = player ?: return@LaunchedEffect
-        current.load(selectedStream)
+
+        // A handed-over position beats the player's own memory, because a player that has just been
+        // built has no memory: this is the first thing it is told about the content. It is consumed
+        // rather than kept, so that switching away and back afterwards is served by SuperPlayer's
+        // own resume rather than by a position this screen is still holding on to.
+        val startPosition = handoff
+            ?.takeIf { it.contentId == selectedStream.contentId }
+            ?.let { MediaRequest.StartPosition.At(it.positionMs) }
+            ?: MediaRequest.StartPosition.ResumeFromLastKnown
+        handoff = null
+
+        current.load(selectedStream, startPosition)
         // Where the request landed, read straight off the player. Media3 applies a new item's start
         // position to the reported state at once, without waiting for the content to load.
         status = Status(selectedStream, startedAtMs = current.currentPosition)
@@ -147,14 +193,23 @@ private fun DemoApp() {
                     // the picker's labels are drawn on top of the clock.
                     .windowInsetsPadding(WindowInsets.safeDrawing),
             ) {
-                // The picker sits above the player rather than inside it: the point of the demo is
+                // The pickers sit above the player rather than inside it: the point of the demo is
                 // that changing streaming protocol is an ordinary media-item change on the same
                 // player, so the control that does it must plainly be outside the playback surface.
-                StreamPicker(
+                OptionPicker(
+                    options = DemoStream.entries,
                     selected = selectedStream,
+                    labelRes = DemoStream::labelRes,
                     onSelect = { selectedStream = it },
                 )
+                OptionPicker(
+                    options = PlaybackProfile.entries,
+                    selected = selectedProfile,
+                    labelRes = { it.labelRes },
+                    onSelect = { selectedProfile = it },
+                )
                 StatusLine(status)
+                PolicyLine(profile = player?.profile, decision = player?.playbackDecision)
                 PlayerSurface(
                     playerView = playerView,
                     modifier = Modifier
@@ -167,25 +222,33 @@ private fun DemoApp() {
 }
 
 /**
- * The stream picker, built from [DemoStream] rather than declared anywhere, so adding a stream is
- * one entry in one file.
+ * One row of mutually exclusive options, built from whatever list it is given.
+ *
+ * Generic because the demo now has two of these — the stream and the profile — and they are the same
+ * control. A second hand-written picker would be the demo asserting that streams and profiles are
+ * different kinds of choice, which they are not: both are one value the screen remembers.
  */
 @Composable
-private fun StreamPicker(
-    selected: DemoStream,
-    onSelect: (DemoStream) -> Unit,
+private fun <T> OptionPicker(
+    options: List<T>,
+    selected: T,
+    labelRes: (T) -> Int,
+    onSelect: (T) -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(8.dp)
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+            // Four profile labels do not fit across a phone in portrait, and a picker that silently
+            // clips its last option is a picker that hides a feature.
+            .horizontalScroll(rememberScrollState())
             // Announces the row as one set of mutually exclusive options, which is what a
             // `RadioGroup` used to do for accessibility services.
             .selectableGroup(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        DemoStream.entries.forEach { stream ->
-            val isSelected = stream == selected
+        options.forEach { option ->
+            val isSelected = option == selected
             Row(
                 modifier = Modifier
                     .selectable(
@@ -194,14 +257,14 @@ private fun StreamPicker(
                         // The whole row is the target, which is what the old `RadioButton` gave for
                         // free by carrying its own label. `selectable` handles the click, so the
                         // button itself takes none.
-                        onClick = { onSelect(stream) },
+                        onClick = { onSelect(option) },
                     )
                     .padding(end = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 RadioButton(selected = isSelected, onClick = null)
                 Text(
-                    text = stringResource(stream.labelRes),
+                    text = stringResource(labelRes(option)),
                     modifier = Modifier.padding(start = 4.dp),
                 )
             }
@@ -233,6 +296,58 @@ private fun StatusLine(status: Status?) {
             .padding(horizontal = 8.dp)
             .padding(bottom = 8.dp),
     )
+}
+
+/**
+ * What the chosen profile actually decided, read off the player rather than out of a table here.
+ *
+ * This is the difference between a picker that changes something and a picker that is *observable*.
+ * The numbers are SuperPlayer's answer for this profile — a data-saver player says so in its buffer
+ * durations and in a quality ceiling that is visible in the picture, and a screen that printed its
+ * own idea of what data-saver means could say all of that while the player did something else.
+ */
+@Composable
+private fun PolicyLine(profile: PlaybackProfile?, decision: PlaybackDecision?) {
+    val text = if (profile == null || decision == null) {
+        ""
+    } else {
+        stringResource(
+            R.string.policy_summary,
+            stringResource(profile.labelRes),
+            TimeUnit.MILLISECONDS.toSeconds(decision.buffer.minBufferMs.toLong()).toInt(),
+            TimeUnit.MILLISECONDS.toSeconds(decision.buffer.maxBufferMs.toLong()).toInt(),
+            decision.trackSelection.qualityCeiling(),
+        )
+    }
+    Text(
+        text = text,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp)
+            .padding(bottom = 8.dp),
+    )
+}
+
+/**
+ * The selection ceiling in words, saying only what is actually capped.
+ *
+ * Two ceilings, and a profile may set either, both or neither — so "uncapped" has to mean both are
+ * [TrackSelectionPolicy.UNLIMITED] rather than being assumed from the profile's name.
+ */
+@Composable
+private fun TrackSelectionPolicy.qualityCeiling(): String {
+    val cappedHeight = maxVideoHeightPx != TrackSelectionPolicy.UNLIMITED
+    val cappedBitrate = maxVideoBitrateBps != TrackSelectionPolicy.UNLIMITED
+    val kbps = maxVideoBitrateBps / 1_000
+
+    return when {
+        cappedHeight && cappedBitrate ->
+            stringResource(R.string.policy_quality_height_and_bitrate, maxVideoHeightPx, kbps)
+
+        cappedHeight -> stringResource(R.string.policy_quality_height, maxVideoHeightPx)
+        cappedBitrate -> stringResource(R.string.policy_quality_bitrate, kbps)
+        else -> stringResource(R.string.policy_quality_uncapped)
+    }
 }
 
 /**
@@ -286,14 +401,38 @@ private fun PlayerView.showBufferingSpinner() {
 private data class Status(val stream: DemoStream, val startedAtMs: Long)
 
 /**
- * The whole of what protocol support and resume cost a consumer: a request and a `prepare`.
- * There is no branch here, and there is nowhere else in this app that one could hide.
+ * Where the outgoing player had got to, carried to the one replacing it.
+ *
+ * It exists because switching profile means switching *player*, and a `SuperPlayer`'s resume
+ * positions live and die with the instance that observed them — deliberately, since persisting them
+ * would mean choosing a storage mechanism on a consumer's behalf. Anything that must survive a
+ * player is the app's to keep, and for this demo "the app's" is one value held across a rebuild.
+ *
+ * Keyed by content id rather than by stream, so a handed-over position can only be applied to the
+ * content it was taken from.
  */
-private fun SuperPlayer.load(stream: DemoStream) {
+private data class Handoff(val contentId: String, val positionMs: Long)
+
+/** The picker's label for a profile. The library's own names say what the case is; these fit a row. */
+private val PlaybackProfile.labelRes: Int
+    get() = when (this) {
+        PlaybackProfile.VIDEO_ON_DEMAND -> R.string.profile_video_on_demand
+        PlaybackProfile.LIVE_LINEAR -> R.string.profile_live_linear
+        PlaybackProfile.SHORT_FORM -> R.string.profile_short_form
+        PlaybackProfile.DATA_SAVER -> R.string.profile_data_saver
+    }
+
+/**
+ * The whole of what protocol support, profiles and resume cost a consumer: a request and a
+ * `prepare`. There is no branch on protocol here, and nowhere else in this app that one could hide —
+ * and note that nothing about the profile appears at this call site either. Policy was chosen once,
+ * when the player was built.
+ */
+private fun SuperPlayer.load(stream: DemoStream, startPosition: MediaRequest.StartPosition) {
     setMediaRequest(
         MediaRequest.Builder(stream.contentId)
             .addSource(stream.uri)
-            .setStartPosition(MediaRequest.StartPosition.ResumeFromLastKnown)
+            .setStartPosition(startPosition)
             .build(),
     )
     prepare()
@@ -315,4 +454,32 @@ private fun format(positionMs: Long): String {
 private val DemoStreamSaver: Saver<DemoStream, String> = Saver(
     save = { it.name },
     restore = { name -> DemoStream.entries.firstOrNull { it.name == name } },
+)
+
+/**
+ * Saves a [Handoff] as the two values it is, joined on a character no content id in this demo uses.
+ *
+ * A `Saver` rather than `@Parcelize` because the demo has no parcelable types and adding a plugin to
+ * carry two fields would be the tail wagging the dog. A malformed value restores as null — the
+ * supported "could not restore this" answer — which costs a resumed position and nothing else.
+ */
+private val HandoffSaver: Saver<Handoff?, String> = Saver(
+    save = { handoff -> handoff?.let { "${it.positionMs}$HANDOFF_SEPARATOR${it.contentId}" } ?: "" },
+    restore = { saved ->
+        val separator = saved.indexOf(HANDOFF_SEPARATOR)
+        val positionMs = saved.substring(0, separator.coerceAtLeast(0)).toLongOrNull()
+        if (separator < 0 || positionMs == null) {
+            null
+        } else {
+            Handoff(saved.substring(separator + 1), positionMs)
+        }
+    },
+)
+
+private const val HANDOFF_SEPARATOR = '@'
+
+/** [DemoStreamSaver]'s counterpart for the profile, and the same reasoning. */
+private val PlaybackProfileSaver: Saver<PlaybackProfile, String> = Saver(
+    save = { it.name },
+    restore = { name -> PlaybackProfile.entries.firstOrNull { it.name == name } },
 )

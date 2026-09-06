@@ -6,7 +6,7 @@ import kotlin.math.ceil
 
 /**
  * A complete, tiny HLS stream generated in memory: a multivariant playlist, one media playlist, and
- * one audio segment, served by Media3's [FakeDataSet].
+ * as many identical audio segments as the caller asks for, served by Media3's [FakeDataSet].
  *
  * Generated rather than checked in as a fixture so that what the test asserts about — the codec, the
  * bitrate, the duration — is visible in this file instead of hidden inside a binary blob, and so the
@@ -22,7 +22,8 @@ internal object SyntheticHlsStream {
 
     const val MULTIVARIANT_PLAYLIST_URI: String = BASE_URI + "master.m3u8"
     private const val MEDIA_PLAYLIST_URI = BASE_URI + "media.m3u8"
-    private const val SEGMENT_URI = BASE_URI + "segment0.aac"
+
+    private fun segmentName(index: Int) = "segment$index.aac"
 
     /** Declared in the multivariant playlist, and therefore what the selected track should report. */
     const val DECLARED_BITRATE_BPS: Int = 128_000
@@ -32,8 +33,13 @@ internal object SyntheticHlsStream {
 
     private const val SEGMENT_DURATION_SECONDS = 2.0
 
-    /** The whole stream: one segment, so the segment's own duration. */
-    const val DURATION_MS: Long = (SEGMENT_DURATION_SECONDS * 1_000).toLong()
+    const val SEGMENT_DURATION_MS: Long = (SEGMENT_DURATION_SECONDS * 1_000).toLong()
+
+    /** The default stream: one segment, so the segment's own duration. */
+    const val DURATION_MS: Long = SEGMENT_DURATION_MS
+
+    /** What a stream of [segmentCount] segments advertises as its duration. */
+    fun durationMs(segmentCount: Int): Long = SEGMENT_DURATION_MS * segmentCount
 
     // spec: ISO/IEC 13818-7 §6.2 — sampling_frequency_index 4 is 44100 Hz, channel_configuration 2
     // is stereo. They are encoded into every ADTS frame header below and are what Media3's
@@ -59,12 +65,23 @@ internal object SyntheticHlsStream {
      *
      * Adds to a caller-supplied [FakeDataSet] rather than returning its own, so that a test needing
      * more than one stream — switching protocols mid-session, say — composes them into one set.
+     *
+     * [segmentCount] is one by default, which is all a test of track formats or start positions
+     * needs. A test about *buffering* needs a stream longer than the buffer it is asserting on, and
+     * asks for more; every segment is byte-identical, because what varies is how much of the stream
+     * exists and not what is in it.
      */
-    fun addTo(fakeDataSet: FakeDataSet): FakeDataSet =
+    fun addTo(fakeDataSet: FakeDataSet, segmentCount: Int = 1): FakeDataSet {
+        require(segmentCount >= 1) { "A stream needs at least one segment, was $segmentCount" }
+
         fakeDataSet
             .setData(MULTIVARIANT_PLAYLIST_URI, multivariantPlaylist().toByteArray())
-            .setData(MEDIA_PLAYLIST_URI, mediaPlaylist().toByteArray())
-            .setData(SEGMENT_URI, adtsSegment())
+            .setData(MEDIA_PLAYLIST_URI, mediaPlaylist(segmentCount).toByteArray())
+        repeat(segmentCount) { index ->
+            fakeDataSet.setData(BASE_URI + segmentName(index), adtsSegment(index))
+        }
+        return fakeDataSet
+    }
 
     // spec: RFC 8216 §4.3.4.2 — EXT-X-STREAM-INF, with the required BANDWIDTH attribute.
     private fun multivariantPlaylist(): String =
@@ -76,16 +93,23 @@ internal object SyntheticHlsStream {
 
     // spec: RFC 8216 §4.3.3 — a VOD media playlist: EXT-X-TARGETDURATION is the rounded-up maximum
     // EXTINF, and EXT-X-ENDLIST is what makes the playlist finite rather than live.
-    private fun mediaPlaylist(): String =
-        """
-        #EXTM3U
-        #EXT-X-VERSION:3
-        #EXT-X-TARGETDURATION:${ceil(SEGMENT_DURATION_SECONDS).toInt()}
-        #EXT-X-MEDIA-SEQUENCE:0
-        #EXTINF:$SEGMENT_DURATION_SECONDS,
-        segment0.aac
-        #EXT-X-ENDLIST
-        """.trimIndent()
+    //
+    // Built by joining lines rather than as an indented raw string: a `trimIndent` block whose
+    // interpolated value is itself multi-line has no common indent to trim, and a playlist whose
+    // lines are indented is not a playlist any parser will accept.
+    private fun mediaPlaylist(segmentCount: Int): String {
+        val header = listOf(
+            "#EXTM3U",
+            "#EXT-X-VERSION:3",
+            "#EXT-X-TARGETDURATION:${ceil(SEGMENT_DURATION_SECONDS).toInt()}",
+            "#EXT-X-MEDIA-SEQUENCE:0",
+        )
+        val segments = (0 until segmentCount).flatMap { index ->
+            listOf("#EXTINF:$SEGMENT_DURATION_SECONDS,", segmentName(index))
+        }
+
+        return (header + segments + "#EXT-X-ENDLIST").joinToString(separator = "\n")
+    }
 
     /**
      * An elementary AAC-LC stream in ADTS framing — the segment format HLS allows without a
@@ -106,10 +130,14 @@ internal object SyntheticHlsStream {
      *
      * `buffer_fullness` is set to all ones, which §6.2.2 defines as "variable rate" — the correct
      * value when there is no encoder buffer state to report.
+     *
+     * The segment is preceded by the ID3 tag RFC 8216 §3.4 requires — see [id3TimestampTag], and note
+     * that a stream of more than one segment does not play without it.
      */
-    private fun adtsSegment(): ByteArray {
+    private fun adtsSegment(index: Int): ByteArray {
         val frameLength = ADTS_HEADER_BYTES + ADTS_PAYLOAD_BYTES
         val out = ByteArrayOutputStream()
+        out.write(id3TimestampTag(index))
         repeat(frameCount()) {
             out.write(0xFF)
             out.write(0xF1)
@@ -122,6 +150,62 @@ internal object SyntheticHlsStream {
         }
         return out.toByteArray()
     }
+
+    /**
+     * The ID3 tag that tells the player where in the stream a Packed Audio segment starts.
+     *
+     * spec: RFC 8216 §3.4 — "Each Packed Audio Segment MUST signal the timestamp of its first sample
+     * with an ID3 PRIV tag [ID3] with an owner identifier of
+     * `com.apple.streaming.transportStreamTimestamp`. The ID3 payload MUST be a 33-bit MPEG-2 Program
+     * Elementary Stream timestamp expressed as a big-endian eight-octet number, with the upper 31
+     * bits set to zero."
+     *
+     * This is not decoration. Packed audio carries no container timestamps of its own, so without the
+     * tag every segment's samples begin at zero: the player loads segment after segment, none of them
+     * extends the buffer past the first, and it never reaches [Player.STATE_READY] for any profile
+     * whose minimum buffer is longer than one segment. A single-segment stream hides this completely,
+     * which is why it went unnoticed until a test needed a long one.
+     *
+     * spec: ID3v2.3.0 §3.1 (tag header, size in syncsafe integers) and §4.27 (the PRIV frame).
+     */
+    private fun id3TimestampTag(segmentIndex: Int): ByteArray {
+        val owner = "com.apple.streaming.transportStreamTimestamp".toByteArray(Charsets.US_ASCII)
+        val presentationTimestamp =
+            segmentIndex * SEGMENT_DURATION_SECONDS.toLong() * MPEG2_TIMESTAMP_HZ
+
+        val frameBody = ByteArrayOutputStream()
+        frameBody.write(owner)
+        frameBody.write(0) // The owner identifier is null-terminated.
+        repeat(8) { byteIndex ->
+            frameBody.write(((presentationTimestamp shr (8 * (7 - byteIndex))) and 0xFF).toInt())
+        }
+
+        val frame = ByteArrayOutputStream()
+        frame.write("PRIV".toByteArray(Charsets.US_ASCII))
+        // Frame sizes in ID3v2.3 are plain big-endian, unlike the tag size below.
+        repeat(4) { byteIndex ->
+            frame.write((frameBody.size() shr (8 * (3 - byteIndex))) and 0xFF)
+        }
+        frame.write(0) // Frame flags, both bytes clear.
+        frame.write(0)
+        frame.write(frameBody.toByteArray())
+
+        val tag = ByteArrayOutputStream()
+        tag.write("ID3".toByteArray(Charsets.US_ASCII))
+        tag.write(3) // Version 2.3.0, as major and revision.
+        tag.write(0)
+        tag.write(0) // Tag flags: no unsynchronisation, no extended header.
+        // The tag size is a syncsafe integer: 7 bits per byte, so no byte can look like a sync word.
+        repeat(4) { byteIndex ->
+            tag.write((frame.size() shr (7 * (3 - byteIndex))) and 0x7F)
+        }
+        tag.write(frame.toByteArray())
+
+        return tag.toByteArray()
+    }
+
+    /** spec: ISO/IEC 13818-1 — the MPEG-2 system clock PTS runs at 90 kHz. */
+    private const val MPEG2_TIMESTAMP_HZ = 90_000L
 
     /** Enough frames to cover the duration the media playlist advertises. */
     private fun frameCount(): Int =

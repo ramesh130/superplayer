@@ -110,7 +110,7 @@ proprietary platform are not published here.
 Decisions that constrain later work are recorded as ADRs in `docs/adr/`, numbered sequentially and
 dated, using the format in `docs/adr/0000-template.md`.
 
-Three ADRs constrain essentially every change, and all three are worth reading before your first
+Four ADRs constrain essentially every change, and all four are worth reading before your first
 contribution. They are the source of truth for the rules they carry; this file does not restate
 them.
 
@@ -118,6 +118,8 @@ them.
 - **[ADR-0002](docs/adr/0002-no-local-http-proxy.md) — No local HTTP proxy.**
 - **[ADR-0003](docs/adr/0003-implement-player-by-delegation.md) — Implement `Player` by delegation,
   never extend a Media3 base class.**
+- **[ADR-0005](docs/adr/0005-decide-playback-policy-behind-an-engine-agnostic-boundary.md) — Decide
+  playback policy behind an engine-agnostic boundary, and ship a static one.**
 
 One more is recorded but not yet binding, because the work it governs has not started:
 

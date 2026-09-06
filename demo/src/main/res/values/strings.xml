@@ -4,8 +4,24 @@
     <string name="stream_hls">HLS</string>
     <string name="stream_dash">DASH</string>
 
+    <!-- The playback profiles, in the vocabulary a viewer of the demo would use. The library's own
+         names are longer and say what the case is; these are picker labels. -->
+    <string name="profile_video_on_demand">On demand</string>
+    <string name="profile_live_linear">Live</string>
+    <string name="profile_short_form">Short-form</string>
+    <string name="profile_data_saver">Data saver</string>
+
     <!-- The status line under the picker. It reports what the *player* was asked to do, so that
          resume is visible as an intent and not only as a frame that happens to look familiar. -->
     <string name="status_from_start">%1$s \u2014 playing from the start</string>
     <string name="status_resuming">%1$s \u2014 resuming from %2$s</string>
+
+    <!-- The second status line: what the chosen profile actually decided, read off the player. The
+         numbers are here so that switching profiles is observable as policy and not only as a
+         picture that looks a bit softer. -->
+    <string name="policy_summary">%1$s \u2014 buffers %2$d\u2013%3$ds, %4$s</string>
+    <string name="policy_quality_uncapped">quality uncapped</string>
+    <string name="policy_quality_height">max %1$dp</string>
+    <string name="policy_quality_bitrate">max %1$d kbps</string>
+    <string name="policy_quality_height_and_bitrate">max %1$dp at %2$d kbps</string>
 </resources>

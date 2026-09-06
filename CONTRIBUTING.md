@@ -110,7 +110,7 @@ proprietary platform are not published here.
 Decisions that constrain later work are recorded as ADRs in `docs/adr/`, numbered sequentially and
 dated, using the format in `docs/adr/0000-template.md`.
 
-Two ADRs constrain essentially every change, and both are worth reading before your first
+Three ADRs constrain essentially every change, and all three are worth reading before your first
 contribution. They are the source of truth for the rules they carry; this file does not restate
 them.
 
@@ -118,6 +118,12 @@ them.
 - **[ADR-0002](docs/adr/0002-no-local-http-proxy.md) — No local HTTP proxy.**
 - **[ADR-0003](docs/adr/0003-implement-player-by-delegation.md) — Implement `Player` by delegation,
   never extend a Media3 base class.**
+
+One more is recorded but not yet binding, because the work it governs has not started:
+
+- **[ADR-0004](docs/adr/0004-select-the-http-stack-through-a-superplayer-type.md) — Select the HTTP
+  stack through a SuperPlayer-owned type.** *Proposed.* Read it before adding any public API that
+  touches Media3's `DataSource` layer; it carries open questions rather than settled rules.
 
 If a change contradicts an ADR, say so explicitly in the pull request and argue the case. Do not
 work around an ADR silently. If the argument wins, the outcome is a new ADR that supersedes the old

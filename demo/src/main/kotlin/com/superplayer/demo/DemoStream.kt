@@ -7,8 +7,10 @@ package com.superplayer.demo
  * construction. A stream is a label, an identity and a URI, because that is genuinely all SuperPlayer
  * needs to play one — the demo would look the same if a third protocol were added to the list.
  *
- * [viewId] is the id of the picker button that selects this stream. It lives here rather than being
- * derived from the ordinal so that the ids are the app's own declared resources: see `res/values/ids.xml`.
+ * A stream has no id of its own for the picker to key on. It used to: the picker's buttons were
+ * views, and views need window-unique ids. In Compose the selection is a value, held in
+ * [androidx.compose.runtime.saveable.rememberSaveable] and keyed on nothing, so the declared ids and
+ * the collision hazard they documented are both gone.
  *
  * [contentId] is what the stream *is*, as opposed to where it is served from — the identifier
  * SuperPlayer keys a resume position on. Written in a namespace of the demo's own, and deliberately
@@ -16,7 +18,6 @@ package com.superplayer.demo
  * is the entire point of `MediaRequest` carrying one.
  */
 internal enum class DemoStream(
-    val viewId: Int,
     val labelRes: Int,
     val contentId: String,
     val uri: String,
@@ -30,7 +31,6 @@ internal enum class DemoStream(
      * ref: https://developer.apple.com/streaming/examples/
      */
     HLS(
-        viewId = R.id.stream_hls,
         labelRes = R.string.stream_hls,
         contentId = "demo:bipbop-advanced",
         uri = "https://devstreaming-cdn.apple.com/videos/streaming/examples/" +
@@ -45,7 +45,6 @@ internal enum class DemoStream(
      * ref: https://github.com/androidx/media/blob/release/demos/main/src/main/assets/media.exolist.json
      */
     DASH(
-        viewId = R.id.stream_dash,
         labelRes = R.string.stream_dash,
         contentId = "demo:tears-of-steel",
         uri = "https://storage.googleapis.com/wvmedia/clear/h264/tears/tears.mpd",

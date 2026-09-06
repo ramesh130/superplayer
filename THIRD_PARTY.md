@@ -17,7 +17,13 @@ of truth. This file records *what* is depended on and under *what license*.
 | `androidx.media3:media3-exoplayer-dash` | Apache-2.0 | `superplayer-core` |
 | `androidx.media3:media3-datasource` | Apache-2.0 | `superplayer-core` |
 | `androidx.media3:media3-ui` | Apache-2.0 | `demo` |
-| `androidx.annotation:annotation` | Apache-2.0 | `superplayer-core` |
+| `androidx.annotation:annotation` | Apache-2.0 | `superplayer-core`, `demo` |
+| `androidx.compose:compose-bom` | Apache-2.0 | `demo` (a BOM: pins versions, ships no code) |
+| `androidx.compose.ui:ui` | Apache-2.0 | `demo` |
+| `androidx.compose.foundation:foundation` | Apache-2.0 | `demo` |
+| `androidx.compose.material3:material3` | Apache-2.0 | `demo` |
+| `androidx.activity:activity-compose` | Apache-2.0 | `demo` |
+| `androidx.lifecycle:lifecycle-runtime-compose` | Apache-2.0 | `demo` |
 | `org.jetbrains.kotlin:kotlin-stdlib` | Apache-2.0 | all modules (transitively, via the Kotlin toolchain) |
 | `org.jetbrains.kotlinx:kotlinx-coroutines-android` | Apache-2.0 | all modules |
 
@@ -59,5 +65,9 @@ reads Media3's `@UnstableApi` annotations off the pinned compile classpath for t
 Neither reaches a published artifact: they are on `build-logic`'s classpath, which is an included
 build that produces convention plugins and nothing consumers resolve.
 
-The Android Gradle Plugin (Apache-2.0), the Kotlin Gradle Plugin (Apache-2.0), and Gradle itself
+The Compose rows are the demo app's alone. No published module depends on Compose: `superplayer-ui`,
+the library's optional Compose surface, is a later phase and still an empty placeholder.
+
+The Android Gradle Plugin (Apache-2.0), the Kotlin Gradle Plugin (Apache-2.0), the Compose compiler
+plugin (Apache-2.0, released as part of Kotlin), and Gradle itself
 (Apache-2.0) are build tooling. They are not distributed in published artifacts.

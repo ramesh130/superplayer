@@ -26,6 +26,13 @@ coroutines = "1.11.0"
 androidxAnnotation = "1.9.1"
 junit = "4.13.2"
 
+# --- Demo app only: Jetpack Compose. The library modules have no Compose dependency. ---
+# The BOM pins every `androidx.compose.*` artifact, so the individual Compose libraries below
+# carry no version of their own and cannot drift apart from each other.
+composeBom = "2026.08.00"
+androidxActivity = "1.13.0"
+androidxLifecycle = "2.11.0"
+
 # --- Build-time only: the engine behind the tracked public API surface ---
 # `binary-compatibility-validator` is used as a library, not as its Gradle plugin: the plugin
 # keys on the `kotlin-android` plugin id, which AGP 9's built-in Kotlin support does not apply.
@@ -49,6 +56,14 @@ kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutine
 
 junit = { module = "junit:junit", version.ref = "junit" }
 
+# Compose, used by the demo app only.
+androidx-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
+androidx-compose-ui = { module = "androidx.compose.ui:ui" }
+androidx-compose-foundation = { module = "androidx.compose.foundation:foundation" }
+androidx-compose-material3 = { module = "androidx.compose.material3:material3" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidxActivity" }
+androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "androidxLifecycle" }
+
 binary-compatibility-validator = { module = "org.jetbrains.kotlinx:binary-compatibility-validator", version.ref = "binaryCompatibilityValidator" }
 asm = { module = "org.ow2.asm:asm", version.ref = "asm" }
 
@@ -60,3 +75,6 @@ kotlin-gradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", ve
 android-library = { id = "com.android.library", version.ref = "agp" }
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+# The Compose compiler ships with Kotlin, so it resolves the catalog's Kotlin version by
+# definition rather than by convention.
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

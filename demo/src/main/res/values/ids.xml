@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The picker's buttons are created in code, but their ids are declared here so that aapt allocates
+  them in the app's own resource range.
+
+  Not cosmetic: a view id has to be unique across the whole window, because view-state save and
+  restore is one id-keyed SparseArray for the entire hierarchy. Small hand-picked integers collide
+  with `View.generateViewId()`, which starts at 1 — so any view that took a generated id would swap
+  saved state with a picker button on rotation. Generated ids are not an option either, since they
+  are not stable across the recreation that restore depends on.
+-->
+<resources>
+    <item name="stream_hls" type="id" />
+    <item name="stream_dash" type="id" />
+</resources>

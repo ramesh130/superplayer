@@ -1,9 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.media3.ui.PlayerView xmlns:android="http://schemas.android.com/apk/res/android"
+<!--
+  The picker sits above the player rather than inside it: the point of the demo is that changing
+  streaming protocol is an ordinary media-item change on the same player, so the control that does
+  it must plainly be outside the playback surface, not part of it.
+
+  `fitsSystemWindows` is not decoration: from API 35 an app is laid out edge to edge by default, so
+  without it the picker is drawn underneath the status bar and its labels sit on top of the clock.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:id="@+id/player_view"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@android:color/black"
-    app:resize_mode="fit"
-    app:show_buffering="when_playing" />
+    android:fitsSystemWindows="true"
+    android:orientation="vertical">
+
+    <RadioGroup
+        android:id="@+id/stream_picker"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="8dp" />
+
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/player_view"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="@android:color/black"
+        app:resize_mode="fit"
+        app:show_buffering="when_playing" />
+
+</LinearLayout>

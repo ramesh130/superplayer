@@ -15,13 +15,28 @@ library was built to satisfy, and it holds for everything added afterwards.
 | Runtime | Robolectric, via `androidx.test.ext.junit.runners.AndroidJUnit4` |
 | Time | `androidx.media3.test.utils.FakeClock`, auto-advancing |
 | Network | `androidx.media3.test.utils.FakeDataSource` over a `FakeDataSet` |
-| Media | Manifests and segments generated in the test — see `SyntheticHlsStream` |
+| Media | Manifests and segments generated in the test — see `SyntheticHlsStream`, `SyntheticDashStream` |
 | Codecs | `ShadowMediaCodecConfig`, so the real renderer pipeline runs against shadow decoders |
 | Driving playback | `androidx.media3.test.utils.robolectric.TestPlayerRunHelper` |
 
 All of it is Media3's own test infrastructure. A hand-rolled harness would be a second, worse
 implementation of a thing the engine already ships, and it would drift from the engine's semantics
 exactly when that matters most — during a Media3 upgrade.
+
+## Synthetic media, not fixtures
+
+Streams are generated in Kotlin rather than checked in as binaries. `SyntheticHlsStream` writes a
+multivariant playlist, a media playlist and an AAC segment in ADTS framing; `SyntheticDashStream`
+writes an MPD, a fragmented-MP4 initialization segment and one media segment. Every field a test
+asserts on — the codec, the bitrate, the sample rate — is a named constant a reader can see, and the
+repository carries no media it would have to license.
+
+The two describe deliberately equivalent media: same codec, same sample rate, same declared
+bitrate. That is what lets a test compare what the facade reports for the two protocols and be
+comparing the protocols rather than two unrelated pieces of media.
+
+Each exposes `addTo(FakeDataSet)` rather than building its own set, so a test that needs more than
+one stream — switching protocols mid-session — composes them into one.
 
 ## Why assertions stop at the facade
 

@@ -6,6 +6,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.test.utils.FakeClock
+import androidx.media3.test.utils.FakeDataSet
 import androidx.media3.test.utils.FakeDataSource
 import androidx.media3.test.utils.robolectric.ShadowMediaCodecConfig
 import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
@@ -45,7 +46,7 @@ class SuperPlayerPlaybackTest {
     @Before
     fun setUp() {
         val fakeDataSourceFactory =
-            FakeDataSource.Factory().setFakeDataSet(SyntheticHlsStream.asFakeDataSet())
+            FakeDataSource.Factory().setFakeDataSet(SyntheticHlsStream.addTo(FakeDataSet()))
 
         player =
             SuperPlayer.Builder(ApplicationProvider.getApplicationContext())

@@ -51,9 +51,14 @@ internal object SyntheticHlsStream {
      */
     private const val ADTS_PAYLOAD_BYTES = 64
 
-    /** Everything the player will ask for, and nothing else: an unknown URI is a test failure. */
-    fun asFakeDataSet(): FakeDataSet =
-        FakeDataSet()
+    /**
+     * Everything the player will ask for, and nothing else: an unknown URI is a test failure.
+     *
+     * Adds to a caller-supplied [FakeDataSet] rather than returning its own, so that a test needing
+     * more than one stream — switching protocols mid-session, say — composes them into one set.
+     */
+    fun addTo(fakeDataSet: FakeDataSet): FakeDataSet =
+        fakeDataSet
             .setData(MULTIVARIANT_PLAYLIST_URI, multivariantPlaylist().toByteArray())
             .setData(MEDIA_PLAYLIST_URI, mediaPlaylist().toByteArray())
             .setData(SEGMENT_URI, adtsSegment())

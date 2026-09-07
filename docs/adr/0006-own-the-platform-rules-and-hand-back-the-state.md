@@ -73,13 +73,26 @@ play holds them deliberately — a rebuffer needs the CPU and the radio in order
 the locks there would let the device suspend inside a stall it would never leave.
 
 This is a departure from issue #10's wording, which asked for locks held "not while paused or
-buffering", and it was **put to the issue owner and agreed** rather than decided here. It is also
-pinned rather than merely argued: `aWakeLockIsHeldWhileBufferingTowardsPlaybackButNotWhilePausedInIt`
-blocks the loader inside the first media segment, which holds the player in `STATE_BUFFERING` for as
-long as the test wants and makes both halves of the rule assertable — held while buffering with the
-intent to play, released when that intent goes away while the state does not. Without that hold the
-assertion would be a race, since a player passes through buffering in microseconds and the lock is
-taken asynchronously on the playback thread.
+buffering", and it was **put to the issue owner and agreed** rather than decided here.
+
+The buffering half is argued rather than pinned by a test, and that is a known gap with a known
+cause. Asserting it needs the player held in `STATE_BUFFERING` long enough to read a lock that is
+taken asynchronously on the playback thread — but Media3's `WakeLockManager` arms a **1000 ms
+`UNREACTIVE_WAKELOCK_HANDLER_RELEASE_DELAY_MS` safety net on every release**, posted to a handler
+built on the injected `Clock`, which force-releases the lock if its own thread has not answered in
+time. Under the auto-advancing `FakeClock` this seam runs on, a stall long enough to assert in is a
+stall long enough for fake time to race a thousand milliseconds ahead of real thread scheduling, so
+the net fires and drops a lock that was legitimately acquired. The lock is `setReferenceCounted(false)`,
+so one stray release is final.
+
+An attempt that blocked the loader inside the first media segment was written, passed locally
+eighteen times including under heavy CPU contention, and failed on CI — first by sampling the lock
+rather than awaiting it, then, once that was fixed, by timing out on the force-release above. It was
+removed rather than retried: a test that cannot be made to fail locally cannot be fixed locally
+either. Pinning this needs a clock that does not fast-forward past Media3's own timers, which is a
+change to the seam rather than to a test, and it is not worth that on its own. The rule itself is
+Media3's and Media3 tests it; what this project owns is the decision to switch it on, which
+`aWakeLockIsHeldWhilePlayingAndReleasedWhenPaused` covers for the pause half.
 
 What becomes harder: a consumer who wants focus handling off has to know to pass
 `handleAudioFocus = false` themselves, and a consumer with an unusual wake-lock need has to reach

@@ -19,8 +19,10 @@ library was built to satisfy, and it holds for everything added afterwards.
 | Codecs | `ShadowMediaCodecConfig`, so the real renderer pipeline runs against shadow decoders |
 | Driving playback | `androidx.media3.test.utils.robolectric.TestPlayerRunHelper` |
 | Platform state | Robolectric's own shadows — see "Asserting on the platform" below |
+| External surfaces | `androidx.media3.session.MediaController` — see "Driving a session" below |
 
-All of it is Media3's own test infrastructure, apart from the last row, which is Robolectric's. A
+All of it is Media3's own test infrastructure, apart from the platform-state row, which is
+Robolectric's. A
 hand-rolled harness would be a second, worse
 implementation of a thing the engine already ships, and it would drift from the engine's semantics
 exactly when that matters most — during a Media3 upgrade.
@@ -108,6 +110,29 @@ Two consequences follow, and both cost a line in `setUp`:
 Simulating what the platform does *back* is the test's job too: Robolectric records a focus request
 but never calls the listener, so the focus-loss tests take the listener off the recorded request and
 deliver the callback themselves.
+
+## Driving a session
+
+`SuperPlayerSessionTest` connects a real `MediaController` to a real `PlaybackSession`, in process,
+and drives playback through it. That is not a hole in "assertions stop at the facade" either: a
+controller *is* the notification, the lock screen, the car head unit and the watch — it is the only
+thing any of them ever is — and it speaks Media3's stable `Player` API and nothing else. So a test
+written through one is a test of exactly what an external surface can see and do, which is the whole
+of what a session promises.
+
+The alternative would have been to assert on the `MediaSession` object, which would say that
+SuperPlayer called Media3 correctly. That is a much weaker claim than that a controller works, and
+it would keep passing through the exact regression worth catching — a metadata field that stops
+being published, or a resolved media id that loses its resume position.
+
+Two mechanics are worth copying:
+
+- **The connection is awaited, not assumed.** `MediaController.Builder(...).buildAsync()` completes
+  on the application looper once the session has answered, so `RobolectricUtil.runMainLooperUntil`
+  waits for it. Reading the future before that reads the question.
+- **Controllers are released before sessions.** A controller left connected holds a binder to a
+  session the harness is about to release, and the failure that produces names neither the test that
+  leaked it nor the one that trips over it.
 
 ## The one seam that is not public
 

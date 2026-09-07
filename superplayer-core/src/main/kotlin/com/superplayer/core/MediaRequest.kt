@@ -2,6 +2,7 @@ package com.superplayer.core
 
 import android.net.Uri
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 
 /**
  * What to play, described as content rather than as a URL.
@@ -40,6 +41,17 @@ import androidx.media3.common.MediaItem
  * shape lands now so that adding it is not a breaking change to every call site that already
  * describes its mirrors. A request carrying three sources plays the first and behaves exactly as one
  * carrying only that source.
+ *
+ * ## Why a request carries what to display
+ *
+ * [title], [subtitle] and [artworkUri] are here because content that leaves the app has to describe
+ * itself. A notification, a lock screen, a car head unit and a watch face all show what is playing,
+ * and none of them can ask the app — they read the `MediaMetadata` the session publishes. A request
+ * that carried only a URL would produce a notification with a blank title, which is the default an
+ * app gets today and the one nobody notices until the first screenshot.
+ *
+ * All three are optional, and a player with no session shows them nowhere. Nothing about playback
+ * behaves differently for their absence.
  */
 public class MediaRequest private constructor(
     /**
@@ -57,6 +69,31 @@ public class MediaRequest private constructor(
     public val sources: List<Uri>,
     /** Where playback of this request begins. Defaults to [StartPosition.Beginning]. */
     public val startPosition: StartPosition,
+    /**
+     * What to call this content wherever it is displayed outside the app — the notification, the
+     * lock screen, Android Auto, a wearable.
+     *
+     * Reaches those surfaces as [MediaMetadata.title]. Null means "nothing to show", which is what
+     * every one of them renders as an empty line.
+     */
+    public val title: String?,
+    /**
+     * The second line beneath [title] — a series name, a channel, a byline.
+     *
+     * Reaches Media3's own notification as [MediaMetadata.artist], which is the field that provider
+     * reads for its second line, and Android Auto's browse and playback surfaces as
+     * [MediaMetadata.subtitle]. Both are set from this one value rather than making a caller decide
+     * which surface they are writing for.
+     */
+    public val subtitle: String?,
+    /**
+     * Artwork for the content, as a URI the *platform* fetches — not the app.
+     *
+     * Reaches those surfaces as [MediaMetadata.artworkUri]. A `content://`, `file://` or `https://`
+     * URI all work; Media3's notification provider loads it through the bitmap loader the session
+     * was built with.
+     */
+    public val artworkUri: Uri?,
 ) {
 
     /**
@@ -120,6 +157,9 @@ public class MediaRequest private constructor(
 
         private val sources = mutableListOf<Uri>()
         private var startPosition: StartPosition = StartPosition.Beginning
+        private var title: String? = null
+        private var subtitle: String? = null
+        private var artworkUri: Uri? = null
 
         /** Appends a candidate source. Order is preference order; the first is the one used. */
         public fun addSource(uri: Uri): Builder = apply { sources += uri }
@@ -130,12 +170,31 @@ public class MediaRequest private constructor(
         public fun setStartPosition(startPosition: StartPosition): Builder =
             apply { this.startPosition = startPosition }
 
+        /** What to call this content wherever it is displayed outside the app. */
+        public fun setTitle(title: String?): Builder = apply { this.title = title }
+
+        /** The second line beneath the title — a series name, a channel, a byline. */
+        public fun setSubtitle(subtitle: String?): Builder = apply { this.subtitle = subtitle }
+
+        /** Artwork for the content, as a URI the platform fetches. */
+        public fun setArtworkUri(artworkUri: Uri?): Builder = apply { this.artworkUri = artworkUri }
+
+        /** Artwork for the content, as a URI string the platform fetches. */
+        public fun setArtworkUri(artworkUri: String): Builder = setArtworkUri(Uri.parse(artworkUri))
+
         public fun build(): MediaRequest {
             require(contentId.isNotBlank()) { "A MediaRequest needs a non-blank content id" }
             require(sources.isNotEmpty()) {
                 "A MediaRequest for '$contentId' needs at least one source"
             }
-            return MediaRequest(contentId, sources.toList(), startPosition)
+            return MediaRequest(
+                contentId,
+                sources.toList(),
+                startPosition,
+                title,
+                subtitle,
+                artworkUri,
+            )
         }
     }
 }
@@ -149,9 +208,37 @@ public class MediaRequest private constructor(
  * callbacks, the timeline — instead of being held alongside it in a map SuperPlayer would have to
  * keep in step. It is also how a resume position is recognised as belonging to this content when the
  * player later moves away from it.
+ *
+ * The display fields travel as Media3's own [MediaMetadata], which is what a `MediaSession`
+ * publishes to everything outside the app. They are attached to the *item* rather than pushed onto
+ * the player, so they change when the content does and cannot go stale against it.
  */
 internal fun MediaRequest.toMediaItem(): MediaItem =
     MediaItem.Builder()
         .setMediaId(contentId)
         .setUri(sources.first())
+        .setMediaMetadata(toMediaMetadata())
+        .build()
+
+/**
+ * The display half of a request, in the vocabulary every external surface reads.
+ *
+ * [MediaRequest.subtitle] is written to both [MediaMetadata.artist] and [MediaMetadata.subtitle]
+ * because the two surfaces that matter read different ones: Media3's `DefaultMediaNotificationProvider`
+ * takes its second line from `artist`, and Android Auto takes its from `subtitle`. Making a caller
+ * choose between them would be making them name a surface they cannot see from here.
+ *
+ * `isPlayable` is set because a session that does not say so is treated by a browsing controller —
+ * Android Auto, Assistant — as a folder it should try to open rather than as something it can play.
+ *
+ * ref: https://developer.android.com/media/media3/session/background-playback#notification
+ */
+private fun MediaRequest.toMediaMetadata(): MediaMetadata =
+    MediaMetadata.Builder()
+        .setTitle(title)
+        .setArtist(subtitle)
+        .setSubtitle(subtitle)
+        .setArtworkUri(artworkUri)
+        .setIsBrowsable(false)
+        .setIsPlayable(true)
         .build()

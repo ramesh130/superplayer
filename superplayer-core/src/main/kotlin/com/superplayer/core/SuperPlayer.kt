@@ -167,9 +167,28 @@ public class SuperPlayer private constructor(
      * [MediaRequest.StartPosition.ResumeFromLastKnown] for it returns here.
      */
     public fun setMediaRequest(request: MediaRequest) {
+        val adopted = adopt(request)
+        delegate.setMediaItem(adopted.mediaItem, adopted.startPositionMs)
+    }
+
+    /**
+     * Takes [request] on as what this player is playing, and works out where it starts — everything
+     * [setMediaRequest] does except handing the result to the engine.
+     *
+     * Split out because there are two callers and only one of them may call `setMediaItem`. The
+     * other is `PlaybackSession`, which resolves a *controller's* media id into a request and then
+     * has to give Media3 the item back rather than loading it: a session callback that loaded the
+     * item itself would race the load Media3 performs on return from that callback.
+     *
+     * Both callers need the identical bookkeeping, and that is the point of it being here rather
+     * than duplicated: the outgoing content's position is remembered, and the incoming request
+     * becomes the one a [PlaybackSnapshot] would name — so content started from a notification, a
+     * car head unit or a watch resumes exactly like content started from the app.
+     */
+    internal fun adopt(request: MediaRequest): AdoptedRequest {
         rememberPositionOfCurrentContent()
         currentRequest = request
-        delegate.setMediaItem(request.toMediaItem(), request.resolvedStartPositionMs())
+        return AdoptedRequest(request.toMediaItem(), request.resolvedStartPositionMs())
     }
 
     /**
@@ -292,6 +311,15 @@ public class SuperPlayer private constructor(
         lastKnownPositions.clear()
         currentRequest = null
     }
+
+    /**
+     * A request this player has taken on, in the two parts Media3 loads content from.
+     *
+     * [startPositionMs] is [C.TIME_UNSET] for "the content's own default position", which is the
+     * start of on-demand content and the live edge of a live stream — the form `setMediaItem` and
+     * Media3's session callbacks both take.
+     */
+    internal class AdoptedRequest(val mediaItem: MediaItem, val startPositionMs: Long)
 
     /**
      * Forwarded by hand because Kotlin's interface delegation does not override a Java `default`

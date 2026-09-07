@@ -16,6 +16,7 @@ of truth. This file records *what* is depended on and under *what license*.
 | `androidx.media3:media3-exoplayer-hls` | Apache-2.0 | `superplayer-core` |
 | `androidx.media3:media3-exoplayer-dash` | Apache-2.0 | `superplayer-core` |
 | `androidx.media3:media3-datasource` | Apache-2.0 | `superplayer-core` |
+| `androidx.media3:media3-session` | Apache-2.0 | `superplayer-core` (api) |
 | `androidx.media3:media3-ui` | Apache-2.0 | `demo` |
 | `androidx.annotation:annotation` | Apache-2.0 | `superplayer-core`, `demo` |
 | `androidx.compose:compose-bom` | Apache-2.0 | `demo` (a BOM: pins versions, ships no code) |
@@ -24,6 +25,7 @@ of truth. This file records *what* is depended on and under *what license*.
 | `androidx.compose.material3:material3` | Apache-2.0 | `demo` |
 | `androidx.activity:activity-compose` | Apache-2.0 | `demo` |
 | `androidx.lifecycle:lifecycle-runtime-compose` | Apache-2.0 | `demo` |
+| `com.google.guava:guava` | Apache-2.0 | `superplayer-core` (transitive, via `media3-common`) |
 | `org.jetbrains.kotlin:kotlin-stdlib` | Apache-2.0 | all modules (transitively, via the Kotlin toolchain) |
 | `org.jetbrains.kotlinx:kotlinx-coroutines-android` | Apache-2.0 | all modules |
 
@@ -43,6 +45,11 @@ The transitive rows are listed because the tests use them directly — Truth for
 through Media3's forwarding-contract helper, `androidx.test` for the Robolectric runner — even though
 no build file names them. They arrive with `media3-test-utils`, which is the only declaration;
 pinning them separately would create a second place for a version to drift.
+
+Guava is listed for the same reason as the transitive test rows: `PlaybackSession`'s session
+callback answers Media3 with a `ListenableFuture`, so the library names Guava types directly even
+though no build file declares it. It arrives with `media3-common`, which exports it as an `api`
+dependency, and pinning it separately would create a second place for a version to drift.
 
 Robolectric is the exception, and is declared as well as inherited. `media3-test-utils-robolectric`
 is an AAR whose dependencies are runtime-scoped, so Robolectric's shadows reach the test *runtime*

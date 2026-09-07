@@ -16,9 +16,16 @@ package com.superplayer.demo
  * SuperPlayer keys a resume position on. Written in a namespace of the demo's own, and deliberately
  * not derived from [uri]: a second CDN host for the same title has to be the same content id, which
  * is the entire point of `MediaRequest` carrying one.
+ *
+ * [titleRes] and [subtitleRes] are what the notification, the lock screen and a car head unit show.
+ * They are separate from [labelRes] because they answer a different question: the label names a
+ * choice in a picker ("HLS"), and the title names the content to someone who is looking at a
+ * notification and has never seen this app's picker.
  */
 internal enum class DemoStream(
     val labelRes: Int,
+    val titleRes: Int,
+    val subtitleRes: Int,
     val contentId: String,
     val uri: String,
 ) {
@@ -32,6 +39,8 @@ internal enum class DemoStream(
      */
     HLS(
         labelRes = R.string.stream_hls,
+        titleRes = R.string.stream_hls_title,
+        subtitleRes = R.string.stream_hls_subtitle,
         contentId = "demo:bipbop-advanced",
         uri = "https://devstreaming-cdn.apple.com/videos/streaming/examples/" +
             "img_bipbop_adv_example_fmp4/master.m3u8",
@@ -46,6 +55,8 @@ internal enum class DemoStream(
      */
     DASH(
         labelRes = R.string.stream_dash,
+        titleRes = R.string.stream_dash_title,
+        subtitleRes = R.string.stream_dash_subtitle,
         contentId = "demo:tears-of-steel",
         uri = "https://storage.googleapis.com/wvmedia/clear/h264/tears/tears.mpd",
     ),

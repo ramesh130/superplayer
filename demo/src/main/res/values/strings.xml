@@ -4,6 +4,13 @@
     <string name="stream_hls">HLS</string>
     <string name="stream_dash">DASH</string>
 
+    <!-- What the notification, the lock screen and a car head unit call the content. Separate from
+         the picker labels above: a viewer looking at a notification has never seen the picker. -->
+    <string name="stream_hls_title">BipBop Advanced</string>
+    <string name="stream_hls_subtitle">Apple HLS reference stream</string>
+    <string name="stream_dash_title">Tears of Steel</string>
+    <string name="stream_dash_subtitle">DASH clear H.264</string>
+
     <!-- The playback profiles, in the vocabulary a viewer of the demo would use. The library's own
          names are longer and say what the case is; these are picker labels. -->
     <string name="profile_video_on_demand">On demand</string>

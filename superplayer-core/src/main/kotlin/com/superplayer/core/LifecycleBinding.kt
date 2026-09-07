@@ -80,6 +80,23 @@ import androidx.media3.exoplayer.ExoPlayer
  * ref: https://developer.android.com/media/media3/exoplayer/battery-consumption
  */
 internal fun ExoPlayer.Builder.withLifecycleCorrectness(): ExoPlayer.Builder =
-    setAudioAttributes(AudioAttributes.DEFAULT, /* handleAudioFocus= */ true)
+    setAudioAttributes(LIFECYCLE_AUDIO_ATTRIBUTES, HANDLES_AUDIO_FOCUS)
         .setHandleAudioBecomingNoisy(true)
         .setWakeMode(C.WAKE_MODE_NETWORK)
+
+/**
+ * The audio configuration [withLifecycleCorrectness] applies, named because a second place needs it.
+ *
+ * [SuperPlayer.resetForReuse] restores it when a pooled player changes hands, and it cannot read the
+ * value back to do so: [Player.getAudioAttributes] reports the attributes, but Media3 offers no way
+ * to read the `handleAudioFocus` flag that goes with them. So the flag has to be *known* rather than
+ * observed, and one declaration is what stops the reset from quietly restoring something the builder
+ * never applied.
+ *
+ * [AudioAttributes.DEFAULT] — media usage, unspecified content type — is the ducking choice
+ * documented above.
+ */
+internal val LIFECYCLE_AUDIO_ATTRIBUTES: AudioAttributes = AudioAttributes.DEFAULT
+
+/** The `handleAudioFocus` half of [LIFECYCLE_AUDIO_ATTRIBUTES]. See there for why it is named. */
+internal const val HANDLES_AUDIO_FOCUS: Boolean = true

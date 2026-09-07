@@ -72,6 +72,19 @@ carrying a bare media id; the session resolves that id back through the app's ca
 from a car resume where the phone left it. `SuperPlayerSessionTest` drives a real `MediaController`
 against a real session and is where every claim in this paragraph is checked.
 
+A screen that needs many players at once — a feed, a grid — builds them through `PlayerPool` rather
+than one per item, because concurrent hardware decoder instances are a device resource that a long
+scroll will find the end of. `PlayerPool.Builder(context).build()` derives its bound from what the
+device reports — `DeviceCapacity.kt` is the only place that reading happens, and it is the min of the
+platform's concurrent-decoder limit for H.264/HEVC and a per-player budget against the *app's* heap
+(`ActivityManager.memoryClass`, since Media3 buffers on the Java heap), never below one. `acquire()` returns null rather than growing past the bound, `recycle(player)` hands
+one back, and `SuperPlayer.resetForReuse` is what makes a reused player carry nothing of the last
+item: surface detached first (a stale frame in a recycled view is the tell of a hand-rolled pool),
+then content, playback state, listeners, audio attributes and the remembered-position map. Audio
+focus is a single token, so concurrently *playing* pooled players contend for it — a feed plays one
+row and holds prepared first frames for the rest, which is what the demo's `FeedScreen` does across
+sixty rows with a live count of what the pool has built.
+
 That policy is reached through `PlaybackPolicy`, the boundary ADR-0005 establishes: observed
 `PlaybackConditions` in, a `PlaybackDecision` (a `BufferPolicy` and a `TrackSelectionPolicy`) out,
 with no Media3 type anywhere in it. `EngineBinding.kt` is the one place a decision becomes Media3

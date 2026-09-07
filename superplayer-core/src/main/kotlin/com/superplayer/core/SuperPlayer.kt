@@ -5,7 +5,9 @@ import androidx.annotation.VisibleForTesting
 import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.exoplayer.ExoPlayer
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
@@ -49,9 +51,11 @@ import java.util.IdentityHashMap
  * forwarding behaviour Media3 defines. `SuperPlayerForwardingTest` pins all of it with Media3's own
  * forwarding-contract assertion.
  *
- * The player pool arrives as its own change; what exists here is the path from public API to a frame
- * on screen, the content identity that travels along it ([MediaRequest]), the policy that shapes it
- * ([PlaybackProfile]), and the state that outlives one player ([PlaybackSnapshot]).
+ * What exists here is the path from public API to a frame on screen, the content identity that
+ * travels along it ([MediaRequest]), the policy that shapes it ([PlaybackProfile]), and the state
+ * that outlives one player ([PlaybackSnapshot]). A screen that needs many of these at once — a feed,
+ * a grid — builds them through [PlayerPool] rather than one per item, because decoder instances are
+ * a device resource with a limit that a scroll will find.
  *
  * Android's own lifecycle rules — audio focus, the becoming-noisy broadcast, the wake locks — are on
  * by default and need no call at all; `LifecycleBinding.kt` says what is switched on and why.
@@ -89,6 +93,27 @@ public class SuperPlayer private constructor(
      */
     public val playbackDecision: PlaybackDecision,
     private val delegate: ForwardingPlayer,
+    /**
+     * The track selection parameters this player was built with — what [resetForReuse] puts back.
+     *
+     * Passed in rather than read off [delegate] here, and that is not a stylistic choice: they are
+     * the engine's own device-derived defaults with the profile's ceilings laid over them, so
+     * [Builder] is the only place the combination exists, and re-deriving them would be
+     * re-implementing Media3's defaults — the thing ADR-0001 rule 1 rules out.
+     *
+     * Null for the one caller that has no build to capture from: Media3's forwarding-contract
+     * harness, which constructs this class over a mock. Reading the property in a constructor
+     * initialiser was the first shape of this, and that harness counts every call the facade makes
+     * to the engine — so it failed there, correctly. A reset with nothing to put back leaves the
+     * parameters alone, which for a mock is the only meaningful answer anyway.
+     *
+     * Deliberately without a default value, and deliberately not reached from [Builder]. Either one
+     * makes Kotlin emit a synthetic constructor carrying every parameter of this one — including the
+     * [ForwardingPlayer] delegate, which is an `@UnstableApi` type — and `checkApiSurface` fails the
+     * build for exactly that. It did, both ways round. [Builder] goes through the internal
+     * constructor below, whose parameters are all types SuperPlayer may publish.
+     */
+    private val builtWithTrackSelectionParameters: TrackSelectionParameters?,
 ) : Player by delegate {
 
     /**
@@ -105,7 +130,14 @@ public class SuperPlayer private constructor(
         profile: PlaybackProfile = PlaybackProfile.VIDEO_ON_DEMAND,
         playbackDecision: PlaybackDecision =
             PlaybackPolicy.forProfile(profile).decide(PlaybackConditions()),
-    ) : this(exoPlayer, profile, playbackDecision, ForwardingPlayer(exoPlayer))
+        builtWithTrackSelectionParameters: TrackSelectionParameters? = null,
+    ) : this(
+        exoPlayer,
+        profile,
+        playbackDecision,
+        ForwardingPlayer(exoPlayer),
+        builtWithTrackSelectionParameters,
+    )
 
     /**
      * Listeners are wrapped so that callbacks report *this* player as their source.
@@ -299,6 +331,65 @@ public class SuperPlayer private constructor(
     }
 
     /**
+     * Returns this player to the state a freshly built one is in, so that [PlayerPool] can hand it
+     * to a different item without anything of the previous one coming along.
+     *
+     * Internal because it is the pool's, not a consumer's: a consumer holding a player they built
+     * themselves has no second item to hand it to, and one holding a *pooled* player must go through
+     * [PlayerPool.recycle] so the pool's own bookkeeping stays true.
+     *
+     * The surface goes first. Media3 renders into whatever surface it holds until told otherwise, so
+     * a player that cleared its content before its surface has a window — small, but reliably
+     * visible on a fast scroll — in which it can put the outgoing item's last decoded frame into a
+     * view that now belongs to a different item. That flash is the tell of a hand-rolled pool, and
+     * the ordering here is the whole fix.
+     *
+     * The listeners go too, and that is the part with teeth. A wrapper holds the consumer's
+     * listener, which in a feed is a view holder; leaving them attached would keep every view holder
+     * the pool has ever served reachable from a player that outlives all of them, and would keep
+     * calling them about content they no longer show. It is the same reasoning as [release], one
+     * item's lifetime rather than the player's.
+     *
+     * What deliberately does *not* survive is the remembered-position map. Keeping it would look
+     * like a feature — scroll away from an item, scroll back, resume — and it would work only when
+     * the item happened to land on the same pooled player, which a viewer experiences as resume that
+     * works sometimes. A feed that wants resume across recycling holds the positions itself, or a
+     * [PlaybackSnapshot] per item, both of which are right every time.
+     */
+    internal fun resetForReuse() {
+        // Before the content, so nothing decoded for the outgoing item can reach the outgoing view.
+        delegate.clearVideoSurface()
+
+        delegate.stop()
+        delegate.clearMediaItems()
+
+        synchronized(wrappedListeners) {
+            wrappedListeners.values.forEach(delegate::removeListener)
+            wrappedListeners.clear()
+        }
+
+        delegate.playWhenReady = false
+        delegate.repeatMode = Player.REPEAT_MODE_OFF
+        delegate.shuffleModeEnabled = false
+        delegate.playbackParameters = PlaybackParameters.DEFAULT
+        delegate.volume = 1f
+        // Whatever the previous holder overrode — a forced audio language, a resolution cap for one
+        // item — goes back to what the profile decided when this player was built.
+        builtWithTrackSelectionParameters?.let { delegate.trackSelectionParameters = it }
+        // And the platform rule, which is the one that must not be inherited. A row that turned
+        // focus handling off because it was the silent one in a grid, or that declared its content
+        // speech so it would pause rather than duck, has said something about *that item*. Leaving
+        // it in place would hand the next item a player that plays audio while requesting no focus —
+        // no ducking for a navigation prompt, no pause for a phone call — which is precisely the
+        // defect ADR-0006 rule 1 exists to prevent, arriving by the back door. `LifecycleBinding.kt`
+        // owns both halves of the value, so this cannot restore something the builder never applied.
+        delegate.setAudioAttributes(LIFECYCLE_AUDIO_ATTRIBUTES, HANDLES_AUDIO_FOCUS)
+
+        lastKnownPositions.clear()
+        currentRequest = null
+    }
+
+    /**
      * Releases the engine and drops the listener wrappers with it.
      *
      * Each wrapper holds the consumer's listener, which in an app is usually held by an Activity or
@@ -402,7 +493,14 @@ public class SuperPlayer private constructor(
             engine.trackSelectionParameters =
                 decision.trackSelection.applyTo(engine.trackSelectionParameters)
 
-            return SuperPlayer(engine, profile, decision)
+            return SuperPlayer(
+                engine,
+                profile,
+                decision,
+                // Captured after the profile has been applied, so that a pooled player's reset
+                // restores what this player was built with rather than the engine's own default.
+                builtWithTrackSelectionParameters = engine.trackSelectionParameters,
+            )
         }
     }
 }

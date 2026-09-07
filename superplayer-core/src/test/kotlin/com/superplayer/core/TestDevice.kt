@@ -1,0 +1,86 @@
+package com.superplayer.core
+
+import android.app.ActivityManager
+import android.content.Context
+import android.media.MediaCodecInfo
+import android.media.MediaFormat
+import androidx.test.core.app.ApplicationProvider
+import org.robolectric.Shadows.shadowOf
+import org.robolectric.shadows.MediaCodecInfoBuilder
+import org.robolectric.shadows.ShadowMediaCodecList
+
+/**
+ * What the device under test reports about itself, for the tests that are about [PlayerPool].
+ *
+ * A pool's bound is derived from device facts — concurrent decoder instances and total memory — so a
+ * test involving a pool is running on a device whether it says so or not. Robolectric's default one
+ * reports an empty codec table and zero memory, which `DeviceCapacity.kt` correctly reads as "a pool
+ * of one". That is a real case worth pinning, and it is also a silent trap for every *other* pool
+ * test: a bound of one makes an assertion about handing out two players fail, and makes one about
+ * never handing out three pass for the wrong reason.
+ *
+ * So the device is stated rather than inherited. `PlayerPoolCapacityTest` states a different one per
+ * test, because the derivation is its subject; `PlayerPoolTest` states a capable one once, because
+ * recycling is its subject and the device it runs on should not be part of the answer.
+ *
+ * This is the same move `SuperPlayerLifecycleTest` makes when it grants `WAKE_LOCK`: a Robolectric
+ * default that does not resemble a real device is corrected explicitly, in the test, where a reader
+ * can see it.
+ */
+internal object TestDevice {
+
+    /**
+     * What Robolectric's `CodecCapabilities` answers for `getMaxSupportedInstances`, and the
+     * platform's own documented default for a codec that declares no limit.
+     *
+     * Not a number any test chooses: Robolectric offers no way to lower it, which is why the tests
+     * that care pin *which limit binds* rather than pinning a value they fed in.
+     */
+    const val REPORTED_DECODER_INSTANCES = 32
+
+    /** A device with plenty of both, so that a pool's size is whatever the test asked for. */
+    fun declareCapableDevice() {
+        declareVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC)
+        declareAppHeap(megabytes = 2048)
+    }
+
+    /**
+     * The heap `ActivityManager.getMemoryClass` reports — the app's, not the device's RAM.
+     *
+     * That is the reading `DeviceCapacity.kt` derives from, because Media3 buffers samples on the
+     * Java heap: a phone with 8 GB of RAM still gives one app a 256 MB heap to hold players in.
+     * Robolectric's default is 16 MB, which divides into no players at all and is why every pool test
+     * that does not call this gets a pool of one.
+     */
+    fun declareAppHeap(megabytes: Int) {
+        shadowOf(activityManager).setMemoryClass(megabytes)
+    }
+
+    fun declareLowRamDevice() {
+        shadowOf(activityManager).setIsLowRamDevice(true)
+    }
+
+    /** Puts a video decoder for [mimeType] into the device's codec list. */
+    fun declareVideoDecoder(mimeType: String) {
+        val capabilities = MediaCodecInfoBuilder.CodecCapabilitiesBuilder.newBuilder()
+            .setMediaFormat(MediaFormat().apply { setString(MediaFormat.KEY_MIME, mimeType) })
+            .setIsEncoder(false)
+            .setColorFormats(
+                intArrayOf(MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible),
+            )
+            .setProfileLevels(arrayOf(MediaCodecInfo.CodecProfileLevel()))
+            .build()
+
+        ShadowMediaCodecList.addCodec(
+            MediaCodecInfoBuilder.newBuilder()
+                .setName("test.decoder.${mimeType.substringAfterLast('/')}")
+                .setIsEncoder(false)
+                .setCapabilities(capabilities)
+                .build(),
+        )
+    }
+
+    private val activityManager: ActivityManager
+        get() = ApplicationProvider.getApplicationContext<Context>()
+            .getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+}

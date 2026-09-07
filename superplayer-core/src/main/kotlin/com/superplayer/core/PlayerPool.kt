@@ -1,0 +1,270 @@
+package com.superplayer.core
+
+import android.content.Context
+import androidx.annotation.VisibleForTesting
+import androidx.media3.common.Player
+
+/**
+ * A bounded, recycling set of [SuperPlayer] instances, for screens that show many videos at once.
+ *
+ * A feed or a grid has no fixed number of videos in it — a viewer scrolls, and the number of items
+ * that have *ever* been on screen only goes up. Building a player per item is the obvious
+ * implementation and it fails in a specific, well-known way: hardware decoder instances are a fixed
+ * device resource, and the app that asks for one too many does not degrade, it throws from
+ * `MediaCodec` or falls back to a software decoder and drops frames on every item after. The pool is
+ * the answer, and its bound is the whole of what makes it one.
+ *
+ * ```kotlin
+ * // Once, for the screen.
+ * val pool = PlayerPool.Builder(context).setProfile(PlaybackProfile.SHORT_FORM).build()
+ *
+ * // As an item scrolls in. Null means every player is in use — show the item's artwork.
+ * val player = pool.acquire()
+ * player?.let {
+ *     playerView.player = it
+ *     it.setMediaRequest(request)
+ *     it.prepare()
+ * }
+ *
+ * // As it scrolls out.
+ * playerView.player = null
+ * player?.let { pool.recycle(it) }
+ *
+ * // When the screen goes away.
+ * pool.release()
+ * ```
+ *
+ * ## The bound is derived, not chosen
+ *
+ * [maxSize] comes from what the *device* reports — its concurrent video decoder limits and its total
+ * memory — and `DeviceCapacity.kt` is where that reading happens and why each half of it is read the
+ * way it is. A constant here would be a constant that is wrong on most phones: too high on the cheap
+ * device that is the reason a pool exists, and too low on the flagship where it costs a feature
+ * nobody gets back. A device that reports nothing usable yields a pool of one, which still works.
+ *
+ * [Builder.setMaxSize] lets a consumer ask for *fewer* — a two-up grid needs two — but never for
+ * more. The device's answer is a ceiling rather than a suggestion.
+ *
+ * ## Why [acquire] can return null
+ *
+ * Because the bound is real. A pool that blocked would block the main thread; a pool that grew past
+ * its bound would be a pool in name only; a pool that threw would make the caller write the same
+ * `try`/`catch` that a null check writes more plainly. Null means "every player this device can
+ * afford is in use, show the artwork" — the still-frame placeholder a feed needs anyway for the
+ * items that are off screen.
+ *
+ * In practice a caller that acquires on bind and recycles on unbind never sees null while fewer
+ * items are visible than the device can afford, which on any modern phone is more than fit on it.
+ *
+ * ## Reuse is clean, and that is not free
+ *
+ * A recycled player is reset before it is handed out again — its surface detached, its content and
+ * its playback state cleared, and every listener the previous holder registered removed. Without the
+ * surface detach the recycled view flashes the previous item's last frame, which is the defect that
+ * makes hand-rolled pools obviously hand-rolled; without the listener removal the previous holder
+ * keeps being called about content it no longer shows, and keeps being reachable from the player,
+ * which is a leak of exactly the size of the feed. [SuperPlayer.resetForReuse] is the whole of it.
+ *
+ * ## Concurrently *playing* pooled players contend for audio focus
+ *
+ * Every SuperPlayer requests audio focus while it plays — a platform rule rather than a policy, and
+ * ADR-0006 rule 1 is why it is not a profile's to switch off. Audio focus, though, is a single
+ * token: a second player calling [Player.play] takes it from the first, which Media3 answers by
+ * clearing that player's [Player.getPlayWhenReady]. Two pooled players playing at once is therefore
+ * one pooled player playing and one that stopped.
+ *
+ * That is the correct behaviour for two players that both want to be *heard*, and it is why a feed
+ * does not have two. The shape that works is the shape real feeds use: one item plays, the rest hold
+ * a prepared first frame, and the pool is what makes that first frame cost a recycled player rather
+ * than a new one — which is what the demo's feed screen does. A screen that genuinely wants several
+ * playing at once has one audio source among them by definition, and says so with Media3's own
+ * [Player.setAudioAttributes], passing `handleAudioFocus = false` for the silent ones. [recycle]
+ * puts that back, so the next item to use that player is not silently exempt from the rule.
+ *
+ * ## Threading
+ *
+ * Call it from the thread the players belong to, which for a UI-owned pool is the main thread. That
+ * is the same rule Media3 puts on [Player] itself, and a pool whose players may only be touched from
+ * one thread gains nothing from being reachable from others.
+ */
+public class PlayerPool private constructor(
+    /**
+     * The most players this pool will ever have alive at once — the device's answer, possibly
+     * lowered by [Builder.setMaxSize].
+     *
+     * Public because a caller has to size its own behaviour against it: a feed decides how many
+     * items around the viewport to prepare, and a screen that wants to show video on every visible
+     * row needs to know when it cannot.
+     */
+    public val maxSize: Int,
+    private val newPlayer: () -> SuperPlayer,
+) {
+
+    /**
+     * Players that have been built and handed back, newest first.
+     *
+     * Newest first — [ArrayDeque.removeLast] on [acquire] — so a run of acquire/recycle pairs keeps
+     * returning to the same player rather than cycling through all of them. The ones at the far end
+     * stay warm without being touched, which is what makes a mostly-idle grid cost fewer decoders
+     * than its bound rather than exactly its bound.
+     */
+    private val idle = ArrayDeque<SuperPlayer>()
+
+    /**
+     * Players currently out with a caller.
+     *
+     * Identity-compared, which is what a set of [SuperPlayer] gives: the class declares no `equals`,
+     * so two players are the same entry only if they are the same object. [recycle] relies on that
+     * to reject a player this pool never handed out.
+     */
+    private val inUse = mutableSetOf<SuperPlayer>()
+
+    private var isReleased = false
+
+    /**
+     * How many players exist right now — in use plus idle.
+     *
+     * Never above [maxSize], and below it until demand has actually asked for that many: players are
+     * built on the first [acquire] that has no idle one to give, so a pool of eight on a screen
+     * showing three has built three.
+     */
+    public val size: Int
+        get() = inUse.size + idle.size
+
+    /** How many players are out with callers and have not been handed back. */
+    public val inUseCount: Int
+        get() = inUse.size
+
+    /**
+     * A player to show one item with, or null if every player this device can afford is already out.
+     *
+     * Reuses an idle player if there is one and builds a new one otherwise, up to [maxSize]. The
+     * player comes back in the state a freshly built one is in — see [SuperPlayer.resetForReuse] for
+     * what that means and what it deliberately does not carry over.
+     *
+     * Hand it back with [recycle] when the item leaves. Do not call [Player.release] on it: the pool
+     * owns its players' lifetimes, and a released player handed back would be handed out again.
+     */
+    public fun acquire(): SuperPlayer? {
+        check(!isReleased) { "This PlayerPool has been released" }
+
+        idle.removeLastOrNull()?.let { reused ->
+            inUse += reused
+            return reused
+        }
+        if (inUse.size >= maxSize) return null
+
+        return newPlayer().also { inUse += it }
+    }
+
+    /**
+     * Takes [player] back, resets it, and makes it available to the next [acquire].
+     *
+     * Detach it from its view first — `playerView.player = null` — so that Media3 is not holding a
+     * surface belonging to a view that is about to show something else. The pool clears the player's
+     * own side of that regardless, which is what stops a recycled view from flashing the previous
+     * item's last frame, but only the caller knows about the view.
+     *
+     * Rejects a player this pool did not hand out, rather than adopting it. A pool that accepted
+     * anything would silently take on the lifetime of a player somebody else releases, and the
+     * crash that produces surfaces in the next item's playback rather than here.
+     *
+     * Does nothing after [release], rather than throwing. That is the teardown [release] already
+     * documents as normal — it releases players that are still out — and the callers holding those
+     * players hand them back on their own schedule: a `RecyclerView` dispatches
+     * `onViewDetachedFromWindow` for still-attached holders *during* the teardown that released the
+     * pool. Throwing there would crash an app for doing exactly what this class tells it to do, and
+     * the player in question has already been released, so there is nothing left to refuse.
+     */
+    public fun recycle(player: SuperPlayer) {
+        if (isReleased) return
+        require(inUse.remove(player)) {
+            "That player did not come from this pool, or has already been recycled"
+        }
+
+        player.resetForReuse()
+        idle.addLast(player)
+    }
+
+    /**
+     * Releases every player this pool built, in use or not, and refuses further use.
+     *
+     * Call it when the screen goes away. Players in use are released too, deliberately: a caller
+     * that still holds one at this point has a player whose screen no longer exists, and leaving it
+     * alive to keep a decoder and a playback thread would be the leak this class exists to prevent.
+     * Detach any views first, for the same reason [recycle] says to.
+     *
+     * Idempotent, so a screen that releases in both `onDestroy` and a disposal effect is not a bug.
+     */
+    public fun release() {
+        if (isReleased) return
+        isReleased = true
+
+        // In-use first: those are the ones a caller may still be touching, and the sooner they stop
+        // holding a decoder the better. Order is otherwise immaterial — release is per player.
+        (inUse + idle).forEach { it.release() }
+        inUse.clear()
+        idle.clear()
+    }
+
+    /**
+     * Builds a [PlayerPool]. Media3's construction idiom, like [SuperPlayer.Builder], and it takes
+     * the same [PlaybackProfile] because every player in one pool plays the same kind of content —
+     * that is what makes them interchangeable.
+     */
+    public class Builder(private val context: Context) {
+
+        private var profile: PlaybackProfile = PlaybackProfile.SHORT_FORM
+        private var requestedMaxSize: Int? = null
+        private var playerFactory: (() -> SuperPlayer)? = null
+
+        /**
+         * The kind of playback every player in this pool is for.
+         *
+         * Defaults to [PlaybackProfile.SHORT_FORM] rather than to [SuperPlayer.Builder]'s
+         * [PlaybackProfile.VIDEO_ON_DEMAND], and the difference is not an oversight. A pool exists
+         * for feeds and grids, short-form content is what fills them, and a pool of on-demand
+         * players would have every one of them buffering for a long watch that a scroll is about to
+         * end. A consumer with a grid of full-length titles says so here.
+         */
+        public fun setProfile(profile: PlaybackProfile): Builder = apply { this.profile = profile }
+
+        /**
+         * Asks for a pool of at most [maxSize] players.
+         *
+         * A ceiling on top of the device's, never a way past it: the result is the smaller of this
+         * and what the device reports, so a screen that knows it will never show more than two
+         * videos gets two, and one that asks for twenty on a device that can afford four gets four.
+         *
+         * Most screens should not call this. The device's answer is the one that is right on the
+         * device it is running on, and a number here is a number that was right on somebody's desk.
+         */
+        public fun setMaxSize(maxSize: Int): Builder = apply {
+            require(maxSize >= 1) { "A pool needs room for at least one player, not $maxSize" }
+            requestedMaxSize = maxSize
+        }
+
+        /**
+         * How the pool builds a player — the seam tests reach construction through.
+         *
+         * The same seam as [SuperPlayer.Builder.setEngineConfigurator] rather than a second one:
+         * tests hand this a lambda that builds a player on the existing harness, so a pooled player
+         * gets the fake clock and fake data source every other test player gets, from the one place
+         * that decides those. Without it a test would have to fake the pool's construction and the
+         * engine's separately, and the two would drift.
+         */
+        @VisibleForTesting
+        internal fun setPlayerFactory(factory: () -> SuperPlayer): Builder =
+            apply { playerFactory = factory }
+
+        public fun build(): PlayerPool {
+            val deviceCapacity = concurrentPlayerCapacityOf(context)
+            val maxSize = requestedMaxSize?.coerceAtMost(deviceCapacity) ?: deviceCapacity
+            val profile = profile
+            val factory = playerFactory
+                ?: { SuperPlayer.Builder(context).setProfile(profile).build() }
+
+            return PlayerPool(maxSize, factory)
+        }
+    }
+}

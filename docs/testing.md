@@ -19,6 +19,7 @@ library was built to satisfy, and it holds for everything added afterwards.
 | Codecs | `ShadowMediaCodecConfig`, so the real renderer pipeline runs against shadow decoders |
 | Driving playback | `androidx.media3.test.utils.robolectric.TestPlayerRunHelper` |
 | Platform state | Robolectric's own shadows — see "Asserting on the platform" below |
+| Device capability | `TestDevice`, which states the codec table and memory a test runs against |
 | External surfaces | `androidx.media3.session.MediaController` — see "Driving a session" below |
 
 All of it is Media3's own test infrastructure, apart from the platform-state row, which is
@@ -110,6 +111,43 @@ Two consequences follow, and both cost a line in `setUp`:
 Simulating what the platform does *back* is the test's job too: Robolectric records a focus request
 but never calls the listener, so the focus-loss tests take the listener off the recorded request and
 deliver the callback themselves.
+
+## Stating the device
+
+`PlayerPool`'s bound is derived from what the device reports — its concurrent decoder instances and
+the heap this app is allowed — so a test that touches a pool is running on a device whether it says so or not.
+Robolectric's default one reports an empty codec table and a 16 MB heap, which `DeviceCapacity.kt`
+correctly reads as a pool of one. That is a real case worth pinning and a silent trap for every other
+pool test: a bound of one makes an assertion about two players fail, and makes one about never
+handing out three pass for the wrong reason.
+
+So `TestDevice` states the device explicitly. `PlayerPoolCapacityTest` states a different one per
+test, because the derivation is its subject; `PlayerPoolTest` states a capable one once, because
+recycling is its subject and the machine it runs on should not be part of the answer. It is the same
+move as granting `WAKE_LOCK`: a Robolectric default that does not resemble a real device is corrected
+in the test, where a reader can see it.
+
+One limit is worth knowing before writing another of these. Robolectric's `CodecCapabilities` always
+answers 32 for `getMaxSupportedInstances` and offers no way to lower it, so a test cannot feed in a
+decoder limit and read it back. The tests therefore pin **which limit binds** — decoder or memory —
+rather than a number they supplied, which a derivation that ignored the platform could not produce by
+accident.
+
+## Proving a player was released
+
+There is no `isReleased` on `Player`, and a released Media3 player answers most questions the way a
+live one does: it reports its last state, accepts `setMediaItem`, and counts the item. What it stops
+doing is calling listeners — Media3 releases the listener set with the engine, and a released set is
+inert. `PlayerPoolTest.deliversEvents` is that check, and it carries its own positive control, so
+"the pool released every player" cannot pass by accident.
+
+The wake lock was the obvious alternative and it is the wrong tool for this. A lock is released when
+playback *ends* as much as when the engine does, and the synthetic stream ends inside the window the
+test would watch — so the assertion passed against a pool that released nothing, which is how the
+mistake was found. It was also flaky on its own terms: polling `isHeld` from the main looper races
+Robolectric's bookkeeping on the playback thread, and surfaced as a `ConcurrentModificationException`
+inside `ShadowPowerManager`. `SuperPlayerLifecycleTest` still uses the lock, correctly — there the
+lock *is* the behaviour under test rather than a proxy for something else.
 
 ## Driving a session
 

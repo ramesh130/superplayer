@@ -102,6 +102,11 @@ import java.util.concurrent.TimeUnit
  * survive even that would be back to saving a snapshot, and this demo deliberately is not, because
  * the state it would be protecting is "nothing has played yet".
  *
+ * The fifth claim needs a different screen, and has one. How many players may exist at once is not
+ * visible where there is only ever one, so [FeedScreen] is a sixty-item scrolling feed played out of
+ * a [com.superplayer.core.PlayerPool] with a live count of how many players it has built. Scroll it:
+ * the count stops at the bound the device reported, and the rows past that show artwork.
+ *
  * What this Activity does *not* do is worth as much as what it does. It creates no `MediaSession`,
  * builds no notification, creates no channel, calls no `startForeground`, and asks for no audio
  * focus. Six lines of binding is the whole of the integration.
@@ -121,12 +126,12 @@ class MainActivity : ComponentActivity() {
 }
 
 /**
- * The whole app: two pickers, two status lines, and a playback surface.
+ * The whole app: a screen picker, and behind it either one player or a feed of them.
  *
- * There is no `ViewModel` and no state holder class. What the screen remembers is two enum values;
- * the playback state that used to be remembered here now belongs to the service, which outlives
- * every rotation this screen can produce. Inventing a layer to hold two enums would say something
- * about SuperPlayer that is not true.
+ * There is no `ViewModel` and no state holder class. What the screen remembers is three enum values;
+ * the playback state that used to be remembered here belongs to the service, which outlives every
+ * rotation this screen can produce, and the feed's players belong to the pool [FeedScreen] owns.
+ * Inventing a layer to hold three enums would say something about SuperPlayer that is not true.
  */
 @Composable
 private fun DemoApp() {
@@ -138,6 +143,9 @@ private fun DemoApp() {
     }
     var selectedProfile by rememberSaveable(stateSaver = PlaybackProfileSaver) {
         mutableStateOf(PlaybackProfile.VIDEO_ON_DEMAND)
+    }
+    var selectedScreen by rememberSaveable(stateSaver = DemoScreenSaver) {
+        mutableStateOf(DemoScreen.PLAYER)
     }
     var service by remember { mutableStateOf<DemoPlaybackService?>(null) }
     var player by remember { mutableStateOf<SuperPlayer?>(null) }
@@ -242,29 +250,53 @@ private fun DemoApp() {
                     // the picker's labels are drawn on top of the clock.
                     .windowInsetsPadding(WindowInsets.safeDrawing),
             ) {
-                // The pickers sit above the player rather than inside it: the point of the demo is
-                // that changing streaming protocol is an ordinary media-item change on the same
-                // player, so the control that does it must plainly be outside the playback surface.
+                // Which of the demo's two claims is on screen. The player screen is about one
+                // player doing the right thing; the feed is about how many players exist at all,
+                // which is a claim a single-player screen cannot make.
                 OptionPicker(
-                    options = DemoStream.entries,
-                    selected = selectedStream,
-                    labelRes = DemoStream::labelRes,
-                    onSelect = { selectedStream = it },
-                )
-                OptionPicker(
-                    options = PlaybackProfile.entries,
-                    selected = selectedProfile,
+                    options = DemoScreen.entries,
+                    selected = selectedScreen,
                     labelRes = { it.labelRes },
-                    onSelect = { selectedProfile = it },
+                    onSelect = { selectedScreen = it },
                 )
-                StatusLine(status)
-                PolicyLine(profile = player?.profile, decision = player?.playbackDecision)
-                PlayerSurface(
-                    playerView = playerView,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                )
+
+                when (selectedScreen) {
+                    // The pickers sit above the player rather than inside it: the point of the demo
+                    // is that changing streaming protocol is an ordinary media-item change on the
+                    // same player, so the control that does it must plainly be outside the playback
+                    // surface.
+                    DemoScreen.PLAYER -> {
+                        OptionPicker(
+                            options = DemoStream.entries,
+                            selected = selectedStream,
+                            labelRes = DemoStream::labelRes,
+                            onSelect = { selectedStream = it },
+                        )
+                        OptionPicker(
+                            options = PlaybackProfile.entries,
+                            selected = selectedProfile,
+                            labelRes = { it.labelRes },
+                            onSelect = { selectedProfile = it },
+                        )
+                        StatusLine(status)
+                        PolicyLine(
+                            profile = player?.profile,
+                            decision = player?.playbackDecision,
+                        )
+                        PlayerSurface(
+                            playerView = playerView,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                        )
+                    }
+
+                    // Its own pool, built and released with the screen, and owned by nothing else
+                    // here. A feed does not want the service's player: that one is published as a
+                    // media session for the notification and the car, and twenty of those would be
+                    // twenty notifications. ADR-0007 is where that separation is argued.
+                    DemoScreen.FEED -> FeedScreen(modifier = Modifier.weight(1f))
+                }
             }
         }
     }
@@ -451,6 +483,25 @@ private fun PlayerView.showBufferingSpinner() {
  * the start, and a screen keeping its own tally would claim otherwise.
  */
 private data class Status(val stream: DemoStream, val startedAtMs: Long)
+
+/**
+ * Which screen the demo is showing.
+ *
+ * Two, because SuperPlayer makes two different kinds of promise and they are not visible on the same
+ * screen. One player played correctly — profiles, resume, background, a notification — is
+ * [DemoScreen.PLAYER]. How many players may exist at once is [DemoScreen.FEED], and the only way to
+ * see that is to scroll past the number.
+ */
+private enum class DemoScreen(val labelRes: Int) {
+    PLAYER(R.string.screen_player),
+    FEED(R.string.screen_feed),
+}
+
+/** [DemoStreamSaver]'s counterpart for the screen, and the same reasoning. */
+private val DemoScreenSaver: Saver<DemoScreen, String> = Saver(
+    save = { it.name },
+    restore = { name -> DemoScreen.entries.firstOrNull { it.name == name } },
+)
 
 /** The picker's label for a profile. The library's own names say what the case is; these fit a row. */
 private val PlaybackProfile.labelRes: Int

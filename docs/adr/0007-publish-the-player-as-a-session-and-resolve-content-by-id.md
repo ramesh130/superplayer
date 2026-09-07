@@ -76,9 +76,12 @@ Four rules follow.
 A consuming app gets background playback, a notification with working play, pause and seek, lock
 screen controls, Bluetooth and wearable transport, and an Android Auto surface, for one subclass
 with two overrides and nine lines of XML. Nothing in it builds a notification, creates a channel,
-calls `startForeground`, or constructs a `MediaSession`. The demo is that app, and
-`SuperPlayerSessionTest` drives the other side of the boundary — a real `MediaController` against a
-real session — so every claim above is checked rather than asserted.
+calls `startForeground`, or constructs a `MediaSession`. The demo is that app, and the claims above
+are checked rather than asserted: `SuperPlayerSessionTest` drives the far side of the boundary with
+a real `MediaController` against a real session, and `SuperPlayerServiceTest` drives the service
+through Robolectric's own lifecycle — including that playing posts a notification carrying the title
+and subtitle the `MediaRequest` named, which is the far end of the metadata path from
+`MediaRequest.Builder.setTitle`.
 
 Audio focus is **not** repeated here, and that is worth stating because a service is where apps
 usually put it. Focus, becoming-noisy and the wake locks belong to the player (ADR-0006 rule 1) and

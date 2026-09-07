@@ -111,11 +111,11 @@ public abstract class PlaybackService : MediaSessionService() {
      *
      * Overridable for the session settings this service does not have an opinion about — an id for
      * an app publishing more than one, or a session activity other than the launcher. An override
-     * that drops [PlaybackSession.Builder.setContentResolver] drops [onResolveContent] with it.
+     * that drops [PlaybackSession.Builder.setMediaRequestResolver] drops [onResolveContent] with it.
      */
     protected open fun onCreateSession(player: SuperPlayer): PlaybackSession =
         PlaybackSession.Builder(this, player)
-            .setContentResolver { contentId -> onResolveContent(contentId) }
+            .setMediaRequestResolver { contentId -> onResolveContent(contentId) }
             .build()
 
     /**

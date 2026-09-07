@@ -90,9 +90,17 @@ import java.util.concurrent.TimeUnit
  * The fourth is that playback outlives the screen. The player is owned by [DemoPlaybackService], a
  * `PlaybackService`, so press home mid-stream and the audio keeps going with a notification whose
  * play, pause and seek controls work — and which says what is playing, because a `MediaRequest`
- * carries that. Come back and the picture is where the sound got to. A configuration change is the
- * same story with nothing to save: rotating the device does not touch the service, so there is no
- * snapshot in this file at all any more.
+ * carries that. Come back and the picture is where the sound got to. A rotation is the same story
+ * with nothing to save, which is why the `PlaybackSnapshot` this file used to carry is gone: the
+ * service holds the player, and the player is not what a configuration change destroys.
+ *
+ * That last claim has one honest edge, and it is a property of Android's service lifecycle rather
+ * than of SuperPlayer. This Activity only *binds*; what makes the service outlive it is Media3
+ * promoting it to the foreground when playback starts. Rotate in the window before anything has
+ * ever played — a cold start with no network, say — and the last binding goes with the Activity,
+ * the service is destroyed, and the player goes with it. An app that wanted playback state to
+ * survive even that would be back to saving a snapshot, and this demo deliberately is not, because
+ * the state it would be protecting is "nothing has played yet".
  *
  * What this Activity does *not* do is worth as much as what it does. It creates no `MediaSession`,
  * builds no notification, creates no channel, calls no `startForeground`, and asks for no audio

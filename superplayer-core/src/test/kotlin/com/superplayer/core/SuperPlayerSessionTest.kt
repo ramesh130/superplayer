@@ -87,7 +87,7 @@ class SuperPlayerSessionTest {
      */
     private fun buildSession(resolver: MediaRequestResolver? = null): PlaybackSession =
         PlaybackSession.Builder(context, player)
-            .apply { resolver?.let { setContentResolver(it) } }
+            .apply { resolver?.let { setMediaRequestResolver(it) } }
             .build()
             .also { sessions += it }
 

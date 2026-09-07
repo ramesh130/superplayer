@@ -14,7 +14,7 @@ import com.google.common.util.concurrent.ListenableFuture
  *
  * ```kotlin
  * val session = PlaybackSession.Builder(context, player)
- *     .setContentResolver { contentId -> catalog.requestFor(contentId) }
+ *     .setMediaRequestResolver { contentId -> catalog.requestFor(contentId) }
  *     .build()
  *
  * // ...and when the player's life ends, one call ends both:
@@ -41,7 +41,7 @@ import com.google.common.util.concurrent.ListenableFuture
  * outside the app has only Media3's `Player` API, so a car head unit asking to play something can
  * name a `MediaItem` but cannot make a [MediaRequest]. Without a translation, content started from
  * outside the app loses its sources, its metadata and its resume position — the three things a
- * [MediaRequest] exists to carry. [Builder.setContentResolver] is that translation: the session
+ * [MediaRequest] exists to carry. [Builder.setMediaRequestResolver] is that translation: the session
  * resolves an incoming media id back into a request through the app's own catalog, and the content
  * then behaves exactly as if the app had asked for it. See [MediaRequestResolver].
  *
@@ -137,7 +137,7 @@ public class PlaybackSession private constructor(
 
         private var id: String? = null
         private var sessionActivity: PendingIntent? = null
-        private var contentResolver: MediaRequestResolver? = null
+        private var mediaRequestResolver: MediaRequestResolver? = null
 
         /**
          * Distinguishes this session from any other in the same process.
@@ -163,23 +163,24 @@ public class PlaybackSession private constructor(
          *
          * Without one, a controller that asks for content by id gets nothing playable — see
          * [MediaRequestResolver], which is where the whole of that argument lives.
+         *
+         * Named for the type rather than for the concept, unlike every other setter here. "Content
+         * resolver" is the natural name and is unusable: `Context.getContentResolver()` is Android's
+         * own, so a `PlaybackService` subclass — a `Context` — reading `contentResolver` would
+         * silently get the platform's. The clash was found by writing one.
          */
-        public fun setContentResolver(contentResolver: MediaRequestResolver): Builder =
-            apply { this.contentResolver = contentResolver }
+        public fun setMediaRequestResolver(resolver: MediaRequestResolver): Builder =
+            apply { this.mediaRequestResolver = resolver }
 
         public fun build(): PlaybackSession {
-            val callback = ResolvingSessionCallback(contentResolver)
+            val callback = ResolvingSessionCallback(mediaRequestResolver)
             val mediaSession = MediaSession.Builder(context, player)
                 .apply { id?.let { setId(it) } }
                 .apply { (sessionActivity ?: context.launcherIntent())?.let { setSessionActivity(it) } }
                 .setCallback(callback)
                 .build()
 
-            // The callback needs the session to find the *current* player, and the session cannot
-            // be built without the callback. Assigned rather than injected because Media3's
-            // construction order leaves no other seam, and nothing can reach the callback before
-            // this line: a controller has to connect first, and the session is not yet published.
-            return PlaybackSession(mediaSession, player).also { callback.session = it }
+            return PlaybackSession(mediaSession, player)
         }
     }
 }
@@ -189,7 +190,7 @@ public class PlaybackSession private constructor(
  *
  * ```kotlin
  * PlaybackSession.Builder(context, player)
- *     .setContentResolver { contentId -> catalog.requestFor(contentId) }
+ *     .setMediaRequestResolver { contentId -> catalog.requestFor(contentId) }
  * ```
  *
  * ## Why a session needs one at all
@@ -230,18 +231,33 @@ public fun interface MediaRequestResolver {
  * is the failure that looks like it works.
  */
 private class ResolvingSessionCallback(
-    private val contentResolver: MediaRequestResolver?,
+    private val resolver: MediaRequestResolver?,
 ) : MediaSession.Callback {
 
-    /** Assigned immediately after construction; see [PlaybackSession.Builder.build]. */
-    lateinit var session: PlaybackSession
-
+    /**
+     * Resolves each item, and answers no start position for any of them, because this hook has
+     * nowhere to put one.
+     *
+     * That is Media3's shape rather than an omission: `onAddMediaItems` returns items alone, so an
+     * item arriving here plays from its own beginning even if its request asked for
+     * [MediaRequest.StartPosition.ResumeFromLastKnown]. It is also the right answer for what this
+     * hook is for — appending to a playlist does not change where the *current* content is — and
+     * the case that does carry a position, a controller replacing what is playing, goes through
+     * [onSetMediaItems] below.
+     *
+     * Nothing is adopted here either, for the same reason: an added item is not necessarily what is
+     * playing, so naming it as the player's current request would make a later
+     * [SuperPlayer.saveSnapshot] describe the wrong content. Positions still accumulate for it —
+     * the player remembers those against the item's media id rather than against the request.
+     */
     override fun onAddMediaItems(
         mediaSession: MediaSession,
         controller: MediaSession.ControllerInfo,
         mediaItems: MutableList<MediaItem>,
     ): ListenableFuture<MutableList<MediaItem>> =
-        Futures.immediateFuture(mediaItems.map { it.resolved() ?: it }.toMutableList())
+        Futures.immediateFuture(
+            mediaItems.map { item -> resolver.resolve(item)?.toMediaItem() ?: item }.toMutableList(),
+        )
 
     override fun onSetMediaItems(
         mediaSession: MediaSession,
@@ -255,7 +271,7 @@ private class ResolvingSessionCallback(
         // playlist is not something this library can claim a resume position for. A longer list
         // falls through to Media3's own handling, which resolves each item through the hook above
         // and keeps the position the controller asked for.
-        val request = mediaItems.singleOrNull()?.let { contentResolver.resolve(it) }
+        val request = mediaItems.singleOrNull()?.let { resolver.resolve(it) }
             ?: return super.onSetMediaItems(
                 mediaSession,
                 controller,
@@ -268,7 +284,18 @@ private class ResolvingSessionCallback(
         // called `setMediaRequest` itself would load the content twice and race its own second
         // load. What the player needs from the request — the identity to remember a position
         // under — is taken here; the loading stays Media3's.
-        val adopted = session.player.adopt(request)
+        // The session's own player rather than a reference held here, so that a `setPlayer` swap
+        // cannot leave this callback adopting into a player that was released underneath it.
+        val player = mediaSession.player as? SuperPlayer
+            ?: return super.onSetMediaItems(
+                mediaSession,
+                controller,
+                mediaItems,
+                startIndex,
+                startPositionMs,
+            )
+
+        val adopted = player.adopt(request)
         return Futures.immediateFuture(
             MediaSession.MediaItemsWithStartPosition(
                 listOf(adopted.mediaItem),
@@ -282,11 +309,10 @@ private class ResolvingSessionCallback(
      * The request for [mediaItem]'s content, or null if this session cannot name one.
      *
      * An item that already carries a URI is left alone: it came from an app that knows what it is
-     * doing — `PlaybackService`'s own `setMediaRequest` path produces one — and re-resolving it
-     * would let a resolver override what the app explicitly asked for.
+     * doing — `SuperPlayer.setMediaRequest` produces one — and re-resolving it would let a resolver
+     * override what the app explicitly asked for. So is an item carrying Media3's default media id,
+     * which says nothing about identity and is shared by every such item.
      */
-    private fun MediaItem.resolved(): MediaItem? = contentResolver.resolve(this)?.toMediaItem()
-
     private fun MediaRequestResolver?.resolve(mediaItem: MediaItem): MediaRequest? {
         if (this == null || mediaItem.localConfiguration != null) return null
         if (mediaItem.mediaId == MediaItem.DEFAULT_MEDIA_ID) return null

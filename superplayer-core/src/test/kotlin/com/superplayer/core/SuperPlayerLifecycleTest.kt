@@ -112,16 +112,24 @@ class SuperPlayerLifecycleTest {
 
     @Test
     fun playbackRequestsAudioFocusAndAbandonsItWhenPlaybackStops() {
+        // Before, so that "requested before playback" is pinned as an ordering rather than inferred
+        // from a request that could have been made at construction.
+        assertThat(shadowOf(audioManager).lastAudioFocusRequest).isNull()
+
         playUntilReady()
 
         val request = checkNotNull(shadowOf(audioManager).lastAudioFocusRequest)
         assertThat(request.durationHint).isEqualTo(AudioManager.AUDIOFOCUS_GAIN)
         assertThat(shadowOf(audioManager).lastAbandonedAudioFocusRequest).isNull()
 
+        val wakeLock = checkNotNull(ShadowPowerManager.getLatestWakeLock())
         player.stop()
         settle()
 
         assertThat(shadowOf(audioManager).lastAbandonedAudioFocusRequest).isNotNull()
+        // Stopping is not pausing: the engine goes idle, and everything it was holding on the
+        // platform's behalf goes with it.
+        assertThat(wakeLock.isHeld).isFalse()
     }
 
     @Test
@@ -204,6 +212,12 @@ class SuperPlayerLifecycleTest {
 
         // A paused player needs neither the CPU nor the radio, and one that keeps the device awake
         // anyway is a battery complaint that never names the app causing it.
+        //
+        // The other half of Media3's rule — that buffering *with* the intent to play holds the lock,
+        // which is where SuperPlayer departs from a literal "not while buffering" — is deliberate
+        // and argued in ADR-0006, but it is not pinned here. The synthetic stream leaves BUFFERING
+        // immediately and the lock is taken asynchronously, so any assertion on that window would be
+        // a race rather than a check; it is Media3's rule, and Media3 tests it.
         assertThat(wakeLock.isHeld).isFalse()
 
         player.play()

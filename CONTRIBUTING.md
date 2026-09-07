@@ -110,7 +110,7 @@ proprietary platform are not published here.
 Decisions that constrain later work are recorded as ADRs in `docs/adr/`, numbered sequentially and
 dated, using the format in `docs/adr/0000-template.md`.
 
-Four ADRs constrain essentially every change, and all four are worth reading before your first
+Five ADRs constrain essentially every change, and all five are worth reading before your first
 contribution. They are the source of truth for the rules they carry; this file does not restate
 them.
 
@@ -120,6 +120,9 @@ them.
   never extend a Media3 base class.**
 - **[ADR-0005](docs/adr/0005-decide-playback-policy-behind-an-engine-agnostic-boundary.md) — Decide
   playback policy behind an engine-agnostic boundary, and ship a static one.**
+- **[ADR-0006](docs/adr/0006-own-the-platform-rules-and-hand-back-the-state.md) — Turn Android's
+  lifecycle rules on by default, and hand back the state that outlives a player.** Read it with
+  ADR-0005: it is where the line between policy and platform correctness is drawn.
 
 One more is recorded but not yet binding, because the work it governs has not started:
 

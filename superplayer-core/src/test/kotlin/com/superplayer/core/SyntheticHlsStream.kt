@@ -2,6 +2,7 @@ package com.superplayer.core
 
 import androidx.media3.test.utils.FakeDataSet
 import java.io.ByteArrayOutputStream
+import java.io.File
 import kotlin.math.ceil
 
 /**
@@ -20,8 +21,10 @@ internal object SyntheticHlsStream {
     /** Any scheme works: [androidx.media3.test.utils.FakeDataSource] keys purely on the URI. */
     private const val BASE_URI = "fake://superplayer.test/"
 
-    const val MULTIVARIANT_PLAYLIST_URI: String = BASE_URI + "master.m3u8"
-    private const val MEDIA_PLAYLIST_URI = BASE_URI + "media.m3u8"
+    private const val MULTIVARIANT_PLAYLIST_NAME = "master.m3u8"
+    private const val MEDIA_PLAYLIST_NAME = "media.m3u8"
+
+    const val MULTIVARIANT_PLAYLIST_URI: String = BASE_URI + MULTIVARIANT_PLAYLIST_NAME
 
     private fun segmentName(index: Int) = "segment$index.aac"
 
@@ -72,15 +75,41 @@ internal object SyntheticHlsStream {
      * exists and not what is in it.
      */
     fun addTo(fakeDataSet: FakeDataSet, segmentCount: Int = 1): FakeDataSet {
+        files(segmentCount).forEach { (name, bytes) -> fakeDataSet.setData(BASE_URI + name, bytes) }
+        return fakeDataSet
+    }
+
+    /**
+     * The same stream on disk, returning the multivariant playlist's `file:` URI.
+     *
+     * For the one test that must *not* substitute a data source: the transfer chain
+     * `SuperPlayer.Builder` assembles is what a consumer loads through, and a test that replaces it
+     * with [androidx.media3.test.utils.FakeDataSource] cannot see it at all. A file the real chain
+     * resolves is the nearest thing to a network fetch that a test with no network can ask for.
+     *
+     * Every reference inside the playlists is relative, which is what lets the identical bytes serve
+     * from a `fake:` URI in [addTo] and from a directory here.
+     */
+    fun writeTo(directory: File, segmentCount: Int = 1): String {
+        files(segmentCount).forEach { (name, bytes) -> File(directory, name).writeBytes(bytes) }
+        return File(directory, MULTIVARIANT_PLAYLIST_NAME).toURI().toString()
+    }
+
+    /**
+     * The whole stream as file name to bytes — everything the player will ask for, and nothing else,
+     * so an unknown URI is a test failure.
+     *
+     * Names rather than URIs, because the two callers above disagree about where the stream lives
+     * and agree about everything else.
+     */
+    private fun files(segmentCount: Int): Map<String, ByteArray> {
         require(segmentCount >= 1) { "A stream needs at least one segment, was $segmentCount" }
 
-        fakeDataSet
-            .setData(MULTIVARIANT_PLAYLIST_URI, multivariantPlaylist().toByteArray())
-            .setData(MEDIA_PLAYLIST_URI, mediaPlaylist(segmentCount).toByteArray())
-        repeat(segmentCount) { index ->
-            fakeDataSet.setData(BASE_URI + segmentName(index), adtsSegment(index))
+        return buildMap {
+            put(MULTIVARIANT_PLAYLIST_NAME, multivariantPlaylist().toByteArray())
+            put(MEDIA_PLAYLIST_NAME, mediaPlaylist(segmentCount).toByteArray())
+            repeat(segmentCount) { index -> put(segmentName(index), adtsSegment(index)) }
         }
-        return fakeDataSet
     }
 
     // spec: RFC 8216 §4.3.4.2 — EXT-X-STREAM-INF, with the required BANDWIDTH attribute.
@@ -88,7 +117,7 @@ internal object SyntheticHlsStream {
         """
         #EXTM3U
         #EXT-X-STREAM-INF:BANDWIDTH=$DECLARED_BITRATE_BPS,CODECS="$DECLARED_CODECS"
-        media.m3u8
+        $MEDIA_PLAYLIST_NAME
         """.trimIndent()
 
     // spec: RFC 8216 §4.3.3 — a VOD media playlist: EXT-X-TARGETDURATION is the rounded-up maximum

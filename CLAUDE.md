@@ -85,6 +85,15 @@ focus is a single token, so concurrently *playing* pooled players contend for it
 row and holds prepared first frames for the rest, which is what the demo's `FeedScreen` does across
 sixty rows with a live count of what the pool has built.
 
+Everything below `MediaSource` loads through one `DataSource.Factory` chain, and `TransferChain` is
+the single internal place it is assembled — reached from `SuperPlayer.Builder.build()`, because
+`ExoPlayer` has no runtime media-source-factory setter. What it composes today is exactly Media3's
+own default; what it exists for is the order, which its KDoc writes down along with where
+`superplayer-cache`, `-abr`, `-telemetry` and `-resilience` each insert themselves. The load-bearing
+part is that measurement sits *inside* the cache, so a cache hit is not a throughput sample — ADR-0002's
+argument arriving through a different door (`PRD.md` §2.4). Which HTTP stack sits at the bottom is
+ADR-0004's open question, and it plugs in at that one line.
+
 That policy is reached through `PlaybackPolicy`, the boundary ADR-0005 establishes: observed
 `PlaybackConditions` in, a `PlaybackDecision` (a `BufferPolicy` and a `TrackSelectionPolicy`) out,
 with no Media3 type anywhere in it. `EngineBinding.kt` is the one place a decision becomes Media3

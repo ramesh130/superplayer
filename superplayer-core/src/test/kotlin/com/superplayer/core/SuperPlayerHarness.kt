@@ -84,6 +84,29 @@ class SuperPlayerHarness : ExternalResource() {
     }
 
     /**
+     * A player built the way a consumer builds one: with the transfer chain `Builder.build()`
+     * assembles, rather than a [FakeDataSource] substituted over it.
+     *
+     * The only fake left is the clock, which is not part of the chain and without which the playback
+     * thread would wait in real seconds. Content therefore has to be something the real chain can
+     * actually resolve — a `file:` URI, which `DefaultDataSource` serves — and that is what
+     * [SyntheticHlsStream.writeTo] exists for.
+     *
+     * Kept separate from [buildPlayer] rather than offered as a flag, because it is the exception:
+     * every other test wants the fake data source, and a test that reaches for this one is
+     * specifically about what SuperPlayer installs underneath.
+     */
+    fun buildPlayerOnItsOwnTransferChain(): SuperPlayer {
+        val clock = FakeClock(/* isAutoAdvancing= */ true)
+        val player = SuperPlayer.Builder(ApplicationProvider.getApplicationContext())
+            .setEngineConfigurator { engine -> engine.setClock(clock) }
+            .build()
+
+        clocks[player] = clock
+        return player
+    }
+
+    /**
      * A [PlayerPool] whose players are this harness's, so a pooled player is a player like any other
      * test's — same fake clock, same fake data source, same release at the end of the test.
      *

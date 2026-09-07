@@ -125,6 +125,14 @@ SuperPlayer called Media3 correctly. That is a much weaker claim than that a con
 it would keep passing through the exact regression worth catching — a metadata field that stops
 being published, or a resolved media id that loses its resume position.
 
+`SuperPlayerServiceTest` is the one place that rule is deliberately relaxed, and the exception is
+narrow enough to name: it asserts that a created service **registered** its session
+(`service.sessions`), which is a fact about an Android component rather than about playback and
+which no controller can see. A service that built a session and never registered it looks identical
+from a controller's side and posts no notification — so the assertion has to be made where the
+difference is visible. Everything else that file checks, it checks through a controller or through
+the player's observable state.
+
 Two mechanics are worth copying:
 
 - **The connection is awaited, not assumed.** `MediaController.Builder(...).buildAsync()` completes

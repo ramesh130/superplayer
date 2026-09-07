@@ -131,8 +131,8 @@ public final class com/superplayer/core/PlaybackSession {
 public final class com/superplayer/core/PlaybackSession$Builder {
 	public fun <init> (Landroid/content/Context;Lcom/superplayer/core/SuperPlayer;)V
 	public final fun build ()Lcom/superplayer/core/PlaybackSession;
-	public final fun setContentResolver (Lcom/superplayer/core/MediaRequestResolver;)Lcom/superplayer/core/PlaybackSession$Builder;
 	public final fun setId (Ljava/lang/String;)Lcom/superplayer/core/PlaybackSession$Builder;
+	public final fun setMediaRequestResolver (Lcom/superplayer/core/MediaRequestResolver;)Lcom/superplayer/core/PlaybackSession$Builder;
 	public final fun setSessionActivity (Landroid/app/PendingIntent;)Lcom/superplayer/core/PlaybackSession$Builder;
 }
 

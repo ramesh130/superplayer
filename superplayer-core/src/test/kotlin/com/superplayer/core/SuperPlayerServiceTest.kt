@@ -2,6 +2,7 @@ package com.superplayer.core
 
 import android.Manifest
 import android.app.Application
+import android.app.NotificationManager
 import android.content.Context
 import android.media.AudioManager
 import android.net.Uri
@@ -54,7 +55,12 @@ class SuperPlayerServiceTest {
 
     @Before
     fun setUp() {
-        shadowOf(context as Application).grantPermissions(Manifest.permission.WAKE_LOCK)
+        shadowOf(context as Application).grantPermissions(
+            Manifest.permission.WAKE_LOCK,
+            // Without it Android posts no notification and Media3 says nothing about why, which is
+            // the same silence a real app hits when it forgets to ask at runtime.
+            Manifest.permission.POST_NOTIFICATIONS,
+        )
 
         // Built here rather than inside the factory, so the test holds the same player the service
         // does and can ask it afterwards what the service left it in.
@@ -100,6 +106,44 @@ class SuperPlayerServiceTest {
         // background with nothing on screen to stop it.
         assertThat(service.sessions).hasSize(1)
         assertThat(service.sessions.single().player).isSameInstanceAs(player)
+    }
+
+    @Test
+    fun playingPostsANotificationSayingWhatIsPlaying() {
+        createService()
+
+        player.setMediaRequest(
+            MediaRequest.Builder(EPISODE)
+                .addSource(SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI)
+                .setTitle(EPISODE_TITLE)
+                .setSubtitle(EPISODE_SUBTITLE)
+                .build(),
+        )
+        player.prepare()
+        player.play()
+        TestPlayerRunHelper.advance(player).untilState(Player.STATE_READY)
+        harness.settle(player)
+
+        val notificationManager = shadowOf(context.getSystemService(NotificationManager::class.java))
+        val notification = notificationManager.allNotifications.single()
+
+        // The end of the metadata path, at the far end from `MediaRequest.Builder.setTitle`: what a
+        // viewer who has pressed home actually reads. Nothing between the two is asserted, and
+        // nothing needs to be — a notification with the wrong title is the only failure that
+        // matters, and this is where it is visible.
+        assertThat(notification.extras.getCharSequence(android.app.Notification.EXTRA_TITLE).toString())
+            .isEqualTo(EPISODE_TITLE)
+        assertThat(notification.extras.getCharSequence(android.app.Notification.EXTRA_TEXT).toString())
+            .isEqualTo(EPISODE_SUBTITLE)
+
+        // That there *are* transport actions, not how many or which. Media3 chooses the set from the
+        // player's available commands, so pinning a count would pin a Media3 decision this library
+        // does not make. That the controls work is `SuperPlayerSessionTest`'s subject.
+        assertThat(notification.actions.asList()).isNotEmpty()
+
+        // Started, not merely bound — this is what makes playback survive the Activity going away.
+        assertThat(shadowOf(context as Application).nextStartedService?.component?.className)
+            .isEqualTo(TestPlaybackService::class.java.name)
     }
 
     @Test
@@ -162,5 +206,6 @@ class SuperPlayerServiceTest {
     private companion object {
         const val EPISODE = "catalog:episode:1138"
         const val EPISODE_TITLE = "The Lost Cause"
+        const val EPISODE_SUBTITLE = "Season 2, Episode 4"
     }
 }

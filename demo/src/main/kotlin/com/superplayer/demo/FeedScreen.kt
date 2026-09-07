@@ -42,21 +42,28 @@ import com.superplayer.core.SuperPlayer
  * viewer scrolls, and the counter at the top says so while they do it.
  *
  * Scroll it and watch the header. "in use" rises to the pool's bound and stops; "built" rises to the
- * bound and stops. Rows past that point show their artwork instead of video, which is what a real
- * feed does for everything off screen anyway.
+ * bound and stops. Rows past that point get no player and say so, which is the pool's actual
+ * contract rather than an error path.
  *
- * ## One row plays; the rest hold a first frame
+ * ## One row plays, and the rest are deliberately more expensive than a real feed's
  *
- * That is not a simplification, it is the shape audio focus forces and the shape real feeds use.
- * Every SuperPlayer requests focus while it plays — ADR-0006 rule 1, and not a profile's to switch
- * off — and focus is a single token, so a second row calling `play()` takes it from the first and
- * Media3 answers by clearing that row's `playWhenReady`. Two playing rows is one playing row and one
- * that stopped. So the row nearest the top of the viewport plays, and every other visible row is
- * *prepared and paused*: it shows its first decoded frame, ready to start the moment it is scrolled
- * to, with none of the buffering a cold start would cost.
+ * That one row plays is forced rather than chosen. Every SuperPlayer requests audio focus while it
+ * plays — ADR-0006 rule 1, and not a profile's to switch off — and focus is a single token, so a
+ * second row calling `play()` takes it from the first and Media3 answers by clearing that row's
+ * `playWhenReady`. Two playing rows is one playing row and one that stopped.
  *
- * The pool is what makes that affordable. Each of those still frames is a real decoder, and holding
- * one per row down a sixty-item list is exactly the failure this screen exists to not have.
+ * What every *other* visible row does here is a demonstration choice, and not what a production feed
+ * should copy. Each of them takes a pooled player, prepares it, and shows its first decoded frame.
+ * A real feed — YouTube's is the reference — gives a player only to the active row and shows the
+ * uploader's **artwork** for all the others: a designed image with the title and a duration badge on
+ * it, which is one cached image decode rather than a manifest fetch, a media segment and a scarce
+ * decoder instance spent on a row the viewer may scroll straight past. Frame zero is usually a fade
+ * or a slate, so it is a worse picture as well as a dearer one, and `MediaRequest.artworkUri` is the
+ * library's own name for the better one.
+ *
+ * This screen is greedier on purpose: taking a player per visible row is what drives the pool to its
+ * bound where a viewer can watch it happen, which is the one thing a feed built the right way would
+ * never show. Issue #28 tracks the production-shaped recipe.
  *
  * ## Where the recycling actually happens
  *
@@ -127,9 +134,10 @@ internal fun FeedScreen(modifier: Modifier = Modifier) {
  * One row: a pooled player if the pool has one to give, and the row's own label if it does not.
  *
  * The null branch is not an error path. A pool hands out at most what the device can afford, so a
- * feed scrolled quickly will find it empty for a moment, and the honest answer is the item's
- * artwork — exactly what every row that is not visible shows. A demo that hid this case would be
- * hiding the pool's actual contract.
+ * feed scrolled quickly will find it empty, and a caller has to have an answer for that. A
+ * production feed's answer is the item's artwork; this screen's is a label naming the row, because
+ * the demo carries no images and an image loader is a dependency it does not need to make the point.
+ * A demo that hid this case would be hiding the pool's actual contract.
  */
 @Composable
 private fun FeedRow(

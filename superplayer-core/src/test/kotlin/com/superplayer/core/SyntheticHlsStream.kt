@@ -83,6 +83,30 @@ internal object SyntheticHlsStream {
         return fakeDataSet
     }
 
+    /**
+     * Rewrites the first media segment of an already-added stream so that reading it runs [onRead]
+     * before a single byte is served.
+     *
+     * The point is to make a state the player normally passes through in microseconds long enough to
+     * assert on. A loader that blocks inside [onRead] holds the player in
+     * [androidx.media3.common.Player.STATE_BUFFERING] for as long as the test wants, and releases it
+     * on the test's word rather than on a timer — which is the difference between pinning the
+     * buffering case and racing it.
+     *
+     * [onRead] runs on the loader's own thread, so blocking in it does not block the looper a test is
+     * driving. It runs once per read of this segment, which is once for a test that unblocks and
+     * plays on.
+     *
+     * Must be called *after* [addTo], since it replaces what that put in the set.
+     */
+    fun holdFirstSegment(fakeDataSet: FakeDataSet, onRead: Runnable): FakeDataSet {
+        fakeDataSet.newData(BASE_URI + segmentName(0))
+            .appendReadAction(onRead)
+            .appendReadData(adtsSegment(0))
+            .endData()
+        return fakeDataSet
+    }
+
     // spec: RFC 8216 §4.3.4.2 — EXT-X-STREAM-INF, with the required BANDWIDTH attribute.
     private fun multivariantPlaylist(): String =
         """

@@ -69,6 +69,13 @@ comparing the protocols rather than two unrelated pieces of media.
 Each exposes `addTo(FakeDataSet)` rather than building its own set, so a test that needs more than
 one stream — switching protocols mid-session — composes them into one.
 
+Synthetic media is also how a test slows the player down. `SyntheticHlsStream.holdFirstSegment`
+replaces the first media segment with one that runs a callback before serving a byte, on the loader's
+own thread; a test that blocks in there holds the player in `STATE_BUFFERING` until it says
+otherwise. That is what makes a state the player normally passes through in microseconds assertable —
+the wake-lock rule for buffering is pinned that way — and it beats the alternative, which is
+asserting quickly enough and hoping.
+
 ## Why assertions stop at the facade
 
 A test that reached for `player.exoPlayer` and asserted on it would be testing Media3, which Media3

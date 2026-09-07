@@ -84,6 +84,36 @@ class SuperPlayerHarness : ExternalResource() {
     }
 
     /**
+     * A [PlayerPool] whose players are this harness's, so a pooled player is a player like any other
+     * test's — same fake clock, same fake data source, same release at the end of the test.
+     *
+     * The pool's own construction seam takes a factory rather than an engine configurator, which is
+     * what lets this be a composition rather than a second copy of [buildPlayer]'s four decisions.
+     * A player the pool builds is registered here exactly as a directly-built one is, so [settle]
+     * works on it and [after] releases it whether the pool was released or not.
+     *
+     * [maxSize] is passed through rather than defaulted, so a test that is about the *bound* asks
+     * the device for it and a test that is about recycling pins it to a number it can reason about.
+     *
+     * An unset [profile] builds [PlaybackProfile.SHORT_FORM] players, because that is what
+     * `PlayerPool.Builder` itself defaults to and a pool whose players were built with a different
+     * profile from the one it claims would be a lie in the fixture. The two defaults are written
+     * down twice, so `PlayerPoolTest.aPoolWithNoFactoryBuildsPlayersOfItsOwnProfile` builds a pool
+     * through the real factory and pins them together.
+     */
+    fun buildPool(
+        maxSize: Int? = null,
+        profile: PlaybackProfile? = null,
+        fakeDataSet: FakeDataSet = SyntheticHlsStream.addTo(FakeDataSet()),
+    ): PlayerPool = PlayerPool.Builder(ApplicationProvider.getApplicationContext())
+        .apply {
+            maxSize?.let { setMaxSize(it) }
+            profile?.let { setProfile(it) }
+        }
+        .setPlayerFactory { buildPlayer(profile ?: PlaybackProfile.SHORT_FORM, fakeDataSet) }
+        .build()
+
+    /**
      * Lets the playback thread act on everything [player] has been told so far.
      *
      * Needed wherever a test asserts on the consequence of a command rather than on a playback state

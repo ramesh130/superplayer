@@ -31,4 +31,11 @@
     <string name="policy_quality_height">max %1$dp</string>
     <string name="policy_quality_bitrate">max %1$d kbps</string>
     <string name="policy_quality_height_and_bitrate">max %1$dp at %2$d kbps</string>
+
+    <!-- The feed screen. The pool summary is the whole point of that screen: it is what makes "the
+         number of live players is bounded" something a viewer can watch rather than a claim. -->
+    <string name="screen_player">Player</string>
+    <string name="screen_feed">Feed</string>
+    <string name="feed_pool_summary">Pool: %1$d in use, %2$d built, max %3$d</string>
+    <string name="feed_row_placeholder">%1$s \u2014 no player free</string>
 </resources>

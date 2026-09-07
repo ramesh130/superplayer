@@ -71,16 +71,16 @@ class SuperPlayerHarness : ExternalResource() {
         val clock = FakeClock(/* isAutoAdvancing= */ true)
         val fakeDataSourceFactory = FakeDataSource.Factory().setFakeDataSet(fakeDataSet)
 
-        val player = SuperPlayer.Builder(ApplicationProvider.getApplicationContext())
-            .apply { profile?.let { setProfile(it) } }
-            .setEngineConfigurator { engine ->
-                engine.setClock(clock)
-                engine.setMediaSourceFactory(DefaultMediaSourceFactory(fakeDataSourceFactory))
-            }
-            .build()
-
-        clocks[player] = clock
-        return player
+        return register(
+            clock,
+            SuperPlayer.Builder(ApplicationProvider.getApplicationContext())
+                .apply { profile?.let { setProfile(it) } }
+                .setEngineConfigurator { engine ->
+                    engine.setClock(clock)
+                    engine.setMediaSourceFactory(DefaultMediaSourceFactory(fakeDataSourceFactory))
+                }
+                .build(),
+        )
     }
 
     /**
@@ -98,10 +98,20 @@ class SuperPlayerHarness : ExternalResource() {
      */
     fun buildPlayerOnItsOwnTransferChain(): SuperPlayer {
         val clock = FakeClock(/* isAutoAdvancing= */ true)
-        val player = SuperPlayer.Builder(ApplicationProvider.getApplicationContext())
-            .setEngineConfigurator { engine -> engine.setClock(clock) }
-            .build()
+        return register(
+            clock,
+            SuperPlayer.Builder(ApplicationProvider.getApplicationContext())
+                .setEngineConfigurator { engine -> engine.setClock(clock) }
+                .build(),
+        )
+    }
 
+    /**
+     * Takes [player] under this rule's care: [settle] can find its [clock], and [after] will release
+     * it. Every way of building a player goes through here, so there is one answer to "did the
+     * harness know about that one".
+     */
+    private fun register(clock: FakeClock, player: SuperPlayer): SuperPlayer {
         clocks[player] = clock
         return player
     }

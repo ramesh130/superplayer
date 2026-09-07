@@ -86,13 +86,16 @@ row and holds prepared first frames for the rest, which is what the demo's `Feed
 sixty rows with a live count of what the pool has built.
 
 Everything below `MediaSource` loads through one `DataSource.Factory` chain, and `TransferChain` is
-the single internal place it is assembled — reached from `SuperPlayer.Builder.build()`, because
-`ExoPlayer` has no runtime media-source-factory setter. What it composes today is exactly Media3's
-own default; what it exists for is the order, which its KDoc writes down along with where
-`superplayer-cache`, `-abr`, `-telemetry` and `-resilience` each insert themselves. The load-bearing
-part is that measurement sits *inside* the cache, so a cache hit is not a throughput sample — ADR-0002's
-argument arriving through a different door (`PRD.md` §2.4). Which HTTP stack sits at the bottom is
-ADR-0004's open question, and it plugs in at that one line.
+the single internal place it and the `MediaSource.Factory` over it are assembled — reached from
+`SuperPlayer.Builder.build()`, because `ExoPlayer` has no runtime media-source-factory setter. What it
+composes today is exactly Media3's own default; what it exists for is the order, which its KDoc writes
+down along with where `superplayer-cache`, `-abr`, `-telemetry`, `-resilience` and `-offline` each
+insert themselves (`PRD.md` §2.4). Two of those insert nothing into the chain and the KDoc is mostly
+about them: measurement is a propagated `TransferListener`, so a layer that drops the registration
+blinds ABR silently, and cache hits stay out of the estimate through Media3's `isNetwork` flag rather
+than through chain position — ADR-0002's argument arriving through a different door. CMCD attaches to
+the `MediaSource.Factory`, which is why the seam owns that too. Which HTTP stack sits at the bottom is
+ADR-0004's open question, and it plugs in at one named line.
 
 That policy is reached through `PlaybackPolicy`, the boundary ADR-0005 establishes: observed
 `PlaybackConditions` in, a `PlaybackDecision` (a `BufferPolicy` and a `TrackSelectionPolicy`) out,

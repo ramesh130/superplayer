@@ -9,7 +9,6 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
@@ -479,11 +478,11 @@ public class SuperPlayer private constructor(
             // be read and set on a built engine.
             val engineBuilder = ExoPlayer.Builder(context)
                 .setLoadControl(decision.buffer.toLoadControl())
-                // The transfer chain, composed in one place rather than defaulted by Media3. What
+                // The loading path, composed in one place rather than defaulted by Media3. What
                 // it assembles today is exactly what `ExoPlayer.Builder` would have installed on
                 // its own, so this is a seam rather than a behaviour change; TransferChain says
                 // what wraps what, and where cache, measurement, CMCD and header refresh each go.
-                .setMediaSourceFactory(DefaultMediaSourceFactory(TransferChain.assemble(context)))
+                .setMediaSourceFactory(TransferChain.mediaSourceFactory(context))
                 // Audio focus, becoming-noisy and the wake locks: platform rules rather than
                 // policy, which is why they are not a profile's to decide. See LifecycleBinding.kt.
                 .withLifecycleCorrectness()

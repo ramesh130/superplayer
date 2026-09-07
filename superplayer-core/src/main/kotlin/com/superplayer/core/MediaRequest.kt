@@ -98,9 +98,10 @@ public class MediaRequest private constructor(
          * this player has no position for it.
          *
          * "Last known" means what this [SuperPlayer] instance observed: positions are remembered in
-         * memory, for the life of the player, and are not persisted. Surviving process death — or a
-         * configuration change that releases the player — needs a store of the consumer's own, and
-         * that is deliberately not invented here.
+         * memory, for the life of the player, and are not persisted. Outliving the player — a
+         * configuration change, or process death — is what [PlaybackSnapshot] is for: it hands the
+         * whole of this memory over as a `Bundle`, and where that `Bundle` is kept stays the
+         * consumer's decision rather than a storage mechanism chosen on their behalf.
          *
          * The memory is also bounded: the [SuperPlayer.MAX_REMEMBERED_POSITIONS] most recently used
          * content ids are kept and the least recently used is dropped, so a session that moves

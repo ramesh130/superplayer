@@ -25,6 +25,12 @@ media3 = "1.11.0"
 coroutines = "1.11.0"
 androidxAnnotation = "1.9.1"
 junit = "4.13.2"
+# Robolectric is declared explicitly as well as arriving with `media3-test-utils-robolectric`,
+# because that artifact is an AAR whose own dependencies are runtime-scoped: its shadows are on
+# the test *runtime* classpath but not the test *compile* classpath, so a test that names a
+# shadow type — `ShadowPowerManager`, say — does not compile without this. Keep it equal to the
+# version Media3 resolves, so the two declarations cannot pull in two Robolectrics.
+robolectric = "4.16"
 
 # --- Demo app only: Jetpack Compose. The library modules have no Compose dependency. ---
 # The BOM pins every `androidx.compose.*` artifact, so the individual Compose libraries below
@@ -55,6 +61,7 @@ androidx-annotation = { module = "androidx.annotation:annotation", version.ref =
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 
 junit = { module = "junit:junit", version.ref = "junit" }
+robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 
 # Compose, used by the demo app only.
 androidx-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }

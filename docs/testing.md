@@ -18,8 +18,10 @@ library was built to satisfy, and it holds for everything added afterwards.
 | Media | Manifests and segments generated in the test — see `SyntheticHlsStream`, `SyntheticDashStream` |
 | Codecs | `ShadowMediaCodecConfig`, so the real renderer pipeline runs against shadow decoders |
 | Driving playback | `androidx.media3.test.utils.robolectric.TestPlayerRunHelper` |
+| Platform state | Robolectric's own shadows — see "Asserting on the platform" below |
 
-All of it is Media3's own test infrastructure. A hand-rolled harness would be a second, worse
+All of it is Media3's own test infrastructure, apart from the last row, which is Robolectric's. A
+hand-rolled harness would be a second, worse
 implementation of a thing the engine already ships, and it would drift from the engine's semantics
 exactly when that matters most — during a Media3 upgrade.
 
@@ -47,6 +49,35 @@ was given. That is only observable through the public API, so that is where the 
 
 The same rule appears in `CONTRIBUTING.md` as "tests assert externally observable behavior through
 the public API". This document is the playback-shaped version of it.
+
+## Asserting on the platform
+
+There is one class of behaviour the facade cannot report, and it is the class SuperPlayer's
+lifecycle correctness lives in. Whether a player requested audio focus, and whether it is holding a
+wake lock, are facts about the *Android framework* rather than about the player — nothing on
+`Player` exposes either, and nothing should.
+
+`SuperPlayerLifecycleTest` therefore asserts on Robolectric's shadows of the framework:
+`ShadowAudioManager` for the focus request the engine made and the one it abandoned,
+`ShadowPowerManager` for the lock it holds. That is not a hole in the rule above but the same rule
+applied one layer out — the assertions are still on externally observable behaviour, and still make
+no claim about SuperPlayer's or Media3's internals. A test that reached into Media3's
+`AudioFocusManager` would be the violation; one that checks what the `AudioManager` was actually
+asked for is what a device would show.
+
+Two consequences follow, and both cost a line in `setUp`:
+
+- **Robolectric is a declared test dependency**, not only a transitive one.
+  `media3-test-utils-robolectric` is an AAR whose dependencies are runtime-scoped, so naming a
+  shadow type needs the explicit declaration. `THIRD_PARTY.md` records why.
+- **Permissions must be granted by the test.** Robolectric grants an application none by default,
+  not even ones its merged manifest declares, and Media3 checks for `WAKE_LOCK` before taking a
+  lock. A test that forgets this sees no wake lock and no error — Media3 logs a warning and carries
+  on — so the grant is explicit and commented where it happens.
+
+Simulating what the platform does *back* is the test's job too: Robolectric records a focus request
+but never calls the listener, so the focus-loss tests take the listener off the recorded request and
+deliver the callback themselves.
 
 ## The one seam that is not public
 

@@ -42,6 +42,18 @@ The third public type is `PlaybackProfile`: what kind of playback this is, chose
 numbers. The numbers, and a written rationale for every one that departs from Media3's own default,
 live in `StaticProfilePolicy`, which is internal.
 
+The fourth public type is `PlaybackSnapshot`: what a player was doing, as a value that outlives it.
+`player.saveSnapshot()` and `player.restoreSnapshot(...)` are the pair, `toBundle()`/`fromBundle()`
+the round trip, and a consumer's `onSaveInstanceState` or `rememberSaveable` is where the `Bundle`
+lives — SuperPlayer persists nothing itself (ADR-0006 rule 2). It carries the current `MediaRequest`,
+the position within it, `playWhenReady`, and the whole of the player's remembered-position map, so
+`ResumeFromLastKnown` keeps working across a configuration change. It carries no profile, and it
+names no content for an item set through `setMediaItem`, which has no identity to restore under.
+
+Android's own lifecycle rules — audio focus, becoming-noisy, wake and Wi-Fi locks — are on for every
+player, switched on in `LifecycleBinding.kt` and fixed rather than per-profile: ADR-0006 rule 1 says
+why they are correctness rather than policy, and therefore not behind `PlaybackPolicy`.
+
 That policy is reached through `PlaybackPolicy`, the boundary ADR-0005 establishes: observed
 `PlaybackConditions` in, a `PlaybackDecision` (a `BufferPolicy` and a `TrackSelectionPolicy`) out,
 with no Media3 type anywhere in it. `EngineBinding.kt` is the one place a decision becomes Media3
@@ -114,6 +126,10 @@ Style preferences these are not. A change violating one is not accepted, whateve
   buffering and track-selection policy is decided behind `PlaybackPolicy`, in types that name no
   Media3 class. A policy constant at a Media3 call site, in a listener, or in a builder is a bug
   against this ADR whatever it is worth.
+- **[ADR-0006](docs/adr/0006-own-the-platform-rules-and-hand-back-the-state.md)** — Android's
+  lifecycle rules are on by default and are not a profile's to vary, and state that outlives a
+  player travels as a `PlaybackSnapshot` the consumer stores. SuperPlayer chooses no storage on a
+  consumer's behalf: no preferences, no database, no file.
 - **[`docs/api-surface.md`](docs/api-surface.md)** — every published module's public API is tracked
   in `<module>/api/<module>.api` and validated by `check`. Changing it means running
   `./gradlew updateApiSurface` and committing the diff in the same change. A leaked `@UnstableApi`

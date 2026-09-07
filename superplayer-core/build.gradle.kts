@@ -20,4 +20,9 @@ dependencies {
     // here — THIRD_PARTY.md records them as transitive.
     testImplementation(libs.media3.test.utils)
     testImplementation(libs.media3.test.utils.robolectric)
+    // Robolectric itself, for the tests that assert on platform state a shadow is the only view
+    // of — the wake lock a playing player holds, the audio focus it requested. It arrives at
+    // runtime with the line above; naming it here is what puts its shadows on the *compile*
+    // classpath. The catalog pins it to the version Media3 already resolves.
+    testImplementation(libs.robolectric)
 }

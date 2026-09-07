@@ -57,6 +57,17 @@ the test has no other handle on.
 Composing the media is still the test's: `buildPlayer` serves the synthetic HLS stream by default,
 and a test that switches protocols or needs a longer stream passes its own `FakeDataSet`.
 
+### The one player that keeps its own transfer chain
+
+Substituting `FakeDataSource` replaces the whole `DataSource.Factory` chain `SuperPlayer.Builder`
+assembles, so no test built that way can see the chain at all — and since issue #22 that chain is
+SuperPlayer's own composition (`TransferChain`) rather than a Media3 default, which means SuperPlayer
+can now get it wrong. `buildPlayerOnItsOwnTransferChain` is the exception: it substitutes the clock
+and nothing else, and plays a `file:` URI written by `SyntheticHlsStream.writeTo` — the nearest thing
+to a network fetch a test with no network can ask for. `SuperPlayerTransferChainTest` is its only
+caller, and it also pins the other half: an engine configurator's media source factory still wins
+over whatever `build()` installed, which is what keeps every test above working.
+
 ## Synthetic media, not fixtures
 
 Streams are generated in Kotlin rather than checked in as binaries. `SyntheticHlsStream` writes a

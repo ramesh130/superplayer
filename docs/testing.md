@@ -5,6 +5,11 @@ the JVM, against Media3's own fakes. No device, no network, no assertion that re
 facade. This is not a default that happened to stick — it is the constraint the first slice of the
 library was built to satisfy, and it holds for everything added afterwards.
 
+There is exactly one documented exception, and it is still a test with no device and no network:
+`SuperPlayerTransferChainTest` keeps the data source chain `SuperPlayer.Builder` assembles instead of
+substituting a fake over it, and reads a `file:` URI. "The one player that keeps its own transfer
+chain" below says why that is necessary rather than merely convenient.
+
 `superplayer-core/src/test/kotlin/com/superplayer/core/` is the worked example.
 
 ## What the seam is
@@ -14,7 +19,7 @@ library was built to satisfy, and it holds for everything added afterwards.
 | Entry point | `SuperPlayer`, through Media3's `Player` interface |
 | Runtime | Robolectric, via `androidx.test.ext.junit.runners.AndroidJUnit4` |
 | Time | `androidx.media3.test.utils.FakeClock`, auto-advancing |
-| Network | `androidx.media3.test.utils.FakeDataSource` over a `FakeDataSet` |
+| Network | `androidx.media3.test.utils.FakeDataSource` over a `FakeDataSet` — except in the one class named above, which reads a `file:` URI through the real chain |
 | Media | Manifests and segments generated in the test — see `SyntheticHlsStream`, `SyntheticDashStream` |
 | Codecs | `ShadowMediaCodecConfig`, so the real renderer pipeline runs against shadow decoders |
 | Driving playback | `androidx.media3.test.utils.robolectric.TestPlayerRunHelper` |

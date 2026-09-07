@@ -25,6 +25,35 @@ hand-rolled harness would be a second, worse
 implementation of a thing the engine already ships, and it would drift from the engine's semantics
 exactly when that matters most — during a Media3 upgrade.
 
+## Where the seam lives
+
+`SuperPlayerHarness` is a JUnit rule, and it is the one place the four decisions above are made: the
+auto-advancing clock, the fake data source over a `FakeDataSet`, Media3's `DefaultMediaSourceFactory`
+over that, and all of it reaching the engine through the internal configurator. A test asks it for a
+player and gets one:
+
+```kotlin
+@get:Rule val harness = SuperPlayerHarness()
+
+@Test fun something() {
+    val player = harness.buildPlayer()
+    // ...no try/finally, and no @After
+}
+```
+
+It also **releases every player it built**, which is the other half of why it is a rule rather than a
+function. A player a failing assertion left unreleased holds a playback thread and a codec for the
+rest of the run, and the alternative is `try { } finally { player.release() }` around the body of
+every test — which a test building two players has to nest.
+
+What it does not do is drive playback. Tests reach `TestPlayerRunHelper` themselves, because what a
+test waits for is part of what it asserts, and hiding that here would make the interesting half of a
+test invisible. The one exception is `settle`, which drains a player's pending commands using a clock
+the test has no other handle on.
+
+Composing the media is still the test's: `buildPlayer` serves the synthetic HLS stream by default,
+and a test that switches protocols or needs a longer stream passes its own `FakeDataSet`.
+
 ## Synthetic media, not fixtures
 
 Streams are generated in Kotlin rather than checked in as binaries. `SyntheticHlsStream` writes a

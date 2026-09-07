@@ -6,16 +6,11 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
 import androidx.media3.common.Player
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.test.utils.FakeClock
-import androidx.media3.test.utils.FakeDataSet
-import androidx.media3.test.utils.FakeDataSource
 import androidx.media3.test.utils.robolectric.ShadowMediaCodecConfig
 import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
-import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -40,12 +35,13 @@ class SuperPlayerLifecycleTest {
     val shadowMediaCodecConfig: ShadowMediaCodecConfig =
         ShadowMediaCodecConfig.withAllDefaultSupportedCodecs()
 
+    @get:Rule
+    val harness: SuperPlayerHarness = SuperPlayerHarness()
+
     private val context: Context = ApplicationProvider.getApplicationContext()
     private val audioManager: AudioManager = context.getSystemService(AudioManager::class.java)
 
     private lateinit var player: SuperPlayer
-    private lateinit var clock: FakeClock
-    private var released = false
 
     @Before
     fun setUp() {
@@ -55,28 +51,7 @@ class SuperPlayerLifecycleTest {
         // here is what makes this runtime resemble the one the code actually runs in.
         shadowOf(context as Application).grantPermissions(Manifest.permission.WAKE_LOCK)
 
-        clock = FakeClock(/* isAutoAdvancing= */ true)
-        val fakeDataSourceFactory =
-            FakeDataSource.Factory().setFakeDataSet(SyntheticHlsStream.addTo(FakeDataSet()))
-
-        player =
-            SuperPlayer.Builder(context)
-                .setEngineConfigurator { engine ->
-                    engine.setClock(clock)
-                    engine.setMediaSourceFactory(DefaultMediaSourceFactory(fakeDataSourceFactory))
-                }
-                .build()
-    }
-
-    @After
-    fun tearDown() {
-        if (!released) player.release()
-    }
-
-    /** [SuperPlayer.release], once, so that a test may release and `tearDown` still be safe. */
-    private fun releasePlayer() {
-        player.release()
-        released = true
+        player = harness.buildPlayer()
     }
 
     private fun playUntilReady() {
@@ -91,10 +66,7 @@ class SuperPlayerLifecycleTest {
     }
 
     /** Lets the playback thread act on whatever was just delivered to the player. */
-    private fun settle() {
-        TestPlayerRunHelper.advance(player)
-            .untilPendingCommandsAreFullyHandled(clock, player.applicationLooper)
-    }
+    private fun settle() = harness.settle(player)
 
     /**
      * The focus listener the engine registered, invoked as the platform would invoke it.
@@ -230,7 +202,7 @@ class SuperPlayerLifecycleTest {
         playUntilReady()
         val wakeLock = checkNotNull(ShadowPowerManager.getLatestWakeLock())
 
-        releasePlayer()
+        player.release()
         settle()
 
         // What "released" means, said in observable terms rather than in bookkeeping: nothing is

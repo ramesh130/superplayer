@@ -72,6 +72,15 @@ The wake-lock rule inherited from Media3 deserves stating plainly, because it is
 play holds them deliberately — a rebuffer needs the CPU and the radio in order to end, and releasing
 the locks there would let the device suspend inside a stall it would never leave.
 
+This is a departure from issue #10's wording, which asked for locks held "not while paused or
+buffering", and it was **put to the issue owner and agreed** rather than decided here. It is also
+pinned rather than merely argued: `aWakeLockIsHeldWhileBufferingTowardsPlaybackButNotWhilePausedInIt`
+blocks the loader inside the first media segment, which holds the player in `STATE_BUFFERING` for as
+long as the test wants and makes both halves of the rule assertable — held while buffering with the
+intent to play, released when that intent goes away while the state does not. Without that hold the
+assertion would be a race, since a player passes through buffering in microseconds and the lock is
+taken asynchronously on the playback thread.
+
 What becomes harder: a consumer who wants focus handling off has to know to pass
 `handleAudioFocus = false` themselves, and a consumer with an unusual wake-lock need has to reach
 `player.exoPlayer`. Both are deliberate — the default is the one almost everyone wants, and the

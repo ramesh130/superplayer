@@ -6,11 +6,13 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
 import androidx.media3.common.Player
+import androidx.media3.test.utils.FakeDataSet
 import androidx.media3.test.utils.robolectric.ShadowMediaCodecConfig
 import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
+import java.util.concurrent.CountDownLatch
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -183,17 +185,64 @@ class SuperPlayerLifecycleTest {
         settle()
 
         // A paused player needs neither the CPU nor the radio, and one that keeps the device awake
-        // anyway is a battery complaint that never names the app causing it.
-        //
-        // The other half of Media3's rule — that buffering *with* the intent to play holds the lock,
-        // which is where SuperPlayer departs from a literal "not while buffering" — is deliberate
-        // and argued in ADR-0006, but it is not pinned here. The synthetic stream leaves BUFFERING
-        // immediately and the lock is taken asynchronously, so any assertion on that window would be
-        // a race rather than a check; it is Media3's rule, and Media3 tests it.
+        // anyway is a battery complaint that never names the app causing it. The buffering half of
+        // the same rule is [aWakeLockIsHeldWhileBufferingTowardsPlaybackButNotWhilePausedInIt].
         assertThat(wakeLock.isHeld).isFalse()
 
         player.play()
         settle()
+        assertThat(wakeLock.isHeld).isTrue()
+    }
+
+    @Test
+    fun aWakeLockIsHeldWhileBufferingTowardsPlaybackButNotWhilePausedInIt() {
+        // A player normally passes through BUFFERING in microseconds, which is why this case was
+        // easier to argue than to assert. Blocking the loader inside the first segment holds it
+        // there until this test says otherwise, so what follows is a check rather than a race.
+        val servingTheFirstSegment = CountDownLatch(1)
+        val player = harness.buildPlayer(
+            fakeDataSet = SyntheticHlsStream.holdFirstSegment(
+                SyntheticHlsStream.addTo(FakeDataSet()),
+            ) { servingTheFirstSegment.await() },
+        )
+
+        player.setMediaRequest(
+            MediaRequest.Builder(EPISODE)
+                .addSource(SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI)
+                .build(),
+        )
+        player.play()
+        player.prepare()
+        TestPlayerRunHelper.advance(player).untilState(Player.STATE_BUFFERING)
+        harness.settle(player)
+
+        // Where SuperPlayer departs from a literal reading of "not while buffering", deliberately
+        // and with the issue owner's assent — see ADR-0006. A rebuffer needs the CPU and the radio
+        // precisely in order to end, so releasing the lock here would let the device suspend inside
+        // a stall it would then never leave. "Genuinely playing" is the intent to play plus a player
+        // that is not idle, which is Media3's own rule.
+        val wakeLock = checkNotNull(ShadowPowerManager.getLatestWakeLock()) {
+            "The engine never took a wake lock"
+        }
+        assertThat(player.playbackState).isEqualTo(Player.STATE_BUFFERING)
+        assertThat(wakeLock.isHeld).isTrue()
+
+        player.pause()
+        harness.settle(player)
+
+        // The other half of the same rule, and what keeps the first half from meaning "always":
+        // buffering with no intent to play holds nothing. Still BUFFERING, so the difference is the
+        // intent rather than the state.
+        assertThat(player.playbackState).isEqualTo(Player.STATE_BUFFERING)
+        assertThat(wakeLock.isHeld).isFalse()
+
+        // Letting the stream go proves the stall was this test's doing rather than a broken stream —
+        // without it, every assertion above would pass just as happily against a player that could
+        // never have reached READY at all.
+        player.play()
+        servingTheFirstSegment.countDown()
+        TestPlayerRunHelper.advance(player).untilState(Player.STATE_READY)
+
         assertThat(wakeLock.isHeld).isTrue()
     }
 

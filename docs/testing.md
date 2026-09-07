@@ -69,12 +69,6 @@ comparing the protocols rather than two unrelated pieces of media.
 Each exposes `addTo(FakeDataSet)` rather than building its own set, so a test that needs more than
 one stream — switching protocols mid-session — composes them into one.
 
-Synthetic media is also how a test slows the player down. `SyntheticHlsStream.holdFirstSegment`
-replaces the first media segment with one that runs a callback before serving a byte, on the loader's
-own thread; a test that blocks in there holds the player in `STATE_BUFFERING` until it says
-otherwise. That is what makes a state the player normally passes through in microseconds assertable —
-the wake-lock rule for buffering is pinned that way — and it beats the alternative, which is
-asserting quickly enough and hoping.
 
 ## Why assertions stop at the facade
 
@@ -144,6 +138,14 @@ succeeds or times out saying what it wanted.
 Two checks are worth running on any test that pins asynchronous behaviour, and both were run on the
 wake-lock ones: mutate the production code and confirm the test fails, and run the suite under heavy
 CPU contention to see whether the timing holds.
+
+Neither is a guarantee. The auto-advancing clock has a limit worth knowing about: it fast-forwards
+past timers *inside* the engine as well as the ones a test cares about. Media3's `WakeLockManager`
+arms a 1-second safety net on every release and force-releases the lock if its own thread has not
+answered by then — so a test that deliberately stalls the player gives fake time a thousand
+milliseconds to race ahead of real scheduling, and the net fires. ADR-0006 records where that stopped
+a test from being written. If a behaviour under test is itself timer-driven, the fake clock is the
+thing to question first.
 
 ## What is not covered here
 

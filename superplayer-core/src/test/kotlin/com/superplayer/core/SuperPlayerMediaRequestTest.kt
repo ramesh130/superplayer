@@ -1,16 +1,11 @@
 package com.superplayer.core
 
 import androidx.media3.common.Player
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.test.utils.FakeClock
 import androidx.media3.test.utils.FakeDataSet
-import androidx.media3.test.utils.FakeDataSource
 import androidx.media3.test.utils.robolectric.ShadowMediaCodecConfig
 import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
-import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
-import org.junit.After
 import org.junit.Assert.assertThrows
 import org.junit.Before
 import org.junit.Rule
@@ -33,29 +28,18 @@ class SuperPlayerMediaRequestTest {
     val shadowMediaCodecConfig: ShadowMediaCodecConfig =
         ShadowMediaCodecConfig.withAllDefaultSupportedCodecs()
 
+    @get:Rule
+    val harness: SuperPlayerHarness = SuperPlayerHarness()
+
     private lateinit var player: SuperPlayer
-    private lateinit var clock: FakeClock
 
     @Before
     fun setUp() {
-        clock = FakeClock(/* isAutoAdvancing= */ true)
-        val fakeDataSourceFactory =
-            FakeDataSource.Factory().setFakeDataSet(
-                SyntheticDashStream.addTo(SyntheticHlsStream.addTo(FakeDataSet())),
-            )
-
-        player =
-            SuperPlayer.Builder(ApplicationProvider.getApplicationContext())
-                .setEngineConfigurator { engine ->
-                    engine.setClock(clock)
-                    engine.setMediaSourceFactory(DefaultMediaSourceFactory(fakeDataSourceFactory))
-                }
-                .build()
-    }
-
-    @After
-    fun tearDown() {
-        player.release()
+        // Both streams, so that a test can move between two pieces of content on one player — which
+        // is what makes a remembered position something other than the only position there is.
+        player = harness.buildPlayer(
+            fakeDataSet = SyntheticDashStream.addTo(SyntheticHlsStream.addTo(FakeDataSet())),
+        )
     }
 
     /**
@@ -68,8 +52,7 @@ class SuperPlayerMediaRequestTest {
         player.setMediaRequest(request)
         player.prepare()
 
-        TestPlayerRunHelper.advance(player)
-            .untilPendingCommandsAreFullyHandled(clock, player.applicationLooper)
+        harness.settle(player)
         TestPlayerRunHelper.advance(player).untilState(Player.STATE_READY)
     }
 

@@ -4,16 +4,11 @@ import android.content.Context
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.test.utils.FakeClock
 import androidx.media3.test.utils.FakeDataSet
-import androidx.media3.test.utils.FakeDataSource
 import androidx.media3.test.utils.robolectric.ShadowMediaCodecConfig
 import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
-import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
-import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -34,36 +29,20 @@ class SuperPlayerSnapshotTest {
     val shadowMediaCodecConfig: ShadowMediaCodecConfig =
         ShadowMediaCodecConfig.withAllDefaultSupportedCodecs()
 
-    private val context: Context = ApplicationProvider.getApplicationContext()
-    private val players = mutableListOf<SuperPlayer>()
-    private lateinit var clock: FakeClock
+    @get:Rule
+    val harness: SuperPlayerHarness = SuperPlayerHarness()
 
-    @After
-    fun tearDown() {
-        players.forEach { it.release() }
-    }
-
-    /** A player built as a consumer would build one, with the test seam's fakes underneath. */
-    private fun buildPlayer(): SuperPlayer {
-        clock = FakeClock(/* isAutoAdvancing= */ true)
-        val fakeDataSourceFactory =
-            FakeDataSource.Factory().setFakeDataSet(
-                SyntheticDashStream.addTo(SyntheticHlsStream.addTo(FakeDataSet())),
-            )
-
-        return SuperPlayer.Builder(context)
-            .setEngineConfigurator { engine ->
-                engine.setClock(clock)
-                engine.setMediaSourceFactory(DefaultMediaSourceFactory(fakeDataSourceFactory))
-            }
-            .build()
-            .also { players += it }
-    }
+    /**
+     * A player serving both synthetic streams, so that a test can move between two pieces of content
+     * on one player — which is how a remembered position becomes something to restore.
+     */
+    private fun buildPlayer(): SuperPlayer = harness.buildPlayer(
+        fakeDataSet = SyntheticDashStream.addTo(SyntheticHlsStream.addTo(FakeDataSet())),
+    )
 
     private fun SuperPlayer.prepareUntilReady() {
         prepare()
-        TestPlayerRunHelper.advance(this)
-            .untilPendingCommandsAreFullyHandled(clock, applicationLooper)
+        harness.settle(this)
         TestPlayerRunHelper.advance(this).untilState(Player.STATE_READY)
     }
 

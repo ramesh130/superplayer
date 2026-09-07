@@ -4,16 +4,10 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.test.utils.FakeClock
-import androidx.media3.test.utils.FakeDataSet
-import androidx.media3.test.utils.FakeDataSource
 import androidx.media3.test.utils.robolectric.ShadowMediaCodecConfig
 import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
-import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
-import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -41,27 +35,15 @@ class SuperPlayerPlaybackTest {
     val shadowMediaCodecConfig: ShadowMediaCodecConfig =
         ShadowMediaCodecConfig.withAllDefaultSupportedCodecs()
 
+    /** Builds the players and releases them: the seam itself lives in [SuperPlayerHarness]. */
+    @get:Rule
+    val harness: SuperPlayerHarness = SuperPlayerHarness()
+
     private lateinit var player: SuperPlayer
 
     @Before
     fun setUp() {
-        val fakeDataSourceFactory =
-            FakeDataSource.Factory().setFakeDataSet(SyntheticHlsStream.addTo(FakeDataSet()))
-
-        player =
-            SuperPlayer.Builder(ApplicationProvider.getApplicationContext())
-                .setEngineConfigurator { engine ->
-                    // Auto-advancing: the playback thread's waits resolve as fast as the test can
-                    // run them, so a two-second stream does not cost two seconds.
-                    engine.setClock(FakeClock(/* isAutoAdvancing= */ true))
-                    engine.setMediaSourceFactory(DefaultMediaSourceFactory(fakeDataSourceFactory))
-                }
-                .build()
-    }
-
-    @After
-    fun tearDown() {
-        player.release()
+        player = harness.buildPlayer()
     }
 
     /**

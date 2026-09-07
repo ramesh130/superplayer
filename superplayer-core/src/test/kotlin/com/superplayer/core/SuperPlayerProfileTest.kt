@@ -3,13 +3,9 @@ package com.superplayer.core
 import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionParameters
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.test.utils.FakeClock
 import androidx.media3.test.utils.FakeDataSet
-import androidx.media3.test.utils.FakeDataSource
 import androidx.media3.test.utils.robolectric.ShadowMediaCodecConfig
 import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
-import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import org.junit.Rule
@@ -42,15 +38,21 @@ class SuperPlayerProfileTest {
     val shadowMediaCodecConfig: ShadowMediaCodecConfig =
         ShadowMediaCodecConfig.withAllDefaultSupportedCodecs()
 
+    /**
+     * Builds every player this class uses and releases them all afterwards.
+     *
+     * It matters more here than elsewhere: these tests build a player per assertion, two of them
+     * build two, and each one used to carry its own `try { } finally { player.release() }`.
+     */
+    @get:Rule
+    val harness: SuperPlayerHarness = SuperPlayerHarness()
+
     @Test
     fun theDefaultProfileIsVideoOnDemand() {
-        val player = buildPlayer()
+        // No profile set, so what is asserted is the library's default rather than this file's.
+        val player = harness.buildPlayer()
 
-        try {
-            assertThat(player.profile).isEqualTo(PlaybackProfile.VIDEO_ON_DEMAND)
-        } finally {
-            player.release()
-        }
+        assertThat(player.profile).isEqualTo(PlaybackProfile.VIDEO_ON_DEMAND)
     }
 
     @Test
@@ -138,12 +140,7 @@ class SuperPlayerProfileTest {
     @Test
     fun noTwoProfilesProduceTheSameConfiguration() {
         val decisions = PlaybackProfile.entries.map { profile ->
-            val player = buildPlayer(profile)
-            try {
-                player.playbackDecision
-            } finally {
-                player.release()
-            }
+            harness.buildPlayer(profile).playbackDecision
         }
 
         assertThat(decisions.toSet()).hasSize(PlaybackProfile.entries.size)
@@ -161,23 +158,19 @@ class SuperPlayerProfileTest {
      */
     @Test
     fun contentPlaysUnderTheMostRestrictiveProfile() {
-        val player = buildPlayer(PlaybackProfile.DATA_SAVER)
+        val player = harness.buildPlayer(PlaybackProfile.DATA_SAVER)
 
-        try {
-            player.setMediaRequest(
-                MediaRequest.Builder("test:hls")
-                    .addSource(SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI)
-                    .build(),
-            )
-            player.prepare()
+        player.setMediaRequest(
+            MediaRequest.Builder("test:hls")
+                .addSource(SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI)
+                .build(),
+        )
+        player.prepare()
 
-            TestPlayerRunHelper.advance(player).untilState(Player.STATE_READY)
+        TestPlayerRunHelper.advance(player).untilState(Player.STATE_READY)
 
-            val audioGroup = player.currentTracks.groups.single { it.type == C.TRACK_TYPE_AUDIO }
-            assertThat(audioGroup.isSelected).isTrue()
-        } finally {
-            player.release()
-        }
+        val audioGroup = player.currentTracks.groups.single { it.type == C.TRACK_TYPE_AUDIO }
+        assertThat(audioGroup.isSelected).isTrue()
     }
 
     /**
@@ -211,31 +204,30 @@ class SuperPlayerProfileTest {
 
     /** How much media a player of [profile] holds once it has stopped asking for more. */
     private fun bufferedDurationAfterLoading(profile: PlaybackProfile): Long {
-        val player = buildPlayer(profile, segmentCount = SEGMENTS_FOR_BUFFER_TEST)
+        val player = harness.buildPlayer(
+            profile = profile,
+            fakeDataSet = SyntheticHlsStream.addTo(FakeDataSet(), SEGMENTS_FOR_BUFFER_TEST),
+        )
 
-        try {
-            player.setMediaRequest(
-                MediaRequest.Builder("test:hls")
-                    .addSource(SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI)
-                    .build(),
-            )
-            player.prepare()
+        player.setMediaRequest(
+            MediaRequest.Builder("test:hls")
+                .addSource(SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI)
+                .build(),
+        )
+        player.prepare()
 
-            // Both waits are needed, in this order. "Not loading" is also the state the player
-            // begins in, so waiting for it alone would return before anything had been fetched;
-            // waiting for loading to start first makes the second wait mean "has stopped again".
-            //
-            // Note what is *not* waited for: STATE_READY. A player that is paused and has stopped
-            // loading short of the end of its content has nothing left to drive its playback state
-            // forward, so the state is not the observable here — the loader is, and the loader is
-            // what the buffer policy governs.
-            TestPlayerRunHelper.advance(player).untilLoadingIs(true)
-            TestPlayerRunHelper.advance(player).untilLoadingIs(false)
+        // Both waits are needed, in this order. "Not loading" is also the state the player begins
+        // in, so waiting for it alone would return before anything had been fetched; waiting for
+        // loading to start first makes the second wait mean "has stopped again".
+        //
+        // Note what is *not* waited for: STATE_READY. A player that is paused and has stopped
+        // loading short of the end of its content has nothing left to drive its playback state
+        // forward, so the state is not the observable here — the loader is, and the loader is what
+        // the buffer policy governs.
+        TestPlayerRunHelper.advance(player).untilLoadingIs(true)
+        TestPlayerRunHelper.advance(player).untilLoadingIs(false)
 
-            return player.totalBufferedDuration
-        } finally {
-            player.release()
-        }
+        return player.totalBufferedDuration
     }
 
     /**
@@ -250,25 +242,21 @@ class SuperPlayerProfileTest {
      */
     @Test
     fun aConsumersOwnTrackSelectionParametersSurvivePlayback() {
-        val player = buildPlayer(PlaybackProfile.DATA_SAVER)
+        val player = harness.buildPlayer(PlaybackProfile.DATA_SAVER)
 
-        try {
-            player.trackSelectionParameters =
-                player.trackSelectionParameters.buildUpon().setMaxVideoBitrate(1_500_000).build()
+        player.trackSelectionParameters =
+            player.trackSelectionParameters.buildUpon().setMaxVideoBitrate(1_500_000).build()
 
-            player.setMediaRequest(
-                MediaRequest.Builder("test:hls")
-                    .addSource(SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI)
-                    .build(),
-            )
-            player.prepare()
+        player.setMediaRequest(
+            MediaRequest.Builder("test:hls")
+                .addSource(SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI)
+                .build(),
+        )
+        player.prepare()
 
-            TestPlayerRunHelper.advance(player).untilState(Player.STATE_READY)
+        TestPlayerRunHelper.advance(player).untilState(Player.STATE_READY)
 
-            assertThat(player.trackSelectionParameters.maxVideoBitrate).isEqualTo(1_500_000)
-        } finally {
-            player.release()
-        }
+        assertThat(player.trackSelectionParameters.maxVideoBitrate).isEqualTo(1_500_000)
     }
 
     /**
@@ -280,18 +268,14 @@ class SuperPlayerProfileTest {
         buffer: BufferPolicy,
         trackSelection: TrackSelectionPolicy,
     ) {
-        val player = buildPlayer(profile)
+        val player = harness.buildPlayer(profile)
 
-        try {
-            assertThat(player.profile).isEqualTo(profile)
-            assertThat(player.playbackDecision).isEqualTo(PlaybackDecision(buffer, trackSelection))
+        assertThat(player.profile).isEqualTo(profile)
+        assertThat(player.playbackDecision).isEqualTo(PlaybackDecision(buffer, trackSelection))
 
-            val parameters = player.trackSelectionParameters
-            assertThat(parameters.maxVideoBitrate).isEqualTo(trackSelection.maxVideoBitrateBps)
-            assertThat(parameters.maxVideoHeight).isEqualTo(trackSelection.maxVideoHeightPx)
-        } finally {
-            player.release()
-        }
+        val parameters = player.trackSelectionParameters
+        assertThat(parameters.maxVideoBitrate).isEqualTo(trackSelection.maxVideoBitrateBps)
+        assertThat(parameters.maxVideoHeight).isEqualTo(trackSelection.maxVideoHeightPx)
     }
 
     private companion object {
@@ -303,21 +287,5 @@ class SuperPlayerProfileTest {
 
         /** [PlaybackProfile.SHORT_FORM]'s documented ceiling, asserted against above. */
         const val SHORT_FORM_MAX_BUFFER_MS = 15_000L
-    }
-
-    private fun buildPlayer(
-        profile: PlaybackProfile? = null,
-        segmentCount: Int = 1,
-    ): SuperPlayer {
-        val fakeDataSourceFactory = FakeDataSource.Factory()
-            .setFakeDataSet(SyntheticHlsStream.addTo(FakeDataSet(), segmentCount))
-
-        return SuperPlayer.Builder(ApplicationProvider.getApplicationContext())
-            .apply { profile?.let { setProfile(it) } }
-            .setEngineConfigurator { engine ->
-                engine.setClock(FakeClock(/* isAutoAdvancing= */ true))
-                engine.setMediaSourceFactory(DefaultMediaSourceFactory(fakeDataSourceFactory))
-            }
-            .build()
     }
 }

@@ -5,16 +5,11 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.test.utils.FakeClock
 import androidx.media3.test.utils.FakeDataSet
-import androidx.media3.test.utils.FakeDataSource
 import androidx.media3.test.utils.robolectric.ShadowMediaCodecConfig
 import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
-import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
-import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -40,27 +35,18 @@ class SuperPlayerDashPlaybackTest {
     val shadowMediaCodecConfig: ShadowMediaCodecConfig =
         ShadowMediaCodecConfig.withAllDefaultSupportedCodecs()
 
+    @get:Rule
+    val harness: SuperPlayerHarness = SuperPlayerHarness()
+
     private lateinit var player: SuperPlayer
 
     @Before
     fun setUp() {
         // Both streams in one data set, so that switching protocols mid-session needs nothing more
         // than a different URI — no second player, and no second data source either.
-        val fakeDataSet = SyntheticDashStream.addTo(SyntheticHlsStream.addTo(FakeDataSet()))
-        val fakeDataSourceFactory = FakeDataSource.Factory().setFakeDataSet(fakeDataSet)
-
-        player =
-            SuperPlayer.Builder(ApplicationProvider.getApplicationContext())
-                .setEngineConfigurator { engine ->
-                    engine.setClock(FakeClock(/* isAutoAdvancing= */ true))
-                    engine.setMediaSourceFactory(DefaultMediaSourceFactory(fakeDataSourceFactory))
-                }
-                .build()
-    }
-
-    @After
-    fun tearDown() {
-        player.release()
+        player = harness.buildPlayer(
+            fakeDataSet = SyntheticDashStream.addTo(SyntheticHlsStream.addTo(FakeDataSet())),
+        )
     }
 
     /** The same three public calls the HLS test makes, given a different URI. */

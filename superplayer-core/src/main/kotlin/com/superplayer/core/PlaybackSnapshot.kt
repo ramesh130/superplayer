@@ -70,6 +70,18 @@ public class PlaybackSnapshot internal constructor(
      * Content that had played to the end is recorded at the beginning, for the reason
      * [MediaRequest.StartPosition.ResumeFromLastKnown] gives: restoring to the end would produce a
      * player that immediately ends again.
+     *
+     * Measured from the start of the current content, ads excluded — the same origin
+     * [SuperPlayer.restoreSnapshot] hands back to the engine, so an ad playing at the moment the
+     * snapshot was taken restores the content underneath it rather than the ad.
+     *
+     * **Live content is the case to be careful with.** A live window slides, so a position saved
+     * against it means something slightly different by the time it is restored, and a long gap
+     * between the two can put it outside the window entirely. That is a property of absolute
+     * positions rather than of this type — [MediaRequest.StartPosition.ResumeFromLastKnown] has it
+     * too — and an app that would rather rejoin a live stream at the edge should ignore this field
+     * and re-request the content with [MediaRequest.StartPosition.Beginning], which *is* the live
+     * edge for a live stream.
      */
     public val positionMs: Long,
     /**
@@ -106,7 +118,7 @@ public class PlaybackSnapshot internal constructor(
     public companion object {
 
         /**
-         * Reads back what [toBundle] wrote.
+         * Reads back what [PlaybackSnapshot.toBundle] wrote.
          *
          * A bundle that is missing or malformed in any part restores as far as it can rather than
          * throwing: this is state that crossed process death, and the cost of a field that did not

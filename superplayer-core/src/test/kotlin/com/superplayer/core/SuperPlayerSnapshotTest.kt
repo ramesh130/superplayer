@@ -208,6 +208,43 @@ class SuperPlayerSnapshotTest {
     }
 
     @Test
+    fun everyKindOfStartPositionSurvivesTheBundleRoundTrip() {
+        val positions = listOf(
+            MediaRequest.StartPosition.Beginning,
+            MediaRequest.StartPosition.At(1_234L),
+            MediaRequest.StartPosition.ResumeFromLastKnown,
+        )
+
+        // Exhaustive on purpose. Writing a `StartPosition` and reading one back are two `when`
+        // cascades that have to stay in lockstep, and a fourth kind added to only one of them would
+        // otherwise fail silently — as the wrong start position, on a restore, in someone's app.
+        for (startPosition in positions) {
+            val player = buildPlayer()
+            player.setMediaRequest(hlsRequest(startPosition = startPosition))
+
+            val restored = PlaybackSnapshot.fromBundle(player.saveSnapshot().toBundle())
+
+            assertThat(restored.request?.startPosition).isEqualTo(startPosition)
+        }
+    }
+
+    @Test
+    fun restoringASnapshotThatNamesNoContentStillRestoresTheIntentToPlay() {
+        val player = buildPlayer()
+        player.setMediaItem(MediaItem.fromUri(SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI))
+        player.playWhenReady = true
+        player.prepareUntilReady()
+
+        val restored = rotate(player)
+
+        // The documented answer for content with no identity: the intent survives even though the
+        // content cannot, because the viewer did ask for playback and the app is about to load its
+        // own item. What must not happen is the content being invented — see the null assertion.
+        assertThat(restored.currentMediaItem).isNull()
+        assertThat(restored.playWhenReady).isTrue()
+    }
+
+    @Test
     fun aBundleThatLostItsContentsRestoresWhatIsLeftRatherThanThrowing() {
         // What a foreign or truncated bundle looks like. Restoring one happens on the way back into
         // an app, where an exception is a crash the user sees and a lost position is not.

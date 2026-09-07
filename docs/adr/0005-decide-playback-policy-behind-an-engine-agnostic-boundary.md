@@ -53,7 +53,11 @@ Four rules follow, and they are binding:
 2. **Policy is not decided anywhere but here.** A buffering or selection constant that appears at a
    Media3 call site, in a listener callback, or in a builder, is a bug against this ADR, whatever it
    is worth. Adding an adaptive policy is then a new implementation of this interface rather than a
-   restructuring of the code around it.
+   restructuring of the code around it. The rule is about *policy* — buffering and track selection,
+   the things that have different right answers for different content. It does not reach settings
+   that have one right answer for all of it: [ADR-0006](0006-own-the-platform-rules-and-hand-back-the-state.md)
+   draws that line for Android's lifecycle rules, and argues why they sit outside this boundary
+   rather than inside it.
 3. **The consumer names a profile, not a number.** `SuperPlayer.Builder.setProfile` takes a
    `PlaybackProfile`; the constants behind it, and the rationale for each of them, live in the
    policy's per-profile table, which is internal and free to be retuned. Every constant that departs

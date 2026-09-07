@@ -98,6 +98,18 @@ public final class com/superplayer/core/PlaybackProfile : java/lang/Enum {
 	public static fun values ()[Lcom/superplayer/core/PlaybackProfile;
 }
 
+public final class com/superplayer/core/PlaybackSnapshot {
+	public static final field Companion Lcom/superplayer/core/PlaybackSnapshot$Companion;
+	public final fun getPlayWhenReady ()Z
+	public final fun getPositionMs ()J
+	public final fun getRequest ()Lcom/superplayer/core/MediaRequest;
+	public final fun toBundle ()Landroid/os/Bundle;
+}
+
+public final class com/superplayer/core/PlaybackSnapshot$Companion {
+	public final fun fromBundle (Landroid/os/Bundle;)Lcom/superplayer/core/PlaybackSnapshot;
+}
+
 public final class com/superplayer/core/SuperPlayer : androidx/media3/common/Player {
 	public static final field Companion Lcom/superplayer/core/SuperPlayer$Companion;
 	public static final field MAX_REMEMBERED_POSITIONS I
@@ -192,6 +204,8 @@ public final class com/superplayer/core/SuperPlayer : androidx/media3/common/Pla
 	public fun removeMediaItems (II)V
 	public fun replaceMediaItem (ILandroidx/media3/common/MediaItem;)V
 	public fun replaceMediaItems (IILjava/util/List;)V
+	public final fun restoreSnapshot (Lcom/superplayer/core/PlaybackSnapshot;)V
+	public final fun saveSnapshot ()Lcom/superplayer/core/PlaybackSnapshot;
 	public fun seekBack ()V
 	public fun seekForward ()V
 	public fun seekTo (IJ)V

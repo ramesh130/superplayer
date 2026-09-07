@@ -45,6 +45,7 @@ import androidx.media3.ui.PlayerView
 import com.superplayer.core.MediaRequest
 import com.superplayer.core.PlaybackDecision
 import com.superplayer.core.PlaybackProfile
+import com.superplayer.core.PlaybackSnapshot
 import com.superplayer.core.SuperPlayer
 import com.superplayer.core.TrackSelectionPolicy
 import java.util.Locale
@@ -67,15 +68,23 @@ import java.util.concurrent.TimeUnit
  * app that supports both is not an app that has two playback paths in it.
  *
  * The second picker is the policy one. A [PlaybackProfile] is chosen when a player is *built*, so
- * switching it here builds a new player — and the app hands the outgoing player's position to the
- * incoming one, which is what a consumer has to do for anything that must outlive one player. The
- * profile's effect is on screen twice over: as the numbers it decided, read back off the player, and
- * as the picture itself, since data-saver caps what track selection may choose.
+ * switching it here builds a new player — and the app hands the outgoing player's state to the
+ * incoming one as a [PlaybackSnapshot], which is what a consumer has to do for anything that must
+ * outlive one player. The profile's effect is on screen twice over: as the numbers it decided, read
+ * back off the player, and as the picture itself, since data-saver caps what track selection may
+ * choose.
  *
  * The third claim is resume. Every request asks for
  * [MediaRequest.StartPosition.ResumeFromLastKnown], so switching away from a stream and back returns
  * to where it was left — with no seek-on-ready listener, no position bookkeeping, and no `onReady`
  * callback anywhere in this file. Watch a minute of one, switch, switch back.
+ *
+ * The fourth is that a configuration change is not a restart. One `Bundle`, saved when the player is
+ * released and poured into the one that replaces it, carries the position, the intent to play and
+ * every resume position the session had accumulated. Turn the device sideways mid-stream: the
+ * picture continues, and a stream watched before the rotation still resumes after it. Note the size
+ * of the code that does it — two lines — and note that pausing before rotating leaves it paused,
+ * because what is restored is the viewer's intent rather than the Activity's.
  */
 class MainActivity : ComponentActivity() {
 
@@ -95,8 +104,8 @@ class MainActivity : ComponentActivity() {
  * The whole app: two pickers, two status lines, and a playback surface.
  *
  * There is no `ViewModel` and no state holder class. What the screen remembers is two enum values
- * and the position it is carrying between players; inventing a layer to hold that would say
- * something about SuperPlayer that is not true.
+ * and one `Bundle` it carries between players; inventing a layer to hold that would say something
+ * about SuperPlayer that is not true.
  */
 @Composable
 private fun DemoApp() {
@@ -111,11 +120,11 @@ private fun DemoApp() {
     }
     var player by remember { mutableStateOf<SuperPlayer?>(null) }
     var status by remember { mutableStateOf<Status?>(null) }
-    // Where the player that is about to be released had got to. See [Handoff]. Saveable, because a
-    // rotation releases the player too: without it the position would survive a profile switch but
-    // not a turn of the device, which is the sort of inconsistency that reads as a bug in the
-    // library rather than in the screen holding it.
-    var handoff by rememberSaveable(stateSaver = HandoffSaver) { mutableStateOf<Handoff?>(null) }
+    // What the player that is about to be released was doing, as the `Bundle` a [PlaybackSnapshot]
+    // hands over. Two different things release a player here — picking a profile, and turning the
+    // device — and `rememberSaveable` is what makes one value serve both: an ordinary `remember`
+    // covers the rebuild but not the rotation.
+    var savedPlayback by rememberSaveable { mutableStateOf<Bundle?>(null) }
 
     // The surface is remembered here, not created inside [PlayerSurface], because attaching and
     // detaching the player has to happen on the *lifecycle's* schedule and not on a recomposition's.
@@ -135,7 +144,15 @@ private fun DemoApp() {
         val superPlayer = SuperPlayer.Builder(context)
             .setProfile(selectedProfile)
             .build()
-        superPlayer.playWhenReady = true
+        // Everything the outgoing player knew, in one call: where it was, whether it was playing,
+        // and the position of every stream this session had already watched. With nothing saved yet
+        // — a cold start — the app asks for playback itself.
+        val snapshot = savedPlayback?.let { PlaybackSnapshot.fromBundle(it) }
+        if (snapshot != null) {
+            superPlayer.restoreSnapshot(snapshot)
+        } else {
+            superPlayer.playWhenReady = true
+        }
         // No adapter, no wrapper, no `asMedia3Player()`: SuperPlayer *is* a `Player`, so Media3's
         // own view takes it as it is. This is the assignment the whole facade exists to make
         // ordinary, and Compose does not change it.
@@ -143,14 +160,11 @@ private fun DemoApp() {
         player = superPlayer
 
         onStopOrDispose {
-            // The one thing that has to outlive this player: where it had got to. A SuperPlayer
-            // remembers positions for its own lifetime and deliberately does not persist them, so
-            // carrying one across a rebuild is the consumer's job — and this is what that job looks
-            // like at its smallest. The identity comes back off the player as the item's media id,
-            // which is the content id the request was made with.
-            handoff = superPlayer.currentMediaItem?.mediaId?.let { contentId ->
-                Handoff(contentId, superPlayer.currentPosition)
-            }
+            // What has to outlive this player. A SuperPlayer remembers positions for its own
+            // lifetime and deliberately does not persist them, so choosing where the memory is kept
+            // is the consumer's job — and this is the whole of that job: one `Bundle`, held wherever
+            // the app already holds state that survives a configuration change.
+            savedPlayback = superPlayer.saveSnapshot().toBundle()
 
             // Detach before releasing, and do it here rather than by writing state that some later
             // recomposition would act on. While the window is stopped nothing recomposes, so a
@@ -168,17 +182,11 @@ private fun DemoApp() {
     LaunchedEffect(player, selectedStream) {
         val current = player ?: return@LaunchedEffect
 
-        // A handed-over position beats the player's own memory, because a player that has just been
-        // built has no memory: this is the first thing it is told about the content. It is consumed
-        // rather than kept, so that switching away and back afterwards is served by SuperPlayer's
-        // own resume rather than by a position this screen is still holding on to.
-        val startPosition = handoff
-            ?.takeIf { it.contentId == selectedStream.contentId }
-            ?.let { MediaRequest.StartPosition.At(it.positionMs) }
-            ?: MediaRequest.StartPosition.ResumeFromLastKnown
-        handoff = null
-
-        current.load(selectedStream, startPosition)
+        // One start position, for every reason this effect runs: a newly picked stream, a rebuilt
+        // player after a profile switch, and a rotation. There is no special case for the player
+        // that has just been restored, because a restored player is not a player with no memory —
+        // the snapshot brought the memory with it, so asking it to resume is enough.
+        current.load(selectedStream, MediaRequest.StartPosition.ResumeFromLastKnown)
         // Where the request landed, read straight off the player. Media3 applies a new item's start
         // position to the reported state at once, without waiting for the content to load.
         status = Status(selectedStream, startedAtMs = current.currentPosition)
@@ -400,19 +408,6 @@ private fun PlayerView.showBufferingSpinner() {
  */
 private data class Status(val stream: DemoStream, val startedAtMs: Long)
 
-/**
- * Where the outgoing player had got to, carried to the one replacing it.
- *
- * It exists because switching profile means switching *player*, and a `SuperPlayer`'s resume
- * positions live and die with the instance that observed them — deliberately, since persisting them
- * would mean choosing a storage mechanism on a consumer's behalf. Anything that must survive a
- * player is the app's to keep, and for this demo "the app's" is one value held across a rebuild.
- *
- * Keyed by content id rather than by stream, so a handed-over position can only be applied to the
- * content it was taken from.
- */
-private data class Handoff(val contentId: String, val positionMs: Long)
-
 /** The picker's label for a profile. The library's own names say what the case is; these fit a row. */
 private val PlaybackProfile.labelRes: Int
     get() = when (this) {
@@ -455,28 +450,6 @@ private val DemoStreamSaver: Saver<DemoStream, String> = Saver(
     save = { it.name },
     restore = { name -> DemoStream.entries.firstOrNull { it.name == name } },
 )
-
-/**
- * Saves a [Handoff] as the two values it is, joined on a character no content id in this demo uses.
- *
- * A `Saver` rather than `@Parcelize` because the demo has no parcelable types and adding a plugin to
- * carry two fields would be the tail wagging the dog. A malformed value restores as null — the
- * supported "could not restore this" answer — which costs a resumed position and nothing else.
- */
-private val HandoffSaver: Saver<Handoff?, String> = Saver(
-    save = { handoff -> handoff?.let { "${it.positionMs}$HANDOFF_SEPARATOR${it.contentId}" } ?: "" },
-    restore = { saved ->
-        val separator = saved.indexOf(HANDOFF_SEPARATOR)
-        val positionMs = saved.substring(0, separator.coerceAtLeast(0)).toLongOrNull()
-        if (separator < 0 || positionMs == null) {
-            null
-        } else {
-            Handoff(saved.substring(separator + 1), positionMs)
-        }
-    },
-)
-
-private const val HANDOFF_SEPARATOR = '@'
 
 /** [DemoStreamSaver]'s counterpart for the profile, and the same reasoning. */
 private val PlaybackProfileSaver: Saver<PlaybackProfile, String> = Saver(

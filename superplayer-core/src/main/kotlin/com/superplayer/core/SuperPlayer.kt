@@ -49,9 +49,12 @@ import java.util.IdentityHashMap
  * forwarding behaviour Media3 defines. `SuperPlayerForwardingTest` pins all of it with Media3's own
  * forwarding-contract assertion.
  *
- * The player pool and lifecycle each arrive as their own change; what exists here is the path from
- * public API to a frame on screen, the content identity that travels along it ([MediaRequest]), and
- * the policy that shapes it ([PlaybackProfile]).
+ * The player pool arrives as its own change; what exists here is the path from public API to a frame
+ * on screen, the content identity that travels along it ([MediaRequest]), the policy that shapes it
+ * ([PlaybackProfile]), and the state that outlives one player ([PlaybackSnapshot]).
+ *
+ * Android's own lifecycle rules — audio focus, the becoming-noisy broadcast, the wake locks — are on
+ * by default and need no call at all; `LifecycleBinding.kt` says what is switched on and why.
  */
 public class SuperPlayer private constructor(
     /**
@@ -122,7 +125,8 @@ public class SuperPlayer private constructor(
      * [MediaRequest.StartPosition.ResumeFromLastKnown] reads.
      *
      * In memory and for the life of this player only. Persisting it would mean choosing a storage
-     * mechanism on a consumer's behalf, and surviving a configuration change is `#10`'s subject.
+     * mechanism on a consumer's behalf; what crosses a configuration change is a [PlaybackSnapshot],
+     * which hands the consumer a `Bundle` and lets them decide where it lives.
      *
      * Bounded, and least-recently-used first out. A feed UI can move through thousands of items in a
      * session, and an unbounded map of ids a consumer chose the length of is a slow leak in exactly
@@ -141,6 +145,17 @@ public class SuperPlayer private constructor(
         }
 
     /**
+     * The last [MediaRequest] this player was given, which is the only description of what is
+     * playing that a [PlaybackSnapshot] can be made from.
+     *
+     * It can go stale: [Player.setMediaItem] and the rest of the playlist API are forwarded straight
+     * to the engine by delegation, so a consumer mixing them with [setMediaRequest] moves the player
+     * on without passing through here. [saveSnapshot] therefore checks this against what is actually
+     * loaded rather than trusting it — see there.
+     */
+    private var currentRequest: MediaRequest? = null
+
+    /**
      * Plays what [request] describes: the first of its sources, starting where its
      * [MediaRequest.StartPosition] says, identified by its [MediaRequest.contentId].
      *
@@ -153,7 +168,64 @@ public class SuperPlayer private constructor(
      */
     public fun setMediaRequest(request: MediaRequest) {
         rememberPositionOfCurrentContent()
+        currentRequest = request
         delegate.setMediaItem(request.toMediaItem(), request.resolvedStartPositionMs())
+    }
+
+    /**
+     * What this player is doing, as a value that outlives it — the answer to a configuration change.
+     *
+     * Take it while the player is still alive, before [release], and pour it into the player that
+     * replaces it with [restoreSnapshot]. [PlaybackSnapshot] documents what travels and what does
+     * not, and carries the `onSaveInstanceState` shape of it.
+     *
+     * The snapshot names what is playing only if this player can name it: an item loaded through
+     * [Player.setMediaItem] rather than [setMediaRequest] has no content identity, and one loaded
+     * through [setMediaRequest] and then replaced by a raw `MediaItem` would leave the remembered
+     * request describing something that is no longer loaded. Both are ruled out by checking the
+     * request against the engine's current item rather than by trusting the bookkeeping.
+     */
+    public fun saveSnapshot(): PlaybackSnapshot {
+        val request = currentRequest?.takeIf { it.contentId == delegate.currentMediaItem?.mediaId }
+        val positionMs =
+            if (request == null) C.TIME_UNSET else positionOfCurrentContent()
+
+        return PlaybackSnapshot(
+            request = request,
+            positionMs = positionMs,
+            playWhenReady = delegate.playWhenReady,
+            // The current content's own position is folded in, so that the memory a restored player
+            // starts with is complete: without it, restoring and then switching away and back would
+            // resume the one thing the viewer was actually watching from the beginning.
+            rememberedPositions = buildMap {
+                putAll(lastKnownPositions)
+                if (request != null) put(request.contentId, positionMs)
+            },
+        )
+    }
+
+    /**
+     * Puts this player back where [snapshot] left off: the content, the position within it, the
+     * intent to play, and the resume positions the saved player had accumulated.
+     *
+     * Like [setMediaRequest], this loads rather than prepares — call [prepare] afterwards, which is
+     * also where an Activity being recreated would call it anyway. Intended for a freshly built
+     * player; restoring into one that is already playing replaces what it is playing.
+     *
+     * A snapshot with no [PlaybackSnapshot.request] restores the positions and the intent and leaves
+     * the current content alone, which is the honest answer for a player whose content had no
+     * identity to save. See [PlaybackSnapshot].
+     */
+    public fun restoreSnapshot(snapshot: PlaybackSnapshot) {
+        // Ahead of the media item, so that the restored memory is in place before anything can read
+        // it, and least-recently-used order is inherited from the order they were saved in.
+        lastKnownPositions.putAll(snapshot.rememberedPositions)
+
+        snapshot.request?.let { request ->
+            currentRequest = request
+            delegate.setMediaItem(request.toMediaItem(), snapshot.positionMs)
+        }
+        delegate.playWhenReady = snapshot.playWhenReady
     }
 
     /**
@@ -170,9 +242,18 @@ public class SuperPlayer private constructor(
         val contentId = delegate.currentMediaItem?.mediaId ?: return
         if (contentId == MediaItem.DEFAULT_MEDIA_ID) return
 
-        lastKnownPositions[contentId] =
-            if (delegate.playbackState == Player.STATE_ENDED) 0L else delegate.contentPosition
+        lastKnownPositions[contentId] = positionOfCurrentContent()
     }
+
+    /**
+     * Where the currently-playing content has got to, as a resume position.
+     *
+     * Content that has ended reports the beginning: see
+     * [MediaRequest.StartPosition.ResumeFromLastKnown] for why resuming to the end is nobody's
+     * intent.
+     */
+    private fun positionOfCurrentContent(): Long =
+        if (delegate.playbackState == Player.STATE_ENDED) 0L else delegate.contentPosition
 
     /**
      * The start position in the form [Player.setMediaItem] takes: milliseconds, or [C.TIME_UNSET]
@@ -209,6 +290,7 @@ public class SuperPlayer private constructor(
         delegate.release()
         synchronized(wrappedListeners) { wrappedListeners.clear() }
         lastKnownPositions.clear()
+        currentRequest = null
     }
 
     /**
@@ -277,6 +359,9 @@ public class SuperPlayer private constructor(
             // be read and set on a built engine.
             val engineBuilder = ExoPlayer.Builder(context)
                 .setLoadControl(decision.buffer.toLoadControl())
+                // Audio focus, becoming-noisy and the wake locks: platform rules rather than
+                // policy, which is why they are not a profile's to decide. See LifecycleBinding.kt.
+                .withLifecycleCorrectness()
             // After the profile, so that a test's engine configuration wins over it. Nothing else
             // reaches this seam, and a test that needs a load control of its own is testing the
             // engine rather than the policy.

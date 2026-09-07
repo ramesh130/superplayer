@@ -152,6 +152,49 @@ require a minimum Java version. A daemon started on a newer JDK — Android Stud
 — will happily run configurations that then fail in CI. Check with `./gradlew --version` when a
 test passes locally and fails there.
 
+### Running the demo on an emulator
+
+Some claims cannot be checked by any test here: `docs/testing.md` bars the network, so whether a
+change still plays real HLS and DASH over a real CDN is a question only the demo on a device answers.
+There is an AVD kept for it — `superplayer_verify_36`, API 36 — alongside whatever Android Studio has
+created (`emulator -list-avds`).
+
+```bash
+emulator -avd superplayer_verify_36 -no-snapshot-load -no-boot-anim &
+until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 ]; do sleep 5; done
+./gradlew publishToMavenLocal && (cd demo && ./gradlew assembleDebug)
+adb install -r -t demo/build/outputs/apk/debug/superplayer-demo-debug.apk
+adb shell am start -n com.superplayer.demo/.MainActivity
+```
+
+Things that cost time the first time round:
+
+- **The APK is `superplayer-demo-debug.apk`**, after the module name, not `demo-debug.apk` after the
+  directory.
+- **`adb devices` reports the emulator `offline` for a while after it appears.** Waiting on
+  `sys.boot_completed` rather than on the device listing is what makes the install reliable.
+- **The first launch raises the notification-permission dialog over the player surface.** A
+  screenshot taken before it is dismissed shows a dialog and a black rectangle, which looks exactly
+  like a playback failure and is not one. Dismiss it, then capture.
+- **A screenshot is weak evidence on its own** — it cannot tell a rendered frame from a stalled one.
+  The demo publishes a `PlaybackSession`, so the platform logs the state transitions, and a
+  *position that advances between two of them* is the thing worth asserting on:
+
+  ```bash
+  adb logcat -c                       # before launching, so the window below is this run's
+  adb logcat -d -t 2000 | grep -o 'state=PLAYING(3), position=[0-9]*'
+  ```
+
+  Bound it with `-t`. An unbounded `adb logcat -d` against an emulator that has been up for a while
+  dumps the whole buffer and can take minutes, which reads as a hang rather than as a slow command.
+
+Re-run `publishToMavenLocal` and reinstall after any library change: the demo resolves SuperPlayer
+from Maven local, so an APK built against a stale artifact will happily test the previous version.
+
+The emulator is disposable and does exit on its own — a crash, a host sleep, an `adb` client that
+takes it down with it. If `adb devices` comes back empty mid-session, boot it again and reinstall;
+nothing about the verification depends on the instance surviving.
+
 ## Binding rules
 
 Style preferences these are not. A change violating one is not accepted, whatever its merit.

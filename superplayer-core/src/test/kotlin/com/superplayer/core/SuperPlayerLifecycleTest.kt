@@ -7,6 +7,7 @@ import android.content.Intent
 import android.media.AudioManager
 import androidx.media3.common.Player
 import androidx.media3.test.utils.FakeDataSet
+import androidx.media3.test.utils.robolectric.RobolectricUtil
 import androidx.media3.test.utils.robolectric.ShadowMediaCodecConfig
 import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
 import androidx.test.core.app.ApplicationProvider
@@ -71,6 +72,24 @@ class SuperPlayerLifecycleTest {
     private fun settle() = harness.settle(player)
 
     /**
+     * Waits for the engine's wake lock to reach [held], failing with a timeout if it never does.
+     *
+     * `isHeld` is not a value a test may sample. Media3 takes and releases the lock on the playback
+     * thread, one post behind the state change that caused it, so reading it straight after the
+     * command that should have changed it is answering the previous question — which passes on an
+     * idle laptop and fails on a loaded CI runner. It did exactly that.
+     *
+     * The wait covers the lock's existence too: it is created lazily, on the same thread, so a null
+     * here means "not yet" rather than "never". [RobolectricUtil.runMainLooperUntil] is Media3's own
+     * helper and the same mechanism [TestPlayerRunHelper] waits with — a run either reaches the
+     * awaited state or fails naming what it was waiting for, which is what `docs/testing.md` asks
+     * of anything asynchronous.
+     */
+    private fun awaitWakeLock(held: Boolean) {
+        RobolectricUtil.runMainLooperUntil { ShadowPowerManager.getLatestWakeLock()?.isHeld == held }
+    }
+
+    /**
      * The focus listener the engine registered, invoked as the platform would invoke it.
      *
      * Robolectric records focus requests but does not act on them, so a test that wants to know what
@@ -96,14 +115,13 @@ class SuperPlayerLifecycleTest {
         assertThat(request.durationHint).isEqualTo(AudioManager.AUDIOFOCUS_GAIN)
         assertThat(shadowOf(audioManager).lastAbandonedAudioFocusRequest).isNull()
 
-        val wakeLock = checkNotNull(ShadowPowerManager.getLatestWakeLock())
         player.stop()
         settle()
 
         assertThat(shadowOf(audioManager).lastAbandonedAudioFocusRequest).isNotNull()
         // Stopping is not pausing: the engine goes idle, and everything it was holding on the
         // platform's behalf goes with it.
-        assertThat(wakeLock.isHeld).isFalse()
+        awaitWakeLock(held = false)
     }
 
     @Test
@@ -176,10 +194,7 @@ class SuperPlayerLifecycleTest {
     fun aWakeLockIsHeldWhilePlayingAndReleasedWhenPaused() {
         playUntilReady()
 
-        val wakeLock = checkNotNull(ShadowPowerManager.getLatestWakeLock()) {
-            "The engine never took a wake lock"
-        }
-        assertThat(wakeLock.isHeld).isTrue()
+        awaitWakeLock(held = true)
 
         player.pause()
         settle()
@@ -187,11 +202,11 @@ class SuperPlayerLifecycleTest {
         // A paused player needs neither the CPU nor the radio, and one that keeps the device awake
         // anyway is a battery complaint that never names the app causing it. The buffering half of
         // the same rule is [aWakeLockIsHeldWhileBufferingTowardsPlaybackButNotWhilePausedInIt].
-        assertThat(wakeLock.isHeld).isFalse()
+        awaitWakeLock(held = false)
 
         player.play()
         settle()
-        assertThat(wakeLock.isHeld).isTrue()
+        awaitWakeLock(held = true)
     }
 
     @Test
@@ -221,11 +236,11 @@ class SuperPlayerLifecycleTest {
         // precisely in order to end, so releasing the lock here would let the device suspend inside
         // a stall it would then never leave. "Genuinely playing" is the intent to play plus a player
         // that is not idle, which is Media3's own rule.
-        val wakeLock = checkNotNull(ShadowPowerManager.getLatestWakeLock()) {
-            "The engine never took a wake lock"
-        }
+        awaitWakeLock(held = true)
+        // Asserted *after* the wait rather than before it: the wait is what makes the lock's state
+        // readable, and the point is that the player was still buffering when it became readable.
+        // The loader is blocked, so nothing can have moved it on in the meantime.
         assertThat(player.playbackState).isEqualTo(Player.STATE_BUFFERING)
-        assertThat(wakeLock.isHeld).isTrue()
 
         player.pause()
         harness.settle(player)
@@ -233,8 +248,8 @@ class SuperPlayerLifecycleTest {
         // The other half of the same rule, and what keeps the first half from meaning "always":
         // buffering with no intent to play holds nothing. Still BUFFERING, so the difference is the
         // intent rather than the state.
+        awaitWakeLock(held = false)
         assertThat(player.playbackState).isEqualTo(Player.STATE_BUFFERING)
-        assertThat(wakeLock.isHeld).isFalse()
 
         // Letting the stream go proves the stall was this test's doing rather than a broken stream —
         // without it, every assertion above would pass just as happily against a player that could
@@ -243,13 +258,13 @@ class SuperPlayerLifecycleTest {
         servingTheFirstSegment.countDown()
         TestPlayerRunHelper.advance(player).untilState(Player.STATE_READY)
 
-        assertThat(wakeLock.isHeld).isTrue()
+        awaitWakeLock(held = true)
     }
 
     @Test
     fun releasingThePlayerFreesTheLockAndTheFocusItHeld() {
         playUntilReady()
-        val wakeLock = checkNotNull(ShadowPowerManager.getLatestWakeLock())
+        awaitWakeLock(held = true)
 
         player.release()
         settle()
@@ -258,7 +273,7 @@ class SuperPlayerLifecycleTest {
         // playing, the device may sleep, and another app may have the audio.
         assertThat(player.playbackState).isEqualTo(Player.STATE_IDLE)
         assertThat(player.isPlaying).isFalse()
-        assertThat(wakeLock.isHeld).isFalse()
+        awaitWakeLock(held = false)
         assertThat(shadowOf(audioManager).lastAbandonedAudioFocusRequest).isNotNull()
     }
 

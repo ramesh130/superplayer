@@ -133,6 +133,18 @@ Tests must not sleep, poll a wall clock, or depend on ordering that real threads
 costs no wall-clock time, and a run either reaches the awaited state or fails with a timeout naming
 the state it was waiting for. A flaky test in this repository is a bug in the test.
 
+That rule extends past the player. **Anything the engine changes on another thread must be awaited,
+not sampled** — and a wake lock is the worked example: Media3 takes and releases it on the playback
+thread, one post behind the state change that caused it, so reading `isHeld` straight after the
+command that should have changed it answers the previous question. It passes on an idle laptop and
+fails on a loaded CI runner, which is exactly what it did. `RobolectricUtil.runMainLooperUntil` is
+the tool — Media3's own, and the mechanism `TestPlayerRunHelper` waits with — so the wait either
+succeeds or times out saying what it wanted.
+
+Two checks are worth running on any test that pins asynchronous behaviour, and both were run on the
+wake-lock ones: mutate the production code and confirm the test fails, and run the suite under heavy
+CPU contention to see whether the timing holds.
+
 ## What is not covered here
 
 Instrumented tests on real devices, the fault-injection and network-shaping harness, and the golden

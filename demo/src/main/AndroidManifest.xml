@@ -3,6 +3,18 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Background playback. The first two let the playback service run in the foreground with the
+         `mediaPlayback` type; the third lets its notification actually appear, and from API 33 it is
+         a runtime permission the app has to ask for as well (see MainActivity).
+
+         These are the app's rather than the library's on purpose. `FOREGROUND_SERVICE_MEDIA_PLAYBACK`
+         is a service type an app has to justify to Google Play, and a library that merged it into
+         every consumer's manifest would be making that commitment for apps that never start a
+         service. See PlaybackService's documentation. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:allowBackup="false"
         android:label="@string/app_name"
@@ -15,6 +27,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- The whole of what background playback costs in configuration. `exported` is true because
+             the things that connect to a media session live in other processes: the notification,
+             Android Auto, Assistant, a wearable companion. The intent filter is how they find it. -->
+        <service
+            android:name=".DemoPlaybackService"
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
     </application>
 
 </manifest>

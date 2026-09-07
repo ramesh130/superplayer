@@ -29,8 +29,9 @@ which is the point. `player.exoPlayer` is public, and ADR-0001 rule 2 explains w
 
 The second public type is `MediaRequest`: what to play, as content rather than as a URL. It carries a
 stable `contentId` (not a URL — that is the point, and the `MediaRequest` KDoc says which defects it
-closes), an ordered `sources` list of which **only the first is used** until failover arrives, and a
-`StartPosition` of `Beginning`, `At(ms)` or `ResumeFromLastKnown`. `player.setMediaRequest(request)`
+closes), an ordered `sources` list of which **only the first is used** until failover arrives, a
+`StartPosition` of `Beginning`, `At(ms)` or `ResumeFromLastKnown`, and the `title`, `subtitle` and
+`artworkUri` that everything outside the app displays. `player.setMediaRequest(request)`
 is the counterpart of `setMediaItem`, and the identity travels as the `MediaItem`'s `mediaId`.
 Resume positions are held in memory for the life of one `SuperPlayer`, bounded to the
 `SuperPlayer.MAX_REMEMBERED_POSITIONS` most recently used ids, and are not persisted; surviving a
@@ -53,6 +54,23 @@ names no content for an item set through `setMediaItem`, which has no identity t
 Android's own lifecycle rules — audio focus, becoming-noisy, wake and Wi-Fi locks — are on for every
 player, switched on in `LifecycleBinding.kt` and fixed rather than per-profile: ADR-0006 rule 1 says
 why they are correctness rather than policy, and therefore not behind `PlaybackPolicy`.
+
+Publishing a player to the rest of Android is `PlaybackSession`, and it is a *choice* rather than a
+default — ADR-0007 explains why a player pool makes "every player gets a session" unexpressible.
+`PlaybackSession.Builder(context, player).build()` wraps a Media3 `MediaSession`; one `release()`
+ends the session and then the player, in the order that matters; `setPlayer` swaps the player behind
+a live session so a profile change does not tear the notification down. `PlaybackService` is the
+`MediaSessionService` on top of it — a consumer subclasses it, overrides `onCreatePlayer` and
+usually `onResolveContent`, and declares the subclass plus the foreground-service permissions in
+their own manifest (rule 4 says why the permissions are not the library's). The notification is
+Media3's own; nothing here builds one.
+
+`MediaRequestResolver` is how content identity survives the boundary. A controller — the
+notification, Android Auto, a watch — speaks Media3's `Player` API only, so it names a `MediaItem`
+carrying a bare media id; the session resolves that id back through the app's catalog into a
+`MediaRequest` and adopts it exactly as `setMediaRequest` would, which is what makes content started
+from a car resume where the phone left it. `SuperPlayerSessionTest` drives a real `MediaController`
+against a real session and is where every claim in this paragraph is checked.
 
 That policy is reached through `PlaybackPolicy`, the boundary ADR-0005 establishes: observed
 `PlaybackConditions` in, a `PlaybackDecision` (a `BufferPolicy` and a `TrackSelectionPolicy`) out,
@@ -130,6 +148,11 @@ Style preferences these are not. A change violating one is not accepted, whateve
   lifecycle rules are on by default and are not a profile's to vary, and state that outlives a
   player travels as a `PlaybackSnapshot` the consumer stores. SuperPlayer chooses no storage on a
   consumer's behalf: no preferences, no database, no file.
+- **[ADR-0007](docs/adr/0007-publish-the-player-as-a-session-and-resolve-content-by-id.md)** — a
+  session is created by a consumer rather than owned by every player; a `PlaybackSession` and its
+  player share one lifetime and one `release()`; content named from outside the app is resolved
+  back into a `MediaRequest` rather than reinterpreted as a URL; and the service's manifest entry
+  and foreground-service permissions are the app's, not the library's.
 - **[`docs/api-surface.md`](docs/api-surface.md)** — every published module's public API is tracked
   in `<module>/api/<module>.api` and validated by `check`. Changing it means running
   `./gradlew updateApiSurface` and committing the diff in the same change. A leaked `@UnstableApi`

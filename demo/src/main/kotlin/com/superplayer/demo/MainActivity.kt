@@ -1,9 +1,18 @@
 package com.superplayer.demo
 
+import android.Manifest
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
+import android.os.Build
 import android.os.Bundle
+import android.os.IBinder
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -45,7 +54,6 @@ import androidx.media3.ui.PlayerView
 import com.superplayer.core.MediaRequest
 import com.superplayer.core.PlaybackDecision
 import com.superplayer.core.PlaybackProfile
-import com.superplayer.core.PlaybackSnapshot
 import com.superplayer.core.SuperPlayer
 import com.superplayer.core.TrackSelectionPolicy
 import java.util.Locale
@@ -68,23 +76,27 @@ import java.util.concurrent.TimeUnit
  * app that supports both is not an app that has two playback paths in it.
  *
  * The second picker is the policy one. A [PlaybackProfile] is chosen when a player is *built*, so
- * switching it here builds a new player — and the app hands the outgoing player's state to the
- * incoming one as a [PlaybackSnapshot], which is what a consumer has to do for anything that must
- * outlive one player. The profile's effect is on screen twice over: as the numbers it decided, read
- * back off the player, and as the picture itself, since data-saver caps what track selection may
- * choose.
+ * switching it here builds a new player — behind the same session, so the notification and every
+ * external controller survive the switch, and carrying the outgoing player's state across as a
+ * `PlaybackSnapshot`. That happens in [DemoPlaybackService], which is where the player lives. The
+ * profile's effect is on screen twice over: as the numbers it decided, read back off the player, and
+ * as the picture itself, since data-saver caps what track selection may choose.
  *
  * The third claim is resume. Every request asks for
  * [MediaRequest.StartPosition.ResumeFromLastKnown], so switching away from a stream and back returns
  * to where it was left — with no seek-on-ready listener, no position bookkeeping, and no `onReady`
  * callback anywhere in this file. Watch a minute of one, switch, switch back.
  *
- * The fourth is that a configuration change is not a restart. One `Bundle`, saved when the player is
- * released and poured into the one that replaces it, carries the position, the intent to play and
- * every resume position the session had accumulated. Turn the device sideways mid-stream: the
- * picture continues, and a stream watched before the rotation still resumes after it. Note the size
- * of the code that does it — two lines — and note that pausing before rotating leaves it paused,
- * because what is restored is the viewer's intent rather than the Activity's.
+ * The fourth is that playback outlives the screen. The player is owned by [DemoPlaybackService], a
+ * `PlaybackService`, so press home mid-stream and the audio keeps going with a notification whose
+ * play, pause and seek controls work — and which says what is playing, because a `MediaRequest`
+ * carries that. Come back and the picture is where the sound got to. A configuration change is the
+ * same story with nothing to save: rotating the device does not touch the service, so there is no
+ * snapshot in this file at all any more.
+ *
+ * What this Activity does *not* do is worth as much as what it does. It creates no `MediaSession`,
+ * builds no notification, creates no channel, calls no `startForeground`, and asks for no audio
+ * focus. Six lines of binding is the whole of the integration.
  */
 class MainActivity : ComponentActivity() {
 
@@ -103,8 +115,9 @@ class MainActivity : ComponentActivity() {
 /**
  * The whole app: two pickers, two status lines, and a playback surface.
  *
- * There is no `ViewModel` and no state holder class. What the screen remembers is two enum values
- * and one `Bundle` it carries between players; inventing a layer to hold that would say something
+ * There is no `ViewModel` and no state holder class. What the screen remembers is two enum values;
+ * the playback state that used to be remembered here now belongs to the service, which outlives
+ * every rotation this screen can produce. Inventing a layer to hold two enums would say something
  * about SuperPlayer that is not true.
  */
 @Composable
@@ -118,75 +131,95 @@ private fun DemoApp() {
     var selectedProfile by rememberSaveable(stateSaver = PlaybackProfileSaver) {
         mutableStateOf(PlaybackProfile.VIDEO_ON_DEMAND)
     }
+    var service by remember { mutableStateOf<DemoPlaybackService?>(null) }
     var player by remember { mutableStateOf<SuperPlayer?>(null) }
     var status by remember { mutableStateOf<Status?>(null) }
-    // What the player that is about to be released was doing, as the `Bundle` a [PlaybackSnapshot]
-    // hands over. Two different things release a player here — picking a profile, and turning the
-    // device — and `rememberSaveable` is what makes one value serve both: an ordinary `remember`
-    // covers the rebuild but not the rotation.
-    var savedPlayback by rememberSaveable { mutableStateOf<Bundle?>(null) }
+
+    // Without this the service runs, plays, and shows nobody a notification — so a viewer who
+    // pressed home has audio they cannot stop from anywhere but the app. Asked for on every start
+    // because the system, not this code, decides whether to show the dialog again.
+    RequestNotificationPermission()
 
     // The surface is remembered here, not created inside [PlayerSurface], because attaching and
     // detaching the player has to happen on the *lifecycle's* schedule and not on a recomposition's.
     // See the release ordering below.
     val playerView = remember { PlayerView(context).apply { showBufferingSpinner() } }
 
-    // Acquire on the activity's START and release on its STOP — not on composition. From API 24
-    // onwards an activity can be visible while not resumed (multi-window), so a resume-scoped
-    // lifecycle would tear playback down while the user can still see it. `DisposableEffect` is not
-    // an equivalent either: it is scoped to the composition, which outlives a stop.
-    // ref: https://developer.android.com/media/media3/exoplayer/hello-world#a-note-on-releasing
-    // Keyed on the profile as well as on the lifecycle, because a profile is chosen when a player is
-    // built and cannot be changed afterwards — half of what it decides is handed to the engine as it
-    // is constructed. So picking a profile releases this player and builds the next one, which is
-    // exactly what an app with a data-saver switch in its settings has to do.
-    LifecycleStartEffect(selectedProfile) {
-        val superPlayer = SuperPlayer.Builder(context)
-            .setProfile(selectedProfile)
-            .build()
-        // Everything the outgoing player knew, in one call: where it was, whether it was playing,
-        // and the position of every stream this session had already watched. With nothing saved yet
-        // — a cold start — the app asks for playback itself.
-        val snapshot = savedPlayback?.let { PlaybackSnapshot.fromBundle(it) }
-        if (snapshot != null) {
-            superPlayer.restoreSnapshot(snapshot)
-        } else {
-            superPlayer.playWhenReady = true
+    // Bind on the activity's START and unbind on its STOP — not on composition. From API 24 onwards
+    // an activity can be visible while not resumed (multi-window), so a resume-scoped lifecycle
+    // would tear the connection down while the user can still see the picture. `DisposableEffect` is
+    // not an equivalent either: it is scoped to the composition, which outlives a stop.
+    //
+    // Keyed on nothing, unlike the version of this file that owned the player: the connection has no
+    // reason to be rebuilt for a profile change, because the player being replaced is on the other
+    // side of it. `BIND_AUTO_CREATE` starts the service the first time; after that the service's own
+    // foreground notification is what keeps it alive while this Activity is gone, which is the whole
+    // mechanism behind background playback.
+    // ref: https://developer.android.com/media/media3/session/background-playback
+    LifecycleStartEffect(Unit) {
+        val connection = object : ServiceConnection {
+            override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+                service = (binder as DemoPlaybackService.LocalBinder).service
+            }
+
+            override fun onServiceDisconnected(name: ComponentName?) {
+                // Only reached if the service process dies, which for a same-process bind means the
+                // app is going down with it. Cleared anyway so nothing here holds a dead player.
+                service = null
+                player = null
+            }
         }
-        // No adapter, no wrapper, no `asMedia3Player()`: SuperPlayer *is* a `Player`, so Media3's
-        // own view takes it as it is. This is the assignment the whole facade exists to make
-        // ordinary, and Compose does not change it.
-        playerView.player = superPlayer
-        player = superPlayer
+        context.bindService(
+            Intent(context, DemoPlaybackService::class.java)
+                .setAction(DemoPlaybackService.ACTION_BIND_LOCAL),
+            connection,
+            Context.BIND_AUTO_CREATE,
+        )
 
         onStopOrDispose {
-            // What has to outlive this player. A SuperPlayer remembers positions for its own
-            // lifetime and deliberately does not persist them, so choosing where the memory is kept
-            // is the consumer's job — and this is the whole of that job: one `Bundle`, held wherever
-            // the app already holds state that survives a configuration change.
-            savedPlayback = superPlayer.saveSnapshot().toBundle()
-
-            // Detach before releasing, and do it here rather than by writing state that some later
-            // recomposition would act on. While the window is stopped nothing recomposes, so a
-            // state write would leave the view holding a released player until the next start.
+            // Detached, not released. The player belongs to the service and carries on playing —
+            // that is the point — so all that ends here is this screen's view of it. Done here
+            // rather than by writing state a later recomposition would act on: while the window is
+            // stopped nothing recomposes, so the view would keep the player until the next start.
             playerView.player = null
             player = null
-            superPlayer.release()
+            service = null
+            context.unbindService(connection)
         }
     }
 
-    // Loading is a function of which player exists and which stream is selected, so a newly
-    // acquired player and a newly picked stream take the same one path. Note what the key list
-    // means: `selectedStream` changing does *not* re-run the effect above, so the player — and the
-    // surface it is attached to — survives both the protocol change and the resume.
+    // The profile picker, applied to whichever player the service currently has. A profile is fixed
+    // when a player is built, so switching one builds another — behind the same session, so the
+    // notification does not blink and no connected controller notices. The service does that work;
+    // this line is the whole of what the UI spends on it.
+    LaunchedEffect(service, selectedProfile) {
+        player = service?.usingProfile(selectedProfile)
+    }
+
+    // No adapter, no wrapper, no `asMedia3Player()`: SuperPlayer *is* a `Player`, so Media3's own
+    // view takes it as it is. This is the assignment the whole facade exists to make ordinary, and
+    // neither Compose nor a service changes it.
+    LaunchedEffect(player) {
+        playerView.player = player
+    }
+
+    // Loading is a function of which player exists and which stream is selected, so a newly bound
+    // service and a newly picked stream take the same one path.
     LaunchedEffect(player, selectedStream) {
         val current = player ?: return@LaunchedEffect
+        val boundService = service ?: return@LaunchedEffect
 
-        // One start position, for every reason this effect runs: a newly picked stream, a rebuilt
-        // player after a profile switch, and a rotation. There is no special case for the player
-        // that has just been restored, because a restored player is not a player with no memory —
-        // the snapshot brought the memory with it, so asking it to resume is enough.
-        current.load(selectedStream, MediaRequest.StartPosition.ResumeFromLastKnown)
+        // Not reloaded if it is already what is playing. That case is the one background playback
+        // creates: coming back to the app finds the service still playing the selected stream, and
+        // re-requesting it would stall a stream that never stopped. Every other route through here
+        // — a picked stream, a rebuilt player after a profile switch — is a genuine load.
+        if (current.currentMediaItem?.mediaId != selectedStream.contentId) {
+            // The same description the notification and a car head unit get, built once in the
+            // service. Two descriptions of one stream is how a notification ends up disagreeing
+            // with the screen.
+            current.setMediaRequest(boundService.requestFor(selectedStream))
+            current.prepare()
+        }
         // Where the request landed, read straight off the player. Media3 applies a new item's start
         // position to the reported state at once, without waiting for the content to load.
         status = Status(selectedStream, startedAtMs = current.currentPosition)
@@ -389,8 +422,11 @@ private fun PlayerSurface(playerView: PlayerView, modifier: Modifier = Modifier)
  * `PlayerView.setShowBuffering` is Media3's own `@UnstableApi`, and this one-line function exists so
  * that the opt-in it needs covers nothing else. That matters: the demo is the only place
  * `UnsafeOptInUsageError` is left on, so an opt-in appearing here has to stay attributable to
- * Media3. Every SuperPlayer call in this file — the builder, `setMediaRequest`, `prepare`, and the
- * `playerView.player = superPlayer` assignment — is outside this function and still checked.
+ * Media3. Every SuperPlayer call in this app — the builder and `PlaybackService` subclass next door,
+ * `setMediaRequest`, `prepare`, and the `playerView.player = player` assignment — is outside this
+ * function and still checked. That the session work added no second opt-in is the point: a
+ * `MediaSession`, a `SessionToken` and `MediaSessionService` are all stable Media3 API, so nothing
+ * SuperPlayer publishes from them needs one.
  */
 @OptIn(markerClass = [UnstableApi::class])
 private fun PlayerView.showBufferingSpinner() {
@@ -418,19 +454,27 @@ private val PlaybackProfile.labelRes: Int
     }
 
 /**
- * The whole of what protocol support, profiles and resume cost a consumer: a request and a
- * `prepare`. There is no branch on protocol here, and nowhere else in this app that one could hide —
- * and note that nothing about the profile appears at this call site either. Policy was chosen once,
- * when the player was built.
+ * Asks for `POST_NOTIFICATIONS`, which is what makes the playback notification appear at all.
+ *
+ * The library cannot do this: a runtime permission needs an Activity, and a `PlaybackService` is not
+ * one. It matters more than a permission prompt usually does — without it the service still plays,
+ * still holds the audio, and offers a viewer who has left the app no way to stop it except by coming
+ * back, which is the shape of a one-star review.
+ *
+ * Below API 33 the permission does not exist and the notification appears regardless.
+ *
+ * ref: https://developer.android.com/develop/ui/views/notifications/notification-permission
  */
-private fun SuperPlayer.load(stream: DemoStream, startPosition: MediaRequest.StartPosition) {
-    setMediaRequest(
-        MediaRequest.Builder(stream.contentId)
-            .addSource(stream.uri)
-            .setStartPosition(startPosition)
-            .build(),
-    )
-    prepare()
+@Composable
+private fun RequestNotificationPermission() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+
+    // The result is deliberately ignored. There is nothing useful to do with a refusal that this
+    // app is entitled to do — playback is what the viewer asked for, and nagging is not an answer.
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { }
+    LaunchedEffect(Unit) { launcher.launch(Manifest.permission.POST_NOTIFICATIONS) }
 }
 
 private fun format(positionMs: Long): String {

@@ -159,6 +159,12 @@ public class PlaybackSnapshot internal constructor(
 private fun MediaRequest.toBundle(): Bundle = Bundle().apply {
     putString(KEY_CONTENT_ID, contentId)
     putStringArrayList(KEY_SOURCES, ArrayList(sources.map { it.toString() }))
+    // The display fields travel too, because what a restored player publishes to a session has to
+    // keep saying what is playing. A rotation that blanked the notification's title would be a
+    // defect nobody sees while looking at the screen the rotation happened on.
+    putString(KEY_TITLE, title)
+    putString(KEY_SUBTITLE, subtitle)
+    putString(KEY_ARTWORK_URI, artworkUri?.toString())
     when (val position = startPosition) {
         is MediaRequest.StartPosition.Beginning -> putInt(KEY_START_KIND, START_BEGINNING)
         is MediaRequest.StartPosition.ResumeFromLastKnown ->
@@ -196,10 +202,16 @@ private fun Bundle.toMediaRequest(): MediaRequest? {
     return MediaRequest.Builder(contentId)
         .apply { sources.forEach { addSource(Uri.parse(it)) } }
         .setStartPosition(startPosition)
+        .setTitle(getString(KEY_TITLE))
+        .setSubtitle(getString(KEY_SUBTITLE))
+        .setArtworkUri(getString(KEY_ARTWORK_URI)?.let(Uri::parse))
         .build()
 }
 
 private const val KEY_CONTENT_ID = "contentId"
+private const val KEY_TITLE = "title"
+private const val KEY_SUBTITLE = "subtitle"
+private const val KEY_ARTWORK_URI = "artworkUri"
 private const val KEY_SOURCES = "sources"
 private const val KEY_START_KIND = "startKind"
 private const val KEY_START_POSITION_MS = "startPositionMs"

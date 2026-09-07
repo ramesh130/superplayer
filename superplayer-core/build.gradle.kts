@@ -9,6 +9,11 @@ plugins {
 dependencies {
     api(libs.media3.common)
     api(libs.media3.exoplayer)
+    // `api`, not `implementation`: `PlaybackSession` hands back Media3's own `SessionToken`, and
+    // a consumer's Activity needs `MediaController` to connect to what `PlaybackService` publishes.
+    // Both are types from this artifact, so a consumer that cannot resolve it cannot use the
+    // session half of the library at all.
+    api(libs.media3.session)
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.exoplayer.dash)
     implementation(libs.media3.datasource)

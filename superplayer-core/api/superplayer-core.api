@@ -20,10 +20,13 @@ public final class com/superplayer/core/BufferPolicy {
 }
 
 public final class com/superplayer/core/MediaRequest {
-	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;Lcom/superplayer/core/MediaRequest$StartPosition;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;Lcom/superplayer/core/MediaRequest$StartPosition;Ljava/lang/String;Ljava/lang/String;Landroid/net/Uri;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getArtworkUri ()Landroid/net/Uri;
 	public final fun getContentId ()Ljava/lang/String;
 	public final fun getSources ()Ljava/util/List;
 	public final fun getStartPosition ()Lcom/superplayer/core/MediaRequest$StartPosition;
+	public final fun getSubtitle ()Ljava/lang/String;
+	public final fun getTitle ()Ljava/lang/String;
 }
 
 public final class com/superplayer/core/MediaRequest$Builder {
@@ -31,7 +34,11 @@ public final class com/superplayer/core/MediaRequest$Builder {
 	public final fun addSource (Landroid/net/Uri;)Lcom/superplayer/core/MediaRequest$Builder;
 	public final fun addSource (Ljava/lang/String;)Lcom/superplayer/core/MediaRequest$Builder;
 	public final fun build ()Lcom/superplayer/core/MediaRequest;
+	public final fun setArtworkUri (Landroid/net/Uri;)Lcom/superplayer/core/MediaRequest$Builder;
+	public final fun setArtworkUri (Ljava/lang/String;)Lcom/superplayer/core/MediaRequest$Builder;
 	public final fun setStartPosition (Lcom/superplayer/core/MediaRequest$StartPosition;)Lcom/superplayer/core/MediaRequest$Builder;
+	public final fun setSubtitle (Ljava/lang/String;)Lcom/superplayer/core/MediaRequest$Builder;
+	public final fun setTitle (Ljava/lang/String;)Lcom/superplayer/core/MediaRequest$Builder;
 }
 
 public abstract class com/superplayer/core/MediaRequest$StartPosition {
@@ -60,6 +67,10 @@ public final class com/superplayer/core/MediaRequest$StartPosition$ResumeFromLas
 	public fun equals (Ljava/lang/Object;)Z
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class com/superplayer/core/MediaRequestResolver {
+	public abstract fun resolve (Ljava/lang/String;)Lcom/superplayer/core/MediaRequest;
 }
 
 public final class com/superplayer/core/PlaybackConditions {
@@ -96,6 +107,33 @@ public final class com/superplayer/core/PlaybackProfile : java/lang/Enum {
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/core/PlaybackProfile;
 	public static fun values ()[Lcom/superplayer/core/PlaybackProfile;
+}
+
+public abstract class com/superplayer/core/PlaybackService : androidx/media3/session/MediaSessionService {
+	public fun <init> ()V
+	protected final fun getPlaybackSession ()Lcom/superplayer/core/PlaybackSession;
+	public fun onCreate ()V
+	protected abstract fun onCreatePlayer ()Lcom/superplayer/core/SuperPlayer;
+	protected fun onCreateSession (Lcom/superplayer/core/SuperPlayer;)Lcom/superplayer/core/PlaybackSession;
+	public fun onDestroy ()V
+	public fun onGetSession (Landroidx/media3/session/MediaSession$ControllerInfo;)Landroidx/media3/session/MediaSession;
+	protected fun onResolveContent (Ljava/lang/String;)Lcom/superplayer/core/MediaRequest;
+}
+
+public final class com/superplayer/core/PlaybackSession {
+	public synthetic fun <init> (Landroidx/media3/session/MediaSession;Lcom/superplayer/core/SuperPlayer;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getPlayer ()Lcom/superplayer/core/SuperPlayer;
+	public final fun getToken ()Landroidx/media3/session/SessionToken;
+	public final fun release ()V
+	public final fun setPlayer (Lcom/superplayer/core/SuperPlayer;)V
+}
+
+public final class com/superplayer/core/PlaybackSession$Builder {
+	public fun <init> (Landroid/content/Context;Lcom/superplayer/core/SuperPlayer;)V
+	public final fun build ()Lcom/superplayer/core/PlaybackSession;
+	public final fun setContentResolver (Lcom/superplayer/core/MediaRequestResolver;)Lcom/superplayer/core/PlaybackSession$Builder;
+	public final fun setId (Ljava/lang/String;)Lcom/superplayer/core/PlaybackSession$Builder;
+	public final fun setSessionActivity (Landroid/app/PendingIntent;)Lcom/superplayer/core/PlaybackSession$Builder;
 }
 
 public final class com/superplayer/core/PlaybackSnapshot {

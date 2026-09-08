@@ -26,7 +26,7 @@ scattered across a `LoadControl` built at one call site, `TrackSelectionParamete
 and whatever a listener does to both when the network changes. That scattering is what makes an
 adaptive policy a rewrite rather than an addition, because there is no one place to make adaptive.
 
-The adaptive version is real work, and it is not this phase's. `superplayer-abr` (phase 2) is where
+The adaptive version is real work, and it is not this phase's. `superplayer-abr` (phase 3) is where
 throughput estimation, transport awareness and an `AdaptiveLoadControl` belong, and it is the work
 that will reveal what an adaptive policy actually needs to observe. Designing the input type to a
 policy interface *before* that work exists means guessing at the shape of a public API, and guessing
@@ -77,7 +77,7 @@ the facade's construction path is the only thing that has to learn about it.
 
 **Harder.** There are now two public types (`PlaybackProfile` and the policy boundary) where a
 simpler library would have four builder setters, and the indirection buys nothing measurable in
-phase 1 — its whole value is in phase 2. That is the bet this ADR makes, and it is worth stating as
+phase 1 — its whole value is in phase 3. That is the bet this ADR makes, and it is worth stating as
 a bet rather than as a benefit.
 
 **A standing obligation.** `PlaybackConditions` is public and currently empty of observations: the

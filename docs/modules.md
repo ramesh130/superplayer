@@ -19,17 +19,29 @@ dependency would make the earlier phase un-shippable without the later one.
 | Module | Phase | Purpose | Depends on |
 | --- | --- | --- | --- |
 | `superplayer-core` | 1 | SuperPlayer facade, PlaybackSession, config profiles, player pool | Media3 only |
-| `superplayer-abr` | 2 | AdaptiveLoadControl, NetworkAwareTrackSelection, BandwidthOracle | core |
+| `superplayer-telemetry` | 2 | QoE collector (CTA-2066), CMCD emitter, pluggable sinks | core |
 | `superplayer-testkit` | 2 | Fault injection, network shaping, fake manifests, golden traces | core, Media3 test utils |
-| `superplayer-preload` | 3 | PreloadCoordinator: segment-0 prefetch and decoder warm-up | core |
-| `superplayer-cache` | 3 | Content-keyed CacheDataSource, tiering, eviction policy | core |
-| `superplayer-drm` | 4 | WidevineSessionManager, provisioning, offline licenses, fallback ladder | core |
-| `superplayer-resilience` | 4 | ErrorClassifier, RetryPolicy, FallbackLadder | core |
-| `superplayer-telemetry` | 5 | QoE collector (CTA-2066), CMCD emitter, pluggable sinks | core |
-| `superplayer-offline` | 5 | DownloadManager wrapper, WorkManager constraints, battery policy | core |
-| `superplayer-diagnostics` | 6 | MediaSourceDoctor, session trace bundle, on-device debug HUD | core |
-| `superplayer-tv` | 6 | CTV: display capability, Leanback and Compose-for-TV surfaces | core |
-| `superplayer-ui` | 6 | Optional Compose player surface | core |
+| `superplayer-abr` | 3 | AdaptiveLoadControl, NetworkAwareTrackSelection, BandwidthOracle | core |
+| `superplayer-preload` | 4 | PreloadCoordinator: segment-0 prefetch and decoder warm-up | core |
+| `superplayer-cache` | 4 | Content-keyed CacheDataSource, tiering, eviction policy | core |
+| `superplayer-resilience` | 5 | ErrorClassifier, RetryPolicy, FallbackLadder | core |
+| `superplayer-drm` | 6 | WidevineSessionManager, provisioning, offline licenses, fallback ladder | core |
+| `superplayer-offline` | 7 | DownloadManager wrapper, WorkManager constraints, battery policy | core |
+| `superplayer-tv` | 8 | CTV: display capability, Leanback and Compose-for-TV surfaces | core |
+| `superplayer-diagnostics` | 9 | MediaSourceDoctor, session trace bundle, on-device debug HUD | core |
+| `superplayer-ui` | — † | Optional Compose player surface | core |
+
+**The phase numbers come from [`PRD.md`](../PRD.md) Part 4, and from nowhere else.** That table is
+the roadmap; this one is the roadmap expressed as a dependency constraint. When the two disagree the
+PRD wins, and the fix is to correct this column rather than to reason from it — a stale number here
+does not merely mislead, it changes which dependencies the rule above permits.
+
+† `PRD.md` Part 4 does not schedule `superplayer-ui`. It appears in the module layout of §2.1 and in
+no phase, so it carries no number here rather than an invented one — a number would have to be either
+a schedule the roadmap has not made, or a tie with a module it has no stated relationship to. Both
+halves of the rule above still resolve without one: no module may depend on it, because an unscheduled
+module is not an earlier phase than anything; and it may depend on any scheduled module. The row gains
+a number when the roadmap schedules it.
 
 Only `superplayer-core` is required by a consumer. Every other module is additive: an app depends on
 what it uses and its APK does not grow for features it does not need.

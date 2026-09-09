@@ -1,3 +1,19 @@
+/*
+ * Copyright 2026 The SuperPlayer Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.superplayer.demo
 
 import android.Manifest
@@ -361,6 +377,7 @@ private fun <T> OptionPicker(
 private fun StatusLine(status: Status?) {
     val text = when {
         status == null -> ""
+
         status.startedAtMs <= 0 ->
             stringResource(R.string.status_from_start, stringResource(status.stream.labelRes))
 
@@ -426,7 +443,9 @@ private fun TrackSelectionPolicy.qualityCeiling(): String {
             stringResource(R.string.policy_quality_height_and_bitrate, maxVideoHeightPx, kbps)
 
         cappedHeight -> stringResource(R.string.policy_quality_height, maxVideoHeightPx)
+
         cappedBitrate -> stringResource(R.string.policy_quality_bitrate, kbps)
+
         else -> stringResource(R.string.policy_quality_uncapped)
     }
 }

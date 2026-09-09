@@ -100,8 +100,13 @@ jobs:
         run: ./gradlew test
 
       # `check` runs Android Lint, the repo-wide Media3 version verification, the tracked
-      # public API surface checks, and the build-logic test suite, which is an included build
-      # and therefore invisible to the root build's `test` above.
+      # public API surface checks, the Kotlin format and Apache-2.0 file headers, and the
+      # build-logic test suite, which is an included build and therefore invisible to the root
+      # build's `test` above.
+      #
+      # Spotless is configured by path rather than by project, so this covers the demo's and
+      # build-logic's Kotlin files as well as the library modules'. `./gradlew spotlessApply`
+      # is the local fix.
       #
       # The API surface checks are why there is no separate step for them: `check` is the whole
       # definition of passing, so a contributor running it locally sees exactly what CI sees.
@@ -121,9 +126,12 @@ jobs:
       # only place `UnsafeOptInUsageError` is enabled, which makes this step the proof of
       # ADR-0001 rule 2 from a consumer's side — a leaked @UnstableApi type that the library's
       # own checks somehow missed still fails here, at the call site, where it would hurt.
+      # `spotlessCheck` is here rather than left to the root `check` for the same reason: the
+      # demo applies Spotless itself, so its sources stay covered even when this step is the
+      # only thing running.
       - name: Build and lint the demo against the published artifacts
         working-directory: demo
-        run: ./gradlew assembleDebug lintDebug
+        run: ./gradlew assembleDebug lintDebug spotlessCheck
 
       - name: Upload reports
         if: failure()

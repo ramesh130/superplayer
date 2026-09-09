@@ -1,4 +1,14 @@
+import com.superplayer.build.VerifyLicenseHeader
 import com.superplayer.build.VerifyNoHardcodedMedia3Versions
+
+plugins {
+    // For the lifecycle `check` task alone. This used to be `tasks.register("check")`, which
+    // broke the moment a second plugin wanted the same task: the root build also applies
+    // Spotless, and Spotless brings the base plugin — and its `check` — with it. Applying `base`
+    // here means whichever of the two goes first wins and the other is a no-op, instead of the
+    // second one failing with "a task with that name already exists".
+    base
+}
 
 // Repo-wide verification, applied to the root project only.
 
@@ -16,11 +26,23 @@ val verifyNoHardcodedMedia3Versions =
         stampFile.set(layout.buildDirectory.file("verification/no-hardcoded-media3-versions.txt"))
     }
 
-// So a plain `./gradlew check` at the root runs it.
-tasks.register("check") {
-    group = "verification"
-    description = "Runs repo-wide verification."
+// Spotless stamps `config/license-header.txt` onto every `.kt` file; nothing in Spotless checks
+// that the file names the license this project is under. This does, against `LICENSE` itself, so
+// the header and the license cannot drift apart.
+val verifyLicenseHeader =
+    tasks.register<VerifyLicenseHeader>("verifyLicenseHeader") {
+        group = "verification"
+        description = "Fails if the Spotless license header does not match LICENSE."
+        headerFile.set(layout.projectDirectory.file("config/license-header.txt"))
+        licenseFile.set(layout.projectDirectory.file("LICENSE"))
+        projectRoot.set(layout.projectDirectory)
+        stampFile.set(layout.buildDirectory.file("verification/license-header.txt"))
+    }
+
+// So a plain `./gradlew check` at the root runs them.
+tasks.named("check") {
     dependsOn(verifyNoHardcodedMedia3Versions)
+    dependsOn(verifyLicenseHeader)
 
     // build-logic is an included build, so its tests are invisible to the root build's
     // aggregate tasks. Hooking them in here keeps `./gradlew check` — and therefore CI —

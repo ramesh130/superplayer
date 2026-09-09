@@ -18,6 +18,56 @@ plugins {
     // UI does not compile without it. Its version is the catalog's Kotlin version, because the
     // Compose compiler is released as part of Kotlin.
     alias(libs.plugins.kotlin.compose)
+    // Formatting and Apache-2.0 file headers. See below.
+    alias(libs.plugins.spotless)
+}
+
+// Formatting and license headers for the demo's own sources.
+//
+// The root build's Spotless configuration already reaches these files by path, so
+// `./gradlew spotlessApply` at the root formats them. This second application is what makes the
+// demo enforce the same thing *without* the root build: the demo has its own wrapper, and CI runs
+// `(cd demo && ./gradlew assembleDebug lintDebug spotlessCheck)` with nothing of the root build
+// running.
+//
+// The block below is a copy of the root `build.gradle.kts`, which is where it is explained — the
+// delimiter, the `.editorconfig` reading, and why the copy could not be shared as an applied
+// script. What the two copies read is shared: `config/license-header.txt` and `.editorconfig` are
+// one file each, so the header text and the ktlint rules cannot come to disagree. Only the wiring
+// is written twice.
+val licenseHeaderDelimiter = """(/\*\*|package |@file|import )"""
+
+fun readEditorConfigSettings(editorConfig: File, sections: List<String>): Map<String, String> {
+    val bySection = sections.associateWith { mutableMapOf<String, String>() }
+    var section = ""
+    editorConfig.forEachLine { line ->
+        val text = line.trim()
+        when {
+            text.startsWith("[") -> section = text
+
+            text.isEmpty() || text.startsWith("#") -> Unit
+
+            else -> bySection[section]?.put(
+                text.substringBefore('=').trim(),
+                text.substringAfter('=').trim()
+            )
+        }
+    }
+    return sections.fold(emptyMap()) { merged, name -> merged + bySection.getValue(name) }
+}
+
+val ktlintSettings = readEditorConfigSettings(file("../.editorconfig"), listOf("[*]", "[*.{kt,kts}]"))
+
+spotless {
+    kotlin {
+        target("src/**/*.kt")
+        ktlint(libs.versions.ktlint.get()).editorConfigOverride(ktlintSettings)
+        licenseHeaderFile(file("../config/license-header.txt"), licenseHeaderDelimiter)
+    }
+    kotlinGradle {
+        target("*.gradle.kts")
+        ktlint(libs.versions.ktlint.get()).editorConfigOverride(ktlintSettings)
+    }
 }
 
 extensions.configure<ApplicationExtension> {

@@ -147,22 +147,45 @@ actually settled, rather than up front.
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every push and every pull request: it builds every module,
-runs the unit tests, runs Android Lint and the repo-wide Media3 version verification, publishes to
-the local Maven repository, and builds the demo against those published artifacts. Its result
-appears as a status check on the pull request.
+runs the unit tests, runs Android Lint, the Kotlin format and license headers, and the repo-wide
+Media3 version verification, publishes to the local Maven repository, and builds the demo against
+those published artifacts. Its result appears as a status check on the pull request.
 
 Run the same thing before pushing:
 
 ```
 ./gradlew assemble check
 ./gradlew publishToMavenLocal
-(cd demo && ./gradlew assembleDebug lintDebug)
+(cd demo && ./gradlew assembleDebug lintDebug spotlessCheck)
 ```
 
 `check` is the complete definition of the library's checks — lint, the repo verification, the
-tracked API surface, the module tests, and the `build-logic` test suite (an included build, so a
-plain `./gradlew test` misses it). A new check that can be a Gradle task belongs in `check`, not
-only in the workflow, so local and CI cannot disagree about what passing means.
+tracked API surface, the Kotlin format and Apache-2.0 file headers, the module tests, and the
+`build-logic` test suite (an included build, so a plain `./gradlew test` misses it). A new check
+that can be a Gradle task belongs in `check`, not only in the workflow, so local and CI cannot
+disagree about what passing means.
+
+## Formatting and license headers
+
+Every `.kt` file in this repository carries the Apache-2.0 boilerplate header, and every one is
+formatted by ktlint. Both are applied by Spotless, and both are verified by `check`:
+
+```
+./gradlew spotlessApply
+```
+
+That one command covers all three Gradle builds. Spotless is configured by path rather than by
+project, so the root build reaches `demo/` and `build-logic/` as well. The demo applies Spotless a
+second time over its own sources so that `(cd demo && ./gradlew ...)` enforces the same thing with
+the root build not running — hence the `spotlessCheck` in the command list above.
+
+The rules are in `.editorconfig`, which editors read too. A handful of ktlint rules are switched off
+there, each with a note saying which piece of this codebase it would have rewritten and why that
+piece is deliberate; where a rule and the existing house style disagree, the house style wins.
+
+The header text is `config/license-header.txt`. It is not free-form: `check` runs
+`verifyLicenseHeader`, which compares it against the boilerplate in `LICENSE`'s own appendix, so the
+header and the license cannot drift apart. Changing one means changing the other.
 
 The demo is linted as well as built, and that is not incidental: it is the only place
 `UnsafeOptInUsageError` is enabled, so it is where ADR-0001 rule 2 is proved from a consumer's side

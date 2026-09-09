@@ -69,6 +69,9 @@ files, which this project does not make. No EPL-licensed code ships to consumers
 | `org.jetbrains.kotlinx:binary-compatibility-validator` | Apache-2.0 | `build-logic` |
 | `org.ow2.asm:asm` | BSD-3-Clause | `build-logic` |
 | `io.github.java-diff-utils:java-diff-utils` | Apache-2.0 | transitive, via `binary-compatibility-validator` |
+| `com.diffplug.spotless:spotless-plugin-gradle` | Apache-2.0 | root build, `demo` |
+| `com.pinterest.ktlint:ktlint-rule-engine` | MIT | resolved by Spotless, as the formatting engine |
+| `com.pinterest.ktlint:ktlint-ruleset-standard` | MIT | resolved by Spotless, as the formatting engine |
 
 `binary-compatibility-validator` is depended on as a *library*, not applied as its Gradle plugin:
 `build-logic` calls its signature loader to render each module's tracked public API surface. ASM
@@ -77,6 +80,15 @@ reads Media3's `@UnstableApi` annotations off the pinned compile classpath for t
 
 Neither reaches a published artifact: they are on `build-logic`'s classpath, which is an included
 build that produces convention plugins and nothing consumers resolve.
+
+Spotless applies the Kotlin format and the Apache-2.0 file headers; ktlint is the engine underneath
+it, resolved by Spotless from the version the catalog pins rather than declared as a dependency of
+any module. Both are listed here rather than treated as out of scope: `CLAUDE.md`'s rule is that a
+new dependency arrives with its `THIRD_PARTY.md` row in the same change, and it says *dependency*,
+not *shipped dependency* — the Android Gradle Plugin and Gradle itself are named in the closing
+paragraph below for the same reason. A build-time tool is still third-party code this project runs,
+and "which licenses does this repository pull in" is a question that should be answerable from this
+one file. Neither reaches a published artifact.
 
 The Compose rows are the demo app's alone. No published module depends on Compose: `superplayer-ui`,
 the library's optional Compose surface, is a later phase and still an empty placeholder.

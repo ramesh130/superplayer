@@ -46,6 +46,13 @@ androidxLifecycle = "2.11.0"
 binaryCompatibilityValidator = "0.18.2"
 asm = "9.9"
 
+# --- Build-time only: formatting and licence headers ---
+# Spotless is the Gradle-side driver; ktlint is the engine it runs. ktlint's version is pinned
+# here as well as Spotless's, because Spotless would otherwise choose its own default and a
+# Spotless upgrade would silently reformat the repository.
+spotless = "8.10.2"
+ktlint = "1.8.0"
+
 [libraries]
 # Media3. Every entry resolves `media3` above.
 media3-common = { module = "androidx.media3:media3-common", version.ref = "media3" }
@@ -86,3 +93,6 @@ kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 # The Compose compiler ships with Kotlin, so it resolves the catalog's Kotlin version by
 # definition rather than by convention.
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+# Formatting and Apache-2.0 file headers. Applied by the root build and, separately, by the demo
+# build, so that each of the three Gradle builds is covered. See build.gradle.kts.
+spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }

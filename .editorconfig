@@ -1,0 +1,88 @@
+# Formatting rules for this repository. One file, read by three consumers.
+#
+# There is a single .editorconfig for all three Gradle builds. `demo/` and `build-logic/` are
+# separate builds but they are directories under this one, and .editorconfig resolution walks up
+# the filesystem, so a file in any of the three finds these settings.
+#
+# Editors read it directly. So does ktlint, but only for the violations it reports rather than the
+# ones it fixes — so the root and demo build scripts parse the `[*]` and `[*.{kt,kts}]` sections
+# below and hand them to ktlint through Spotless's `editorConfigOverride` as well, which is the
+# channel that reaches the formatter. Anything ktlint should honour therefore belongs in one of
+# those two sections, spelled exactly as ktlint spells it.
+#
+# `gradle.properties` sets `kotlin.code.style=official`; `ktlint_code_style = intellij_idea` below
+# is that same style expressed to ktlint, so the formatter and the IDE agree.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{kt,kts}]
+ktlint_code_style = intellij_idea
+
+# The rules below are switched off because this codebase deliberately does the thing they forbid.
+# `CONTRIBUTING.md`, under "Formatting and license headers", is where that policy is written down:
+# where a rule and the existing house style disagree, the house style wins and the rule is disabled
+# with a note. Each note here says what the rule would have rewritten and why it is on purpose.
+
+# The prose here is load-bearing — ADR rationale, why a Media3 default was departed from, why a
+# forwarding method is written by hand — and it is laid out to be read. A hard limit would rewrap
+# comment blocks that were wrapped deliberately, and the widest lines in the tree (131 columns, in
+# the demo's FeedScreen) are that way because breaking them reads worse.
+max_line_length = off
+
+# With no line limit, this rule pulls every expression body up onto its declaration line:
+# `internal fun concurrentPlayerCapacityOf(context: Context): Int = minOf(...)...` at 152 columns,
+# and a builder chain re-indented under a signature it no longer fits beside. Its only other
+# settings wrap *every* body, which breaks the one-line `= apply { ... }` accessors in
+# `MediaRequest.Builder` for no gain. Neither says "leave it as written", so the rule is off.
+ktlint_standard_function-signature = disabled
+
+# Trailing commas are the author's call here, not the formatter's. This codebase uses them in most
+# multi-line argument lists but not all, and ktlint offers only the two absolute settings: add one
+# everywhere, or strip one everywhere. Either rewrites lists that already read fine.
+ktlint_standard_trailing-comma-on-call-site = disabled
+ktlint_standard_trailing-comma-on-declaration-site = disabled
+
+# One statement per line, except where the statements are a picture. `SyntheticDashStream`'s
+# `unityMatrix()` writes the ISO/IEC 14496-12 identity transform as three rows of three, which is
+# what makes it recognisable as that matrix; the rule turns it into nine indistinguishable calls.
+ktlint_standard_statement-wrapping = disabled
+
+# Every module carries a `package-info.kt`, named after Java's `package-info.java` because it does
+# the same job: it documents the package and declares nothing. The rule wants a PascalCase file
+# name matching the single top-level declaration, which a file with no declarations cannot have.
+ktlint_standard_filename = disabled
+
+# Those same twelve files trip `standard:no-empty-file` as well — a file whose only content is a
+# `package` line and documentation counts as empty. That rule cannot be switched off from here at
+# all; ktlint reports it whether it is set to `disabled` or to `false`. It is suppressed through
+# Spotless in `build.gradle.kts` instead, for this reason.
+
+# KDoc above a `package` line, or above a file's first declaration, is how this codebase writes
+# down why a file exists: the `package-info.kt` module summaries, and the rationale blocks opening
+# `DeviceCapacity.kt`, `EngineBinding.kt` and `LifecycleBinding.kt`. ktlint calls that a "dangling
+# toplevel KDoc" and would have it removed, taking the documentation this project runs on with it.
+ktlint_standard_kdoc = disabled
+
+# `/* ... */` between elements on one line — a Media3 constant annotated with the unit it is in,
+# an argument annotated with the name of the parameter it fills — is deliberate and reads better
+# inline than on a line of its own.
+ktlint_standard_comment-wrapping = disabled
+
+# Composable functions are PascalCase by the Compose convention, which the demo follows. This is
+# the rule's own exemption rather than switching function naming off, so an ordinary function with
+# a capital letter is still caught.
+ktlint_function_naming_ignore_when_annotated_with = Composable
+
+[*.{md,yml,yaml,toml}]
+indent_size = 2
+
+[*.{bat,cmd}]
+end_of_line = crlf

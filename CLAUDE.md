@@ -125,16 +125,28 @@ where the two disagree `PRD.md` is right.
 ## Commands
 
 ```bash
-./gradlew assemble check          # build, lint, tests, repo verification, tracked API surface
+./gradlew assemble check          # build, lint, tests, repo verification, tracked API surface, format
 ./gradlew updateApiSurface        # regenerate api/<module>.api after a deliberate API change
+./gradlew spotlessApply           # reformat and stamp the Apache-2.0 header on every .kt file
 ./gradlew publishToMavenLocal     # required before the demo will build
-(cd demo && ./gradlew assembleDebug lintDebug)
+(cd demo && ./gradlew assembleDebug lintDebug spotlessCheck)
 ```
 
 `check` is the complete definition of the library's checks. Because `build-logic` is an included
 build, its tasks are invisible to the root build's aggregate tasks — its tests run only because
 `check` depends on them explicitly. A new check that can be a Gradle task belongs in `check`, not
 only in CI (`.github/workflows/ci.yml`), so local and CI agree on what passing means.
+
+`spotlessApply` at the root covers **all three builds**. Spotless is configured by path rather than
+by project, so the root build's `**/*.kt` reaches `demo/` and `build-logic/` too, and one invocation
+formats the repository. The demo applies Spotless a second time over its own sources, which is why
+`spotlessCheck` is in its command line above: the demo has its own wrapper and CI builds it with the
+root build not running at all, so it has to be able to enforce the format by itself.
+
+The rules are ktlint's, and they live in `.editorconfig` — including every rule switched off to
+leave this codebase's style alone, each with the reason. The license header is
+`config/license-header.txt`, and `./gradlew check` verifies through `verifyLicenseHeader` that it
+still says what `LICENSE` says.
 
 The demo build needs the library published first: it consumes
 `com.superplayer:superplayer-core:<version>` rather than `project(":superplayer-core")`, so that an

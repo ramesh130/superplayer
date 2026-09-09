@@ -251,3 +251,32 @@ Issues live in this repo's GitHub Issues, managed via the `gh` CLI. See `docs/ag
 ### Domain docs
 
 Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+### Exploratory search
+
+Broad search — "where is X handled", "what else calls Y", a sweep across modules or naming
+conventions — goes through the `Explore` subagent rather than direct `grep` and `Read` calls. The
+excerpts stay in the subagent's context and only the conclusion comes back, which is what stops a
+long session from carrying every file it ever glanced at. Treat this paragraph as the authorization:
+the default is to ask before spawning an agent, and this file is asking.
+
+Direct tools remain right for a known path, a single file, or a search whose output is already
+small. A subagent starts cold and re-derives context, so it earns its cost on fan-out and loses on
+one grep.
+
+### Bounded reading
+
+A session carries the sum of everything it has looked at, so two habits decide whether a long one
+stays affordable.
+
+**Read slices, not whole files.** `PRD.md` is ~34 KB and `docs/testing.md` ~15 KB — call it 8k and
+4k tokens. Reading either end to end to check one table costs more than the conversation that
+prompted the question. `grep -n` for the heading, then `sed -n '400,430p' PRD.md`, costs a fraction
+of it. Read a file whole when the whole file is the subject: a build script being changed, a source
+file under review. Not to answer a question about one paragraph of it.
+
+**Bound what a command prints.** `git log`, `find`, `grep` across the tree, and Gradle all have
+modes that return thousands of lines nobody reads, and every one of them lands in context in full.
+Pipe through `head`, narrow with `grep -o`, cap with `-t` or `--max-count`. The `adb logcat -t`
+warning under *Running the demo on an emulator* is one instance of this rule; the reason it earns
+its own paragraph there is that an unbounded dump also reads as a hang.

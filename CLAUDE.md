@@ -221,6 +221,13 @@ Style preferences these are not. A change violating one is not accepted, whateve
   player share one lifetime and one `release()`; content named from outside the app is resolved
   back into a `MediaRequest` rather than reinterpreted as a URL; and the service's manifest entry
   and foreground-service permissions are the app's, not the library's.
+- **[ADR-0008](docs/adr/0008-measure-behind-an-engine-agnostic-sink-boundary.md)** — telemetry
+  leaves the library through a sink that names no Media3 type; the sink interface and the event
+  vocabulary are `superplayer-core`'s while the collector is `superplayer-telemetry`'s; delivery is
+  at-most-once, bounded, and lossy under pressure, with every drop counted and reported; a sink is
+  never called on a thread the engine needs; the events are one sealed, versioned hierarchy whose
+  version tracks a metric's *meaning* rather than its shape; and CMCD is a separate seam joined to
+  telemetry by a shared session id.
 - **[`docs/api-surface.md`](docs/api-surface.md)** — every published module's public API is tracked
   in `<module>/api/<module>.api` and validated by `check`. Changing it means running
   `./gradlew updateApiSurface` and committing the diff in the same change. A leaked `@UnstableApi`

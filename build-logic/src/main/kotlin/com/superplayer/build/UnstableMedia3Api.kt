@@ -1,12 +1,28 @@
+/*
+ * Copyright 2026 The SuperPlayer Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.superplayer.build
 
-import java.io.File
-import java.util.jar.JarFile
 import org.objectweb.asm.AnnotationVisitor
 import org.objectweb.asm.ClassReader
 import org.objectweb.asm.ClassVisitor
 import org.objectweb.asm.MethodVisitor
 import org.objectweb.asm.Opcodes
+import java.io.File
+import java.util.jar.JarFile
 
 /**
  * ADR-0001 rule 2, made mechanical: no `@UnstableApi` Media3 type may appear in SuperPlayer's
@@ -157,6 +173,7 @@ internal fun unstableTypeDetector(classpath: Iterable<File>): (String) -> Boolea
 
 private fun File.readClassBytes(entryPath: String): ByteArray? = when {
     isDirectory -> resolve(entryPath).takeIf { it.isFile }?.readBytes()
+
     extension == "jar" || extension == "zip" ->
         JarFile(this).use { jar -> jar.getJarEntry(entryPath)?.let { jar.getInputStream(it).readBytes() } }
 

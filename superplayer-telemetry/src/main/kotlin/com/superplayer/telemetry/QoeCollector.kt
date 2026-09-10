@@ -16,12 +16,21 @@
 
 package com.superplayer.telemetry
 
+import android.os.Handler
 import android.os.SystemClock
+import androidx.media3.common.C
+import androidx.media3.common.Format
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.exoplayer.source.MediaLoadData
+import com.superplayer.core.FailureCategory
+import com.superplayer.core.PlaybackFailure
 import com.superplayer.core.SuperPlayer
 import com.superplayer.core.TelemetryCollector
 import com.superplayer.core.TelemetryEvent
 import com.superplayer.core.TelemetrySink
+import com.superplayer.core.TrackSwitchDirection
 import com.superplayer.core.TtffStartBoundary
 import java.util.UUID
 
@@ -40,14 +49,24 @@ import java.util.UUID
  * translation between the two lives in this one file, the way `EngineBinding.kt` is core's one
  * place for turning a policy decision into engine configuration.
  *
- * ## What it emits today
+ * ## What it emits
  *
- * The session boundary and nothing else: one [TelemetryEvent.SessionStarted] when the player takes
- * content on, one [TelemetryEvent.SessionEnded] when it is released, recycled, or moved to different
- * content. Those two are the seam's proof, not the feature — the CTA-2066 QoE metrics (time to first
- * frame, rebuffer ratio, startup failure, bitrate, dropped frames) are issue #35's definitions and
- * issue #36's computation, and they are derived inside [analyticsListener], which is registered now
- * and deliberately contributes nothing yet.
+ * The whole of `docs/telemetry-schema.md`: the session boundary, the first frame, rebuffers,
+ * startup and mid-stream failures, track switches, seeks, and the three periodic samples.
+ *
+ * **What each number means is that document, not this file.** Every metric there cites CTA-2066,
+ * and every place SuperPlayer's definition departs from the standard says so with the reason. The
+ * comments below say where a value comes from and why it is *not* the obvious Media3 field; the
+ * definition it is serving is written down once, there.
+ *
+ * The dangerous shortcut this class deliberately does not take is `PlaybackStatsListener`. Media3
+ * already computes total rebuffer time, mean bitrate and more, and forwarding those fields under
+ * CTA-2066 names would be the fastest possible implementation and wrong in a way nobody notices for
+ * six months: Media3's boundaries for joining time, for what counts as buffering, and for how a seek
+ * is treated are engine-shaped rather than CTA-2066-shaped, and renaming a field does not convert
+ * it. Where the two agree, Media3's own reporting is used as-is — dropped frames arrive with the
+ * engine's own elapsed interval, and are reported over it. Where they differ, the difference is the
+ * work, and it carries a comment citing both.
  *
  * Session boundaries come from core rather than being inferred here: only core knows which item
  * change carried a [com.superplayer.core.MediaRequest] and which was a raw `setMediaItem`, and only
@@ -113,16 +132,186 @@ public class QoeCollector internal constructor(
     private var declaredIntentMonotonicMs: Long? = null
 
     /**
-     * Media3's own analytics registration, which is where every metric this collector will compute
-     * comes from: the engine reports load, buffer, decoder and renderer events here with the
-     * playback-thread timing intact, which polling a [com.superplayer.core.PlaybackSession] or
-     * wrapping a `Player.Listener` cannot reproduce.
+     * The last playback state Media3 reported, as this collector saw it.
      *
-     * It observes nothing yet. It is registered anyway, in this issue, because *whether a listener
-     * exists at all* is the thing ADR-0008 rule 2 constrains and `SuperPlayerTelemetryTest` asserts:
-     * a player built with no collector must register none. Issue #36 fills the callbacks in.
+     * Held rather than read from the player, because a seek that lands in already-buffered data
+     * produces no state change at all and the collector still has to know whether playback was
+     * running — and because reading the player from a callback is a question about a different
+     * moment than the one the callback is about.
      */
-    private val analyticsListener: AnalyticsListener = object : AnalyticsListener {}
+    private var lastKnownPlaybackState: Int = Player.STATE_IDLE
+
+    /** Posts the periodic samples; see [scheduleSampling] for the cadence and why it is a timer. */
+    private var sampler: Handler? = null
+
+    /**
+     * Media3's own analytics registration, and the source of every metric below.
+     *
+     * The engine reports load, buffer, decoder and renderer events here, which is what
+     * `PRD.md` §3.4 means by "built on `AnalyticsListener`, **not** polling": each number below is
+     * derived from the engine saying what happened, rather than from this class sampling a position
+     * and inferring it. Two implementations of "the same" metric disagree precisely when one of them
+     * is inferring.
+     *
+     * Callbacks arrive on the player's application looper, which is what makes the state below
+     * single-threaded without a lock and makes it legal for [sampleNow] to read the player.
+     */
+    private val analyticsListener: AnalyticsListener = object : AnalyticsListener {
+
+        override fun onRenderedFirstFrame(eventTime: AnalyticsListener.EventTime, output: Any, renderTimeMs: Long) {
+            val session = openSession ?: return
+            // Once per session. Media3 raises this again after a seek and after a surface change,
+            // and CTA-2066's video start-up time is the *first* frame of the view — a second
+            // measurement under the same name would be a different metric wearing its label.
+            if (session.firstFrameRenderedAtMs != null) return
+            val now = now()
+            session.firstFrameRenderedAtMs = now
+            emit(
+                TelemetryEvent.FirstFrameRendered(
+                    sessionId = session.id,
+                    contentId = session.contentId,
+                    timestampMs = System.currentTimeMillis(),
+                    monotonicTimeMs = now,
+                    timeToFirstFrameMs = now - session.ttffStartMonotonicMs,
+                    startBoundary = session.ttffStartBoundary,
+                ),
+            )
+        }
+
+        override fun onPlaybackStateChanged(eventTime: AnalyticsListener.EventTime, state: Int) {
+            lastKnownPlaybackState = state
+            val session = openSession ?: return
+            when (state) {
+                Player.STATE_BUFFERING -> openRebuffer(session)
+
+                Player.STATE_READY -> {
+                    closeRebuffer(session)
+                    completeSeek(session)
+                }
+
+                // A player that went idle or ended did not resume from its stall; it stopped. The
+                // stall is closed at the moment it stopped being one, which is here, so that a
+                // `RebufferStarted` never goes unanswered — a pipeline pairing the two would
+                // otherwise carry an open stall forward into whatever it read next.
+                else -> closeRebuffer(session)
+            }
+        }
+
+        override fun onPositionDiscontinuity(
+            eventTime: AnalyticsListener.EventTime,
+            oldPosition: Player.PositionInfo,
+            newPosition: Player.PositionInfo,
+            reason: Int,
+        ) {
+            if (reason != Player.DISCONTINUITY_REASON_SEEK) return
+            val session = openSession ?: return
+            val now = now()
+            session.seekRequestedAtMs = now
+            emit(
+                TelemetryEvent.SeekRequested(
+                    sessionId = session.id,
+                    contentId = session.contentId,
+                    timestampMs = System.currentTimeMillis(),
+                    monotonicTimeMs = now,
+                    fromPositionMs = oldPosition.positionMs,
+                    toPositionMs = newPosition.positionMs,
+                ),
+            )
+            // A seek into already-buffered data never leaves `STATE_READY`, so there is no
+            // transition to complete it on and waiting for one would leave the seek open until the
+            // next unrelated stall. Latency for that seek is zero, which is the truth about it.
+            if (lastKnownPlaybackState == Player.STATE_READY) completeSeek(session)
+        }
+
+        override fun onPlayerError(eventTime: AnalyticsListener.EventTime, error: PlaybackException) {
+            val session = openSession ?: return
+            val now = now()
+            val failure = error.toPlaybackFailure()
+            // The split CTA-2066 draws, and the one a viewer experiences: nothing played, versus
+            // something played and then stopped. `firstFrameRenderedAtMs` is the boundary, and it is
+            // also what makes exit-before-video-start derivable — a session that ends with neither a
+            // frame nor a `StartupFailed` is an abandonment rather than a failure, which is a
+            // distinction that collapses the moment these two events are merged.
+            emit(
+                if (session.firstFrameRenderedAtMs == null) {
+                    TelemetryEvent.StartupFailed(
+                        sessionId = session.id,
+                        contentId = session.contentId,
+                        timestampMs = System.currentTimeMillis(),
+                        monotonicTimeMs = now,
+                        failure = failure,
+                    )
+                } else {
+                    TelemetryEvent.MidStreamFailed(
+                        sessionId = session.id,
+                        contentId = session.contentId,
+                        timestampMs = System.currentTimeMillis(),
+                        monotonicTimeMs = now,
+                        failure = failure,
+                        positionMs = eventTime.currentPlaybackPositionMs,
+                    )
+                },
+            )
+        }
+
+        override fun onDownstreamFormatChanged(
+            eventTime: AnalyticsListener.EventTime,
+            mediaLoadData: MediaLoadData,
+        ) {
+            if (mediaLoadData.trackType != C.TRACK_TYPE_VIDEO) return
+            val session = openSession ?: return
+            val bitrate = mediaLoadData.trackFormat?.declaredPeakBitrateBps() ?: return
+            val from = session.videoBitrateBps
+            if (from == bitrate) return
+            session.videoBitrateBps = bitrate
+            val now = now()
+            emit(
+                TelemetryEvent.TrackSwitched(
+                    sessionId = session.id,
+                    contentId = session.contentId,
+                    timestampMs = System.currentTimeMillis(),
+                    monotonicTimeMs = now,
+                    fromBitrateBps = from,
+                    toBitrateBps = bitrate,
+                    direction = when {
+                        from == null -> TrackSwitchDirection.INITIAL
+                        bitrate > from -> TrackSwitchDirection.UP
+                        else -> TrackSwitchDirection.DOWN
+                    },
+                ),
+            )
+        }
+
+        override fun onDroppedVideoFrames(
+            eventTime: AnalyticsListener.EventTime,
+            droppedFrames: Int,
+            elapsedMs: Long,
+        ) {
+            val session = openSession ?: return
+            emit(
+                TelemetryEvent.VideoFramesDropped(
+                    sessionId = session.id,
+                    contentId = session.contentId,
+                    timestampMs = System.currentTimeMillis(),
+                    monotonicTimeMs = now(),
+                    droppedFrames = droppedFrames,
+                    // ref: Media3 1.11.0's `VideoRendererEventListener` reports dropped frames and
+                    // has no callback for repeated ones — `MediaCodecVideoRenderer` does not count
+                    // a frame presented twice. CTA-2066 names both, so the field stays in the
+                    // vocabulary and is reported as zero rather than omitted, and
+                    // `docs/telemetry-schema.md` says so under the metric. A zero here means "not
+                    // observable on this engine", which is why the document rather than this number
+                    // is what a pipeline reads.
+                    repeatedFrames = 0,
+                    // Media3's own elapsed interval, taken rather than measured: the engine reports
+                    // the count and the window it accumulated over together, so a rate over that
+                    // window needs nothing that can drift out of step with it. The schema's
+                    // reasoning for that denominator is the same one.
+                    elapsedPlayingMs = elapsedMs,
+                ),
+            )
+        }
+    }
 
     override fun attach(player: SuperPlayer) {
         check(this.player == null) { "A QoeCollector measures one player; build one per player" }
@@ -158,6 +347,7 @@ public class QoeCollector internal constructor(
             if (intentMs == null) TtffStartBoundary.CONTENT_ADOPTED else TtffStartBoundary.USER_INTENT,
         )
         openSession = session
+        scheduleSampling()
         emit(
             TelemetryEvent.SessionStarted(
                 sessionId = session.id,
@@ -179,6 +369,12 @@ public class QoeCollector internal constructor(
         // Cleared before the emit, so that this collector's own state is settled before anything
         // observable leaves it, whatever order the delivery path gets round to.
         openSession = null
+        stopSampling()
+        // A stall that was still open when the session ended is closed under the session that owned
+        // it. A pooled player recycled mid-rebuffer does exactly this, and the alternative — letting
+        // the `RebufferStarted` go unanswered — would leave a pipeline pairing events across the
+        // session boundary into the next viewer's numbers.
+        closeRebuffer(session)
         emit(
             TelemetryEvent.SessionEnded(
                 sessionId = session.id,
@@ -205,6 +401,7 @@ public class QoeCollector internal constructor(
     internal fun awaitDelivered(timeoutMs: Long): Boolean = delivery.awaitIdle(timeoutMs)
 
     override fun detach() {
+        stopSampling()
         player?.exoPlayer?.removeAnalyticsListener(analyticsListener)
         player = null
         // A declaration nobody spent belongs to no session, and a collector that kept it would hand
@@ -225,18 +422,267 @@ public class QoeCollector internal constructor(
     }
 
     /**
-     * A session that has started and not yet ended.
+     * Opens a rebuffer for [session], attributing it to a seek or not.
      *
-     * [ttffStartMonotonicMs] and [ttffStartBoundary] are settled when the session opens and are what
-     * issue #36's first-frame callback subtracts from; they are held rather than emitted because
-     * ADR-0008 rule 4's amendment forbids adding an event caused by an engine callback until #37
-     * moves delivery off the engine's threads. The definition lands in this release; the number
-     * lands in that one.
+     * **Time before the first frame is not a rebuffer.** That interval is start-up time, and
+     * counting it in both would double-count the same seconds — so a buffering state seen before
+     * `FirstFrameRendered` opens nothing at all.
+     */
+    private fun openRebuffer(session: OpenSession) {
+        if (session.firstFrameRenderedAtMs == null || session.rebufferStartedAtMs != null) return
+        val now = now()
+        val seekInduced = session.isSeekInducedAt(now)
+        session.rebufferStartedAtMs = now
+        session.rebufferSeekInduced = seekInduced
+        emit(
+            TelemetryEvent.RebufferStarted(
+                sessionId = session.id,
+                contentId = session.contentId,
+                timestampMs = System.currentTimeMillis(),
+                monotonicTimeMs = now,
+                seekInduced = seekInduced,
+            ),
+        )
+    }
+
+    /** Closes the stall [openRebuffer] began, if one is open. */
+    private fun closeRebuffer(session: OpenSession) {
+        val startedAt = session.rebufferStartedAtMs ?: return
+        val seekInduced = session.rebufferSeekInduced
+        session.rebufferStartedAtMs = null
+        val now = now()
+        emit(
+            TelemetryEvent.RebufferEnded(
+                sessionId = session.id,
+                contentId = session.contentId,
+                timestampMs = System.currentTimeMillis(),
+                monotonicTimeMs = now,
+                durationMs = now - startedAt,
+                seekInduced = seekInduced,
+            ),
+        )
+    }
+
+    /** Completes a seek that is in flight, which is what makes seek latency a number. */
+    private fun completeSeek(session: OpenSession) {
+        val requestedAt = session.seekRequestedAtMs ?: return
+        session.seekRequestedAtMs = null
+        val now = now()
+        session.seekCompletedAtMs = now
+        val attached = player
+        emit(
+            TelemetryEvent.SeekCompleted(
+                sessionId = session.id,
+                contentId = session.contentId,
+                timestampMs = System.currentTimeMillis(),
+                monotonicTimeMs = now,
+                toPositionMs = attached?.currentPosition ?: C.TIME_UNSET,
+                seekLatencyMs = now - requestedAt,
+            ),
+        )
+    }
+
+    /**
+     * Starts the periodic samples, at the cadence `docs/telemetry-schema.md` states.
+     *
+     * A timer, and the one place this collector is not purely callback-driven. `PRD.md` §3.4 rules
+     * out polling, and this is not what that rules out: the prohibition is on *deriving a metric* by
+     * sampling a position — a 200 ms tick inferring rebuffers from a position that stopped moving,
+     * which is the usual reason two implementations of "the same" number disagree. Every metric
+     * above is derived from the engine saying what happened. What a sample *is*, by contrast, is an
+     * event in its own right: bitrate distribution and buffer health are time-weighted quantities,
+     * and a pipeline cannot weight what it did not receive at a known cadence. The cadence travels
+     * on every sample as `samplingIntervalMs`, so it is the event and not a constant a consumer
+     * copied out of a document.
+     *
+     * On the player's application looper, which is both where the analytics callbacks arrive — so
+     * the session state below needs no lock — and the only thread a [SuperPlayer] may be read from.
+     */
+    private fun scheduleSampling() {
+        val attached = player ?: return
+        val handler = sampler ?: Handler(attached.applicationLooper).also { sampler = it }
+        handler.postDelayed(::sampleNow, SAMPLING_INTERVAL_MS)
+    }
+
+    private fun stopSampling() {
+        sampler?.removeCallbacksAndMessages(null)
+    }
+
+    /**
+     * Reads what playback is doing right now and reports it, then schedules the next reading.
+     *
+     * The only place this class asks the player anything. It is legal because it runs on the
+     * application looper, and it is bounded because it stops with the session.
+     */
+    private fun sampleNow() {
+        val session = openSession ?: return
+        val attached = player ?: return
+        val now = now()
+        emit(
+            TelemetryEvent.PlaybackStateSampled(
+                sessionId = session.id,
+                contentId = session.contentId,
+                timestampMs = System.currentTimeMillis(),
+                monotonicTimeMs = now,
+                samplingIntervalMs = SAMPLING_INTERVAL_MS,
+                videoBitrateBps = session.videoBitrateBps,
+                bufferedDurationMs = (attached.bufferedPosition - attached.currentPosition)
+                    .coerceAtLeast(0),
+                playing = attached.isPlaying,
+            ),
+        )
+        // Live content only. A sample of zero from on-demand content is a number a dashboard would
+        // happily average, and the absence of the event is what stops that — so the test is what the
+        // *timeline* says rather than what the profile was set to, because a `LIVE_LINEAR` player
+        // handed a VOD asset is a misconfiguration and not a live session.
+        val liveOffsetMs = attached.currentLiveOffset
+        if (liveOffsetMs != C.TIME_UNSET) {
+            val targetMs = attached.currentMediaItem?.liveConfiguration?.targetOffsetMs
+            emit(
+                TelemetryEvent.LiveLatencySampled(
+                    sessionId = session.id,
+                    contentId = session.contentId,
+                    timestampMs = System.currentTimeMillis(),
+                    monotonicTimeMs = now,
+                    liveLatencyMs = liveOffsetMs,
+                    targetLiveLatencyMs = targetMs?.takeIf { it != C.TIME_UNSET },
+                ),
+            )
+        }
+        scheduleSampling()
+    }
+
+    /**
+     * The clock every duration in `docs/telemetry-schema.md` is defined on.
+     *
+     * Deliberately **not** `AnalyticsListener.EventTime.realtimeMs`, which is the closer reading and
+     * the wrong one. That field comes from the `Clock` the *engine* was built with, which is a
+     * substitutable thing, while the boundary time-to-first-frame is measured from arrives through
+     * `SuperPlayer.declarePlaybackIntent` on `SystemClock.elapsedRealtime()`. Subtracting one from
+     * the other would make the schema's headline metric a difference between two clocks — correct
+     * whenever they happen to agree and silently wrong when they do not. One clock, named in the
+     * document, read here.
+     */
+    private fun now(): Long = SystemClock.elapsedRealtime()
+
+    /**
+     * A session that has started and not yet ended, and everything a metric is derived from.
+     *
+     * Per session rather than per collector, which is what makes a recycled pooled player report two
+     * sessions with independent counters: `resetForReuse` ends the session, this object goes, and
+     * the next `setMediaRequest` builds a fresh one. Nothing here survives that boundary.
+     *
+     * Touched only from the player's application looper — the analytics callbacks and the sampler
+     * both — so none of it is synchronized.
      */
     private class OpenSession(
         val id: String,
         val contentId: String,
+        /** The boundary [TelemetryEvent.FirstFrameRendered.timeToFirstFrameMs] is measured from. */
         val ttffStartMonotonicMs: Long,
         val ttffStartBoundary: TtffStartBoundary,
-    )
+    ) {
+        /**
+         * When the first frame reached the display, or null if none has.
+         *
+         * Three things read it: the first-frame callback, to report once per session; the failure
+         * callback, to choose between startup and mid-stream; and the rebuffer logic, because time
+         * before the first frame is start-up time rather than a stall.
+         */
+        var firstFrameRenderedAtMs: Long? = null
+
+        /** The declared peak bitrate playing, or null before the first rendition is chosen. */
+        var videoBitrateBps: Int? = null
+
+        /** When the open stall began, or null when playback is not stalled. */
+        var rebufferStartedAtMs: Long? = null
+
+        /** The attribution the open stall was opened with, repeated on its `RebufferEnded`. */
+        var rebufferSeekInduced: Boolean = false
+
+        /** When the in-flight seek was issued, or null when none is. */
+        var seekRequestedAtMs: Long? = null
+
+        /** When the last seek completed, which is what the exclusion window below is measured from. */
+        var seekCompletedAtMs: Long? = null
+
+        /**
+         * Whether a stall beginning at [nowMs] is attributable to a seek, and therefore out of
+         * rebuffer ratio.
+         *
+         * ref: `docs/telemetry-schema.md`, *Rebuffering* — a stall is seek-induced when it starts
+         * between a `SeekRequested` and its `SeekCompleted`, or within
+         * [SEEK_EXCLUSION_WINDOW_MS] after that completion. The window is SuperPlayer's own number
+         * rather than the standard's, because CTA-2066 defines the ratio and does not fix the
+         * exclusion boundary in observable terms; the document argues the value and is where it
+         * changes, with a schema-version bump.
+         *
+         * The reason for excluding at all is that a viewer who drags a scrub bar into unbuffered
+         * content expects a wait. Counting it makes a player look worse the more its viewers seek,
+         * which turns a delivery metric into a measure of viewer behaviour.
+         */
+        fun isSeekInducedAt(nowMs: Long): Boolean {
+            if (seekRequestedAtMs != null) return true
+            val completedAt = seekCompletedAtMs ?: return false
+            return nowMs - completedAt <= SEEK_EXCLUSION_WINDOW_MS
+        }
+    }
+
+    private companion object {
+
+        /** The cadence the three periodic events share; `docs/telemetry-schema.md` states it. */
+        const val SAMPLING_INTERVAL_MS = 10_000L
+
+        /** See [OpenSession.isSeekInducedAt]; the document is where this number is argued. */
+        const val SEEK_EXCLUSION_WINDOW_MS = 1_000L
+    }
 }
+
+/**
+ * The rendition's declared peak bitrate, which is what a manifest states.
+ *
+ * ref: `docs/telemetry-schema.md`, *Bitrate* — the number is what the manifest declares and not a
+ * measurement of what was transferred. Media3 carries both a peak and an average on [Format] and
+ * fills whichever the manifest supplied, so the peak is preferred and the average is the fallback;
+ * a format that declares neither has no bitrate to report and yields null rather than a zero a
+ * dashboard would average.
+ */
+private fun Format.declaredPeakBitrateBps(): Int? = when {
+    peakBitrate != Format.NO_VALUE -> peakBitrate
+    averageBitrate != Format.NO_VALUE -> averageBitrate
+    else -> null
+}
+
+/**
+ * What failed, in SuperPlayer's own vocabulary rather than the engine's.
+ *
+ * ref: Media3 1.11.0's `PlaybackException.ERROR_CODE_*` ranges, which are what this buckets. The
+ * mapping is deliberately coarse (see [PlaybackFailure]): a taxonomy fine enough to act on
+ * automatically is `superplayer-resilience`'s, and a partial second copy here would give a data team
+ * two answers to one question.
+ *
+ * [PlaybackFailure.code] is `errorCodeName` — a string rather than the integer — because it must
+ * survive an engine that renumbers, and because it is a grouping key in a pipeline rather than
+ * something to branch on.
+ */
+private fun PlaybackException.toPlaybackFailure(): PlaybackFailure = PlaybackFailure(
+    // ref: Media3 1.11.0 `PlaybackException` allocates its error codes in documented thousands —
+    // 1xxx miscellaneous, 2xxx input/output, 3xxx content parsing, 4xxx decoding, 5xxx audio
+    // renderer, 6xxx DRM, 7xxx video frame processing. Bucketing on the band rather than on a list
+    // of individual codes is what makes a code Media3 adds land in the right category instead of in
+    // UNKNOWN, which is the failure mode a hand-maintained list has and nobody notices until a
+    // dashboard's "unknown" slice grows after an engine upgrade.
+    category = when (errorCode / ERROR_CODE_BAND) {
+        2 -> FailureCategory.NETWORK
+        3 -> FailureCategory.SOURCE
+        4 -> FailureCategory.DECODER
+        6 -> FailureCategory.DRM
+        5, 7 -> FailureCategory.RENDERER
+        else -> FailureCategory.UNKNOWN
+    },
+    code = errorCodeName,
+    message = message,
+)
+
+/** The width of one of Media3's documented error-code bands; see [toPlaybackFailure]. */
+private const val ERROR_CODE_BAND = 1_000

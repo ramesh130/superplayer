@@ -135,10 +135,7 @@ public class PlaybackHarness : ExternalResource() {
             }
             .build()
         renderers[player] = checkNotNull(built) { "The engine built no renderers" }
-        val texture = SurfaceTexture(/* texName= */ 0)
-        val surface = Surface(texture)
-        outputs += surface to texture
-        player.setVideoSurface(surface)
+        attachVideoOutput(player)
         return player
     }
 
@@ -176,6 +173,22 @@ public class PlaybackHarness : ExternalResource() {
         settle(player)
     }
 
+    /**
+     * Gives [player] somewhere to draw, and takes responsibility for releasing it.
+     *
+     * Called for every player this harness builds, and **again after a pool recycle**:
+     * `SuperPlayer.resetForReuse` detaches the surface first of all, so that a stale frame cannot
+     * appear in a recycled view. A reused player therefore has nowhere to render and reports no
+     * first frame until something gives it an output — which in an app is the next row binding a
+     * `PlayerView`, and here is this.
+     */
+    public fun attachVideoOutput(player: SuperPlayer) {
+        val texture = SurfaceTexture(/* texName= */ 0)
+        val surface = Surface(texture)
+        outputs += surface to texture
+        player.setVideoSurface(surface)
+    }
+
     /** The reading every duration in `docs/telemetry-schema.md` is measured on, right now. */
     public fun elapsedRealtimeMs(): Long = SystemClock.elapsedRealtime()
 
@@ -190,11 +203,52 @@ public class PlaybackHarness : ExternalResource() {
             .untilPendingCommandsAreFullyHandled(clock, player.applicationLooper)
     }
 
-    /** Prepares, plays, and returns once the player is ready — the ordinary start of a session. */
+    /**
+     * Prepares, plays, and returns once the player is ready — the ordinary start of a session.
+     *
+     * Waits by *advancing time*, not by idling the looper. Media3's own
+     * `TestPlayerRunHelper.untilState` idles and waits, which resolves nothing under a clock that
+     * does not advance on its own: a source that needs to load a chunk before it can be ready is
+     * waiting for a timer that will never fire, and the wait times out. Content that is ready with
+     * no time passing — Media3's non-adaptive fake — costs no advance at all, which is what keeps a
+     * time-to-first-frame measured through this method exact.
+     */
     public fun playToReady(player: SuperPlayer) {
         player.prepare()
         player.play()
-        TestPlayerRunHelper.advance(player).untilState(Player.STATE_READY)
+        advanceUntil(player, "ready") { it.playbackState == Player.STATE_READY }
+    }
+
+    /**
+     * Prepares, plays, and returns once the player has failed.
+     *
+     * The counterpart of [playToReady] for a fault armed with [failRendering] before playback
+     * started: nothing renders, so there is no ready state to wait for, and the thing being waited
+     * on is the error.
+     */
+    public fun playToFailure(player: SuperPlayer) {
+        player.prepare()
+        player.play()
+        advanceUntil(player, "an error") { it.playerError != null }
+    }
+
+    /**
+     * Advances time in [WAIT_STEP_MS] steps until [condition] holds, or fails saying what it wanted.
+     *
+     * Bounded, because a test that hangs is worse than one that fails: the message names the state
+     * that never arrived, which is the same promise `TestPlayerRunHelper`'s own waits make.
+     */
+    private fun advanceUntil(player: SuperPlayer, wanted: String, condition: (SuperPlayer) -> Boolean) {
+        settle(player)
+        var waited = 0L
+        while (!condition(player) && waited < MAX_WAIT_MS) {
+            advanceTimeMs(player, WAIT_STEP_MS)
+            waited += WAIT_STEP_MS
+        }
+        check(condition(player)) {
+            "Waited ${MAX_WAIT_MS} ms of playback time for $wanted; " +
+                "state=${player.playbackState} error=${player.playerError}"
+        }
     }
 
     /**
@@ -280,6 +334,15 @@ public class PlaybackHarness : ExternalResource() {
                 .setSeekable(true)
                 .setLive(content.live)
                 .setDynamic(content.live)
+                // A live window has to say when it started in wall-clock terms, or the player has
+                // nothing to measure a live offset against and reports `TIME_UNSET` — which would
+                // make a test of live-edge latency pass by finding no latency at all. Placed so the
+                // edge is now: the window ends at the current wall clock.
+                .apply {
+                    if (content.live) {
+                        setWindowStartTimeUs(System.currentTimeMillis() * 1_000 - content.durationMs * 1_000)
+                    }
+                }
                 .build(),
         )
         return object : MediaSource.Factory {
@@ -337,7 +400,7 @@ public class PlaybackHarness : ExternalResource() {
         .setFrameRate(FRAME_RATE)
         .build()
 
-    private companion object {
+    public companion object {
         /**
          * How far time has to move for the engine to take another render pass.
          *
@@ -350,16 +413,29 @@ public class PlaybackHarness : ExternalResource() {
          * whatever the test advanced plus two of these, and a test that could not name the overhead
          * would have to assert on a range instead of a value.
          */
-        val RENDER_PASS_MS = 10L
+        public const val RENDER_PASS_MS: Long = 10L
+
+        /**
+         * How far time moves per step while [playToReady] waits — a few render passes, so a wait is
+         * not five hundred of them.
+         *
+         * Public because it is measurable: content that is not ready instantly costs whole steps of
+         * playback time, and they land inside any duration measured across the start of playback. A
+         * test asserting on a time to first frame names this rather than rounding it away.
+         */
+        public const val WAIT_STEP_MS: Long = 50L
+
+        /** Playback time, not wall-clock: generous, and only ever reached when something is wrong. */
+        private const val MAX_WAIT_MS = 30_000L
 
         /** Two seconds, the segment duration both the HLS and DASH interoperability profiles use. */
-        val CHUNK_DURATION_US = 2_000_000L
+        private val CHUNK_DURATION_US = 2_000_000L
 
-        val WIDTH = 1280
-        val HEIGHT = 720
-        val FRAME_RATE = 30f
+        private val WIDTH = 1280
+        private val HEIGHT = 720
+        private val FRAME_RATE = 30f
 
         /** One keyframe a second at [FRAME_RATE], which is what a real encoder ladder uses. */
-        val KEYFRAME_INTERVAL_FRAMES = 30
+        private val KEYFRAME_INTERVAL_FRAMES = 30
     }
 }

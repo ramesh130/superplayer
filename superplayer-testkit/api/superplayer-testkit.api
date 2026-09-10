@@ -1,17 +1,25 @@
 public final class com/superplayer/testkit/PlaybackHarness : org/junit/rules/ExternalResource {
+	public static final field Companion Lcom/superplayer/testkit/PlaybackHarness$Companion;
+	public static final field RENDER_PASS_MS J
+	public static final field WAIT_STEP_MS J
 	public fun <init> ()V
 	public final fun advanceTimeMs (Lcom/superplayer/core/SuperPlayer;J)V
+	public final fun attachVideoOutput (Lcom/superplayer/core/SuperPlayer;)V
 	public final fun buildPlayer (Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;)Lcom/superplayer/core/SuperPlayer;
 	public static synthetic fun buildPlayer$default (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;ILjava/lang/Object;)Lcom/superplayer/core/SuperPlayer;
 	public final fun buildPool (Ljava/lang/Integer;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/testkit/TestContent;Lkotlin/jvm/functions/Function0;)Lcom/superplayer/core/PlayerPool;
 	public static synthetic fun buildPool$default (Lcom/superplayer/testkit/PlaybackHarness;Ljava/lang/Integer;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/testkit/TestContent;Lkotlin/jvm/functions/Function0;ILjava/lang/Object;)Lcom/superplayer/core/PlayerPool;
 	public final fun elapsedRealtimeMs ()J
 	public final fun failRendering (Lcom/superplayer/core/SuperPlayer;)V
+	public final fun playToFailure (Lcom/superplayer/core/SuperPlayer;)V
 	public final fun playToReady (Lcom/superplayer/core/SuperPlayer;)V
 	public final fun reportDroppedFrames (Lcom/superplayer/core/SuperPlayer;IJ)V
 	public final fun resumeRendering (Lcom/superplayer/core/SuperPlayer;)V
 	public final fun settle (Lcom/superplayer/core/SuperPlayer;)V
 	public final fun stallRendering (Lcom/superplayer/core/SuperPlayer;)V
+}
+
+public final class com/superplayer/testkit/PlaybackHarness$Companion {
 }
 
 public final class com/superplayer/testkit/TestContent {

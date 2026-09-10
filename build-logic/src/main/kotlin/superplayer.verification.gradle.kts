@@ -1,4 +1,5 @@
 import com.superplayer.build.VerifyLicenseHeader
+import com.superplayer.build.VerifyModulePhaseRule
 import com.superplayer.build.VerifyNoHardcodedMedia3Versions
 
 plugins {
@@ -26,6 +27,21 @@ val verifyNoHardcodedMedia3Versions =
         stampFile.set(layout.buildDirectory.file("verification/no-hardcoded-media3-versions.txt"))
     }
 
+// docs/modules.md states the phase rule; this reads that document's own table and holds every
+// module's `project(...)` dependencies to it, so the rule is enforced rather than remembered.
+val verifyModulePhaseRule =
+    tasks.register<VerifyModulePhaseRule>("verifyModulePhaseRule") {
+        group = "verification"
+        description = "Fails if a module depends on a module from a later phase."
+        modulesDocument.set(layout.projectDirectory.file("docs/modules.md"))
+        moduleBuildScripts.from(
+            fileTree(layout.projectDirectory) {
+                include("superplayer-*/build.gradle.kts")
+            }
+        )
+        stampFile.set(layout.buildDirectory.file("verification/module-phase-rule.txt"))
+    }
+
 // Spotless stamps `config/license-header.txt` onto every `.kt` file; nothing in Spotless checks
 // that the file names the license this project is under. This does, against `LICENSE` itself, so
 // the header and the license cannot drift apart.
@@ -42,6 +58,7 @@ val verifyLicenseHeader =
 // So a plain `./gradlew check` at the root runs them.
 tasks.named("check") {
     dependsOn(verifyNoHardcodedMedia3Versions)
+    dependsOn(verifyModulePhaseRule)
     dependsOn(verifyLicenseHeader)
 
     // build-logic is an included build, so its tests are invisible to the root build's

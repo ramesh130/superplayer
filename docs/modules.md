@@ -10,9 +10,21 @@ enforceable from the start rather than negotiated once code arrives.
 depends on a module from a later phase.**
 
 `superplayer-core` depends on Media3 and on nothing else in this repository. Every other library
-module depends on `superplayer-core` and, where a genuine need appears, on modules from an *earlier*
-phase only. A module may never depend on one whose phase number is higher than its own — that
-dependency would make the earlier phase un-shippable without the later one.
+module depends on `superplayer-core` and, where a genuine need appears, on modules from an *earlier
+or equal* phase only. A module may never depend on one whose phase number is higher than its own —
+that dependency would make the earlier phase un-shippable without the later one.
+
+**A tie is allowed**, and that is a decision rather than an omission. `telemetry` and `testkit` are
+both phase 2; `preload` and `cache` are both phase 4. The rule exists so that an earlier phase is
+shippable without a later one, and modules sharing a phase ship together — so a dependency between
+peers costs nothing the rule protects. A cycle between two of them is a real problem, but it is one
+Gradle already refuses to build; it is not this rule's to catch.
+
+`./gradlew verifyModulePhaseRule` reads the phase column below and fails the build if any module's
+`project(...)` dependencies break the rule. It runs as part of `check`, so this is enforced rather
+than remembered. The task parses this table, which makes the document the single source of the phase
+numbers; the cost is that the table's shape — a backticked module name in the first cell, the phase
+in the second — is now load-bearing.
 
 ## Modules
 

@@ -5,7 +5,7 @@ plugins {
 // SuperPlayer facade, PlaybackSession, config profiles, player pool
 //
 // Phase 1. Dependency direction: see docs/modules.md. This module may depend on
-// modules from an earlier phase only — never on a later one.
+// modules from its own or an earlier phase only — never on a later one.
 dependencies {
     api(libs.media3.common)
     api(libs.media3.exoplayer)

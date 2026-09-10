@@ -116,19 +116,18 @@ Six rules follow, and they are binding.
    *between* sessions, because a shared delivery context interleaves them and a consumer that needs
    a global order has the session id and the timestamp to build one.
 
-   *Rules 3 and 4 amended by #34, for one release.* Rules 3 and 4 describe the delivery path this
-   ADR requires, and #34 ships the seam without it: `QoeCollector` calls the sink synchronously, on
-   the thread that caused the event, unbounded and counting no drops. That is a deviation rather
-   than a reading of the rules, and it is recorded here rather than left as a KDoc note, because an
-   undocumented exception is the thing `CLAUDE.md`'s binding-rules section forbids. Three things
-   bound it. The events are the session boundary only — two per session, both caused by an explicit
-   facade call rather than by anything the engine emits, so the exposure is a consumer's sink
-   blocking a `setMediaRequest` or a `release` and not a sink blocking a playback callback. The one
-   call site says so, naming this rule and the issue. And `SessionEnded.droppedEventCount` is
-   already in the contract at zero, so the pipeline shape rule 3 requires does not change when the
-   number starts moving. **Issue #37 discharges the amendment and restores both rules in full**;
-   until it lands, no event caused by an engine callback may be added, because that is precisely
-   what rule 4 exists to keep off the engine's threads.
+   *The #34 amendment to rules 3 and 4 is discharged, by #37.* For one release — #34, which shipped
+   the seam before its delivery path — `QoeCollector` called the sink synchronously on the thread
+   that caused the event, unbounded and counting no drops, and that deviation was recorded here
+   rather than left as a KDoc note. It no longer holds. `TelemetryDelivery` is what makes both rules
+   true: a bounded queue per player, drained on one daemon thread for the whole process, refusing
+   the newest event when full, counting every refusal against the session that lost it, and stamping
+   that count onto `SessionEnded` as the event leaves the queue. The bound is 256 events and the
+   choice of *which* end to drop is argued at the implementation and restated in
+   `docs/telemetry-schema.md`; both are the kind of decision this rule requires to be deliberate and
+   written down rather than merely present. The clause that barred adding an event caused by an
+   engine callback is lifted with the amendment: that bar existed because such an event would have
+   reached a consumer's sink on a playback thread, and it no longer can.
 
 5. **The events are one sealed hierarchy rooted in core, every event carries a schema version, and
    the version tracks meaning rather than shape.** Sealing is what lets a sink `when` over the

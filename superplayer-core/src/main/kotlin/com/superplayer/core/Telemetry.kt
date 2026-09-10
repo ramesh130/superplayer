@@ -38,7 +38,8 @@ import android.util.Log
  * **Gaps.** Delivery is at-most-once, bounded and lossy under pressure (ADR-0008 rule 3): a sink
  * that falls behind loses events rather than slowing playback down, and the count of what was lost
  * arrives on [TelemetryEvent.SessionEnded.droppedEventCount]. A metric computed by summing events
- * can therefore undercount, and that counter is what makes it detectable.
+ * can therefore undercount, and that counter is what makes it detectable. Nothing is retried and
+ * nothing is persisted, so a process that dies takes its queued events with it.
  *
  * **New event types.** [TelemetryEvent] is sealed, so a `when` over it can be exhaustive without an
  * `else` — and a sink that takes the compiler up on that will fail to compile when a later version
@@ -47,11 +48,21 @@ import android.util.Log
  *
  * ## Which thread this is called on
  *
- * Today: the thread that caused the event, which for the session boundaries is the application
- * thread the player was built on. That is **not** what ADR-0008 rule 4 requires — a sink must never
- * be called on a thread the engine needs — and it is a scoped placeholder rather than the intended
- * contract. Issue #37 moves delivery onto a bounded queue drained off that thread, and until it
- * lands a sink must not block: no network call, no disk write, no lock a slow caller holds.
+ * **Never the application thread and never a playback thread** (ADR-0008 rule 4). A sink is called
+ * on SuperPlayer's own delivery thread — one for the process, so sixty pooled players do not mean
+ * sixty threads — and calls are serialized, so an implementation needs no locking of its own.
+ *
+ * That is what makes a slow sink safe: a network write, a disk write or a lock held for seconds
+ * delays no playback callback, because the queue between the engine and this method is bounded and
+ * the engine's threads only ever enqueue. What a slow sink does cost is *other events*, its own and
+ * other sessions', which is why the queue drops rather than grows and why the drop is counted.
+ *
+ * A sink is nonetheless not a place to do arbitrary work indefinitely: the thread is shared, so a
+ * sink that never returns stops delivery for every player in the process. Hand long work to your
+ * own executor.
+ *
+ * **Do not touch the player from here.** [TelemetryEvent] carries everything the event means, and a
+ * [SuperPlayer] call from this thread would be a Media3 wrong-thread violation.
  */
 public fun interface TelemetrySink {
 
@@ -70,10 +81,10 @@ public fun interface TelemetrySink {
          *
          * **A child that throws costs nobody else their event.** Each child is called inside its own
          * `try`, so a failure in one is contained: the remaining children still receive the event,
-         * and nothing propagates back to the caller — which today is a `setMediaRequest` or a
-         * `release` on the application thread, so an escaping exception would take playback down with
-         * it. The failure is reported to logcat, because a sink that silently stops receiving is the
-         * kind of defect nobody notices for a fortnight.
+         * and nothing propagates back to the caller — the delivery thread, which is shared by every
+         * player in the process, so an escaping exception would end telemetry for all of them. The
+         * failure is reported to logcat, because a sink that silently stops receiving is the kind of
+         * defect nobody notices for a fortnight.
          *
          * `Throwable` rather than `Exception`, deliberately. The point is that the telemetry path
          * cannot break playback, and a sink written against an analytics SDK that throws an `Error` —
@@ -193,6 +204,27 @@ public interface TelemetryCollector {
      * which reading survives and `docs/telemetry-schema.md` states which.
      */
     public fun declareIntent(monotonicTimeMs: Long)
+
+    /**
+     * The platform asked the process for memory back: release whatever this collector is holding
+     * that can be reconstructed, or done without.
+     *
+     * Core signals this rather than letting the collector find it, for the reason core signals
+     * [startSession]: the platform hands `onTrimMemory` to a `Context`, and a context is something
+     * the facade has and a collector attached to a built player does not. What the signal *means* is
+     * the collector's, the way a session boundary's meaning is — `superplayer-telemetry` empties its
+     * pending delivery queue and counts every discarded event as a drop (`PRD.md` §3.4).
+     *
+     * Sent only for the levels that actually indicate pressure, not for `TRIM_MEMORY_UI_HIDDEN`,
+     * which says the app went to the background and says nothing about memory — a player still
+     * playing there is the ordinary background-audio case and has nothing to give back.
+     *
+     * Called on the main thread, as the platform delivers it. Do not block it.
+     *
+     * Defaulted to nothing, because a collector that holds no bounded state of its own has nothing
+     * to release, and a consumer's own collector should not have to say so.
+     */
+    public fun onMemoryPressure() {}
 
     /** The player is about to be released. Unregister everything [attach] registered. */
     public fun detach()

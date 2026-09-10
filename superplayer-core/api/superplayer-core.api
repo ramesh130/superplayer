@@ -342,7 +342,12 @@ public abstract interface class com/superplayer/core/TelemetryCollector {
 	public abstract fun declareIntent (J)V
 	public abstract fun detach ()V
 	public abstract fun endSession ()V
+	public fun onMemoryPressure ()V
 	public abstract fun startSession (Ljava/lang/String;)V
+}
+
+public final class com/superplayer/core/TelemetryCollector$DefaultImpls {
+	public static fun onMemoryPressure (Lcom/superplayer/core/TelemetryCollector;)V
 }
 
 public abstract class com/superplayer/core/TelemetryEvent {

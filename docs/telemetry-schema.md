@@ -58,11 +58,33 @@ A silently partial event stream is worse than none, because a rebuffer ratio com
 plausible wrong number that nobody audits.
 
 `SessionEnded` itself is never dropped; it holds reserved capacity, because an event whose job is to
-declare what was lost is worthless if pressure can lose it.
+declare what was lost is worthless if pressure can lose it. Its count is finalized as it leaves the
+queue rather than when the session ended, so a drop caused by memory pressure after the fact is
+still on the event that reports it.
 
-Today the count is always zero — delivery is synchronous and drops nothing yet (see [ADR-0008][adr8]
-rule 4's amendment and issue #37). Build the pipeline for it anyway; the field is in the contract
-precisely so that the day it starts moving is not a schema change.
+**The bound is 256 events per player**, and the drop policy is **drop the newest**: when the queue is
+full an ordinary event is refused at submission and what is already queued is delivered.
+
+*Why 256.* It is a stall the delivery path can absorb, derived from a rate and a duration rather than
+picked for looking round. The sustained ceiling per session is the three periodic events every 10 s
+plus, at worst, one `TrackSwitched` per 2 s segment — about 0.8 events per second. Concurrent players
+are bounded by the platform's decoder limit, which no current device reports above 16, so the process
+ceiling is around 13 events per second. 256 events is therefore roughly 20 seconds of a completely
+stalled sink before anything is lost, and costs about 25 KB.
+
+*Why the newest.* The front of a session is the part that cannot be reconstructed: time to first
+frame happens once, and the initial `TrackSwitched` is the only statement of what the session started
+at. What arrives during pressure is mostly periodic samples that recur every 10 s, and one lost
+sample of a time-weighted quantity costs its weight and nothing else. The honest cost of this choice
+is that an **error postmortem loses the seconds before the failure**, which is exactly what dropping
+the *oldest* would have kept — and dropping the oldest cannot honour the `SessionEnded` reserve
+without scanning the queue on every drop. The trade is made here rather than hidden, and
+`droppedEventCount` is what makes it visible per session.
+
+**Memory pressure empties the queue.** `onTrimMemory` at `TRIM_MEMORY_RUNNING_LOW` or above discards
+everything pending except the terminal events, counting each discard (`PRD.md` §3.4).
+`TRIM_MEMORY_UI_HIDDEN` is deliberately ignored: it says the app went to the background, which is the
+ordinary background-audio case and says nothing about memory.
 
 [adr8]: adr/0008-measure-behind-an-engine-agnostic-sink-boundary.md
 
@@ -425,11 +447,18 @@ event never spans two lines. Failures log at `WARN` and everything else at `INFO
 formatted whether or not anything is listening, which is worth thinking about before attaching it in
 a release build.
 
-**Which thread a sink is called on.** Today: the thread that caused the event, synchronously — which
-for the session boundaries is the application thread. That is a scoped deviation from
-[ADR-0008][adr8] rule 4, recorded in the ADR itself, and issue #37 replaces it with a bounded queue
-drained off the engine's threads. **Until then a sink must not block**: no network call, no disk
-write, no lock a slow caller holds.
+**Which thread a sink is called on.** SuperPlayer's own delivery thread — one for the process, so
+sixty pooled players do not mean sixty threads — and never the application thread or a playback
+thread ([ADR-0008][adr8] rule 4). Calls are serialized, so a sink needs no locking of its own.
+
+**A sink may therefore block.** A network write, a disk write or a slow lock delays no playback
+callback; the engine's threads only ever enqueue. What a slow sink costs is *events* — its own and
+other sessions', through the bound above — which is the trade this shape makes deliberately, because
+telemetry latency is elastic and playback is not. A sink that never returns does stop delivery for
+every player in the process, so hand genuinely long work to your own executor.
+
+Do not call the player from a sink: the event carries what it means, and a `SuperPlayer` call from
+that thread is a Media3 wrong-thread violation.
 
 ---
 

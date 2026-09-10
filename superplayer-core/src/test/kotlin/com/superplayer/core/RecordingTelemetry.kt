@@ -102,6 +102,14 @@ class RecordingTelemetry(private val sink: TelemetrySink) : TelemetryCollector {
         )
     }
 
+    /** How many times core forwarded the platform's memory-pressure signal. */
+    var memoryPressureCount = 0
+        private set
+
+    override fun onMemoryPressure() {
+        memoryPressureCount++
+    }
+
     override fun detach() {
         detachCount++
         player?.exoPlayer?.removeAnalyticsListener(analyticsListener)

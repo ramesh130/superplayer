@@ -130,10 +130,14 @@ public sealed class TelemetryEvent {
         /**
          * How many events of this session the delivery path discarded under pressure.
          *
-         * Always zero today: delivery is synchronous and nothing is dropped yet. The field is here
-         * rather than added later because rule 3 makes it part of the contract a consumer writes
-         * against — a pipeline that has no place to put a drop count is one that will silently
-         * undercount when issue #37 makes delivery lossy.
+         * Non-zero means this session's event stream is incomplete, and a session that says so
+         * should be **excluded** from aggregates rather than averaged in: a rebuffer ratio computed
+         * from a partially-dropped stream is a plausible wrong number that nobody audits. That is
+         * the whole reason rule 3 requires the count and requires this event to be undroppable —
+         * a declaration of what was lost is worthless if pressure can lose it.
+         *
+         * Counted at delivery rather than at the moment the session ended, so a drop caused by
+         * memory pressure after the last event was queued still lands here.
          */
         public val droppedEventCount: Int = 0,
     ) : TelemetryEvent()

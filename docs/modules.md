@@ -33,7 +33,7 @@ than to wave the dependency through.
 | Module | Phase | Purpose | Depends on |
 | --- | --- | --- | --- |
 | `superplayer-core` | 1 | SuperPlayer facade, PlaybackSession, config profiles, player pool | Media3 only |
-| `superplayer-telemetry` | 2 | QoE collector (CTA-2066), CMCD emitter, pluggable sinks | core |
+| `superplayer-telemetry` | 2 | QoE collector (CTA-2066), CMCD emitter, pluggable sinks | core, testkit (tests only) |
 | `superplayer-testkit` | 2 | Fault injection, network shaping, fake manifests, golden traces | core, Media3 test utils |
 | `superplayer-abr` | 3 | AdaptiveLoadControl, NetworkAwareTrackSelection, BandwidthOracle | core |
 | `superplayer-preload` | 4 | PreloadCoordinator: segment-0 prefetch and decoder warm-up | core |

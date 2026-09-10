@@ -181,19 +181,24 @@ public class QoeCollector internal constructor(
         override fun onPlaybackStateChanged(eventTime: AnalyticsListener.EventTime, state: Int) {
             lastKnownPlaybackState = state
             val session = openSession ?: return
-            when (state) {
-                Player.STATE_BUFFERING -> openRebuffer(session)
-
-                Player.STATE_READY -> {
-                    closeRebuffer(session)
-                    completeSeek(session)
-                }
-
-                // A player that went idle or ended did not resume from its stall; it stopped. The
-                // stall is closed at the moment it stopped being one, which is here, so that a
-                // `RebufferStarted` never goes unanswered — a pipeline pairing the two would
-                // otherwise carry an open stall forward into whatever it read next.
-                else -> closeRebuffer(session)
+            if (state == Player.STATE_BUFFERING) {
+                openRebuffer(session)
+                return
+            }
+            // Every other state ends the stall, idle and ended included: a player that stopped did
+            // not resume, but it did stop stalling, and a `RebufferStarted` left unanswered would
+            // have a pipeline pairing the two carry an open stall into whatever it read next.
+            closeRebuffer(session)
+            if (state == Player.STATE_READY) {
+                // Playback resuming at the target is what makes seek latency a number.
+                completeSeek(session)
+            } else {
+                // Idle or ended: this seek will never resume, so it has no latency to report and
+                // must not be left in flight. A pending seek makes *every* later stall in the
+                // session seek-induced, which would quietly empty the rebuffer ratio of a session
+                // whose seek happened to be interrupted by an error — the metric reading best
+                // exactly when playback went worst.
+                session.abandonSeek()
             }
         }
 
@@ -401,7 +406,7 @@ public class QoeCollector internal constructor(
     internal fun awaitDelivered(timeoutMs: Long): Boolean = delivery.awaitIdle(timeoutMs)
 
     override fun detach() {
-        stopSampling()
+        stopSampling(dropHandler = true)
         player?.exoPlayer?.removeAnalyticsListener(analyticsListener)
         player = null
         // A declaration nobody spent belongs to no session, and a collector that kept it would hand
@@ -504,8 +509,16 @@ public class QoeCollector internal constructor(
         handler.postDelayed(::sampleNow, SAMPLING_INTERVAL_MS)
     }
 
-    private fun stopSampling() {
+    /**
+     * Stops the periodic samples, and forgets the handler too when [dropHandler] is set.
+     *
+     * The handler is bound to the looper of the player it was built for. Between sessions on the
+     * same player it is kept and reused, which is the pooled case; on [detach] it must go, or a
+     * reattached collector would post the next session's samples to a released player's thread.
+     */
+    private fun stopSampling(dropHandler: Boolean = false) {
         sampler?.removeCallbacksAndMessages(null)
+        if (dropHandler) sampler = null
     }
 
     /**
@@ -607,6 +620,18 @@ public class QoeCollector internal constructor(
         var seekCompletedAtMs: Long? = null
 
         /**
+         * Gives up on a seek that can no longer complete, without reporting a latency for it.
+         *
+         * A seek interrupted by an error or by the end of the stream never resumes at its target, so
+         * there is no `SeekCompleted` to emit — and leaving it in flight would tag every subsequent
+         * stall as seek-induced. The exclusion window is not started either: nothing completed, so
+         * there is nothing for a window to follow.
+         */
+        fun abandonSeek() {
+            seekRequestedAtMs = null
+        }
+
+        /**
          * Whether a stall beginning at [nowMs] is attributable to a seek, and therefore out of
          * rebuffer ratio.
          *
@@ -630,11 +655,18 @@ public class QoeCollector internal constructor(
 
     private companion object {
 
-        /** The cadence the three periodic events share; `docs/telemetry-schema.md` states it. */
-        const val SAMPLING_INTERVAL_MS = 10_000L
+        /**
+         * The cadence the three periodic events share; `docs/telemetry-schema.md` states it.
+         *
+         * Not `const`, deliberately. A `const val` in a *private* companion is still a public static
+         * field on the JVM, so it lands in `api/superplayer-telemetry.api` as a number a consumer
+         * can read — and the whole point of `samplingIntervalMs` travelling on every sample is that
+         * a consumer takes the cadence off the event rather than copying it out of the library.
+         */
+        val SAMPLING_INTERVAL_MS = 10_000L
 
         /** See [OpenSession.isSeekInducedAt]; the document is where this number is argued. */
-        const val SEEK_EXCLUSION_WINDOW_MS = 1_000L
+        val SEEK_EXCLUSION_WINDOW_MS = 1_000L
     }
 }
 

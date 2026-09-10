@@ -5,8 +5,6 @@ public final class com/superplayer/telemetry/LogcatSink : com/superplayer/core/T
 }
 
 public final class com/superplayer/telemetry/QoeCollector : com/superplayer/core/TelemetryCollector {
-	public static final field SAMPLING_INTERVAL_MS J
-	public static final field SEEK_EXCLUSION_WINDOW_MS J
 	public fun <init> (Lcom/superplayer/core/TelemetrySink;)V
 	public fun attach (Lcom/superplayer/core/SuperPlayer;)V
 	public fun declareIntent (J)V

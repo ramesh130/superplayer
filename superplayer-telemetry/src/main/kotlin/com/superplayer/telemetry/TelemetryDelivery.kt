@@ -121,10 +121,21 @@ internal class TelemetryDelivery(
      *
      * Keyed by session because the count is a property of the session a pipeline is deciding whether
      * to trust, not of the process. An entry is removed when the session's [TelemetryEvent.SessionEnded]
-     * is delivered, which is also the only thing that ever reads it — so the map holds at most one
-     * entry per session in flight, and a session that never ends is a player that was never released.
+     * is delivered, which is also the only thing that ever reads it — so in the ordinary case the map
+     * holds at most one entry per session in flight, and a session that never ends is a player that
+     * was never released.
+     *
+     * Bounded anyway, least-recently-touched first out. An event submitted for a session whose
+     * terminal event has *already* been delivered would create an entry nothing will ever read or
+     * remove; nothing in this library does that today, and a counter that grows without a bound is
+     * the failure this whole class exists to prevent, arriving one level down. Sessions in flight
+     * are bounded by live players, which `PlayerPool` bounds, so [MAX_TRACKED_SESSIONS] is far above
+     * any real count and eviction only ever reaches the unreadable entries.
      */
-    private val dropsBySession = mutableMapOf<String, Int>()
+    private val dropsBySession = object : LinkedHashMap<String, Int>(0, LOAD_FACTOR, /* accessOrder= */ true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Int>): Boolean =
+            size > MAX_TRACKED_SESSIONS
+    }
 
     /**
      * Queues [event] for delivery, or drops it and counts the drop.
@@ -229,6 +240,16 @@ internal class TelemetryDelivery(
 
         /** See the class KDoc for where this number comes from; it is a stall budget, not a round number. */
         const val DEFAULT_CAPACITY: Int = 256
+
+        /**
+         * How many sessions' drop counts are kept at once — comfortably above the number of players
+         * any device can decode for concurrently, so eviction only ever reaches an entry that no
+         * terminal event is still coming for. See [dropsBySession].
+         */
+        private const val MAX_TRACKED_SESSIONS: Int = 64
+
+        /** `LinkedHashMap`'s own default; named only because the access-order constructor demands one. */
+        private const val LOAD_FACTOR: Float = 0.75f
 
         /** The tag `LogcatSink` and `TelemetrySink.composite` also write under, so one grep finds all of it. */
         private const val TAG: String = LogcatSink.TAG

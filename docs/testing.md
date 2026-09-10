@@ -5,10 +5,26 @@ the JVM, against Media3's own fakes. No device, no network, no assertion that re
 facade. This is not a default that happened to stick — it is the constraint the first slice of the
 library was built to satisfy, and it holds for everything added afterwards.
 
-There is exactly one documented exception, and it is still a test with no device and no network:
+There are two documented exceptions, and both are still tests with no device and no network.
+
 `SuperPlayerTransferChainTest` keeps the data source chain `SuperPlayer.Builder` assembles instead of
 substituting a fake over it, and reads a `file:` URI. "The one player that keeps its own transfer
 chain" below says why that is necessary rather than merely convenient.
+
+`TelemetryDeliveryTest` constructs `TelemetryDelivery` directly, with no player anywhere. What it
+tests is not playback but the *queue between* a collector and a consumer's sink: a bound, a drop
+policy, and a delivery thread (ADR-0008 rules 3 and 4). Every one of its assertions is about a state
+the queue can only be held in deliberately — full, stalled, or emptied by memory pressure — and
+provoking those through a player would mean making a real sink block for real seconds while real
+content played, which is a slower test that asserts less. `QoeCollectorTest` covers the composition
+from the other side: that a collector submits rather than calls, and that a consumer's sink is
+reached at all through the real builder.
+
+For the same reason `QoeCollector` carries one `internal` test hook, `awaitDelivered`. Delivery is
+asynchronous by design, so an assertion made without waiting for it is a race rather than a test; the
+hook is `internal` precisely so that a consumer cannot reach for it and call it from the thread this
+design exists to keep out of the sink. It is a *waiting* seam rather than a configuring one, which is
+why it is not the "second seam" the next section warns about.
 
 `superplayer-core/src/test/kotlin/com/superplayer/core/` is the worked example.
 

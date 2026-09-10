@@ -59,12 +59,28 @@ and no telemetry type, while the collector that derives events from Media3's ana
 `superplayer-telemetry`'s `QoeCollector(sink)`. The setter takes a collector rather than a bare sink
 because collector-as-sink makes the wrong call compile: a sink passed on its own type-checks and
 measures nothing. A player built without that call registers no analytics listener and allocates
-nothing, which is rule 2 and is asserted by counting registrations rather than by inspection. What
-is emitted today is the session boundary only — `SessionStarted` when content is adopted,
-`SessionEnded` when the player is released, recycled or moved on — and core signals those edges from
-`adopt`, `restoreSnapshot`, `resetForReuse` and `release`, because only core knows which item change
-carried a `MediaRequest` and which was a recycle. Delivery is synchronous on the caller's thread, which
-ADR-0008 rule 4 forbids and issue #37 fixes; the CTA-2066 metrics are #35 and #36.
+nothing, which is rule 2 and is asserted by counting registrations rather than by inspection.
+
+The vocabulary is now the whole CTA-2066 schema — first frame, rebuffer start and end, startup and
+mid-stream failure, track switch, seek, live latency, periodic state, dropped frames — but **what the
+numbers mean is `docs/telemetry-schema.md`, not the source**, and that document is the deliverable
+rather than a by-product: every metric cites CTA-2066, and every place SuperPlayer's definition
+departs from it says so with the reason. Read it before changing a field's meaning; the version in
+`TelemetryEvent.SCHEMA_VERSION` bumps on meaning and not on shape, so a changed denominator is a
+release note and an added field is not. Time to first frame is the one metric with an API attached:
+its start boundary is *user intent*, which the library cannot see, so a consumer declares it with
+`player.declarePlaybackIntent()` and a session that gets none is measured from content adoption and
+labelled as such rather than silently mixed in.
+
+What is *emitted* today is still the session boundary only — `SessionStarted` when content is
+adopted, `SessionEnded` when the player is released, recycled or moved on — and core signals those
+edges from `adopt`, `restoreSnapshot`, `resetForReuse` and `release`, because only core knows which
+item change carried a `MediaRequest` and which was a recycle. Deriving the rest is #36, and it is
+gated: delivery is synchronous on the caller's thread, which ADR-0008 rule 4 forbids and #37 fixes,
+and until it does no event caused by an engine callback may be added. Two sinks ship —
+`TelemetrySink.composite(...)`, core's own factory, which isolates a child that throws so one bad
+sink costs neither its siblings their events nor playback its thread; and `superplayer-telemetry`'s
+`LogcatSink`, one greppable line per event under the tag `SuperPlayerQoE`.
 
 Android's own lifecycle rules — audio focus, becoming-noisy, wake and Wi-Fi locks — are on for every
 player, switched on in `LifecycleBinding.kt` and fixed rather than per-profile: ADR-0006 rule 1 says
@@ -128,7 +144,7 @@ not override Java `default` methods and gives no warning that it hasn't: `Player
 listener wrapper forwards reflectively. `SuperPlayerForwardingTest` drives Media3's own
 forwarding-contract assertion over both and is what catches the next one Media3 adds.
 
-`superplayer-telemetry` holds `QoeCollector` and nothing else yet. Every other library module is
+`superplayer-telemetry` holds `QoeCollector` and `LogcatSink` and nothing else yet. Every other library module is
 still an empty placeholder: they exist so boundaries are fixed and enforceable before code arrives.
 `superplayer-core`, `superplayer-telemetry` and `build-logic` are the only modules with test
 sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module

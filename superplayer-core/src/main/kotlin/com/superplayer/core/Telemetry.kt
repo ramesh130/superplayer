@@ -16,6 +16,8 @@
 
 package com.superplayer.core
 
+import android.util.Log
+
 /**
  * Where measurement leaves the library: one call, one event, the consumer's own pipeline underneath.
  *
@@ -55,94 +57,51 @@ public fun interface TelemetrySink {
 
     /** Hands [event] to whatever this sink writes to. Must not block — see the class KDoc. */
     public fun onEvent(event: TelemetryEvent)
-}
-
-/**
- * What SuperPlayer measured, as one sealed hierarchy rooted in the module every consumer takes.
- *
- * One vocabulary rather than one per module, versioned by [SCHEMA_VERSION] (ADR-0008 rule 5). The
- * version tracks a metric's *meaning*, not the shape of the class carrying it: adding a field, or
- * adding an event type, leaves it alone; changing what an existing number counts — a different
- * rebuffer denominator, a different start boundary for time-to-first-frame — is what raises it, so
- * that a consumer comparing two releases' numbers can tell whether they are comparable.
- *
- * Every event names the session it belongs to and the content that session is of, so that events
- * from concurrently playing players — a feed holds several — are separable in a pipeline that
- * receives them interleaved.
- *
- * What exists here is the session boundary and nothing else. The QoE metrics that CTA-2066 defines —
- * time to first frame, rebuffer ratio, startup failures, bitrate and dropped frames — are issue
- * #35's vocabulary and #36's computation, and they arrive as further subclasses of this type.
- */
-public sealed class TelemetryEvent {
-
-    /** The session this event belongs to; the same value for every event between start and end. */
-    public abstract val sessionId: String
-
-    /** The [MediaRequest.contentId] the session is of — the app's own identifier, never a URL. */
-    public abstract val contentId: String
-
-    /**
-     * When this event happened, as a wall-clock epoch millisecond.
-     *
-     * Wall clock rather than a monotonic reading because the consumer of this is a pipeline that has
-     * to line these events up against events from elsewhere in the app.
-     */
-    public abstract val timestampMs: Long
-
-    /** The meaning-version of the metrics this event carries — see the class KDoc. */
-    public val schemaVersion: Int get() = SCHEMA_VERSION
-
-    /**
-     * A player took content on and a measurement session opened for it.
-     *
-     * Emitted from the one place both `setMediaRequest` and a session controller's resolved content
-     * pass through, so content started from a car head unit opens a session exactly like content
-     * started from the app.
-     */
-    public data class SessionStarted(
-        override val sessionId: String,
-        override val contentId: String,
-        override val timestampMs: Long,
-        /** The profile the player was built with — what kind of playback this session measures. */
-        public val profile: PlaybackProfile,
-    ) : TelemetryEvent()
-
-    /**
-     * The session closed: the player was released, recycled into a [PlayerPool], or given different
-     * content through [SuperPlayer.setMediaRequest] or [SuperPlayer.restoreSnapshot].
-     *
-     * Those are the ways content changes *with an identity attached*, and they are therefore the
-     * only ways a session can end other than by the player going away. A consumer that moves the
-     * player on with Media3's own `setMediaItem` instead leaves the session open, and what follows
-     * is reported under the previous content's id — the same gap `SuperPlayer.saveSnapshot`
-     * documents from the other side, and for the same reason: a raw `MediaItem` carries no
-     * [MediaRequest.contentId] for a session to be of. Mixing the two APIs on one player is what
-     * produces it; a player driven through [SuperPlayer.setMediaRequest] throughout cannot.
-     *
-     * The session's terminal event, and the one ADR-0008 rule 3 says may never be dropped, because
-     * it is what carries [droppedEventCount].
-     */
-    public data class SessionEnded(
-        override val sessionId: String,
-        override val contentId: String,
-        override val timestampMs: Long,
-        /**
-         * How many events of this session the delivery path discarded under pressure.
-         *
-         * Always zero today: delivery is synchronous and nothing is dropped yet. The field is here
-         * rather than added later because rule 3 makes it part of the contract a consumer writes
-         * against — a pipeline that has no place to put a drop count is one that will silently
-         * undercount when issue #37 makes delivery lossy.
-         */
-        public val droppedEventCount: Int = 0,
-    ) : TelemetryEvent()
 
     public companion object {
+
         /**
-         * The current meaning-version of this vocabulary. See the class KDoc for what moves it.
+         * One sink that fans every event out to all of [sinks], in the order they were given.
+         *
+         * The shape `PRD.md` §2.2 spells — `TelemetrySink.composite(analytics, LogcatSink)` — and the
+         * reason it is a factory on this interface rather than a class of its own: composing sinks is
+         * something an app does to core's own type, and a named class would put a second concept in
+         * front of the one thing a consumer has to understand.
+         *
+         * **A child that throws costs nobody else their event.** Each child is called inside its own
+         * `try`, so a failure in one is contained: the remaining children still receive the event,
+         * and nothing propagates back to the caller — which today is a `setMediaRequest` or a
+         * `release` on the application thread, so an escaping exception would take playback down with
+         * it. The failure is reported to logcat, because a sink that silently stops receiving is the
+         * kind of defect nobody notices for a fortnight.
+         *
+         * `Throwable` rather than `Exception`, deliberately. The point is that the telemetry path
+         * cannot break playback, and a sink written against an analytics SDK that throws an `Error` —
+         * a `NoClassDefFoundError` from a missing optional dependency is the usual one — breaks it
+         * exactly as thoroughly as one that throws an exception.
+         *
+         * Delivery to the children is synchronous and on the calling thread, because this composes
+         * sinks and does not change how they are called; the thread a sink sees is whatever the
+         * collector's own delivery gives it.
          */
-        public const val SCHEMA_VERSION: Int = 1
+        @JvmStatic
+        public fun composite(vararg sinks: TelemetrySink): TelemetrySink {
+            // Copied rather than held: `vararg` hands over an array the caller may still be holding,
+            // and a composite whose membership changed under it would drop events with no trace.
+            val children = sinks.toList()
+            return TelemetrySink { event ->
+                children.forEach { child ->
+                    try {
+                        child.onEvent(event)
+                    } catch (throwable: Throwable) {
+                        Log.w(TAG, "Telemetry sink ${child.javaClass.name} threw; other sinks unaffected", throwable)
+                    }
+                }
+            }
+        }
+
+        /** Shared with nothing: the one place this file writes to logcat is the line above. */
+        private const val TAG: String = "SuperPlayerTelemetry"
     }
 }
 
@@ -209,6 +168,23 @@ public interface TelemetryCollector {
      * release after recycle must not produce two ends.
      */
     public fun endSession()
+
+    /**
+     * The consumer declared intent to play, at [monotonicTimeMs] on `SystemClock.elapsedRealtime()`.
+     *
+     * Core forwards [SuperPlayer.declarePlaybackIntent] here and does nothing else with it: the
+     * declaration is the start boundary of time to first frame, and what a boundary means is the
+     * schema's business rather than the facade's. Hold it and use it for the next session that
+     * starts; a session that opens without one measures from its own start and says so through
+     * [TtffStartBoundary.CONTENT_ADOPTED].
+     *
+     * Called before [startSession] in the ordinary case — the app declares intent at the tap and
+     * loads the content once its catalogue answers — but nothing enforces that, and a declaration
+     * that arrives after the session has already produced its first frame is a late declaration
+     * rather than an error. It may be called more than once for one session; the collector decides
+     * which reading survives and `docs/telemetry-schema.md` states which.
+     */
+    public fun declareIntent(monotonicTimeMs: Long)
 
     /** The player is about to be released. Unregister everything [attach] registered. */
     public fun detach()

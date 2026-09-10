@@ -62,13 +62,28 @@ class RecordingTelemetry(private val sink: TelemetrySink) : TelemetryCollector {
         player.exoPlayer.addAnalyticsListener(analyticsListener)
     }
 
+    /** The last declared intent, as `SuperPlayer.declarePlaybackIntent` handed it over. */
+    var declaredIntentMonotonicMs: Long? = null
+        private set
+
+    var declareIntentCount = 0
+        private set
+
+    override fun declareIntent(monotonicTimeMs: Long) {
+        declareIntentCount++
+        declaredIntentMonotonicMs = monotonicTimeMs
+    }
+
     override fun startSession(contentId: String) {
         endSession()
+        val attached = checkNotNull(player)
         val started = TelemetryEvent.SessionStarted(
             sessionId = "session-${sessionsStarted++}",
             contentId = contentId,
             timestampMs = TIMESTAMP_MS,
-            profile = checkNotNull(player).profile,
+            monotonicTimeMs = MONOTONIC_MS,
+            profile = attached.profile,
+            decision = attached.playbackDecision,
         )
         openSession = started
         sink.onEvent(started)
@@ -82,6 +97,7 @@ class RecordingTelemetry(private val sink: TelemetrySink) : TelemetryCollector {
                 sessionId = open.sessionId,
                 contentId = open.contentId,
                 timestampMs = TIMESTAMP_MS,
+                monotonicTimeMs = MONOTONIC_MS,
             ),
         )
     }
@@ -98,5 +114,8 @@ class RecordingTelemetry(private val sink: TelemetrySink) : TelemetryCollector {
          * differs between two runs of the same assertion for no reason the assertion is about.
          */
         const val TIMESTAMP_MS = 1_700_000_000_000L
+
+        /** Fixed for the same reason [TIMESTAMP_MS] is; nothing here asserts on an interval. */
+        const val MONOTONIC_MS = 42_000L
     }
 }

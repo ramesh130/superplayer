@@ -1,6 +1,13 @@
+public final class com/superplayer/telemetry/LogcatSink : com/superplayer/core/TelemetrySink {
+	public static final field INSTANCE Lcom/superplayer/telemetry/LogcatSink;
+	public static final field TAG Ljava/lang/String;
+	public fun onEvent (Lcom/superplayer/core/TelemetryEvent;)V
+}
+
 public final class com/superplayer/telemetry/QoeCollector : com/superplayer/core/TelemetryCollector {
 	public fun <init> (Lcom/superplayer/core/TelemetrySink;)V
 	public fun attach (Lcom/superplayer/core/SuperPlayer;)V
+	public fun declareIntent (J)V
 	public fun detach ()V
 	public fun endSession ()V
 	public fun startSession (Ljava/lang/String;)V

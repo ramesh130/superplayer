@@ -16,11 +16,13 @@
 
 package com.superplayer.telemetry
 
+import android.os.SystemClock
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import com.superplayer.core.SuperPlayer
 import com.superplayer.core.TelemetryCollector
 import com.superplayer.core.TelemetryEvent
 import com.superplayer.core.TelemetrySink
+import com.superplayer.core.TtffStartBoundary
 import java.util.UUID
 
 /**
@@ -75,6 +77,20 @@ public class QoeCollector(private val sink: TelemetrySink) : TelemetryCollector 
     private var openSession: OpenSession? = null
 
     /**
+     * The most recent `SuperPlayer.declarePlaybackIntent`, on `SystemClock.elapsedRealtime()`, or
+     * null when the consumer has declared none since the last session opened.
+     *
+     * Held here rather than on the open session because it arrives *before* one: an app declares
+     * intent at the tap and only then finds out what to play. [startSession] consumes it, which is
+     * what makes a declaration belong to exactly one session — a second session that opened on a
+     * stale reading would report a time to first frame containing the whole of the previous view.
+     *
+     * The last declaration before a session wins, so an app that declares twice on a double tap
+     * measures from the tap that actually loaded something.
+     */
+    private var declaredIntentMonotonicMs: Long? = null
+
+    /**
      * Media3's own analytics registration, which is where every metric this collector will compute
      * comes from: the engine reports load, buffer, decoder and renderer events here with the
      * playback-thread timing intact, which polling a [com.superplayer.core.PlaybackSession] or
@@ -101,16 +117,39 @@ public class QoeCollector(private val sink: TelemetrySink) : TelemetryCollector 
         // view of something nobody watched.
         endSession()
 
-        val session = OpenSession(id = UUID.randomUUID().toString(), contentId = contentId)
+        val attached = checkNotNull(player) { "startSession before attach" }
+        val startedAtMonotonicMs = SystemClock.elapsedRealtime()
+        // The start boundary of time to first frame, resolved once here rather than at the frame:
+        // whether a declaration existed is a fact about *this* session's opening, and deciding it
+        // later would let a declaration made after the session began move its own start backwards.
+        // ref: CTA-2066 measures video start-up time from the viewer's request, which is what
+        // `declareIntent` carries; CONTENT_ADOPTED is the narrower fallback the schema names when
+        // an app declares nothing. Issue #36 subtracts; the definition is this.
+        val intentMs = declaredIntentMonotonicMs
+        declaredIntentMonotonicMs = null
+
+        val session = OpenSession(
+            id = UUID.randomUUID().toString(),
+            contentId = contentId,
+            ttffStartMonotonicMs = intentMs ?: startedAtMonotonicMs,
+            ttffStartBoundary =
+            if (intentMs == null) TtffStartBoundary.CONTENT_ADOPTED else TtffStartBoundary.USER_INTENT,
+        )
         openSession = session
         emit(
             TelemetryEvent.SessionStarted(
                 sessionId = session.id,
                 contentId = session.contentId,
                 timestampMs = System.currentTimeMillis(),
-                profile = checkNotNull(player) { "startSession before attach" }.profile,
+                monotonicTimeMs = startedAtMonotonicMs,
+                profile = attached.profile,
+                decision = attached.playbackDecision,
             ),
         )
+    }
+
+    override fun declareIntent(monotonicTimeMs: Long) {
+        declaredIntentMonotonicMs = monotonicTimeMs
     }
 
     override fun endSession() {
@@ -123,6 +162,7 @@ public class QoeCollector(private val sink: TelemetrySink) : TelemetryCollector 
                 sessionId = session.id,
                 contentId = session.contentId,
                 timestampMs = System.currentTimeMillis(),
+                monotonicTimeMs = SystemClock.elapsedRealtime(),
                 // Nothing is dropped yet; see the field's own KDoc and issue #37.
                 droppedEventCount = 0,
             ),
@@ -132,6 +172,9 @@ public class QoeCollector(private val sink: TelemetrySink) : TelemetryCollector 
     override fun detach() {
         player?.exoPlayer?.removeAnalyticsListener(analyticsListener)
         player = null
+        // A declaration nobody spent belongs to no session, and a collector that kept it would hand
+        // it to whichever session opened next on a collector that has been reattached.
+        declaredIntentMonotonicMs = null
     }
 
     /**
@@ -148,6 +191,19 @@ public class QoeCollector(private val sink: TelemetrySink) : TelemetryCollector 
         sink.onEvent(event)
     }
 
-    /** A session that has started and not yet ended. */
-    private class OpenSession(val id: String, val contentId: String)
+    /**
+     * A session that has started and not yet ended.
+     *
+     * [ttffStartMonotonicMs] and [ttffStartBoundary] are settled when the session opens and are what
+     * issue #36's first-frame callback subtracts from; they are held rather than emitted because
+     * ADR-0008 rule 4's amendment forbids adding an event caused by an engine callback until #37
+     * moves delivery off the engine's threads. The definition lands in this release; the number
+     * lands in that one.
+     */
+    private class OpenSession(
+        val id: String,
+        val contentId: String,
+        val ttffStartMonotonicMs: Long,
+        val ttffStartBoundary: TtffStartBoundary,
+    )
 }

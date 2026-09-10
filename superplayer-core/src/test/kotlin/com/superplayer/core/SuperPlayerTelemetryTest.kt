@@ -16,6 +16,7 @@
 
 package com.superplayer.core
 
+import android.os.SystemClock
 import androidx.media3.common.Player
 import androidx.media3.common.util.Clock
 import androidx.media3.exoplayer.analytics.AnalyticsListener
@@ -179,6 +180,30 @@ class SuperPlayerTelemetryTest {
         harness.buildPlayer(alsoConfigureEngine = { it.setAnalyticsCollector(withoutTelemetry) })
 
         assertThat(withTelemetry.registrations - withoutTelemetry.registrations).isEqualTo(1)
+    }
+
+    @Test
+    fun declaringIntentReachesTheCollectorOnTheMonotonicClock() {
+        val before = SystemClock.elapsedRealtime()
+        val player = harness.buildPlayer(telemetry = telemetry)
+
+        player.declarePlaybackIntent()
+
+        // The reading is the boundary time-to-first-frame is measured from, so what matters is that
+        // it is a plausible `elapsedRealtime` and not a wall clock: the two differ by decades.
+        assertThat(telemetry.declareIntentCount).isEqualTo(1)
+        val declared = checkNotNull(telemetry.declaredIntentMonotonicMs)
+        assertThat(declared).isAtLeast(before)
+        assertThat(declared).isAtMost(SystemClock.elapsedRealtime())
+        // Declaring intent is not content, and content is what a session is of.
+        assertThat(events).isEmpty()
+    }
+
+    @Test
+    fun declaringIntentOnAPlayerWithNoTelemetryDoesNothingAtAll() {
+        // The call site is an app's tap handler, which does not know whether telemetry was attached
+        // — a debug build attaches it and a release build may not. It has to be safe in both.
+        harness.buildPlayer().declarePlaybackIntent()
     }
 
     /**

@@ -17,6 +17,7 @@
 package com.superplayer.core
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.annotation.VisibleForTesting
 import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
@@ -215,6 +216,30 @@ public class SuperPlayer private constructor(
      * loaded rather than trusting it — see there.
      */
     private var currentRequest: MediaRequest? = null
+
+    /**
+     * Says that a viewer just asked for playback — the start boundary of time to first frame.
+     *
+     * Call it at the tap, before whatever the app does to turn that tap into a [MediaRequest]: the
+     * catalogue lookup, the entitlement check, the navigation transition. That interval is part of
+     * what the viewer waited through, and `PRD.md` §3.4 puts the metric's boundary at intent rather
+     * than at `prepare()` precisely so that it is counted. The library cannot see a tap, which is
+     * why this is declared rather than observed, and it is the whole reason this method exists.
+     *
+     * Cheap and safe to call with no telemetry attached: it reads the monotonic clock and hands the
+     * reading to the collector, and a player built without one does neither. Safe to call before the
+     * content is known, which is the point of it — there is no [MediaRequest] yet at the tap.
+     *
+     * A session that never gets one is measured from the moment the player took the content on and
+     * reports [TtffStartBoundary.CONTENT_ADOPTED], so the two are never silently averaged together.
+     */
+    public fun declarePlaybackIntent() {
+        // ref: CTA-2066 measures video start-up time from the viewer's request; CMCD v2's `msd`
+        // (media start delay) uses the same boundary, and agreeing with both is what makes this
+        // number comparable outside this app. `elapsedRealtime` rather than the wall clock because
+        // the reading is one end of a duration — see `TelemetryEvent` on the two clocks.
+        telemetry?.declareIntent(SystemClock.elapsedRealtime())
+    }
 
     /**
      * Plays what [request] describes: the first of its sources, starting where its

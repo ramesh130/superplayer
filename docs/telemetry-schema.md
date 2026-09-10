@@ -135,9 +135,20 @@ additions is what you want.
 | `TrackSwitched` | The video rendition changes | `fromBitrateBps`, `toBitrateBps`, `direction` |
 | `SeekRequested` | A seek is issued | `fromPositionMs`, `toPositionMs` |
 | `SeekCompleted` | Playback resumes at the target | `toPositionMs`, `seekLatencyMs` |
-| `LiveLatencySampled` | Periodically, live content only | `liveLatencyMs`, `targetLiveLatencyMs` |
-| `PlaybackStateSampled` | Periodically | `samplingIntervalMs`, `videoBitrateBps`, `bufferedDurationMs`, `playing` |
-| `VideoFramesDropped` | Periodically, while video renders | `droppedFrames`, `repeatedFrames`, `elapsedPlayingMs` |
+| `LiveLatencySampled` | Every 10 s, live content only | `liveLatencyMs`, `targetLiveLatencyMs` |
+| `PlaybackStateSampled` | Every 10 s | `samplingIntervalMs`, `videoBitrateBps`, `bufferedDurationMs`, `playing` |
+| `VideoFramesDropped` | Every 10 s, while video renders | `droppedFrames`, `repeatedFrames`, `elapsedPlayingMs` |
+
+**The sampling interval is 10 seconds**, and the three periodic events share it. It is stated here
+because a time-weighted quantity cannot be computed from samples whose cadence a consumer has to
+guess. Ten seconds is short enough to resolve a bitrate distribution across a normal view — a
+half-hour session is 180 samples — and long enough that the events are a rounding error next to the
+segment requests happening anyway.
+
+**Do not hard-code it.** Each sample carries `samplingIntervalMs`, which is its weight, so a session
+recorded under a different cadence still aggregates correctly and a change of default is not a
+change of schema. A consumer that reads the constant from this document rather than from the event is
+the one that breaks when it moves.
 
 `SessionStarted.decision` is the `PlaybackDecision` the player was actually built with — the buffer
 sizes and track-selection limits in force for the whole session. It is here because a QoE number is
@@ -352,8 +363,11 @@ interval together, so a rate over that interval needs nothing that can drift out
 this choice is real and should be stated: the rate is **not** comparable between content of different
 frame rates. Compare 60 fps against 60 fps.
 
-The raw `droppedFrames` count is reported as a count, unnormalized, which is what makes it the same
-number CMCD v2's `df` key carries.
+**The event carries the components, not the rate.** `droppedFrames` and `elapsedPlayingMs` travel
+separately and the division above is the pipeline's to do. That is deliberate: an unnormalized count
+is the same number CMCD v2's `df` key carries, so the two routes report one number rather than two
+with one name — and a pre-divided rate cannot be re-aggregated, because summing rates across
+intervals or sessions is not a rate. Summing the components and dividing once is.
 
 *Departure from CTA-2066:* the standard names dropped frames as a renderer-quality property; it does
 not fix a rate denominator. Playing time is SuperPlayer's choice, with the reasoning above.

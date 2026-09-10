@@ -100,8 +100,16 @@ public fun interface TelemetrySink {
             }
         }
 
-        /** Shared with nothing: the one place this file writes to logcat is the line above. */
-        private const val TAG: String = "SuperPlayerTelemetry"
+        /**
+         * The same tag `superplayer-telemetry`'s `LogcatSink` writes under, deliberately.
+         *
+         * A person debugging telemetry greps one tag, and a sink that threw is the single most
+         * interesting thing that tag can carry — a warning filed under a second name is invisible to
+         * the grep the sink's own KDoc recommends. It is a duplicated literal rather than a shared
+         * constant because the dependency points the wrong way: core may not name a telemetry type
+         * (`docs/modules.md`), and inverting that for a string is a worse trade than repeating it.
+         */
+        private const val TAG: String = "SuperPlayerQoE"
     }
 }
 

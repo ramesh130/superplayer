@@ -107,6 +107,20 @@ class LogcatSinkTest {
     }
 
     @Test
+    fun aFailureCodeCarryingASpaceStaysOneField() {
+        // A code comes from the engine, not from this library, and is exactly as untrusted as the
+        // message beside it.
+        LogcatSink.onEvent(
+            startupFailed(PlaybackFailure(FailureCategory.DRM, "PROVISIONING FAILED", null)),
+        )
+
+        val line = lines.single().msg
+        assertThat(line).contains("""code="PROVISIONING FAILED"""")
+        // The field after it is still a field, which is what the quoting is protecting.
+        assertThat(line).contains("message=null")
+    }
+
+    @Test
     fun aContentIdCarryingASpaceStaysOneField() {
         // A content id is the app's own string and this sink may assume nothing about it.
         LogcatSink.onEvent(sessionStarted(contentId = "the expanse s01e01"))

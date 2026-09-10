@@ -319,6 +319,17 @@ ms window is SuperPlayer's, stated here so that another implementation can repro
 resumes at the target, on the monotonic clock. This is where the wait excluded from rebuffer ratio
 above is accounted for; the two together cover all of it, and neither double-counts the other.
 
+*Departure from CTA-2066:* the standard's seek begins with the viewer's action. `SeekRequested` is
+raised from the engine's own seek discontinuity, which is the earliest moment the library can
+observe one — a `seekTo` reaches the player through the same `Player` API a notification, a car head
+unit or a scrub bar uses, and none of them tells it when the finger went down. The gap is the app's
+own dispatch and is small; it is stated because it is real, and because an app that wants the wider
+interval has `declarePlaybackIntent`'s reasoning to copy.
+
+**A seek into already-buffered content reports a latency near zero and no rebuffer**, which is
+correct and worth expecting: the player never leaves `STATE_READY`, so there is nothing to wait for.
+Seek latency is not a measure of how far the viewer jumped.
+
 ### Bitrate
 
 > *ref: CTA-2066, average bitrate and bitrate switching.*
@@ -369,6 +380,14 @@ would happily average, and the absence of the event is what stops that.
 - `droppedFrames` — video frames the renderer discarded without presenting
 - `repeatedFrames` — video frames presented twice because no new one was ready
 - `elapsedPlayingMs` — the playing time the interval covers, on the monotonic clock
+
+**`repeatedFrames` is always zero on Android today**, and that is a limit of the engine rather than
+a statement about the content. Media3 1.11.0's `VideoRendererEventListener` reports dropped frames
+and has no callback for repeated ones — `MediaCodecVideoRenderer` does not count a frame presented
+twice. The field stays in the vocabulary because CTA-2066 names both and because a schema that
+dropped it would have to be versioned to add it back; it is reported as zero rather than omitted so
+that the event's shape does not change on the day it becomes observable. **Read a zero here as "not
+measured", not as "none".**
 
 **The denominator is wall-clock playing time**, and the rate is therefore:
 
@@ -464,9 +483,39 @@ that thread is a Media3 wrong-thread violation.
 
 ## Not in this schema
 
-- **Computing the metrics.** This document and the event types define and name them; issue #36
-  derives them from the engine. An event listed above may not be emitted yet.
 - **UI smoothness.** See the section above — it is the app's own pipeline.
+- **CMCD.** A separate seam joined to telemetry by a shared session id ([ADR-0008][adr8] rule 6);
+  `#38` is where it lands.
+
+---
+
+## How these are derived, and one thing that is deliberately not used
+
+Every metric above comes from Media3's `AnalyticsListener` — the engine saying what happened — rather
+than from sampling a position and inferring it. That is `PRD.md` §3.4's rule, and the reason for it
+is that two implementations of "the same" metric disagree precisely when one of them is inferring.
+
+The three periodic events are the exception that proves it. A sample *is* an event: bitrate
+distribution and buffer health are time-weighted quantities and a pipeline cannot weight what it did
+not receive at a known cadence. So there is a timer, at the 10-second cadence stated above, and it
+carries its own weight on every sample.
+
+**`PlaybackStatsListener` is deliberately not used.** Media3 already computes total rebuffer time,
+mean bitrate and more, and forwarding those fields under CTA-2066 names would be the fastest possible
+implementation and wrong in a way nobody notices for six months. Media3's boundaries — for joining
+time, for what counts as buffering, for how a seek is treated — are engine-shaped rather than
+CTA-2066-shaped, and renaming a field does not convert it. Where the two agree, the engine's own
+number is used as it is: dropped frames arrive with the interval they accumulated over, and are
+reported over it. Where they differ, the difference is the work, and it carries a comment citing
+both definitions.
+
+**One clock, and it is not the engine's.** Every duration here is measured on
+`SystemClock.elapsedRealtime()`, including the ones derived from analytics callbacks — even though
+each callback carries an engine reading of its own. That reading comes from the `Clock` the engine
+was built with, which is substitutable, while time to first frame is measured from
+`declarePlaybackIntent`, which is not. Subtracting one from the other would make the headline metric
+a difference between two clocks: correct whenever they happen to agree, and silently wrong when they
+do not.
 - **CMCD.** A separate seam (CTA-5004), joined to this one by a shared session id: CMCD's `sid` *is*
   the telemetry `sessionId`, so a row in a CDN log joins to a row in a warehouse. It annotates
   requests rather than producing events, and no event is routed through it.

@@ -72,11 +72,12 @@ its start boundary is *user intent*, which the library cannot see, so a consumer
 `player.declarePlaybackIntent()` and a session that gets none is measured from content adoption and
 labelled as such rather than silently mixed in.
 
-What is *emitted* today is still the session boundary only — `SessionStarted` when content is
-adopted, `SessionEnded` when the player is released, recycled or moved on — and core signals those
-edges from `adopt`, `restoreSnapshot`, `resetForReuse` and `release`, because only core knows which
-item change carried a `MediaRequest` and which was a recycle. Deriving the rest is #36. It is no longer
-gated: `superplayer-telemetry`'s `TelemetryDelivery` is the bounded queue ADR-0008 rules 3 and 4
+The whole vocabulary is emitted. Core signals the session edges from `adopt`, `restoreSnapshot`,
+`resetForReuse` and `release`, because only core knows which item change carried a `MediaRequest` and
+which was a recycle; everything else `QoeCollector` derives from Media3's `AnalyticsListener`, and
+`PlaybackStatsListener` is deliberately not used — Media3's boundaries for joining time, buffering
+and seeks are engine-shaped rather than CTA-2066-shaped, so renaming its fields would be fast and
+wrong. Delivery is `TelemetryDelivery`, the bounded queue ADR-0008 rules 3 and 4
 require — one daemon thread for the whole process, 256 events per player, the newest refused when
 full, and every refusal counted against the session that lost it and stamped onto its `SessionEnded`
 as that event leaves the queue — so a sink is never on a thread the engine needs and a blocking sink
@@ -147,10 +148,13 @@ not override Java `default` methods and gives no warning that it hasn't: `Player
 listener wrapper forwards reflectively. `SuperPlayerForwardingTest` drives Media3's own
 forwarding-contract assertion over both and is what catches the next one Media3 adds.
 
-`superplayer-telemetry` holds `QoeCollector` and `LogcatSink` and nothing else yet. Every other library module is
-still an empty placeholder: they exist so boundaries are fixed and enforceable before code arrives.
-`superplayer-core`, `superplayer-telemetry` and `build-logic` are the only modules with test
-sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
+`superplayer-telemetry` holds `QoeCollector` and `LogcatSink`. `superplayer-testkit` holds
+`PlaybackHarness` — the deterministic playback harness every module from phase 2 onward tests
+against, which compiles as a Kotlin *friend* of core so it can reach the one internal seam
+`docs/testing.md` describes, and whose own public API names no Media3 type. Every other library
+module is still an empty placeholder: they exist so boundaries are fixed and enforceable before code
+arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit` and `build-logic` are the
+only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
 requirements, and the phase table are what the issues are cut from.
 
 `PLAN.md` is an untracked, local-only scratch draft that `PRD.md` supersedes. **Do not read it, cite

@@ -13,6 +13,11 @@ dependencies {
     // public API under Robolectric, against Media3's own fakes. `media3-test-utils-robolectric`
     // brings Robolectric, Truth, Mockito and androidx.test with it — THIRD_PARTY.md records them as
     // transitive, and nothing new is introduced here.
+    //
+    // The shared deterministic playback harness. Phase 2 depends on phase 2, which `docs/modules.md`
+    // allows between peers: modules of one phase ship together, so a dependency between them costs
+    // nothing the rule protects. Test-only — nothing a consumer resolves reaches it.
+    testImplementation(project(":superplayer-testkit"))
     testImplementation(libs.media3.test.utils)
     testImplementation(libs.media3.test.utils.robolectric)
     testImplementation(libs.robolectric)

@@ -17,6 +17,7 @@
 package com.superplayer.build
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -112,6 +113,22 @@ class ModulePhaseRuleTest {
     }
 
     @Test
+    fun `the named-argument form of project() is checked too`() {
+        val directory = temporaryFolder.newFolder("superplayer-telemetry")
+        val script = File(directory, "build.gradle.kts").apply {
+            writeText("""api(project(path = ":superplayer-abr"))""")
+        }
+
+        assertEquals(
+            listOf(
+                "superplayer-telemetry (phase 2) depends on superplayer-abr (phase 3): " +
+                    "a module may not depend on one from a later phase."
+            ),
+            findModulePhaseViolations(modulesDocument(), listOf(script))
+        )
+    }
+
+    @Test
     fun `commented-out dependencies are ignored so a build file can document the rule`() {
         val violations = check(
             "superplayer-telemetry" to emptyList(),
@@ -138,7 +155,9 @@ class ModulePhaseRuleTest {
         // The test runs from build-logic's directory; the repository is whichever ancestor
         // holds the document.
         val repoRoot = generateSequence(File(".").canonicalFile) { it.parentFile }
-            .first { File(it, "docs/modules.md").isFile }
+            .firstOrNull { File(it, "docs/modules.md").isFile }
+        assertNotNull("no ancestor of ${File(".").canonicalFile} holds docs/modules.md", repoRoot)
+        repoRoot!!
         val scripts = repoRoot.listFiles()
             .orEmpty()
             .filter { it.isDirectory && it.name.startsWith("superplayer-") }

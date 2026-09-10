@@ -154,6 +154,22 @@ extensions.configure<LibraryAndroidComponentsExtension> {
 }
 
 extensions.configure<KotlinAndroidProjectExtension> {
+    // Explicit API mode: every public declaration in a library main source set states its
+    // visibility and its return type, or it does not compile.
+    //
+    // This is the half the tracked API surface cannot do. `api/<module>.api` reports that the
+    // surface changed, after the fact; Kotlin's default is `public`, so widening the API is what
+    // happens when an author writes nothing at all, and the diff cannot recover whether they meant
+    // it. Here publicness is something someone typed, which is what makes a surprising diff a real
+    // question rather than possibly an oversight. The explicit return type serves ADR-0001 rule 2
+    // for the same reason: an inferred public signature can change when a body changes, with
+    // nothing in the source diff to show it.
+    //
+    // It applies to main sources only — test source sets are exempt by Kotlin's own rule — and
+    // only to modules applying this plugin, so `demo/`, a consumer rather than a library, is
+    // untouched.
+    explicitApi()
+
     compilerOptions {
         jvmTarget.set(JvmTarget.fromTarget(jvmTargetVersion))
     }

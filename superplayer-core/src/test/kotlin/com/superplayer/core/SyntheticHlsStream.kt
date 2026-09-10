@@ -45,7 +45,10 @@ internal object SyntheticHlsStream {
 
     const val MULTIVARIANT_PLAYLIST_URI: String = BASE_URI + MULTIVARIANT_PLAYLIST_NAME
 
-    private fun segmentName(index: Int) = "segment$index.aac"
+    /** What every segment's name ends in, so a test can tell a segment request from a playlist one. */
+    const val SEGMENT_SUFFIX: String = ".aac"
+
+    private fun segmentName(index: Int) = "segment$index$SEGMENT_SUFFIX"
 
     /** Declared in the multivariant playlist, and therefore what the selected track should report. */
     const val DECLARED_BITRATE_BPS: Int = 128_000
@@ -53,9 +56,10 @@ internal object SyntheticHlsStream {
     /**
      * The second variant's declared bitrate, in the two-variant form of the stream.
      *
-     * Higher than [DECLARED_BITRATE_BPS] so that the adaptive selection starts on the lower one and
-     * every assertion about the *selected* format holds whichever form of the stream a test asked
-     * for.
+     * It is this one that gets selected, not [DECLARED_BITRATE_BPS]: an audio-only renderer reports
+     * no adaptive support, so the selector picks a single track rather than an adaptive set, and the
+     * single track it picks is the highest-bitrate one it is allowed. A test asserting on the
+     * selected format over the two-variant stream asserts on this constant.
      */
     const val HIGHER_DECLARED_BITRATE_BPS: Int = 256_000
 

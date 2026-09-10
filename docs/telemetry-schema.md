@@ -68,7 +68,7 @@ Three things a data engineer needs before writing that query.
   they arrive as logged fields, as a raw `CMCD-Session` header column, or not at all depends on the
   CDN's own logging configuration. That is the first thing to check when the join returns nothing.
 - **The keys travel as request headers by default**, and can be moved into a `CMCD` query parameter
-  with `SuperPlayer.Builder.setCmcdMode(CmcdMode.QUERY_PARAMETERS)` for a delivery path that logs
+  with `SuperPlayer.Builder.setCmcdMode(CmcdMode.QUERY_PARAMETER)` for a delivery path that logs
   query strings rather than headers. `CmcdMode` carries the trade-off, including the one that can
   break a signed URL.
 - **CMCD is sent quoted, and only by adaptive sources.** `sid` and `cid` arrive as quoted strings —

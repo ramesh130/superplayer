@@ -5,11 +5,22 @@ the JVM, against Media3's own fakes. No device, no network, no assertion that re
 facade. This is not a default that happened to stick — it is the constraint the first slice of the
 library was built to satisfy, and it holds for everything added afterwards.
 
-There are two documented exceptions, and both are still tests with no device and no network.
+There are three documented exceptions, and all of them are still tests with no device and no network.
 
 `SuperPlayerTransferChainTest` keeps the data source chain `SuperPlayer.Builder` assembles instead of
 substituting a fake over it, and reads a `file:` URI. "The one player that keeps its own transfer
 chain" below says why that is necessary rather than merely convenient.
+
+`SuperPlayerCmcdTest` keeps that same chain and asserts on the *requests* travelling down it rather
+than on a state of the facade — the CMCD keys on a `DataSpec`, captured through the `TransferListener`
+the engine propagates down every layer. What it is about is bytes leaving the process, and no facade
+state reports those: a player emitting CMCD and one emitting nothing are indistinguishable from the
+outside, which is precisely why the keys are worth a test. The listener arrives as a `BandwidthMeter`
+installed through the engine configurator, which is the seam this document already describes, and it
+is a *reading* seam rather than a configuring one — it substitutes no behaviour, and the estimate it
+reports is Media3's own so that nothing observed is downstream of a number the test invented. A test
+that needs to see what SuperPlayer sent copies this; one that needs to see what the player *is* does
+not.
 
 `TelemetryDeliveryTest` constructs `TelemetryDelivery` directly, with no player anywhere. What it
 tests is not playback but the *queue between* a collector and a consumer's sink: a bound, a drop

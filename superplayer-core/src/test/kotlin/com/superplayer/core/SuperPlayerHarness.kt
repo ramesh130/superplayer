@@ -17,6 +17,7 @@
 package com.superplayer.core
 
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.test.utils.FakeClock
 import androidx.media3.test.utils.FakeDataSet
@@ -81,6 +82,8 @@ class SuperPlayerHarness : ExternalResource() {
     fun buildPlayer(
         profile: PlaybackProfile? = null,
         fakeDataSet: FakeDataSet = SyntheticHlsStream.addTo(FakeDataSet()),
+        telemetry: TelemetryCollector? = null,
+        alsoConfigureEngine: (ExoPlayer.Builder) -> Unit = {},
     ): SuperPlayer {
         // Auto-advancing: the playback thread's waits resolve as fast as the test can run them, so a
         // two-second stream does not cost two seconds.
@@ -91,9 +94,14 @@ class SuperPlayerHarness : ExternalResource() {
             clock,
             SuperPlayer.Builder(ApplicationProvider.getApplicationContext())
                 .apply { profile?.let { setProfile(it) } }
+                .apply { telemetry?.let { setTelemetry(it) } }
                 .setEngineConfigurator { engine ->
                     engine.setClock(clock)
                     engine.setMediaSourceFactory(DefaultMediaSourceFactory(fakeDataSourceFactory))
+                    // Last, so a test that is specifically about the engine's construction — the
+                    // analytics collector a telemetry test counts registrations on — can replace
+                    // what the seam above installed rather than merely add to it.
+                    alsoConfigureEngine(engine)
                 }
                 .build(),
         )
@@ -154,12 +162,18 @@ class SuperPlayerHarness : ExternalResource() {
         maxSize: Int? = null,
         profile: PlaybackProfile? = null,
         fakeDataSet: FakeDataSet = SyntheticHlsStream.addTo(FakeDataSet()),
+        telemetry: TelemetryCollector? = null,
     ): PlayerPool = PlayerPool.Builder(ApplicationProvider.getApplicationContext())
         .apply {
             maxSize?.let { setMaxSize(it) }
             profile?.let { setProfile(it) }
         }
-        .setPlayerFactory { buildPlayer(profile ?: PlaybackProfile.SHORT_FORM, fakeDataSet) }
+        .setPlayerFactory {
+            // A collector measures one player, so a pool given one is a pool a test sized to build
+            // one — which is what every telemetry test here does, because the interesting case is a
+            // player handed out twice rather than two players.
+            buildPlayer(profile ?: PlaybackProfile.SHORT_FORM, fakeDataSet, telemetry)
+        }
         .build()
 
     /**

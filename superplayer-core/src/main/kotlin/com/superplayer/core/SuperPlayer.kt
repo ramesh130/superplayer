@@ -130,6 +130,17 @@ public class SuperPlayer private constructor(
      * constructor below, whose parameters are all types SuperPlayer may publish.
      */
     private val builtWithTrackSelectionParameters: TrackSelectionParameters?,
+    /**
+     * The collector this player was built with, or null if none was — and the whole of what a player
+     * without telemetry pays for the feature (ADR-0008 rule 2). Every call to it below is
+     * null-conditional, so no listener is registered and nothing is allocated.
+     *
+     * Deliberately without a default value, for the same reason
+     * [builtWithTrackSelectionParameters] has none: the synthetic constructor Kotlin emits for a
+     * private constructor's defaults carries every parameter of this one, including the
+     * `@UnstableApi` [ForwardingPlayer], and `checkApiSurface` fails on it.
+     */
+    private val telemetry: TelemetryCollector?,
 ) : Player by delegate {
 
     /**
@@ -147,12 +158,14 @@ public class SuperPlayer private constructor(
         playbackDecision: PlaybackDecision =
             PlaybackPolicy.forProfile(profile).decide(PlaybackConditions()),
         builtWithTrackSelectionParameters: TrackSelectionParameters? = null,
+        telemetry: TelemetryCollector? = null,
     ) : this(
         exoPlayer,
         profile,
         playbackDecision,
         ForwardingPlayer(exoPlayer),
         builtWithTrackSelectionParameters,
+        telemetry,
     )
 
     /**
@@ -236,6 +249,11 @@ public class SuperPlayer private constructor(
     internal fun adopt(request: MediaRequest): AdoptedRequest {
         rememberPositionOfCurrentContent()
         currentRequest = request
+        // The one place a measurement session can begin, for the same reason this method exists at
+        // all: both callers arrive here, so content resolved from a notification or a car head unit
+        // opens a session exactly as content set from the app does. A collector that already has one
+        // open closes it first — core signals the edge, the collector keeps the bookkeeping.
+        telemetry?.startSession(request.contentId)
         return AdoptedRequest(request.toMediaItem(), request.resolvedStartPositionMs())
     }
 
@@ -290,6 +308,12 @@ public class SuperPlayer private constructor(
 
         snapshot.request?.let { request ->
             currentRequest = request
+            // A restored player measures under a session of its own rather than continuing the saved
+            // one: the player that took the snapshot ended its session when it was released, and
+            // without this the whole of what a viewer watches after a rotation would go unmeasured.
+            // Deliberately not routed through `adopt`, which would remember a position for content
+            // this player never played.
+            telemetry?.startSession(request.contentId)
             delegate.setMediaItem(request.toMediaItem(), snapshot.positionMs)
         }
         delegate.playWhenReady = snapshot.playWhenReady
@@ -405,6 +429,11 @@ public class SuperPlayer private constructor(
 
         lastKnownPositions.clear()
         currentRequest = null
+        // The session ends with the item, not with the player. A pooled player that kept one session
+        // open across a scroll would report one forty-minute view of nine different things, which is
+        // the defect this line exists to prevent. The collector stays attached: the next
+        // `setMediaRequest` opens a fresh session on the same player.
+        telemetry?.endSession()
     }
 
     /**
@@ -415,6 +444,11 @@ public class SuperPlayer private constructor(
      * facade — a leak whose size is however many listeners were ever registered.
      */
     override fun release() {
+        // Before the engine goes, so the session's terminal event is emitted while there is still
+        // something to unregister from and `detach` comes off a live engine.
+        telemetry?.endSession()
+        telemetry?.detach()
+
         delegate.release()
         synchronized(wrappedListeners) { wrappedListeners.clear() }
         lastKnownPositions.clear()
@@ -461,6 +495,7 @@ public class SuperPlayer private constructor(
 
         private var engineConfigurator: ((ExoPlayer.Builder) -> Unit)? = null
         private var profile: PlaybackProfile = PlaybackProfile.VIDEO_ON_DEMAND
+        private var telemetry: TelemetryCollector? = null
 
         /**
          * Chooses the kind of playback this player is for — one call, and the only one policy takes.
@@ -470,6 +505,27 @@ public class SuperPlayer private constructor(
          * result is readable afterwards as [SuperPlayer.playbackDecision].
          */
         public fun setProfile(profile: PlaybackProfile): Builder = apply { this.profile = profile }
+
+        /**
+         * Measures this player, and writes what it measures to the collector's own sink.
+         *
+         * The collector is `superplayer-telemetry`'s — `QoeCollector(sink)` — and this is the only
+         * call that turns measurement on. Leave it unset and the player registers no analytics
+         * listener and allocates nothing for telemetry, which is ADR-0008 rule 2 and is asserted
+         * rather than asserted-about.
+         *
+         * ```kotlin
+         * val player = SuperPlayer.Builder(context)
+         *     .setTelemetry(QoeCollector(sink = { event -> analytics.record(event) }))
+         *     .build()
+         * ```
+         *
+         * One collector per player: it is attached to the player this builder builds, for that
+         * player's lifetime. See [TelemetryCollector] for why the type here is a collector rather
+         * than a bare [TelemetrySink].
+         */
+        public fun setTelemetry(collector: TelemetryCollector): Builder =
+            apply { telemetry = collector }
 
         /**
          * The single seam through which tests reach the engine's construction.
@@ -518,14 +574,23 @@ public class SuperPlayer private constructor(
             engine.trackSelectionParameters =
                 decision.trackSelection.applyTo(engine.trackSelectionParameters)
 
-            return SuperPlayer(
+            val player = SuperPlayer(
                 engine,
                 profile,
                 decision,
                 // Captured after the profile has been applied, so that a pooled player's reset
                 // restores what this player was built with rather than the engine's own default.
                 builtWithTrackSelectionParameters = engine.trackSelectionParameters,
+                telemetry = telemetry,
             )
+
+            // After construction rather than inside it: a collector registers against the built
+            // player, and handing `this` out of a constructor to something that will call back into
+            // it is how a half-built object escapes. Only reached when a collector was supplied,
+            // which is what makes ADR-0008 rule 2's "pays nothing" true of every other player.
+            telemetry?.attach(player)
+
+            return player
         }
     }
 }

@@ -178,6 +178,26 @@ keeps core's API at one type and is the current expectation; the second is easie
 lifecycle to, which matters for `resetForReuse`. Whichever wins, the constraint is fixed: core names
 no telemetry type, and telemetry does not reach the engine builder.
 
+*Resolved by #34, in favour of the second candidate.* `SuperPlayer.Builder.setTelemetry` takes a
+core-owned `TelemetryCollector` — `attach`, `startSession`, `endSession`, `detach` — which
+`superplayer-telemetry` implements as `QoeCollector(sink)`. Two things decided it. The first is that
+collector-as-sink makes the wrong call compile: `setTelemetry(mySink)` type-checks, because a bare
+sink *is* a `TelemetrySink`, and produces a player that measures nothing at all — the object that
+knows how to derive events being the one the consumer forgot to wrap. A distinct collector type makes
+that unexpressible. The second is `resetForReuse`, which this ADR already anticipated: a pooled
+player closes a session and opens another without ever being released, so the collector needs a
+lifecycle the sink has no shape for. The price is the one this ADR named — core's telemetry API is
+two types rather than one, and `PRD.md` §2.2's literal spelling gains a wrapper.
+
+The registration itself sits in `QoeCollector.attach`, reaching the engine through
+`SuperPlayer.exoPlayer`, and not in core. That is forced rather than chosen: the only thing Media3
+offers to register is an `AnalyticsListener`, so a core interface that handed one back would put an
+`@UnstableApi` type in core's public API and fail `verifyNoUnstableMedia3InPublicApi`. Rule 2 still
+holds because core calls `attach` only when a collector was supplied — asserted, not asserted about,
+by `SuperPlayerTelemetryTest.aPlayerBuiltWithNoTelemetryRegistersNoAnalyticsListener`, which counts
+registrations on Media3's own analytics collector and compares a player built with telemetry against
+one built without.
+
 The second is **what the metrics mean.** TTFF's start boundary,
 the rebuffer denominator, what "seek-induced" means at the edges, and the dropped-frame denominator
 are standards questions rather than architectural ones, and they belong to the schema issue and to

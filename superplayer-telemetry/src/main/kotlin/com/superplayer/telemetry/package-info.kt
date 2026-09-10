@@ -17,8 +17,12 @@
 /**
  * superplayer-telemetry — QoE collector (CTA-2066), CMCD emitter, pluggable sinks
  *
- * Placeholder. This module is created empty and buildable so that the module boundary and
- * dependency direction are fixed and enforceable now, rather than negotiated once code
- * arrives (phase 2). It intentionally declares no public API yet.
+ * Phase 2. What leaves the library is a `com.superplayer.core.TelemetryEvent` written to a
+ * `com.superplayer.core.TelemetrySink`, both of which are core's; what lives here is the collector
+ * that derives them — `QoeCollector` — and every Media3 analytics type it reads. ADR-0008 draws
+ * that line and `docs/modules.md` enforces the direction of it.
+ *
+ * `QoeCollector` today emits the session boundary only. The CTA-2066 QoE metrics and the CMCD
+ * emitter this module is named for arrive in issues #35 to #38.
  */
 package com.superplayer.telemetry

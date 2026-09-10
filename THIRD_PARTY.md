@@ -36,7 +36,7 @@ of truth. This file records *what* is depended on and under *what license*.
 | `junit:junit` | Eclipse Public License 1.0 | all modules (test), `build-logic` (test) |
 | `androidx.media3:media3-test-utils` | Apache-2.0 | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit` |
 | `androidx.media3:media3-test-utils-robolectric` | Apache-2.0 | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit` |
-| `org.robolectric:robolectric` | MIT | `superplayer-core`, `superplayer-telemetry` |
+| `org.robolectric:robolectric` | MIT | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit` |
 | `com.google.truth:truth` | Apache-2.0 | transitive, via `media3-test-utils` |
 | `org.mockito:mockito-core` | MIT | transitive, via `media3-test-utils` |
 | `androidx.test:core`, `androidx.test.ext:junit` | Apache-2.0 | transitive, via `media3-test-utils` |

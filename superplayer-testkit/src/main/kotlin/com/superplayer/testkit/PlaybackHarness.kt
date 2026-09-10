@@ -57,8 +57,8 @@ import java.util.Random
  *
  * @Test fun something() {
  *     val player = harness.buildPlayer(TestContent.videoLadder(), telemetry = collector)
- *     player.setMediaRequest(harness.request("series/expanse/s01e01"))
- *     harness.playToFirstFrame(player)
+ *     player.setMediaRequest(MediaRequest.Builder("series/expanse/s01e01").addSource(uri).build())
+ *     harness.playToReady(player)
  * }
  * ```
  *

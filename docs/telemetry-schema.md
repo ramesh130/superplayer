@@ -81,10 +81,11 @@ the *oldest* would have kept — and dropping the oldest cannot honour the `Sess
 without scanning the queue on every drop. The trade is made here rather than hidden, and
 `droppedEventCount` is what makes it visible per session.
 
-**Memory pressure empties the queue.** `onTrimMemory` at `TRIM_MEMORY_RUNNING_LOW` or above discards
-everything pending except the terminal events, counting each discard (`PRD.md` §3.4).
-`TRIM_MEMORY_UI_HIDDEN` is deliberately ignored: it says the app went to the background, which is the
-ordinary background-audio case and says nothing about memory.
+**Memory pressure empties the queue.** `onTrimMemory` at `TRIM_MEMORY_RUNNING_LOW` or above — and
+`onLowMemory`, which is the only one of the two that arrives on older devices — discards everything
+pending except the terminal events, counting each discard (`PRD.md` §3.4). `TRIM_MEMORY_UI_HIDDEN` is
+deliberately ignored: it says the app went to the background, which is the ordinary background-audio
+case and says nothing about memory.
 
 [adr8]: adr/0008-measure-behind-an-engine-agnostic-sink-boundary.md
 
@@ -484,8 +485,13 @@ that thread is a Media3 wrong-thread violation.
 ## Not in this schema
 
 - **UI smoothness.** See the section above — it is the app's own pipeline.
-- **CMCD.** A separate seam joined to telemetry by a shared session id ([ADR-0008][adr8] rule 6);
-  `#38` is where it lands.
+- **CMCD.** A separate seam (CTA-5004), joined to this one by a shared session id: CMCD's `sid` *is*
+  the telemetry `sessionId`, so a row in a CDN log joins to a row in a warehouse. It annotates
+  requests rather than producing events, and no event is routed through it.
+- **Anything that leaves the device.** SuperPlayer ships no sink that makes a network call and
+  chooses no storage on a consumer's behalf ([ADR-0006][adr6] rule 2). Delivery past the process
+  boundary is the app's analytics SDK's job, which already has a durable queue and the app's own
+  consent and retention rules.
 
 ---
 
@@ -516,12 +522,5 @@ was built with, which is substitutable, while time to first frame is measured fr
 `declarePlaybackIntent`, which is not. Subtracting one from the other would make the headline metric
 a difference between two clocks: correct whenever they happen to agree, and silently wrong when they
 do not.
-- **CMCD.** A separate seam (CTA-5004), joined to this one by a shared session id: CMCD's `sid` *is*
-  the telemetry `sessionId`, so a row in a CDN log joins to a row in a warehouse. It annotates
-  requests rather than producing events, and no event is routed through it.
-- **Anything that leaves the device.** SuperPlayer ships no sink that makes a network call and
-  chooses no storage on a consumer's behalf ([ADR-0006][adr6] rule 2). Delivery past the process
-  boundary is the app's analytics SDK's job, which already has a durable queue and the app's own
-  consent and retention rules.
 
 [adr6]: adr/0006-own-the-platform-rules-and-hand-back-the-state.md

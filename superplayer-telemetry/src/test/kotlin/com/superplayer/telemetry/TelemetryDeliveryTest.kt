@@ -238,6 +238,11 @@ class TelemetryDeliveryTest {
         // already vacated: what is left is the bound, plus the terminal event that reports the rest.
         val ended = received.filterIsInstance<TelemetryEvent.SessionEnded>().single()
         assertThat(ended.droppedEventCount).isEqualTo(100 - 32)
+        // And the memory the flood cost stayed at the bound rather than growing to meet it: 101
+        // events were offered and 34 exist. An unbounded queue is the second way telemetry kills an
+        // app — not a stall but an OOM whose crash report names the allocation site, never the
+        // cause.
+        assertThat(received).hasSize(1 + 32 + 1)
     }
 
     @Test

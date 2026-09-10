@@ -16,6 +16,7 @@
 
 package com.superplayer.telemetry
 
+import androidx.media3.common.Player
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import com.superplayer.core.FailureCategory
@@ -204,6 +205,39 @@ class QoeMetricsTest {
     }
 
     @Test
+    fun aSeekInterruptedByAFailureDoesNotMakeEveryLaterStallSeekInduced() {
+        val player = buildPlayer()
+        play(player)
+        harness.advanceTimeMs(player, 2_000)
+
+        // A seek issued while the pipeline is already stalled stays in flight — there is no return
+        // to ready to complete it on. Then the renderer fails underneath it and the player goes
+        // idle, so it never resumes at its target: no latency to report, and the danger is what it
+        // leaves behind.
+        harness.stallRendering(player)
+        player.seekTo(SEEK_TARGET_MS)
+        harness.settle(player)
+        harness.failRendering(player)
+        harness.advanceTimeMs(player, 5_000)
+
+        // Recover and stall again, long past the seek-exclusion window.
+        harness.resumeRendering(player)
+        player.prepare()
+        player.play()
+        harness.advanceTimeMs(player, 5_000)
+        harness.stallRendering(player)
+        harness.advanceTimeMs(player, STALL_MS)
+        harness.resumeRendering(player)
+
+        // A seek left in flight would tag this — and every later stall in the session — as
+        // seek-induced, quietly emptying the rebuffer ratio of a session whose seek happened to be
+        // interrupted. The metric would read best exactly when playback went worst.
+        assertThat(eventsOf<TelemetryEvent.RebufferStarted>().last().seekInduced).isFalse()
+        // And nothing claimed a latency for a seek that never arrived anywhere.
+        assertThat(eventsOf<TelemetryEvent.SeekCompleted>()).isEmpty()
+    }
+
+    @Test
     fun aTrackSwitchReportsBothBitratesAndWhichWayItWent() {
         val player = buildPlayer(TestContent.videoLadder(listOf(LOW_BITRATE, HIGH_BITRATE)))
         play(player)
@@ -325,6 +359,38 @@ class QoeMetricsTest {
     }
 
     @Test
+    fun aSinkThatBlocksForSecondsDelaysNoPlaybackStateTransition() {
+        val wedged = java.util.concurrent.CountDownLatch(1)
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val blocking = TelemetrySink {
+            entered.countDown()
+            wedged.await()
+        }
+        val player = harness.buildPlayer(telemetry = QoeCollector(blocking).also { collector = it })
+
+        try {
+            player.setMediaRequest(MediaRequest.Builder(CONTENT).addSource(SOURCE).build())
+            // The sink is now stuck on the delivery thread, which is the field failure this whole
+            // guarantee exists for: an analytics SDK doing a synchronous network write on a bad
+            // connection. If that thread were one the engine needed, everything below would hang and
+            // the user's bug report would say "the video stutters".
+            assertThat(entered.await(BLOCKED_SINK_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS))
+                .isTrue()
+
+            harness.playToReady(player)
+            assertThat(player.playbackState).isEqualTo(Player.STATE_READY)
+
+            harness.stallRendering(player)
+            assertThat(player.playbackState).isEqualTo(Player.STATE_BUFFERING)
+
+            harness.resumeRendering(player)
+            assertThat(player.playbackState).isEqualTo(Player.STATE_READY)
+        } finally {
+            wedged.countDown()
+        }
+    }
+
+    @Test
     fun aRecycledPooledPlayerReportsTwoSessionsWithIndependentCounters() {
         val pool = harness.buildPool(maxSize = 1, telemetry = { QoeCollector(sink).also { collector = it } })
         val first = checkNotNull(pool.acquire())
@@ -381,5 +447,8 @@ class QoeMetricsTest {
         const val HIGH_BITRATE = 2_400_000
 
         const val DELIVERY_TIMEOUT_MS = 5_000L
+
+        /** Only ever reached when the delivery thread never picked the event up at all. */
+        const val BLOCKED_SINK_TIMEOUT_SECONDS = 5L
     }
 }

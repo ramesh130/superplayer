@@ -11,6 +11,6 @@ public final class com/superplayer/telemetry/QoeCollector : com/superplayer/core
 	public fun detach ()V
 	public fun endSession ()V
 	public fun onMemoryPressure ()V
-	public fun startSession (Ljava/lang/String;)V
+	public fun startSession (Ljava/lang/String;Ljava/lang/String;)V
 }
 

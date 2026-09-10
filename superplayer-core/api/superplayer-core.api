@@ -19,6 +19,15 @@ public final class com/superplayer/core/BufferPolicy {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class com/superplayer/core/CmcdMode : java/lang/Enum {
+	public static final field DISABLED Lcom/superplayer/core/CmcdMode;
+	public static final field QUERY_PARAMETERS Lcom/superplayer/core/CmcdMode;
+	public static final field REQUEST_HEADERS Lcom/superplayer/core/CmcdMode;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/core/CmcdMode;
+	public static fun values ()[Lcom/superplayer/core/CmcdMode;
+}
+
 public final class com/superplayer/core/FailureCategory : java/lang/Enum {
 	public static final field DECODER Lcom/superplayer/core/FailureCategory;
 	public static final field DRM Lcom/superplayer/core/FailureCategory;
@@ -330,6 +339,7 @@ public final class com/superplayer/core/SuperPlayer : androidx/media3/common/Pla
 public final class com/superplayer/core/SuperPlayer$Builder {
 	public fun <init> (Landroid/content/Context;)V
 	public final fun build ()Lcom/superplayer/core/SuperPlayer;
+	public final fun setCmcdMode (Lcom/superplayer/core/CmcdMode;)Lcom/superplayer/core/SuperPlayer$Builder;
 	public final fun setProfile (Lcom/superplayer/core/PlaybackProfile;)Lcom/superplayer/core/SuperPlayer$Builder;
 	public final fun setTelemetry (Lcom/superplayer/core/TelemetryCollector;)Lcom/superplayer/core/SuperPlayer$Builder;
 }
@@ -343,7 +353,7 @@ public abstract interface class com/superplayer/core/TelemetryCollector {
 	public abstract fun detach ()V
 	public abstract fun endSession ()V
 	public fun onMemoryPressure ()V
-	public abstract fun startSession (Ljava/lang/String;)V
+	public abstract fun startSession (Ljava/lang/String;Ljava/lang/String;)V
 }
 
 public final class com/superplayer/core/TelemetryCollector$DefaultImpls {

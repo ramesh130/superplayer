@@ -93,10 +93,15 @@ import androidx.media3.exoplayer.source.MediaSource
  * which is precisely the thing the seam exists to prevent. So [mediaSourceFactory] is the seam and
  * the chain underneath it is private to this file.
  *
+ * That is no longer a promise: CMCD is emitted today, at that insertion point and at no other, from
+ * the [CmcdMode] the profile or the consumer chose. `CmcdBinding.kt` is what turns the mode into
+ * Media3's `CmcdConfiguration`, and it is the only file that names one.
+ *
  * ## What is assembled today
  *
- * Only the transport, and deliberately the same thing `ExoPlayer.Builder` would have installed by
- * itself: `DefaultDataSource.Factory(context)` is defined as `DefaultDataSource.Factory(context,
+ * The transport, and deliberately the same thing `ExoPlayer.Builder` would have installed by
+ * itself — CMCD above it is configuration on the media source factory rather than a link in the
+ * chain: `DefaultDataSource.Factory(context)` is defined as `DefaultDataSource.Factory(context,
  * DefaultHttpDataSource.Factory())`, and `DefaultMediaSourceFactory(context)` as
  * `DefaultMediaSourceFactory(DefaultDataSource.Factory(context))` over a `DefaultExtractorsFactory`,
  * which is what the builder's default supplier constructs. Routing through here changes what a
@@ -113,9 +118,20 @@ internal object TransferChain {
      * media-source-factory setter — only `setMediaSource` and `setMediaSources`. The whole loading
      * path is fixed when the engine is constructed, which is also why `player.exoPlayer` cannot
      * substitute for this seam.
+     *
+     * [cmcdMode] and [measurementSession] are the CMCD half: the mode this player emits under, and
+     * the holder the `sid` is read from at prepare time. A disabled mode configures nothing at all.
      */
-    fun mediaSourceFactory(context: Context): MediaSource.Factory =
+    fun mediaSourceFactory(
+        context: Context,
+        cmcdMode: CmcdMode,
+        measurementSession: MeasurementSession,
+    ): MediaSource.Factory =
         DefaultMediaSourceFactory(dataSourceChain(context))
+            .apply {
+                cmcdMode.toCmcdConfigurationFactory(measurementSession)
+                    ?.let(::setCmcdConfigurationFactory)
+            }
 
     /** The chain itself — see the composition order above for what will wrap what. */
     private fun dataSourceChain(context: Context): DataSource.Factory =

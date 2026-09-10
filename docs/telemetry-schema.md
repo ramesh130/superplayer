@@ -32,7 +32,10 @@ player takes content on — `setMediaRequest`, or content a `PlaybackSession` re
 sent by a notification, a car head unit or a watch — and closes when the player is released, recycled
 into a `PlayerPool`, or given different content.
 
-- `sessionId` is opaque, unique, and the same on every event of one session.
+- `sessionId` is opaque, unique, and the same on every event of one session. **It is also CMCD's
+  `sid`** — the same string, sent to the CDN on every request of the session, which is what makes the
+  join below possible. Minted by `superplayer-core`, not by the collector, precisely so that the two
+  seams cannot drift apart.
 - `contentId` is the app's own `MediaRequest.contentId`. **Never a URL.** The same content behind two
   CDNs is one `contentId`, which is what makes a per-title metric a per-title metric.
 - A session begins with exactly one `SessionStarted` and ends with exactly one `SessionEnded`.
@@ -44,6 +47,37 @@ sessions. The `sessionId` is what separates them; nothing else does.
 of `setMediaRequest` moves it to content that has no identity, so no session can be opened for it and
 what follows is reported under the previous content's id. A player driven through `setMediaRequest`
 throughout cannot produce this. Mixing the two APIs on one player is what does.
+
+### Joining to the CDN's log
+
+CMCD (CTA-5004) sends the client's own view of each request — the bitrate asked for, the buffer, the
+throughput, whether the request was holding playback up — to the CDN, which writes it into its access
+log. That log and this schema describe the same sessions from the two ends of the connection, and
+the join between them is an equality:
+
+```sql
+SELECT q.session_id, q.content_id, c.status, c.cache_status, c.time_to_first_byte_ms
+FROM   qoe_events q
+JOIN   cdn_log    c ON c.cmcd_sid = q.session_id
+WHERE  q.event = 'RebufferStarted'
+```
+
+Three things a data engineer needs before writing that query.
+
+- **Where `sid` lands in the CDN's log is the CDN's business.** SuperPlayer sends the keys; whether
+  they arrive as logged fields, as a raw `CMCD-Session` header column, or not at all depends on the
+  CDN's own logging configuration. That is the first thing to check when the join returns nothing.
+- **The keys travel as request headers by default**, and can be moved into a `CMCD` query parameter
+  with `SuperPlayer.Builder.setCmcdMode(CmcdMode.QUERY_PARAMETERS)` for a delivery path that logs
+  query strings rather than headers. `CmcdMode` carries the trade-off, including the one that can
+  break a signed URL.
+- **CMCD is sent quoted, and only by adaptive sources.** `sid` and `cid` arrive as quoted strings —
+  strip the quotes before joining — and a progressive `.mp4` produces no CMCD at all, because there
+  is no adaptive request to describe. Sessions of such content appear in this schema and never in the
+  CDN half of the join.
+
+`cid` is the same `contentId` these events carry, so a per-title question can be asked of the CDN's
+log directly, without joining at all.
 
 ### The stream is lossy, and it says so
 
@@ -487,7 +521,8 @@ that thread is a Media3 wrong-thread violation.
 - **UI smoothness.** See the section above — it is the app's own pipeline.
 - **CMCD.** A separate seam (CTA-5004), joined to this one by a shared session id: CMCD's `sid` *is*
   the telemetry `sessionId`, so a row in a CDN log joins to a row in a warehouse. It annotates
-  requests rather than producing events, and no event is routed through it.
+  requests rather than producing events, and no event is routed through it. See
+  [Joining to the CDN's log](#joining-to-the-cdns-log).
 - **Anything that leaves the device.** SuperPlayer ships no sink that makes a network call and
   chooses no storage on a consumer's behalf ([ADR-0006][adr6] rule 2). Delivery past the process
   boundary is the app's analytics SDK's job, which already has a durable queue and the app's own

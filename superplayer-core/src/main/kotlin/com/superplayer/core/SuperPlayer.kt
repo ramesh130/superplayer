@@ -158,6 +158,18 @@ public class SuperPlayer private constructor(
      * none.
      */
     private val applicationContext: Context?,
+    /**
+     * The id this player's current measurement session is known by — the one string the telemetry
+     * events and the CMCD `sid` are both stamped with.
+     *
+     * Held here because the facade is where a session begins and ends, and read from the transfer
+     * chain, which was given the same object when the engine was built. See [MeasurementSession] for
+     * why one place mints it and what a player with neither telemetry nor CMCD does instead.
+     *
+     * Deliberately without a default value, for the reason [builtWithTrackSelectionParameters] has
+     * none.
+     */
+    private val measurementSession: MeasurementSession,
 ) : Player by delegate {
 
     /**
@@ -220,6 +232,7 @@ public class SuperPlayer private constructor(
         builtWithTrackSelectionParameters: TrackSelectionParameters? = null,
         telemetry: TelemetryCollector? = null,
         applicationContext: Context? = null,
+        measurementSession: MeasurementSession = MeasurementSession(enabled = telemetry != null),
     ) : this(
         exoPlayer,
         profile,
@@ -228,6 +241,7 @@ public class SuperPlayer private constructor(
         builtWithTrackSelectionParameters,
         telemetry,
         applicationContext,
+        measurementSession,
     )
 
     /**
@@ -339,7 +353,13 @@ public class SuperPlayer private constructor(
         // all: both callers arrive here, so content resolved from a notification or a car head unit
         // opens a session exactly as content set from the app does. A collector that already has one
         // open closes it first — core signals the edge, the collector keeps the bookkeeping.
-        telemetry?.startSession(request.contentId)
+        //
+        // The id is minted here rather than by the collector because CMCD's `sid` is the same
+        // string, and the transfer chain reads it from the same holder — see [MeasurementSession].
+        // A player with no reader for an id has no id to mint, and no session to signal either.
+        measurementSession.open(request.contentId)?.let { sessionId ->
+            telemetry?.startSession(request.contentId, sessionId)
+        }
         return AdoptedRequest(request.toMediaItem(), request.resolvedStartPositionMs())
     }
 
@@ -399,7 +419,9 @@ public class SuperPlayer private constructor(
             // without this the whole of what a viewer watches after a rotation would go unmeasured.
             // Deliberately not routed through `adopt`, which would remember a position for content
             // this player never played.
-            telemetry?.startSession(request.contentId)
+            measurementSession.open(request.contentId)?.let { sessionId ->
+                telemetry?.startSession(request.contentId, sessionId)
+            }
             delegate.setMediaItem(request.toMediaItem(), snapshot.positionMs)
         }
         delegate.playWhenReady = snapshot.playWhenReady
@@ -519,6 +541,7 @@ public class SuperPlayer private constructor(
         // open across a scroll would report one forty-minute view of nine different things, which is
         // the defect this line exists to prevent. The collector stays attached: the next
         // `setMediaRequest` opens a fresh session on the same player.
+        measurementSession.close()
         telemetry?.endSession()
     }
 
@@ -532,6 +555,7 @@ public class SuperPlayer private constructor(
     override fun release() {
         // Before the engine goes, so the session's terminal event is emitted while there is still
         // something to unregister from and `detach` comes off a live engine.
+        measurementSession.close()
         telemetry?.endSession()
         telemetry?.detach()
         // The application context outlives every player it built, so a callback left registered
@@ -587,6 +611,15 @@ public class SuperPlayer private constructor(
         private var telemetry: TelemetryCollector? = null
 
         /**
+         * The CMCD mode a consumer chose, or null for "whatever the profile defaults to".
+         *
+         * Null rather than eagerly resolved through `StaticCmcdPolicy`, because [setProfile] may be
+         * called after [setCmcdMode] and a default captured at the wrong moment would silently be
+         * the previous profile's.
+         */
+        private var cmcdMode: CmcdMode? = null
+
+        /**
          * Chooses the kind of playback this player is for — one call, and the only one policy takes.
          *
          * Defaults to [PlaybackProfile.VIDEO_ON_DEMAND]. What the profile decides, and why each
@@ -617,6 +650,29 @@ public class SuperPlayer private constructor(
             apply { telemetry = collector }
 
         /**
+         * Chooses how CMCD (CTA-5004) travels on this player's requests, overriding the profile's
+         * default.
+         *
+         * Unlike [setTelemetry], this turns nothing *on*: every profile emits CMCD already, because
+         * the CDN's half of a diagnosis is worth having before the incident rather than after it.
+         * What this call is for is the two facts SuperPlayer cannot know — that a deployment's CDN
+         * logs query strings rather than headers, or that it wants the requests left alone
+         * altogether.
+         *
+         * ```kotlin
+         * val player = SuperPlayer.Builder(context)
+         *     .setCmcdMode(CmcdMode.QUERY_PARAMETERS)
+         *     .build()
+         * ```
+         *
+         * [CmcdMode] carries the trade-off between the two modes, including the one that can break
+         * a signed URL, and `StaticCmcdPolicy` carries the per-profile defaults this replaces. Fixed
+         * for the player's lifetime, like the profile: it is applied to the media source factory as
+         * the engine is built.
+         */
+        public fun setCmcdMode(mode: CmcdMode): Builder = apply { cmcdMode = mode }
+
+        /**
          * The single seam through which tests reach the engine's construction.
          *
          * A test that must run without a device or a network has to substitute Media3's fake clock
@@ -635,6 +691,14 @@ public class SuperPlayer private constructor(
             // and asked with conditions that are empty because no content has been described yet.
             val decision = PlaybackPolicy.forProfile(profile).decide(PlaybackConditions())
 
+            // The CMCD half, resolved once the profile is final. The holder is created here rather
+            // than inside the player because both ends of the join need the same object: the
+            // transfer chain reads the session id from it, and the facade writes it.
+            val cmcd = cmcdMode ?: StaticCmcdPolicy.defaultModeFor(profile)
+            val measurementSession = MeasurementSession(
+                enabled = telemetry != null || cmcd != CmcdMode.DISABLED,
+            )
+
             // The two halves of a decision are applied at the two moments Media3 accepts them, and
             // that asymmetry is Media3's rather than a choice: a `LoadControl` is taken by the
             // builder and fixed once the engine exists, while track selection parameters can only
@@ -645,7 +709,9 @@ public class SuperPlayer private constructor(
                 // it assembles today is exactly what `ExoPlayer.Builder` would have installed on
                 // its own, so this is a seam rather than a behaviour change; TransferChain says
                 // what wraps what, and where cache, measurement, CMCD and header refresh each go.
-                .setMediaSourceFactory(TransferChain.mediaSourceFactory(context))
+                .setMediaSourceFactory(
+                    TransferChain.mediaSourceFactory(context, cmcd, measurementSession),
+                )
                 // Audio focus, becoming-noisy and the wake locks: platform rules rather than
                 // policy, which is why they are not a profile's to decide. See LifecycleBinding.kt.
                 .withLifecycleCorrectness()
@@ -673,6 +739,7 @@ public class SuperPlayer private constructor(
                 telemetry = telemetry,
                 // Only when there is a collector to signal; see the field.
                 applicationContext = telemetry?.let { context.applicationContext },
+                measurementSession = measurementSession,
             )
 
             // After construction rather than inside it: a collector registers against the built

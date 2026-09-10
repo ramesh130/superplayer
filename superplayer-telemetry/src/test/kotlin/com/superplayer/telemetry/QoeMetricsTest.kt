@@ -49,9 +49,12 @@ import java.util.Collections
  *
  * Stalls are provoked by making the video renderer stop being ready, and dropped frames by raising
  * the renderer's own callback. Both reproduce the engine's behaviour faithfully and the *cause* not
- * at all — no bytes are late and no decoder is behind. `#39` (fault injection) and `#40` (throughput
- * replay) are what these should be re-pointed at; until then, a rebuffer here proves the collector's
- * attribution and arithmetic rather than its sensitivity to real network trouble.
+ * at all — no bytes are late and no decoder is behind. A rebuffer here therefore proves the
+ * collector's attribution and arithmetic rather than its sensitivity to real network trouble; that
+ * second half is [FaultInducedRebufferTest], where a segment is made to arrive late through the
+ * fault injector and the stall has a cause. The stalls here stay renderer-driven on purpose: they
+ * are exact to the millisecond, which is what lets these assertions be on values rather than on
+ * ranges. Dropped frames are still a stub, and `#40` (throughput replay) is what they wait on.
  */
 @RunWith(AndroidJUnit4::class)
 class QoeMetricsTest {

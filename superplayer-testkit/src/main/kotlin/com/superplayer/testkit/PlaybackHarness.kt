@@ -114,6 +114,12 @@ public class PlaybackHarness : ExternalResource() {
     private val outputs = mutableListOf<Pair<Surface, SurfaceTexture>>()
 
     /**
+     * The fault injector installed under each player, so [requestedResources] can report what the
+     * session actually fetched and under which address.
+     */
+    private val injectors = IdentityHashMap<SuperPlayer, FaultInjectingDataSource.Factory>()
+
+    /**
      * A player as a consumer builds one, over synthetic content and the fakes above.
      *
      * [content] describes what to play; [profile] is left unset by default so a test asserting on
@@ -123,21 +129,34 @@ public class PlaybackHarness : ExternalResource() {
         content: TestContent = TestContent.video(),
         profile: PlaybackProfile? = null,
         telemetry: TelemetryCollector? = null,
+        faults: FaultScript = FaultScript.NONE,
     ): SuperPlayer {
         var built: ControllableVideoRenderer? = null
+        val injector = FaultInjectingDataSource.Factory(FakeDataSource.Factory(), faults, clock)
         val player = SuperPlayer.Builder(ApplicationProvider.getApplicationContext())
             .apply { profile?.let { setProfile(it) } }
             .apply { telemetry?.let { setTelemetry(it) } }
             .setEngineConfigurator { engine ->
                 engine.setClock(clock)
                 engine.setRenderersFactory(renderersFactory { built = it })
-                engine.setMediaSourceFactory(mediaSourceFactory(content))
+                engine.setMediaSourceFactory(mediaSourceFactory(content, faults, injector))
             }
             .build()
         renderers[player] = checkNotNull(built) { "The engine built no renderers" }
+        injectors[player] = injector
         attachVideoOutput(player)
         return player
     }
+
+    /**
+     * What [player] has fetched so far, in the order it was first asked for, as the addresses a
+     * [FaultScript] speaks in.
+     *
+     * Internal: [ResourceAddress] is the injector's own vocabulary, and this module's public API
+     * stays the one a test writes fault plans in. The harness's own tests are what read it.
+     */
+    internal fun requestedResources(player: SuperPlayer): List<ResourceAddress> =
+        checkNotNull(injectors[player]) { "This harness did not build that player" }.addresses.requested
 
     /**
      * A [PlayerPool] whose players are this harness's, so a pooled player is a player like any
@@ -286,6 +305,7 @@ public class PlaybackHarness : ExternalResource() {
     override fun after() {
         renderers.keys.toList().asReversed().forEach { it.release() }
         renderers.clear()
+        injectors.clear()
         // After the players, which are what were drawing into them.
         outputs.forEach { (surface, texture) ->
             surface.release()
@@ -320,7 +340,11 @@ public class PlaybackHarness : ExternalResource() {
      * becomes a [FakeMediaSource] with a single video track, because a source with nothing to choose
      * between should not go through a chunk source that exists to choose.
      */
-    private fun mediaSourceFactory(content: TestContent): MediaSource.Factory {
+    private fun mediaSourceFactory(
+        content: TestContent,
+        faults: FaultScript,
+        injector: FaultInjectingDataSource.Factory,
+    ): MediaSource.Factory {
         val formats = content.videoBitratesBps.mapIndexed { index, bitrate -> videoFormat(index, bitrate) }
         val timeline = FakeTimeline(
             FakeTimeline.TimelineWindowDefinition.Builder()
@@ -347,16 +371,21 @@ public class PlaybackHarness : ExternalResource() {
         )
         return object : MediaSource.Factory {
             override fun createMediaSource(mediaItem: androidx.media3.common.MediaItem): MediaSource =
-                if (formats.size > 1) {
+                // A ladder needs the adaptive source to have anything to switch between; a fault
+                // script needs it because it is the only path here that loads through a
+                // `DataSource` at all — Media3's non-adaptive fake synthesizes its samples in
+                // memory, so there is no transfer for an injector to sit in front of.
+                if (formats.size > 1 || !faults.isEmpty()) {
                     FakeAdaptiveMediaSource(
                         timeline,
                         TrackGroupArray(TrackGroup(*formats.toTypedArray())),
-                        FakeChunkSource.Factory(
+                        FaultInjectingChunkSourceFactory(
                             // A fixed seed: the chunk sizes this generates are what a bandwidth
                             // estimate is built from, and a test whose ABR decisions moved between
                             // runs would be a test of the random number generator.
                             FakeAdaptiveDataSet.Factory(CHUNK_DURATION_US, /* bitratePercentStdDev= */ 0.0, Random(0)),
                             FakeDataSource.Factory(),
+                            injector,
                         ),
                     )
                 } else {

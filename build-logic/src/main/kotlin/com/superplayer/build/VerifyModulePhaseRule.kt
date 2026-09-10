@@ -107,7 +107,7 @@ internal fun findModulePhaseViolations(
         .flatMap { script ->
             val module = script.parentFile.name
             projectDependenciesIn(script.readText()).mapNotNull { dependency ->
-                violation(module, phases[module], dependency, phases, dependency in phases)
+                violation(module, dependency, phases)
             }
         }
         .sorted()
@@ -121,36 +121,33 @@ internal fun findModulePhaseViolations(
  * a dependency between them costs nothing the rule protects. A cycle between peers is Gradle's
  * own error, not this one's.
  */
-private fun violation(
-    module: String,
-    modulePhase: Int?,
-    dependency: String,
-    phases: Map<String, Int?>,
-    dependencyIsListed: Boolean
-): String? {
-    val phaseOf = { name: String, phase: Int? ->
-        if (phase == null) "$name (unscheduled)" else "$name (phase $phase)"
+private fun violation(module: String, dependency: String, phases: Map<String, Int?>): String? {
+    if (dependency !in phases) {
+        return "$module depends on $dependency, which docs/modules.md does not list."
     }
 
-    return when {
-        !dependencyIsListed ->
-            "$module depends on $dependency, which docs/modules.md does not list."
+    val modulePhase = phases[module]
+    val dependencyPhase = phases[dependency]
 
+    return when {
         // An unscheduled module is not an earlier phase than anything, so nothing may depend on
         // it — while it may itself depend on anything scheduled. docs/modules.md says why.
-        phases[dependency] == null ->
-            "${phaseOf(module, modulePhase)} depends on ${phaseOf(dependency, null)}: an " +
+        dependencyPhase == null ->
+            "${named(module, modulePhase)} depends on ${named(dependency, null)}: an " +
                 "unscheduled module is not an earlier phase than anything, so nothing may " +
                 "depend on it."
 
-        modulePhase != null && phases[dependency]!! > modulePhase ->
-            "${phaseOf(module, modulePhase)} depends on " +
-                "${phaseOf(dependency, phases[dependency])}: a module may not depend on one " +
-                "from a later phase."
+        modulePhase != null && dependencyPhase > modulePhase ->
+            "${named(module, modulePhase)} depends on ${named(dependency, dependencyPhase)}: " +
+                "a module may not depend on one from a later phase."
 
         else -> null
     }
 }
+
+/** A module as a failure message names it: with its phase, or as unscheduled. */
+private fun named(module: String, phase: Int?): String =
+    if (phase == null) "$module (unscheduled)" else "$module (phase $phase)"
 
 /**
  * Reads the module table's phase column: module name to phase, with null for a module the
@@ -170,17 +167,20 @@ internal fun parseModulePhases(markdown: String): Map<String, Int?> =
  */
 private val TABLE_ROW = Regex("""\|\s*`(superplayer-[\w-]+)`\s*\|([^|]*)\|.*""")
 
-/** A `project(":superplayer-x")` dependency, on a line that is not a comment. */
-private val PROJECT_DEPENDENCY = Regex("""project\(\s*"::?([\w-]+)"\s*\)""")
+/**
+ * A `project(":superplayer-x")` dependency, on a line that is not a comment. The optional
+ * `path =` covers the named-argument form, which is the same declaration written differently.
+ *
+ * This is a text match, not a model of the Gradle DSL: a project dependency assembled from a
+ * variable, or named through the type-safe `projects.superplayerX` accessors, would not be seen.
+ * Neither appears in this repository — the accessors are not even enabled in `settings.gradle.kts`
+ * — and a check that read the resolved dependency graph instead would have to configure twelve
+ * Android modules to answer a question the build files already state plainly.
+ */
+private val PROJECT_DEPENDENCY = Regex("""project\(\s*(?:path\s*=\s*)?"::?([\w-]+)"\s*\)""")
 
 private fun projectDependenciesIn(script: String): List<String> =
     script.lineSequence()
         .filterNot(::isCommentLine)
         .flatMap { line -> PROJECT_DEPENDENCY.findAll(line).map { it.groupValues[1] } }
         .toList()
-
-private fun isCommentLine(line: String): Boolean {
-    val trimmed = line.trimStart()
-    return trimmed.startsWith("//") || trimmed.startsWith("#") ||
-        trimmed.startsWith("*") || trimmed.startsWith("/*")
-}

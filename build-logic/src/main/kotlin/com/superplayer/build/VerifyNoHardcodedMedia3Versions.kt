@@ -80,8 +80,8 @@ abstract class VerifyNoHardcodedMedia3Versions : DefaultTask() {
  * Returns one `path:line: text` entry per hardcoded Media3 version found in [scripts], sorted so
  * the failure message is stable from run to run. Paths are rendered relative to [root].
  *
- * Commented-out lines are ignored: a comment is not a dependency declaration, and the rule's own
- * documentation needs to be able to show what a violation looks like.
+ * Commented-out lines are ignored ([isCommentLine]): a comment is not a dependency declaration,
+ * and the rule's own documentation needs to be able to show what a violation looks like.
  */
 internal fun findHardcodedMedia3Versions(scripts: Iterable<File>, root: File): List<String> =
     scripts
@@ -90,18 +90,12 @@ internal fun findHardcodedMedia3Versions(scripts: Iterable<File>, root: File): L
             file.readLines()
                 .asSequence()
                 .withIndex()
-                .filterNot { (_, line) -> isComment(line) }
+                .filterNot { (_, line) -> isCommentLine(line) }
                 .filter { (_, line) -> HARDCODED_COORDINATE.containsMatchIn(line) }
                 .map { (index, line) -> "${file.relativeTo(root)}:${index + 1}: ${line.trim()}" }
                 .toList()
         }
         .sorted()
-
-private fun isComment(line: String): Boolean {
-    val trimmed = line.trimStart()
-    return trimmed.startsWith("//") || trimmed.startsWith("#") ||
-        trimmed.startsWith("*") || trimmed.startsWith("/*")
-}
 
 /**
  * A Media3 Maven coordinate followed by a literal version, which is what a hardcoded pin looks

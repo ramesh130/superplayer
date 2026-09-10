@@ -24,7 +24,9 @@ Gradle already refuses to build; it is not this rule's to catch.
 `project(...)` dependencies break the rule. It runs as part of `check`, so this is enforced rather
 than remembered. The task parses this table, which makes the document the single source of the phase
 numbers; the cost is that the table's shape — a backticked module name in the first cell, the phase
-in the second — is now load-bearing.
+in the second — is now load-bearing. A dependency on a module this table does not list fails too,
+deliberately: an unlisted module has no phase to compare, and the answer is to add the row rather
+than to wave the dependency through.
 
 ## Modules
 

@@ -87,10 +87,13 @@ Six rules follow, and they are binding.
    collector, the built-in sinks, the delivery machinery, and `docs/telemetry-schema.md`. **A player
    built without a sink pays nothing**: no analytics listener registered, no queue allocated, no
    thread started, no per-event allocation. Telemetry is additive, and a consumer who did not ask
-   for it should not be able to measure that it exists. Registration is therefore core's, because
-   core is the module that holds the engine and the only one that knows whether a sink was
-   supplied; what core may not do is name a telemetry type in order to perform it. That constraint
-   is binding, and the spelling that satisfies it is left open below rather than decided here.
+   for it should not be able to measure that it exists. **Deciding whether to register is therefore
+   core's**, because core is the only module that knows whether a sink was supplied; what core may
+   not do is name a telemetry type in order to decide. Performing the registration is *not* core's,
+   and #34 established why it cannot be: the only thing Media3 offers to register is an
+   `@UnstableApi` `AnalyticsListener`, so any core-side spelling would put that type in core's
+   public API. Core hands the built player to a collector it knows only through its own interface,
+   and the collector registers — see the resolution below.
 
 3. **Delivery is at-most-once and bounded, and the loss is counted.** The queue between collection
    and delivery has a stated bound; past it, events are dropped rather than queued; the drop count is
@@ -112,6 +115,20 @@ Six rules follow, and they are binding.
    threads. Events within one session arrive in the order they occurred; no ordering is promised
    *between* sessions, because a shared delivery context interleaves them and a consumer that needs
    a global order has the session id and the timestamp to build one.
+
+   *Rules 3 and 4 amended by #34, for one release.* Rules 3 and 4 describe the delivery path this
+   ADR requires, and #34 ships the seam without it: `QoeCollector` calls the sink synchronously, on
+   the thread that caused the event, unbounded and counting no drops. That is a deviation rather
+   than a reading of the rules, and it is recorded here rather than left as a KDoc note, because an
+   undocumented exception is the thing `CLAUDE.md`'s binding-rules section forbids. Three things
+   bound it. The events are the session boundary only — two per session, both caused by an explicit
+   facade call rather than by anything the engine emits, so the exposure is a consumer's sink
+   blocking a `setMediaRequest` or a `release` and not a sink blocking a playback callback. The one
+   call site says so, naming this rule and the issue. And `SessionEnded.droppedEventCount` is
+   already in the contract at zero, so the pipeline shape rule 3 requires does not change when the
+   number starts moving. **Issue #37 discharges the amendment and restores both rules in full**;
+   until it lands, no event caused by an engine callback may be added, because that is precisely
+   what rule 4 exists to keep off the engine's threads.
 
 5. **The events are one sealed hierarchy rooted in core, every event carries a schema version, and
    the version tracks meaning rather than shape.** Sealing is what lets a sink `when` over the

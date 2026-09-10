@@ -109,8 +109,16 @@ public sealed class TelemetryEvent {
     ) : TelemetryEvent()
 
     /**
-     * The session closed: the player was released, recycled into a [PlayerPool], or moved on to
-     * different content.
+     * The session closed: the player was released, recycled into a [PlayerPool], or given different
+     * content through [SuperPlayer.setMediaRequest] or [SuperPlayer.restoreSnapshot].
+     *
+     * Those are the ways content changes *with an identity attached*, and they are therefore the
+     * only ways a session can end other than by the player going away. A consumer that moves the
+     * player on with Media3's own `setMediaItem` instead leaves the session open, and what follows
+     * is reported under the previous content's id — the same gap `SuperPlayer.saveSnapshot`
+     * documents from the other side, and for the same reason: a raw `MediaItem` carries no
+     * [MediaRequest.contentId] for a session to be of. Mixing the two APIs on one player is what
+     * produces it; a player driven through [SuperPlayer.setMediaRequest] throughout cannot.
      *
      * The session's terminal event, and the one ADR-0008 rule 3 says may never be dropped, because
      * it is what carries [droppedEventCount].

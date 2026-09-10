@@ -16,7 +16,9 @@
 
 package com.superplayer.core
 
+import android.content.ComponentCallbacks2
 import android.content.Context
+import android.content.res.Configuration
 import android.os.SystemClock
 import androidx.annotation.VisibleForTesting
 import androidx.media3.common.C
@@ -142,7 +144,64 @@ public class SuperPlayer private constructor(
      * `@UnstableApi` [ForwardingPlayer], and `checkApiSurface` fails on it.
      */
     private val telemetry: TelemetryCollector?,
+    /**
+     * The application context, held only to register [telemetryMemoryPressure] and null whenever
+     * [telemetry] is — a player without telemetry registers nothing and therefore needs nothing to
+     * register it against, which is the same ADR-0008 rule 2 accounting every other telemetry field
+     * here is subject to.
+     *
+     * The application context rather than whatever the consumer passed to [Builder]: a
+     * `ComponentCallbacks2` registered on an `Activity` outlives it only as a leak, and a player is
+     * routinely held past the Activity that built it.
+     *
+     * Deliberately without a default value, for the reason [builtWithTrackSelectionParameters] has
+     * none.
+     */
+    private val applicationContext: Context?,
 ) : Player by delegate {
+
+    /**
+     * The platform's memory-pressure signal, forwarded to the collector.
+     *
+     * Registered here rather than reached for by the collector because a context is something the
+     * facade has and a collector attached to a built player does not — the same reason core signals
+     * the session boundaries. What to do about pressure is still the collector's decision; see
+     * [TelemetryCollector.onMemoryPressure].
+     *
+     * Null when no collector was supplied, so a player built without telemetry allocates nothing
+     * and registers nothing (ADR-0008 rule 2).
+     */
+    private val telemetryMemoryPressure: ComponentCallbacks2? =
+        if (telemetry == null) {
+            null
+        } else {
+            object : ComponentCallbacks2 {
+                override fun onTrimMemory(level: Int) {
+                    // TRIM_MEMORY_UI_HIDDEN says the app went to the background and says nothing
+                    // about memory; a player still playing there is the ordinary background-audio
+                    // case. Everything at RUNNING_LOW or above is the platform actually asking.
+                    if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW &&
+                        level != ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN
+                    ) {
+                        telemetry.onMemoryPressure()
+                    }
+                }
+
+                // Required by the interface and deprecated since API 34 in favour of the levels
+                // above, which the platform sends first. Forwarded anyway: on an API 24 device it
+                // is the only signal that arrives, and minSdk is 24.
+                @Deprecated("Superseded by onTrimMemory levels; still delivered below API 34.")
+                override fun onLowMemory() {
+                    telemetry.onMemoryPressure()
+                }
+
+                override fun onConfigurationChanged(newConfig: Configuration) = Unit
+            }
+        }
+
+    init {
+        telemetryMemoryPressure?.let { applicationContext?.registerComponentCallbacks(it) }
+    }
 
     /**
      * Wraps an engine that has already been built.
@@ -160,6 +219,7 @@ public class SuperPlayer private constructor(
             PlaybackPolicy.forProfile(profile).decide(PlaybackConditions()),
         builtWithTrackSelectionParameters: TrackSelectionParameters? = null,
         telemetry: TelemetryCollector? = null,
+        applicationContext: Context? = null,
     ) : this(
         exoPlayer,
         profile,
@@ -167,6 +227,7 @@ public class SuperPlayer private constructor(
         ForwardingPlayer(exoPlayer),
         builtWithTrackSelectionParameters,
         telemetry,
+        applicationContext,
     )
 
     /**
@@ -473,6 +534,9 @@ public class SuperPlayer private constructor(
         // something to unregister from and `detach` comes off a live engine.
         telemetry?.endSession()
         telemetry?.detach()
+        // The application context outlives every player it built, so a callback left registered
+        // here is a leak of this player and everything it holds — for the life of the process.
+        telemetryMemoryPressure?.let { applicationContext?.unregisterComponentCallbacks(it) }
 
         delegate.release()
         synchronized(wrappedListeners) { wrappedListeners.clear() }
@@ -607,6 +671,8 @@ public class SuperPlayer private constructor(
                 // restores what this player was built with rather than the engine's own default.
                 builtWithTrackSelectionParameters = engine.trackSelectionParameters,
                 telemetry = telemetry,
+                // Only when there is a collector to signal; see the field.
+                applicationContext = telemetry?.let { context.applicationContext },
             )
 
             // After construction rather than inside it: a collector registers against the built

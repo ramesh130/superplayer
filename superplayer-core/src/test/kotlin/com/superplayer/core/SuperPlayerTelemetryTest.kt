@@ -16,6 +16,8 @@
 
 package com.superplayer.core
 
+import android.app.Application
+import android.content.ComponentCallbacks2
 import android.os.SystemClock
 import androidx.media3.common.Player
 import androidx.media3.common.util.Clock
@@ -23,6 +25,7 @@ import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.analytics.DefaultAnalyticsCollector
 import androidx.media3.test.utils.robolectric.ShadowMediaCodecConfig
 import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import org.junit.Before
@@ -204,6 +207,42 @@ class SuperPlayerTelemetryTest {
         // The call site is an app's tap handler, which does not know whether telemetry was attached
         // — a debug build attaches it and a release build may not. It has to be safe in both.
         harness.buildPlayer().declarePlaybackIntent()
+    }
+
+    @Test
+    fun memoryPressureReachesTheCollectorAndBackgroundingDoesNot() {
+        val player = harness.buildPlayer(telemetry = telemetry)
+        val context: Application = ApplicationProvider.getApplicationContext()
+
+        // The app went to the background. That says nothing about memory — a player still playing
+        // there is the ordinary background-audio case — and a collector asked to shed state on it
+        // would throw away a session's events every time the viewer checked a notification.
+        context.onTrimMemory(ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN)
+        assertThat(telemetry.memoryPressureCount).isEqualTo(0)
+
+        // This one is the platform actually asking (`PRD.md` §3.4).
+        context.onTrimMemory(ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL)
+        assertThat(telemetry.memoryPressureCount).isEqualTo(1)
+
+        player.release()
+
+        // Registered on the application context, which outlives every player: a callback left
+        // behind here would hold this player, its engine and its buffers for the life of the
+        // process, which is a leak whose size is a player.
+        context.onTrimMemory(ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL)
+        assertThat(telemetry.memoryPressureCount).isEqualTo(1)
+    }
+
+    @Test
+    fun aPlayerBuiltWithNoTelemetryRegistersNoMemoryCallbackAtAll() {
+        harness.buildPlayer()
+        val context: Application = ApplicationProvider.getApplicationContext()
+
+        // ADR-0008 rule 2: a player built without telemetry pays nothing for it. Nothing to assert
+        // on but the absence of a crash and the absence of a signal — there is no collector to
+        // receive one — so this pins that the callback is not registered unconditionally.
+        context.onTrimMemory(ComponentCallbacks2.TRIM_MEMORY_COMPLETE)
+        assertThat(telemetry.memoryPressureCount).isEqualTo(0)
     }
 
     /**

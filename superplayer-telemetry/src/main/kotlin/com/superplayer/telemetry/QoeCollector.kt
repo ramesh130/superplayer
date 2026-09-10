@@ -53,13 +53,35 @@ import java.util.UUID
  * change carried a [com.superplayer.core.MediaRequest] and which was a raw `setMediaItem`, and only
  * core knows the difference between a pooled player being recycled and one being released.
  *
+ * ## How an event reaches the sink
+ *
+ * Never on the thread that caused it. Everything this class derives is handed to
+ * [TelemetryDelivery], which queues it under a bound and drains it on a thread no engine needs, so a
+ * sink that blocks for seconds delays no playback callback — ADR-0008 rules 3 and 4. Reading that
+ * file is how to answer "what thread is my sink on" and "what happens when it falls behind".
+ *
  * ## One collector, one player
  *
  * A collector holds the player it was attached to and the session currently open on it. Build one
  * per player; a pool builds one per pooled player, and each of them reports sessions under its own
  * ids.
  */
-public class QoeCollector(private val sink: TelemetrySink) : TelemetryCollector {
+public class QoeCollector internal constructor(
+    /**
+     * The bounded, off-thread path to the sink — ADR-0008 rules 3 and 4. Everything about *how* a
+     * sink is called lives there rather than here, so this class is only ever about what an event
+     * means.
+     *
+     * One per collector, so a drop is attributable to the session that lost it, while the thread it
+     * drains on is the process's one. Injectable only from inside this module, which is what lets
+     * `TelemetryDeliveryTest` flood a small queue and `QoeCollectorTest` wait for the drain without
+     * either of those becoming something a consumer can reach for.
+     */
+    private val delivery: TelemetryDelivery,
+) : TelemetryCollector {
+
+    /** The ordinary way to build one: a sink, behind the delivery path this library chose for it. */
+    public constructor(sink: TelemetrySink) : this(TelemetryDelivery(sink))
 
     /**
      * The player this collector was attached to, held so [detach] can unregister from the same
@@ -154,8 +176,8 @@ public class QoeCollector(private val sink: TelemetrySink) : TelemetryCollector 
 
     override fun endSession() {
         val session = openSession ?: return
-        // Cleared before the emit, so that a sink which re-enters — a synchronous sink is on the
-        // caller's thread today — cannot see a session that has already ended.
+        // Cleared before the emit, so that this collector's own state is settled before anything
+        // observable leaves it, whatever order the delivery path gets round to.
         openSession = null
         emit(
             TelemetryEvent.SessionEnded(
@@ -163,11 +185,24 @@ public class QoeCollector(private val sink: TelemetrySink) : TelemetryCollector 
                 contentId = session.contentId,
                 timestampMs = System.currentTimeMillis(),
                 monotonicTimeMs = SystemClock.elapsedRealtime(),
-                // Nothing is dropped yet; see the field's own KDoc and issue #37.
+                // A placeholder the delivery path replaces as this event leaves the queue: a drop
+                // caused by memory pressure after this line has run still belongs on it.
                 droppedEventCount = 0,
             ),
         )
     }
+
+    override fun onMemoryPressure() {
+        delivery.onMemoryPressure()
+    }
+
+    /**
+     * Blocks until everything submitted so far has reached the sink.
+     *
+     * Tests only — the module-internal counterpart of delivery being asynchronous. See
+     * [TelemetryDelivery.awaitIdle] for why it is not something a consumer can call.
+     */
+    internal fun awaitDelivered(timeoutMs: Long): Boolean = delivery.awaitIdle(timeoutMs)
 
     override fun detach() {
         player?.exoPlayer?.removeAnalyticsListener(analyticsListener)
@@ -178,17 +213,15 @@ public class QoeCollector(private val sink: TelemetrySink) : TelemetryCollector 
     }
 
     /**
-     * Hands [event] to the sink.
+     * Queues [event] for delivery and returns.
      *
-     * Synchronous, on whatever thread caused the event — the application thread, for the three
-     * signals core sends. **That is in tension with ADR-0008 rule 4**, which says a sink is never
-     * called on a thread the engine needs, and it is a scoped placeholder rather than the intended
-     * shape: issue #37 puts a bounded queue here, drains it off the player's threads, and counts
-     * what it discards into [TelemetryEvent.SessionEnded.droppedEventCount]. Until then the sink's
-     * KDoc carries the warning a consumer needs, which is that a blocking sink blocks playback.
+     * The only work done on the caller's thread — the application thread for the signals core
+     * sends, the playback thread for anything derived from an engine callback — is an enqueue.
+     * [TelemetryDelivery] is where the bound, the drop policy and the delivery thread are, and it
+     * is what makes ADR-0008 rules 3 and 4 true rather than aspirational.
      */
     private fun emit(event: TelemetryEvent) {
-        sink.onEvent(event)
+        delivery.submit(event)
     }
 
     /**

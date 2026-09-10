@@ -75,9 +75,12 @@ labelled as such rather than silently mixed in.
 What is *emitted* today is still the session boundary only — `SessionStarted` when content is
 adopted, `SessionEnded` when the player is released, recycled or moved on — and core signals those
 edges from `adopt`, `restoreSnapshot`, `resetForReuse` and `release`, because only core knows which
-item change carried a `MediaRequest` and which was a recycle. Deriving the rest is #36, and it is
-gated: delivery is synchronous on the caller's thread, which ADR-0008 rule 4 forbids and #37 fixes,
-and until it does no event caused by an engine callback may be added. Two sinks ship —
+item change carried a `MediaRequest` and which was a recycle. Deriving the rest is #36. It is no longer
+gated: `superplayer-telemetry`'s `TelemetryDelivery` is the bounded queue ADR-0008 rules 3 and 4
+require — one daemon thread for the whole process, 256 events per player, the newest refused when
+full, and every refusal counted against the session that lost it and stamped onto its `SessionEnded`
+as that event leaves the queue — so a sink is never on a thread the engine needs and a blocking sink
+costs events rather than playback. Two sinks ship —
 `TelemetrySink.composite(...)`, core's own factory, which isolates a child that throws so one bad
 sink costs neither its siblings their events nor playback its thread; and `superplayer-telemetry`'s
 `LogcatSink`, one greppable line per event under the tag `SuperPlayerQoE`.

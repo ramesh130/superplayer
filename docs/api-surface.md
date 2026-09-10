@@ -40,6 +40,31 @@ Whether a Media3 type is annotated is read off the pinned Media3 on the module's
 classpath, not from a list maintained by hand — ADR-0001 is explicit that per-class status must come
 from the pinned version, because annotations move between releases.
 
+## Explicit API mode, one step earlier
+
+The checks above are detection: they report that the surface changed, once it has. Kotlin's
+[explicit API mode](https://kotlinlang.org/docs/whatsnew14.html#explicit-api-mode-for-library-authors),
+switched on for every module in `superplayer.android.library.gradle.kts`, works before that.
+
+The two halves divide like this. **Explicit API mode makes publicness deliberate**: in Kotlin a
+declaration is public by default, so widening the API is what happens when an author writes nothing
+at all, and `internal` has to be typed while `public` does not. Under explicit API mode a main-source
+declaration compiles only if someone stated its visibility, which is what lets the tracked diff mean
+something sharper — a widening is now always something a person chose, so a surprising one is a real
+question rather than possibly an oversight. **The tracked surface makes a change to it visible**:
+explicit API mode has no opinion about *which* declarations should be public, only that the answer
+was typed, and it cannot tell you that today's deliberate `public` differs from yesterday's.
+
+The mode's second requirement — an explicit return type on every public declaration — serves
+ADR-0001 rule 2 rather than review. An inferred public signature is one the compiler chose from the
+body, so a refactor can change what is published with nothing in the source diff to show it. A
+signature that can only change where someone wrote a type is a signature `api/<module>.api` can be
+trusted to track.
+
+It is a library-authoring switch and applies where library code is: main source sets of the modules
+using the convention plugin. Test source sets are exempt by Kotlin's own rule, and `demo/` — a
+consumer, in a separate build — does not apply the plugin and is unaffected.
+
 ## Two things the unstable check permits, and why
 
 **The engine escape hatch.** `ExoPlayer` is `@UnstableApi` and is public API, deliberately. It is the

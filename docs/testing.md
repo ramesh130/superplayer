@@ -287,8 +287,18 @@ Three things about it are load-bearing.
 **A fault is addressed by what is being fetched, never by a URL.** A `ResourceKind` — manifest,
 initialization segment, media segment — and an index within that kind is the same sentence under HLS
 and under DASH, so one script runs against either and means the same thing. A test that named a path
-would be a test that had to be rewritten for the other protocol, and `FaultInjectionTest` is where
-that equivalence is pinned. Indices count *distinct resources of one kind in the order they were
+would be a test that had to be rewritten for the other protocol. `FaultInjectionTest` is where that
+equivalence is pinned, and it pins it against sequences it did not invent: the URLs come out of
+Media3's own HLS playlist parser and DASH manifest parser, handed a playlist and an MPD, so what is
+compared is what the protocols actually fetch.
+
+The kind itself is recognised from the naming every packager uses — `.m3u8` and `.mpd` for a
+manifest, a name containing `init` for an initialization segment, anything else a media segment —
+and that is a **heuristic, not a protocol guarantee**: neither RFC 8216 nor ISO/IEC 23009-1 reserves
+a name for an initialization segment. It is right for what this repository generates and for the
+conventions in both specs' examples; a stream that named its media segments `init-0001.m4s` would be
+classified wrongly, and the place to fix that is `ResourceAddressBook.kindOf`, which is the one
+function that knows a URL was involved at all. Indices count *distinct resources of one kind in the order they were
 first requested*, keyed on the URL without its query and on the byte offset asked for — so a retry
 under a refreshed signature is still the same segment, and a stream packaged as byte ranges of one
 URL is still a stream of segments.
@@ -308,6 +318,13 @@ make every ABR test in phase 3 quietly meaningless.
 Delays are paced on the harness's clock rather than on the wall clock, so a fault lands where the
 test said it would on every run and every machine — and a test that arms a delay and never advances
 time past it fails saying so rather than hanging.
+
+The injector's **own** tests are the one place in this repository that asserts on something other
+than the library's public API: `FaultInjectionTest` drives the wrapper directly and reads the
+addresses it assigned. That is not an exception to "assertions stop at the facade" but the same rule
+applied one level down — the subject there *is* the harness, and a test-support tool that is wrong is
+worse than none, because every failure it causes is read as a failure of the code under test.
+Everything that uses the injector to test the library still goes through the public API.
 
 ## Determinism
 

@@ -47,7 +47,7 @@ class FaultInjectionPlaybackTest {
         val player = harness.buildPlayer(content = TestContent.videoLadder(), faults = FaultScript.NONE)
         player.setMediaRequest(MediaRequest.Builder(CONTENT).addSource(SOURCE).build())
         harness.playToReady(player)
-        advanceInSteps(player)
+        harness.advanceTimeInStepsMs(player, PLAYED_MS)
 
         assertThat(player.playerError).isNull()
         assertThat(player.playbackState).isEqualTo(Player.STATE_READY)
@@ -63,14 +63,15 @@ class FaultInjectionPlaybackTest {
                 .build()
             val player = play(script)
 
-            advanceInSteps(player)
+            harness.advanceTimeInStepsMs(player, PLAYED_MS)
 
-            // The same segment every time. The index is the test's whole statement of intent, and
-            // the assertion is that the engine got exactly that far and no further: the segments
-            // before it were delivered, and the one named was not.
+            // The same segment every time, and *exactly* that far: every segment before the one
+            // named was fetched, the one named was reached, and nothing past it was. A fault that
+            // fired one segment late would still fail the session and would still have fetched
+            // 0..2 — so anything weaker than the whole list would pass for a fault that moved.
             assertThat(player.playerError).isNotNull()
             val segments = harness.requestedResources(player).filter { it.kind == ResourceKind.MEDIA_SEGMENT }
-            assertThat(segments.map { it.index }).containsAtLeastElementsIn(0..FAULTED_SEGMENT)
+            assertThat(segments.map { it.index }).containsExactlyElementsIn(0..FAULTED_SEGMENT).inOrder()
         }
     }
 
@@ -79,25 +80,13 @@ class FaultInjectionPlaybackTest {
         val script = FaultScript.Builder().expireTokenAtSegment(FAULTED_SEGMENT).build()
         val player = play(script)
 
-        advanceInSteps(player)
+        harness.advanceTimeInStepsMs(player, PLAYED_MS)
 
         // Media3 retries a failed chunk load before giving up. A single failed request would be
         // absorbed by that and this test would be asserting nothing; a token that stays expired is
         // what actually reaches the player as an error — which is the case `superplayer-resilience`
         // is being built to survive, and until it exists, the case that ends the session.
         assertThat(player.playerError).isNotNull()
-    }
-
-    /**
-     * Moves playback time forward in steps rather than in one jump.
-     *
-     * A load is asynchronous: the engine asks for a chunk, a loading thread fetches it, and the
-     * result comes back on a later pass. One long advance gives the engine one pass and reaches the
-     * second segment of a session no matter how far it jumped, which would make every index in this
-     * file mean "the second one" — so time moves the way it moves in a session.
-     */
-    private fun advanceInSteps(player: SuperPlayer) {
-        repeat((PLAYED_MS / STEP_MS).toInt()) { harness.advanceTimeMs(player, STEP_MS) }
     }
 
     private fun play(faults: FaultScript): SuperPlayer {
@@ -120,8 +109,5 @@ class FaultInjectionPlaybackTest {
 
         /** Three, because "deterministic" is a claim about repetition and one run cannot make it. */
         const val RUNS = 3
-
-        /** One step is a few render passes: long enough to be cheap, short enough to load in order. */
-        const val STEP_MS = 250L
     }
 }

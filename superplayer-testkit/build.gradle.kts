@@ -25,5 +25,10 @@ dependencies {
     // This module's own tests: the fakes above are already `api`, so only the Robolectric runtime
     // is added here — the same pin `superplayer-core` uses, for the reason `CLAUDE.md` gives about
     // Robolectric runtimes and JDK versions.
+    // The protocols' own parsers, so the fault-addressing test derives its URL sequences from a real
+    // HLS playlist and a real MPD rather than from a list the test wrote. Test-only: the injector
+    // itself names no protocol.
+    testImplementation(libs.media3.exoplayer.hls)
+    testImplementation(libs.media3.exoplayer.dash)
     testImplementation(libs.robolectric)
 }

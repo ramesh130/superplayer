@@ -31,6 +31,7 @@ public final class com/superplayer/testkit/PlaybackHarness : org/junit/rules/Ext
 	public static final field RENDER_PASS_MS J
 	public static final field WAIT_STEP_MS J
 	public fun <init> ()V
+	public final fun advanceTimeInStepsMs (Lcom/superplayer/core/SuperPlayer;J)V
 	public final fun advanceTimeMs (Lcom/superplayer/core/SuperPlayer;J)V
 	public final fun attachVideoOutput (Lcom/superplayer/core/SuperPlayer;)V
 	public final fun buildPlayer (Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;Lcom/superplayer/testkit/FaultScript;)Lcom/superplayer/core/SuperPlayer;

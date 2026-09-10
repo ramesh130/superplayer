@@ -16,6 +16,9 @@ declareKotlinFriendModule(":superplayer-core")
 
 dependencies {
     api(project(":superplayer-core"))
+    // The fault injector wraps a `DataSource`, so this module names the artifact those types come
+    // from rather than resolving it through `superplayer-core`'s own transitive graph.
+    implementation(libs.media3.datasource)
     api(libs.media3.test.utils)
     api(libs.media3.test.utils.robolectric)
 

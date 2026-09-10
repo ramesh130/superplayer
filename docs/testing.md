@@ -260,11 +260,54 @@ the opposite of core's harness, deliberately. Auto-advancing is right when nothi
 and wrong when something is: a clock that moves by an amount no assertion can name turns every
 duration into a tolerance.
 
-**What it fakes, and what that costs.** Stalls are injected by making the video renderer stop being
-ready, which reproduces the engine's buffering state machine exactly and the *cause* of a rebuffer
-not at all; dropped frames are raised on the renderer's own callback rather than by a decoder that
-could not keep up. Both are stubs, both say so at the implementation, and both should be re-pointed
-at the shaped transfer and fault injection that `#39` and `#40` bring.
+**What it fakes, and what that costs.** Stalls can be injected by making the video renderer stop
+being ready, which reproduces the engine's buffering state machine exactly and the *cause* of a
+rebuffer not at all; dropped frames are raised on the renderer's own callback rather than by a
+decoder that could not keep up. The renderer-driven stall is exact to the millisecond and stays, for
+the tests whose subject is a duration; a stall with a *cause* is what the fault injector below is
+for, and `superplayer-telemetry`'s `FaultInducedRebufferTest` is the worked example. Dropped frames
+are still a stub, and wait on the throughput replay `#40` brings.
+
+### Forcing the faults, rather than waiting for them
+
+`PRD.md` Part 5 requires that every fallback rung has a test that forces exactly that rung, and a
+rung with no way to force it is a rung nobody knows is broken. `FaultScript` is how a test says which
+one: latency, a throughput cap, an HTTP 403, 404 or 500, a truncated body, a DNS failure, or a token
+that expires at a chosen segment and stays expired.
+
+```kotlin
+val player = harness.buildPlayer(
+    content = TestContent.videoLadder(),
+    faults = FaultScript.Builder().expireTokenAtSegment(3).build(),
+)
+```
+
+Three things about it are load-bearing.
+
+**A fault is addressed by what is being fetched, never by a URL.** A `ResourceKind` — manifest,
+initialization segment, media segment — and an index within that kind is the same sentence under HLS
+and under DASH, so one script runs against either and means the same thing. A test that named a path
+would be a test that had to be rewritten for the other protocol, and `FaultInjectionTest` is where
+that equivalence is pinned. Indices count *distinct resources of one kind in the order they were
+first requested*, keyed on the URL without its query and on the byte offset asked for — so a retry
+under a refreshed signature is still the same segment, and a stream packaged as byte ranges of one
+URL is still a stream of segments.
+
+**It does not relax the no-network rule.** Every fault is synthesized: a DNS failure is an
+`UnknownHostException` handed to Media3 in the shape a real resolver failure arrives in, and no
+socket, no resolver and no device is involved. An injector that needed a real network to inject a
+network failure would have missed the point of this document.
+
+**It is transparent when nothing is armed, including to the bandwidth meter.** The wrapper composes
+over whatever `DataSource.Factory` the harness installed rather than replacing the mechanism, and it
+registers a `TransferListener` on the upstream source rather than re-raising the callbacks itself —
+so the bytes reported and the bytes moved cannot disagree. Measurement is a propagated
+`TransferListener` (`PRD.md` §2.4): a wrapper that swallowed one would blind the bandwidth meter and
+make every ABR test in phase 3 quietly meaningless.
+
+Delays are paced on the harness's clock rather than on the wall clock, so a fault lands where the
+test said it would on every run and every machine — and a test that arms a delay and never advances
+time past it fails saying so rather than hanging.
 
 ## Determinism
 
@@ -295,6 +338,6 @@ thing to question first.
 
 ## What is not covered here
 
-Instrumented tests on real devices, the fault-injection and network-shaping harness, and the golden
-trace corpus are `superplayer-testkit`'s subject and arrive with it. They extend this seam rather
-than replacing it: they still drive the library through its public API.
+Instrumented tests on real devices, throughput trace replay, and the golden trace corpus are
+`superplayer-testkit`'s subject and arrive with it — as the fault injector above already has. They
+extend this seam rather than replacing it: they still drive the library through its public API.

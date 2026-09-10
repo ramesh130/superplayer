@@ -94,7 +94,7 @@ compatible with. Dependency direction and the phase rule are in [`docs/modules.m
 val player = SuperPlayer.Builder(context)
     .setProfile(PlaybackProfile.VIDEO_ON_DEMAND)      // or LIVE_LINEAR, SHORT_FORM, DATA_SAVER
     .setDrm(WidevineConfig(licenseUrl, headerProvider = tokenProvider))
-    .setTelemetry(TelemetrySink.composite(analytics, LogcatSink))
+    .setTelemetry(QoeCollector(TelemetrySink.composite(analytics, LogcatSink)))
     .setCache(CachePolicy.contentKeyed(maxBytes = CachePolicy.deviceAware()))
     .build()
 

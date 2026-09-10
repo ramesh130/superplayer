@@ -19,8 +19,8 @@ package com.superplayer.core
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 
 /**
- * A [TelemetryCollector] that writes core's own events to a list, standing in for
- * `superplayer-telemetry`'s `QoeCollector` in core's tests.
+ * A [TelemetryCollector] that derives core's own events and writes them to a [TelemetrySink],
+ * standing in for `superplayer-telemetry`'s `QoeCollector` in core's tests.
  *
  * A stand-in rather than the real thing, and that is the phase rule (`docs/modules.md`) rather than
  * a preference: `superplayer-core` may not depend on `superplayer-telemetry`, so no test here can
@@ -29,6 +29,11 @@ import androidx.media3.exoplayer.analytics.AnalyticsListener
  * through any collector. `QoeCollectorTest` in the telemetry module pins the real one against the
  * real builder.
  *
+ * It writes through a real [TelemetrySink] rather than recording into a list of its own, so that a
+ * test asserting on what a consumer receives is asserting on something that actually crossed the
+ * boundary a consumer implements — the sink is core's own type, so nothing about the module split
+ * makes that harder.
+ *
  * Session ids are minted the way a collector must: a fresh one per session, so a test asserting that
  * a recycled player starts a *new* session has something to compare.
  *
@@ -36,10 +41,7 @@ import androidx.media3.exoplayer.analytics.AnalyticsListener
  * for the same reason: that registration is the observable cost of telemetry, and
  * `SuperPlayerTelemetryTest.aPlayerBuiltWithNoTelemetryRegistersNoAnalyticsListener` counts it.
  */
-class RecordingTelemetry : TelemetryCollector {
-
-    /** Every event, in order. The whole of what these tests assert on. */
-    val events = mutableListOf<TelemetryEvent>()
+class RecordingTelemetry(private val sink: TelemetrySink) : TelemetryCollector {
 
     var attachCount = 0
         private set
@@ -53,12 +55,6 @@ class RecordingTelemetry : TelemetryCollector {
     private val analyticsListener: AnalyticsListener = object : AnalyticsListener {}
     private var openSession: TelemetryEvent.SessionStarted? = null
     private var sessionsStarted = 0
-
-    val started: List<TelemetryEvent.SessionStarted>
-        get() = events.filterIsInstance<TelemetryEvent.SessionStarted>()
-
-    val ended: List<TelemetryEvent.SessionEnded>
-        get() = events.filterIsInstance<TelemetryEvent.SessionEnded>()
 
     override fun attach(player: SuperPlayer) {
         attachCount++
@@ -75,16 +71,18 @@ class RecordingTelemetry : TelemetryCollector {
             profile = checkNotNull(player).profile,
         )
         openSession = started
-        events += started
+        sink.onEvent(started)
     }
 
     override fun endSession() {
         val open = openSession ?: return
         openSession = null
-        events += TelemetryEvent.SessionEnded(
-            sessionId = open.sessionId,
-            contentId = open.contentId,
-            timestampMs = TIMESTAMP_MS,
+        sink.onEvent(
+            TelemetryEvent.SessionEnded(
+                sessionId = open.sessionId,
+                contentId = open.contentId,
+                timestampMs = TIMESTAMP_MS,
+            ),
         )
     }
 

@@ -49,7 +49,18 @@ class SuperPlayerTelemetryTest {
     @get:Rule
     val harness: SuperPlayerHarness = SuperPlayerHarness()
 
-    private val telemetry = RecordingTelemetry()
+    /**
+     * What a consumer's sink received, in order — every assertion below is made on events that
+     * crossed [TelemetrySink], not on a collector's private bookkeeping.
+     */
+    private val events = mutableListOf<TelemetryEvent>()
+    private val telemetry = RecordingTelemetry(TelemetrySink { events += it })
+
+    private val started: List<TelemetryEvent.SessionStarted>
+        get() = events.filterIsInstance<TelemetryEvent.SessionStarted>()
+
+    private val ended: List<TelemetryEvent.SessionEnded>
+        get() = events.filterIsInstance<TelemetryEvent.SessionEnded>()
 
     @Before
     fun declareTheDeviceThisRunsOn() {
@@ -65,7 +76,7 @@ class SuperPlayerTelemetryTest {
         // Attached at construction, once, and before the caller ever sees the player — so a
         // collector cannot miss the first thing that happens to it.
         assertThat(telemetry.attachCount).isEqualTo(1)
-        assertThat(telemetry.events).isEmpty()
+        assertThat(events).isEmpty()
     }
 
     @Test
@@ -81,19 +92,19 @@ class SuperPlayerTelemetryTest {
 
         // The session names the content by the app's own identifier rather than by the URL it came
         // from, which is the whole reason `MediaRequest.contentId` exists.
-        val started = telemetry.started.single()
+        val started = started.single()
         assertThat(started.contentId).isEqualTo(EPISODE)
         assertThat(started.profile).isEqualTo(PlaybackProfile.VIDEO_ON_DEMAND)
-        assertThat(telemetry.ended).isEmpty()
+        assertThat(ended).isEmpty()
 
         player.release()
 
-        val ended = telemetry.ended.single()
+        val ended = ended.single()
         assertThat(ended.sessionId).isEqualTo(started.sessionId)
         assertThat(ended.contentId).isEqualTo(EPISODE)
         // The terminal event is emitted while the engine is still alive, and the collector is
         // unregistered from it afterwards — in that order, so nothing detaches from a dead engine.
-        assertThat(telemetry.events.last()).isEqualTo(ended)
+        assertThat(events.last()).isEqualTo(ended)
         assertThat(telemetry.detachCount).isEqualTo(1)
     }
 
@@ -110,14 +121,14 @@ class SuperPlayerTelemetryTest {
         // Recycled, not released: the collector is still attached, and the session it was measuring
         // is over. A pooled player that kept one session open across a scroll would report a single
         // view of everything the feed showed.
-        assertThat(telemetry.ended.single().contentId).isEqualTo(EPISODE)
+        assertThat(ended.single().contentId).isEqualTo(EPISODE)
         assertThat(telemetry.detachCount).isEqualTo(0)
 
         val second = checkNotNull(pool.acquire())
         assertThat(second).isSameInstanceAs(first)
         second.setMediaRequest(MediaRequest.Builder(TRAILER).addSource(SOURCE).build())
 
-        val sessions = telemetry.started
+        val sessions = started
         assertThat(sessions.map { it.contentId }).containsExactly(EPISODE, TRAILER).inOrder()
         // A different session id, which is what makes the two separable in a pipeline that receives
         // them from the same player.
@@ -132,10 +143,10 @@ class SuperPlayerTelemetryTest {
 
         // Start, end, start — never two sessions open at once on one player. Core signals the edge
         // and the collector closes the previous one; this pins the pair of them together.
-        assertThat(telemetry.events.map { it::class.simpleName })
+        assertThat(events.map { it::class.simpleName })
             .containsExactly("SessionStarted", "SessionEnded", "SessionStarted")
             .inOrder()
-        assertThat(telemetry.ended.single().sessionId).isEqualTo(telemetry.started[0].sessionId)
+        assertThat(ended.single().sessionId).isEqualTo(started[0].sessionId)
     }
 
     @Test
@@ -149,7 +160,7 @@ class SuperPlayerTelemetryTest {
 
         // The player that took the snapshot ended its session when it was released. Without a
         // session here, everything a viewer watches after a configuration change goes unmeasured.
-        assertThat(telemetry.started.single().contentId).isEqualTo(EPISODE)
+        assertThat(started.single().contentId).isEqualTo(EPISODE)
     }
 
     @Test

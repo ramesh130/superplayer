@@ -173,14 +173,24 @@ public interface TelemetryCollector {
     public fun attach(player: SuperPlayer)
 
     /**
-     * A measurement session opens for [contentId]. Mint a session id here.
+     * A measurement session opens for [contentId], under [sessionId]. Stamp it on every event of the
+     * session.
      *
      * Core signals this rather than letting the collector infer it from item transitions, because
      * only core knows which item changes carry content identity. Called again without an
      * intervening [endSession] when a player moves straight to different content: close the open
      * session first.
+     *
+     * ## Why the id arrives rather than being minted here
+     *
+     * Because a second seam sends the same string somewhere else. CMCD (CTA-5004) puts it on the
+     * requests the player makes as `sid`, so a row in a CDN's access log joins to a row in the app's
+     * warehouse on equality — which is ADR-0008 rule 8, and which holds only if one place mints it.
+     * A collector cannot be that place: a player built with CMCD and no telemetry has no collector,
+     * and would then have no id. Opaque, unique, and at most 64 characters, which is CTA-5004's
+     * ceiling; a collector should treat it as a value to carry rather than a value to parse.
      */
-    public fun startSession(contentId: String)
+    public fun startSession(contentId: String, sessionId: String)
 
     /**
      * The open session closes — the player was released or recycled. A no-op when none is open;

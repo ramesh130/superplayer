@@ -34,8 +34,9 @@ import androidx.media3.exoplayer.analytics.AnalyticsListener
  * boundary a consumer implements — the sink is core's own type, so nothing about the module split
  * makes that harder.
  *
- * Session ids are minted the way a collector must: a fresh one per session, so a test asserting that
- * a recycled player starts a *new* session has something to compare.
+ * Session ids are core's — a collector is handed one per session rather than minting it, because
+ * CMCD sends the same string to the CDN. A test asserting that a recycled player starts a *new*
+ * session compares the ids core minted.
  *
  * It registers an [AnalyticsListener] on attach and removes it on detach, as `QoeCollector` does and
  * for the same reason: that registration is the observable cost of telemetry, and
@@ -54,7 +55,6 @@ class RecordingTelemetry(private val sink: TelemetrySink) : TelemetryCollector {
     /** Registered on attach and removed on detach, standing in for `QoeCollector`'s own. */
     private val analyticsListener: AnalyticsListener = object : AnalyticsListener {}
     private var openSession: TelemetryEvent.SessionStarted? = null
-    private var sessionsStarted = 0
 
     override fun attach(player: SuperPlayer) {
         attachCount++
@@ -74,11 +74,11 @@ class RecordingTelemetry(private val sink: TelemetrySink) : TelemetryCollector {
         declaredIntentMonotonicMs = monotonicTimeMs
     }
 
-    override fun startSession(contentId: String) {
+    override fun startSession(contentId: String, sessionId: String) {
         endSession()
         val attached = checkNotNull(player)
         val started = TelemetryEvent.SessionStarted(
-            sessionId = "session-${sessionsStarted++}",
+            sessionId = sessionId,
             contentId = contentId,
             timestampMs = TIMESTAMP_MS,
             monotonicTimeMs = MONOTONIC_MS,

@@ -67,6 +67,11 @@ class DemoPlaybackService : PlaybackService() {
     override fun onCreatePlayer(): SuperPlayer =
         SuperPlayer.Builder(this)
             .setProfile(profile)
+            // No `setCmcdMode` call, and that is the demonstration rather than an omission: CMCD
+            // (CTA-5004) travels on every request this player makes, under every profile, without
+            // an app asking for it. The demo's streams are real HLS and DASH behind real CDNs,
+            // which is the only place the keys can be shown to survive a live delivery path — no
+            // test in this repo may touch the network.
             .build()
             // The service exists because something asked for playback, so the intent to play is the
             // right default. Content arrives from the Activity, or from a controller naming a

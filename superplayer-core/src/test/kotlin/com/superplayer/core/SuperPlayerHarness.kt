@@ -120,12 +120,26 @@ class SuperPlayerHarness : ExternalResource() {
      * every other test wants the fake data source, and a test that reaches for this one is
      * specifically about what SuperPlayer installs underneath.
      */
-    fun buildPlayerOnItsOwnTransferChain(): SuperPlayer {
+    fun buildPlayerOnItsOwnTransferChain(
+        profile: PlaybackProfile? = null,
+        cmcdMode: CmcdMode? = null,
+        telemetry: TelemetryCollector? = null,
+        alsoConfigureEngine: (ExoPlayer.Builder) -> Unit = {},
+    ): SuperPlayer {
         val clock = FakeClock(/* isAutoAdvancing= */ true)
         return register(
             clock,
             SuperPlayer.Builder(ApplicationProvider.getApplicationContext())
-                .setEngineConfigurator { engine -> engine.setClock(clock) }
+                .apply { profile?.let { setProfile(it) } }
+                .apply { cmcdMode?.let { setCmcdMode(it) } }
+                .apply { telemetry?.let { setTelemetry(it) } }
+                .setEngineConfigurator { engine ->
+                    engine.setClock(clock)
+                    // Whatever a test needs *besides* the chain — the bandwidth meter a CMCD test
+                    // reads request specs through. Deliberately not a media source factory: one
+                    // installed here would replace the very thing this method exists to exercise.
+                    alsoConfigureEngine(engine)
+                }
                 .build(),
         )
     }

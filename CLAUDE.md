@@ -132,6 +132,18 @@ than through chain position — ADR-0002's argument arriving through a different
 the `MediaSource.Factory`, which is why the seam owns that too. Which HTTP stack sits at the bottom is
 ADR-0004's open question, and it plugs in at one named line.
 
+CMCD (CTA-5004) is emitted there today, and is on for every profile including `DATA_SAVER` —
+`CmcdBinding.kt` holds the per-profile table, the reasoning, and the `// spec:` citation for each
+key; `CmcdMode` is the public choice between request headers (the default, because the wrong guess
+loses telemetry rather than playback) and a query parameter (which can break a signed URL). Only
+CMCD v1, which is the ceiling of the pinned Media3 rather than a decision. The `sid` it sends *is*
+the telemetry session id, which is why `MeasurementSession` mints it in core rather than in the
+collector, and why `TelemetryCollector.startSession` is handed one instead of minting its own — the
+join between a CDN's access log and the app's warehouse is an equality on that string, and
+`docs/telemetry-schema.md` states it as a promise. `mtp` is the one key no test here can see, since
+it needs an adaptive selection and therefore a video renderer; `SuperPlayerCmcdTest` says so where
+it stops.
+
 That policy is reached through `PlaybackPolicy`, the boundary ADR-0005 establishes: observed
 `PlaybackConditions` in, a `PlaybackDecision` (a `BufferPolicy` and a `TrackSelectionPolicy`) out,
 with no Media3 type anywhere in it. `EngineBinding.kt` is the one place a decision becomes Media3

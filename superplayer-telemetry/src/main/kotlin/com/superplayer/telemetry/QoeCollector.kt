@@ -32,7 +32,6 @@ import com.superplayer.core.TelemetryEvent
 import com.superplayer.core.TelemetrySink
 import com.superplayer.core.TrackSwitchDirection
 import com.superplayer.core.TtffStartBoundary
-import java.util.UUID
 
 /**
  * Watches a [SuperPlayer] and writes what it observes to a [TelemetrySink].
@@ -327,7 +326,7 @@ public class QoeCollector internal constructor(
         player.exoPlayer.addAnalyticsListener(analyticsListener)
     }
 
-    override fun startSession(contentId: String) {
+    override fun startSession(contentId: String, sessionId: String) {
         // Content changing under an open session ends it rather than merging the two: the events
         // either side describe different content, and a session that spanned both would report one
         // view of something nobody watched.
@@ -345,7 +344,10 @@ public class QoeCollector internal constructor(
         declaredIntentMonotonicMs = null
 
         val session = OpenSession(
-            id = UUID.randomUUID().toString(),
+            // Core's, not this collector's: CMCD sends the same string to the CDN as `sid`, and
+            // the join between a CDN log and a warehouse is an equality on it. See
+            // `TelemetryCollector.startSession`.
+            id = sessionId,
             contentId = contentId,
             ttffStartMonotonicMs = intentMs ?: startedAtMonotonicMs,
             ttffStartBoundary =

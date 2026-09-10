@@ -40,12 +40,24 @@ internal object SyntheticHlsStream {
     private const val MULTIVARIANT_PLAYLIST_NAME = "master.m3u8"
     private const val MEDIA_PLAYLIST_NAME = "media.m3u8"
 
+    /** The second variant's media playlist, present only when a caller asks for two. */
+    private const val SECOND_MEDIA_PLAYLIST_NAME = "media-high.m3u8"
+
     const val MULTIVARIANT_PLAYLIST_URI: String = BASE_URI + MULTIVARIANT_PLAYLIST_NAME
 
     private fun segmentName(index: Int) = "segment$index.aac"
 
     /** Declared in the multivariant playlist, and therefore what the selected track should report. */
     const val DECLARED_BITRATE_BPS: Int = 128_000
+
+    /**
+     * The second variant's declared bitrate, in the two-variant form of the stream.
+     *
+     * Higher than [DECLARED_BITRATE_BPS] so that the adaptive selection starts on the lower one and
+     * every assertion about the *selected* format holds whichever form of the stream a test asked
+     * for.
+     */
+    const val HIGHER_DECLARED_BITRATE_BPS: Int = 256_000
 
     /** `mp4a.40.2` — AAC-LC. RFC 6381 §3.3 codecs parameter, as used by RFC 8216 §4.3.4.2. */
     const val DECLARED_CODECS: String = "mp4a.40.2"
@@ -106,8 +118,10 @@ internal object SyntheticHlsStream {
      * Every reference inside the playlists is relative, which is what lets the identical bytes serve
      * from a `fake:` URI in [addTo] and from a directory here.
      */
-    fun writeTo(directory: File, segmentCount: Int = 1): String {
-        files(segmentCount).forEach { (name, bytes) -> File(directory, name).writeBytes(bytes) }
+    fun writeTo(directory: File, segmentCount: Int = 1, variantCount: Int = 1): String {
+        files(segmentCount, variantCount).forEach { (name, bytes) ->
+            File(directory, name).writeBytes(bytes)
+        }
         return File(directory, MULTIVARIANT_PLAYLIST_NAME).toURI().toString()
     }
 
@@ -118,23 +132,35 @@ internal object SyntheticHlsStream {
      * Names rather than URIs, because the two callers above disagree about where the stream lives
      * and agree about everything else.
      */
-    private fun files(segmentCount: Int): Map<String, ByteArray> {
+    private fun files(segmentCount: Int, variantCount: Int = 1): Map<String, ByteArray> {
         require(segmentCount >= 1) { "A stream needs at least one segment, was $segmentCount" }
+        require(variantCount in 1..2) { "This stream has one or two variants, not $variantCount" }
 
         return buildMap {
-            put(MULTIVARIANT_PLAYLIST_NAME, multivariantPlaylist().toByteArray())
+            put(MULTIVARIANT_PLAYLIST_NAME, multivariantPlaylist(variantCount).toByteArray())
             put(MEDIA_PLAYLIST_NAME, mediaPlaylist(segmentCount).toByteArray())
+            // The same segments under a second playlist: what varies between the variants is what
+            // they *declare*, because nothing in these tests decodes a byte of them.
+            if (variantCount == 2) {
+                put(SECOND_MEDIA_PLAYLIST_NAME, mediaPlaylist(segmentCount).toByteArray())
+            }
             repeat(segmentCount) { index -> put(segmentName(index), adtsSegment(index)) }
         }
     }
 
     // spec: RFC 8216 §4.3.4.2 — EXT-X-STREAM-INF, with the required BANDWIDTH attribute.
-    private fun multivariantPlaylist(): String =
-        """
-        #EXTM3U
-        #EXT-X-STREAM-INF:BANDWIDTH=$DECLARED_BITRATE_BPS,CODECS="$DECLARED_CODECS"
-        $MEDIA_PLAYLIST_NAME
-        """.trimIndent()
+    private fun multivariantPlaylist(variantCount: Int): String {
+        val variants = listOf(
+            DECLARED_BITRATE_BPS to MEDIA_PLAYLIST_NAME,
+            HIGHER_DECLARED_BITRATE_BPS to SECOND_MEDIA_PLAYLIST_NAME,
+        ).take(variantCount)
+
+        return (
+            listOf("#EXTM3U") + variants.flatMap { (bandwidth, playlist) ->
+                listOf("#EXT-X-STREAM-INF:BANDWIDTH=$bandwidth,CODECS=\"$DECLARED_CODECS\"", playlist)
+            }
+            ).joinToString(separator = "\n")
+    }
 
     // spec: RFC 8216 §4.3.3 — a VOD media playlist: EXT-X-TARGETDURATION is the rounded-up maximum
     // EXTINF, and EXT-X-ENDLIST is what makes the playlist finite rather than live.

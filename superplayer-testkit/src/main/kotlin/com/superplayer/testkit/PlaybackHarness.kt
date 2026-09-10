@@ -193,6 +193,27 @@ public class PlaybackHarness : ExternalResource() {
     }
 
     /**
+     * Moves both clocks forward by [millis] in load-sized steps, rather than in one jump.
+     *
+     * The counterpart of [advanceTimeMs] for a test whose subject is what the *transfer* does. A load
+     * is asynchronous — the engine asks for a chunk, a loading thread fetches it, the result arrives
+     * on a later pass — so a single long advance gives the engine one pass and reaches the second
+     * chunk of a session however far it jumped. A fault addressed at the fourth segment would then
+     * never fire, and the test would pass for the wrong reason.
+     *
+     * Time still moves by exactly [millis] in total, so a duration measured across it is still exact.
+     */
+    public fun advanceTimeInStepsMs(player: SuperPlayer, millis: Long) {
+        require(millis >= 0) { "Time does not go backwards" }
+        var advanced = 0L
+        while (advanced < millis) {
+            val step = minOf(LOAD_STEP_MS, millis - advanced)
+            advanceTimeMs(player, step)
+            advanced += step
+        }
+    }
+
+    /**
      * Gives [player] somewhere to draw, and takes responsibility for releasing it.
      *
      * Called for every player this harness builds, and **again after a pool recycle**:
@@ -456,6 +477,14 @@ public class PlaybackHarness : ExternalResource() {
 
         /** Playback time, not wall-clock: generous, and only ever reached when something is wrong. */
         private const val MAX_WAIT_MS = 30_000L
+
+        /**
+         * One step of [advanceTimeInStepsMs]: a few render passes and a fraction of a chunk.
+         *
+         * Short enough that segments load in the order playback needs them, long enough that a
+         * minute of playback is not six thousand advances.
+         */
+        private const val LOAD_STEP_MS = 250L
 
         /** Two seconds, the segment duration both the HLS and DASH interoperability profiles use. */
         private val CHUNK_DURATION_US = 2_000_000L

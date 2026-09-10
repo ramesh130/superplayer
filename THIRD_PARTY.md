@@ -13,9 +13,9 @@ of truth. This file records *what* is depended on and under *what license*.
 | --- | --- | --- |
 | `androidx.media3:media3-common` | Apache-2.0 | `superplayer-core` (api) |
 | `androidx.media3:media3-exoplayer` | Apache-2.0 | `superplayer-core` (api) |
-| `androidx.media3:media3-exoplayer-hls` | Apache-2.0 | `superplayer-core` |
-| `androidx.media3:media3-exoplayer-dash` | Apache-2.0 | `superplayer-core` |
-| `androidx.media3:media3-datasource` | Apache-2.0 | `superplayer-core` |
+| `androidx.media3:media3-exoplayer-hls` | Apache-2.0 | `superplayer-core`, `superplayer-testkit` (test) |
+| `androidx.media3:media3-exoplayer-dash` | Apache-2.0 | `superplayer-core`, `superplayer-testkit` (test) |
+| `androidx.media3:media3-datasource` | Apache-2.0 | `superplayer-core`, `superplayer-testkit` |
 | `androidx.media3:media3-session` | Apache-2.0 | `superplayer-core` (api) |
 | `androidx.media3:media3-ui` | Apache-2.0 | `demo` |
 | `androidx.annotation:annotation` | Apache-2.0 | `superplayer-core`, `demo` |

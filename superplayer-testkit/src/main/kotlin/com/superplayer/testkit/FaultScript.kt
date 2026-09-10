@@ -162,7 +162,11 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
          */
         public fun expireTokenAtSegment(index: Int): Builder {
             index.requireAtLeast(0, "A segment index")
-            faults += Fault(ResourceKind.MEDIA_SEGMENT, index, Int.MAX_VALUE, Effect.HttpStatus(HTTP_FORBIDDEN))
+            faults += Fault(
+                ResourceKind.MEDIA_SEGMENT,
+                index..Int.MAX_VALUE,
+                Effect.HttpStatus(HTTP_FORBIDDEN),
+            )
             return this
         }
 
@@ -170,7 +174,8 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
 
         private fun add(kind: ResourceKind?, index: Int?, effect: Effect): Builder {
             index?.requireAtLeast(0, "A resource index")
-            faults += Fault(kind, index ?: 0, index ?: Int.MAX_VALUE, effect)
+            // An unnamed index means every resource of the kind, which is a range and reads as one.
+            faults += Fault(kind, index?.let { it..it } ?: EVERY_INDEX, effect)
             return this
         }
 
@@ -199,24 +204,26 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
 
         /** The status a CDN answers its own trouble with, which retries treat differently from a 404. */
         public const val HTTP_SERVER_ERROR: Int = 500
+
+        /** What an unnamed index addresses: every resource of the kind. */
+        private val EVERY_INDEX = 0..Int.MAX_VALUE
     }
 }
 
 /**
  * One fault: what it does, and which resources it does it to.
  *
- * [firstIndex]`..`[lastIndex] rather than a single index, because a token expiry addresses a segment
- * *and every one after it* — the one addressing shape that cannot be written as a single index and
- * the reason this is a range at all.
+ * [indices] is a range rather than a single index because a token expiry addresses a segment *and
+ * every one after it* — the one addressing shape that cannot be written as a single index, and the
+ * reason this is a range at all. A null [kind] is every kind.
  */
 internal class Fault(
     val kind: ResourceKind?,
-    val firstIndex: Int,
-    val lastIndex: Int,
+    val indices: IntRange,
     val effect: Effect,
 ) {
     fun matches(address: ResourceAddress): Boolean =
-        (kind == null || kind == address.kind) && address.index in firstIndex..lastIndex
+        (kind == null || kind == address.kind) && address.index in indices
 }
 
 /** What a matched [Fault] does to the transfer. */

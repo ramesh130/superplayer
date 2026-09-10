@@ -19,7 +19,6 @@ package com.superplayer.telemetry
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import com.superplayer.core.MediaRequest
-import com.superplayer.core.SuperPlayer
 import com.superplayer.core.TelemetryEvent
 import com.superplayer.core.TelemetrySink
 import com.superplayer.testkit.FaultScript
@@ -67,7 +66,7 @@ class FaultInducedRebufferTest {
         player.setMediaRequest(MediaRequest.Builder(CONTENT).addSource(SOURCE).build())
         harness.playToReady(player)
 
-        advanceInSteps(player, PLAYED_MS)
+        harness.advanceTimeInStepsMs(player, PLAYED_MS)
 
         val started = events.filterIsInstance<TelemetryEvent.RebufferStarted>()
         val ended = events.filterIsInstance<TelemetryEvent.RebufferEnded>()
@@ -83,11 +82,6 @@ class FaultInducedRebufferTest {
         assertThat(ended.first().durationMs).isAtLeast(1)
     }
 
-    /** Time moves in steps, because a load is asynchronous and one jump gives the engine one pass. */
-    private fun advanceInSteps(player: SuperPlayer, totalMs: Long) {
-        repeat((totalMs / STEP_MS).toInt()) { harness.advanceTimeMs(player, STEP_MS) }
-    }
-
     private companion object {
         const val CONTENT = "series/expanse/s01e01"
         const val SOURCE = "fake://superplayer.test/never-fetched"
@@ -99,6 +93,5 @@ class FaultInducedRebufferTest {
         const val LATE_BY_MS = 30_000L
 
         const val PLAYED_MS = 60_000L
-        const val STEP_MS = 250L
     }
 }

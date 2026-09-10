@@ -17,11 +17,17 @@
 package com.superplayer.testkit
 
 import android.net.Uri
+import androidx.media3.common.util.UriUtil
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSourceUtil
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.TransferListener
+import androidx.media3.exoplayer.dash.manifest.DashManifestParser
+import androidx.media3.exoplayer.dash.manifest.Representation
+import androidx.media3.exoplayer.hls.playlist.HlsMediaPlaylist
+import androidx.media3.exoplayer.hls.playlist.HlsMultivariantPlaylist
+import androidx.media3.exoplayer.hls.playlist.HlsPlaylistParser
 import androidx.media3.test.utils.FakeClock
 import androidx.media3.test.utils.FakeDataSet
 import androidx.media3.test.utils.FakeDataSource
@@ -30,6 +36,7 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.Assert.assertThrows
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.ByteArrayInputStream
 import java.net.UnknownHostException
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
@@ -92,14 +99,17 @@ class FaultInjectionTest {
 
     @Test
     fun theSameScriptAddressesTheSameResourceUnderHlsAndDash() {
+        // The URL sequences are not this test's to invent: they are what Media3's own HLS playlist
+        // parser and DASH manifest parser produce from a playlist and an MPD. A test that wrote the
+        // URLs itself would be checking that the classifier agrees with the test's idea of what a
+        // segment is called, which is the one thing it cannot be allowed to prove.
         val hls = addressesOf(HLS_SESSION).map { it.toString() }
         val dash = addressesOf(DASH_SESSION).map { it.toString() }
 
-        // Neither list mentions a URL, and from the initialization segment on the two are equal: the
-        // initialization segments are initialization segments and the media segments are numbered
-        // from zero in the order they were asked for, whether one protocol spells them `.aac` and
-        // the other `.m4s`. That equality is the point of addressing a fault by kind and index — the
-        // same script run against either protocol means the same thing.
+        // From the initialization segment on, the two are equal: initialization segments are
+        // initialization segments and media segments are numbered from zero in the order they were
+        // asked for, whether the protocol spells them `.aac` or `.m4s`. That equality is the point
+        // of addressing a fault by kind and index — one script, either protocol, one meaning.
         val playable = listOf("INITIALIZATION#0", "MEDIA_SEGMENT#0", "MEDIA_SEGMENT#1", "MEDIA_SEGMENT#2", "MEDIA_SEGMENT#3")
         assertThat(hls.dropWhile { it.startsWith("MANIFEST") }).isEqualTo(playable)
         assertThat(dash.dropWhile { it.startsWith("MANIFEST") }).isEqualTo(playable)
@@ -107,10 +117,20 @@ class FaultInjectionTest {
         // What does differ is how many manifests each protocol fetches, and that is a real
         // difference rather than one the addressing should hide: HLS declares its renditions in a
         // multivariant playlist and then fetches a media playlist per rendition, while DASH declares
-        // everything in the one MPD — and a fault script that says "fail the second manifest" is
-        // saying something that only means anything under HLS.
+        // everything in the one MPD — so "fail the second manifest" is a sentence that only means
+        // something under HLS.
         assertThat(hls.takeWhile { it.startsWith("MANIFEST") }).containsExactly("MANIFEST#0", "MANIFEST#1").inOrder()
         assertThat(dash.takeWhile { it.startsWith("MANIFEST") }).containsExactly("MANIFEST#0")
+    }
+
+    @Test
+    fun theProtocolsProduceTheUrlsTheRestOfThisFileNames() {
+        // The other tests here address resources by the constants below, and this is what keeps
+        // those honest: the segment URLs a real playlist parse yields are those constants. Without
+        // it, a heuristic that had drifted from what a packager actually emits would still pass
+        // every test in this file.
+        assertThat(HLS_SESSION.filter { it.endsWith(SEGMENT_SUFFIX) }).isEqualTo(HLS_SEGMENTS)
+        assertThat(HLS_SESSION.filter { it.endsWith(".m3u8") }).isEqualTo(HLS_MANIFESTS)
     }
 
     @Test
@@ -118,20 +138,22 @@ class FaultInjectionTest {
         listOf(HLS_SESSION, DASH_SESSION).forEach { session ->
             val factory = factoryOver(FaultScript.Builder().expireTokenAtSegment(2).build())
 
-            val outcomes = session.map { url -> statusOf(factory, url) }
+            // The requests first: `requested` is a snapshot, and one taken before the session ran
+            // would be empty.
+            val statuses = session.map { url -> statusOf(factory, url) }
+            val outcomes = factory.addresses.requested.zip(statuses)
 
-            // Identical under both protocols, and stated as the sequence rather than as one failed
-            // request: a token that has expired stays expired, so a ladder that retried the one
-            // segment would still be stuck — which is the case `superplayer-resilience` exists for.
-            assertThat(outcomes).containsExactly(
-                DELIVERED,
-                DELIVERED,
-                DELIVERED,
-                DELIVERED,
-                DELIVERED,
-                403,
-                403,
-            ).inOrder()
+            // Stated as the sequence rather than as one failed request: a token that has expired
+            // stays expired, so a ladder that retried the one segment would still be stuck — which
+            // is the case `superplayer-resilience` exists for. Identical under both protocols, and
+            // said in segment indices, because that is the only vocabulary in which the two
+            // sessions are the same sentence.
+            assertThat(outcomes.filter { it.first.kind == ResourceKind.MEDIA_SEGMENT }.map { it.second })
+                .containsExactly(DELIVERED, DELIVERED, 403, 403).inOrder()
+            // And nothing that was not a media segment was touched, whether the protocol fetched one
+            // manifest or two.
+            assertThat(outcomes.filterNot { it.first.kind == ResourceKind.MEDIA_SEGMENT }.map { it.second })
+                .containsNoneOf(403, 404)
         }
     }
 
@@ -362,36 +384,96 @@ class FaultInjectionTest {
         /**
          * One HLS session and one DASH session, as the sequence of URLs each protocol produces.
          *
-         * Written out rather than derived from a real manifest parse, because what is under test is
-         * the classification of a URL sequence and a player between the two would only make the
-         * assertion less direct. The names are the ones the protocols' own examples use: a
-         * multivariant and a media playlist, then an `EXT-X-MAP` target, then segments
-         * (// spec: RFC 8216 §4.3.2.5); an MPD, then an `<Initialization>` target, then segments
-         * (// spec: ISO/IEC 23009-1 §5.3.9.2).
+         * Derived by handing a playlist and an MPD to Media3's own parsers and asking what they
+         * point at, in the order a player fetches them: the multivariant playlist, the media
+         * playlist it names, the `EXT-X-MAP` target (// spec: RFC 8216 §4.3.2.5) and then the
+         * segments; the MPD, its `<Initialization>` target (// spec: ISO/IEC 23009-1 §5.3.9.2) and
+         * then the segments.
          */
+        // Lazily, because these are derived from the manifests declared further down this object and
+        // a companion initializes in declaration order.
+        val HLS_SESSION: List<String> by lazy { hlsSession() }
+        val DASH_SESSION: List<String> by lazy { dashSession() }
+
         val HLS_MANIFESTS = listOf(
             "https://cdn.test/hls/master.m3u8",
             "https://cdn.test/hls/media.m3u8",
         )
-        val HLS_SEGMENTS = listOf(
-            "https://cdn.test/hls/seg0.aac",
-            "https://cdn.test/hls/seg1.aac",
-            "https://cdn.test/hls/seg2.aac",
-            "https://cdn.test/hls/seg3.aac",
-        )
-        val HLS_SESSION = HLS_MANIFESTS + "https://cdn.test/hls/init.mp4" + HLS_SEGMENTS
+        const val SEGMENT_SUFFIX = ".aac"
+        val HLS_SEGMENTS = (0..3).map { "https://cdn.test/hls/seg$it$SEGMENT_SUFFIX" }
 
-        val DASH_SESSION = listOf(
-            "https://cdn.test/dash/manifest.mpd",
-            // The same MPD again, as a live player reloads it: one resource, so one address, which
-            // is what keeps every index after it from sliding by one.
-            "https://cdn.test/dash/manifest.mpd?refresh=1",
-            "https://cdn.test/dash/init.mp4",
-            "https://cdn.test/dash/segment0.m4s",
-            "https://cdn.test/dash/segment1.m4s",
-            "https://cdn.test/dash/segment2.m4s",
-            "https://cdn.test/dash/segment3.m4s",
-        )
+        private fun hlsSession(): List<String> {
+            val multivariantUri = Uri.parse("https://cdn.test/hls/master.m3u8")
+            val multivariant = HlsPlaylistParser()
+                .parse(multivariantUri, MULTIVARIANT_PLAYLIST.byteInputStream()) as HlsMultivariantPlaylist
+            val mediaPlaylistUri = multivariant.variants.single().url
+            val media = HlsPlaylistParser()
+                .parse(mediaPlaylistUri, MEDIA_PLAYLIST.byteInputStream()) as HlsMediaPlaylist
+            val initialization = media.segments.first().initializationSegment!!
+            return listOf(multivariantUri.toString(), mediaPlaylistUri.toString()) +
+                resolve(media.baseUri, initialization.url) +
+                media.segments.map { resolve(media.baseUri, it.url) }
+        }
+
+        private fun dashSession(): List<String> {
+            val manifestUri = Uri.parse("https://cdn.test/dash/manifest.mpd")
+            val manifest = DashManifestParser().parse(manifestUri, MPD.byteInputStream())
+            val representation = manifest.getPeriod(0).adaptationSets.single().representations.single()
+            val baseUrl = representation.baseUrls.first().url
+            val segments = representation as Representation.MultiSegmentRepresentation
+            val first = segments.getFirstSegmentNum()
+            val count = segments.getSegmentCount(manifest.getPeriodDurationUs(0))
+            return listOf(manifestUri.toString()) +
+                representation.getInitializationUri()!!.resolveUriString(baseUrl) +
+                (first until first + count).map { segments.getSegmentUrl(it).resolveUriString(baseUrl) }
+        }
+
+        private fun resolve(baseUri: String, url: String): String =
+            UriUtil.resolveToUri(baseUri, url).toString()
+
+        private val MULTIVARIANT_PLAYLIST = """
+            #EXTM3U
+            #EXT-X-STREAM-INF:BANDWIDTH=128000,CODECS="mp4a.40.2"
+            media.m3u8
+        """.trimIndent()
+
+        private val MEDIA_PLAYLIST = """
+            #EXTM3U
+            #EXT-X-TARGETDURATION:2
+            #EXT-X-VERSION:6
+            #EXT-X-MEDIA-SEQUENCE:0
+            #EXT-X-MAP:URI="init.mp4"
+            #EXTINF:2.0,
+            seg0.aac
+            #EXTINF:2.0,
+            seg1.aac
+            #EXTINF:2.0,
+            seg2.aac
+            #EXTINF:2.0,
+            seg3.aac
+            #EXT-X-ENDLIST
+        """.trimIndent()
+
+        private val MPD = """
+            <?xml version="1.0" encoding="utf-8"?>
+            <MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static"
+                 mediaPresentationDuration="PT8.0S" minBufferTime="PT2.0S"
+                 profiles="urn:mpeg:dash:profile:isoff-on-demand:2011">
+              <Period start="PT0S" duration="PT8.0S">
+                <AdaptationSet mimeType="audio/mp4" codecs="mp4a.40.2">
+                  <Representation id="0" bandwidth="128000">
+                    <SegmentList duration="2" timescale="1">
+                      <Initialization sourceURL="init.mp4"/>
+                      <SegmentURL media="segment0.m4s"/>
+                      <SegmentURL media="segment1.m4s"/>
+                      <SegmentURL media="segment2.m4s"/>
+                      <SegmentURL media="segment3.m4s"/>
+                    </SegmentList>
+                  </Representation>
+                </AdaptationSet>
+              </Period>
+            </MPD>
+        """.trimIndent()
 
         /** Not an HTTP status: what [statusOf] reports when the resource was served. */
         const val DELIVERED = 200

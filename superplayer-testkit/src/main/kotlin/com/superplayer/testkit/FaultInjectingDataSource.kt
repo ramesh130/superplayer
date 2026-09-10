@@ -308,8 +308,8 @@ internal class FaultInjectingDataSource(
  * a byte count the transfer never made; this arrangement cannot.
  */
 internal class FaultInjectingChunkSourceFactory(
-    private val dataSets: FakeAdaptiveDataSet.Factory,
-    private val dataSources: FakeDataSource.Factory,
+    dataSets: FakeAdaptiveDataSet.Factory,
+    dataSources: FakeDataSource.Factory,
     private val injector: FaultInjectingDataSource.Factory,
 ) : FakeChunkSource.Factory(dataSets, dataSources) {
 
@@ -318,8 +318,11 @@ internal class FaultInjectingChunkSourceFactory(
         durationUs: Long,
         transferListener: TransferListener?,
     ): FakeChunkSource {
-        val dataSet = dataSets.createDataSet(trackSelection.trackGroup, durationUs)
-        val source = dataSources.setFakeDataSet(dataSet).createDataSource()
+        // The superclass's own fields and the superclass's own steps, with one line added. Held
+        // twice they could drift apart, and the copy that drifted would be the one this file forgot
+        // to update on the next Media3 upgrade.
+        val dataSet = dataSetFactory.createDataSet(trackSelection.trackGroup, durationUs)
+        val source = dataSourceFactory.setFakeDataSet(dataSet).createDataSource()
         transferListener?.let { source.addTransferListener(it) }
         return FakeChunkSource(trackSelection, injector.wrap(source), dataSet)
     }

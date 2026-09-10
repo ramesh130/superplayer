@@ -51,6 +51,21 @@ the position within it, `playWhenReady`, and the whole of the player's remembere
 `ResumeFromLastKnown` keeps working across a configuration change. It carries no profile, and it
 names no content for an item set through `setMediaItem`, which has no identity to restore under.
 
+Measurement leaves the library through `TelemetrySink`, and the fifth public type is really three:
+the sink a consumer writes, the sealed `TelemetryEvent` hierarchy it receives, and the
+`TelemetryCollector` that `SuperPlayer.Builder.setTelemetry(...)` takes. ADR-0008 splits them across
+two modules — the sink and the vocabulary are core's, so an app's data pipeline names no Media3 type
+and no telemetry type, while the collector that derives events from Media3's analytics is
+`superplayer-telemetry`'s `QoeCollector(sink)`. The setter takes a collector rather than a bare sink
+because collector-as-sink makes the wrong call compile: a sink passed on its own type-checks and
+measures nothing. A player built without that call registers no analytics listener and allocates
+nothing, which is rule 2 and is asserted by counting registrations rather than by inspection. What
+is emitted today is the session boundary only — `SessionStarted` when content is adopted,
+`SessionEnded` when the player is released, recycled or moved on — and core signals those edges from
+`adopt`, `restoreSnapshot`, `resetForReuse` and `release`, because only core knows which item change
+carried a `MediaRequest` and which was a recycle. Delivery is synchronous on the caller's thread, which
+ADR-0008 rule 4 forbids and issue #37 fixes; the CTA-2066 metrics are #35 and #36.
+
 Android's own lifecycle rules — audio focus, becoming-noisy, wake and Wi-Fi locks — are on for every
 player, switched on in `LifecycleBinding.kt` and fixed rather than per-profile: ADR-0006 rule 1 says
 why they are correctness rather than policy, and therefore not behind `PlaybackPolicy`.
@@ -113,8 +128,9 @@ not override Java `default` methods and gives no warning that it hasn't: `Player
 listener wrapper forwards reflectively. `SuperPlayerForwardingTest` drives Media3's own
 forwarding-contract assertion over both and is what catches the next one Media3 adds.
 
-Every other library module is still an empty placeholder: they exist so boundaries are fixed and
-enforceable before code arrives. `superplayer-core` and `build-logic` are the only modules with test
+`superplayer-telemetry` holds `QoeCollector` and nothing else yet. Every other library module is
+still an empty placeholder: they exist so boundaries are fixed and enforceable before code arrives.
+`superplayer-core`, `superplayer-telemetry` and `build-logic` are the only modules with test
 sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
 requirements, and the phase table are what the issues are cut from.
 

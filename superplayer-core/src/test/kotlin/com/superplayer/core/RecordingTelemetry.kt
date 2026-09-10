@@ -1,0 +1,104 @@
+/*
+ * Copyright 2026 The SuperPlayer Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.superplayer.core
+
+import androidx.media3.exoplayer.analytics.AnalyticsListener
+
+/**
+ * A [TelemetryCollector] that writes core's own events to a list, standing in for
+ * `superplayer-telemetry`'s `QoeCollector` in core's tests.
+ *
+ * A stand-in rather than the real thing, and that is the phase rule (`docs/modules.md`) rather than
+ * a preference: `superplayer-core` may not depend on `superplayer-telemetry`, so no test here can
+ * name `QoeCollector`. What these tests are about is the half of the seam that *is* core's — that
+ * the lifecycle signals are sent, once each, at the right moments — and that half is observable
+ * through any collector. `QoeCollectorTest` in the telemetry module pins the real one against the
+ * real builder.
+ *
+ * Session ids are minted the way a collector must: a fresh one per session, so a test asserting that
+ * a recycled player starts a *new* session has something to compare.
+ *
+ * It registers an [AnalyticsListener] on attach and removes it on detach, as `QoeCollector` does and
+ * for the same reason: that registration is the observable cost of telemetry, and
+ * `SuperPlayerTelemetryTest.aPlayerBuiltWithNoTelemetryRegistersNoAnalyticsListener` counts it.
+ */
+class RecordingTelemetry : TelemetryCollector {
+
+    /** Every event, in order. The whole of what these tests assert on. */
+    val events = mutableListOf<TelemetryEvent>()
+
+    var attachCount = 0
+        private set
+
+    var detachCount = 0
+        private set
+
+    private var player: SuperPlayer? = null
+
+    /** Registered on attach and removed on detach, standing in for `QoeCollector`'s own. */
+    private val analyticsListener: AnalyticsListener = object : AnalyticsListener {}
+    private var openSession: TelemetryEvent.SessionStarted? = null
+    private var sessionsStarted = 0
+
+    val started: List<TelemetryEvent.SessionStarted>
+        get() = events.filterIsInstance<TelemetryEvent.SessionStarted>()
+
+    val ended: List<TelemetryEvent.SessionEnded>
+        get() = events.filterIsInstance<TelemetryEvent.SessionEnded>()
+
+    override fun attach(player: SuperPlayer) {
+        attachCount++
+        this.player = player
+        player.exoPlayer.addAnalyticsListener(analyticsListener)
+    }
+
+    override fun startSession(contentId: String) {
+        endSession()
+        val started = TelemetryEvent.SessionStarted(
+            sessionId = "session-${sessionsStarted++}",
+            contentId = contentId,
+            timestampMs = TIMESTAMP_MS,
+            profile = checkNotNull(player).profile,
+        )
+        openSession = started
+        events += started
+    }
+
+    override fun endSession() {
+        val open = openSession ?: return
+        openSession = null
+        events += TelemetryEvent.SessionEnded(
+            sessionId = open.sessionId,
+            contentId = open.contentId,
+            timestampMs = TIMESTAMP_MS,
+        )
+    }
+
+    override fun detach() {
+        detachCount++
+        player?.exoPlayer?.removeAnalyticsListener(analyticsListener)
+        player = null
+    }
+
+    private companion object {
+        /**
+         * Fixed, because nothing here asserts on time. A wall clock in a fixture is a value that
+         * differs between two runs of the same assertion for no reason the assertion is about.
+         */
+        const val TIMESTAMP_MS = 1_700_000_000_000L
+    }
+}

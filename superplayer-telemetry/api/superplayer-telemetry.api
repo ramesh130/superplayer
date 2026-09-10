@@ -1,0 +1,8 @@
+public final class com/superplayer/telemetry/QoeCollector : com/superplayer/core/TelemetryCollector {
+	public fun <init> (Lcom/superplayer/core/TelemetrySink;)V
+	public fun attach (Lcom/superplayer/core/SuperPlayer;)V
+	public fun detach ()V
+	public fun endSession ()V
+	public fun startSession (Ljava/lang/String;)V
+}
+

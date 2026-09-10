@@ -16,6 +16,7 @@
 
 package com.superplayer.telemetry
 
+import android.os.SystemClock
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
@@ -134,6 +135,47 @@ class QoeCollectorTest {
             .setTelemetry(collector)
         val failure = runCatching { second.build() }.exceptionOrNull()
         assertThat(failure).isInstanceOf(IllegalStateException::class.java)
+    }
+
+    @Test
+    fun aSessionNamesThePolicyThePlayerWasActuallyBuiltWith() {
+        val player = buildPlayer(PlaybackProfile.DATA_SAVER)
+        player.setMediaRequest(MediaRequest.Builder(CHANNEL).addSource(SOURCE).build())
+
+        // A rebuffer ratio measured under DATA_SAVER's buffer sizes and one measured under
+        // VIDEO_ON_DEMAND's are two different measurements. Carrying the decision rather than only
+        // the profile is what keeps that true once an adaptive policy makes the profile stop
+        // predicting it.
+        val started = events.filterIsInstance<TelemetryEvent.SessionStarted>().single()
+        assertThat(started.decision).isEqualTo(player.playbackDecision)
+    }
+
+    @Test
+    fun bothClocksAreOnTheEventAndAreTheClocksTheySayTheyAre() {
+        val wallBefore = System.currentTimeMillis()
+        val monoBefore = SystemClock.elapsedRealtime()
+        buildPlayer().setMediaRequest(MediaRequest.Builder(CHANNEL).addSource(SOURCE).build())
+
+        val started = events.filterIsInstance<TelemetryEvent.SessionStarted>().single()
+        // Two readings that differ by decades: swapping them is the mistake this pins, and it is one
+        // a pipeline would only notice as timestamps in 1970.
+        assertThat(started.timestampMs).isAtLeast(wallBefore)
+        assertThat(started.monotonicTimeMs).isAtLeast(monoBefore)
+        assertThat(started.monotonicTimeMs).isAtMost(SystemClock.elapsedRealtime())
+    }
+
+    @Test
+    fun declaringIntentIsNotAnEventAndDoesNotOpenASession() {
+        val player = buildPlayer()
+
+        player.declarePlaybackIntent()
+
+        // Intent is a boundary, not a measurement. A session is of content, and there is none yet —
+        // which is the whole reason the declaration has to be held rather than emitted.
+        assertThat(events).isEmpty()
+
+        player.setMediaRequest(MediaRequest.Builder(CHANNEL).addSource(SOURCE).build())
+        assertThat(events.filterIsInstance<TelemetryEvent.SessionStarted>()).hasSize(1)
     }
 
     private companion object {

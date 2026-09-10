@@ -1,0 +1,35 @@
+public final class com/superplayer/testkit/PlaybackHarness : org/junit/rules/ExternalResource {
+	public fun <init> ()V
+	public final fun advanceTimeMs (Lcom/superplayer/core/SuperPlayer;J)V
+	public final fun buildPlayer (Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;)Lcom/superplayer/core/SuperPlayer;
+	public static synthetic fun buildPlayer$default (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;ILjava/lang/Object;)Lcom/superplayer/core/SuperPlayer;
+	public final fun buildPool (Ljava/lang/Integer;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/testkit/TestContent;Lkotlin/jvm/functions/Function0;)Lcom/superplayer/core/PlayerPool;
+	public static synthetic fun buildPool$default (Lcom/superplayer/testkit/PlaybackHarness;Ljava/lang/Integer;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/testkit/TestContent;Lkotlin/jvm/functions/Function0;ILjava/lang/Object;)Lcom/superplayer/core/PlayerPool;
+	public final fun elapsedRealtimeMs ()J
+	public final fun failRendering (Lcom/superplayer/core/SuperPlayer;)V
+	public final fun playToReady (Lcom/superplayer/core/SuperPlayer;)V
+	public final fun reportDroppedFrames (Lcom/superplayer/core/SuperPlayer;IJ)V
+	public final fun resumeRendering (Lcom/superplayer/core/SuperPlayer;)V
+	public final fun settle (Lcom/superplayer/core/SuperPlayer;)V
+	public final fun stallRendering (Lcom/superplayer/core/SuperPlayer;)V
+}
+
+public final class com/superplayer/testkit/TestContent {
+	public static final field Companion Lcom/superplayer/testkit/TestContent$Companion;
+	public static final field DEFAULT_BITRATE_BPS I
+	public static final field DEFAULT_DURATION_MS J
+	public synthetic fun <init> (Ljava/util/List;JZLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public static final fun liveVideo (IJ)Lcom/superplayer/testkit/TestContent;
+	public static final fun video (IJ)Lcom/superplayer/testkit/TestContent;
+	public static final fun videoLadder (Ljava/util/List;J)Lcom/superplayer/testkit/TestContent;
+}
+
+public final class com/superplayer/testkit/TestContent$Companion {
+	public final fun liveVideo (IJ)Lcom/superplayer/testkit/TestContent;
+	public static synthetic fun liveVideo$default (Lcom/superplayer/testkit/TestContent$Companion;IJILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
+	public final fun video (IJ)Lcom/superplayer/testkit/TestContent;
+	public static synthetic fun video$default (Lcom/superplayer/testkit/TestContent$Companion;IJILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
+	public final fun videoLadder (Ljava/util/List;J)Lcom/superplayer/testkit/TestContent;
+	public static synthetic fun videoLadder$default (Lcom/superplayer/testkit/TestContent$Companion;Ljava/util/List;JILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
+}
+

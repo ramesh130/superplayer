@@ -207,6 +207,38 @@ Construction is the only thing it does. Once the player is built, the test holds
 talks to it as a `Player`. If a test ever needs a second such seam, that is a signal the design is
 wrong: the thing being configured probably belongs in SuperPlayer's own vocabulary, as public API.
 
+### Reaching that seam from another module
+
+Kotlin `internal` means *one compilation*, so the seam is visible to `superplayer-core`'s own unit
+tests and to nothing else — and every module from phase 2 onward has tests that need exactly what it
+provides. `superplayer-telemetry` is the first: a QoE collector cannot be tested without a
+deterministic player, and `QoeCollector` cannot live in core (ADR-0008 rule 2).
+
+`superplayer-testkit` is where that harness lives, and it compiles as a **friend** of core rather
+than as a consumer of it — `build-logic`'s `KotlinFriendModules.kt` passes `-Xfriend-paths`, and its
+KDoc carries the argument. The seam is not widened: the same one configurator is reached by one more
+of the library's own compilations, a consumer's compilation is never a friend of anything, and
+`internal` remains invisible outside this repository.
+
+`superplayer-testkit`'s own public API names **no Media3 type**, for the reason ADR-0001 rule 2 gives:
+a `Format` or a `Timeline` in one of its signatures would put Media3's opt-in marker on every test
+that named it. A test says what it wants — `TestContent.videoLadder()`, `harness.stallRendering(player)`
+— and the Media3 vocabulary stays inside the harness.
+
+**Its two clocks move together.** Media3's `FakeClock` drives the engine; Robolectric's `SystemClock`
+is what `declarePlaybackIntent` and a collector read, because that is the clock
+`docs/telemetry-schema.md` defines every duration on. The `FakeClock` is therefore created at the
+current `SystemClock` reading with auto-advancing **off**, and `advanceTimeMs` moves both — which is
+the opposite of core's harness, deliberately. Auto-advancing is right when nothing is being measured
+and wrong when something is: a clock that moves by an amount no assertion can name turns every
+duration into a tolerance.
+
+**What it fakes, and what that costs.** Stalls are injected by making the video renderer stop being
+ready, which reproduces the engine's buffering state machine exactly and the *cause* of a rebuffer
+not at all; dropped frames are raised on the renderer's own callback rather than by a decoder that
+could not keep up. Both are stubs, both say so at the implementation, and both should be re-pointed
+at the shaped transfer and fault injection that `#39` and `#40` bring.
+
 ## Determinism
 
 Tests must not sleep, poll a wall clock, or depend on ordering that real threads happen to produce.

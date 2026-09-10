@@ -21,7 +21,7 @@ public final class com/superplayer/core/BufferPolicy {
 
 public final class com/superplayer/core/CmcdMode : java/lang/Enum {
 	public static final field DISABLED Lcom/superplayer/core/CmcdMode;
-	public static final field QUERY_PARAMETERS Lcom/superplayer/core/CmcdMode;
+	public static final field QUERY_PARAMETER Lcom/superplayer/core/CmcdMode;
 	public static final field REQUEST_HEADERS Lcom/superplayer/core/CmcdMode;
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/core/CmcdMode;

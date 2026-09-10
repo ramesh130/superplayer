@@ -232,6 +232,10 @@ public class SuperPlayer private constructor(
         builtWithTrackSelectionParameters: TrackSelectionParameters? = null,
         telemetry: TelemetryCollector? = null,
         applicationContext: Context? = null,
+        // Deliberately not [Builder]'s rule, which also enables the holder for CMCD. This
+        // constructor wraps an engine somebody else built, so nothing here composed a transfer
+        // chain and no CMCD seam can be reading the id — a collector is the only possible reader,
+        // and `enabled` says exactly that. [Builder] passes its own and never falls through to this.
         measurementSession: MeasurementSession = MeasurementSession(enabled = telemetry != null),
     ) : this(
         exoPlayer,
@@ -354,13 +358,25 @@ public class SuperPlayer private constructor(
         // opens a session exactly as content set from the app does. A collector that already has one
         // open closes it first — core signals the edge, the collector keeps the bookkeeping.
         //
-        // The id is minted here rather than by the collector because CMCD's `sid` is the same
-        // string, and the transfer chain reads it from the same holder — see [MeasurementSession].
-        // A player with no reader for an id has no id to mint, and no session to signal either.
-        measurementSession.open(request.contentId)?.let { sessionId ->
-            telemetry?.startSession(request.contentId, sessionId)
-        }
+        openMeasurementSession(request.contentId)
         return AdoptedRequest(request.toMediaItem(), request.resolvedStartPositionMs())
+    }
+
+    /**
+     * Opens a measurement session for [contentId] and tells the collector, if there is one.
+     *
+     * The id is minted here rather than by the collector because CMCD's `sid` is the same string,
+     * and the transfer chain reads it from the same holder — see [MeasurementSession]. A player with
+     * no reader for an id has no id to mint, and therefore no session to signal either.
+     *
+     * One function for the two callers that open a session — [adopt] and [restoreSnapshot] — because
+     * a second copy that minted without signalling, or signalled without minting, would break the
+     * join silently and in only one of the two paths.
+     */
+    private fun openMeasurementSession(contentId: String) {
+        measurementSession.open(contentId)?.let { sessionId ->
+            telemetry?.startSession(contentId, sessionId)
+        }
     }
 
     /**
@@ -419,9 +435,7 @@ public class SuperPlayer private constructor(
             // without this the whole of what a viewer watches after a rotation would go unmeasured.
             // Deliberately not routed through `adopt`, which would remember a position for content
             // this player never played.
-            measurementSession.open(request.contentId)?.let { sessionId ->
-                telemetry?.startSession(request.contentId, sessionId)
-            }
+            openMeasurementSession(request.contentId)
             delegate.setMediaItem(request.toMediaItem(), snapshot.positionMs)
         }
         delegate.playWhenReady = snapshot.playWhenReady
@@ -661,7 +675,7 @@ public class SuperPlayer private constructor(
          *
          * ```kotlin
          * val player = SuperPlayer.Builder(context)
-         *     .setCmcdMode(CmcdMode.QUERY_PARAMETERS)
+         *     .setCmcdMode(CmcdMode.QUERY_PARAMETER)
          *     .build()
          * ```
          *

@@ -37,10 +37,13 @@ import androidx.test.core.app.ApplicationProvider
  * Recording on transfer *start* is what makes the [DataSpec] worth having: it is the spec the chunk
  * source built, with CMCD already attached, before any layer has had a chance to rewrite it.
  */
-class RecordingBandwidthMeter(
-    private val delegate: BandwidthMeter =
-        DefaultBandwidthMeter.Builder(ApplicationProvider.getApplicationContext()).build(),
+class RecordingBandwidthMeter private constructor(
+    private val delegate: BandwidthMeter,
 ) : BandwidthMeter by delegate {
+
+    constructor() : this(
+        DefaultBandwidthMeter.Builder(ApplicationProvider.getApplicationContext()).build(),
+    )
 
     /** Guarded because transfers begin on loader threads and assertions run on the test's. */
     private val opened = mutableListOf<DataSpec>()
@@ -77,26 +80,19 @@ class RecordingBandwidthMeter(
      * A playlist fetch carries CMCD too, but with the keys of a manifest request; asserting on the
      * segment is asserting on the case the CDN's own logs are read for.
      */
-    fun segmentRequest(): DataSpec = synchronized(opened) { opened.toList() }
-        .firstOrNull { it.uri.path.orEmpty().endsWith(SEGMENT_SUFFIX) }
-        ?: error("No segment request was opened; saw ${synchronized(opened) { opened.map { spec -> spec.uri } }}")
+    fun segmentRequest(): DataSpec = segmentRequests().firstOrNull()
+        ?: error("No segment request was opened; saw ${synchronized(opened) { opened.map { it.uri } }}")
 
     /**
      * The CMCD keys of every media segment fetched, in the order they were requested — what a test
      * asserting that a value *moved* needs, since a single request cannot show that.
      */
     fun cmcdKeysOfSegmentRequests(): List<Map<String, String>> =
-        synchronized(opened) { opened.toList() }
-            .filter { it.uri.path.orEmpty().endsWith(SEGMENT_SUFFIX) }
-            .map { it.cmcdKeys() }
+        segmentRequests().map { it.cmcdKeys() }
 
-    /** [segmentRequest]'s CMCD keys, however this player was configured to send them. */
-    fun cmcdKeysOfSegmentRequest(): Map<String, String> = segmentRequest().cmcdKeys()
-
-    private companion object {
-        /** What `SyntheticHlsStream` names its segments; the playlists are `.m3u8`. */
-        const val SEGMENT_SUFFIX = ".aac"
-    }
+    /** Media segments only: the playlists are `.m3u8`, and CMCD says different things about those. */
+    private fun segmentRequests(): List<DataSpec> = synchronized(opened) { opened.toList() }
+        .filter { it.uri.path.orEmpty().endsWith(SyntheticHlsStream.SEGMENT_SUFFIX) }
 }
 
 /**

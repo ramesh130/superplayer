@@ -28,7 +28,7 @@ package com.superplayer.core
  *
  * ```kotlin
  * val player = SuperPlayer.Builder(context)
- *     .setCmcdMode(CmcdMode.QUERY_PARAMETERS) // only if your CDN needs it; see below
+ *     .setCmcdMode(CmcdMode.QUERY_PARAMETER) // only if your CDN needs it; see below
  *     .build()
  * ```
  *
@@ -49,7 +49,7 @@ package com.superplayer.core
  * unexpected parameter is appended, and playback stops with a 403. Choosing the mode that can only
  * lose telemetry over the one that can lose playback is not a close call.
  *
- * [QUERY_PARAMETERS] is nonetheless the right answer for some deployments, which is why it is here:
+ * [QUERY_PARAMETER] is nonetheless the right answer for some deployments, which is why it is here:
  * an origin or edge that logs query strings but not custom request headers cannot see CMCD any other
  * way, and a browser-shaped delivery path avoids the CORS preflight that custom headers force.
  * Before switching, check two things with whoever runs the CDN — that the signature scheme, if any,
@@ -83,10 +83,11 @@ public enum class CmcdMode {
     REQUEST_HEADERS,
 
     /**
-     * The keys travel as a single URL-encoded `CMCD` query parameter, as CTA-5004 allows.
+     * The keys travel as one URL-encoded `CMCD` query parameter, as CTA-5004 allows — singular,
+     * because the whole key set shares the one parameter rather than getting one each.
      *
      * Changes the request URL, which is what makes it the mode to check a signing scheme and a cache
      * key against before adopting. See the class KDoc.
      */
-    QUERY_PARAMETERS,
+    QUERY_PARAMETER,
 }

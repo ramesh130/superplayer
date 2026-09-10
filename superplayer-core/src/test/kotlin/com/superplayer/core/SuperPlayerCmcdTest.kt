@@ -111,7 +111,7 @@ class SuperPlayerCmcdTest {
         // The whole value of CMCD: this equality is what joins a row in a CDN's access log to a row
         // in the app's warehouse. Documented as a promise in `docs/telemetry-schema.md`, and this is
         // where the promise is kept.
-        assertThat(requests.cmcdKeysOfSegmentRequest()["sid"]).isEqualTo(quoted(started.sessionId))
+        assertThat(requests.cmcdKeysOfSegmentRequests().first()["sid"]).isEqualTo(quoted(started.sessionId))
     }
 
     @Test
@@ -121,13 +121,13 @@ class SuperPlayerCmcdTest {
 
         // spec: CTA-5004 §3.1 `cid` — and the point of MediaRequest: what a CDN logs is the app's
         // identity for the content, so the same title behind two CDNs is one row.
-        assertThat(requests.cmcdKeysOfSegmentRequest()["cid"]).isEqualTo(quoted(EPISODE))
+        assertThat(requests.cmcdKeysOfSegmentRequests().first()["cid"]).isEqualTo(quoted(EPISODE))
     }
 
     @Test
     fun aPlayerInQueryParameterModePutsTheKeysInTheUrlAndLeavesTheHeadersAlone() {
         val requests = RecordingBandwidthMeter()
-        playUntilReady(requests, cmcdMode = CmcdMode.QUERY_PARAMETERS)
+        playUntilReady(requests, cmcdMode = CmcdMode.QUERY_PARAMETER)
 
         val segment = requests.segmentRequest()
         assertThat(segment.httpRequestHeaders.keys).doesNotContain("CMCD-Request")
@@ -161,7 +161,7 @@ class SuperPlayerCmcdTest {
 
             // `StaticCmcdPolicy`'s table, asserted rather than described: DATA_SAVER is the profile
             // with a case against emitting, and it emits.
-            assertThat(requests.cmcdKeysOfSegmentRequest()).containsKey("sid")
+            assertThat(requests.cmcdKeysOfSegmentRequests().first()).containsKey("sid")
         }
     }
 
@@ -179,7 +179,7 @@ class SuperPlayerCmcdTest {
         player.prepare()
         TestPlayerRunHelper.advance(player).untilState(Player.STATE_READY)
 
-        val keys = requests.cmcdKeysOfSegmentRequest()
+        val keys = requests.cmcdKeysOfSegmentRequests().first()
         assertThat(keys).doesNotContainKey("sid")
         assertThat(keys).doesNotContainKey("cid")
         // The keys that describe the request rather than the session still travel: they are true of

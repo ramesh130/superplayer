@@ -125,6 +125,12 @@ public object SyntheticDashStream {
     /**
      * spec: ISO/IEC 23009-1 §5.3 — a static, single-period, single-representation MPD.
      *
+     * spec: ISO/IEC 23009-1 §8.5 — it declares the ISOBMFF *main* profile, which admits a static MPD
+     * addressed by `SegmentList`. Not the on-demand profile (§8.3): that one requires each
+     * Representation to be a single indexed, self-initialising segment, which this stream — an
+     * initialization segment and a list of fragments — is not. Media3 reads no profile, so the
+     * choice changes no behaviour; it changes whether the document says something true about itself.
+     *
      * `SegmentList` rather than `SegmentTemplate` because the segments are listed one by one anyway:
      * a template would add a substitution grammar to read for no gain here.
      */
@@ -143,7 +149,7 @@ public object SyntheticDashStream {
             listOf(
                 "<?xml version=\"1.0\" encoding=\"utf-8\"?>",
                 "<MPD xmlns=\"urn:mpeg:dash:schema:mpd:2011\"",
-                "     profiles=\"urn:mpeg:dash:profile:isoff-on-demand:2011\"",
+                "     profiles=\"urn:mpeg:dash:profile:isoff-main:2011\"",
                 "     type=\"static\"",
                 "     mediaPresentationDuration=\"${xsDuration(durationSeconds)}\"",
                 "     minBufferTime=\"PT1S\">",

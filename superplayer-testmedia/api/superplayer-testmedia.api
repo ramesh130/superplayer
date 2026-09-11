@@ -2,22 +2,31 @@ public final class com/superplayer/testmedia/HostileManifests {
 	public static final field INSTANCE Lcom/superplayer/testmedia/HostileManifests;
 	public static final field SEGMENT_COUNT I
 	public final fun all ()Ljava/util/List;
-	public final fun dashAvailabilityStartTimeSkew ()Lcom/superplayer/testmedia/HostileStream;
-	public final fun dashLadderGap ()Lcom/superplayer/testmedia/HostileStream;
+	public final fun dashAvailabilityStartTimeSkew (Lcom/superplayer/testmedia/HostileStream$Severity;)Lcom/superplayer/testmedia/HostileStream;
+	public static synthetic fun dashAvailabilityStartTimeSkew$default (Lcom/superplayer/testmedia/HostileManifests;Lcom/superplayer/testmedia/HostileStream$Severity;ILjava/lang/Object;)Lcom/superplayer/testmedia/HostileStream;
+	public final fun dashLadderGap (Lcom/superplayer/testmedia/HostileStream$Severity;)Lcom/superplayer/testmedia/HostileStream;
+	public static synthetic fun dashLadderGap$default (Lcom/superplayer/testmedia/HostileManifests;Lcom/superplayer/testmedia/HostileStream$Severity;ILjava/lang/Object;)Lcom/superplayer/testmedia/HostileStream;
 	public final fun dashLiveBaseline ()Lcom/superplayer/testmedia/HostileStream;
-	public final fun dashMidStreamLadderChange ()Lcom/superplayer/testmedia/HostileStream;
+	public final fun dashMidStreamLadderChange (Lcom/superplayer/testmedia/HostileStream$Severity;)Lcom/superplayer/testmedia/HostileStream;
+	public static synthetic fun dashMidStreamLadderChange$default (Lcom/superplayer/testmedia/HostileManifests;Lcom/superplayer/testmedia/HostileStream$Severity;ILjava/lang/Object;)Lcom/superplayer/testmedia/HostileStream;
 	public final fun dashMissingCodecs ()Lcom/superplayer/testmedia/HostileStream;
 	public final fun dashMissingTimeShiftBufferDepth ()Lcom/superplayer/testmedia/HostileStream;
-	public final fun dashOverstatedBitrate ()Lcom/superplayer/testmedia/HostileStream;
-	public final fun dashShortTimeShiftBufferDepth ()Lcom/superplayer/testmedia/HostileStream;
+	public final fun dashOverstatedBitrate (Lcom/superplayer/testmedia/HostileStream$Severity;)Lcom/superplayer/testmedia/HostileStream;
+	public static synthetic fun dashOverstatedBitrate$default (Lcom/superplayer/testmedia/HostileManifests;Lcom/superplayer/testmedia/HostileStream$Severity;ILjava/lang/Object;)Lcom/superplayer/testmedia/HostileStream;
+	public final fun dashShortTimeShiftBufferDepth (Lcom/superplayer/testmedia/HostileStream$Severity;)Lcom/superplayer/testmedia/HostileStream;
+	public static synthetic fun dashShortTimeShiftBufferDepth$default (Lcom/superplayer/testmedia/HostileManifests;Lcom/superplayer/testmedia/HostileStream$Severity;ILjava/lang/Object;)Lcom/superplayer/testmedia/HostileStream;
+	public final fun graded ()Ljava/util/List;
 	public final fun hlsAudioGroupCodecMismatch ()Lcom/superplayer/testmedia/HostileStream;
 	public final fun hlsCachedLivePlaylist ()Lcom/superplayer/testmedia/HostileStream;
 	public final fun hlsDanglingAudioGroup ()Lcom/superplayer/testmedia/HostileStream;
 	public final fun hlsDiscontinuityWithoutTimeline ()Lcom/superplayer/testmedia/HostileStream;
-	public final fun hlsInconsistentSegmentDurations ()Lcom/superplayer/testmedia/HostileStream;
-	public final fun hlsLadderGap ()Lcom/superplayer/testmedia/HostileStream;
+	public final fun hlsInconsistentSegmentDurations (Lcom/superplayer/testmedia/HostileStream$Severity;)Lcom/superplayer/testmedia/HostileStream;
+	public static synthetic fun hlsInconsistentSegmentDurations$default (Lcom/superplayer/testmedia/HostileManifests;Lcom/superplayer/testmedia/HostileStream$Severity;ILjava/lang/Object;)Lcom/superplayer/testmedia/HostileStream;
+	public final fun hlsLadderGap (Lcom/superplayer/testmedia/HostileStream$Severity;)Lcom/superplayer/testmedia/HostileStream;
+	public static synthetic fun hlsLadderGap$default (Lcom/superplayer/testmedia/HostileManifests;Lcom/superplayer/testmedia/HostileStream$Severity;ILjava/lang/Object;)Lcom/superplayer/testmedia/HostileStream;
 	public final fun hlsMissingCodecs ()Lcom/superplayer/testmedia/HostileStream;
-	public final fun hlsOverstatedBitrate ()Lcom/superplayer/testmedia/HostileStream;
+	public final fun hlsOverstatedBitrate (Lcom/superplayer/testmedia/HostileStream$Severity;)Lcom/superplayer/testmedia/HostileStream;
+	public static synthetic fun hlsOverstatedBitrate$default (Lcom/superplayer/testmedia/HostileManifests;Lcom/superplayer/testmedia/HostileStream$Severity;ILjava/lang/Object;)Lcom/superplayer/testmedia/HostileStream;
 }
 
 public final class com/superplayer/testmedia/HostileStream {
@@ -25,7 +34,9 @@ public final class com/superplayer/testmedia/HostileStream {
 	public final fun getDeclaredResponseHeaders ()Ljava/util/Map;
 	public final fun getDurationMs ()J
 	public final fun getId ()Ljava/lang/String;
+	public final fun getMagnitude ()Ljava/lang/String;
 	public final fun getProtocol ()Lcom/superplayer/testmedia/HostileStream$Protocol;
+	public final fun getSeverity ()Lcom/superplayer/testmedia/HostileStream$Severity;
 	public final fun getSourceUri ()Ljava/lang/String;
 	public final fun getSpec ()Ljava/lang/String;
 	public final fun getValidity ()Lcom/superplayer/testmedia/HostileStream$Validity;
@@ -39,6 +50,15 @@ public final class com/superplayer/testmedia/HostileStream$Protocol : java/lang/
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/testmedia/HostileStream$Protocol;
 	public static fun values ()[Lcom/superplayer/testmedia/HostileStream$Protocol;
+}
+
+public final class com/superplayer/testmedia/HostileStream$Severity : java/lang/Enum {
+	public static final field BENIGN Lcom/superplayer/testmedia/HostileStream$Severity;
+	public static final field BORDERLINE Lcom/superplayer/testmedia/HostileStream$Severity;
+	public static final field SEVERE Lcom/superplayer/testmedia/HostileStream$Severity;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/testmedia/HostileStream$Severity;
+	public static fun values ()[Lcom/superplayer/testmedia/HostileStream$Severity;
 }
 
 public final class com/superplayer/testmedia/HostileStream$Validity : java/lang/Enum {

@@ -19,9 +19,11 @@ package com.superplayer.testkit
 import androidx.media3.common.Player
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
+import com.google.common.truth.Truth.assertWithMessage
 import com.superplayer.core.MediaRequest
 import com.superplayer.testmedia.HostileManifests
 import com.superplayer.testmedia.HostileStream
+import com.superplayer.testmedia.HostileStream.Severity
 import com.superplayer.testmedia.SyntheticHlsStream
 import org.junit.Rule
 import org.junit.Test
@@ -39,6 +41,13 @@ import org.junit.runner.RunWith
  * One test for the whole corpus rather than one per entry, deliberately: the record is the table,
  * and a diff of fifteen rows against fifteen rows is what a reviewer should be reading. A per-entry
  * test would report the first regression and hide the rest.
+ *
+ * The corpus is recorded twice over, and on purpose. [RECORDED] is [HostileManifests.all] — every
+ * pathology at its unmistakable severity, which is what a later phase's fix moves. [GRADED] is
+ * [HostileManifests.graded] — the same pathologies at every severity they have, which is where a
+ * *cliff* shows: the severity at which an entry stops playing cleanly. A `BENIGN` row that does not
+ * play to the end, or on, is a finding in its own right, because it is content a real CDN serves
+ * every day.
  */
 @RunWith(AndroidJUnit4::class)
 class HostileManifestCorpusTest {
@@ -89,6 +98,71 @@ class HostileManifestCorpusTest {
     }
 
     @Test
+    fun everyGradedEntryIsPlayedAndItsBehaviourRecorded() {
+        val observed = HostileManifests.graded()
+            .groupBy { it.id }
+            .mapValues { (_, levels) -> levels.associate { it.severity to observe(it) } }
+
+        assertThat(observed).containsExactlyEntriesIn(GRADED)
+    }
+
+    @Test
+    fun theGradedRecordAgreesWithTheSevereOne() {
+        // The severe column of [GRADED] and [RECORDED] describe the same entries, so a change to one
+        // that is not made to the other is a table out of date rather than a behaviour that moved.
+        assertThat(GRADED.mapValues { (_, levels) -> levels.getValue(Severity.SEVERE) })
+            .containsExactlyEntriesIn(RECORDED)
+    }
+
+    @Test
+    fun allIsTheSevereHalfOfTheGradedCorpus() {
+        // `all()` is the table the rest of this class records, and it must not churn because
+        // severities were added beside it: the same ids, in the same order, every one severe.
+        val severe = HostileManifests.graded().filter { it.severity == Severity.SEVERE }
+
+        assertThat(HostileManifests.all().map { it.id }).containsExactlyElementsIn(severe.map { it.id }).inOrder()
+        assertThat(HostileManifests.all().map { it.severity }.distinct()).containsExactly(Severity.SEVERE)
+    }
+
+    @Test
+    fun aPathologyWithAMagnitudeIsGradedAtEveryLevelAndABinaryOneAtOne() {
+        val byId = HostileManifests.graded().groupBy { it.id }
+
+        byId.forEach { (id, levels) ->
+            if (levels.any { it.magnitude == null }) {
+                // Binary: present or absent, so the one entry is the severe one and says so.
+                assertWithMessage(id).that(levels.map { it.severity }).containsExactly(Severity.SEVERE)
+                assertWithMessage(id).that(levels.single().magnitude).isNull()
+            } else {
+                assertWithMessage(id).that(levels.map { it.severity })
+                    .containsExactlyElementsIn(Severity.entries).inOrder()
+                // Three levels of one pathology that describe themselves identically are one level.
+                assertWithMessage(id).that(levels.map { it.magnitude }.distinct()).hasSize(Severity.entries.size)
+            }
+        }
+        // Pinned by id, for the malformed set's reason: grading a binary pathology, or collapsing a
+        // graded one to a single level, is a decision a reviewer should see.
+        assertThat(byId.filterValues { it.size == 1 }.keys).containsExactly(
+            "hls-missing-codecs",
+            "hls-audio-group-codec-mismatch",
+            "hls-dangling-audio-group",
+            "hls-discontinuity-without-timeline",
+            "hls-cached-live-playlist",
+            "dash-missing-codecs",
+            "dash-missing-time-shift-buffer-depth",
+        )
+    }
+
+    @Test
+    fun everyGradedEntryIsServedFromItsOwnDirectory() {
+        // What lets the whole graded corpus sit in one `FakeDataSet`: no two entries — not even two
+        // severities of one pathology — answer to the same URI.
+        val uris = HostileManifests.graded().flatMap { it.resources().keys }
+
+        assertThat(uris).containsNoDuplicates()
+    }
+
+    @Test
     fun aHealthyLiveStreamPlaysOnInThisHarness() {
         // The control for every live row in the record. Without it, a live entry that fails could be
         // failing for its defect or because live DASH does not play here at all — and those are
@@ -97,8 +171,8 @@ class HostileManifestCorpusTest {
 
         assertThat(baseline.validity).isEqualTo(HostileStream.Validity.HEALTHY)
         assertThat(observe(baseline)).isEqualTo(Outcome.STILL_PLAYING)
-        assertThat(HostileManifests.all().map { it.id }).doesNotContain(baseline.id)
-        assertThat(HostileManifests.all().map { it.validity }).doesNotContain(HostileStream.Validity.HEALTHY)
+        assertThat(HostileManifests.graded().map { it.id }).doesNotContain(baseline.id)
+        assertThat(HostileManifests.graded().map { it.validity }).doesNotContain(HostileStream.Validity.HEALTHY)
     }
 
     @Test
@@ -107,7 +181,7 @@ class HostileManifestCorpusTest {
         // it is recorded as ended depends on how fast the host loads — which is how a 17.5 s entry
         // passed locally and failed on CI under a 20 s budget. Entries longer than the budget are
         // live windows, not expected to end, and are exempt.
-        HostileManifests.all()
+        HostileManifests.graded()
             .filter { it.durationMs < OBSERVATION_MS }
             .forEach { assertThat(it.durationMs * 2).isAtMost(OBSERVATION_MS) }
     }
@@ -126,7 +200,7 @@ class HostileManifestCorpusTest {
 
     @Test
     fun everyPathologyCitesASpecClauseAndNamesItsCause() {
-        HostileManifests.all().forEach { stream ->
+        HostileManifests.graded().forEach { stream ->
             assertThat(stream.spec).isNotEmpty()
             assertThat(stream.cause).isNotEmpty()
         }
@@ -269,5 +343,49 @@ class HostileManifestCorpusTest {
             "dash-missing-time-shift-buffer-depth" to Outcome.STILL_PLAYING,
             "dash-mid-stream-ladder-change" to Outcome.PLAYS_TO_END,
         )
+
+        /**
+         * What each entry of [HostileManifests.graded] does today, one row per pathology and one
+         * column per severity it is generated at. Every pathology appears exactly once, with exactly
+         * the severities it has, and its `SEVERE` column is [RECORDED]'s row —
+         * [theGradedRecordAgreesWithTheSevereOne] holds that.
+         *
+         * Read across a row for the cliff. `BENIGN` is content a doctor must not flag, so a benign
+         * cell that is not [Outcome.PLAYS_TO_END] or, for live, [Outcome.STILL_PLAYING] is a finding
+         * about the player rather than about the content. As of the change that added this table,
+         * there is none.
+         */
+        val GRADED: Map<String, Map<Severity, Outcome>> = mapOf(
+            // Flat across every level, for [RECORDED]'s reason: one audio track selected and never
+            // switched, so no ladder or declared bitrate can matter here. A flat row is not "no cliff";
+            // it is a cliff this harness cannot see until Phase 3's ABR work gives it a second track.
+            "hls-ladder-gap" to graded(Outcome.PLAYS_TO_END, Outcome.PLAYS_TO_END, Outcome.PLAYS_TO_END),
+            "hls-overstated-bitrate" to graded(Outcome.PLAYS_TO_END, Outcome.PLAYS_TO_END, Outcome.PLAYS_TO_END),
+            "hls-missing-codecs" to binary(Outcome.PLAYS_TO_END),
+            "hls-audio-group-codec-mismatch" to binary(Outcome.PLAYS_TO_END),
+            "hls-dangling-audio-group" to binary(Outcome.PLAYS_TO_END),
+            "hls-inconsistent-segment-durations" to graded(Outcome.PLAYS_TO_END, Outcome.PLAYS_TO_END, Outcome.PLAYS_TO_END),
+            "hls-discontinuity-without-timeline" to binary(Outcome.PLAYS_TO_END),
+            "hls-cached-live-playlist" to binary(Outcome.FAILS),
+            "dash-ladder-gap" to graded(Outcome.PLAYS_TO_END, Outcome.PLAYS_TO_END, Outcome.PLAYS_TO_END),
+            "dash-overstated-bitrate" to graded(Outcome.PLAYS_TO_END, Outcome.PLAYS_TO_END, Outcome.PLAYS_TO_END),
+            "dash-missing-codecs" to binary(Outcome.PLAYS_TO_END),
+            // A skew of one segment only adds latency, which this table cannot see; an hour means
+            // nothing is available at all.
+            "dash-availability-start-time-skew" to graded(Outcome.STILL_PLAYING, Outcome.STILL_PLAYING, Outcome.NEVER_STARTS),
+            // The cliff is at one segment, not below it: a window exactly as deep as the stream's
+            // presentation delay already puts the player at a negative position, so the defect issue
+            // #67 describes starts at `BORDERLINE`. Four segments play on.
+            "dash-short-time-shift-buffer-depth" to graded(Outcome.STILL_PLAYING, Outcome.DEGRADES, Outcome.DEGRADES),
+            "dash-missing-time-shift-buffer-depth" to binary(Outcome.STILL_PLAYING),
+            "dash-mid-stream-ladder-change" to graded(Outcome.PLAYS_TO_END, Outcome.PLAYS_TO_END, Outcome.PLAYS_TO_END),
+        )
+
+        /** A row for a pathology with a magnitude: one outcome per severity, mildest first. */
+        private fun graded(benign: Outcome, borderline: Outcome, severe: Outcome): Map<Severity, Outcome> =
+            mapOf(Severity.BENIGN to benign, Severity.BORDERLINE to borderline, Severity.SEVERE to severe)
+
+        /** A row for a binary pathology, generated at one severity because it has no other. */
+        private fun binary(severe: Outcome): Map<Severity, Outcome> = mapOf(Severity.SEVERE to severe)
     }
 }

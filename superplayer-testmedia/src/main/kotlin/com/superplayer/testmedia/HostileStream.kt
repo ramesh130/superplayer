@@ -40,6 +40,19 @@ public class HostileStream internal constructor(
     /** Whether it is a legal document that behaves badly, or genuinely broken. See [Validity]. */
     public val validity: Validity,
 
+    /** How far its pathology is pushed: whether a doctor must flag it, may, or must not. See [Severity]. */
+    public val severity: Severity,
+
+    /**
+     * The value this entry's pathology is generated at, in words a report can print — "top rung 4×
+     * the one below it" — or null where there is no magnitude to state: a binary pathology, which is
+     * present or absent, and the healthy baseline, which has no pathology at all.
+     *
+     * The *justification* for the value is not here. It is at the value, in `HostileManifests.kt`,
+     * beside the citation or field rationale that puts it at its [severity].
+     */
+    public val magnitude: String?,
+
     /**
      * The clause this stretches or violates, as a citation a reader can look up — RFC 8216 for HLS,
      * ISO/IEC 23009-1 and DASH-IF IOP for DASH.
@@ -56,6 +69,10 @@ public class HostileStream internal constructor(
      *
      * Written now, while the pathology is being constructed, because this is the sentence Phase 9's
      * doctor turns into its user-facing message and it is far harder to reconstruct later.
+     *
+     * It belongs to the pathology, not to the level, so it reads the same at every [severity]. At
+     * [Severity.BENIGN] it therefore names what the same property looks like when it goes wrong —
+     * which is exactly the message a doctor must *not* show for that entry.
      */
     public val cause: String,
 
@@ -106,6 +123,39 @@ public class HostileStream internal constructor(
      */
     public enum class Validity { HEALTHY, VALID_BUT_HOSTILE, MALFORMED }
 
-    /** The id, so a parameterised test's failure names the pathology rather than an object hash. */
-    override fun toString(): String = id
+    /**
+     * How far a pathology is pushed — which is what a doctor's *thresholds*, rather than its
+     * detection, are scored against.
+     *
+     * Against a corpus generated at one unmistakable value per pathology, a doctor that flags every
+     * manifest it sees scores perfectly. The hard part of diagnosis is where to draw the line — when
+     * a ladder step becomes a gap, when clock skew stops being NTP noise — so every pathology with a
+     * magnitude is generated at all three levels, and a doctor is scored on false positives at
+     * [BENIGN] as well as on misses at [SEVERE].
+     *
+     * A binary pathology — an attribute absent, a reference that resolves to nothing — has no milder
+     * form to generate. It exists at [SEVERE] only, its [magnitude] is null, and the entry that builds
+     * it says why it is binary. Like [Validity], this is a claim about the content, never about what a
+     * player does with it.
+     */
+    public enum class Severity {
+        /**
+         * Within what real content does: a doctor must not flag it. For a graded entry, the
+         * pathology's property is present at a harmless value. The healthy baseline is `BENIGN` too,
+         * because it has nothing to flag at all.
+         */
+        BENIGN,
+
+        /** Where a reasonable threshold could fall either way: a doctor is not wrong to flag it or not. */
+        BORDERLINE,
+
+        /** Unmistakable, and what `HostileManifests.all()` carries: a doctor that passes it has missed it. */
+        SEVERE,
+    }
+
+    /**
+     * The id and the severity, so a parameterised test's failure names the entry rather than an object
+     * hash — and names *which* of a pathology's levels it was.
+     */
+    override fun toString(): String = "$id (${severity.name.lowercase()})"
 }

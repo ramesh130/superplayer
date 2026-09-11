@@ -162,13 +162,13 @@ mismatches, ragged segment durations, bare discontinuities, clock skew, short an
 windows, a mid-stream ladder change, and a live playlist served cacheable — the pathologies `PRD.md`
 §3.6 lists for `MediaSourceDoctor` to diagnose in Phase 9. It is generated for the reason the good
 streams are, and for one more: a checked-in broken manifest is inert, while a generated one is a
-builder call. Every defect that applies to both protocols is generated for both today; severity is
-one argument away in the same builders, though no entry varies it yet.
+builder call. Every defect that applies to both protocols is generated for both, and every defect
+with a magnitude is generated at three severities.
 
 Every entry is **a known-good stream with one thing wrong** — `SyntheticHlsStream`'s segments or
 `SyntheticDashStream`'s, under a manifest that lies about them in exactly one way — and is handed over
-as a `HostileStream`: URI-to-bytes under its own `fake://superplayer.test/hostile/<id>/` directory, so
-the whole corpus fits in one `FakeDataSet` with no collisions. `TestContent.hostile(stream)` plays one
+as a `HostileStream`: URI-to-bytes under its own `fake://superplayer.test/hostile/<id>/<severity>/`
+directory, so the whole corpus, every severity included, fits in one `FakeDataSet` with no collisions. `TestContent.hostile(stream)` plays one
 through `PlaybackHarness`.
 
 `HostileManifestCorpusTest` (in `superplayer-testkit`) **records** what SuperPlayer does with each
@@ -177,6 +177,22 @@ asserting that it is handled. *Degrades* is observed, not judged: the session re
 outside the media it was served, before its start or past its end. Most are not, and are not meant to be yet;
 recording them means a later phase's fix is a visible diff in one table rather than an unreviewed
 change. That table must name every entry, so a pathology cannot be added and left unplayed.
+
+**Severity** is what makes the corpus grade a doctor's thresholds rather than only its detection.
+`HostileManifests.all()` carries each pathology once, at a value chosen to be unmistakable — a ladder
+gap of 48×, an hour of clock skew — and against that alone a doctor that flags every manifest passes.
+So every pathology with a magnitude also takes a `HostileStream.Severity`:
+
+- `BENIGN`: present, but within what real content does. A doctor must not flag it.
+- `BORDERLINE`: where a reasonable threshold could fall either way.
+- `SEVERE`: the value `all()` carries.
+
+`HostileManifests.graded()` returns every pathology at every level it has, and `all()` is its severe
+half. A binary pathology — an attribute absent, a reference that resolves to nothing — has no milder
+form, so it is generated once, at `SEVERE`, with a null `magnitude`. The test records `graded()` as a
+second table, `GRADED`: a row per pathology and a column per severity. Reading across a row shows the
+*cliff*, the level at which an entry stops playing cleanly. A `BENIGN` cell that does not play cleanly
+is a finding about the player, because the content is ordinary.
 
 Live DASH entries need two things the on-demand ones do not, and both exist so an entry records its
 own defect rather than the harness's limits. They carry a `UTCTiming` element, because without one
@@ -200,8 +216,18 @@ corpus, and the test checks that it plays on, which is what makes a failing live
 4. A `validity`. `MALFORMED` when the document breaks a MUST, whether or not Media3 happens to reject
    it; `VALID_BUT_HOSTILE` otherwise. `theCorpusLabelsWhatIsMalformedRatherThanMerelyHostile` pins
    the malformed set by id.
-5. The entry in `all()`, and its observed row in `HostileManifestCorpusTest.RECORDED`, with a
-   comment wherever the row is surprising.
+5. Its severities. A pathology with a magnitude takes a `severity` parameter defaulting to `SEVERE`,
+   and one private function in the *Severities* section returns its value at each level. Every
+   branch carries its own argument: a `// spec:` or `// ref:` where a published document speaks to
+   the number, and otherwise a derivation from first principles or from this harness's own
+   measurement, which is what `CONTRIBUTING.md`'s clean-room rules accept. A doctor's thresholds will be
+   scored against these values, so each must stand on its own rather than only relative to its
+   neighbours. `BENIGN` must be content a doctor must not flag, not merely a milder defect. The
+   entry also states its value as `magnitude`, in words a report can print. A binary pathology
+   instead carries a `Single severity:` paragraph in its comment saying why nothing milder exists.
+   Its id goes in the pinned list in `aPathologyWithAMagnitudeIsGradedAtEveryLevelAndABinaryOneAtOne`.
+6. The entry in `graded()` (`all()` follows from it), and its observed rows in
+   `HostileManifestCorpusTest.RECORDED` and `GRADED`. Add a comment wherever a row is surprising.
 
 A defect that lives outside the manifest cannot be applied by `FakeDataSet`, which serves bytes and
 reports no response headers. That covers the `Cache-Control` mismatch. Such an entry carries the

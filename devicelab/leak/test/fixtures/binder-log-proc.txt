@@ -1,0 +1,506 @@
+binder proc state:
+proc 3735
+context hwbinder
+  thread 3831: l 00 need_return 0 tr 0
+  thread 3833: l 12 need_return 0 tr 0
+  thread 6707: l 00 need_return 0 tr 0
+  thread 6708: l 00 need_return 0 tr 0
+  thread 6711: l 00 need_return 0 tr 0
+  thread 8955: l 00 need_return 0 tr 0
+  thread 8957: l 00 need_return 0 tr 0
+  thread 8960: l 00 need_return 0 tr 0
+  thread 8961: l 00 need_return 0 tr 0
+  thread 8968: l 00 need_return 0 tr 0
+  thread 8972: l 00 need_return 0 tr 0
+  thread 8985: l 00 need_return 0 tr 0
+  thread 8986: l 00 need_return 0 tr 0
+  thread 8993: l 00 need_return 0 tr 0
+  thread 8998: l 00 need_return 0 tr 0
+  thread 8999: l 00 need_return 0 tr 0
+  thread 9016: l 00 need_return 0 tr 0
+  thread 9039: l 00 need_return 0 tr 0
+  thread 9040: l 00 need_return 0 tr 0
+  thread 9044: l 00 need_return 0 tr 0
+  node 755372: ub40000747ee3cb90 cb40000743ee5d6d0 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 628
+  node 755086: ub40000747ee50f90 cb40000743eea8520 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 760807: ub40000747ee563f0 cb40000743ee157f0 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 628
+  node 598752: ub40000747ee57800 cb40000743eeb44f0 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 628
+  node 758047: ub40000747ee57f20 cb40000743ee84710 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 756233: ub40000747ee75e90 cb40000743ee9bb00 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 754702: ub40000747ee79550 cb40000743ee264c0 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 752149: ub40000747ee7e200 cb40000743ee28eb0 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 598226: ub40000747ee80f30 cb40000743eebfff0 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 2 iw 2 tr 1 proc 628 531
+  node 752163: ub40000747ee84200 cb40000743ee27540 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 760246: ub40000747ee87170 cb40000743ee38790 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 758668: ub40000747ee87d10 cb40000743ee2d420 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 628
+  node 760292: ub40000747ee8e670 cb40000743eeaf7f0 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 755591: ub40000747ee8ed00 cb40000743eec8ce0 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 628
+  node 753926: ub40000747ee8f7b0 cb40000743ee96f60 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 628
+  node 755018: ub40000747ee90c80 cb40000743ee7d860 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 648869: ub40000747ee93fe0 cb40000743ee84df0 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 649278: ub40000747ee95570 cb40000743eeb50a0 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 628
+  node 760337: ub40000747ee960b0 cb40000743ee68830 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 628
+  node 606785: ub40000747ee9b2a0 cb40000743ee5b100 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 757072: ub40000747ee9b9f0 cb40000743eeb05b0 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 628
+  node 756745: ub40000747ee9bab0 cb40000743eed2420 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 758451: ub40000747ee9ccb0 cb40000743ee55640 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 628
+  node 757297: ub40000747ee9d010 cb40000743ee70fa0 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 628
+  node 756488: ub40000747ee9d1f0 cb40000743ee686d0 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 656935: ub40000747ee9d940 cb40000743ee54eb0 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 628
+  node 760301: ub40000747eea2ec0 cb40000743eec0830 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 651574: ub40000747eea3f40 cb40000743eecf2a0 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 757621: ub40000747eea4750 cb40000743ee71940 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 654472: ub40000747eea67c0 cb40000743eec4610 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 651581: ub40000747eea7f60 cb40000743ee62d70 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 753562: ub40000747eea81a0 cb40000743ee942b0 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 755201: ub40000747eea9eb0 cb40000743ee8c900 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 628
+  node 652848: ub40000747eeaaa20 cb40000743ee8d820 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 755181: ub40000747eeab860 cb40000743ee205e0 pri 0:120 hs 1 hw 1 ls 1 lw 0 is 1 iw 1 tr 1 proc 531
+  node 755177: ub40000747eeac820 cb40000743ee86a20 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 598487: ub40000747eebde90 cb40000743ee81220 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 628
+  node 752610: ub40000747eec3d40 cb40000743ee96e00 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 628
+  node 598224: ub40000747eec4b80 cb40000743ee9f780 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 760811: ub40000747eec7880 cb40000743ee96a90 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 628
+  node 649273: ub40000747eec8450 cb40000743ee5da40 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 628
+  node 757935: ub40000747eec9770 cb40000743eed2bb0 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 598450: ub40000747eed1d80 cb40000743ee7d4f0 pri 0:120 hs 1 hw 1 ls 1 lw 0 is 1 iw 1 tr 1 proc 531
+  node 755108: ub40000747eed22f0 cb40000743ee9c600 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 759982: ub40000747eed5ec0 cb40000743ee14da0 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 753922: ub40000747eed7960 cb40000743ee522b0 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 628
+  node 654468: ub40000747eeda660 cb40000743eec7580 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 656931: ub40000747eedaf60 cb40000743eeb79e0 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 628
+  node 656578: ub40000747eee0510 cb40000743ee0d810 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 656573: ub40000747eee0f90 cb40000743ee54930 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 755595: ub40000747eee1680 cb40000743ee87730 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 628
+  node 758672: ub40000747eee3030 cb40000743ee98e50 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 628
+  node 753568: ub40000747eee3b10 cb40000743ee871b0 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 754832: ub40000747eeeae60 cb40000743eecbaf0 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 648885: ub40000747eeecd50 cb40000743ee6b640 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 652852: ub40000747eeee310 cb40000743ee3f850 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 755693: ub40000747eeeea90 cb40000743ee52780 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 628
+  node 598445: ub40000747eeef8a0 cb40000743eec3a60 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 755113: ub40000747eef5c30 cb40000743ee53280 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 755698: ub40000747eef6e30 cb40000743ee74960 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 628
+  node 752614: ub40000747eeff920 cb40000743ee11540 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 628
+  node 758051: ub40000747ef01270 cb40000743eeafab0 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  node 757292: ub40000747ef02c80 cb40000743ee74800 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 628
+  node 756484: ub40000747ef040f0 cb40000743ee78d70 pri 0:120 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 531
+  ref 169419: desc 0 node 7 s 1 w 1 d 0000000000000000
+  ref 169961: desc 1 node 480 s 1 w 1 d 0000000000000000
+  ref 170098: desc 2 node 1148 s 1 w 1 d 0000000000000000
+  ref 170432: desc 3 node 1230 s 1 w 1 d 0000000000000000
+  ref 598230: desc 4 node 598229 s 1 w 1 d 0000000000000000
+  ref 598407: desc 5 node 598406 s 1 w 1 d 0000000000000000
+  ref 598241: desc 6 node 598240 s 1 w 1 d 0000000000000000
+  ref 172354: desc 7 node 172353 s 1 w 1 d 0000000000000000
+  ref 172939: desc 8 node 1134 s 1 w 1 d 0000000000000000
+  ref 173329: desc 9 node 1434 s 1 w 1 d 0000000000000000
+  ref 173484: desc 10 node 1462 s 1 w 1 d 0000000000000000
+  ref 598494: desc 11 node 598493 s 1 w 1 d 0000000000000000
+  ref 598669: desc 12 node 598668 s 1 w 1 d 0000000000000000
+  ref 598502: desc 13 node 598501 s 1 w 1 d 0000000000000000
+  ref 598706: desc 14 node 598705 s 1 w 1 d 0000000000000000
+  ref 598748: desc 15 node 598747 s 1 w 1 d 0000000000000000
+  ref 598757: desc 16 node 598756 s 1 w 1 d 0000000000000000
+  ref 757590: desc 17 node 757589 s 1 w 1 d 0000000000000000
+  ref 757723: desc 18 node 757722 s 1 w 1 d 0000000000000000
+  ref 754105: desc 19 node 754104 s 1 w 1 d 0000000000000000
+  ref 757625: desc 20 node 757624 s 1 w 1 d 0000000000000000
+  ref 752675: desc 21 node 752674 s 1 w 1 d 0000000000000000
+  ref 757923: desc 22 node 757922 s 1 w 1 d 0000000000000000
+  ref 752681: desc 23 node 752680 s 1 w 1 d 0000000000000000
+  ref 757079: desc 24 node 757078 s 1 w 1 d 0000000000000000
+  ref 651953: desc 25 node 651952 s 1 w 1 d 0000000000000000
+  ref 653667: desc 26 node 653666 s 1 w 1 d 0000000000000000
+  ref 653702: desc 27 node 653701 s 1 w 1 d 0000000000000000
+  ref 754707: desc 28 node 754706 s 1 w 1 d 0000000000000000
+  ref 757265: desc 29 node 757264 s 1 w 1 d 0000000000000000
+  ref 651964: desc 30 node 651963 s 1 w 1 d 0000000000000000
+  ref 754836: desc 31 node 754835 s 1 w 1 d 0000000000000000
+  ref 757088: desc 32 node 757087 s 1 w 1 d 0000000000000000
+  ref 754715: desc 33 node 754714 s 1 w 1 d 0000000000000000
+  ref 755010: desc 34 node 755009 s 1 w 1 d 0000000000000000
+  ref 754844: desc 35 node 754843 s 1 w 1 d 0000000000000000
+  ref 757633: desc 36 node 757632 s 1 w 1 d 0000000000000000
+  ref 758458: desc 37 node 758457 s 1 w 1 d 0000000000000000
+  ref 755078: desc 38 node 755077 s 1 w 1 d 0000000000000000
+  ref 758638: desc 39 node 758637 s 1 w 1 d 0000000000000000
+  ref 758466: desc 40 node 758465 s 1 w 1 d 0000000000000000
+  ref 649328: desc 41 node 649327 s 1 w 1 d 0000000000000000
+  ref 759986: desc 42 node 759985 s 1 w 1 d 0000000000000000
+  ref 754110: desc 43 node 754109 s 1 w 1 d 0000000000000000
+  ref 649339: desc 44 node 649338 s 1 w 1 d 0000000000000000
+  ref 654947: desc 45 node 654946 s 1 w 1 d 0000000000000000
+  ref 755254: desc 46 node 755253 s 1 w 1 d 0000000000000000
+  ref 755386: desc 47 node 755385 s 1 w 1 d 0000000000000000
+  ref 755264: desc 48 node 755263 s 1 w 1 d 0000000000000000
+  ref 755569: desc 49 node 755568 s 1 w 1 d 0000000000000000
+  ref 755397: desc 50 node 755396 s 1 w 1 d 0000000000000000
+  ref 755658: desc 51 node 755657 s 1 w 1 d 0000000000000000
+  ref 755708: desc 52 node 755707 s 1 w 1 d 0000000000000000
+  ref 654966: desc 53 node 654965 s 1 w 1 d 0000000000000000
+  ref 755721: desc 54 node 755720 s 1 w 1 d 0000000000000000
+  ref 657020: desc 55 node 657019 s 1 w 1 d 0000000000000000
+  ref 756108: desc 56 node 756107 s 1 w 1 d 0000000000000000
+  ref 756118: desc 57 node 756117 s 1 w 1 d 0000000000000000
+  ref 756237: desc 58 node 756236 s 1 w 1 d 0000000000000000
+  ref 756445: desc 59 node 756444 s 1 w 1 d 0000000000000000
+  ref 756245: desc 60 node 756244 s 1 w 1 d 0000000000000000
+  ref 760229: desc 61 node 760228 s 1 w 1 d 0000000000000000
+  ref 759994: desc 62 node 759993 s 1 w 1 d 0000000000000000
+  ref 760392: desc 63 node 760391 s 1 w 1 d 0000000000000000
+  ref 657024: desc 64 node 657023 s 1 w 1 d 0000000000000000
+  ref 760407: desc 65 node 760406 s 1 w 1 d 0000000000000000
+  ref 760401: desc 66 node 760400 s 1 w 1 d 0000000000000000
+  ref 760411: desc 67 node 760410 s 1 w 1 d 0000000000000000
+  ref 760744: desc 68 node 760743 s 1 w 1 d 0000000000000000
+  ref 761099: desc 69 node 761098 s 1 w 1 d 0000000000000000
+  ref 761122: desc 70 node 761121 s 1 w 1 d 0000000000000000
+  buffer 598437: 0 size 88:16:32 delivered
+  buffer 607506: 88 size 8:0:0 delivered
+  buffer 604340: 90 size 8:0:0 delivered
+  buffer 909350: 98 size 2112:384:1400 delivered
+  buffer 607504: 17e0 size 64:0:0 delivered
+  buffer 755101: 1820 size 88:16:32 delivered
+  buffer 757418: 18a8 size 64:0:0 delivered
+  buffer 758615: 18e8 size 8:0:0 delivered
+  buffer 760278: 18f0 size 88:16:32 delivered
+  buffer 757420: 1978 size 8:0:0 delivered
+  buffer 755063: 1980 size 88:16:32 delivered
+  buffer 755956: 1a08 size 8:0:0 delivered
+  buffer 759781: 1bf8 size 8:0:0 delivered
+  buffer 921795: 1c00 size 8:0:0 delivered
+  buffer 921799: 1c08 size 8:0:0 delivered
+  buffer 762128: 1c10 size 8:0:0 delivered
+  buffer 758039: 1c18 size 88:16:32 delivered
+  buffer 761073: 1ca0 size 8:0:0 delivered
+  buffer 761431: 1ca8 size 8:0:0 delivered
+  buffer 756946: 1ce8 size 8:0:0 delivered
+binder proc state:
+proc 3735
+context binder
+  thread 3735: l 00 need_return 0 tr 0
+  thread 3742: l 00 need_return 0 tr 0
+  thread 3745: l 12 need_return 0 tr 0
+  thread 3746: l 11 need_return 0 tr 0
+  thread 3747: l 11 need_return 0 tr 0
+  thread 3755: l 00 need_return 0 tr 0
+  thread 3774: l 00 need_return 1 tr 0
+  thread 3776: l 00 need_return 1 tr 0
+  thread 3786: l 11 need_return 0 tr 0
+  thread 3789: l 00 need_return 0 tr 0
+  thread 3833: l 00 need_return 0 tr 0
+  thread 3913: l 11 need_return 0 tr 0
+  thread 3965: l 11 need_return 0 tr 0
+  thread 4058: l 11 need_return 0 tr 0
+  thread 4212: l 11 need_return 0 tr 0
+  thread 5128: l 11 need_return 0 tr 0
+  thread 5129: l 11 need_return 0 tr 0
+  thread 5225: l 11 need_return 0 tr 0
+  thread 5846: l 11 need_return 0 tr 0
+  thread 5966: l 11 need_return 0 tr 0
+  thread 6027: l 00 need_return 0 tr 0
+  thread 6707: l 00 need_return 0 tr 0
+  thread 6708: l 00 need_return 0 tr 0
+  thread 6711: l 00 need_return 0 tr 0
+  thread 6739: l 00 need_return 0 tr 0
+  thread 6741: l 00 need_return 0 tr 0
+  thread 6743: l 00 need_return 0 tr 0
+  thread 6745: l 00 need_return 0 tr 0
+  thread 6818: l 00 need_return 0 tr 0
+  thread 6823: l 00 need_return 0 tr 0
+  thread 8955: l 00 need_return 0 tr 0
+  thread 8957: l 00 need_return 0 tr 0
+  thread 8960: l 00 need_return 0 tr 0
+  thread 8961: l 00 need_return 0 tr 0
+  thread 8968: l 00 need_return 0 tr 0
+  thread 8972: l 00 need_return 0 tr 0
+  thread 8985: l 00 need_return 0 tr 0
+  thread 8986: l 00 need_return 0 tr 0
+  thread 8993: l 00 need_return 0 tr 0
+  thread 8998: l 00 need_return 0 tr 0
+  thread 8999: l 00 need_return 0 tr 0
+  thread 9016: l 00 need_return 0 tr 0
+  thread 9039: l 00 need_return 0 tr 0
+  thread 9040: l 00 need_return 0 tr 0
+  thread 9044: l 00 need_return 0 tr 0
+  node 141079: ub40000747ee1ed70 cb40000751ee1ccd0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 141233: ub40000747ee35ed0 cb40000751ee13c70 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 141206: ub40000747ee36380 cb40000751ee1bbf0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 141446: ub40000747ee366b0 cb40000751ee11bd0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 872039: ub40000747ee36ad0 cb40000751ee6a070 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 141622: ub40000747ee36b60 cb40000751ee1c8b0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 576
+  node 141722: ub40000747ee373a0 cb40000751ee1bd10 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 142678: ub40000747ee376d0 cb4000073cee59758 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 580
+  node 141924: ub40000747ee377c0 cb40000751ee1c1f0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 2 iw 2 tr 1 proc 1556 732
+  node 141922: ub40000747ee37a30 cb40000751ee1c490 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 141928: ub40000747ee37a60 cb40000751ee1c7f0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 142006: ub40000747ee37df0 cb40000751ee124d0 pri 0:139 hs 1 hw 1 ls 1 lw 1 is 1 iw 1 tr 1 proc 732
+  node 142218: ub40000747ee38270 cb40000751ee14390 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 864867: ub40000747ee3a520 cb40000751ee81590 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 605318: ub40000747ee3b270 cb40000751ee45d10 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 535847: ub40000747ee3bc60 cb40000751ee7ea10 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 605314: ub40000747ee3bd50 cb40000751ee7d9f0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 908665: ub40000747ee3da90 cb40000751ee74d50 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 142874: ub40000747ee3df10 cb4000073eee61958 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 576
+  node 754807: ub40000747ee3e030 cb40000742ee56828 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 618
+  node 824548: ub40000747ee3e060 cb40000751ee361d0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 143395: ub40000747ee3e3f0 cb40000751ee26270 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 828550: ub40000747ee3e510 cb40000751ee57890 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 142767: ub40000747ee3e930 cb40000751ee20cf0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 142971: ub40000747ee46850 cb40000751ee2a170 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 143068: ub40000747ee46970 cb40000751ee2a9b0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 2 iw 2 tr 1 proc 1556 732
+  node 143397: ub40000747ee47960 cb40000751ee25af0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 143548: ub40000747ee4b470 cb40000751ee2a5f0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 1674
+  node 616023: ub40000747ee4b7a0 cb40000751ee3d970 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 921808: ub40000747ee51b90 cb40000751ee548f0 pri 0:139 hs 1 hw 1 ls 1 lw 1 is 0 iw 0 tr 1
+  node 840854: ub40000747ee51f20 cb40000751ee6acd0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 887353: ub40000747ee534e0 cb40000751ee7bf50 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 899441: ub40000747ee537b0 cb40000751ee20210 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 819311: ub40000747ee53cf0 cb40000751ee47b10 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 835610: ub40000747ee54b00 cb40000751ee43310 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 833782: ub40000747ee56930 cb40000751ee828b0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 616308: ub40000747ee57860 cb40000751ee52af0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 604828: ub40000747ee592d0 cb40000751ee337d0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 605124: ub40000747ee5a2f0 cb40000751ee7bb30 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 159304: ub40000747ee73c40 cb40000743ee160e8 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 576
+  node 857509: ub40000747ee74d80 cb40000751ee45cb0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 875206: ub40000747ee75740 cb40000751ee41e10 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 907696: ub40000747ee75bc0 cb40000751ee791f0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 905554: ub40000747ee75bf0 cb40000751ee797f0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 858477: ub40000747ee76010 cb40000751ee849b0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 902530: ub40000747ee79220 cb40000751ee75d10 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 604669: ub40000747ee7b380 cb40000751ee83090 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 2 iw 2 tr 1 proc 580 732
+  node 885410: ub40000747ee7b6b0 cb40000751ee6e3f0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 535773: ub40000747ee7bc50 cb40000751ee74750 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 4 iw 4 tr 1 proc 1124 981 1674 732
+  node 605128: ub40000747ee7c370 cb40000751ee1fd90 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 861563: ub40000747ee812f0 cb40000751ee5f150 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 823513: ub40000747ee82520 cb40000751ee53ed0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 598343: ub40000747ee828b0 cb40000742ee60a28 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 618
+  node 853182: ub40000747ee82f40 cb40000751ee3cf50 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 868191: ub40000747ee83480 cb40000751ee830f0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 825591: ub40000747ee84e30 cb40000751ee790d0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 859635: ub40000747ee86060 cb40000751ee40eb0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 501613: ub40000747ee860f0 cb40000751ee5f750 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 524275: ub40000747ee87260 cb40000751ee673d0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 848013: ub40000747ee875f0 cb40000751ee25a90 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 832605: ub40000747ee87830 cb40000751ee3e8d0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 870046: ub40000747ee8a170 cb40000751ee5e730 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 604944: ub40000747ee8a740 cb40000751ee63890 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 868971: ub40000747ee8f390 cb40000751ee70490 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 883265: ub40000747ee8f6c0 cb40000751ee2d230 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 755837: ub40000747ee8fae0 cb40000751ee7ae70 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 2 iw 2 tr 1 proc 1088 732
+  node 756888: ub40000747ee90410 cb40000751ee33d10 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 756187: ub40000747ee90dd0 cb40000742ee622b8 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 576
+  node 604877: ub40000747ee93950 cb40000751ee7fbb0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 605146: ub40000747ee95a20 cb40000751ee65db0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 535195: ub40000747ee960e0 cb40000751ee12590 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 604948: ub40000747ee971c0 cb40000751ee49cd0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 755523: ub40000747ee99770 cb40000742ee62018 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 618
+  node 874171: ub40000747ee99e90 cb40000751ee717b0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 761195: ub40000747ee9a190 cb40000751ee5c450 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 2 iw 2 tr 1 proc 1088 732
+  node 761149: ub40000747ee9a6a0 cb40000742ee3ba38 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 576
+  node 535852: ub40000747ee9a880 cb40000751ee5c0f0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 536015: ub40000747ee9adc0 cb40000751ee643d0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 863657: ub40000747ee9bb40 cb40000751ee46f70 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 854332: ub40000747ee9c2f0 cb40000751ee7e6b0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 757193: ub40000747ee9de80 cb40000742ee64a48 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 618
+  node 822543: ub40000747ee9fef0 cb40000751ee48b90 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 880429: ub40000747eea0160 cb40000751ee5ebb0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 756372: ub40000747eea49c0 cb40000751ee4c3d0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 2 iw 2 tr 1 proc 1088 732
+  node 889431: ub40000747eea50b0 cb40000751ee70cd0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 831587: ub40000747eea5170 cb40000751ee705b0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 850013: ub40000747eea6040 cb40000751ee86150 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 892538: ub40000747eea65e0 cb40000751ee6d970 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 909623: ub40000747eea7510 cb40000742ee33458 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 576
+  node 839701: ub40000747eea7e10 cb40000751ee56bd0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 893521: ub40000747eea95b0 cb40000751ee496d0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 760604: ub40000747eea9d30 cb40000751ee83810 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 2 iw 2 tr 1 proc 1088 732
+  node 501638: ub40000747eeaac90 cb40000751ee6d910 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 842730: ub40000747eeab9b0 cb40000751ee5e1f0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 837626: ub40000747eeab9e0 cb40000751ee1ead0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 760124: ub40000747eeae440 cb40000742ee39818 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 618
+  node 605021: ub40000747eeb1fe0 cb40000751ee700d0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 598884: ub40000747eeb4950 cb40000751ee56ff0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 2 iw 2 tr 1 proc 1088 732
+  node 756340: ub40000747eeb8550 cb40000742ee14bb8 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 618
+  node 755414: ub40000747eeb89a0 cb40000742ee43628 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 618
+  node 535239: ub40000747eeb8c70 cb40000751ee793d0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 894498: ub40000747eeb8d30 cb40000751ee69050 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 579667: ub40000747eebbb50 cb40000751ee821f0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 891539: ub40000747eebcb70 cb40000751ee521f0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 904525: ub40000747eebfff0 cb40000751ee35450 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 616171: ub40000747eec0fe0 cb40000751ee81b30 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 604848: ub40000747eec1730 cb40000751ee46610 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 827570: ub40000747eec3b00 cb40000751ee51230 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 830423: ub40000747eec4b50 cb40000751ee427d0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 826708: ub40000747eec5030 cb40000751ee2d830 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 381612: ub40000747eec7a00 cb40000751ee3c9b0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 1674
+  node 843820: ub40000747eec9b90 cb40000751ee32c30 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 852259: ub40000747eeca8b0 cb40000751ee805d0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 838667: ub40000747eecaf10 cb40000751ee49910 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 460163: ub40000747eecc4a0 cb40000751ee79a90 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 1674
+  node 918452: ub40000747eecd6d0 cb40000744eed7dd0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 580
+  node 871112: ub40000747eecd8b0 cb40000751ee7f730 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 829556: ub40000747eecda90 cb40000751ee48dd0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 604724: ub40000747eece870 cb40000751ee4a8d0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 598629: ub40000747eed0130 cb40000742ee2e5c8 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 618
+  node 878076: ub40000747eed0400 cb40000751ee432b0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 849110: ub40000747eed1150 cb40000751ee4e170 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 598827: ub40000747eed2050 cb40000742ee3a7a8 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 576
+  node 841921: ub40000747eed2260 cb40000751ee85f10 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 900503: ub40000747eed2fe0 cb40000751ee82790 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 856503: ub40000747eed3400 cb40000751ee5f4b0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 877280: ub40000747eed34f0 cb40000751ee49250 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 906686: ub40000747eed4b70 cb40000751ee7b4d0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 866901: ub40000747eed6550 cb40000751ee80ab0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 605175: ub40000747eed7180 cb40000751ee3bd50 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 851100: ub40000747eed7540 cb40000751ee82af0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 535366: ub40000747eed7630 cb40000751ee3b750 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 1088
+  node 757740: ub40000747eed8980 cb40000742ee68a68 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 618
+  node 616278: ub40000747eeda990 cb40000751ee4db70 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 836725: ub40000747eeda9c0 cb40000751ee56a50 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 605332: ub40000747eedbbc0 cb40000751ee51dd0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 909669: ub40000747eedc910 cb40000751ee64970 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 2 iw 2 tr 1 proc 1088 732
+  node 881306: ub40000747eedce20 cb40000751ee7c1f0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 535162: ub40000747eedcf70 cb40000751ee6c9b0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 616312: ub40000747eedd0f0 cb40000751ee81710 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 517147: ub40000747eedd630 cb40000751ee42650 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 604698: ub40000747eedd7b0 cb40000751ee4d4b0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 872939: ub40000747eedd7e0 cb40000751ee1f2b0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 884384: ub40000747eede710 cb40000751ee34370 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 879235: ub40000747eedffd0 cb40000751ee5e5b0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 605025: ub40000747eee30f0 cb40000751ee3f5f0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 754934: ub40000747eee4b60 cb40000742ee4cb38 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 618
+  node 616340: ub40000747eee50a0 cb40000751ee72d10 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 756878: ub40000747eee6180 cb40000751ee67f70 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 616199: ub40000747eee6330 cb40000751ee53930 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 886398: ub40000747eee6480 cb40000751ee51290 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 755801: ub40000747eee9000 cb40000742ee49fb8 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 576
+  node 882217: ub40000747eee9420 cb40000751ee59330 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 897450: ub40000747eeea350 cb40000751ee442d0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 865882: ub40000747eeecea0 cb40000751ee69fb0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 895601: ub40000747eeee820 cb40000751ee2d350 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 604981: ub40000747eeeeca0 cb40000751ee3a5b0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 535167: ub40000747eef1730 cb40000751ee70bb0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 855363: ub40000747eef2420 cb40000751ee57290 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 760663: ub40000747eef2bd0 cb40000742ee53bb8 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 618
+  node 616175: ub40000747eef3080 cb40000751ee33890 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 898404: ub40000747eef46d0 cb40000751ee81bf0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 604888: ub40000747eef6b60 cb40000751ee65b10 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 890509: ub40000747eef7f10 cb40000751ee201b0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 846017: ub40000747eef9200 cb40000751ee3f8f0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 834530: ub40000747eef9320 cb40000751ee84230 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 542240: ub40000747eef9da0 cb40000751ee50c90 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 821526: ub40000747eefb2d0 cb40000751ee4e7d0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 862670: ub40000747eefc620 cb40000751ee67e50 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 901472: ub40000747eefd0a0 cb40000751ee379d0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 903402: ub40000747eeff0b0 cb40000751ee1fdf0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 860547: ub40000747ef00520 cb40000751ee39d10 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 844861: ub40000747ef01810 cb40000751ee60ef0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 846957: ub40000747ef024d0 cb40000751ee5a530 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 888490: ub40000747ef02b00 cb40000751ee122f0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 758565: ub40000747ef04120 cb40000742ee4ea28 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 618
+  node 876062: ub40000747ef04510 cb40000751ee29210 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 896462: ub40000747ef045d0 cb40000751ee44510 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 820409: ub40000747ef04630 cb40000751ee40bb0 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 732
+  node 760485: ub40000747ef04660 cb40000742ee48a58 pri 0:139 hs 1 hw 1 ls 0 lw 0 is 1 iw 1 tr 1 proc 576
+  ref 141074: desc 0 node 1 s 1 w 1 d 0000000000000000
+  ref 141077: desc 1 node 3176 s 1 w 1 d 0000000000000000
+  ref 141082: desc 2 node 3115 s 1 w 1 d 0000000000000000
+  ref 141083: desc 3 node 2928 s 1 w 1 d 0000000000000000
+  ref 141084: desc 4 node 3686 s 1 w 1 d 0000000000000000
+  ref 141085: desc 5 node 5586 s 1 w 1 d 0000000000000000
+  ref 141086: desc 6 node 3164 s 1 w 1 d 0000000000000000
+  ref 141087: desc 7 node 3926 s 1 w 1 d 0000000000000000
+  ref 141088: desc 8 node 4192 s 1 w 1 d 0000000000000000
+  ref 141089: desc 9 node 3172 s 1 w 1 d 0000000000000000
+  ref 141090: desc 10 node 3862 s 1 w 1 d 0000000000000000
+  ref 141091: desc 11 node 3881 s 1 w 1 d 0000000000000000
+  ref 141092: desc 12 node 4199 s 1 w 1 d 0000000000000000
+  ref 141093: desc 13 node 2995 s 1 w 1 d 0000000000000000
+  ref 141094: desc 14 node 4888 s 1 w 1 d 0000000000000000
+  ref 141095: desc 15 node 3690 s 1 w 1 d 0000000000000000
+  ref 141096: desc 16 node 4183 s 1 w 1 d 0000000000000000
+  ref 141097: desc 17 node 5313 s 1 w 1 d 0000000000000000
+  ref 141098: desc 18 node 4706 s 1 w 1 d 0000000000000000
+  ref 141099: desc 19 node 2861 s 1 w 1 d 0000000000000000
+  ref 141100: desc 20 node 3045 s 1 w 1 d 0000000000000000
+  ref 141101: desc 21 node 4843 s 1 w 1 d 0000000000000000
+  ref 141102: desc 22 node 4753 s 1 w 1 d 0000000000000000
+  ref 141180: desc 23 node 4774 s 1 w 1 d 0000000000000000
+  ref 141191: desc 24 node 1707 s 1 w 1 d 0000000000000000
+  ref 141198: desc 25 node 141197 s 1 w 1 d 0000000000000000
+  ref 604926: desc 26 node 604900 s 1 w 1 d 0000000000000000
+  ref 604425: desc 27 node 458919 s 1 w 1 d 0000000000000000
+  ref 598875: desc 28 node 598874 s 1 w 1 d 0000000000000000
+  ref 604594: desc 29 node 604568 s 1 w 1 d 0000000000000000
+  ref 141432: desc 30 node 141431 s 1 w 1 d 0000000000000000
+  ref 141572: desc 31 node 2916 s 1 w 1 d 0000000000000000
+  ref 141575: desc 32 node 11814 s 1 w 1 d 0000000000000000
+  ref 141616: desc 33 node 11020 s 1 w 1 d 0000000000000000
+  ref 141618: desc 34 node 141617 s 1 w 1 d 0000000000000000
+  ref 141848: desc 35 node 4694 s 1 w 1 d 0000000000000000
+  ref 141870: desc 36 node 6745 s 1 w 1 d 0000000000000000
+  ref 141872: desc 37 node 761 s 1 w 1 d 0000000000000000
+  ref 141934: desc 38 node 141933 s 1 w 1 d 0000000000000000
+  ref 141996: desc 39 node 2848 s 1 w 1 d 0000000000000000
+  ref 142004: desc 40 node 29770 s 1 w 1 d 0000000000000000
+  ref 142016: desc 41 node 672 s 1 w 1 d 0000000000000000
+  ref 142246: desc 42 node 4220 s 1 w 1 d 0000000000000000
+  ref 604596: desc 43 node 604595 s 1 w 1 d 0000000000000000
+  ref 604598: desc 44 node 604597 s 1 w 1 d 0000000000000000
+  ref 604600: desc 45 node 604599 s 1 w 1 d 0000000000000000
+  ref 604681: desc 46 node 604680 s 1 w 1 d 0000000000000000
+  ref 605182: desc 47 node 605181 s 1 w 1 d 0000000000000000
+  ref 142562: desc 48 node 1703 s 1 w 1 d 0000000000000000
+  ref 142618: desc 49 node 142617 s 1 w 1 d 0000000000000000
+  ref 534826: desc 50 node 534825 s 1 w 1 d 0000000000000000
+  ref 755218: desc 51 node 755217 s 1 w 1 d 0000000000000000
+  ref 534960: desc 52 node 3868 s 1 w 1 d 0000000000000000
+  ref 618589: desc 53 node 618588 s 1 w 1 d 0000000000000000
+  ref 753607: desc 54 node 753606 s 1 w 1 d 0000000000000000
+  ref 753611: desc 55 node 753610 s 1 w 1 d 0000000000000000
+  ref 142787: desc 56 node 6419 s 1 w 1 d 0000000000000000
+  ref 142791: desc 57 node 142790 s 1 w 1 d 0000000000000000
+  ref 619761: desc 58 node 619760 s 1 w 1 d 0000000000000000
+  ref 142860: desc 59 node 3584 s 1 w 1 d 0000000000000000
+  ref 142871: desc 60 node 5800 s 1 w 1 d 0000000000000000
+  ref 753623: desc 61 node 753622 s 1 w 1 d 0000000000000000
+  ref 755224: desc 62 node 755223 s 1 w 1 d 0000000000000000
+  ref 142957: desc 63 node 5168 s 1 w 1 d 0000000000000000
+  ref 142998: desc 64 node 2999 s 1 w 1 d 0000000000000000
+  ref 143001: desc 65 node 4811 s 1 w 1 d 0000000000000000
+  ref 143076: desc 66 node 14720 s 1 w 1 d 0000000000000000
+  ref 143091: desc 67 node 17817 s 1 w 1 d 0000000000000000
+  ref 143110: desc 68 node 29766 s 1 w 1 d 0000000000000000
+  ref 909655: desc 69 node 909654 s 1 w 1 d 0000000000000000
+  ref 760589: desc 70 node 760588 s 1 w 1 d 0000000000000000
+  ref 761186: desc 71 node 761185 s 1 w 1 d 0000000000000000
+  ref 143492: desc 72 node 143491 s 1 w 1 d 0000000000000000
+  ref 620613: desc 73 node 620612 s 1 w 1 d 0000000000000000
+  ref 143543: desc 74 node 143542 s 1 w 1 d 0000000000000000
+  ref 755228: desc 76 node 755227 s 1 w 1 d 0000000000000000
+  ref 755828: desc 77 node 755827 s 1 w 1 d 0000000000000000
+  ref 535175: desc 78 node 535174 s 1 w 1 d 0000000000000000
+  ref 158624: desc 79 node 893 s 1 w 1 d 0000000000000000
+  ref 158628: desc 80 node 36249 s 1 w 1 d 0000000000000000
+  ref 159302: desc 81 node 3591 s 1 w 1 d 0000000000000000
+  ref 169307: desc 82 node 905 s 1 w 1 d 0000000000000000
+  ref 535178: desc 83 node 535171 s 1 w 1 d 0000000000000000
+  ref 176939: desc 84 node 771 s 1 w 1 d 0000000000000000
+  ref 621758: desc 86 node 621757 s 1 w 1 d 0000000000000000
+  ref 754169: desc 87 node 754168 s 1 w 1 d 0000000000000000
+  ref 535370: desc 88 node 535369 s 1 w 1 d 0000000000000000
+  ref 535483: desc 89 node 143119 s 1 w 1 d 0000000000000000
+  ref 535484: desc 90 node 143104 s 1 w 1 d 0000000000000000
+  ref 605323: desc 91 node 604915 s 1 w 1 d 0000000000000000
+  ref 605324: desc 92 node 604921 s 1 w 1 d 0000000000000000
+  ref 536951: desc 95 node 536950 s 1 w 1 d 0000000000000000
+  ref 754173: desc 96 node 754172 s 1 w 1 d 0000000000000000
+  ref 607673: desc 97 node 607672 s 1 w 1 d 0000000000000000
+  ref 756352: desc 98 node 756351 s 1 w 1 d 0000000000000000
+  ref 756714: desc 99 node 756713 s 1 w 1 d 0000000000000000
+  ref 616777: desc 100 node 616776 s 1 w 1 d 0000000000000000
+  ref 754180: desc 102 node 754179 s 1 w 1 d 0000000000000000
+  ref 756718: desc 103 node 756717 s 1 w 1 d 0000000000000000
+  ref 756725: desc 104 node 756724 s 1 w 1 d 0000000000000000

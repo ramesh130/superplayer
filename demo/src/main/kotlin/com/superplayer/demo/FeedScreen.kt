@@ -42,6 +42,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.Player
 import androidx.media3.ui.PlayerView
 import com.superplayer.core.MediaRequest
 import com.superplayer.core.PlaybackProfile
@@ -88,13 +89,20 @@ import com.superplayer.core.SuperPlayer
  * demo scaffolding — it is the same shape a `RecyclerView.Adapter` writes in `onViewAttachedToWindow`
  * and `onViewDetachedFromWindow`, and it is deliberately the only pool code in this file.
  *
- * Note what is *not* here. Nothing detaches a surface, restores the volume this row muted, resets
- * playback speed, or removes the listener the previous row registered; [PlayerPool.recycle] does all
- * of that, which is the point of it being in the library. A hand-rolled pool is usually a pool plus a slowly-growing list of those
+ * Note what is *not* here. Nothing restores the volume this row muted, resets playback speed, or
+ * removes the listener this row registered; [PlayerPool.recycle] does all of that, which is the point
+ * of it being in the library. A hand-rolled pool is usually a pool plus a slowly-growing list of those
  * corrections, each added after someone noticed a frame from the wrong video.
+ *
+ * ## How long it is
+ *
+ * [FeedItem.DEFAULT_COUNT] rows, because `PRD.md`'s Phase 4 exit criterion is memory that stays flat
+ * over a 200-item scroll, and a feed shorter than that cannot be scrolled to show it. [rowCount] is
+ * what a launch argument overrides (see [MainActivity]); devicelab's leak hunt passes the count it
+ * scrolls, so the rows it counts and the rows on screen are the same number by construction.
  */
 @Composable
-internal fun FeedScreen(modifier: Modifier = Modifier) {
+internal fun FeedScreen(rowCount: Int = FeedItem.DEFAULT_COUNT, modifier: Modifier = Modifier) {
     val context = LocalContext.current
 
     // One pool for the screen, sized by the device rather than by a number chosen here. It outlives
@@ -119,6 +127,7 @@ internal fun FeedScreen(modifier: Modifier = Modifier) {
     // one row plays, not which one, and a viewer scrolling sees the audio follow them down the list.
     val listState = rememberLazyListState()
     val playingIndex by remember { derivedStateOf { listState.firstVisibleItemIndex } }
+    val items = remember(rowCount) { FeedItem.all(rowCount) }
 
     Column(modifier = modifier.fillMaxSize()) {
         Text(
@@ -134,7 +143,7 @@ internal fun FeedScreen(modifier: Modifier = Modifier) {
         )
 
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-            itemsIndexed(FeedItem.ALL, key = { _, item -> item.contentId }) { index, item ->
+            itemsIndexed(items, key = { _, item -> item.contentId }) { index, item ->
                 FeedRow(
                     item = item,
                     pool = pool,
@@ -148,6 +157,10 @@ internal fun FeedScreen(modifier: Modifier = Modifier) {
 
 /**
  * One row: a pooled player if the pool has one to give, and the row's own label if it does not.
+ *
+ * With a player, the label stays over the surface until the first frame is rendered. That is the
+ * production shape — artwork until there is a picture — with a label standing in for the artwork, and
+ * it is the one thing this row needs a [Player.Listener] for.
  *
  * The null branch is not an error path. A pool hands out at most what the device can afford, so a
  * feed scrolled quickly will find it empty, and a caller has to have an answer for that. A
@@ -165,6 +178,7 @@ private fun FeedRow(
     val context = LocalContext.current
     var player by remember { mutableStateOf<SuperPlayer?>(null) }
     val playerView = remember { PlayerView(context) }
+    var hasFirstFrame by remember { mutableStateOf(false) }
 
     DisposableEffect(item.contentId) {
         val acquired = pool.acquire()
@@ -172,6 +186,18 @@ private fun FeedRow(
         onPoolChanged()
 
         acquired?.let {
+            // Registered and never removed here. Recycling a player removes every listener registered
+            // on it, and a consumer of the pool is entitled to rely on that rather than repeat it.
+            // It also makes this row the probe for that promise: if recycling kept a listener, one
+            // would outlive every row scrolled past, and devicelab's leak hunt would name the growth
+            // and the field that holds it (devicelab/leak/README.md).
+            it.addListener(
+                object : Player.Listener {
+                    override fun onRenderedFirstFrame() {
+                        hasFirstFrame = true
+                    }
+                },
+            )
             it.setMediaRequest(item.toMediaRequest())
             // Prepared but not played. Preparing is what decodes the first frame, so a paused row is
             // a still frame rather than a black rectangle; whether it also *runs* is the effect
@@ -222,6 +248,7 @@ private fun FeedRow(
                 onRelease = { view -> view.player = null },
                 modifier = Modifier.fillMaxSize(),
             )
+            if (!hasFirstFrame) Text(text = item.label)
         }
     }
 }
@@ -254,12 +281,12 @@ internal class FeedItem(val label: String, val contentId: String, private val st
 
     companion object {
         /**
-         * Long enough that a viewer scrolls well past the pool's bound before reaching the end —
-         * which is the only way the counter at the top says anything at all.
+         * The PRD's 200-item scroll (Phase 4's exit criterion), which is also comfortably past the
+         * pool's bound — the only way the counter at the top says anything at all.
          */
-        private const val COUNT = 60
+        const val DEFAULT_COUNT = 200
 
-        val ALL: List<FeedItem> = List(COUNT) { index ->
+        fun all(count: Int): List<FeedItem> = List(count) { index ->
             val stream = DemoStream.entries[index % DemoStream.entries.size]
             FeedItem(
                 label = "#${index + 1} · ${stream.name}",

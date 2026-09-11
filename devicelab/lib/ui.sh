@@ -25,3 +25,12 @@ ui_swipe_up() {
     height="${size#* }"
     adb_s shell input swipe $((width / 2)) $((height * 3 / 4)) $((width / 2)) $((height / 4)) "$duration"
 }
+
+# Swipes content downward — a scroll back up a list — over `$1` ms (default 300).
+ui_swipe_down() {
+    local duration="${1:-300}" size width height
+    size="$(ui_screen_size)"
+    width="${size% *}"
+    height="${size#* }"
+    adb_s shell input swipe $((width / 2)) $((height / 4)) $((width / 2)) $((height * 3 / 4)) "$duration"
+}

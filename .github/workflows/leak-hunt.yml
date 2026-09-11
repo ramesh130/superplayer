@@ -1,0 +1,27 @@
+# The leak hunt (#50), nightly against main: the demo driven through devicelab's `leak-hunt` scenario
+# on an emulator, with the report, the heap dumps and the native profiles uploaded as one artifact.
+#
+# Scheduled rather than per pull request. A heap capture on an emulator takes most of an hour and is
+# not perfectly stable, and a check that is slow and occasionally red on every pull request trains
+# people to ignore it. A red night is a finding to read: the run's report names what grew and the
+# fields that retain it. devicelab/leak/README.md is the manual.
+#
+# The same command line as `./gradlew huntLeaks`, through the reusable device workflow.
+name: Leak hunt
+
+on:
+  schedule:
+    # 03:17 UTC: off the hour, when scheduled runs queue behind everyone else's.
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hunt:
+    uses: ./.github/workflows/device-run.yml
+    with:
+      scenario: leak-hunt
+      artifact-name: leak-hunt
+      timeout-minutes: 120

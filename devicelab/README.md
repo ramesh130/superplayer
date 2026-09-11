@@ -2,12 +2,13 @@
 
 Drives the demo on a device and comes back with a Perfetto trace, a report, and a record of what was
 measured on what. One entry point, `devicelab/lab`, for everything that measures SuperPlayer on a
-device: the benchmark harness (#43), the leak hunt (#50), the UI jank measurement (#51), and whatever
-comes after them.
+device: the benchmark harness (#43), the leak hunt (#50, [`leak/README.md`](leak/README.md)), the
+UI jank measurement (#51), and whatever comes after them.
 
 ```bash
 devicelab/lab run smoke                                   # boot or adopt a device, build, install, play, trace
 devicelab/lab run smoke --data-sources java_hprof,heapprofd
+devicelab/lab run leak-hunt                               # the leak hunt; also ./gradlew huntLeaks
 devicelab/lab run smoke --serial emulator-5556            # the device you are watching
 devicelab/lab list                                        # scenarios and Perfetto data sources
 devicelab/lab config --data-sources frametimeline         # the Perfetto config a run would use
@@ -21,14 +22,21 @@ installed, and whether the dialog was in the way are this directory's problem, s
 ## Why this is not a test, and not in `check`
 
 [`docs/testing.md`](../docs/testing.md) bars devices and the network from the test suite, and every
-run here needs both. That is not a breach of the rule, because nothing here is a test: a run asserts
-no behaviour and passes or fails nothing about the library. It *measures*, and its output is a trace
-someone reads. So it sits beside the build rather than in it. `./gradlew check` does not run it, does
+run here needs both. That is not a breach of the rule, because nothing here is a test of the kind
+that rule governs: it does not run in the suite, gate a change, or run without a device. It
+*measures*, and its output is a trace someone reads. A scenario may judge what it measured — the
+leak hunt does — and then a run with a failing verdict still writes everything and exits 3, apart
+from every other failure, but it is still a measurement someone reads, on a schedule, rather than a
+check a change must pass. So it sits beside the build rather than in it. `./gradlew check` does not run it, does
 not know it exists, and passes with no device attached. Like `benchmark/`, it has its own entry point
 and its own workflow, as `benchmark/` will when #43 builds it.
 
 The one part that *is* checkable without a device is `devicelab/test/selftest`: the parsing, the
-Perfetto config builder and the stale-artifact comparison, all pure functions over text. It is in
+Perfetto config builder, the stale-artifact comparison and the trace processor's pinning, all pure
+functions over text. It also loads every scenario the way `lab` does — sourced as a statement of its
+own under `set -euo pipefail` — because a stray line at a scenario's top level passes `bash -n` and
+then fails the run after a build and a boot. It then runs each consumer's own device-free half,
+`devicelab/<consumer>/test/selftest` (the leak hunt's heap diff, verdict and report rendering). It is in
 `check`, as `verifyDevicelab`, because it needs neither a device nor a network, and a check that can
 be a Gradle task belongs there. A push that breaks devicelab's parsing therefore fails CI rather than
 the next device run. The device workflow runs it again first, so a device run never spends a boot on
@@ -61,11 +69,12 @@ In this order. Each step is a failure somebody already hit by hand, and most of 
    viewer who said yes leaves it, notification included. After launch the run also fails if anything
    but the demo has focus.
 6. **Starts the trace**, at launch or once playback is confirmed, as the scenario chooses. The trace
-   is a detached Perfetto session named after the run, and it is stopped by that name. It is not
+   is a detached Perfetto session named after the run, and it is stopped by that name. A scenario's
+   own traces (below) are sessions of the same kind, run by the same code in `lib/perfetto.sh`. It is not
    stopped by signal, because on API 36 the shell user may not signal perfetto. Detaching rules out
    `--background-wait`, so a pause of `TRACE_SETTLE_S` (default 2 s) stands in for every data source
    confirming it has started. If a run fails, its session is stopped and its file deleted, rather
-   than left tracing until the bound runs out.
+   than left tracing until the bound runs out. That covers every session the scenario opened too.
 7. **Waits for playback to advance, not for a sleep** (`lib/playback.sh`). It reads the demo's media
    session from `dumpsys media_session`. The state must be PLAYING and the position must rise between
    two samples; Media3 refreshes it every few seconds while content plays. A session in the error
@@ -130,10 +139,26 @@ A scenario is `scenarios/<name>.sh`, sourced into the run once the harness's fun
 | `SCENARIO_DESCRIPTION` | no | One line, shown by `lab list`. |
 | `SCENARIO_TRACE_FROM` | no | `launch` (default) or `playing`: whether the trace covers startup. `--trace-from` overrides it. |
 | `SCENARIO_TRACE_MS` | no | Upper bound on the trace, default 300000. `--trace-ms` overrides it. |
+| `SCENARIO_DATA_SOURCES` | no | The run trace's data sources when `--data-sources` is empty or absent. |
+| `scenario_prepare` | no | Runs before a device is found or anything is built: what the scenario needs from the host. |
+| `scenario_verdict` | no | Runs once everything is written; returning non-zero makes the run exit 3. |
+| `scenario_cleanup` | no | Runs on every exit, success or failure: puts back what the scenario changed on the device. |
 
-From inside `scenario_drive` a scenario can use `adb_s` (adb against the run's device, bounded),
-`wait_for_playback [timeout]` and `ui_swipe_up [ms]`, and the variables `SERIAL`, `DEMO_PACKAGE`,
-`RUN_DIR` and `RUN_PLAYBACK_POSITION_MS`.
+From inside `scenario_drive` a scenario can use:
+
+- `adb_s` (adb against the run's device, bounded) and `adb_pull`;
+- `wait_for_playback [timeout]`, `session_state` and `session_description` (both read `dumpsys
+  media_session` on stdin), `assert_demo_in_focus`;
+- `relaunch_demo [am args]`, which starts the demo afresh with launch extras and replaces the Activity
+  that was showing, and `foreground_demo`, which brings a backgrounded demo back as the launcher does;
+- `ui_swipe_up [ms]` and `ui_swipe_down [ms]`;
+- `trace_begin name sources ms` and `trace_end name` for a trace of its own over a span it chooses,
+  and `capture_trace name sources ms` for one run to its bound — a heap dump at a moment it chooses,
+  since `java_hprof` dumps when its data source starts. Each is written into the run directory as
+  `<name>.perfetto-trace` beside `<name>.perfetto-config.pbtxt`;
+- `trace_processor_query trace query.sql [NAME=value…]`, which runs the pinned trace processor;
+
+and the variables `SERIAL`, `DEMO_PACKAGE`, `RUN_DIR` and `RUN_PLAYBACK_POSITION_MS`.
 
 There is no tap-by-text helper, on purpose. The tool for finding a button by its text is
 `uiautomator dump`, and it only reads a screen that goes idle. The demo never goes idle while it
@@ -141,10 +166,12 @@ plays: on API 36, every dump of the player screen or the feed during playback fa
 get idle state". Scenarios run during playback by construction, so such a helper would work only
 when it caught a still moment. Taps at fixed coordinates are no better, since they land somewhere
 else on the next device. A scenario that needs a screen other than the one the demo opens on should
-get there through a launch argument the demo reads, such as an intent extra naming the screen.
-Whichever consumer needs that first adds it to the demo and to `launch_demo`.
+get there through a launch argument the demo reads. The leak hunt was the first to need one, so the
+demo reads three — the screen, the feed's length, and a content id to hand to the session — which
+`DemoLaunch` in `MainActivity.kt` documents, and `relaunch_demo` passes.
 
-Scenarios belong to their consumers. This directory ships only `smoke`, which measures nothing.
+Scenarios belong to their consumers. `smoke` measures nothing; `leak-hunt` is the leak hunt's, and
+its analysis lives beside it in [`leak/`](leak/README.md).
 
 ## Perfetto data sources
 
@@ -159,6 +186,17 @@ build of the demo it saw. `--data-sources` adds fragments from `perfetto/sources
 | `frametimeline` | SurfaceFlinger's expected and actual timeline for every frame | UI jank (#51) |
 | `process_memory` | per-process memory counters, polled every second | benchmark peak RSS (#43) |
 | `battery` | battery counters, polled every second (simulated on an emulator) | benchmark battery delta (#43) |
+
+## The trace processor
+
+Consumers query traces with Perfetto's `trace_processor_shell`, and `lib/trace_processor.sh` is the
+one place it comes from. It is not vendored. It is downloaded on first use for the host's platform,
+at the version the catalog names as `perfetto`. The archive is checked against
+`perfetto/trace-processor.sha256`, and one that does not match is refused rather than run. It is
+cached under `~/.cache/superplayer-devicelab`. `TRACE_PROCESSOR=/path` points at one already on the
+machine instead, for a host with no network; whoever sets it vouches for it.
+
+## Perfetto fragments
 
 A fragment is text-format `TraceConfig` and may use two placeholders, `DURATION_MS` and `PACKAGE`,
 each written with an at-sign on either side. A new data source is a new file. If a consumer needs a
@@ -214,8 +252,9 @@ platform lookup. `android-emulator` enables KVM, then runs `devicelab/lab create
 `devicelab/lab device`. The device description and the boot-wait therefore live in the harness alone
 rather than being written a second time in YAML.
 
-Neither the workflow nor the emulator action has been run yet. The first consumer to schedule it is
-its first real test. Two things are worth watching on that run: that the emulator started in one
+Its first scheduled consumer is [`leak-hunt.yml`](../.github/workflows/leak-hunt.yml), nightly,
+which raises the job's bound through the `timeout-minutes` input. Neither has been run on GitHub yet,
+so that first night is the workflow's first real test. Two things are worth watching on that run: that the emulator started in one
 step is still running in the next, and that boot fits in the job's timeout on a KVM runner.
 
 ## Limits
@@ -227,5 +266,6 @@ step is still running in the next, and that boot fits in the job's timeout on a 
   guessing.
 - It is written for bash 3.2, because that is what macOS ships, and needs `perl`, `unzip`,
   `shasum` or `sha256sum`, and `git`.
-- It analyses nothing. Heap queries, frame percentiles and benchmark tables belong to the consumers,
-  each with its own scenario and its own report.
+- It analyses nothing itself. It fetches the trace processor and runs queries, but the queries
+  belong to the consumers: heap queries, frame percentiles and benchmark tables, each with its own
+  scenario and report. The leak hunt's are in `leak/sql/`.

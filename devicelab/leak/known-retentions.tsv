@@ -1,0 +1,11 @@
+# References the leak hunt treats as weak when it counts: an object retained only through one of them
+# is set aside in both dumps, and the report says how much was. See README.md, "Known retentions".
+#
+# Each entry is a retention this scenario provokes, that is not SuperPlayer's code, and that is
+# tracked where it can be fixed. The field is written as trace processor names it, declaring class
+# first. An object SuperPlayer retains through any *other* path is still counted, so an entry hides
+# only what it names.
+#
+# field	tracked	why
+android.media.LoudnessCodecDispatcher$LoudnessCodecUpdatesDispatcherStub.mConfiguratorListener	not yet filed upstream; found by this leak hunt (#50)	API 35+: every Media3 MediaCodecAudioRenderer creates a platform LoudnessCodecController per audio session, and Media3 closes it when the renderer is released (LoudnessCodecController.release, from MediaCodecAudioRenderer.onRelease, Media3 1.11.0). On the API 36 emulator the platform's dispatcher still holds the listener of each, and through it Media3's controller: 28 held with at most three players alive, about seven more per lifecycle cycle. Rooted in the platform's binder stub; nothing SuperPlayer holds.
+android.media.LoudnessCodecDispatcher$LoudnessCodecUpdatesDispatcherStub.mLoudnessListenerMgr	the same retention as the line above	The same stub holds each of those listeners a second way, through its listener manager's list; setting aside the field above alone leaves every Media3 controller counted.

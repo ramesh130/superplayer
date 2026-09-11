@@ -43,6 +43,9 @@ session_state() {
 }
 
 # Media3's platform-session states, as `android.media.session.PlaybackState` numbers them.
+SESSION_STATE_NONE=0
+SESSION_STATE_STOPPED=1
+SESSION_STATE_PAUSED=2
 SESSION_STATE_PLAYING=3
 SESSION_STATE_ERROR=7
 
@@ -63,6 +66,44 @@ launch_demo() {
     adb_s shell am force-stop "$DEMO_PACKAGE"
     adb_s shell am start -W -n "$DEMO_PACKAGE/$DEMO_ACTIVITY" >/dev/null ||
         die "the demo did not launch"
+}
+
+# Starts the demo's Activity again with `am start` arguments `$@` — launch extras, typically; the demo
+# documents the ones it reads in `DemoLaunch` — in a task of its own, clearing the old one
+# (FLAG_ACTIVITY_NEW_TASK | FLAG_ACTIVITY_CLEAR_TASK). The Activity that was showing is destroyed,
+# not left underneath the new one, so there is still exactly one. The process, and a service in it,
+# carry on.
+relaunch_demo() {
+    adb_s shell am start -W -n "$DEMO_PACKAGE/$DEMO_ACTIVITY" -f 0x10008000 "$@" >/dev/null ||
+        die "the demo did not relaunch"
+}
+
+# Brings the demo's task back to the front, as returning to a backgrounded app does: the Activity that
+# is there resumes, and no second one starts. The intent is the one `launch_demo` and `relaunch_demo`
+# start the task with — a component and no action — because a task is resumed rather than added to
+# only when the intent matches the one at its root, and extras take no part in that match.
+foreground_demo() {
+    adb_s shell am start -W -n "$DEMO_PACKAGE/$DEMO_ACTIVITY" >/dev/null ||
+        die "the demo did not come back to the foreground"
+}
+
+# Reads `dumpsys media_session` on stdin and prints the description of the first session owned by
+# package `$1` — title, subtitle and a third field, comma-separated as the platform writes them — or
+# nothing when it has no session or no metadata.
+session_description() {
+    awk -v want="$1" '
+        /^[[:space:]]*package=/ {
+            pkg = $0
+            sub(/^[[:space:]]*package=/, "", pkg)
+            sub(/[[:space:]].*$/, "", pkg)
+            next
+        }
+        pkg == want && /^[[:space:]]*metadata: .*description=/ {
+            sub(/.*description=/, "")
+            print
+            exit
+        }
+    '
 }
 
 # Fails when anything but the demo has focus — a permission dialog the grant above did not prevent,

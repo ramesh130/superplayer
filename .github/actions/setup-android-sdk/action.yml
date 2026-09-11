@@ -1,0 +1,47 @@
+# The Android SDK, with the platform the version catalog's `compileSdk` names installed explicitly.
+#
+# Shared by every workflow that builds anything Android: ci.yml's build, and the device workflow that
+# builds the demo to measure it. It was a pair of steps in ci.yml; a second copy of the platform
+# lookup below would be a second answer to "which platform", free to drift from the first.
+name: Set up the Android SDK
+description: The Android SDK plus the compileSdk platform read from gradle/libs.versions.toml.
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Android SDK
+      uses: android-actions/setup-android@v3
+      with:
+        # Installed explicitly in the next step instead, from the version catalog.
+        packages: ''
+
+    # The runner image does not ship every platform, and relying on AGP's implicit SDK
+    # download makes the build fail late and obscurely when the platform is missing. The
+    # level is read from the version catalog rather than written here, so it cannot drift
+    # from what the modules actually compile against.
+    #
+    # The package id is looked up rather than constructed: platforms are published both
+    # unsuffixed and minor-versioned — `platforms;android-36` but `platforms;android-37.0`
+    # — so `android-$compile_sdk` is not reliably a real package name. Where an API level
+    # has several minors, the lowest is the base SDK for that level, which is what a bare
+    # `compileSdk = 37` means, so the sort takes the first and not the last. On no match this
+    # prints what the channel does offer, because "the pinned compileSdk is not available"
+    # is a fact worth reading directly rather than inferring from a later build failure.
+    - name: Install the pinned compileSdk platform
+      shell: bash
+      run: |
+        compile_sdk="$(sed -n 's/^compileSdk = "\(.*\)"$/\1/p' gradle/libs.versions.toml)"
+        test -n "$compile_sdk" || { echo "compileSdk not found in gradle/libs.versions.toml"; exit 1; }
+
+        package="$(sdkmanager --list 2>/dev/null \
+          | sed -n "s/^ *\(platforms;android-${compile_sdk}\(\.[0-9][0-9]*\)*\) .*/\1/p" \
+          | sort -Vu | head -1)"
+
+        if [ -z "$package" ]; then
+          echo "No SDK platform package matches compileSdk $compile_sdk. Available platforms:"
+          sdkmanager --list 2>/dev/null | sed -n 's/^ *\(platforms;[^ ]*\) .*/  \1/p' | sort -Vu
+          exit 1
+        fi
+
+        echo "Installing $package"
+        sdkmanager --install "$package"

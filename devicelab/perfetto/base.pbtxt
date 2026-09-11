@@ -1,0 +1,32 @@
+# The part of every trace config the harness builds; see devicelab/lib/perfetto.sh.
+#
+# Streamed into the output file every few seconds rather than held until the end, so a long run is
+# bounded by the device's storage rather than by one in-memory buffer, and a run whose device dies
+# part-way still leaves a readable trace behind. DISCARD rather than RING_BUFFER: a trace that
+# dropped data says so in its stats, while a ring buffer quietly loses the start of the run.
+buffers {
+  size_kb: 65536
+  fill_policy: DISCARD
+}
+duration_ms: @DURATION_MS@
+write_into_file: true
+file_write_period_ms: 2500
+flush_period_ms: 10000
+
+# Process and thread names, so anything else in the trace can be attributed to the demo at all.
+data_sources {
+  config {
+    name: "linux.process_stats"
+    process_stats_config {
+      scan_all_processes_on_start: true
+    }
+  }
+}
+
+# The installed packages with their version codes: the trace itself records which build of the demo
+# it measured, independently of the run metadata written beside it.
+data_sources {
+  config {
+    name: "android.packages_list"
+  }
+}

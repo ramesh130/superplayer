@@ -1,6 +1,10 @@
 import com.android.build.api.dsl.ApplicationExtension
+import com.android.build.api.variant.ApplicationAndroidComponentsExtension
+import org.gradle.api.artifacts.ArtifactCollection
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.dsl.KotlinAndroidProjectExtension
+import java.security.MessageDigest
 
 plugins {
     alias(libs.plugins.android.application)
@@ -95,6 +99,20 @@ extensions.configure<ApplicationExtension> {
         release {
             isMinifyEnabled = false
         }
+        // What devicelab measures: release-like, but installable without release signing. Not
+        // debuggable, because a debuggable build runs differently and meaningfully slower, so frame
+        // timings and heap graphs taken from one describe a build nobody ships. Profileable, so that
+        // Perfetto and Macrobenchmark can still attach — that is the manifest's `<profileable>`,
+        // which is what makes this build type worth having. See devicelab/README.md.
+        //
+        // If release ever turns minification on, this inherits it, and a heap graph from it is
+        // unreadable without the mapping file: revisit before a leak hunt reads one.
+        create("benchmark") {
+            initWith(getByName("release"))
+            isDebuggable = false
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+        }
     }
 
     lint {
@@ -117,6 +135,66 @@ extensions.configure<ApplicationExtension> {
 extensions.configure<KotlinAndroidProjectExtension> {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
+    }
+}
+
+// What SuperPlayer this APK was built against, recorded inside it.
+//
+// The demo resolves SuperPlayer from Maven local, so an APK built after a stale
+// `publishToMavenLocal` builds, installs and plays — as the previous version. Nothing fails, and a
+// measurement taken on it is a plausible number about the wrong code. devicelab pulls this file back
+// off the device, compares it with the artifact it has just published, and refuses to measure on a
+// mismatch (devicelab/lib/artifacts.sh).
+//
+// The hash is of each AAR exactly as the build resolved it, so it answers the question directly
+// rather than through a version string, which for a SNAPSHOT names every build of a release alike.
+// It costs an adopter nothing: this is the demo's build, not the library's, and no `superplayer-*`
+// artifact carries anything of the kind.
+abstract class RecordSuperPlayerArtifacts : DefaultTask() {
+    @get:Internal
+    lateinit var artifacts: ArtifactCollection
+
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NONE)
+    val artifactFiles: FileCollection
+        get() = artifacts.artifactFiles
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun record() {
+        val lines = artifacts.artifacts
+            .map { artifact ->
+                val id = artifact.id.componentIdentifier as ModuleComponentIdentifier
+                "${id.group}:${id.module}:${id.version} ${sha256(artifact.file)}"
+            }.sorted()
+        val directory = outputDir.get().asFile
+        directory.deleteRecursively()
+        directory.mkdirs()
+        File(directory, "superplayer-artifacts.txt").writeText(lines.joinToString("\n", postfix = "\n"))
+    }
+
+    private fun sha256(file: File): String = MessageDigest.getInstance("SHA-256")
+        .digest(file.readBytes())
+        .joinToString("") { "%02x".format(it) }
+}
+
+extensions.configure<ApplicationAndroidComponentsExtension> {
+    onVariants { variant ->
+        // The AARs themselves, as resolved for this variant's runtime classpath: the published files,
+        // before any of AGP's transforms unpack them.
+        val superPlayerArtifacts = variant.runtimeConfiguration.incoming
+            .artifactView {
+                attributes { attribute(Attribute.of("artifactType", String::class.java), "aar") }
+                componentFilter { it is ModuleComponentIdentifier && it.group == "com.superplayer" }
+            }.artifacts
+        val record = tasks.register<RecordSuperPlayerArtifacts>(
+            "record${variant.name.replaceFirstChar(Char::uppercase)}SuperPlayerArtifacts",
+        ) {
+            artifacts = superPlayerArtifacts
+        }
+        variant.sources.assets?.addGeneratedSourceDirectory(record, RecordSuperPlayerArtifacts::outputDir)
     }
 }
 

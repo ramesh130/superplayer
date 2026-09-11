@@ -14,3 +14,6 @@ local.properties
 /build-logic/build/
 /demo/build/
 /superplayer-*/build/
+
+# Device measurement runs: traces, reports and run metadata. See devicelab/README.md.
+/devicelab/out/

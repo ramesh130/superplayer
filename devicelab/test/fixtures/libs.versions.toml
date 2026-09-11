@@ -1,0 +1,5 @@
+[versions]
+superplayer = "0.1.0-SNAPSHOT"
+media3 = "1.11.0"
+# media3 = "0.0.0" in a comment must not win
+compileSdk = "37"

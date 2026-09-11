@@ -197,6 +197,7 @@ where the two disagree `PRD.md` is right.
 ./gradlew convertThroughputTrace --from=… --transport=… --input=… --output=…   # docs/throughput-traces.md
 ./gradlew publishToMavenLocal     # required before the demo will build
 (cd demo && ./gradlew assembleDebug lintDebug spotlessCheck)
+devicelab/lab run smoke           # device run: trace, report, metadata (devicelab/README.md)
 ```
 
 `check` is the complete definition of the library's checks. Because `build-logic` is an included
@@ -246,6 +247,13 @@ adb install -r -t demo/build/outputs/apk/debug/superplayer-demo-debug.apk
 adb shell am start -n com.superplayer.demo/.MainActivity
 ```
 
+`devicelab/lab run smoke` is the executable version of this recipe and of every pitfall below. It
+boots or adopts the device, publishes, builds the demo's `benchmark` build type, and installs it. It
+refuses to go on unless the installed APK was built against the artifact it has just published. Then
+it confirms playback is advancing and captures a Perfetto trace. `devicelab/README.md` is its manual.
+The prose here stays because it is the explanation; the harness is the procedure, and a measurement
+on a device goes through it rather than through a hand-typed copy of these lines.
+
 Things that cost time the first time round:
 
 - **The APK is `superplayer-demo-debug.apk`**, after the module name, not `demo-debug.apk` after the
@@ -264,8 +272,11 @@ Things that cost time the first time round:
   adb logcat -d -t 2000 | grep -o 'state=PLAYING(3), position=[0-9]*'
   ```
 
-  Bound it with `-t`. An unbounded `adb logcat -d` against an emulator that has been up for a while
-  dumps the whole buffer and can take minutes, which reads as a hang rather than as a slow command.
+  Media3 refreshes the session's position every few seconds while content plays, so `adb shell
+  dumpsys media_session` shows the same thing as the current state and without a buffer to bound,
+  and that is what devicelab waits on. Bound the logcat form with `-t`. An unbounded `adb logcat -d`
+  against an emulator that has been up for a while dumps the whole buffer and can take minutes,
+  which reads as a hang rather than as a slow command.
 
 Re-run `publishToMavenLocal` and reinstall after any library change: the demo resolves SuperPlayer
 from Maven local, so an APK built against a stale artifact will happily test the previous version.

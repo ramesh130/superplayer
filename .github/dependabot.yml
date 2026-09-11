@@ -120,17 +120,20 @@ updates:
 
   # --- GitHub Actions ---
   #
-  # The actions `.github/workflows/ci.yml` pins: `actions/checkout`, `actions/setup-java`,
+  # The actions the workflows pin: `actions/checkout`, `actions/setup-java`,
   # `android-actions/setup-android`, `actions/upload-artifact`, and `gradle/actions` (both
   # `wrapper-validation` and `setup-gradle` come from that one repository, so they move together
   # in one PR). This is the ecosystem people forget, and a stale action is how a workflow starts
   # failing on a runner change nobody made here. `/` is where Dependabot looks for
-  # `.github/workflows`.
+  # `.github/workflows`; it does not descend into `.github/actions`, so the composite actions there
+  # are listed by glob — `setup-android` is pinned in one of them rather than in a workflow.
   #
   # Ungrouped: the pins are major-version tags, so every update is a major, and each deserves its
   # own changelog read. There are five of them, so ungrouped is not noise.
   - package-ecosystem: github-actions
-    directory: /
+    directories:
+      - /
+      - /.github/actions/*
     schedule:
       interval: weekly
       day: monday

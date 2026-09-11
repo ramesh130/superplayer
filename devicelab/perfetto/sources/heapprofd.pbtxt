@@ -1,0 +1,16 @@
+# Native allocations of the demo with callstacks: the half of memory a Java heap graph cannot see —
+# decoders, surfaces, the transfer chain. Wanted by the leak hunt (#50).
+#
+# ref: https://perfetto.dev/docs/data-sources/native-heap-profiler
+data_sources {
+  config {
+    name: "android.heapprofd"
+    target_buffer: 0
+    heapprofd_config {
+      sampling_interval_bytes: 4096
+      process_cmdline: "@PACKAGE@"
+      shmem_size_bytes: 8388608
+      block_client: true
+    }
+  }
+}

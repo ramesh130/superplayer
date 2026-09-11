@@ -1,0 +1,110 @@
+# One devicelab run on an emulator: a scenario, some Perfetto data sources, and the trace, report and
+# run metadata uploaded as an artifact.
+#
+# Reusable, so the leak hunt, the jank measurement and the benchmark each call this with their own
+# scenario rather than each writing an emulator job. It never runs on push: a device run takes minutes
+# and measures, where ci.yml checks. See devicelab/README.md.
+#
+#   jobs:
+#     measure:
+#       uses: ./.github/workflows/device-run.yml
+#       with:
+#         scenario: smoke
+#         data-sources: frametimeline
+name: Device run
+
+on:
+  workflow_call:
+    inputs:
+      scenario:
+        description: A scenario in devicelab/scenarios, without the .sh.
+        required: true
+        type: string
+      data-sources:
+        description: Comma-separated Perfetto data sources (devicelab/lab list).
+        required: false
+        type: string
+        default: ''
+      build-type:
+        description: The demo build to measure, benchmark or debug.
+        required: false
+        type: string
+        default: benchmark
+      artifact-name:
+        description: What to call the uploaded run.
+        required: false
+        type: string
+        default: devicelab-run
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: A scenario in devicelab/scenarios, without the .sh.
+        required: true
+        type: string
+        default: smoke
+      data-sources:
+        description: Comma-separated Perfetto data sources (devicelab/lab list).
+        required: false
+        type: string
+        default: ''
+      build-type:
+        description: The demo build to measure.
+        required: false
+        type: choice
+        options: [benchmark, debug]
+        default: benchmark
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    name: devicelab ${{ inputs.scenario }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up the Android SDK
+        uses: ./.github/actions/setup-android-sdk
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # The device-free half of the harness, before spending a boot on the rest of it.
+      - name: Self-test the harness
+        run: devicelab/test/selftest
+
+      - name: Boot the emulator
+        uses: ./.github/actions/android-emulator
+
+      # Inputs arrive through the environment rather than interpolated into the script, so a
+      # scenario name is never shell syntax.
+      - name: Run the scenario
+        env:
+          SCENARIO: ${{ inputs.scenario }}
+          DATA_SOURCES: ${{ inputs.data-sources }}
+          BUILD_TYPE: ${{ inputs.build-type }}
+        run: |
+          devicelab/lab run "$SCENARIO" --data-sources "$DATA_SOURCES" --build-type "$BUILD_TYPE" \
+            --out "$RUNNER_TEMP/devicelab"
+
+      - name: Upload the run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name || 'devicelab-run' }}
+          path: ${{ runner.temp }}/devicelab/
+          retention-days: 30
+          if-no-files-found: warn

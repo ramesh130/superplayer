@@ -1,0 +1,9 @@
+# SurfaceFlinger's expected and actual timeline for every frame, per layer: which frames missed their
+# deadline, and whether the app or the compositor missed it. Wanted by the UI jank measurement (#51).
+#
+# ref: https://perfetto.dev/docs/data-sources/frametimeline
+data_sources {
+  config {
+    name: "android.surfaceflinger.frametimeline"
+  }
+}

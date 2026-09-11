@@ -44,7 +44,7 @@ androidxLifecycle = "2.11.0"
 # keys on the `kotlin-android` plugin id, which AGP 9's built-in Kotlin support does not apply.
 # build-logic drives its signature loader directly instead. See docs/api-surface.md.
 binaryCompatibilityValidator = "0.18.2"
-asm = "9.9"
+asm = "9.10.1"
 
 # --- Build-time only: formatting and licence headers ---
 # Spotless is the Gradle-side driver; ktlint is the engine it runs. ktlint's version is pinned

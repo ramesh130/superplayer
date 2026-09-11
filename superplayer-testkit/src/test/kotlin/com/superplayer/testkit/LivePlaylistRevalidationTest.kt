@@ -116,14 +116,16 @@ class LivePlaylistRevalidationTest {
         // Back to the live edge, as an app re-entering a channel does: resumed where the first
         // session died, the playhead would sit at the end of a window that never grows.
         player.seekToDefaultPosition()
-        player.prepare()
-        player.play()
-        // Well inside the give-up bound, so only a history carried over from the first session can
-        // fail this; the frozen playlist is fresh again to a player that starts afresh.
-        harness.advanceTimeInStepsMs(player, RESTARTED_FOR_MS)
+        // Waited for, not watched for a fixed span. A history carried over from the first session
+        // is no slow start: it fails the restarted session's first playlist load, before anything
+        // can be ready, and the wait reports that error. A fixed few seconds instead measured the
+        // machine — the harness's clock does not wait for the loading thread, so on a busy runner
+        // the span could end with a healthy session still buffering. The frozen playlist's own
+        // give-up bound, three target durations from this session's first load, leaves the wait
+        // ample room.
+        harness.playToReady(player)
 
         assertWithMessage("cause: ${player.playerError?.cause}").that(player.playerError).isNull()
-        assertThat(player.playbackState).isEqualTo(Player.STATE_READY)
     }
 
     private fun play(faults: FaultScript): SuperPlayer {
@@ -151,8 +153,5 @@ class LivePlaylistRevalidationTest {
          * seconds here — and short enough to stay a unit test.
          */
         const val PLAYED_MS = 40_000L
-
-        /** How long a restarted session is watched: under the three-target-duration give-up bound. */
-        const val RESTARTED_FOR_MS = 3_000L
     }
 }

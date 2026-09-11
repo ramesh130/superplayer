@@ -9,6 +9,7 @@ plugins {
 
     // Repo-wide verification: see build-logic.
     id("superplayer.verification")
+    id("superplayer.trace-conversion")
 }
 
 // Where the license header ends and the file begins.

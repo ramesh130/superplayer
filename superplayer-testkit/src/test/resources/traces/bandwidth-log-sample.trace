@@ -1,0 +1,9 @@
+superplayer-throughput-trace 1
+# Converted from bandwidth-log-sample.log (bandwidth-log) by ./gradlew convertThroughputTrace.
+# Where the source dataset comes from, and what its terms ask: docs/throughput-traces.md.
+at-end loop
+1000 1000000 CELLULAR
+1000 500000 CELLULAR
+1000 0 CELLULAR
+1000 2000000 CELLULAR
+1020 1000000 CELLULAR

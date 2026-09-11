@@ -17,8 +17,8 @@
 /**
  * superplayer-testkit — Fault injection, network shaping, fake manifests, golden traces
  *
- * Placeholder. This module is created empty and buildable so that the module boundary and
- * dependency direction are fixed and enforceable now, rather than negotiated once code
- * arrives (phase 2). It intentionally declares no public API yet.
+ * The deterministic playback harness every module from phase 2 onward tests against:
+ * `PlaybackHarness`, the `FaultScript` it injects, the `ThroughputTrace`s and `NetworkProfile`s it
+ * replays, and the synthetic content it plays. `docs/testing.md` is the seam it serves.
  */
 package com.superplayer.testkit

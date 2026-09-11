@@ -121,19 +121,31 @@ public class PlaybackHarness : ExternalResource() {
      */
     private val injectors = IdentityHashMap<SuperPlayer, FaultInjectingDataSource.Factory>()
 
+    /** How each player's loads wait on the clock, so [advanceTimeMs] can let them catch up with it. */
+    private val waits = IdentityHashMap<SuperPlayer, HarnessClockWait>()
+
     /**
      * A player as a consumer builds one, over synthetic content and the fakes above.
      *
      * [content] describes what to play; [profile] is left unset by default so a test asserting on
      * the library's own default asserts on the library's rather than on this file's.
+     *
+     * [network], when set, replays a [ThroughputTrace] under every transfer the player makes, from
+     * the moment this returns — a [NetworkProfile]'s, or one read from a converted dataset. It
+     * composes with [faults] rather than replacing them: the shaper sits in front of the injector,
+     * so a shaped network with a 403 at segment 5 is one player, and the 403 arrives after the
+     * trace's round trip as a real one would.
      */
     public fun buildPlayer(
         content: TestContent = TestContent.video(),
         profile: PlaybackProfile? = null,
         telemetry: TelemetryCollector? = null,
         faults: FaultScript = FaultScript.NONE,
+        network: ThroughputTrace? = null,
     ): SuperPlayer {
         var built: ControllableVideoRenderer? = null
+        // One wait for both wrappers, so "is a load held by the clock" has one answer.
+        val wait = HarnessClockWait(clock)
         // The injector's own upstream carries the synthetic stream, because that is the one path
         // where the injector makes its own sources: real HLS and real DASH load through this
         // factory. The adaptive path below builds its sources inside Media3's `FakeChunkSource` and
@@ -142,6 +154,13 @@ public class PlaybackHarness : ExternalResource() {
             FakeDataSource.Factory().setFakeDataSet(fakeDataSetFor(content)),
             faults,
             clock,
+            wait,
+        )
+        val shaper = network?.let { ShapingDataSource.Factory(injector, it, clock, wait) }
+        val transfers = Transfers(
+            factory = shaper ?: injector,
+            wrap = { source -> injector.wrap(source).let { shaper?.wrap(it) ?: it } },
+            loadsThroughADataSource = !faults.isEmpty() || network != null,
         )
         val player = SuperPlayer.Builder(ApplicationProvider.getApplicationContext())
             .apply { profile?.let { setProfile(it) } }
@@ -149,11 +168,12 @@ public class PlaybackHarness : ExternalResource() {
             .setEngineConfigurator { engine ->
                 engine.setClock(clock)
                 engine.setRenderersFactory(renderersFactory { built = it })
-                engine.setMediaSourceFactory(mediaSourceFactory(content, faults, injector))
+                engine.setMediaSourceFactory(mediaSourceFactory(content, transfers))
             }
             .build()
         renderers[player] = checkNotNull(built) { "The engine built no renderers" }
         injectors[player] = injector
+        waits[player] = wait
         attachVideoOutput(player)
         return player
     }
@@ -199,7 +219,32 @@ public class PlaybackHarness : ExternalResource() {
         require(millis >= 0) { "Time does not go backwards" }
         SystemClock.setCurrentTimeMillis(SystemClock.uptimeMillis() + millis)
         clock.advanceTime(millis)
+        awaitShapedLoads()
         settle(player)
+    }
+
+    /**
+     * Lets every load paced on a [ThroughputTrace] act on the time that just passed, before the
+     * engine does.
+     *
+     * A shaped load runs on a loading thread and wakes once per read, so without this the test
+     * thread could run the clock ahead of it whenever that thread was short of CPU — on a busy CI
+     * runner, say — and the engine would drain a buffer the trace had filled, reporting a stall the
+     * trace never described. Waiting until every open transfer is waiting for a moment still to come
+     * narrows that gap. It is bounded in real time and fails at the bound, saying so, as every other
+     * wait here does: carrying on would hand the engine the very stall this exists to prevent, and
+     * the test would fail later for a reason it could not name. A player with no trace opens no
+     * shaped transfer, so for it this returns at once.
+     */
+    private fun awaitShapedLoads() {
+        val startedAtMs = System.currentTimeMillis()
+        while (waits.values.any { !it.transfersHaveCaughtUp }) {
+            check(System.currentTimeMillis() - startedAtMs < CATCH_UP_WALL_CLOCK_MS) {
+                "A load paced on a throughput trace did not catch up with the harness clock within " +
+                    "$CATCH_UP_WALL_CLOCK_MS ms of real time"
+            }
+            Thread.yield()
+        }
     }
 
     /**
@@ -343,6 +388,7 @@ public class PlaybackHarness : ExternalResource() {
         renderers.keys.toList().asReversed().forEach { it.release() }
         renderers.clear()
         injectors.clear()
+        waits.clear()
         // After the players, which are what were drawing into them.
         outputs.forEach { (surface, texture) ->
             surface.release()
@@ -377,17 +423,13 @@ public class PlaybackHarness : ExternalResource() {
      * becomes a [FakeMediaSource] with a single video track, because a source with nothing to choose
      * between should not go through a chunk source that exists to choose.
      */
-    private fun mediaSourceFactory(
-        content: TestContent,
-        faults: FaultScript,
-        injector: FaultInjectingDataSource.Factory,
-    ): MediaSource.Factory {
+    private fun mediaSourceFactory(content: TestContent, transfers: Transfers): MediaSource.Factory {
         // A real protocol stream is not described by a timeline at all: the manifest says what the
         // content is, Media3's own parser reads it, and its own extractor demuxes the segments. The
-        // injector is the `DataSource.Factory` underneath, so every fetch the protocol makes — the
-        // playlist, the initialization segment, each media segment — passes through a fault script.
+        // injector — and the shaper, under a trace — is the `DataSource.Factory` underneath, so
+        // every fetch the protocol makes passes through a fault script and a trace.
         if (content.protocol != TestContent.Protocol.DESCRIBED) {
-            return DefaultMediaSourceFactory(injector)
+            return DefaultMediaSourceFactory(transfers.factory)
         }
 
         val formats = content.videoBitratesBps.mapIndexed { index, bitrate -> videoFormat(index, bitrate) }
@@ -417,20 +459,20 @@ public class PlaybackHarness : ExternalResource() {
         return object : MediaSource.Factory {
             override fun createMediaSource(mediaItem: androidx.media3.common.MediaItem): MediaSource =
                 // A ladder needs the adaptive source to have anything to switch between; a fault
-                // script needs it because it is the only path here that loads through a
+                // script or a trace needs it because it is the only path here that loads through a
                 // `DataSource` at all — Media3's non-adaptive fake synthesizes its samples in
-                // memory, so there is no transfer for an injector to sit in front of.
-                if (formats.size > 1 || !faults.isEmpty()) {
+                // memory, so there is no transfer for an injector or a shaper to sit in front of.
+                if (formats.size > 1 || transfers.loadsThroughADataSource) {
                     FakeAdaptiveMediaSource(
                         timeline,
                         TrackGroupArray(TrackGroup(*formats.toTypedArray())),
-                        FaultInjectingChunkSourceFactory(
+                        TransferChunkSourceFactory(
                             // A fixed seed: the chunk sizes this generates are what a bandwidth
                             // estimate is built from, and a test whose ABR decisions moved between
                             // runs would be a test of the random number generator.
                             FakeAdaptiveDataSet.Factory(CHUNK_DURATION_US, /* bitratePercentStdDev= */ 0.0, Random(0)),
                             FakeDataSource.Factory(),
-                            injector,
+                            transfers.wrap,
                         ),
                     )
                 } else {
@@ -475,6 +517,16 @@ public class PlaybackHarness : ExternalResource() {
         content.resources.forEach { (uri, bytes) -> setData(uri, bytes) }
     }
 
+    /**
+     * How a player's transfers are made: [factory] where Media3 makes its own sources, [wrap] where
+     * `FakeChunkSource` hands over one it built, and whether anything is in the path at all.
+     */
+    private class Transfers(
+        val factory: androidx.media3.datasource.DataSource.Factory,
+        val wrap: (androidx.media3.datasource.DataSource) -> androidx.media3.datasource.DataSource,
+        val loadsThroughADataSource: Boolean,
+    )
+
     private fun videoFormat(index: Int, bitrateBps: Int): Format = Format.Builder()
         .setId("video-$index")
         .setSampleMimeType(MimeTypes.VIDEO_H264)
@@ -512,6 +564,9 @@ public class PlaybackHarness : ExternalResource() {
 
         /** Playback time, not wall-clock: generous, and only ever reached when something is wrong. */
         private const val MAX_WAIT_MS = 30_000L
+
+        /** Real milliseconds [awaitShapedLoads] gives loads to catch up with one advance. */
+        private const val CATCH_UP_WALL_CLOCK_MS = 10_000L
 
         /**
          * One step of [advanceTimeInStepsMs]: a few render passes and a fraction of a chunk.

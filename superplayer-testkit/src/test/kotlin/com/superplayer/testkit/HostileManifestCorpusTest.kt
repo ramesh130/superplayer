@@ -102,6 +102,17 @@ class HostileManifestCorpusTest {
     }
 
     @Test
+    fun theObservationBudgetFitsEveryFiniteEntryTwice() {
+        // An entry short enough to end inside the budget has to end inside *half* of it, or whether
+        // it is recorded as ended depends on how fast the host loads — which is how a 17.5 s entry
+        // passed locally and failed on CI under a 20 s budget. Entries longer than the budget are
+        // live windows, not expected to end, and are exempt.
+        HostileManifests.all()
+            .filter { it.durationMs < OBSERVATION_MS }
+            .forEach { assertThat(it.durationMs * 2).isAtMost(OBSERVATION_MS) }
+    }
+
+    @Test
     fun theCorpusLabelsWhatIsMalformedRatherThanMerelyHostile() {
         // A document that breaks a MUST is graded differently from one that is merely hostile,
         // whether or not a given parser happens to reject it. Pinned by id: adding one without
@@ -203,11 +214,18 @@ class HostileManifestCorpusTest {
     private companion object {
 
         /**
-         * How much playback time each entry is watched for: more than twice an on-demand entry's
-         * length, and well short of the media a live entry publishes, so neither kind runs out of
-         * stream for a reason unrelated to its pathology.
+         * How much playback time each entry is watched for. Two bounds decide it, and both are about
+         * an entry running out of *time* or *stream* for a reason unrelated to its pathology:
+         *
+         * - At least twice the longest on-demand entry — today the 17.5 s ragged-durations one —
+         *   because how much playback time a session spends starting depends on the host: the
+         *   engine's clock is fake, but loads complete on real threads. At 20 s this left 1.5 s of
+         *   margin, and a slower CI runner recorded that entry as still playing.
+         *   [theObservationBudgetFitsEveryFiniteEntryTwice] holds the bound.
+         * - Well short of the ~120 s a live entry publishes, so a live session is never watched past
+         *   the end of its own window.
          */
-        const val OBSERVATION_MS = 20_000L
+        const val OBSERVATION_MS = 40_000L
 
         /** One turn of the loop above: a few loads, so a whole session is tens of turns. */
         const val STEP_MS = 500L

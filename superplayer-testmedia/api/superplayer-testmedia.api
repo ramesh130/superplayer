@@ -1,3 +1,55 @@
+public final class com/superplayer/testmedia/HostileManifests {
+	public static final field INSTANCE Lcom/superplayer/testmedia/HostileManifests;
+	public static final field SEGMENT_COUNT I
+	public final fun all ()Ljava/util/List;
+	public final fun dashAvailabilityStartTimeSkew ()Lcom/superplayer/testmedia/HostileStream;
+	public final fun dashLadderGap ()Lcom/superplayer/testmedia/HostileStream;
+	public final fun dashLiveBaseline ()Lcom/superplayer/testmedia/HostileStream;
+	public final fun dashMidStreamLadderChange ()Lcom/superplayer/testmedia/HostileStream;
+	public final fun dashMissingCodecs ()Lcom/superplayer/testmedia/HostileStream;
+	public final fun dashMissingTimeShiftBufferDepth ()Lcom/superplayer/testmedia/HostileStream;
+	public final fun dashOverstatedBitrate ()Lcom/superplayer/testmedia/HostileStream;
+	public final fun dashShortTimeShiftBufferDepth ()Lcom/superplayer/testmedia/HostileStream;
+	public final fun hlsAudioGroupCodecMismatch ()Lcom/superplayer/testmedia/HostileStream;
+	public final fun hlsCachedLivePlaylist ()Lcom/superplayer/testmedia/HostileStream;
+	public final fun hlsDanglingAudioGroup ()Lcom/superplayer/testmedia/HostileStream;
+	public final fun hlsDiscontinuityWithoutTimeline ()Lcom/superplayer/testmedia/HostileStream;
+	public final fun hlsInconsistentSegmentDurations ()Lcom/superplayer/testmedia/HostileStream;
+	public final fun hlsLadderGap ()Lcom/superplayer/testmedia/HostileStream;
+	public final fun hlsMissingCodecs ()Lcom/superplayer/testmedia/HostileStream;
+	public final fun hlsOverstatedBitrate ()Lcom/superplayer/testmedia/HostileStream;
+}
+
+public final class com/superplayer/testmedia/HostileStream {
+	public final fun getCause ()Ljava/lang/String;
+	public final fun getDeclaredResponseHeaders ()Ljava/util/Map;
+	public final fun getDurationMs ()J
+	public final fun getId ()Ljava/lang/String;
+	public final fun getProtocol ()Lcom/superplayer/testmedia/HostileStream$Protocol;
+	public final fun getSourceUri ()Ljava/lang/String;
+	public final fun getSpec ()Ljava/lang/String;
+	public final fun getValidity ()Lcom/superplayer/testmedia/HostileStream$Validity;
+	public final fun resources ()Ljava/util/Map;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/testmedia/HostileStream$Protocol : java/lang/Enum {
+	public static final field DASH Lcom/superplayer/testmedia/HostileStream$Protocol;
+	public static final field HLS Lcom/superplayer/testmedia/HostileStream$Protocol;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/testmedia/HostileStream$Protocol;
+	public static fun values ()[Lcom/superplayer/testmedia/HostileStream$Protocol;
+}
+
+public final class com/superplayer/testmedia/HostileStream$Validity : java/lang/Enum {
+	public static final field HEALTHY Lcom/superplayer/testmedia/HostileStream$Validity;
+	public static final field MALFORMED Lcom/superplayer/testmedia/HostileStream$Validity;
+	public static final field VALID_BUT_HOSTILE Lcom/superplayer/testmedia/HostileStream$Validity;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/testmedia/HostileStream$Validity;
+	public static fun values ()[Lcom/superplayer/testmedia/HostileStream$Validity;
+}
+
 public final class com/superplayer/testmedia/SyntheticDashStream {
 	public static final field DECLARED_BITRATE_BPS I
 	public static final field DECLARED_CHANNEL_COUNT I

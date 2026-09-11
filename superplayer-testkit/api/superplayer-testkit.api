@@ -65,10 +65,11 @@ public final class com/superplayer/testkit/TestContent {
 	public static final field DEFAULT_BITRATE_BPS I
 	public static final field DEFAULT_DURATION_MS J
 	public static final field DEFAULT_SEGMENT_COUNT I
-	public synthetic fun <init> (Ljava/util/List;JZLcom/superplayer/testkit/TestContent$Protocol;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/util/List;JZLcom/superplayer/testkit/TestContent$Protocol;Ljava/lang/String;Ljava/util/Map;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public static final fun dash (I)Lcom/superplayer/testkit/TestContent;
 	public final fun getSourceUri ()Ljava/lang/String;
 	public static final fun hls (I)Lcom/superplayer/testkit/TestContent;
+	public static final fun hostile (Lcom/superplayer/testmedia/HostileStream;)Lcom/superplayer/testkit/TestContent;
 	public static final fun liveVideo (IJ)Lcom/superplayer/testkit/TestContent;
 	public static final fun video (IJ)Lcom/superplayer/testkit/TestContent;
 	public static final fun videoLadder (Ljava/util/List;J)Lcom/superplayer/testkit/TestContent;
@@ -79,6 +80,7 @@ public final class com/superplayer/testkit/TestContent$Companion {
 	public static synthetic fun dash$default (Lcom/superplayer/testkit/TestContent$Companion;IILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
 	public final fun hls (I)Lcom/superplayer/testkit/TestContent;
 	public static synthetic fun hls$default (Lcom/superplayer/testkit/TestContent$Companion;IILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
+	public final fun hostile (Lcom/superplayer/testmedia/HostileStream;)Lcom/superplayer/testkit/TestContent;
 	public final fun liveVideo (IJ)Lcom/superplayer/testkit/TestContent;
 	public static synthetic fun liveVideo$default (Lcom/superplayer/testkit/TestContent$Companion;IJILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
 	public final fun video (IJ)Lcom/superplayer/testkit/TestContent;

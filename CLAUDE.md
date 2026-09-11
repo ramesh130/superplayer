@@ -167,6 +167,10 @@ against, which compiles as a Kotlin *friend* of core so it can reach the one int
 holds `SyntheticHlsStream` and `SyntheticDashStream`, the known-good streams both core's tests and
 that harness play; it is phase 1 and depends on nothing — not even Media3 — because it has to sit
 below both, and `docs/testing.md` carries the argument for the module rather than a second copy.
+It also holds `HostileManifests`, the valid-but-hostile corpus — each entry a good stream with one
+thing wrong, a `// spec:` citation and a field cause — whose current behaviour
+`superplayer-testkit`'s `HostileManifestCorpusTest` *records* rather than asserts as handled;
+`docs/testing.md` says what a new entry must carry.
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`
 and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module

@@ -49,10 +49,17 @@ public object SyntheticDashStream {
 
     /** `.mpd` is load-bearing: Media3 infers the content type from the URI's extension. */
     public const val MANIFEST_URI: String = BASE_URI + "manifest.mpd"
-    private const val INITIALIZATION_NAME = "init.mp4"
+    internal const val INITIALIZATION_NAME = "init.mp4"
     private const val INITIALIZATION_URI = BASE_URI + INITIALIZATION_NAME
 
-    private fun segmentName(index: Int) = "segment$index.m4s"
+    internal fun segmentName(index: Int) = "segment$index.m4s"
+
+    /**
+     * [segmentName] as an ISO/IEC 23009-1 §5.3.9.4.4 `$Number$` template, for a manifest that
+     * addresses segments by template rather than by list. Kept next to [segmentName] because the two
+     * have to agree: with `startNumber` 0, `$Number$` *is* the index.
+     */
+    internal const val SEGMENT_NAME_TEMPLATE = "segment\$Number\$.m4s"
 
     /** Declared as the representation's `@bandwidth`, and therefore what the track should report. */
     public const val DECLARED_BITRATE_BPS: Int = 128_000
@@ -78,11 +85,11 @@ public object SyntheticDashStream {
     private const val TRACK_ID = 1
 
     /** The media timescale is the sample rate, so a sample's duration is exactly its sample count. */
-    private const val TIMESCALE = DECLARED_SAMPLE_RATE_HZ
+    internal const val TIMESCALE = DECLARED_SAMPLE_RATE_HZ
 
     private const val MOVIE_TIMESCALE = 1_000
 
-    private const val SEGMENT_DURATION_IN_TIMESCALE = FRAME_COUNT * SAMPLES_PER_FRAME
+    internal const val SEGMENT_DURATION_IN_TIMESCALE = FRAME_COUNT * SAMPLES_PER_FRAME
 
     /**
      * What a single-segment MPD advertises as `@mediaPresentationDuration`, in the milliseconds the
@@ -163,14 +170,14 @@ public object SyntheticDashStream {
     }
 
     /** spec: ISO 8601 durations, as required by ISO/IEC 23009-1 §5.3.1.2 for `xs:duration`. */
-    private fun xsDuration(seconds: Double): String = String.format(Locale.US, "PT%.6fS", seconds)
+    internal fun xsDuration(seconds: Double): String = String.format(Locale.US, "PT%.6fS", seconds)
 
     /**
      * spec: ISO/IEC 14496-12 §8.16.2 — an initialization segment is `ftyp` followed by `moov`, and
      * carries no samples. The `moov`'s sample tables are all empty; `mvex` is what declares that the
      * samples arrive later, in fragments.
      */
-    private fun initializationSegment(): ByteArray = bytes {
+    internal fun initializationSegment(): ByteArray = bytes {
         write(fileTypeBox())
         write(movieBox())
     }
@@ -381,15 +388,21 @@ public object SyntheticDashStream {
      * The `trun`'s `data_offset` is measured from the start of the `moof`, so it cannot be known
      * until the `moof` has been built. Rather than write the value in by hand and have it rot the
      * next time a box is added, the `moof` is built twice: once to measure, once for real.
+     *
+     * [sizeScale] makes every sample that many times larger, so the segment's real bitrate is that
+     * multiple of the good stream's. It exists for `HostileManifests`, whose ladder entries need a
+     * top rung that is genuinely heavier rather than merely declared so; the good stream never
+     * passes it.
      */
-    private fun mediaSegment(index: Int): ByteArray {
-        val measured = movieFragmentBox(index, dataOffset = 0)
-        val moof = movieFragmentBox(index, dataOffset = measured.size + BOX_HEADER_BYTES)
+    internal fun mediaSegment(index: Int, sizeScale: Int = 1): ByteArray {
+        val sampleSizeBytes = SAMPLE_SIZE_BYTES * sizeScale
+        val measured = movieFragmentBox(index, dataOffset = 0, sampleSizeBytes)
+        val moof = movieFragmentBox(index, dataOffset = measured.size + BOX_HEADER_BYTES, sampleSizeBytes)
 
         return bytes {
             write(segmentTypeBox())
             write(moof)
-            write(mediaDataBox())
+            write(mediaDataBox(sampleSizeBytes))
         }
     }
 
@@ -401,20 +414,20 @@ public object SyntheticDashStream {
         ascii("dash")
     }
 
-    private fun movieFragmentBox(index: Int, dataOffset: Int): ByteArray = box("moof") {
+    private fun movieFragmentBox(index: Int, dataOffset: Int, sampleSizeBytes: Int): ByteArray = box("moof") {
         // spec: ISO/IEC 14496-12 §8.8.5 — sequence_number counts fragments from 1.
         write(fullBox("mfhd", version = 0, flags = 0) { int32(index + 1) })
-        write(trackFragmentBox(index, dataOffset))
+        write(trackFragmentBox(index, dataOffset, sampleSizeBytes))
     }
 
-    private fun trackFragmentBox(index: Int, dataOffset: Int): ByteArray = box("traf") {
+    private fun trackFragmentBox(index: Int, dataOffset: Int, sampleSizeBytes: Int): ByteArray = box("traf") {
         // spec: ISO/IEC 14496-12 §8.8.7. Flags: default-base-is-moof (0x020000), which anchors
         // offsets to this `moof` rather than to the file, plus the three sample defaults present.
         write(
             fullBox("tfhd", version = 0, flags = 0x020038) {
                 int32(TRACK_ID)
                 int32(SAMPLES_PER_FRAME) // default_sample_duration
-                int32(SAMPLE_SIZE_BYTES) // default_sample_size
+                int32(sampleSizeBytes) // default_sample_size
                 int32(SYNC_SAMPLE_FLAGS) // default_sample_flags
             },
         )
@@ -441,8 +454,8 @@ public object SyntheticDashStream {
     }
 
     /** spec: ISO/IEC 14496-12 §8.1.1 — the samples themselves, back to back and unframed. */
-    private fun mediaDataBox(): ByteArray = box("mdat") {
-        zeros(FRAME_COUNT * SAMPLE_SIZE_BYTES)
+    private fun mediaDataBox(sampleSizeBytes: Int): ByteArray = box("mdat") {
+        zeros(FRAME_COUNT * sampleSizeBytes)
     }
 
     /** spec: ISO/IEC 14496-12 §8.2.2 — the identity transform, in 16.16 and 2.30 fixed point. */

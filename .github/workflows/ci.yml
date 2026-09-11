@@ -47,7 +47,7 @@ jobs:
           java-version: '17'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
         with:
           # Installed explicitly in the next step instead, from the version catalog.
           packages: ''

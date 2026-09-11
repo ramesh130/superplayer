@@ -233,9 +233,14 @@ class SuperPlayerProfileTest {
         )
         player.prepare()
 
-        // Both waits are needed, in this order. "Not loading" is also the state the player begins
-        // in, so waiting for it alone would return before anything had been fetched; waiting for
-        // loading to start first makes the second wait mean "has stopped again".
+        // Loading has to be seen to start and then to stop, in that order: "not loading" is also the
+        // state the player begins in, so waiting for the stop alone would return before anything had
+        // been fetched.
+        //
+        // The stop is not enough on its own: it can be announced carrying a buffered position one
+        // segment stale, for the reason [SuperPlayerHarness.awaitPeriodicWork] gives (issue #70). What
+        // is returned is the figure once it has stayed the same across a whole periodic pass with
+        // loading still off, which holds however fast the host completes a load.
         //
         // Note what is *not* waited for: STATE_READY. A player that is paused and has stopped
         // loading short of the end of its content has nothing left to drive its playback state
@@ -243,8 +248,16 @@ class SuperPlayerProfileTest {
         // the buffer policy governs.
         TestPlayerRunHelper.advance(player).untilLoadingIs(true)
         TestPlayerRunHelper.advance(player).untilLoadingIs(false)
-
-        return player.totalBufferedDuration
+        var buffered = player.totalBufferedDuration
+        repeat(MAX_PASSES_TO_SETTLE) {
+            harness.awaitPeriodicWork(player)
+            if (!player.isLoading && player.totalBufferedDuration == buffered) return buffered
+            buffered = player.totalBufferedDuration
+        }
+        throw AssertionError(
+            "$profile's buffer did not settle within $MAX_PASSES_TO_SETTLE periodic passes: " +
+                "loading=${player.isLoading}, buffered=${buffered}ms",
+        )
     }
 
     /**
@@ -301,6 +314,13 @@ class SuperPlayerProfileTest {
          * video-on-demand player does not: 40s, against ceilings of 15s and 60s.
          */
         const val SEGMENTS_FOR_BUFFER_TEST = 20
+
+        /**
+         * How many periodic passes [bufferedDurationAfterLoading] waits for the buffer to stay put
+         * before failing. One is enough once loading has stopped; the rest is room for a player that
+         * resumes loading, and a bound so that one which never stops fails rather than hangs.
+         */
+        const val MAX_PASSES_TO_SETTLE = SEGMENTS_FOR_BUFFER_TEST
 
         /** [PlaybackProfile.SHORT_FORM]'s documented ceiling, asserted against above. */
         const val SHORT_FORM_MAX_BUFFER_MS = 15_000L

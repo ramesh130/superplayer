@@ -1,0 +1,8 @@
+superplayer-throughput-trace 1
+# Converted from mahimahi-sample.txt (mahimahi) by ./gradlew convertThroughputTrace.
+# Where the source dataset comes from, and what its terms ask: docs/throughput-traces.md.
+at-end loop
+100 12000000 CELLULAR
+100 3000000 CELLULAR
+100 0 CELLULAR
+50 240000 CELLULAR

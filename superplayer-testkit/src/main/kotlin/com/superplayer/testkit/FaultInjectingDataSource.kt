@@ -24,12 +24,7 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.TransferListener
-import androidx.media3.exoplayer.trackselection.ExoTrackSelection
-import androidx.media3.test.utils.FakeAdaptiveDataSet
-import androidx.media3.test.utils.FakeChunkSource
-import androidx.media3.test.utils.FakeDataSource
 import java.net.UnknownHostException
-import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.min
 
 /**
@@ -124,7 +119,7 @@ internal class ResourceAddressBook {
  * disagree.
  *
  * **Nothing sleeps.** Latency and throughput caps are paced against the harness's [Clock], which is
- * fake: a delay elapses when the test advances time past it and not before. That is what makes
+ * fake, through [HarnessClockWait]: a delay elapses when the test advances time past it and not before. That is what makes
  * "fails at segment 3" fail at segment 3 on every run and every machine — a suite whose faults
  * landed on wall-clock timing would be a flake generator and would get disabled.
  */
@@ -133,7 +128,7 @@ internal class FaultInjectingDataSource(
     private val script: FaultScript,
     private val clock: Clock,
     private val addresses: ResourceAddressBook,
-    private val waiting: AtomicInteger,
+    private val wait: HarnessClockWait,
 ) : DataSource {
 
     private var bytesDelivered = 0L
@@ -162,7 +157,7 @@ internal class FaultInjectingDataSource(
             )
         }
         val latencyMs = effects.filterIsInstance<Effect.Latency>().sumOf { it.millis }
-        if (latencyMs > 0) awaitClock(clock.elapsedRealtime() + latencyMs, "latency for $address")
+        if (latencyMs > 0) wait.until(clock.elapsedRealtime() + latencyMs, "latency for $address")
         effects.filterIsInstance<Effect.HttpStatus>().firstOrNull()?.let { status ->
             throw HttpDataSource.InvalidResponseCodeException(
                 status.code,
@@ -199,7 +194,7 @@ internal class FaultInjectingDataSource(
         // sent 4 KiB, and charging it for the buffer would make the cap depend on the reader's
         // buffer size rather than on the link.
         if (throughputBps > 0) {
-            awaitClock(
+            wait.until(
                 deliveryStartedAtMs + bytesDelivered * BITS_PER_BYTE * MILLIS_PER_SECOND / throughputBps,
                 "a throughput cap of $throughputBps bps",
             )
@@ -219,40 +214,6 @@ internal class FaultInjectingDataSource(
     }
 
     /**
-     * Waits until the harness's clock reads [deadlineMs], without sleeping.
-     *
-     * This runs on a loading thread while the test thread advances the clock, so the wait is on fake
-     * time and resolves exactly when the test says it does. [Clock.onThreadBlocked] is what tells an
-     * auto-advancing clock that this thread is waiting on it — `superplayer-core`'s harness uses one
-     * — and is a no-op under [PlaybackHarness]'s clock, which the test advances by hand.
-     *
-     * The wall-clock bound is not a timeout in the ordinary sense: it can only be reached when the
-     * test never advances time far enough, and a spin that hung there would look like a stuck build
-     * rather than like the test bug it is.
-     */
-    private fun awaitClock(deadlineMs: Long, what: String) {
-        val startedAtMs = System.currentTimeMillis()
-        waiting.incrementAndGet()
-        try {
-            spinUntil(deadlineMs, what, startedAtMs)
-        } finally {
-            waiting.decrementAndGet()
-        }
-    }
-
-    private fun spinUntil(deadlineMs: Long, what: String, startedAtMs: Long) {
-        while (clock.elapsedRealtime() < deadlineMs) {
-            clock.onThreadBlocked()
-            Thread.yield()
-            check(System.currentTimeMillis() - startedAtMs < MAX_WALL_CLOCK_WAIT_MS) {
-                "Waited $MAX_WALL_CLOCK_WAIT_MS ms of real time for $what to elapse on the harness " +
-                    "clock, which is still at ${clock.elapsedRealtime()} of $deadlineMs. Advance the " +
-                    "harness clock past an injected delay, or the load it holds up never completes."
-            }
-        }
-    }
-
-    /**
      * Wraps whatever [DataSource] an upstream factory makes.
      *
      * A factory rather than a bare source because Media3 opens one source per load and the addresses
@@ -262,68 +223,30 @@ internal class FaultInjectingDataSource(
         private val upstream: DataSource.Factory,
         private val script: FaultScript,
         private val clock: Clock,
+        private val wait: HarnessClockWait = HarnessClockWait(clock),
     ) : DataSource.Factory {
 
         /** Shared by every source this makes, so indices count the session rather than the load. */
         val addresses: ResourceAddressBook = ResourceAddressBook()
 
         /**
-         * How many loads are currently waiting on the clock for an injected delay to elapse.
+         * Whether any load is currently held by an injected delay.
          *
          * Nothing in the library reads it; a test does, to advance the clock at the moment a load is
          * actually waiting on it rather than racing to advance it first. Without that, "how long did
          * the delay take" would be answered by whichever thread got there first.
          */
-        private val waiting = AtomicInteger()
-
-        /** Whether any load is currently held by an injected delay. */
-        val isWaitingOnTheClock: Boolean get() = waiting.get() > 0
+        val isWaitingOnTheClock: Boolean get() = wait.isWaiting
 
         override fun createDataSource(): DataSource = wrap(upstream.createDataSource())
 
         /** For the one caller that already holds a source: Media3's `FakeChunkSource` builds its own. */
         fun wrap(source: DataSource): DataSource =
-            FaultInjectingDataSource(source, script, clock, addresses, waiting)
+            FaultInjectingDataSource(source, script, clock, addresses, wait)
     }
 
     private companion object {
         const val BITS_PER_BYTE = 8L
         const val MILLIS_PER_SECOND = 1_000L
-
-        /** Real seconds, and only ever reached when a test forgot to advance the clock. */
-        const val MAX_WALL_CLOCK_WAIT_MS = 10_000L
-    }
-}
-
-/**
- * Media3's own adaptive chunk source, loading through the injector.
- *
- * The composition `docs/testing.md` asks for: whatever the harness installed stays installed and the
- * wrapper goes in front of it. `FakeChunkSource.Factory` builds its own `DataSource` rather than
- * taking one, and it takes a concrete `FakeDataSource.Factory` that no wrapper can be — so the seam
- * is its one overridable method rather than the factory it holds.
- *
- * The [TransferListener] is registered on the **upstream** source, which is where the bytes actually
- * move. A wrapper that intercepted the registration and re-raised the callbacks itself could report
- * a byte count the transfer never made; this arrangement cannot.
- */
-internal class FaultInjectingChunkSourceFactory(
-    dataSets: FakeAdaptiveDataSet.Factory,
-    dataSources: FakeDataSource.Factory,
-    private val injector: FaultInjectingDataSource.Factory,
-) : FakeChunkSource.Factory(dataSets, dataSources) {
-
-    override fun createChunkSource(
-        trackSelection: ExoTrackSelection,
-        durationUs: Long,
-        transferListener: TransferListener?,
-    ): FakeChunkSource {
-        // The superclass's own fields and the superclass's own steps, with one line added. Held
-        // twice they could drift apart, and the copy that drifted would be the one this file forgot
-        // to update on the next Media3 upgrade.
-        val dataSet = dataSetFactory.createDataSet(trackSelection.trackGroup, durationUs)
-        val source = dataSourceFactory.setFakeDataSet(dataSet).createDataSource()
-        transferListener?.let { source.addTransferListener(it) }
-        return FakeChunkSource(trackSelection, injector.wrap(source), dataSet)
     }
 }

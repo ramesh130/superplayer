@@ -99,8 +99,9 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
         /**
          * Caps delivery at [bitsPerSecond], paced against the harness's clock.
          *
-         * A constant cap. Replaying a recorded throughput profile is `#40`'s subject, and the shape
-         * of this call is what that one will extend.
+         * A constant cap on the addressed resources. A network that varies over time — a recorded
+         * trace, or one of `PRD.md`'s profiles — is a [ThroughputTrace], replayed by
+         * `PlaybackHarness.buildPlayer(network = …)`; the two compose, and the slower governs.
          */
         public fun capThroughputBps(
             bitsPerSecond: Long,

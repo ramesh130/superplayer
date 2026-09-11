@@ -26,6 +26,35 @@ public final class com/superplayer/testkit/FaultScript$Builder {
 public final class com/superplayer/testkit/FaultScript$Companion {
 }
 
+public final class com/superplayer/testkit/NetworkProfile : java/lang/Enum {
+	public static final field CONGESTED_WIFI Lcom/superplayer/testkit/NetworkProfile;
+	public static final field Companion Lcom/superplayer/testkit/NetworkProfile$Companion;
+	public static final field HANDOVER_AT_MS J
+	public static final field HIGH_LATENCY Lcom/superplayer/testkit/NetworkProfile;
+	public static final field LTE_DROPOUT_PERIOD_MS J
+	public static final field LTE_WITH_DROPOUTS Lcom/superplayer/testkit/NetworkProfile;
+	public static final field STABLE_WIFI Lcom/superplayer/testkit/NetworkProfile;
+	public static final field THREE_G Lcom/superplayer/testkit/NetworkProfile;
+	public static final field WIFI_TO_CELLULAR_HANDOVER Lcom/superplayer/testkit/NetworkProfile;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getTrace ()Lcom/superplayer/testkit/ThroughputTrace;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/testkit/NetworkProfile;
+	public static fun values ()[Lcom/superplayer/testkit/NetworkProfile;
+}
+
+public final class com/superplayer/testkit/NetworkProfile$Companion {
+}
+
+public final class com/superplayer/testkit/NetworkTransport : java/lang/Enum {
+	public static final field CELLULAR Lcom/superplayer/testkit/NetworkTransport;
+	public static final field ETHERNET Lcom/superplayer/testkit/NetworkTransport;
+	public static final field UNKNOWN Lcom/superplayer/testkit/NetworkTransport;
+	public static final field WIFI Lcom/superplayer/testkit/NetworkTransport;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/testkit/NetworkTransport;
+	public static fun values ()[Lcom/superplayer/testkit/NetworkTransport;
+}
+
 public final class com/superplayer/testkit/PlaybackHarness : org/junit/rules/ExternalResource {
 	public static final field Companion Lcom/superplayer/testkit/PlaybackHarness$Companion;
 	public static final field RENDER_PASS_MS J
@@ -34,8 +63,8 @@ public final class com/superplayer/testkit/PlaybackHarness : org/junit/rules/Ext
 	public final fun advanceTimeInStepsMs (Lcom/superplayer/core/SuperPlayer;J)V
 	public final fun advanceTimeMs (Lcom/superplayer/core/SuperPlayer;J)V
 	public final fun attachVideoOutput (Lcom/superplayer/core/SuperPlayer;)V
-	public final fun buildPlayer (Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;Lcom/superplayer/testkit/FaultScript;)Lcom/superplayer/core/SuperPlayer;
-	public static synthetic fun buildPlayer$default (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;Lcom/superplayer/testkit/FaultScript;ILjava/lang/Object;)Lcom/superplayer/core/SuperPlayer;
+	public final fun buildPlayer (Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;)Lcom/superplayer/core/SuperPlayer;
+	public static synthetic fun buildPlayer$default (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;ILjava/lang/Object;)Lcom/superplayer/core/SuperPlayer;
 	public final fun buildPool (Ljava/lang/Integer;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/testkit/TestContent;Lkotlin/jvm/functions/Function0;)Lcom/superplayer/core/PlayerPool;
 	public static synthetic fun buildPool$default (Lcom/superplayer/testkit/PlaybackHarness;Ljava/lang/Integer;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/testkit/TestContent;Lkotlin/jvm/functions/Function0;ILjava/lang/Object;)Lcom/superplayer/core/PlayerPool;
 	public final fun elapsedRealtimeMs ()J
@@ -87,5 +116,34 @@ public final class com/superplayer/testkit/TestContent$Companion {
 	public static synthetic fun video$default (Lcom/superplayer/testkit/TestContent$Companion;IJILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
 	public final fun videoLadder (Ljava/util/List;J)Lcom/superplayer/testkit/TestContent;
 	public static synthetic fun videoLadder$default (Lcom/superplayer/testkit/TestContent$Companion;Ljava/util/List;JILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
+}
+
+public final class com/superplayer/testkit/ThroughputTrace {
+	public static final field Companion Lcom/superplayer/testkit/ThroughputTrace$Companion;
+	public static final field FORMAT_HEADER Ljava/lang/String;
+	public synthetic fun <init> (Ljava/util/List;ZLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun bandwidthBpsAt (J)J
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun format ()Ljava/lang/String;
+	public final fun getDurationMs ()J
+	public final fun getLoops ()Z
+	public fun hashCode ()I
+	public static final fun parse (Ljava/lang/String;)Lcom/superplayer/testkit/ThroughputTrace;
+	public final fun rttMsAt (J)J
+	public fun toString ()Ljava/lang/String;
+	public final fun transportAt (J)Lcom/superplayer/testkit/NetworkTransport;
+}
+
+public final class com/superplayer/testkit/ThroughputTrace$Builder {
+	public fun <init> ()V
+	public final fun add (JJLcom/superplayer/testkit/NetworkTransport;)Lcom/superplayer/testkit/ThroughputTrace$Builder;
+	public final fun add (JJLcom/superplayer/testkit/NetworkTransport;J)Lcom/superplayer/testkit/ThroughputTrace$Builder;
+	public static synthetic fun add$default (Lcom/superplayer/testkit/ThroughputTrace$Builder;JJLcom/superplayer/testkit/NetworkTransport;JILjava/lang/Object;)Lcom/superplayer/testkit/ThroughputTrace$Builder;
+	public final fun build ()Lcom/superplayer/testkit/ThroughputTrace;
+	public final fun holdAtEnd ()Lcom/superplayer/testkit/ThroughputTrace$Builder;
+}
+
+public final class com/superplayer/testkit/ThroughputTrace$Companion {
+	public final fun parse (Ljava/lang/String;)Lcom/superplayer/testkit/ThroughputTrace;
 }
 

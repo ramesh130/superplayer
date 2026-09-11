@@ -171,6 +171,14 @@ It also holds `HostileManifests`, the valid-but-hostile corpus — each entry a 
 thing wrong, a `// spec:` citation and a field cause — whose current behaviour
 `superplayer-testkit`'s `HostileManifestCorpusTest` *records* rather than asserts as handled;
 `docs/testing.md` says what a new entry must carry.
+The harness also replays a network: `buildPlayer(network = …)` takes a `ThroughputTrace` — bandwidth,
+round trip and a *transport* per stretch, the last so a WiFi→cellular handover is a change of network
+rather than of rate — and paces every transfer on it through `ShapingDataSource`, which sits in front
+of the fault injector so a trace and a `FaultScript` are one player. `NetworkProfile` is `PRD.md`
+Part 6's six profiles, each constant with its public source. `docs/throughput-traces.md` is the
+format's specification and the replay's limits — notably that concurrent transfers each see the whole
+link — and says how a public dataset comes in: `./gradlew convertThroughputTrace`, whose conversions
+live in `build-logic`, run locally, because no dataset is vendored.
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`
 and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
@@ -186,6 +194,7 @@ where the two disagree `PRD.md` is right.
 ./gradlew assemble check          # build, lint, tests, repo verification, tracked API surface, format
 ./gradlew updateApiSurface        # regenerate api/<module>.api after a deliberate API change
 ./gradlew spotlessApply           # reformat and stamp the Apache-2.0 header on every .kt file
+./gradlew convertThroughputTrace --from=… --transport=… --input=… --output=…   # docs/throughput-traces.md
 ./gradlew publishToMavenLocal     # required before the demo will build
 (cd demo && ./gradlew assembleDebug lintDebug spotlessCheck)
 ```

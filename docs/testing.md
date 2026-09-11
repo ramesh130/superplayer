@@ -437,6 +437,24 @@ applied one level down — the subject there *is* the harness, and a test-suppor
 worse than none, because every failure it causes is read as a failure of the code under test.
 Everything that uses the injector to test the library still goes through the public API.
 
+### Replaying a network
+
+A fault is one request going wrong; a network is every request going through something. The harness
+replays one — a `ThroughputTrace` of bandwidth, round trip and transport over time, or one of the six
+`NetworkProfile`s `PRD.md` Part 6 names — under every transfer a player makes:
+
+```kotlin
+val player = harness.buildPlayer(network = NetworkProfile.LTE_WITH_DROPOUTS.trace, faults = script)
+```
+
+It is the same mechanism as the injector, one layer out: a `DataSource` wrapper paced on the
+harness's clock, in front of the injector, so a shaped network and a fault script are one player and
+the 403 arrives a round trip after the request, as a real one does. Arrival times are computed from
+the trace rather than accumulated, so the same requests opened at the same times deliver the same
+bytes at the same times on every run. [`docs/throughput-traces.md`](throughput-traces.md) is the
+format's specification, the replay's rules and limits, where each profile's numbers come from, and
+how a public dataset is converted — none is vendored here.
+
 ## Determinism
 
 Tests must not sleep, poll a wall clock, or depend on ordering that real threads happen to produce.
@@ -466,6 +484,6 @@ thing to question first.
 
 ## What is not covered here
 
-Instrumented tests on real devices, throughput trace replay, and the golden trace corpus are
-`superplayer-testkit`'s subject and arrive with it — as the fault injector above already has. They
+Instrumented tests on real devices and the golden trace corpus are `superplayer-testkit`'s subject
+and arrive with it — as the fault injector and throughput trace replay above already have. They
 extend this seam rather than replacing it: they still drive the library through its public API.

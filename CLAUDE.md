@@ -170,7 +170,9 @@ below both, and `docs/testing.md` carries the argument for the module rather tha
 It also holds `HostileManifests`, the valid-but-hostile corpus — each entry a good stream with one
 thing wrong, a `// spec:` citation and a field cause — whose current behaviour
 `superplayer-testkit`'s `HostileManifestCorpusTest` *records* rather than asserts as handled;
-`docs/testing.md` says what a new entry must carry.
+`docs/testing.md` says what a new entry must carry. A pathology with a magnitude is generated at three
+`HostileStream.Severity` levels, each value argued where it is chosen: `graded()` returns them all, and
+`all()` is its `SEVERE` half. The `BENIGN` level exists so a doctor is scored on false positives too.
 The harness also replays a network: `buildPlayer(network = …)` takes a `ThroughputTrace` — bandwidth,
 round trip and a *transport* per stretch, the last so a WiFi→cellular handover is a change of network
 rather than of rate — and paces every transfer on it through `ShapingDataSource`, which sits in front

@@ -25,7 +25,9 @@
  *
  * Alongside them, `HostileManifests`: the same streams with one thing wrong in each — the
  * valid-but-hostile manifests real CDNs serve, each carrying the spec clause it stretches and the
- * misconfiguration that produces it in the field.
+ * misconfiguration that produces it in the field. A pathology with a magnitude comes at three
+ * severities, from content a doctor must not flag to the unmistakable, so the corpus grades where a
+ * threshold falls as well as whether a defect is seen.
  *
  * A stream is a map of URI to bytes, or a directory of files. Nothing here knows about a player, a
  * `DataSource` or a `FakeDataSet` — see this module's build script for why that is load-bearing

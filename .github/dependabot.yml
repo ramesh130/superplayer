@@ -72,15 +72,17 @@ updates:
       # Media3 is not the same kind of event as a test-library patch. The group name is what marks
       # it, because it appears in the PR's title and branch ("Bump the media3 group ..."). Labels
       # are per update entry here, not per group, so a label cannot single Media3 out, and the PR's
-      # body is Dependabot's own. So the obligations below do not appear in the PR itself. The
-      # group name is the reviewer's cue to come and read them here.
+      # body is Dependabot's own.
       #
-      # A Media3 PR carries obligations that no CI check here enforces:
+      # A Media3 PR carries two obligations beyond its version line:
       #   - `docs/modules.md`, "Supported Media3 versions", names the supported range (1.11.x). A
       #     minor or major bump moves it, and that section is rewritten by hand in the same PR. A
-      #     patch within the range does not. Widening the range, rather than moving it, needs a
-      #     compatibility test first, and is not this PR's to do.
-      #   - Robolectric, ignored above, is set to whatever the new Media3 resolves.
+      #     patch within the range does not. This one shows in the PR itself:
+      #     `verifyMedia3SupportedVersion`, part of `check`, fails the PR's CI until the section
+      #     names the new minor. Widening the range, rather than moving it, needs a compatibility
+      #     test first, and is not this PR's to do.
+      #   - Robolectric, ignored above, is set to whatever the new Media3 resolves. Nothing checks
+      #     this one: the answer is in Media3's POM, not in this repository. It rests on review.
       # CI does enforce the rest: the tracked API surface catches a public signature that moved,
       # and the demo's `UnsafeOptInUsageError` lint catches a new call into @UnstableApi.
       media3:

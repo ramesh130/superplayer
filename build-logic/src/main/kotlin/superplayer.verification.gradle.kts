@@ -1,4 +1,5 @@
 import com.superplayer.build.VerifyLicenseHeader
+import com.superplayer.build.VerifyMedia3SupportedVersion
 import com.superplayer.build.VerifyModulePhaseRule
 import com.superplayer.build.VerifyNoHardcodedMedia3Versions
 
@@ -42,6 +43,18 @@ val verifyModulePhaseRule =
         stampFile.set(layout.buildDirectory.file("verification/module-phase-rule.txt"))
     }
 
+// docs/modules.md states the one Media3 minor version every module supports; this holds the
+// catalog's pin to it, so a Media3 bump — Dependabot's `media3` group — fails its own pull request
+// until the document has moved with it, rather than leaving the obligation to be remembered.
+val verifyMedia3SupportedVersion =
+    tasks.register<VerifyMedia3SupportedVersion>("verifyMedia3SupportedVersion") {
+        group = "verification"
+        description = "Fails if the catalog's Media3 is not the version docs/modules.md supports."
+        versionCatalog.set(layout.projectDirectory.file("gradle/libs.versions.toml"))
+        modulesDocument.set(layout.projectDirectory.file("docs/modules.md"))
+        stampFile.set(layout.buildDirectory.file("verification/media3-supported-version.txt"))
+    }
+
 // Spotless stamps `config/license-header.txt` onto every `.kt` file; nothing in Spotless checks
 // that the file names the license this project is under. This does, against `LICENSE` itself, so
 // the header and the license cannot drift apart.
@@ -59,6 +72,7 @@ val verifyLicenseHeader =
 tasks.named("check") {
     dependsOn(verifyNoHardcodedMedia3Versions)
     dependsOn(verifyModulePhaseRule)
+    dependsOn(verifyMedia3SupportedVersion)
     dependsOn(verifyLicenseHeader)
 
     // build-logic is an included build, so its tests are invisible to the root build's

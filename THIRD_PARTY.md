@@ -11,12 +11,12 @@ of truth. This file records *what* is depended on and under *what license*.
 
 | Dependency | License | Used by |
 | --- | --- | --- |
-| `androidx.media3:media3-common` | Apache-2.0 | `superplayer-core` (api) |
+| `androidx.media3:media3-common` | Apache-2.0 | `superplayer-core` (api), `demo` |
 | `androidx.media3:media3-exoplayer` | Apache-2.0 | `superplayer-core` (api) |
 | `androidx.media3:media3-exoplayer-hls` | Apache-2.0 | `superplayer-core`, `superplayer-testkit` |
 | `androidx.media3:media3-exoplayer-dash` | Apache-2.0 | `superplayer-core`, `superplayer-testkit` |
 | `androidx.media3:media3-datasource` | Apache-2.0 | `superplayer-core`, `superplayer-testkit` |
-| `androidx.media3:media3-session` | Apache-2.0 | `superplayer-core` (api) |
+| `androidx.media3:media3-session` | Apache-2.0 | `superplayer-core` (api), `demo` |
 | `androidx.media3:media3-ui` | Apache-2.0 | `demo` |
 | `androidx.annotation:annotation` | Apache-2.0 | `superplayer-core`, `demo` |
 | `androidx.compose:compose-bom` | Apache-2.0 | `demo` (a BOM: pins versions, ships no code) |
@@ -25,7 +25,7 @@ of truth. This file records *what* is depended on and under *what license*.
 | `androidx.compose.material3:material3` | Apache-2.0 | `demo` |
 | `androidx.activity:activity-compose` | Apache-2.0 | `demo` |
 | `androidx.lifecycle:lifecycle-runtime-compose` | Apache-2.0 | `demo` |
-| `com.google.guava:guava` | Apache-2.0 | `superplayer-core` (transitive, via `media3-common`) |
+| `com.google.guava:guava` | Apache-2.0 | `superplayer-core`, `demo` (transitive, via `media3-common`) |
 | `org.jetbrains.kotlin:kotlin-stdlib` | Apache-2.0 | all modules (transitively, via the Kotlin toolchain) |
 | `org.jetbrains.kotlinx:kotlinx-coroutines-android` | Apache-2.0 | all modules |
 
@@ -99,6 +99,18 @@ one file. Neither reaches a published artifact.
 
 The Compose rows are the demo app's alone. No published module depends on Compose: `superplayer-ui`,
 the library's optional Compose surface, is a later phase and still an empty placeholder.
+
+## Device measurement tools
+
+| Tool | License | Used by |
+| --- | --- | --- |
+| Perfetto `trace_processor_shell` | Apache-2.0 | `devicelab` (host-side trace queries: the leak hunt) |
+
+Downloaded, not vendored, and never part of a build or an artifact. `devicelab/lib/trace_processor.sh`
+fetches the release archive for the host at the version the catalog names `perfetto`, and runs it only
+if the archive matches its pin in `devicelab/perfetto/trace-processor.sha256`. It reads traces
+recorded on a device and writes query results; nothing of it reaches the library, the demo, or anything
+a consumer resolves.
 
 The Android Gradle Plugin (Apache-2.0), the Kotlin Gradle Plugin (Apache-2.0), the Compose compiler
 plugin (Apache-2.0, released as part of Kotlin), and Gradle itself

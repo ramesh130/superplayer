@@ -1,0 +1,211 @@
+#!/usr/bin/env bash
+# Copyright 2026 The SuperPlayer Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# The leak hunt's device-free half: reading what the platform says is alive, the heap diff and the
+# verdict drawn from it, and the Markdown the report is written in. Pure functions over text, run by
+# devicelab/test/selftest and therefore by `./gradlew check`. The queries themselves need a trace and
+# the trace processor, so they are exercised by a run, not here — ../README.md says what a run proves.
+set -euo pipefail
+
+here="$(cd "$(dirname "$0")" && pwd)"
+leak="$(dirname "$here")"
+lab="$(dirname "$leak")"
+fixtures="$here/fixtures"
+
+# shellcheck source=../../lib/common.sh
+. "$lab/lib/common.sh"
+# shellcheck source=../../test/assert.sh
+. "$lab/test/assert.sh"
+# shellcheck source=../leak.sh
+. "$leak/leak.sh"
+
+scratch="$(mktemp -d)"
+trap 'rm -rf "$scratch"' EXIT
+
+# --- What the platform says is alive ---------------------------------------------------------------
+#
+# The heap is compared against this: an Activity the system still lists is alive, and one the heap
+# holds beyond those is a leak. Only the task history's `Hist` lines count; the same record is
+# mentioned a dozen more times in the dump as resumed, focused and so on.
+
+activities="$fixtures/dumpsys-activity-activities.txt"
+assert_eq "counts the package's activities in the task history" \
+    1 "$(live_activity_count com.android.settings < "$activities")"
+assert_eq "counts another package's separately" \
+    1 "$(live_activity_count com.google.android.apps.nexuslauncher < "$activities")"
+assert_eq "a package with no activity has none" \
+    0 "$(live_activity_count com.superplayer.demo < "$activities")"
+assert_eq "a package whose name is a prefix of another's is not confused with it" \
+    0 "$(live_activity_count com.android < "$activities")"
+
+assert_eq "reads meminfo's App Summary: Java heap, native heap, graphics, total PSS, total RSS (KB)" \
+    "10600 14872 0 67153 189316" "$(meminfo_summary < "$fixtures/dumpsys-meminfo.txt")"
+assert_eq "a process that is not running has no summary" \
+    "" "$(printf 'No process found for: com.example\n' | meminfo_summary)"
+
+# --- Who else holds the demo's Binder objects ------------------------------------------------------
+#
+# A released session's stub is a Binder object, and it stays rooted in the demo — with its last
+# timeline — for as long as another process holds a proxy to it. An ART process drops a proxy only
+# when it collects, so settling the demo alone leaves those stubs behind, a different number at every
+# dump. The settle therefore collects the processes holding references to the demo's Binder nodes
+# too. Only ART processes, the zygote's children: SIGUSR1 means "collect" to ART and "terminate" to a
+# native daemon, and half the holders below are native (the codec HAL, audioserver, surfaceflinger,
+# mediaserver, media.swcodec). Native holders release by reference count, not by collection, so they
+# are not the ones leaving stubs behind.
+#
+# Both fixtures are from the API 36 emulator mid-run. The expected lists were derived from them by a
+# separate parse, not by the functions under test.
+
+assert_eq "reads every pid holding a reference to one of the demo's nodes, each once, without 0" \
+    "531 576 580 618 628 732 981 1088 1124 1556 1674" \
+    "$(binder_ref_holders < "$fixtures/binder-log-proc.txt" | tr '\n' ' ' | sed 's/ $//')"
+
+zygote_kids="$(zygote_children 525 < "$fixtures/ps-pid-ppid-name.txt")"
+assert_contains "system_server is a zygote child" " $(printf '%s' "$zygote_kids" | tr '\n' ' ') " " 732 "
+assert_not_contains "surfaceflinger is not" " $(printf '%s' "$zygote_kids" | tr '\n' ' ') " " 580 "
+assert_not_contains "nor is init" " $(printf '%s' "$zygote_kids" | tr '\n' ' ') " " 1 "
+
+assert_eq "the processes a settle collects: ART holders of the demo's nodes, not the demo itself" \
+    "732 981 1088 1124 1556 1674" \
+    "$(art_ref_holders 3735 525 "$fixtures/binder-log-proc.txt" "$fixtures/ps-pid-ppid-name.txt" | tr '\n' ' ' | sed 's/ $//')"
+
+# --- Trace processor output ------------------------------------------------------------------------
+
+assert_eq "unquotes trace processor's CSV into tab-separated fields" \
+    "$(printf 'class\tinstances\nx, y\t3\nsay "hi"\t4')" \
+    "$(printf '"class","instances"\n"x, y",3\n"say ""hi""",4\n' | tp_csv_to_tsv)"
+
+assert_eq "renders a table, header first, escaping a pipe in a value" \
+    "$(printf '| class | n |\n| --- | --- |\n| a\\|b | 1 |')" \
+    "$(printf 'class\tn\na|b\t1\n' | tsv_to_markdown)"
+
+# --- The heap diff ---------------------------------------------------------------------------------
+#
+# A histogram is one heap dump's reachable instances per class, as histogram.sql writes it. Two of
+# them, taken at the same point of the scenario before and after the workload, should match; what
+# grew is the finding.
+
+printf '%s\n' '"class","instances","self_bytes","is_activity"' \
+    '"com.superplayer.core.SuperPlayer",1,64,0' \
+    '"com.superplayer.demo.MainActivity",1,500,1' \
+    '"java.lang.String",1000,24000,0' \
+    '"androidx.media3.exoplayer.ExoPlayerImpl",1,300,0' \
+    '"com.superplayer.demo.FeedRowListener",4,64,0' \
+    '"com.superplayer.demo.Shrinking",9,90,0' > "$scratch/baseline.csv"
+printf '%s\n' '"class","instances","self_bytes","is_activity"' \
+    '"com.superplayer.core.SuperPlayer",1,64,0' \
+    '"com.superplayer.demo.MainActivity",2,1000,1' \
+    '"java.lang.String",1400,33600,0' \
+    '"androidx.media3.exoplayer.ExoPlayerImpl",2,600,0' \
+    '"com.superplayer.demo.FeedRowListener",404,6464,0' \
+    '"com.superplayer.demo.Shrinking",2,20,0' \
+    '"com.superplayer.demo.Arrived",3,48,0' > "$scratch/final.csv"
+
+heap_diff "$scratch/baseline.csv" "$scratch/final.csv" > "$scratch/diff.tsv"
+diff="$(cat "$scratch/diff.tsv")"
+
+assert_eq "lists what changed, largest growth first, with whose class it is" \
+    "$(printf '%s\n' \
+        "class	baseline	final	delta	final_bytes	owner	activity" \
+        "com.superplayer.demo.FeedRowListener	4	404	400	6464	superplayer	0" \
+        "java.lang.String	1000	1400	400	33600	-	0" \
+        "com.superplayer.demo.Arrived	0	3	3	48	superplayer	0" \
+        "androidx.media3.exoplayer.ExoPlayerImpl	1	2	1	600	media3	0" \
+        "com.superplayer.demo.MainActivity	1	2	1	1000	superplayer	1" \
+        "com.superplayer.demo.Shrinking	9	2	-7	20	superplayer	0")" "$diff"
+assert_not_contains "an unchanged class is not listed" "$diff" "com.superplayer.core.SuperPlayer"
+
+# The verdict. A judged class is one this project or Media3 owns, or an Activity: a leak that is
+# SuperPlayer's has to hold at least one object of such a class, while a JDK or framework class alone
+# moves with caches that are none of this code's business. The project's classes and Media3's are
+# held to thresholds of their own, because Media3's counts carry whatever a live player had loaded.
+assert_eq "flags this project's growth at or past its threshold, and any Activity growth" \
+    "$(printf '%s\n' \
+        "com.superplayer.demo.FeedRowListener	400" \
+        "com.superplayer.demo.Arrived	3" \
+        "com.superplayer.demo.MainActivity	1")" \
+    "$(heap_findings "$scratch/diff.tsv" 3 3)"
+assert_eq "holds Media3's classes to their own threshold, apart from this project's" \
+    "$(printf '%s\n' \
+        "androidx.media3.exoplayer.ExoPlayerImpl	1" \
+        "com.superplayer.demo.MainActivity	1")" \
+    "$(heap_findings "$scratch/diff.tsv" 500 1)"
+assert_eq "nothing is flagged below either threshold, but an Activity still is" \
+    "com.superplayer.demo.MainActivity	1" "$(heap_findings "$scratch/diff.tsv" 401 401)"
+
+# The thresholds. The feed's are set from measured noise, and do not move with the workload: the first
+# version derived them from row visits, assuming every row scrolled past takes a player, and the
+# negative test (resetForReuse keeping its listeners) grew by +46 under a threshold of 80 — a pass
+# sends about 23 players through the pool on the API 36 emulator, not 400, because most rows scrolled
+# past find the pool at its bound and take none. This project's classes moved by +1, +21 and 0 in
+# three clean feeds, so 40. Media3's moved by whole HLS playlists of the live players' state, up to
+# +606 (three playlists, in the negative-test run, on paths through live players' internals), so 1200.
+# The signal is given room by the number of passes instead.
+assert_eq "the lifecycle phase: one instance per cycle, for both kinds of class" \
+    "3 3" "$(LEAK_CYCLES=3 LEAK_FEED_PASSES=6 LEAK_FEED_ROWS=200 leak_threshold lifecycle)"
+assert_eq "the feed: from measured noise, 40 for this project's classes and 1200 for Media3's" \
+    "40 1200" "$(LEAK_CYCLES=3 LEAK_FEED_PASSES=6 LEAK_FEED_ROWS=200 leak_threshold feed)"
+assert_eq "and the same whatever the workload, which is what the first version got wrong" \
+    "40 1200" "$(LEAK_CYCLES=3 LEAK_FEED_PASSES=2 LEAK_FEED_ROWS=60 leak_threshold feed)"
+
+assert_eq "an Activity the heap holds beyond those the system lists is counted as leaked" \
+    1 "$(activity_excess "$scratch/final.csv" 1)"
+assert_eq "none when the system lists as many as the heap holds" \
+    0 "$(activity_excess "$scratch/final.csv" 2)"
+
+# --- Known retentions -----------------------------------------------------------------------------
+#
+# The fields a count treats as weak, as the SQL list histogram.sql takes. Comments and blank lines are
+# not entries, and a quote in a field could not survive into SQL unescaped.
+
+printf '%s\n' '# a comment' '' \
+    "android.media.Foo\$Stub.listeners	#1	why" \
+    "com.example.Bar.it's	#2	why" > "$scratch/known.tsv"
+assert_eq "lists each known field as a quoted SQL string, escaping a quote" \
+    "'android.media.Foo\$Stub.listeners','com.example.Bar.it''s'" "$(known_fields_sql < "$scratch/known.tsv")"
+assert_eq "no entries is a name no field has, rather than nothing, so the query still reads" \
+    "'(none)'" "$(printf '# only a comment\n' | known_fields_sql)"
+# Not '': that is the name trace processor gives every array slot, and treating it as weak would cut
+# every array out of the graph.
+
+# --- The retaining paths, rendered -----------------------------------------------------------------
+#
+# paths.sql writes one row per hop of each class's most common shortest paths from a GC root. The
+# report must name the root, then the field and the class at every hop, so that a reader can go to the
+# file without opening a GUI.
+
+printf '%s\n' '"class","total","path_rank","path_instances","hop","object_class","via_field","root_type"' \
+    '"com.superplayer.demo.FeedRowListener",404,1,398,0,"android.os.HandlerThread","","ROOT_THREAD_OBJECT"' \
+    '"com.superplayer.demo.FeedRowListener",404,1,398,1,"com.superplayer.core.SuperPlayer","java.lang.Thread.target",""' \
+    '"com.superplayer.demo.FeedRowListener",404,1,398,2,"java.util.IdentityHashMap","com.superplayer.core.SuperPlayer.wrappedListeners",""' \
+    '"com.superplayer.demo.FeedRowListener",404,1,398,3,"java.lang.Object[]","java.util.IdentityHashMap.table",""' \
+    '"com.superplayer.demo.FeedRowListener",404,1,398,4,"com.superplayer.demo.FeedRowListener","",""' \
+    '"com.superplayer.demo.FeedRowListener",404,2,6,0,"com.superplayer.demo.FeedRowListener","","ROOT_JNI_LOCAL"' \
+    | tp_csv_to_tsv > "$scratch/paths.tsv"
+paths="$(render_paths < "$scratch/paths.tsv")"
+assert_contains "names the class and how many instances are reachable" "$paths" \
+    '`com.superplayer.demo.FeedRowListener`: 404 reachable'
+assert_contains "and how many share each path" "$paths" "398 of them"
+assert_contains "starts each path at its GC root" "$paths" "ROOT_THREAD_OBJECT  android.os.HandlerThread"
+assert_contains "names the field at each hop, with its declaring class, and what it points to" "$paths" \
+    ".com.superplayer.core.SuperPlayer.wrappedListeners -> java.util.IdentityHashMap"
+assert_contains "writes an array slot as one, since it has no field name" "$paths" \
+    "[element] -> com.superplayer.demo.FeedRowListener"
+assert_contains "and shows the second path too" "$paths" "6 of them"
+
+# --- Native allocations, rendered ------------------------------------------------------------------
+
+printf '%s\n' '"rank","unreleased_bytes","allocations","depth","frame","mapping"' \
+    '1,1048576,12,0,"malloc","/apex/com.android.runtime/lib64/bionic/libc.so"' \
+    '1,1048576,12,1,"android::Parcel::continueWrite(unsigned long)","/system/lib64/libbinder.so"' \
+    '2,4096,1,0,"operator new(unsigned long)","/system/lib64/libc++.so"' \
+    | tp_csv_to_tsv > "$scratch/native.tsv"
+native="$(render_native < "$scratch/native.tsv")"
+assert_contains "gives each callsite its unreleased size in a unit a person reads" "$native" "1.0 MiB"
+assert_contains "and the allocation count" "$native" "12 allocations"
+assert_contains "and each frame with the library it is in" "$native" \
+    "android::Parcel::continueWrite(unsigned long)  (libbinder.so)"
+
+assert_summary leak-hunt

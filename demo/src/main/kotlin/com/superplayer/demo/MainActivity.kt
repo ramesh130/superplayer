@@ -23,7 +23,9 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -49,6 +51,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -65,7 +68,11 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LifecycleStartEffect
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
 import androidx.media3.ui.PlayerView
 import com.superplayer.core.MediaRequest
 import com.superplayer.core.PlaybackDecision
@@ -73,6 +80,7 @@ import com.superplayer.core.PlaybackProfile
 import com.superplayer.core.SuperPlayer
 import com.superplayer.core.TrackSelectionPolicy
 import java.util.Locale
+import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
 
 /**
@@ -119,9 +127,16 @@ import java.util.concurrent.TimeUnit
  * the state it would be protecting is "nothing has played yet".
  *
  * The fifth claim needs a different screen, and has one. How many players may exist at once is not
- * visible where there is only ever one, so [FeedScreen] is a sixty-item scrolling feed played out of
+ * visible where there is only ever one, so [FeedScreen] is a 200-item scrolling feed played out of
  * a [com.superplayer.core.PlayerPool] with a live count of how many players it has built. Scroll it:
  * the count stops at the bound the device reported, and the rows past that show artwork.
+ *
+ * The sixth is that content named from outside the app plays as the content the app would have
+ * played. Launched with a content id ([DemoLaunch]), this screen does not load it: it hands the bare
+ * id to the session through a `MediaController`, exactly as a car head unit or a watch would, and the
+ * service's `onResolveContent` turns it back into the request — title, artwork and resume position
+ * included. The picker then follows what the player adopted, so the screen agrees with the
+ * notification about what is playing, whoever started it.
  *
  * What this Activity does *not* do is worth as much as what it does. It creates no `MediaSession`,
  * builds no notification, creates no channel, calls no `startForeground`, and asks for no audio
@@ -137,7 +152,7 @@ class MainActivity : ComponentActivity() {
         // devices included.
         // ref: https://developer.android.com/develop/ui/views/layout/edge-to-edge
         enableEdgeToEdge()
-        setContent { DemoApp() }
+        setContent { DemoApp(DemoLaunch.from(intent)) }
     }
 }
 
@@ -150,7 +165,7 @@ class MainActivity : ComponentActivity() {
  * Inventing a layer to hold three enums would say something about SuperPlayer that is not true.
  */
 @Composable
-private fun DemoApp() {
+private fun DemoApp(launch: DemoLaunch) {
     val context = LocalContext.current
 
     // Survives rotation without a declared view id and without `onSaveInstanceState`.
@@ -161,8 +176,11 @@ private fun DemoApp() {
         mutableStateOf(PlaybackProfile.VIDEO_ON_DEMAND)
     }
     var selectedScreen by rememberSaveable(stateSaver = DemoScreenSaver) {
-        mutableStateOf(DemoScreen.PLAYER)
+        mutableStateOf(launch.screen ?: DemoScreen.PLAYER)
     }
+    // Whether this launch's content id has been handed to the session. Saved, so that the rotation
+    // that recreates this screen does not send it a second time.
+    var launchContentSent by rememberSaveable { mutableStateOf(false) }
     var service by remember { mutableStateOf<DemoPlaybackService?>(null) }
     var player by remember { mutableStateOf<SuperPlayer?>(null) }
     var status by remember { mutableStateOf<Status?>(null) }
@@ -226,6 +244,61 @@ private fun DemoApp() {
     // this line is the whole of what the UI spends on it.
     LaunchedEffect(service, selectedProfile) {
         player = service?.usingProfile(selectedProfile)
+    }
+
+    // The picker follows the player, and not only the other way round. Content can reach the player
+    // from outside this screen — a car, a watch, the launch below — and a picker still naming the
+    // previous stream would be wrong twice: on screen now, and at the next rebind, when the load below
+    // would put the previous stream back over what the viewer chose elsewhere.
+    //
+    // Removed on dispose, which is not a formality. The player is the service's and outlives this
+    // screen, so a listener left on it would hold this composition — and through it the Activity —
+    // for as long as the service lives: one leaked Activity per rotation.
+    DisposableEffect(player) {
+        val current = player ?: return@DisposableEffect onDispose { }
+        val followPlayer = object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                DemoStream.entries.firstOrNull { it.contentId == mediaItem?.mediaId }
+                    ?.let { selectedStream = it }
+            }
+        }
+        current.addListener(followPlayer)
+        onDispose { current.removeListener(followPlayer) }
+    }
+
+    // A content id this screen was launched with goes to the session as a bare id, through a
+    // `MediaController`: the same boundary, and the same `onResolveContent`, that a car head unit
+    // crosses. Loading it here with `setMediaRequest` would prove nothing about that path.
+    //
+    // Scoped to START and STOP, like the binding above, and not merely released once the id is sent.
+    // A controller binds the service, and a service bound by anything is one that `stopService`
+    // cannot end — so a controller kept past STOP would keep the session alive after the viewer left.
+    // Nor is it released the moment the commands are sent: they are queued on the session's thread,
+    // and a controller that disconnects behind them can have them dropped.
+    LifecycleStartEffect(launch.contentId) {
+        val contentId = launch.contentId
+        val controllerFuture = if (contentId != null && !launchContentSent) {
+            MediaController.Builder(
+                context,
+                SessionToken(context, ComponentName(context, DemoPlaybackService::class.java)),
+            ).buildAsync()
+        } else {
+            null
+        }
+        controllerFuture?.addListener(
+            {
+                // Null when the future was cancelled by STOP arriving first, or the session refused.
+                val controller = runCatching { controllerFuture.get() }.getOrNull()
+                if (controller != null && contentId != null) {
+                    controller.setMediaItem(MediaItem.Builder().setMediaId(contentId).build())
+                    controller.prepare()
+                    controller.play()
+                    launchContentSent = true
+                }
+            },
+            MainThreadExecutor,
+        )
+        onStopOrDispose { controllerFuture?.let(MediaController::releaseFuture) }
     }
 
     // No adapter, no wrapper, no `asMedia3Player()`: SuperPlayer *is* a `Player`, so Media3's own
@@ -311,7 +384,10 @@ private fun DemoApp() {
                     // here. A feed does not want the service's player: that one is published as a
                     // media session for the notification and the car, and twenty of those would be
                     // twenty notifications. ADR-0007 is where that separation is argued.
-                    DemoScreen.FEED -> FeedScreen(modifier = Modifier.weight(1f))
+                    DemoScreen.FEED -> FeedScreen(
+                        rowCount = launch.feedRows ?: FeedItem.DEFAULT_COUNT,
+                        modifier = Modifier.weight(1f),
+                    )
                 }
             }
         }
@@ -514,6 +590,48 @@ private data class Status(val stream: DemoStream, val startedAtMs: Long)
 private enum class DemoScreen(val labelRes: Int) {
     PLAYER(R.string.screen_player),
     FEED(R.string.screen_feed),
+}
+
+/**
+ * What the demo was launched with beyond "open the app": the screen to open on, the feed's length, and
+ * a content id to hand to the session.
+ *
+ * Launch arguments rather than taps, because what launches with them is usually a script. devicelab
+ * drives the demo while it plays, and a playing demo never goes idle, so nothing can find a button on
+ * it by its text (`devicelab/lib/ui.sh` says why). Each is also an ordinary thing for an app to be
+ * launched with — a deep link to a screen, and a deep link to a piece of content:
+ *
+ * ```
+ * adb shell am start -n com.superplayer.demo/.MainActivity \
+ *     --es com.superplayer.demo.extra.SCREEN FEED --ei com.superplayer.demo.extra.FEED_ROWS 200
+ * adb shell am start -n com.superplayer.demo/.MainActivity \
+ *     --es com.superplayer.demo.extra.CONTENT_ID demo:tears-of-steel
+ * ```
+ *
+ * An unrecognised screen or a non-positive row count reads as absent rather than failing the launch.
+ */
+private class DemoLaunch(val screen: DemoScreen?, val feedRows: Int?, val contentId: String?) {
+    companion object {
+        const val EXTRA_SCREEN = "com.superplayer.demo.extra.SCREEN"
+        const val EXTRA_FEED_ROWS = "com.superplayer.demo.extra.FEED_ROWS"
+        const val EXTRA_CONTENT_ID = "com.superplayer.demo.extra.CONTENT_ID"
+
+        fun from(intent: Intent?): DemoLaunch = DemoLaunch(
+            screen = intent?.getStringExtra(EXTRA_SCREEN)
+                ?.let { name -> DemoScreen.entries.firstOrNull { it.name == name } },
+            feedRows = intent?.getIntExtra(EXTRA_FEED_ROWS, 0)?.takeIf { it > 0 },
+            contentId = intent?.getStringExtra(EXTRA_CONTENT_ID),
+        )
+    }
+}
+
+/** Where a controller's connection is answered: the main thread, which is the one Compose state is. */
+private object MainThreadExecutor : Executor {
+    private val handler = Handler(Looper.getMainLooper())
+
+    override fun execute(command: Runnable) {
+        handler.post(command)
+    }
 }
 
 /** [DemoStreamSaver]'s counterpart for the screen, and the same reasoning. */

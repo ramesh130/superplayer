@@ -3,12 +3,15 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # The device-free half of the harness, checked without a device: the parsing, the Perfetto config
-# builder and the stale-artifact comparison. Everything here is a pure function over text, which is
-# why it can be tested at all; everything that needs `adb` is in the part this cannot reach.
+# builder, the stale-artifact comparison and the pinned trace processor. Everything here is a pure
+# function over text, which is why it can be tested at all; everything that needs `adb` is in the
+# part this cannot reach.
+#
+# Then each consumer's own device-free half, `devicelab/<consumer>/test/selftest`, so that one command
+# — the one `./gradlew check` runs as `verifyDevicelab`, and the device workflow runs before every
+# boot — covers the harness and everything built on it.
 #
 #   devicelab/test/selftest
-#
-# Not part of `./gradlew check` — see ../README.md. The device workflow runs it before every run.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -25,30 +28,10 @@ fixtures="$here/fixtures"
 . "$lab/lib/perfetto.sh"
 # shellcheck source=../lib/artifacts.sh
 . "$lab/lib/artifacts.sh"
-
-failures=0
-passes=0
-
-pass() { passes=$((passes + 1)); }
-fail() {
-    failures=$((failures + 1))
-    printf 'FAIL: %s\n' "$1" >&2
-    [ $# -lt 2 ] || printf '%s\n' "$2" | sed 's/^/    /' >&2
-}
-
-assert_eq() { # name expected actual
-    if [ "$2" = "$3" ]; then pass; else fail "$1" "expected: [$2]
-actual:   [$3]"; fi
-}
-
-assert_contains() { # name haystack needle
-    case "$2" in *"$3"*) pass ;; *) fail "$1" "missing: [$3]
-in: [$2]" ;; esac
-}
-
-assert_not_contains() { # name haystack needle
-    case "$2" in *"$3"*) fail "$1" "unexpected: [$3]" ;; *) pass ;; esac
-}
+# shellcheck source=../lib/trace_processor.sh
+. "$lab/lib/trace_processor.sh"
+# shellcheck source=assert.sh
+. "$here/assert.sh"
 
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
@@ -63,6 +46,19 @@ assert_eq "a package with no session reads as nothing" \
 
 assert_eq "a session with no playback state reads as nothing" \
     "" "$(session_state com.android.server.telecom < "$fixtures/dumpsys-media-session.txt")"
+
+# A dump taken on the API 36 emulator while the demo played through its session. The description is
+# what the session's metadata says is playing; the leak hunt reads it to know that a content id it
+# named was resolved, since a bare id carries no title.
+assert_eq "reads the demo's session's description: title, subtitle, and the platform's third field" \
+    "BipBop Advanced, Apple HLS reference stream, null" \
+    "$(session_description com.superplayer.demo < "$fixtures/dumpsys-media-session-metadata.txt")"
+
+assert_eq "a session whose metadata is null has no description" \
+    "" "$(session_description com.android.server.telecom < "$fixtures/dumpsys-media-session-metadata.txt")"
+
+assert_eq "a package with no session has no description" \
+    "" "$(session_description com.example.absent < "$fixtures/dumpsys-media-session-metadata.txt")"
 
 # --- Which devices are usable ----------------------------------------------------------------------
 
@@ -124,6 +120,57 @@ done
 
 assert_contains "every shipped source is listed" "$(perfetto_sources | tr '\n' ' ')" \
     "frametimeline heapprofd java_hprof"
+
+# --- The pinned trace processor ------------------------------------------------------------------
+
+assert_eq "an Apple-silicon Mac runs the mac-arm64 build" mac-arm64 "$(trace_processor_platform Darwin arm64)"
+assert_eq "an Intel Mac runs the mac-amd64 build" mac-amd64 "$(trace_processor_platform Darwin x86_64)"
+assert_eq "a GitHub-hosted Linux runner runs linux-amd64" linux-amd64 "$(trace_processor_platform Linux x86_64)"
+assert_eq "an ARM Linux host runs linux-arm64" linux-arm64 "$(trace_processor_platform Linux aarch64)"
+if (trace_processor_platform SunOS sparc) >/dev/null 2>&1; then
+    fail "a host with no Perfetto build fails rather than guessing one"
+else pass; fi
+
+printf '58.1 mac-arm64 %s\n58.2 mac-arm64 %s\n58.2 linux-amd64 %s\n' \
+    "$(printf 'a%.0s' $(seq 64))" "$(printf 'b%.0s' $(seq 64))" "$(printf 'c%.0s' $(seq 64))" > "$scratch/pins"
+assert_eq "the pinned hash is the one for this version and this platform" \
+    "$(printf 'b%.0s' $(seq 64))" "$(trace_processor_pinned_sha256 58.2 mac-arm64 "$scratch/pins")"
+if missing="$(trace_processor_pinned_sha256 58.3 mac-arm64 "$scratch/pins" 2>&1)"; then
+    fail "a version with no pinned hash fails rather than running an unchecked binary"
+else
+    assert_contains "and says which file to update" "$missing" "trace-processor.sha256"
+fi
+
+pinned=0
+for platform in mac-arm64 mac-amd64 linux-amd64 linux-arm64; do
+    if trace_processor_pinned_sha256 "$(catalog_version perfetto)" "$platform" >/dev/null 2>&1; then
+        pinned=$((pinned + 1))
+    fi
+done
+assert_eq "the real pin file covers every host platform for the catalog's version" 4 "$pinned"
+
+# --- Every scenario loads ---------------------------------------------------------------------------
+#
+# A scenario is sourced into the run, so anything at its top level runs there: a stray line that
+# `bash -n` accepts as a command still fails the run — after a build and a boot, not before. So each is
+# loaded the way `lab` loads it: sourced as a statement of its own, in a fresh bash under
+# `set -euo pipefail`. Not as `. file && …`, which is what this check first did and why it first
+# passed on a scenario that could not load: on the left of `&&`, bash ignores errexit, a failing line
+# inside the file is swallowed, and the file's status is only its last command's.
+
+for scenario in "$lab"/scenarios/*.sh; do
+    name="$(basename "$scenario" .sh)"
+    if loaded="$(DEVICELAB_HOME="$lab" bash -euo pipefail -c '
+        SCENARIO_TRACE_FROM=launch SCENARIO_TRACE_MS=300000 SCENARIO_DATA_SOURCES=""
+        . "$1"
+        declare -F scenario_drive >/dev/null
+        echo loaded
+    ' load "$scenario" 2>&1)" && [ "$loaded" = loaded ]; then
+        pass
+    else
+        fail "scenario '$name' loads and defines scenario_drive" "$loaded"
+    fi
+done
 
 # --- Stale-artifact detection ----------------------------------------------------------------------
 #
@@ -194,5 +241,12 @@ fi
 
 # ---------------------------------------------------------------------------------------------------
 
-printf '%d passed, %d failed\n' "$passes" "$failures"
-[ "$failures" -eq 0 ]
+status=0
+assert_summary devicelab || status=1
+
+# Each consumer's device-free half, run as its own process so that it sources only what it needs.
+for consumer in "$lab"/*/test/selftest; do
+    [ -x "$consumer" ] || continue
+    "$consumer" || status=1
+done
+exit "$status"

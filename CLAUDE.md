@@ -118,7 +118,7 @@ item: surface detached first (a stale frame in a recycled view is the tell of a 
 then content, playback state, listeners, audio attributes and the remembered-position map. Audio
 focus is a single token, so concurrently *playing* pooled players contend for it — a feed plays one
 row and holds prepared first frames for the rest, which is what the demo's `FeedScreen` does across
-sixty rows with a live count of what the pool has built.
+200 rows with a live count of what the pool has built — the scroll `./gradlew huntLeaks` measures.
 
 Everything below `MediaSource` loads through one `DataSource.Factory` chain, and `TransferChain` is
 the single internal place it and the `MediaSource.Factory` over it are assembled — reached from
@@ -206,6 +206,7 @@ where the two disagree `PRD.md` is right.
 ./gradlew publishToMavenLocal     # required before the demo will build
 (cd demo && ./gradlew assembleDebug lintDebug spotlessCheck)
 devicelab/lab run smoke           # device run: trace, report, metadata (devicelab/README.md)
+./gradlew huntLeaks                # the leak hunt on a device; NOT in check (devicelab/leak/README.md)
 ```
 
 `check` is the complete definition of the library's checks. Because `build-logic` is an included

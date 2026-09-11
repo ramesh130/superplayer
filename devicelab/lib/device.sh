@@ -171,3 +171,13 @@ assert_device_alive() {
     device_answers "$SERIAL" ||
         die "$SERIAL stopped answering during $1; this run's results are discarded (run again to boot a fresh device)"
 }
+
+# `adb pull`, bounded, printing nothing unless it fails. It reports progress on stderr, which would
+# otherwise land in the run's output as though it were news.
+adb_pull() {
+    local output
+    output="$(ADB_TIMEOUT=600 adb_s pull "$1" "$2" 2>&1)" || {
+        printf '%s\n' "$output" >&2
+        return 1
+    }
+}

@@ -10,6 +10,8 @@ plugins {
     // Repo-wide verification: see build-logic.
     id("superplayer.verification")
     id("superplayer.trace-conversion")
+    // Device measurement, deliberately outside `check`: see build-logic and devicelab/README.md.
+    id("superplayer.devicelab")
 }
 
 // Where the license header ends and the file begins.

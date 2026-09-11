@@ -68,8 +68,10 @@ val verifyLicenseHeader =
         stampFile.set(layout.buildDirectory.file("verification/license-header.txt"))
     }
 
-// devicelab's device-free half: the `adb devices` and `dumpsys` parsing, the Perfetto config builder
-// and the stale-artifact comparison, all pure functions over text. The harness itself needs a device
+// devicelab's device-free half: the `adb devices` and `dumpsys` parsing, the Perfetto config builder,
+// the stale-artifact comparison and the trace processor's pinning, all pure functions over text; every
+// scenario loaded the way a run loads it; and each consumer's own device-free half (the leak hunt's
+// heap diff, verdict and report). The harness itself needs a device
 // and stays out of `check` (devicelab/README.md says why); this part needs neither a device nor a
 // network, so by this build's own rule it belongs here, where a change that breaks it fails CI rather
 // than the next device run. Shell rather than a JVM test because the harness is shell.

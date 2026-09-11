@@ -20,17 +20,18 @@ set -euo pipefail
 . "$DEVICELAB_HOME/lib/artifacts.sh"
 . "$DEVICELAB_HOME/lib/metadata.sh"
 . "$DEVICELAB_HOME/lib/ui.sh"
+. "$DEVICELAB_HOME/lib/trace_processor.sh"
 
 DEMO_PACKAGE=com.superplayer.demo
 DEMO_ACTIVITY=.MainActivity
-DEVICE_TRACE_DIR=/data/misc/perfetto-traces
 
 usage() {
     sed -n '4,13p' "$0" | sed 's/^# \{0,1\}//' >&2
     cat >&2 <<'USAGE'
 
 Options:
-  --data-sources a,b   Perfetto data sources beyond the base config (`lab list` names them)
+  --data-sources a,b   Perfetto data sources beyond the base config (`lab list` names them);
+                       empty or absent means the scenario's own SCENARIO_DATA_SOURCES
   --build-type T       benchmark (default) or debug
   --serial S           use this device; it is never booted or restarted (also: ANDROID_SERIAL)
   --headless           boot the emulator without a window (the default when CI is set)
@@ -89,11 +90,15 @@ load_scenario() {
     [ -f "$file" ] || die "no scenario '$1'; available: $(list_scenarios | tr '\n' ' ')"
     SCENARIO_TRACE_FROM=launch
     SCENARIO_TRACE_MS=300000
+    SCENARIO_DATA_SOURCES=""
     # shellcheck source=/dev/null
     . "$file"
     declare -F scenario_drive >/dev/null || die "scenario '$1' defines no scenario_drive"
     TRACE_FROM="${TRACE_FROM:-$SCENARIO_TRACE_FROM}"
     TRACE_MS="${TRACE_MS:-$SCENARIO_TRACE_MS}"
+    # Empty as well as absent, so that a caller passing the option through unset — the device
+    # workflow does, when its input is left blank — gets the scenario's own choice rather than none.
+    DATA_SOURCES="${DATA_SOURCES:-$SCENARIO_DATA_SOURCES}"
     case "$TRACE_FROM" in
         launch | playing) ;;
         *) die "the trace starts at launch or playing, not '$TRACE_FROM'" ;;
@@ -112,16 +117,6 @@ load_scenario() {
 list_scenarios() {
     local file
     for file in "$DEVICELAB_HOME"/scenarios/*.sh; do basename "$file" .sh; done
-}
-
-# `adb pull`, bounded, printing nothing unless it fails. It reports progress on stderr, which would
-# otherwise land in the run's output as though it were news.
-adb_pull() {
-    local output
-    output="$(ADB_TIMEOUT=600 adb_s pull "$1" "$2" 2>&1)" || {
-        printf '%s\n' "$output" >&2
-        return 1
-    }
 }
 
 # --- Build ---------------------------------------------------------------------------------------
@@ -195,66 +190,29 @@ install_demo() {
 
 # --- Perfetto --------------------------------------------------------------------------------------
 
-# The trace runs as a *detached* Perfetto session, named by the run, and is stopped by name.
-#
-# Not by signal: on API 36 the shell user may not signal the perfetto process, although `ps` lists it
-# as shell's, so `kill -TERM` — the obvious way to end a trace early — is refused, and `kill -0`
-# reports a live trace as gone. Detaching is Perfetto's own supported way to end a trace from another
-# invocation (`--attach=KEY --stop`), and `--is_detached=KEY` answers whether it is still running.
-#
-# What detaching gives up is `--background-wait`: the two are mutually exclusive, so the start no
-# longer waits for every data source to confirm it has started. A pause of TRACE_SETTLE_S (default 2)
-# stands in for that confirmation; a source slower to start than that misses the scenario's first
-# moments, and a consumer whose source is known to be slow should raise it.
-#
-# ref: https://perfetto.dev/docs/reference/perfetto-cli
+# The run's own trace: one keyed Perfetto session among any the scenario opens, all of them
+# lib/perfetto.sh's to start, stop and abandon. Its key is the run's id, so it cannot collide with a
+# scenario's, which are the run's id plus a name.
 start_trace() {
-    local output
-    DEVICE_TRACE="$DEVICE_TRACE_DIR/devicelab-$RUN_ID.perfetto-trace"
-    PERFETTO_KEY="devicelab-$RUN_ID"
-    output="$(adb_s shell perfetto --txt -c - -o "$DEVICE_TRACE" "--detach=$PERFETTO_KEY" \
-        < "$RUN_DIR/perfetto-config.pbtxt" 2>&1 | tr -d '\r')" || true
-    [ "$(perfetto_session_state)" = running ] || die "perfetto did not start a session: $output"
-    sleep "${TRACE_SETTLE_S:-2}"
-    log "tracing (session $PERFETTO_KEY, bounded at ${TRACE_MS} ms)"
+    perfetto_session_start "devicelab-$RUN_ID" "$RUN_DIR/perfetto-config.pbtxt"
+    log "tracing (session devicelab-$RUN_ID, bounded at ${TRACE_MS} ms)"
 }
 
-# `running` while the session exists, `ended` once it does not; anything else fails the run.
-perfetto_session_state() {
-    local code
-    code="$(adb_s shell "perfetto --is_detached=$PERFETTO_KEY >/dev/null 2>&1; echo \$?" | tr -d '\r')"
-    case "$code" in
-        0) printf 'running\n' ;;
-        2) printf 'ended\n' ;;
-        *) die "perfetto could not say whether session $PERFETTO_KEY is running (exit $code)" ;;
-    esac
-}
-
-# Ends the trace, which returns once perfetto has written it, and pulls it. A session that had
-# already ended hit its bound before the scenario finished, which the metadata records rather than
-# hides.
+# Ends the run's trace and pulls it. A session that had already ended hit its bound before the
+# scenario finished, which the metadata records rather than hides.
 stop_trace() {
-    RUN_TRACE_ENDED_BY_BOUND=0
-    if [ "$(perfetto_session_state)" = running ]; then
-        ADB_TIMEOUT=120 adb_s shell perfetto "--attach=$PERFETTO_KEY" --stop >/dev/null 2>&1 ||
-            die "perfetto did not stop session $PERFETTO_KEY"
-    else
-        RUN_TRACE_ENDED_BY_BOUND=1
+    perfetto_session_stop "devicelab-$RUN_ID" "$RUN_DIR/trace.perfetto-trace"
+    RUN_TRACE_ENDED_BY_BOUND="$PERFETTO_ENDED_BY_BOUND"
+    [ "$RUN_TRACE_ENDED_BY_BOUND" = 0 ] ||
         log "warning: the trace reached its ${TRACE_MS} ms bound before the scenario ended"
-    fi
-    PERFETTO_KEY=""
-    adb_pull "$DEVICE_TRACE" "$RUN_DIR/trace.perfetto-trace" ||
-        die "could not pull $DEVICE_TRACE"
-    adb_s shell rm -f "$DEVICE_TRACE"
-    [ -s "$RUN_DIR/trace.perfetto-trace" ] || die "perfetto wrote an empty trace"
 }
 
-# On any exit with a session still open — a failed run — stop it and delete its file, rather than
-# leave the device tracing into storage until the bound runs out.
-abandon_trace() {
-    [ -n "${PERFETTO_KEY:-}" ] || return 0
-    adb_s shell perfetto "--attach=$PERFETTO_KEY" --stop >/dev/null 2>&1 || true
-    adb_s shell rm -f "$DEVICE_TRACE" >/dev/null 2>&1 || true
+# On any exit: stop every session still open — a failed run's — and delete its file, rather than leave
+# the device tracing into storage until a bound runs out. Then the scenario's own cleanup, which runs on
+# success too: a scenario that changed a device setting puts it back either way.
+on_exit() {
+    perfetto_abandon_all
+    if declare -F scenario_cleanup >/dev/null; then scenario_cleanup || true; fi
 }
 
 # --- The device, described -------------------------------------------------------------------------
@@ -354,12 +312,13 @@ cmd_run() {
     [ -z "${CI:-}" ] || HOST_CI=1
     mkdir -p "$RUN_WORK"
     export DEVICELAB_WORK="$RUN_WORK"
-    PERFETTO_KEY=""
-    trap abandon_trace EXIT
+    trap on_exit EXIT
     log "run $RUN_ID → $RUN_DIR"
 
     # Composed first, so a misspelt data source costs a second rather than a build and a boot.
     perfetto_config "$TRACE_MS" "$DEMO_PACKAGE" "$DATA_SOURCES" > "$RUN_DIR/perfetto-config.pbtxt"
+    # Whatever else the scenario needs from the host, for the same reason and at the same point.
+    if declare -F scenario_prepare >/dev/null; then scenario_prepare; fi
 
     ensure_device
     describe_device
@@ -393,6 +352,15 @@ cmd_run() {
     run_json > "$RUN_DIR/run.json"
     write_report > "$RUN_DIR/report.md"
     rm -rf "$RUN_WORK"
+
+    # A scenario that judges what it measured says so here, once everything is written. A failing
+    # verdict is exit 3, apart from every other failure: the run itself worked, and its output is
+    # complete and worth reading.
+    if declare -F scenario_verdict >/dev/null && ! scenario_verdict; then
+        log "done, and the scenario's verdict is a failure: $RUN_DIR/report.md"
+        printf '%s\n' "$RUN_DIR"
+        exit 3
+    fi
     log "done: $RUN_DIR"
     printf '%s\n' "$RUN_DIR"
 }

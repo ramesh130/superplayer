@@ -53,6 +53,12 @@ asm = "9.9"
 spotless = "8.10.2"
 ktlint = "1.8.0"
 
+# --- devicelab only: the Perfetto release whose trace processor queries device traces ---
+# Not a Gradle dependency, and nothing in either build resolves it. devicelab/lib/trace_processor.sh
+# downloads that release's archive for the host and checks it against
+# devicelab/perfetto/trace-processor.sha256, which has to move with this line.
+perfetto = "58.2"
+
 [libraries]
 # Media3. Every entry resolves `media3` above.
 media3-common = { module = "androidx.media3:media3-common", version.ref = "media3" }

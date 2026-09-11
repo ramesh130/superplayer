@@ -107,9 +107,12 @@ public object SyntheticHlsStream {
      * needs. A test about *buffering* needs a stream longer than the buffer it is asserting on, and
      * asks for more; every segment is byte-identical apart from its timestamp tag, because what
      * varies is how much of the stream exists and not what is in it.
+     *
+     * One variant, unlike [writeTo]: the two-variant form exists for the track-selection test that
+     * plays through the real transfer chain, and nothing serving from memory has needed it.
      */
-    public fun resources(segmentCount: Int = 1, variantCount: Int = 1): Map<String, ByteArray> =
-        files(segmentCount, variantCount).mapKeys { (name, _) -> BASE_URI + name }
+    public fun resources(segmentCount: Int = 1): Map<String, ByteArray> =
+        files(segmentCount).mapKeys { (name, _) -> BASE_URI + name }
 
     /**
      * The same stream on disk, returning the multivariant playlist's `file:` URI.

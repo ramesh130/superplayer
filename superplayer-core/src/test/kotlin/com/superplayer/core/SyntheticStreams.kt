@@ -31,13 +31,13 @@ import com.superplayer.testmedia.SyntheticHlsStream
  * Extension functions rather than a helper object, so that every call site reads exactly as it did
  * when the generators lived in this package.
  */
-internal fun SyntheticHlsStream.addTo(fakeDataSet: FakeDataSet, segmentCount: Int = 1): FakeDataSet {
-    resources(segmentCount).forEach { (uri, bytes) -> fakeDataSet.setData(uri, bytes) }
-    return fakeDataSet
-}
+internal fun SyntheticHlsStream.addTo(fakeDataSet: FakeDataSet, segmentCount: Int = 1): FakeDataSet =
+    fakeDataSet.serve(resources(segmentCount))
 
 /** The DASH counterpart of [SyntheticHlsStream.addTo], on the same terms. */
-internal fun SyntheticDashStream.addTo(fakeDataSet: FakeDataSet, segmentCount: Int = 1): FakeDataSet {
-    resources(segmentCount).forEach { (uri, bytes) -> fakeDataSet.setData(uri, bytes) }
-    return fakeDataSet
-}
+internal fun SyntheticDashStream.addTo(fakeDataSet: FakeDataSet, segmentCount: Int = 1): FakeDataSet =
+    fakeDataSet.serve(resources(segmentCount))
+
+/** The one line the two above share: a stream's URI-to-bytes, served from this set. */
+private fun FakeDataSet.serve(resources: Map<String, ByteArray>): FakeDataSet =
+    apply { resources.forEach { (uri, bytes) -> setData(uri, bytes) } }

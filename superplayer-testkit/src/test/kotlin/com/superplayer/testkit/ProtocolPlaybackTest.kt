@@ -53,8 +53,15 @@ class ProtocolPlaybackTest {
 
         // The playlists first, then the segments, and the segments numbered from zero: the whole
         // claim the fault injector's addressing rests on, seen under a real HLS source.
+        //
+        // Two manifests, because HLS reads a multivariant playlist and then a media playlist — and
+        // `ResourceAddressBook.kindOf` has to classify both by their `.m3u8` name. No
+        // initialization segment at all: packed audio has none, which is the one asymmetry between
+        // the protocols and the reason a `ResourceKind.INITIALIZATION` fault addresses nothing here.
         val requested = harness.requestedResources(player)
+        assertThat(requested.filter { it.kind == ResourceKind.MANIFEST }).hasSize(2)
         assertThat(requested.first().kind).isEqualTo(ResourceKind.MANIFEST)
+        assertThat(requested.map { it.kind }).doesNotContain(ResourceKind.INITIALIZATION)
         assertThat(requested.filter { it.kind == ResourceKind.MEDIA_SEGMENT }.map { it.index })
             .containsExactlyElementsIn(0 until TestContent.DEFAULT_SEGMENT_COUNT)
             .inOrder()
@@ -68,11 +75,13 @@ class ProtocolPlaybackTest {
         assertThat(player.playerError).isNull()
         assertThat(player.playbackState).isEqualTo(Player.STATE_ENDED)
 
+        // One manifest — the MPD — where HLS reads two, and one initialization segment where HLS
+        // has none. The mirror of the HLS assertions above, and between them they are what
+        // `docs/testing.md` claims the resource-kind heuristic does under the real parsers.
         val requested = harness.requestedResources(player)
+        assertThat(requested.filter { it.kind == ResourceKind.MANIFEST }).hasSize(1)
         assertThat(requested.first().kind).isEqualTo(ResourceKind.MANIFEST)
-        // DASH has an initialization segment and HLS's packed audio does not, which is the one
-        // asymmetry between the two streams — and the reason `ResourceKind` names it separately.
-        assertThat(requested.map { it.kind }).contains(ResourceKind.INITIALIZATION)
+        assertThat(requested.filter { it.kind == ResourceKind.INITIALIZATION }).hasSize(1)
         assertThat(requested.filter { it.kind == ResourceKind.MEDIA_SEGMENT }.map { it.index })
             .containsExactlyElementsIn(0 until TestContent.DEFAULT_SEGMENT_COUNT)
             .inOrder()

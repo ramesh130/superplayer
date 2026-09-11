@@ -19,6 +19,13 @@ dependencies {
     implementation(libs.media3.datasource)
     implementation(libs.androidx.annotation)
 
+    // The synthetic HLS and DASH streams these tests play. They live in their own module so that
+    // `superplayer-testkit`'s *main* source set can reach the same copy: core cannot depend on
+    // testkit (a later phase, and a cycle besides), so the one home both can see has to sit below
+    // both. `docs/modules.md` carries the row and `docs/testing.md` the argument. Phase 1 depending
+    // on phase 1 — and test-only, so nothing a consumer resolves reaches it.
+    testImplementation(project(":superplayer-testmedia"))
+
     // The project's single test seam: drive the library through its public API under
     // Robolectric, against Media3's own fakes. `media3-test-utils-robolectric` brings
     // Robolectric, Truth, Mockito and androidx.test with it, so they are not declared again

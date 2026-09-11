@@ -16,19 +16,26 @@ declareKotlinFriendModule(":superplayer-core")
 
 dependencies {
     api(project(":superplayer-core"))
+
+    // The synthetic HLS and DASH streams the harness plays. `api`, so a module testing against this
+    // harness can also name what the stream declares — the codec, the bitrate, the segment duration
+    // — which is half of what an assertion about protocol playback says. Phase 2 on phase 1.
+    api(project(":superplayer-testmedia"))
     // The fault injector wraps a `DataSource`, so this module names the artifact those types come
     // from rather than resolving it through `superplayer-core`'s own transitive graph.
     implementation(libs.media3.datasource)
+    // The protocols' own parsers and media sources. `DefaultMediaSourceFactory` finds them by
+    // reflection, so a harness that plays synthetic HLS or DASH needs them on its *runtime*
+    // classpath rather than only on a test's — and `FaultInjectionTest` reads its URL sequences out
+    // of the same parsers, so a real playlist and a real MPD decide what the addressing is compared
+    // against. `implementation`: no signature in this module names a protocol.
+    implementation(libs.media3.exoplayer.hls)
+    implementation(libs.media3.exoplayer.dash)
     api(libs.media3.test.utils)
     api(libs.media3.test.utils.robolectric)
 
     // This module's own tests: the fakes above are already `api`, so only the Robolectric runtime
     // is added here — the same pin `superplayer-core` uses, for the reason `CLAUDE.md` gives about
     // Robolectric runtimes and JDK versions.
-    // The protocols' own parsers, so the fault-addressing test derives its URL sequences from a real
-    // HLS playlist and a real MPD rather than from a list the test wrote. Test-only: the injector
-    // itself names no protocol.
-    testImplementation(libs.media3.exoplayer.hls)
-    testImplementation(libs.media3.exoplayer.dash)
     testImplementation(libs.robolectric)
 }

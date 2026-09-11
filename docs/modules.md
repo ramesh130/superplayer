@@ -35,6 +35,7 @@ than to wave the dependency through.
 | `superplayer-core` | 1 | SuperPlayer facade, PlaybackSession, config profiles, player pool | Media3 only |
 | `superplayer-telemetry` | 2 | QoE collector (CTA-2066), CMCD emitter, pluggable sinks | core, testkit (tests only) |
 | `superplayer-testkit` | 2 | Fault injection, network shaping, fake manifests, golden traces | core, Media3 test utils |
+| `superplayer-testmedia` | 1 | Synthetic HLS and DASH streams: the known-good media tests play | nothing |
 | `superplayer-abr` | 3 | AdaptiveLoadControl, NetworkAwareTrackSelection, BandwidthOracle | core |
 | `superplayer-preload` | 4 | PreloadCoordinator: segment-0 prefetch and decoder warm-up | core |
 | `superplayer-cache` | 4 | Content-keyed CacheDataSource, tiering, eviction policy | core |
@@ -44,6 +45,19 @@ than to wave the dependency through.
 | `superplayer-tv` | 8 | CTV: display capability, Leanback and Compose-for-TV surfaces | core |
 | `superplayer-diagnostics` | 9 | MediaSourceDoctor, session trace bundle, on-device debug HUD | core |
 | `superplayer-ui` | — † | Optional Compose player surface | core |
+
+`superplayer-testmedia` is the one module that depends on nothing, and that is what it is for. Its
+synthetic HLS and DASH streams are played by `superplayer-core`'s tests *and* by
+`superplayer-testkit`'s main source set, and core cannot depend on testkit — a later phase, and a
+cycle besides — so the one home both can see has to sit below both. Phase 1, therefore: a phase-1
+module's tests may reach it, which is the constraint that fixes the number. **That number is the one
+exception to the rule below that phases come from `PRD.md`** — the roadmap does not schedule this
+module, because it is not a capability anyone ships but the fixture the other modules' tests share,
+so it is the dependency rule rather than the roadmap that decides where it sits. It names no Media3 type
+either, which is what keeps `verifyNoUnstableMedia3InPublicApi` satisfied without an `@UnstableApi`
+`FakeDataSet` in a signature; serving a stream from one is a line at each call site.
+`docs/testing.md` carries the rest of the argument, including why duplicating the generators or
+shipping them inside `superplayer-core`'s own artifact was worse.
 
 **The phase numbers come from [`PRD.md`](../PRD.md) Part 4, and from nowhere else.** That table is
 the roadmap; this one is the roadmap expressed as a dependency constraint. When the two disagree the

@@ -89,6 +89,38 @@ class FaultInjectionPlaybackTest {
         assertThat(player.playerError).isNotNull()
     }
 
+    @Test
+    fun theSameScriptFailsTheSameSegmentUnderHlsAndUnderDash() {
+        // One script, two protocols, and not a URL in either: `ResourceKind.MEDIA_SEGMENT` plus an
+        // index is the same sentence under an HLS media playlist and under an MPD's `SegmentList`,
+        // which is the whole reason a fault is addressed this way. This is where that claim stops
+        // being about a URL sequence and becomes about playback — real parsers, real extractors,
+        // real segment fetches — for both protocols at once.
+        val faulted = mutableMapOf<String, List<Int>>()
+
+        listOf("HLS" to TestContent.hls(), "DASH" to TestContent.dash()).forEach { (name, content) ->
+            val script = FaultScript.Builder()
+                .failWithHttpStatus(FaultScript.HTTP_NOT_FOUND, ResourceKind.MEDIA_SEGMENT, FAULTED_SEGMENT)
+                .build()
+            val player = harness.buildPlayer(content = content, faults = script)
+            player.setMediaRequest(MediaRequest.Builder(CONTENT).addSource(content.sourceUri).build())
+            // Waits for the error rather than advancing a fixed span: the two protocols reach the
+            // faulted segment after different numbers of fetches — HLS reads a multivariant playlist
+            // and then a media playlist before its first segment — and a fixed advance long enough
+            // for both would be a number chosen to make the slower one pass.
+            harness.playToFailure(player)
+
+            faulted[name] = harness.requestedResources(player)
+                .filter { it.kind == ResourceKind.MEDIA_SEGMENT }
+                .map { it.index }
+        }
+
+        // The segments before the faulted one were fetched, the faulted one was reached, and
+        // nothing past it was — identically under both, which is what "the same script" means.
+        assertThat(faulted["HLS"]).containsExactlyElementsIn(0..FAULTED_SEGMENT).inOrder()
+        assertThat(faulted["DASH"]).isEqualTo(faulted["HLS"])
+    }
+
     private fun play(faults: FaultScript): SuperPlayer {
         val player = harness.buildPlayer(content = TestContent.video(), faults = faults)
         player.setMediaRequest(MediaRequest.Builder(CONTENT).addSource(SOURCE).build())
@@ -104,7 +136,11 @@ class FaultInjectionPlaybackTest {
         /** Far enough into the content that the faulted segment is reached and played past. */
         const val PLAYED_MS = 20_000L
 
-        /** Late enough that segments play first, so a fault that fired too early is visible. */
+        /**
+         * Late enough that segments play first, so a fault that fired too early is visible — and
+         * within [TestContent.DEFAULT_SEGMENT_COUNT], so the synthetic streams have a segment for it
+         * to land on.
+         */
         const val FAULTED_SEGMENT = 2
 
         /** Three, because "deterministic" is a claim about repetition and one run cannot make it. */

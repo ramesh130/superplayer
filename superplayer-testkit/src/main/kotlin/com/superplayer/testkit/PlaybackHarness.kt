@@ -28,6 +28,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.RenderersFactory
 import androidx.media3.exoplayer.drm.DrmSessionManager
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.TrackGroupArray
 import androidx.media3.test.utils.FakeAdaptiveDataSet
@@ -35,6 +36,7 @@ import androidx.media3.test.utils.FakeAdaptiveMediaSource
 import androidx.media3.test.utils.FakeAudioRenderer
 import androidx.media3.test.utils.FakeChunkSource
 import androidx.media3.test.utils.FakeClock
+import androidx.media3.test.utils.FakeDataSet
 import androidx.media3.test.utils.FakeDataSource
 import androidx.media3.test.utils.FakeMediaPeriod
 import androidx.media3.test.utils.FakeMediaSource
@@ -45,6 +47,8 @@ import com.superplayer.core.PlaybackProfile
 import com.superplayer.core.PlayerPool
 import com.superplayer.core.SuperPlayer
 import com.superplayer.core.TelemetryCollector
+import com.superplayer.testmedia.SyntheticDashStream
+import com.superplayer.testmedia.SyntheticHlsStream
 import org.junit.rules.ExternalResource
 import java.util.IdentityHashMap
 import java.util.Random
@@ -132,7 +136,15 @@ public class PlaybackHarness : ExternalResource() {
         faults: FaultScript = FaultScript.NONE,
     ): SuperPlayer {
         var built: ControllableVideoRenderer? = null
-        val injector = FaultInjectingDataSource.Factory(FakeDataSource.Factory(), faults, clock)
+        // The injector's own upstream carries the synthetic stream, because that is the one path
+        // where the injector makes its own sources: real HLS and real DASH load through this
+        // factory. The adaptive path below builds its sources inside Media3's `FakeChunkSource` and
+        // reaches the injector by `wrap`, so the data set handed over here is empty and unused there.
+        val injector = FaultInjectingDataSource.Factory(
+            FakeDataSource.Factory().setFakeDataSet(fakeDataSetFor(content)),
+            faults,
+            clock,
+        )
         val player = SuperPlayer.Builder(ApplicationProvider.getApplicationContext())
             .apply { profile?.let { setProfile(it) } }
             .apply { telemetry?.let { setTelemetry(it) } }
@@ -265,6 +277,12 @@ public class PlaybackHarness : ExternalResource() {
      * The counterpart of [playToReady] for a fault armed with [failRendering] before playback
      * started: nothing renders, so there is no ready state to wait for, and the thing being waited
      * on is the error.
+     *
+     * It is also what a [FaultScript] armed at a transfer wants, and for a second reason: how many
+     * loads a session makes before it reaches the faulted one is the protocol's business — HLS reads
+     * a multivariant playlist and then a media playlist before its first segment, DASH an MPD and an
+     * initialization segment — so a test that advanced a fixed span instead would be picking a
+     * number that made the slower protocol pass.
      */
     public fun playToFailure(player: SuperPlayer) {
         player.prepare()
@@ -366,6 +384,14 @@ public class PlaybackHarness : ExternalResource() {
         faults: FaultScript,
         injector: FaultInjectingDataSource.Factory,
     ): MediaSource.Factory {
+        // A real protocol stream is not described by a timeline at all: the manifest says what the
+        // content is, Media3's own parser reads it, and its own extractor demuxes the segments. The
+        // injector is the `DataSource.Factory` underneath, so every fetch the protocol makes — the
+        // playlist, the initialization segment, each media segment — passes through a fault script.
+        if (content.protocol != TestContent.Protocol.DESCRIBED) {
+            return DefaultMediaSourceFactory(injector)
+        }
+
         val formats = content.videoBitratesBps.mapIndexed { index, bitrate -> videoFormat(index, bitrate) }
         val timeline = FakeTimeline(
             FakeTimeline.TimelineWindowDefinition.Builder()
@@ -437,6 +463,24 @@ public class PlaybackHarness : ExternalResource() {
             override fun setLoadErrorHandlingPolicy(
                 policy: androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy,
             ): MediaSource.Factory = this
+        }
+    }
+
+    /**
+     * The bytes [content] is served from, or an empty set for content Media3 synthesizes.
+     *
+     * `superplayer-testmedia` hands a stream over as URI-to-bytes and names no Media3 type — see
+     * `docs/testing.md` for why the one home both this module and `superplayer-core`'s tests can
+     * reach has to be below both — so putting one into a [FakeDataSet] is this line, here.
+     */
+    private fun fakeDataSetFor(content: TestContent): FakeDataSet {
+        val resources = when (content.protocol) {
+            TestContent.Protocol.DESCRIBED -> emptyMap()
+            TestContent.Protocol.HLS -> SyntheticHlsStream.resources(content.segmentCount)
+            TestContent.Protocol.DASH -> SyntheticDashStream.resources(content.segmentCount)
+        }
+        return FakeDataSet().apply {
+            resources.forEach { (uri, bytes) -> setData(uri, bytes) }
         }
     }
 

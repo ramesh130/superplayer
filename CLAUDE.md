@@ -9,7 +9,7 @@ Three Gradle builds, not one. Mistaking them for a single build is the usual fir
 
 | Build | What it is |
 | --- | --- |
-| root | the 12 `superplayer-*` library modules, listed in `settings.gradle.kts` |
+| root | the 13 `superplayer-*` library modules, listed in `settings.gradle.kts` |
 | `build-logic/` | an **included build** holding the convention plugins every module applies |
 | `demo/` | a **separate** build resolving the library from published Maven coordinates |
 
@@ -163,10 +163,13 @@ forwarding-contract assertion over both and is what catches the next one Media3 
 `superplayer-telemetry` holds `QoeCollector` and `LogcatSink`. `superplayer-testkit` holds
 `PlaybackHarness` — the deterministic playback harness every module from phase 2 onward tests
 against, which compiles as a Kotlin *friend* of core so it can reach the one internal seam
-`docs/testing.md` describes, and whose own public API names no Media3 type. Every other library
-module is still an empty placeholder: they exist so boundaries are fixed and enforceable before code
-arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit` and `build-logic` are the
-only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
+`docs/testing.md` describes, and whose own public API names no Media3 type. `superplayer-testmedia`
+holds `SyntheticHlsStream` and `SyntheticDashStream`, the known-good streams both core's tests and
+that harness play; it is phase 1 and depends on nothing — not even Media3 — because it has to sit
+below both, and `docs/testing.md` carries the argument for the module rather than a second copy.
+Every other library module is still an empty placeholder: they exist so boundaries are fixed and
+enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`
+and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
 requirements, and the phase table are what the issues are cut from.
 
 `PLAN.md` is an untracked, local-only scratch draft that `PRD.md` supersedes. **Do not read it, cite

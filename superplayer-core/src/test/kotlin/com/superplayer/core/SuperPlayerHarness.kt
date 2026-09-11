@@ -24,6 +24,7 @@ import androidx.media3.test.utils.FakeDataSet
 import androidx.media3.test.utils.FakeDataSource
 import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
 import androidx.test.core.app.ApplicationProvider
+import com.superplayer.testmedia.SyntheticHlsStream
 import org.junit.rules.ExternalResource
 
 /**

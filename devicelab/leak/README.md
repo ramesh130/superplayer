@@ -12,8 +12,9 @@ LEAK_CYCLES=5 ./gradlew huntLeaks      # more lifecycle cycles (knobs below)
 
 It needs a device or an emulator. With none attached it boots the harness's AVD
 (`superplayer_verify_36`, API 36), and it measures the demo's `benchmark` build: release-like, not
-debuggable, and profileable by the shell (#52). A run takes about 15 minutes on the headless
-emulator, build included (the first clean run under the final procedure: 14:10 to 14:25 UTC). Output
+debuggable, and profileable by the shell (#52). A run takes about 23 minutes on the headless
+emulator at the default settings, build included (the two clean six-pass runs below: 23.4 and
+22.5 minutes). Output
 goes to `devicelab/out/<run>/`, and the report is `report.md`, whose last section is this scenario's.
 Nightly, `.github/workflows/leak-hunt.yml` runs it against `main` and uploads the same directory.
 

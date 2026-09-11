@@ -17,6 +17,7 @@
 package com.superplayer.core
 
 import android.content.Context
+import androidx.media3.common.util.Clock
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -44,8 +45,13 @@ import androidx.media3.exoplayer.source.MediaSource
  * something can answer it:
  *
  * ```
- *   cache            superplayer-cache: a content-keyed CacheDataSource. Outermost, so a hit is
- *                    answered without any layer below it running at all — which is the point of
+ *   revalidation     core, today: LivePlaylistRevalidation. Reads each live HLS playlist the engine
+ *                    receives and, once one is overdue by RFC 8216's own bound, asks past the
+ *                    caches for it. Outermost, because what it judges is what reached the engine,
+ *                    whichever layer below answered; a local cache that held a live playlist would
+ *                    be one more stale copy to it, and has to honour the same request directive.
+ *   cache            superplayer-cache: a content-keyed CacheDataSource. Outermost of the layers
+ *                    that answer a read, so a hit is answered without any layer below it running at all — which is the point of
  *                    a cache, and also what makes its position the one that must not drift.
  *                    superplayer-offline shares this layer and its key policy (PRD.md §3.5).
  *   header refresh   superplayer-resilience: the HeaderProvider re-invoked on 401/403, closest to
@@ -99,15 +105,28 @@ import androidx.media3.exoplayer.source.MediaSource
  *
  * ## What is assembled today
  *
- * The transport, and deliberately the same thing `ExoPlayer.Builder` would have installed by
- * itself — CMCD above it is configuration on the media source factory rather than a link in the
- * chain: `DefaultDataSource.Factory(context)` is defined as `DefaultDataSource.Factory(context,
+ * The transport, which is deliberately the same thing `ExoPlayer.Builder` would have installed by
+ * itself: `DefaultDataSource.Factory(context)` is defined as `DefaultDataSource.Factory(context,
  * DefaultHttpDataSource.Factory())`, and `DefaultMediaSourceFactory(context)` as
  * `DefaultMediaSourceFactory(DefaultDataSource.Factory(context))` over a `DefaultExtractorsFactory`,
- * which is what the builder's default supplier constructs. Routing through here changes what a
- * consumer gets in no way at all. The HTTP factory is named rather than left implicit because it is
- * the line ADR-0004 will replace, and a line that is not written down is a line that has to be found
- * first.
+ * which is what the builder's default supplier constructs. The HTTP factory is named rather than
+ * left implicit because it is the line ADR-0004 will replace, and a line that is not written down is
+ * a line that has to be found first.
+ *
+ * Above it, one layer of SuperPlayer's own: [LivePlaylistRevalidation]. It changes no request of a
+ * playlist that advances on time, so for healthy content the chain still behaves exactly as Media3's
+ * default does; what it changes is the stream a cache has frozen, which Media3 alone ends with an
+ * unclassified error. It is core's rather than `superplayer-resilience`'s for the reason CMCD is:
+ * the defect is in the transfer, the fix has to be in the chain, and a consumer with only
+ * `superplayer-core` is the one most likely to be behind a misconfigured CDN. `superplayer-resilience`'s
+ * classifier, when it arrives, reads the [StaleLivePlaylistException] this raises rather than
+ * re-deriving it. CMCD above all of it is configuration on the media source factory rather than a
+ * link in the chain.
+ *
+ * A test's fake data source arrives as [mediaSourceFactory]'s `transport`, through the engine
+ * configurator's [EngineConfiguration], and takes the HTTP stack's place and no other: the layers
+ * above it are composed exactly as they are over a consumer's network, so a test plays through the
+ * same chain a consumer's player does rather than through none of it.
  */
 internal object TransferChain {
 
@@ -121,19 +140,28 @@ internal object TransferChain {
      *
      * [cmcdMode] and [measurementSession] are the CMCD half: the mode this player emits under, and
      * the holder the `sid` is read from at prepare time. A disabled mode configures nothing at all.
+     *
+     * [transport] is what sits at the bottom of the chain in place of the HTTP stack — a test's fake
+     * data source, and nothing in production, where it is null.
      */
     fun mediaSourceFactory(
         context: Context,
         cmcdMode: CmcdMode,
         measurementSession: MeasurementSession,
+        transport: DataSource.Factory? = null,
     ): MediaSource.Factory =
-        DefaultMediaSourceFactory(dataSourceChain(context))
+        DefaultMediaSourceFactory(dataSourceChain(context, transport))
             .apply {
                 cmcdMode.toCmcdConfigurationFactory(measurementSession)
                     ?.let(::setCmcdConfigurationFactory)
             }
 
-    /** The chain itself — see the composition order above for what will wrap what. */
-    private fun dataSourceChain(context: Context): DataSource.Factory =
-        DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory())
+    /**
+     * The chain itself — see the composition order above for what wraps what — over [transport], or
+     * over the HTTP stack when there is none. One call is one player's chain: the layers hold
+     * per-session state.
+     */
+    private fun dataSourceChain(context: Context, transport: DataSource.Factory?): DataSource.Factory =
+        LivePlaylistRevalidation(Clock.DEFAULT)
+            .over(transport ?: DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory()))
 }

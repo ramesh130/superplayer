@@ -21,6 +21,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
 import com.superplayer.core.MediaRequest
+import com.superplayer.core.StaleLivePlaylistException
 import com.superplayer.testmedia.HostileManifests
 import com.superplayer.testmedia.HostileStream
 import com.superplayer.testmedia.HostileStream.Severity
@@ -63,8 +64,16 @@ class HostileManifestCorpusTest {
      * would make this table churn on Media3 upgrades without anything having changed.
      */
     private enum class Outcome {
-        /** The session raised a `PlaybackException`. */
+        /** The session raised a `PlaybackException` that nothing classified. */
         FAILS,
+
+        /**
+         * The session raised a `PlaybackException` whose cause is one of SuperPlayer's own typed
+         * failures: not recovered, but named, with a likely cause a user-facing message can be
+         * written from. `PRD.md` Part 4's Phase 5 exit criterion asks this of every fault that does
+         * not recover, which is why it is its own row and better than [FAILS].
+         */
+        FAILS_TYPED,
 
         /** No error, and never ready: the player never had anything to render. */
         NEVER_STARTS,
@@ -209,7 +218,7 @@ class HostileManifestCorpusTest {
     @Test
     fun theCacheControlPathologyIsCarriedAsDeclaredHeaders() {
         // The one entry whose defect is not in the bytes: `FakeDataSource` reports no response
-        // headers, so what the corpus can do is record the mismatch and say so. Asserted rather
+        // headers, so the corpus declares them and the harness serves them on top. Asserted rather
         // than left to a reader, because the alternative to this test is a pathology that looks
         // covered and exercises nothing.
         val stream = HostileManifests.hlsCachedLivePlaylist()
@@ -221,6 +230,26 @@ class HostileManifestCorpusTest {
         assertThat(playlist.value["Cache-Control"]).isEqualTo("public, max-age=600")
         assertThat(segments).hasSize(HostileManifests.SEGMENT_COUNT)
         segments.forEach { assertThat(it.value["Cache-Control"]).isEqualTo("no-store") }
+    }
+
+    @Test
+    fun theCachedLivePlaylistEndsNamingTheCacheItWasServedThrough() {
+        // What the served headers are for. The bytes alone say only that the playlist stopped; the
+        // `max-age=600` it arrives with says a shared cache may hold it for ten minutes, which is
+        // what turns "the stream is dead" into "a cache is holding the stream" in the error.
+        val stream = HostileManifests.hlsCachedLivePlaylist()
+        val content = TestContent.hostile(stream)
+        val player = harness.buildPlayer(content = content)
+        player.setMediaRequest(MediaRequest.Builder(stream.id).addSource(content.sourceUri).build())
+
+        harness.playToFailure(player)
+
+        val cause = player.playerError?.cause
+        assertThat(cause).isInstanceOf(StaleLivePlaylistException::class.java)
+        cause as StaleLivePlaylistException
+        assertThat(cause.likelyCause).isEqualTo(StaleLivePlaylistException.LikelyCause.INTERMEDIARY_CACHE)
+        assertThat(cause.servedCacheControl).isEqualTo("public, max-age=600")
+        assertThat(cause.playlistUri).endsWith(".m3u8")
     }
 
     /**
@@ -267,8 +296,10 @@ class HostileManifestCorpusTest {
         }
         positionOutsideMedia = positionOutsideMedia || isOutsideMedia(player.currentPosition, stream)
 
+        val error = player.playerError
         return when {
-            player.playerError != null -> Outcome.FAILS
+            error != null && isTyped(error.cause) -> Outcome.FAILS_TYPED
+            error != null -> Outcome.FAILS
             !everReady -> Outcome.NEVER_STARTS
             positionOutsideMedia -> Outcome.DEGRADES
             player.playbackState == Player.STATE_ENDED -> Outcome.PLAYS_TO_END
@@ -276,6 +307,9 @@ class HostileManifestCorpusTest {
             else -> Outcome.STALLS
         }
     }
+
+    /** Whether [cause] is one of the failures SuperPlayer names, rather than the engine's own. */
+    private fun isTyped(cause: Throwable?): Boolean = cause is StaleLivePlaylistException
 
     /**
      * Whether [positionMs] is somewhere [stream] has no media: before zero, or more than a segment
@@ -327,9 +361,12 @@ class HostileManifestCorpusTest {
             // 17.5 s of genuinely ragged segments, played end to end.
             "hls-inconsistent-segment-durations" to Outcome.PLAYS_TO_END,
             "hls-discontinuity-without-timeline" to Outcome.PLAYS_TO_END,
-            // `PlaylistStuckException`: the frozen-live-stream ticket, reproduced. Unclassified
-            // today; issue #66.
-            "hls-cached-live-playlist" to Outcome.FAILS,
+            // The frozen-live-stream ticket, reproduced and named. These bytes never change, so the
+            // reloads past the cache that recover a real one (`LivePlaylistRevalidationTest`) find
+            // nothing newer, and the session ends with a `StaleLivePlaylistException` pointing at
+            // the cache the served `max-age=600` names — rather than Media3's unclassified
+            // `PlaylistStuckException`, which was this row until issue #66.
+            "hls-cached-live-playlist" to Outcome.FAILS_TYPED,
             "dash-ladder-gap" to Outcome.PLAYS_TO_END,
             "dash-overstated-bitrate" to Outcome.PLAYS_TO_END,
             "dash-missing-codecs" to Outcome.PLAYS_TO_END,
@@ -366,7 +403,7 @@ class HostileManifestCorpusTest {
             "hls-dangling-audio-group" to binary(Outcome.PLAYS_TO_END),
             "hls-inconsistent-segment-durations" to graded(Outcome.PLAYS_TO_END, Outcome.PLAYS_TO_END, Outcome.PLAYS_TO_END),
             "hls-discontinuity-without-timeline" to binary(Outcome.PLAYS_TO_END),
-            "hls-cached-live-playlist" to binary(Outcome.FAILS),
+            "hls-cached-live-playlist" to binary(Outcome.FAILS_TYPED),
             "dash-ladder-gap" to graded(Outcome.PLAYS_TO_END, Outcome.PLAYS_TO_END, Outcome.PLAYS_TO_END),
             "dash-overstated-bitrate" to graded(Outcome.PLAYS_TO_END, Outcome.PLAYS_TO_END, Outcome.PLAYS_TO_END),
             "dash-missing-codecs" to binary(Outcome.PLAYS_TO_END),

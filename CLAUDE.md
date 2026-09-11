@@ -123,8 +123,11 @@ sixty rows with a live count of what the pool has built.
 Everything below `MediaSource` loads through one `DataSource.Factory` chain, and `TransferChain` is
 the single internal place it and the `MediaSource.Factory` over it are assembled — reached from
 `SuperPlayer.Builder.build()`, because `ExoPlayer` has no runtime media-source-factory setter. What it
-composes today is exactly Media3's own default; what it exists for is the order, which its KDoc writes
-down along with where `superplayer-cache`, `-abr`, `-telemetry`, `-resilience` and `-offline` each
+composes today is Media3's own default transport under one layer of core's, `LivePlaylistRevalidation`
+— which changes no request of a live HLS playlist that advances on time, reloads an overdue one with
+`Cache-Control: no-cache`, and fails one that still will not move with the public
+`StaleLivePlaylistException` naming the likely cause, before Media3's untyped `PlaylistStuckException`
+can fire (issue #66). What the chain exists for is the order, which its KDoc writes down along with where `superplayer-cache`, `-abr`, `-telemetry`, `-resilience` and `-offline` each
 insert themselves (`PRD.md` §2.4). Two of those insert nothing into the chain and the KDoc is mostly
 about them: measurement is a propagated `TransferListener`, so a layer that drops the registration
 blinds ABR silently, and cache hits stay out of the estimate through Media3's `isNetwork` flag rather
@@ -173,7 +176,10 @@ thing wrong, a `// spec:` citation and a field cause — whose current behaviour
 `docs/testing.md` says what a new entry must carry. A pathology with a magnitude is generated at three
 `HostileStream.Severity` levels, each value argued where it is chosen: `graded()` returns them all, and
 `all()` is its `SEVERE` half. The `BENIGN` level exists so a doctor is scored on false positives too.
-The harness also replays a network: `buildPlayer(network = …)` takes a `ThroughputTrace` — bandwidth,
+Both harnesses put their fakes in the engine configurator's *transport* slot, under the chain
+`SuperPlayer.Builder` composes, so a test of real HLS or DASH sees every layer a consumer's player has; `TestContent.liveHls()`
+is a live origin that keeps publishing and `FaultScript.Builder.serveThroughCache` a CDN cache in front
+of it. The harness also replays a network: `buildPlayer(network = …)` takes a `ThroughputTrace` — bandwidth,
 round trip and a *transport* per stretch, the last so a WiFi→cellular handover is a change of network
 rather than of rate — and paces every transfer on it through `ShapingDataSource`, which sits in front
 of the fault injector so a trace and a `FaultScript` are one player. `NetworkProfile` is `PRD.md`

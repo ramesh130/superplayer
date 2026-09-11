@@ -31,11 +31,11 @@ import org.junit.runner.RunWith
 /**
  * The transfer chain `SuperPlayer.Builder.build()` assembles, driven for real.
  *
- * Every other test in this module substitutes Media3's `FakeDataSource` through the builder's
- * internal engine configurator, which is the right seam for a test about playback — and precisely
- * the wrong one for a test about what SuperPlayer loads *through*, because the substitution replaces
- * the whole chain. So this class replaces nothing below the clock and plays a `file:` URI, which
- * `DefaultDataSource` resolves without a network.
+ * Every other test in this module substitutes Media3's `FakeDataSource` for the HTTP stack through
+ * the builder's internal engine configurator, which is the right seam for a test about playback —
+ * and precisely the wrong one for a test about whether that bottom layer resolves anything, because
+ * the substitution replaces it. So this class replaces nothing below the clock and plays a `file:`
+ * URI, which `DefaultDataSource` resolves without a network.
  *
  * What it is here to catch is a regression in the composition itself. `TransferChain` exists so that
  * cache, measurement, CMCD and header refresh have one documented place to insert themselves; the
@@ -75,9 +75,9 @@ class SuperPlayerTransferChainTest {
     }
 
     @Test
-    fun aTestsOwnDataSourceStillWinsOverTheChainTheBuilderInstalls() {
-        // The seam `docs/testing.md` depends on: whatever `build()` assembles by default, an engine
-        // configurator installed afterwards replaces it. The stream here is served entirely by
+    fun aTestsOwnDataSourceTakesTheHttpStacksPlace() {
+        // The seam `docs/testing.md` depends on: a transport set through the engine configurator
+        // stands in for the HTTP stack `build()` would otherwise put at the bottom of the chain. The stream here is served entirely by
         // `FakeDataSource` from a `fake:` URI that no real data source could open, so reaching
         // STATE_READY is only possible if the substitution took effect.
         val player = harness.buildPlayer()

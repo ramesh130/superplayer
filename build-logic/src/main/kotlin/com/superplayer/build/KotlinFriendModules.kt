@@ -29,8 +29,8 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
  *
  * `docs/testing.md` describes one seam that is deliberately not public:
  * `SuperPlayer.Builder.setEngineConfigurator`, which is how a test substitutes a fake clock and a
- * fake data source into the engine. It cannot become public — its parameter is `ExoPlayer.Builder`,
- * an `@UnstableApi` type, so `verifyNoUnstableMedia3InPublicApi` would fail it under ADR-0001
+ * fake data source into the engine. It cannot become public — its parameter carries `ExoPlayer.Builder`
+ * and `DataSource.Factory`, `@UnstableApi` types, so `verifyNoUnstableMedia3InPublicApi` would fail it under ADR-0001
  * rule 2 — and Kotlin `internal` means *one compilation*, which is `superplayer-core`'s own.
  *
  * `superplayer-testkit` exists to give every other module the deterministic playback harness that

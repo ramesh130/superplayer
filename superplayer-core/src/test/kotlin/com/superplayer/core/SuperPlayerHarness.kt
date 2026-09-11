@@ -18,7 +18,6 @@ package com.superplayer.core
 
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.test.utils.FakeClock
 import androidx.media3.test.utils.FakeDataSet
 import androidx.media3.test.utils.FakeDataSource
@@ -31,10 +30,10 @@ import org.junit.rules.ExternalResource
 /**
  * Builds players on the seam `docs/testing.md` describes, and releases every one it built.
  *
- * The seam is four decisions that were being re-made in every test class: an auto-advancing
- * [FakeClock], a [FakeDataSource] over a [FakeDataSet] of synthetic media, Media3's
- * [DefaultMediaSourceFactory] over that, and all of it reaching the engine through
- * `SuperPlayer.Builder`'s one internal configurator. None of that is what any test is *about*, and
+ * The seam is three decisions that were being re-made in every test class: an auto-advancing
+ * [FakeClock], a [FakeDataSource] over a [FakeDataSet] of synthetic media standing in for the HTTP
+ * stack beneath the chain `SuperPlayer.Builder` composes, and all of it reaching the engine through
+ * that builder's one internal configurator. None of that is what any test is *about*, and
  * five copies of it meant five places to edit when the seam moves — during a Media3 upgrade, which
  * is exactly when a divergence between them would be most expensive to notice.
  *
@@ -97,13 +96,15 @@ class SuperPlayerHarness : ExternalResource() {
             SuperPlayer.Builder(ApplicationProvider.getApplicationContext())
                 .apply { profile?.let { setProfile(it) } }
                 .apply { telemetry?.let { setTelemetry(it) } }
-                .setEngineConfigurator { engine ->
-                    engine.setClock(clock)
-                    engine.setMediaSourceFactory(DefaultMediaSourceFactory(fakeDataSourceFactory))
+                .setEngineConfigurator { configuration ->
+                    configuration.engine.setClock(clock)
+                    // In the transport's place, under the chain `build()` composes, rather than in
+                    // place of the chain: what SuperPlayer does to a transfer runs in every test.
+                    configuration.transport = fakeDataSourceFactory
                     // Last, so a test that is specifically about the engine's construction — the
                     // analytics collector a telemetry test counts registrations on — can replace
                     // what the seam above installed rather than merely add to it.
-                    alsoConfigureEngine(engine)
+                    alsoConfigureEngine(configuration.engine)
                 }
                 .build(),
         )
@@ -135,12 +136,12 @@ class SuperPlayerHarness : ExternalResource() {
                 .apply { profile?.let { setProfile(it) } }
                 .apply { cmcdMode?.let { setCmcdMode(it) } }
                 .apply { telemetry?.let { setTelemetry(it) } }
-                .setEngineConfigurator { engine ->
-                    engine.setClock(clock)
+                .setEngineConfigurator { configuration ->
+                    configuration.engine.setClock(clock)
                     // Whatever a test needs *besides* the chain — the bandwidth meter a CMCD test
-                    // reads request specs through. Deliberately not a media source factory: one
-                    // installed here would replace the very thing this method exists to exercise.
-                    alsoConfigureEngine(engine)
+                    // reads request specs through. Deliberately no transport: one set here would
+                    // replace the very HTTP stack this method exists to exercise.
+                    alsoConfigureEngine(configuration.engine)
                 }
                 .build(),
         )

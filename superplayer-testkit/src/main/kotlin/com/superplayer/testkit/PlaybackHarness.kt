@@ -28,7 +28,6 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.RenderersFactory
 import androidx.media3.exoplayer.drm.DrmSessionManager
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.TrackGroupArray
 import androidx.media3.test.utils.FakeAdaptiveDataSet
@@ -150,8 +149,12 @@ public class PlaybackHarness : ExternalResource() {
         // where the injector makes its own sources: real HLS and real DASH load through this
         // factory. The adaptive path below builds its sources inside Media3's `FakeChunkSource` and
         // reaches the injector by `wrap`, so the data set handed over here is empty and unused there.
+        // Content an origin keeps publishing is served by one that advances with the clock, and a
+        // stream that declares its response headers has them served on top of its bytes.
+        val origin = content.publication?.let { LiveOriginDataSource.Factory(it, clock) }
+            ?: FakeDataSource.Factory().setFakeDataSet(fakeDataSetFor(content))
         val injector = FaultInjectingDataSource.Factory(
-            FakeDataSource.Factory().setFakeDataSet(fakeDataSetFor(content)),
+            if (content.responseHeaders.isEmpty()) origin else HeaderServingDataSource.Factory(origin, content.responseHeaders),
             faults,
             clock,
             wait,
@@ -165,10 +168,21 @@ public class PlaybackHarness : ExternalResource() {
         val player = SuperPlayer.Builder(ApplicationProvider.getApplicationContext())
             .apply { profile?.let { setProfile(it) } }
             .apply { telemetry?.let { setTelemetry(it) } }
-            .setEngineConfigurator { engine ->
-                engine.setClock(clock)
-                engine.setRenderersFactory(renderersFactory { built = it })
-                engine.setMediaSourceFactory(mediaSourceFactory(content, transfers))
+            .setEngineConfigurator { configuration ->
+                configuration.engine.setClock(clock)
+                configuration.engine.setRenderersFactory(renderersFactory { built = it })
+                // A real protocol stream is not described by a timeline at all: the manifest says
+                // what the content is, Media3's own parser reads it, and its own extractor demuxes
+                // the segments. So the injector — and the shaper, under a trace — goes where the
+                // HTTP stack goes, beneath core's own layers exactly as a consumer's network is:
+                // every fetch passes through a fault script and a trace, and nothing SuperPlayer
+                // does to a transfer is skipped. Described content has no transport to stand in
+                // for, so it replaces the loading path whole.
+                if (content.protocol == TestContent.Protocol.DESCRIBED) {
+                    configuration.mediaSourceFactory = describedMediaSourceFactory(content, transfers)
+                } else {
+                    configuration.transport = transfers.factory
+                }
             }
             .build()
         renderers[player] = checkNotNull(built) { "The engine built no renderers" }
@@ -187,6 +201,13 @@ public class PlaybackHarness : ExternalResource() {
      */
     internal fun requestedResources(player: SuperPlayer): List<ResourceAddress> =
         checkNotNull(injectors[player]) { "This harness did not build that player" }.addresses.requested
+
+    /**
+     * How many of [player]'s requests so far asked every cache on the way to step aside with
+     * `Cache-Control: no-cache`. Internal for [requestedResources]'s reason.
+     */
+    internal fun cacheBypassingRequests(player: SuperPlayer): Int =
+        checkNotNull(injectors[player]) { "This harness did not build that player" }.cacheBypassingRequests
 
     /**
      * A [PlayerPool] whose players are this harness's, so a pooled player is a player like any
@@ -423,15 +444,7 @@ public class PlaybackHarness : ExternalResource() {
      * becomes a [FakeMediaSource] with a single video track, because a source with nothing to choose
      * between should not go through a chunk source that exists to choose.
      */
-    private fun mediaSourceFactory(content: TestContent, transfers: Transfers): MediaSource.Factory {
-        // A real protocol stream is not described by a timeline at all: the manifest says what the
-        // content is, Media3's own parser reads it, and its own extractor demuxes the segments. The
-        // injector — and the shaper, under a trace — is the `DataSource.Factory` underneath, so
-        // every fetch the protocol makes passes through a fault script and a trace.
-        if (content.protocol != TestContent.Protocol.DESCRIBED) {
-            return DefaultMediaSourceFactory(transfers.factory)
-        }
-
+    private fun describedMediaSourceFactory(content: TestContent, transfers: Transfers): MediaSource.Factory {
         val formats = content.videoBitratesBps.mapIndexed { index, bitrate -> videoFormat(index, bitrate) }
         val timeline = FakeTimeline(
             FakeTimeline.TimelineWindowDefinition.Builder()

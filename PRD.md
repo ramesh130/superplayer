@@ -153,11 +153,12 @@ to hold N off-screen items in a prepared or first-frame-rendered state, plus:
 
 ### 2.4 The transfer chain — composed once, in core
 
-Everything below `MediaSource` reaches the network through one `DataSource.Factory` chain, and five
-modules want a piece of it:
+Everything below `MediaSource` reaches the network through one `DataSource.Factory` chain. Core
+puts one layer of its own there, and five modules want a piece of it:
 
 | Module | What it inserts | Section |
 | --- | --- | --- |
+| `core` | live-playlist revalidation: an overdue live HLS playlist is reloaded past the caches, and a failure is typed | §3.7 |
 | `cache` | content-keyed `CacheDataSource` | §3.5 |
 | `abr` | `BandwidthOracle` reading transfers, cache hits excluded from samples | §3.1 |
 | `telemetry` | CMCD (CTA-5004) emission | §3.4 |
@@ -308,6 +309,13 @@ not be.
   5. Recreate the decoder (`Device.DecoderTransient`; some devices require it after a surface or
      HDMI event).
   6. Surface a typed, actionable error.
+- **A frozen live playlist is not this module's to detect.** A live HLS playlist that stops
+  advancing because an intermediary holds a stale copy is caught and typed in core's transfer chain
+  (§3.7), because the defect is in the transfer and the consumer most likely to be behind a
+  misconfigured CDN is the one with only `superplayer-core`. `ErrorClassifier` maps the
+  `StaleLivePlaylistException` core raises into its taxonomy rather than re-deriving it, and the
+  cache-bypassing reload is not a `RetryPolicy` rung. The rungs above it — the next host, then the
+  next source — still apply to a playlist that core has given up on.
 - **Resume-position preservation across every rung.** A fallback that restarts from zero is worse
   than the error.
 - **Token refresh hook** — `HeaderProvider` re-invoked on 401/403 before the retry, so expiring CDN
@@ -381,6 +389,12 @@ These plug into the transfer chain of §2.4 rather than assembling one of their 
 - **Lifecycle correctness**: audio focus, becoming-noisy, `MediaSession` and `MediaSessionService`
   for background, notification and automotive surfaces, `WakeLock`/`WifiLock` held only while
   actually playing, and correct behavior across process death and configuration change.
+- **Live-playlist revalidation** (issue #66): a live HLS media playlist that has gone RFC 8216
+  §6.2.1's one and a half target durations without a new segment is reloaded with
+  `Cache-Control: no-cache` from then on. One that still does not advance ends the session with a
+  typed `StaleLivePlaylistException` that names the likely cause, before Media3's own untyped
+  `PlaylistStuckException` can fire. On for every player, because a playlist that advances on time
+  has no request changed and so costs a CDN nothing; §3.3 says why it is not resilience's.
 - **Profiles** — `VIDEO_ON_DEMAND`, `LIVE_LINEAR`, `LIVE_LOW_LATENCY`, `SHORT_FORM`, `TV_LEANBACK`,
   `DATA_SAVER` — each a documented, tested set of constants with a written rationale for every
   departure from Media3's own default. The profiles *are* the product: they are what every team

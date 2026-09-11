@@ -19,6 +19,8 @@ public final class com/superplayer/testkit/FaultScript$Builder {
 	public static synthetic fun failDnsResolution$default (Lcom/superplayer/testkit/FaultScript$Builder;Lcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
 	public final fun failWithHttpStatus (ILcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;)Lcom/superplayer/testkit/FaultScript$Builder;
 	public static synthetic fun failWithHttpStatus$default (Lcom/superplayer/testkit/FaultScript$Builder;ILcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public final fun serveThroughCache (JZLcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public static synthetic fun serveThroughCache$default (Lcom/superplayer/testkit/FaultScript$Builder;JZLcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
 	public final fun truncateAfterBytes (JLcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;)Lcom/superplayer/testkit/FaultScript$Builder;
 	public static synthetic fun truncateAfterBytes$default (Lcom/superplayer/testkit/FaultScript$Builder;JLcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
 }
@@ -94,11 +96,11 @@ public final class com/superplayer/testkit/TestContent {
 	public static final field DEFAULT_BITRATE_BPS I
 	public static final field DEFAULT_DURATION_MS J
 	public static final field DEFAULT_SEGMENT_COUNT I
-	public synthetic fun <init> (Ljava/util/List;JZLcom/superplayer/testkit/TestContent$Protocol;Ljava/lang/String;Ljava/util/Map;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public static final fun dash (I)Lcom/superplayer/testkit/TestContent;
 	public final fun getSourceUri ()Ljava/lang/String;
 	public static final fun hls (I)Lcom/superplayer/testkit/TestContent;
 	public static final fun hostile (Lcom/superplayer/testmedia/HostileStream;)Lcom/superplayer/testkit/TestContent;
+	public static final fun liveHls ()Lcom/superplayer/testkit/TestContent;
 	public static final fun liveVideo (IJ)Lcom/superplayer/testkit/TestContent;
 	public static final fun video (IJ)Lcom/superplayer/testkit/TestContent;
 	public static final fun videoLadder (Ljava/util/List;J)Lcom/superplayer/testkit/TestContent;
@@ -110,6 +112,7 @@ public final class com/superplayer/testkit/TestContent$Companion {
 	public final fun hls (I)Lcom/superplayer/testkit/TestContent;
 	public static synthetic fun hls$default (Lcom/superplayer/testkit/TestContent$Companion;IILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
 	public final fun hostile (Lcom/superplayer/testmedia/HostileStream;)Lcom/superplayer/testkit/TestContent;
+	public final fun liveHls ()Lcom/superplayer/testkit/TestContent;
 	public final fun liveVideo (IJ)Lcom/superplayer/testkit/TestContent;
 	public static synthetic fun liveVideo$default (Lcom/superplayer/testkit/TestContent$Companion;IJILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
 	public final fun video (IJ)Lcom/superplayer/testkit/TestContent;

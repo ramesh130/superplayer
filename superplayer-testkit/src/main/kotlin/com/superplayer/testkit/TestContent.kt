@@ -79,6 +79,19 @@ public class TestContent private constructor(
      * exactly as [SyntheticHlsStream] does, and the harness serves both the same way.
      */
     internal val resources: Map<String, ByteArray> = emptyMap(),
+
+    /**
+     * The response headers each resource is served with, keyed by URI — empty for everything but a
+     * stream whose defect is in its headers, which is [HostileStream.declaredResponseHeaders].
+     */
+    internal val responseHeaders: Map<String, Map<String, String>> = emptyMap(),
+
+    /**
+     * For content an origin keeps publishing, what exists after a given number of milliseconds of
+     * the harness's clock; null for content fixed when the test began, which is served from
+     * [resources]. See `LiveOriginDataSource` for why a live HLS stream cannot be the other kind.
+     */
+    internal val publication: ((elapsedMs: Long) -> Map<String, ByteArray>)? = null,
 ) {
 
     /**
@@ -174,6 +187,32 @@ public class TestContent private constructor(
         )
 
         /**
+         * A live HLS stream whose origin keeps publishing: a new segment every
+         * [SyntheticHlsStream.SEGMENT_DURATION_MS] of the harness's clock, listed in a sliding window
+         * of [SyntheticHlsStream.LIVE_WINDOW_SEGMENT_COUNT].
+         *
+         * The healthy live stream the HLS half of this module lacked. [hls] is on-demand, and a live
+         * playlist served from fixed bytes stops advancing — which is a defect the corpus carries
+         * rather than a stream — so this is served by an origin that advances with the clock, and a
+         * player reloading its playlist sees a new version for every segment published, as RFC 8216
+         * §6.2.1 promises it. [FaultScript.Builder.serveThroughCache] puts a cache in front of it.
+         */
+        @JvmStatic
+        public fun liveHls(): TestContent = TestContent(
+            videoBitratesBps = emptyList(),
+            durationMs = SyntheticHlsStream.durationMs(SyntheticHlsStream.LIVE_WINDOW_SEGMENT_COUNT),
+            live = true,
+            protocol = Protocol.HLS,
+            sourceUri = SyntheticHlsStream.LIVE_MULTIVARIANT_PLAYLIST_URI,
+            publication = { elapsedMs ->
+                SyntheticHlsStream.liveResources(
+                    SyntheticHlsStream.LIVE_WINDOW_SEGMENT_COUNT +
+                        (elapsedMs / SyntheticHlsStream.SEGMENT_DURATION_MS).toInt(),
+                )
+            },
+        )
+
+        /**
          * One entry of [HostileManifests]: a known-good stream of its protocol with one thing wrong.
          *
          * The corpus lives in `superplayer-testmedia` alongside the streams it is built from, and
@@ -195,6 +234,9 @@ public class TestContent private constructor(
             },
             sourceUri = stream.sourceUri,
             resources = stream.resources(),
+            // Served, not merely carried: the cache-control entry's defect is a header, and the
+            // player reads it to say what an unrecovered failure was likely caused by.
+            responseHeaders = stream.declaredResponseHeaders,
         )
 
         /** Enough segments that a fault can be addressed past the first one and still play first. */

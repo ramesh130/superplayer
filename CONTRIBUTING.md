@@ -165,6 +165,12 @@ tracked API surface, the Kotlin format and Apache-2.0 file headers, the module t
 that can be a Gradle task belongs in `check`, not only in the workflow, so local and CI cannot
 disagree about what passing means.
 
+Dependabot (`.github/dependabot.yml`) opens weekly pull requests for the Gradle dependencies of all
+three builds and for the actions the workflow pins. Every one of those is reviewed like any other
+change, and nothing is merged automatically. A Media3 bump arrives as the `media3` group. A minor or
+major one also needs the supported Media3 version in `docs/modules.md` changed by hand. The comments
+in that file say which catalog entries Dependabot cannot update, and why.
+
 ## Formatting and license headers
 
 Every `.kt` file in this repository carries the Apache-2.0 boilerplate header, and every one is

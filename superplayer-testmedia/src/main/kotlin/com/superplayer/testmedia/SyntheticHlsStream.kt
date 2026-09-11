@@ -37,7 +37,7 @@ public object SyntheticHlsStream {
     private const val BASE_URI = "fake://superplayer.test/"
 
     private const val MULTIVARIANT_PLAYLIST_NAME = "master.m3u8"
-    private const val MEDIA_PLAYLIST_NAME = "media.m3u8"
+    internal const val MEDIA_PLAYLIST_NAME = "media.m3u8"
 
     /** The second variant's media playlist, present only when a caller asks for two. */
     private const val SECOND_MEDIA_PLAYLIST_NAME = "media-high.m3u8"
@@ -47,7 +47,7 @@ public object SyntheticHlsStream {
     /** What every segment's name ends in, so a test can tell a segment request from a playlist one. */
     public const val SEGMENT_SUFFIX: String = ".aac"
 
-    private fun segmentName(index: Int) = "segment$index$SEGMENT_SUFFIX"
+    internal fun segmentName(index: Int) = "segment$index$SEGMENT_SUFFIX"
 
     /** Declared in the multivariant playlist, and therefore what the selected track should report. */
     public const val DECLARED_BITRATE_BPS: Int = 128_000
@@ -65,7 +65,7 @@ public object SyntheticHlsStream {
     /** `mp4a.40.2` — AAC-LC. RFC 6381 §3.3 codecs parameter, as used by RFC 8216 §4.3.4.2. */
     public const val DECLARED_CODECS: String = "mp4a.40.2"
 
-    private const val SEGMENT_DURATION_SECONDS = 2.0
+    internal const val SEGMENT_DURATION_SECONDS = 2.0
 
     public const val SEGMENT_DURATION_MS: Long = (SEGMENT_DURATION_SECONDS * 1_000).toLong()
 
@@ -211,12 +211,19 @@ public object SyntheticHlsStream {
      *
      * The segment is preceded by the ID3 tag RFC 8216 §3.4 requires — see [id3TimestampTag], and note
      * that a stream of more than one segment does not play without it.
+     *
+     * [startSeconds], [durationSeconds] and [sizeScale] exist for `HostileManifests`, whose defects
+     * are sometimes in the media's shape rather than in its manifest — a segment ten seconds long, a
+     * timestamp that restarts at a splice, a rung whose real bitrate is a multiple of this one's. The
+     * good stream never passes them: [adtsSegment] by index is what it serves, byte for byte.
      */
-    private fun adtsSegment(index: Int): ByteArray {
-        val frameLength = ADTS_HEADER_BYTES + ADTS_PAYLOAD_BYTES
+    internal fun adtsSegment(startSeconds: Double, durationSeconds: Double, sizeScale: Int = 1): ByteArray {
+        val frameLength = (ADTS_HEADER_BYTES + ADTS_PAYLOAD_BYTES) * sizeScale
+        // spec: ISO/IEC 13818-7 §6.2 — frame_length is a 13-bit field.
+        require(frameLength < (1 shl 13)) { "An ADTS frame of $frameLength bytes does not fit its header" }
         val out = ByteArrayOutputStream()
-        out.write(id3TimestampTag(index))
-        repeat(frameCount()) {
+        out.write(id3TimestampTag(startSeconds))
+        repeat(frameCount(durationSeconds)) {
             out.write(0xFF)
             out.write(0xF1)
             out.write((0b01 shl 6) or (SAMPLING_FREQUENCY_INDEX shl 2) or (CHANNEL_CONFIGURATION shr 2))
@@ -224,10 +231,14 @@ public object SyntheticHlsStream {
             out.write((frameLength shr 3) and 0xFF)
             out.write(((frameLength and 0b111) shl 5) or 0b11111)
             out.write(0b11111100)
-            repeat(ADTS_PAYLOAD_BYTES) { out.write(0) }
+            repeat(frameLength - ADTS_HEADER_BYTES) { out.write(0) }
         }
         return out.toByteArray()
     }
+
+    /** The good stream's segment [index]: two seconds long, starting where the one before it ends. */
+    internal fun adtsSegment(index: Int): ByteArray =
+        adtsSegment(index * SEGMENT_DURATION_SECONDS, SEGMENT_DURATION_SECONDS)
 
     /**
      * The ID3 tag that tells the player where in the stream a Packed Audio segment starts.
@@ -246,10 +257,9 @@ public object SyntheticHlsStream {
      *
      * spec: ID3v2.3.0 §3.1 (tag header, size in syncsafe integers) and §4.27 (the PRIV frame).
      */
-    private fun id3TimestampTag(segmentIndex: Int): ByteArray {
+    private fun id3TimestampTag(startSeconds: Double): ByteArray {
         val owner = "com.apple.streaming.transportStreamTimestamp".toByteArray(Charsets.US_ASCII)
-        val presentationTimestamp =
-            segmentIndex * SEGMENT_DURATION_SECONDS.toLong() * MPEG2_TIMESTAMP_HZ
+        val presentationTimestamp = (startSeconds * MPEG2_TIMESTAMP_HZ).toLong()
 
         val frameBody = ByteArrayOutputStream()
         frameBody.write(owner)
@@ -285,7 +295,7 @@ public object SyntheticHlsStream {
     /** spec: ISO/IEC 13818-1 — the MPEG-2 system clock PTS runs at 90 kHz. */
     private const val MPEG2_TIMESTAMP_HZ = 90_000L
 
-    /** Enough frames to cover the duration the media playlist advertises. */
-    private fun frameCount(): Int =
-        ceil(SEGMENT_DURATION_SECONDS * SAMPLING_FREQUENCY_HZ / SAMPLES_PER_FRAME).toInt()
+    /** Enough frames to cover [durationSeconds] of audio. */
+    private fun frameCount(durationSeconds: Double): Int =
+        ceil(durationSeconds * SAMPLING_FREQUENCY_HZ / SAMPLES_PER_FRAME).toInt()
 }

@@ -472,7 +472,7 @@ public class PlaybackHarness : ExternalResource() {
      * reach has to be below both — so putting one into a [FakeDataSet] is this line, here.
      */
     private fun fakeDataSetFor(content: TestContent): FakeDataSet = FakeDataSet().apply {
-        content.protocol.resources(content.segmentCount).forEach { (uri, bytes) -> setData(uri, bytes) }
+        content.resources.forEach { (uri, bytes) -> setData(uri, bytes) }
     }
 
     private fun videoFormat(index: Int, bitrateBps: Int): Format = Format.Builder()

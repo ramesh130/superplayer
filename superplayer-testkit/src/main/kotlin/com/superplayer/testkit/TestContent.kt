@@ -16,6 +16,8 @@
 
 package com.superplayer.testkit
 
+import com.superplayer.testmedia.HostileManifests
+import com.superplayer.testmedia.HostileStream
 import com.superplayer.testmedia.SyntheticDashStream
 import com.superplayer.testmedia.SyntheticHlsStream
 
@@ -60,10 +62,6 @@ public class TestContent private constructor(
     /** Which protocol's real stream this is, or [Protocol.DESCRIBED] for content Media3 fakes. */
     internal val protocol: Protocol = Protocol.DESCRIBED,
 
-    /** How many media segments the synthetic stream carries. Meaningless when [protocol] is not. */
-    internal val segmentCount: Int = 1,
-) {
-
     /**
      * What a test hands to `setMediaRequest`: the multivariant playlist, the MPD, or — for described
      * content, which Media3's fakes synthesize without fetching anything — a URI nothing resolves.
@@ -71,29 +69,26 @@ public class TestContent private constructor(
      * A `String`, because it is the only part of a synthetic stream a test needs to name and a
      * `Uri` would drag Android's own type through this module's API for no gain.
      */
-    public val sourceUri: String = protocol.sourceUri
+    public val sourceUri: String = DESCRIBED_SOURCE_URI,
+
+    /**
+     * Everything a session of this content will fetch, keyed by URI, and nothing else.
+     *
+     * Held per instance rather than derived from [protocol], because a hostile stream is a stream of
+     * its protocol with different bytes and a different URI: [HostileManifests] hands one over
+     * exactly as [SyntheticHlsStream] does, and the harness serves both the same way.
+     */
+    internal val resources: Map<String, ByteArray> = emptyMap(),
+) {
 
     /**
      * How the harness loads this content. Internal: a test says [hls] or [dash] and means it.
      *
-     * Each constant carries what the harness needs to serve it — where the stream starts, and what
-     * bytes it is — rather than leaving the harness to switch on the constant twice.
+     * Only the distinction from [DESCRIBED] is load-bearing — real protocol streams go through
+     * Media3's own parsers and a `DataSource` chain, described ones through its fakes — but naming
+     * the protocol keeps a test's failure message saying which one it was.
      */
-    internal enum class Protocol(
-        /** The URI a session starts from: a multivariant playlist, an MPD, or nothing fetchable. */
-        val sourceUri: String,
-
-        /** Everything a session of [segmentCount] segments will fetch, keyed by URI. */
-        val resources: (segmentCount: Int) -> Map<String, ByteArray>,
-    ) {
-
-        /** Content Media3's fakes synthesize: nothing is fetched, so there is nothing to serve. */
-        DESCRIBED(DESCRIBED_SOURCE_URI, { emptyMap() }),
-
-        HLS(SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI, { SyntheticHlsStream.resources(it) }),
-
-        DASH(SyntheticDashStream.MANIFEST_URI, { SyntheticDashStream.resources(it) }),
-    }
+    internal enum class Protocol { DESCRIBED, HLS, DASH }
 
     public companion object {
 
@@ -156,7 +151,8 @@ public class TestContent private constructor(
             durationMs = SyntheticHlsStream.durationMs(segmentCount),
             live = false,
             protocol = Protocol.HLS,
-            segmentCount = segmentCount,
+            sourceUri = SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI,
+            resources = SyntheticHlsStream.resources(segmentCount),
         )
 
         /**
@@ -173,7 +169,32 @@ public class TestContent private constructor(
             durationMs = SyntheticDashStream.durationMs(segmentCount),
             live = false,
             protocol = Protocol.DASH,
-            segmentCount = segmentCount,
+            sourceUri = SyntheticDashStream.MANIFEST_URI,
+            resources = SyntheticDashStream.resources(segmentCount),
+        )
+
+        /**
+         * One entry of [HostileManifests]: a known-good stream of its protocol with one thing wrong.
+         *
+         * The corpus lives in `superplayer-testmedia` alongside the streams it is built from, and
+         * arrives here the same way they do — as URI-to-bytes, naming no Media3 type. What this adds
+         * is the one thing a test needs and the corpus cannot know: how the harness should load it,
+         * which is exactly how it loads the good stream of the same protocol.
+         *
+         * The corpus records what SuperPlayer does with each of these today rather than asserting
+         * that any of them is handled; see `docs/testing.md`.
+         */
+        @JvmStatic
+        public fun hostile(stream: HostileStream): TestContent = TestContent(
+            videoBitratesBps = emptyList(),
+            durationMs = stream.durationMs,
+            live = false,
+            protocol = when (stream.protocol) {
+                HostileStream.Protocol.HLS -> Protocol.HLS
+                HostileStream.Protocol.DASH -> Protocol.DASH
+            },
+            sourceUri = stream.sourceUri,
+            resources = stream.resources(),
         )
 
         /** Enough segments that a fault can be addressed past the first one and still play first. */

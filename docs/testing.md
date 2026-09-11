@@ -153,6 +153,60 @@ and cannot be a cycle. `SyntheticHlsStream.writeTo(directory)` is the same strea
 one test that plays through the real transfer chain.
 
 
+### The hostile manifest corpus
+
+`HostileManifests`, also in `superplayer-testmedia`, is the other half of synthetic media:
+valid-but-hostile HLS and DASH — ladder gaps, overstated bitrates, missing codecs, audio-group
+mismatches, ragged segment durations, bare discontinuities, clock skew, short and missing time-shift
+windows, a mid-stream ladder change, and a live playlist served cacheable — the pathologies `PRD.md`
+§3.6 lists for `MediaSourceDoctor` to diagnose in Phase 9. It is generated for the reason the good
+streams are, and for one more: a checked-in broken manifest is inert, while a generated one is a
+builder call. Every defect that applies to both protocols is generated for both today; severity is
+one argument away in the same builders, though no entry varies it yet.
+
+Every entry is **a known-good stream with one thing wrong** — `SyntheticHlsStream`'s segments or
+`SyntheticDashStream`'s, under a manifest that lies about them in exactly one way — and is handed over
+as a `HostileStream`: URI-to-bytes under its own `fake://superplayer.test/hostile/<id>/` directory, so
+the whole corpus fits in one `FakeDataSet` with no collisions. `TestContent.hostile(stream)` plays one
+through `PlaybackHarness`.
+
+`HostileManifestCorpusTest` (in `superplayer-testkit`) **records** what SuperPlayer does with each
+entry today — fails, never starts, stalls, degrades, keeps playing, or plays to the end — rather than
+asserting that it is handled. *Degrades* is observed, not judged: the session reported a position
+outside the media it was served, before its start or past its end. Most are not, and are not meant to be yet;
+recording them means a later phase's fix is a visible diff in one table rather than an unreviewed
+change. That table must name every entry, so a pathology cannot be added and left unplayed.
+
+Live DASH entries need two things the on-demand ones do not, and both exist so an entry records its
+own defect rather than the harness's limits. They carry a `UTCTiming` element, because without one
+Media3 asks an NTP server for the time, and under Robolectric that call never resolves. And they
+address segments by `SegmentTemplate`, because a `SegmentList` names a fixed set that a player treats
+as published whatever the time. A template makes availability a function of the clock, so the live
+edge moves with the harness even though the bytes never change. `HostileManifests.dashLiveBaseline()`
+is the healthy live stream they are modifiers over. It is labelled `HEALTHY`, it is not in the
+corpus, and the test checks that it plays on, which is what makes a failing live row mean something.
+
+**Adding a pathology** means, in `HostileManifests.kt`:
+
+1. A `public fun` built from `hlsStream`, `dashStream` or `dashLiveStream`, as a modifier over the
+   good stream. Do not hand-write a whole document: if the builders cannot express the defect,
+   extend them, so that the next entry can reuse the extension.
+2. A `// spec:` comment above it citing the clause it stretches or violates — RFC 8216 for HLS,
+   ISO/IEC 23009-1 or DASH-IF IOP for DASH — with the argument for why the document is still legal.
+   The same citation goes in `spec`.
+3. A `cause`: the misconfiguration, encoder or packager that produces it in the field, in plain
+   language. It is the sentence the doctor will show a user, and it is much easier to write now.
+4. A `validity`. `MALFORMED` when the document breaks a MUST, whether or not Media3 happens to reject
+   it; `VALID_BUT_HOSTILE` otherwise. `theCorpusLabelsWhatIsMalformedRatherThanMerelyHostile` pins
+   the malformed set by id.
+5. The entry in `all()`, and its observed row in `HostileManifestCorpusTest.RECORDED`, with a
+   comment wherever the row is surprising.
+
+A defect that lives outside the manifest cannot be applied by `FakeDataSet`, which serves bytes and
+reports no response headers. That covers the `Cache-Control` mismatch. Such an entry carries the
+defect as `declaredResponseHeaders` and reproduces the *consequence* in its bytes — for the cache
+rule, a live playlist that never changes. It must say which of the two its recorded row measures.
+
 ## Why assertions stop at the facade
 
 A test that reached for `player.exoPlayer` and asserted on it would be testing Media3, which Media3

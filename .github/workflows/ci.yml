@@ -37,7 +37,7 @@ jobs:
       # The wrapper JAR is a committed binary that the build executes. Verify it is a
       # genuine Gradle distribution before running it.
       - name: Validate Gradle wrapper
-        uses: gradle/actions/wrapper-validation@v4
+        uses: gradle/actions/wrapper-validation@v6
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -91,7 +91,7 @@ jobs:
       # credentials read at configuration time. Enabling that means adding a repository
       # secret; until then each run pays configuration cost once, which is the smaller half.
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Build every module
         run: ./gradlew assemble

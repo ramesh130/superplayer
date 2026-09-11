@@ -18,6 +18,7 @@ package com.superplayer.testkit
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
+import com.google.common.truth.Truth.assertWithMessage
 import com.superplayer.core.MediaRequest
 import com.superplayer.core.SuperPlayer
 import org.junit.Rule
@@ -83,18 +84,32 @@ class NetworkShapingPlaybackTest {
         harness.advanceTimeInStepsMs(player, NetworkProfile.HANDOVER_AT_MS - (harness.elapsedRealtimeMs() - builtAtMs))
         val beforeHandover = segmentsRequested(player)
         val positionAtHandoverMs = player.currentPosition
-        harness.advanceTimeInStepsMs(player, AFTER_HANDOVER_MS)
+        // Waited for, not watched for a fixed span. A buffer already full at the handover asks for
+        // nothing until it drains below the profile's minimum — Media3's load control stops at the
+        // maximum and resumes only under the minimum — and whether it is full by then is how many
+        // loads the harness's steps let through, which is the loading thread's scheduling rather
+        // than the trace. A fixed ten seconds passed only when that thread was slow (#88). So the
+        // bound is the drain from the maximum to the minimum, plus a margin for the one segment the
+        // last load overshoots the maximum by.
+        val buffer = player.playbackDecision.buffer
+        val boundMs = (buffer.maxBufferMs - buffer.minBufferMs) + DRAIN_MARGIN_MS
+        var waitedMs = 0L
+        while (segmentsRequested(player) == beforeHandover && waitedMs < boundMs) {
+            harness.advanceTimeInStepsMs(player, LOAD_WAIT_STEP_MS)
+            waitedMs += LOAD_WAIT_STEP_MS
+        }
         val traceNowMs = harness.elapsedRealtimeMs() - builtAtMs
 
         // What "plays on" means, stated as what the session did rather than as the state it happens to
-        // be in at one instant: no error, playback moved on past the handover, and new segments were
+        // be in at one instant: no error, playback moved on past the handover, and a new segment was
         // fetched while the trace said cellular. The last is the transfers crossing the transport
         // change; nothing reads the transport yet, so crossing it is all a player can show.
         assertThat(player.playerError).isNull()
         assertThat(player.currentPosition).isGreaterThan(positionAtHandoverMs)
+        assertWithMessage("segments requested within $boundMs ms of the handover")
+            .that(segmentsRequested(player)).isGreaterThan(beforeHandover)
         assertThat(NetworkProfile.WIFI_TO_CELLULAR_HANDOVER.trace.transportAt(traceNowMs))
             .isEqualTo(NetworkTransport.CELLULAR)
-        assertThat(segmentsRequested(player)).isGreaterThan(beforeHandover)
     }
 
     private fun timeToReadyMs(profile: NetworkProfile): Long {
@@ -120,6 +135,15 @@ class NetworkShapingPlaybackTest {
         const val FIRST_SEGMENT_AT_THREE_G_MS = 1_600L
 
         const val LONG_CONTENT_MS = 180_000L
-        const val AFTER_HANDOVER_MS = 10_000L
+
+        /**
+         * Past the drain a full buffer needs before it loads again: the last load before the pause
+         * overshoots the maximum by up to one 2-second segment, and two and a half segments covers
+         * that with a step or two to spare.
+         */
+        const val DRAIN_MARGIN_MS = 5_000L
+
+        /** The harness's own load step, so a request is seen on the pass that made it. */
+        const val LOAD_WAIT_STEP_MS = 250L
     }
 }

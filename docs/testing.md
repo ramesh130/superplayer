@@ -7,8 +7,8 @@ library was built to satisfy, and it holds for everything added afterwards.
 
 There are three documented exceptions, and all of them are still tests with no device and no network.
 
-`SuperPlayerTransferChainTest` keeps the data source chain `SuperPlayer.Builder` assembles instead of
-substituting a fake over it, and reads a `file:` URI. "The one player that keeps its own transfer
+`SuperPlayerTransferChainTest` keeps the HTTP stack `SuperPlayer.Builder` puts at the bottom of its
+chain instead of substituting a fake data source for it, and reads a `file:` URI. "The one player that keeps its own transfer
 chain" below says why that is necessary rather than merely convenient.
 
 `SuperPlayerCmcdTest` keeps that same chain and asserts on the *requests* travelling down it rather
@@ -63,8 +63,8 @@ exactly when that matters most — during a Media3 upgrade.
 ## Where the seam lives
 
 `SuperPlayerHarness` is a JUnit rule, and it is the one place the four decisions above are made: the
-auto-advancing clock, the fake data source over a `FakeDataSet`, Media3's `DefaultMediaSourceFactory`
-over that, and all of it reaching the engine through the internal configurator. A test asks it for a
+auto-advancing clock and the fake data source over a `FakeDataSet`, the latter standing in the
+configurator's *transport* slot, so that the chain `SuperPlayer.Builder` composes still runs above it. A test asks it for a
 player and gets one:
 
 ```kotlin
@@ -90,16 +90,16 @@ buffered position — both timed on a clock the test has no other handle on.
 Composing the media is still the test's: `buildPlayer` serves the synthetic HLS stream by default,
 and a test that switches protocols or needs a longer stream passes its own `FakeDataSet`.
 
-### The one player that keeps its own transfer chain
+### The one player that keeps its own transport
 
-Substituting `FakeDataSource` replaces the whole `DataSource.Factory` chain `SuperPlayer.Builder`
-assembles, so no test built that way can see the chain at all — and since issue #22 that chain is
-SuperPlayer's own composition (`TransferChain`) rather than a Media3 default, which means SuperPlayer
-can now get it wrong. `buildPlayerOnItsOwnTransferChain` is the exception: it substitutes the clock
-and nothing else, and plays a `file:` URI written by `SyntheticHlsStream.writeTo` — the nearest thing
-to a network fetch a test with no network can ask for. `SuperPlayerTransferChainTest` is its only
-caller, and it also pins the other half: an engine configurator's media source factory still wins
-over whatever `build()` installed, which is what keeps every test above working.
+Every harness player keeps the chain `SuperPlayer.Builder` composes — `TransferChain`, SuperPlayer's
+own composition since issue #22 — and substitutes `FakeDataSource` only where the HTTP stack goes. The
+one layer none of them can see is that bottom one: whether the transport `build()` installs resolves
+anything at all. `buildPlayerOnItsOwnTransferChain` is the exception: it substitutes the clock and
+nothing else, and plays a `file:` URI written by `SyntheticHlsStream.writeTo` — the nearest thing to a
+network fetch a test with no network can ask for. `SuperPlayerTransferChainTest` is its only caller,
+and it also pins the other half: a transport installed through the engine configurator takes the HTTP
+stack's place, which is what keeps every test above working.
 
 ## Synthetic media, not fixtures
 
@@ -232,7 +232,31 @@ corpus, and the test checks that it plays on, which is what makes a failing live
 A defect that lives outside the manifest cannot be applied by `FakeDataSet`, which serves bytes and
 reports no response headers. That covers the `Cache-Control` mismatch. Such an entry carries the
 defect as `declaredResponseHeaders` and reproduces the *consequence* in its bytes — for the cache
-rule, a live playlist that never changes. It must say which of the two its recorded row measures.
+rule, a live playlist that never changes. `TestContent.hostile` hands the headers to the harness,
+which serves them on top of the bytes, so the player reads both. The entry must still say which of
+the two its recorded row measures.
+
+The *cause* — an origin that keeps publishing behind a cache that does not pass the new versions on —
+cannot be carried by fixed bytes at all. It is played instead by `LivePlaylistRevalidationTest`, over
+`TestContent.liveHls()` (an origin that advances with the harness's clock) and
+`FaultScript.Builder.serveThroughCache` (a cache that holds responses for a `max-age` and serves them
+with the headers that say so). That is the one place a recovery from this defect can be shown,
+because recovering needs something newer to exist.
+
+## The layers above the fakes
+
+Both harnesses put their fakes where the *transport* goes — the HTTP stack — and not in place of the
+whole chain. Through the configurator's `EngineConfiguration.transport`, the shaper, the fault
+injector and the fake data source take the HTTP stack's place, and `SuperPlayer.Builder` composes
+above them the same layers it composes above a consumer's network. A layer SuperPlayer adds to the
+chain is therefore in every protocol test the day it lands, with nothing in either harness to
+remember: `LivePlaylistRevalidation`, which reloads a frozen live playlist past a cache, is the first,
+and the corpus's cache-control row changed because of it.
+
+This is the one seam rather than a second: the same configurator, offering a narrower slot than
+"replace the loading path". Described content, which Media3's fakes synthesize without any
+`DataSource`, still replaces the path whole because it has no transport to stand in for, and it is
+the one kind of test player with no chain above its fakes.
 
 ## Why assertions stop at the facade
 
@@ -347,6 +371,10 @@ Substituting a fake clock and a fake data source means touching `@UnstableApi` M
 ADR-0001 rule 2 keeps out of the public API. Rather than widen the public surface for testing,
 `SuperPlayer.Builder` carries a single `internal` configurator — Kotlin `internal` is visible to a
 module's own unit tests — that tests use to configure the engine at construction, and nothing else.
+
+It offers two ways to supply media: a *transport*, which takes the HTTP stack's place beneath
+SuperPlayer's own layers, and a whole media source factory, for content Media3's fakes synthesize with
+no transport to stand in for. `EngineConfiguration` says why the first is the one to reach for.
 
 Construction is the only thing it does. Once the player is built, the test holds a `SuperPlayer` and
 talks to it as a `Player`. If a test ever needs a second such seam, that is a signal the design is

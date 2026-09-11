@@ -85,12 +85,13 @@ public class HostileStream internal constructor(
     /**
      * The response headers this stream is *supposed* to be served with, keyed by resource URI.
      *
-     * Empty for every entry but the cache-control one, and it is data rather than behaviour:
-     * Media3's `FakeDataSource` serves bytes and reports no headers, so nothing in this repository
-     * applies these today. They are recorded because the pathology they describe — a live media
-     * playlist served cacheable while its segments are not — is a manifest-and-transport defect
-     * rather than a manifest one, and a corpus that silently dropped it would be claiming coverage
-     * it does not have. `docs/testing.md` says so where it describes extending the corpus.
+     * Empty for every entry but the cache-control one. Media3's `FakeDataSource` serves bytes and
+     * reports no headers, so this module can only carry them as data; `superplayer-testkit`'s harness
+     * is what serves them, on top of the bytes, so that a player reads them. They are here because
+     * the pathology they describe — a live media playlist served cacheable while its segments are
+     * not — is a manifest-and-transport defect rather than a manifest one, and a corpus that silently
+     * dropped it would be claiming coverage it does not have. `docs/testing.md` says so where it
+     * describes extending the corpus.
      */
     public val declaredResponseHeaders: Map<String, Map<String, String>>,
 

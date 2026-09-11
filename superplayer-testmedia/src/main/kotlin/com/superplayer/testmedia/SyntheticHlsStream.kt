@@ -44,6 +44,22 @@ public object SyntheticHlsStream {
 
     public const val MULTIVARIANT_PLAYLIST_URI: String = BASE_URI + MULTIVARIANT_PLAYLIST_NAME
 
+    /** Where [liveResources] lives: a directory of its own, so it shares a data set with [resources]. */
+    private const val LIVE_BASE_URI = BASE_URI + "live/"
+
+    /** What a player is pointed at to play [liveResources]. */
+    public const val LIVE_MULTIVARIANT_PLAYLIST_URI: String = LIVE_BASE_URI + MULTIVARIANT_PLAYLIST_NAME
+
+    /**
+     * How many segments a live playlist from [liveResources] lists at once: twelve seconds.
+     *
+     * spec: RFC 8216 §6.2.2 — a server must not remove a segment while the playlist would then last
+     * less than three target durations, so a window of four two-second segments is the least a
+     * conforming live playlist can be. Six leaves the player's own three-target-duration hold-back
+     * from the live edge (§6.3.3) some media behind it to start on.
+     */
+    public const val LIVE_WINDOW_SEGMENT_COUNT: Int = 6
+
     /** What every segment's name ends in, so a test can tell a segment request from a playlist one. */
     public const val SEGMENT_SUFFIX: String = ".aac"
 
@@ -175,18 +191,51 @@ public object SyntheticHlsStream {
     // Built by joining lines rather than as an indented raw string: a `trimIndent` block whose
     // interpolated value is itself multi-line has no common indent to trim, and a playlist whose
     // lines are indented is not a playlist any parser will accept.
-    private fun mediaPlaylist(segmentCount: Int): String {
+    private fun mediaPlaylist(segmentCount: Int): String = mediaPlaylist(0 until segmentCount, live = false)
+
+    // spec: RFC 8216 §4.3.3.2 — EXT-X-MEDIA-SEQUENCE is the sequence number of the first segment
+    // listed, which is what lets a live playlist slide its window and still name every segment once.
+    private fun mediaPlaylist(indices: IntRange, live: Boolean): String {
         val header = listOf(
             "#EXTM3U",
             "#EXT-X-VERSION:3",
             "#EXT-X-TARGETDURATION:${ceil(SEGMENT_DURATION_SECONDS).toInt()}",
-            "#EXT-X-MEDIA-SEQUENCE:0",
+            "#EXT-X-MEDIA-SEQUENCE:${indices.first}",
         )
-        val segments = (0 until segmentCount).flatMap { index ->
+        val segments = indices.flatMap { index ->
             listOf("#EXTINF:$SEGMENT_DURATION_SECONDS,", segmentName(index))
         }
+        val tail = if (live) emptyList() else listOf("#EXT-X-ENDLIST")
 
-        return (header + segments + "#EXT-X-ENDLIST").joinToString(separator = "\n")
+        return (header + segments + tail).joinToString(separator = "\n")
+    }
+
+    /**
+     * The live form of this stream, as it stands once [publishedSegmentCount] segments have been
+     * published: a media playlist with no `EXT-X-ENDLIST` listing the newest
+     * [LIVE_WINDOW_SEGMENT_COUNT] of them, and those segments.
+     *
+     * A function of how much has been published rather than of a clock, because this module names
+     * no clock: whoever serves it asks again with a larger count as time passes, and a player
+     * reloading the playlist sees exactly what RFC 8216 §6.2.1 promises it — a new version each time
+     * a segment is published. Segments that have slid out of the window are gone, as they are from
+     * a real origin.
+     *
+     * Served from its own directory, so it and [resources] can sit in one data set. Every segment is
+     * [resources]'s segment of the same index, timestamp tag and all, so the timeline runs on across
+     * the window as a real live stream's does.
+     */
+    public fun liveResources(publishedSegmentCount: Int): Map<String, ByteArray> {
+        require(publishedSegmentCount >= LIVE_WINDOW_SEGMENT_COUNT) {
+            "A live window of $LIVE_WINDOW_SEGMENT_COUNT segments needs that many published, " +
+                "not $publishedSegmentCount"
+        }
+        val window = (publishedSegmentCount - LIVE_WINDOW_SEGMENT_COUNT) until publishedSegmentCount
+        return buildMap {
+            put(MULTIVARIANT_PLAYLIST_NAME, multivariantPlaylist(variantCount = 1).toByteArray())
+            put(MEDIA_PLAYLIST_NAME, mediaPlaylist(window, live = true).toByteArray())
+            window.forEach { index -> put(segmentName(index), adtsSegment(index)) }
+        }.mapKeys { (name, _) -> LIVE_BASE_URI + name }
     }
 
     /**

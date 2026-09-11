@@ -171,6 +171,41 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
             return this
         }
 
+        /**
+         * Puts a shared cache between the player and the origin for the addressed resources, holding
+         * each response for [maxAgeSeconds] of the harness's clock and serving it with the headers
+         * that say so.
+         *
+         * Not a failure of any single request: every response is a well-formed one. What it
+         * reproduces is a *cache rule* — a CDN told to keep something for longer than it stays
+         * true. Addressed at [ResourceKind.MANIFEST] on live content it is
+         * `HostileManifests.hlsCachedLivePlaylist`'s cause, served for real: the origin carries on
+         * publishing and the player keeps being handed the copy the cache took first.
+         *
+         * spec: RFC 9111 — a stored response is served while its age is below its `max-age`
+         * (§4.2), with an `Age` header saying how old it is (§5.1); the response that fills the
+         * store goes out as `Cache-Control: public, max-age=…` (§5.2.2.9, §5.2.2.1). A request
+         * carrying `Cache-Control: no-cache` goes to the origin, and the answer replaces the stored
+         * copy (§5.2.1.4). That request directive states only that "the client prefers" a stored
+         * response not be used, and a CDN configured to disregard client directives is common:
+         * [honoursNoCache] set to false is that cache, and it conforms too.
+         *
+         * Whole responses only — a byte range passes through uncached — which is all a playlist is.
+         * A hit is answered from memory and moves no bytes through the upstream, so it reports no
+         * transfer to a bandwidth meter; address it at manifests, not at the segments an ABR test
+         * measures.
+         */
+        public fun serveThroughCache(
+            maxAgeSeconds: Long,
+            honoursNoCache: Boolean = true,
+            kind: ResourceKind? = null,
+            index: Int? = null,
+        ): Builder = add(
+            kind,
+            index,
+            Effect.IntermediaryCache(maxAgeSeconds.requireAtLeast(0, "A cache lifetime"), honoursNoCache),
+        )
+
         public fun build(): FaultScript = FaultScript(faults.toList())
 
         private fun add(kind: ResourceKind?, index: Int?, effect: Effect): Builder {
@@ -234,4 +269,5 @@ internal sealed interface Effect {
     class HttpStatus(val code: Int) : Effect
     class Truncate(val afterBytes: Long) : Effect
     object DnsFailure : Effect
+    class IntermediaryCache(val maxAgeSeconds: Long, val honoursNoCache: Boolean) : Effect
 }

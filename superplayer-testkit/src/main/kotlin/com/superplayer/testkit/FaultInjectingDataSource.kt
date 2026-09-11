@@ -24,7 +24,9 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.TransferListener
+import java.io.ByteArrayOutputStream
 import java.net.UnknownHostException
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.min
 
 /**
@@ -129,7 +131,14 @@ internal class FaultInjectingDataSource(
     private val clock: Clock,
     private val addresses: ResourceAddressBook,
     private val wait: HarnessClockWait,
+    private val intermediary: IntermediaryCache,
+    private val cacheBypassingRequests: AtomicInteger,
 ) : DataSource {
+
+    /** A response the intermediary cache answered, served from memory in place of the upstream. */
+    private var cached: IntermediaryCache.Response? = null
+    private var cachedReadPosition = 0
+    private var cachedUri: Uri? = null
 
     private var bytesDelivered = 0L
     private var truncateAfterBytes = Long.MAX_VALUE
@@ -143,6 +152,7 @@ internal class FaultInjectingDataSource(
 
     override fun open(dataSpec: DataSpec): Long {
         val address = addresses.addressOf(dataSpec)
+        if (IntermediaryCache.asksCachesToStepAside(dataSpec)) cacheBypassingRequests.incrementAndGet()
         val effects = script.faults.filter { it.matches(address) }.map { it.effect }
 
         // Order is the order a real request fails in, and it is load-bearing: a name that does not
@@ -175,6 +185,17 @@ internal class FaultInjectingDataSource(
         throughputBps = effects.filterIsInstance<Effect.ThroughputCap>().minOfOrNull { it.bitsPerSecond } ?: 0
         deliveryStartedAtMs = clock.elapsedRealtime()
 
+        // After the faults of the request itself, which happen between the player and the cache
+        // just as they happen between the player and an origin.
+        val cacheRule = effects.filterIsInstance<Effect.IntermediaryCache>().firstOrNull()
+        if (cacheRule != null && dataSpec.position == 0L && dataSpec.length == C.LENGTH_UNSET.toLong()) {
+            val response = intermediary.respond(dataSpec, cacheRule) { fetchWhole(dataSpec) }
+            cached = response
+            cachedReadPosition = 0
+            cachedUri = dataSpec.uri
+            return response.body.size.toLong()
+        }
+
         // The upstream's declared length, unmodified even under truncation: a truncated response is
         // one that promised a length and then broke the promise, which is what makes it a different
         // failure from a status code and what the layer above is being tested on.
@@ -186,7 +207,7 @@ internal class FaultInjectingDataSource(
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
         if (bytesDelivered >= truncateAfterBytes) return C.RESULT_END_OF_INPUT
         val allowed = min(length.toLong(), truncateAfterBytes - bytesDelivered).toInt()
-        val read = upstream.read(buffer, offset, allowed)
+        val read = cached?.let { readCached(it, buffer, offset, allowed) } ?: upstream.read(buffer, offset, allowed)
         if (read == C.RESULT_END_OF_INPUT) return read
         bytesDelivered += read
         // Paced on the bytes actually read rather than on the bytes asked for, and after the read
@@ -202,13 +223,44 @@ internal class FaultInjectingDataSource(
         return read
     }
 
-    override fun getUri(): Uri? = upstream.uri
+    override fun getUri(): Uri? = if (cached != null) cachedUri else upstream.uri
 
-    override fun getResponseHeaders(): Map<String, List<String>> = upstream.responseHeaders
+    override fun getResponseHeaders(): Map<String, List<String>> = cached?.headers ?: upstream.responseHeaders
 
     override fun close() {
+        cached = null
+        cachedUri = null
         if (upstreamOpen) {
             upstreamOpen = false
+            upstream.close()
+        }
+    }
+
+    private fun readCached(response: IntermediaryCache.Response, buffer: ByteArray, offset: Int, length: Int): Int {
+        val remaining = response.body.size - cachedReadPosition
+        if (remaining == 0) return C.RESULT_END_OF_INPUT
+        val read = min(length, remaining)
+        System.arraycopy(response.body, cachedReadPosition, buffer, offset, read)
+        cachedReadPosition += read
+        return read
+    }
+
+    /**
+     * The whole of [dataSpec] from the upstream, as the cache fetches it to store: read to the end
+     * and closed, so the upstream's transfer callbacks describe a complete fetch.
+     */
+    private fun fetchWhole(dataSpec: DataSpec): IntermediaryCache.Response {
+        upstream.open(dataSpec)
+        try {
+            val body = ByteArrayOutputStream()
+            val chunk = ByteArray(FETCH_CHUNK_BYTES)
+            while (true) {
+                val read = upstream.read(chunk, 0, chunk.size)
+                if (read == C.RESULT_END_OF_INPUT) break
+                body.write(chunk, 0, read)
+            }
+            return IntermediaryCache.Response(body.toByteArray(), upstream.responseHeaders)
+        } finally {
             upstream.close()
         }
     }
@@ -229,6 +281,19 @@ internal class FaultInjectingDataSource(
         /** Shared by every source this makes, so indices count the session rather than the load. */
         val addresses: ResourceAddressBook = ResourceAddressBook()
 
+        /** The one cache between this player and its origin, shared for the same reason. */
+        private val intermediary = IntermediaryCache(clock)
+
+        private val bypasses = AtomicInteger()
+
+        /**
+         * How many requests so far asked every cache on the way to step aside with
+         * `Cache-Control: no-cache`, whether or not a cache was armed to hear it. Nothing in the
+         * library reads it; a test does, because the difference between a stream that plays on
+         * without asking and one that plays on *because* it asked is otherwise invisible.
+         */
+        val cacheBypassingRequests: Int get() = bypasses.get()
+
         /**
          * Whether any load is currently held by an injected delay.
          *
@@ -242,11 +307,63 @@ internal class FaultInjectingDataSource(
 
         /** For the one caller that already holds a source: Media3's `FakeChunkSource` builds its own. */
         fun wrap(source: DataSource): DataSource =
-            FaultInjectingDataSource(source, script, clock, addresses, wait)
+            FaultInjectingDataSource(source, script, clock, addresses, wait, intermediary, bypasses)
     }
 
     private companion object {
+        const val FETCH_CHUNK_BYTES = 16 * 1024
         const val BITS_PER_BYTE = 8L
         const val MILLIS_PER_SECOND = 1_000L
+    }
+}
+
+/**
+ * The shared cache [FaultScript.Builder.serveThroughCache] arms: one store per player, keyed by the
+ * whole request URI as an HTTP cache keys it (// spec: RFC 9111 §4.1), aged on the harness's clock.
+ */
+internal class IntermediaryCache(private val clock: Clock) {
+
+    /** A response as the player receives it: the bytes, and the headers saying where they came from. */
+    class Response(val body: ByteArray, val headers: Map<String, List<String>>)
+
+    private class Stored(val response: Response, val storedAtMs: Long)
+
+    private val stored = HashMap<String, Stored>()
+
+    /**
+     * Answers [dataSpec] from the store while the stored copy is fresh and the request has not asked
+     * past it, and from [fetch] otherwise — storing what it fetched. Serialised, so two loads of one
+     * playlist do not both miss and race to fill it; nothing here is fast enough to care.
+     */
+    @Synchronized
+    fun respond(dataSpec: DataSpec, rule: Effect.IntermediaryCache, fetch: () -> Response): Response {
+        val key = dataSpec.uri.toString()
+        val nowMs = clock.elapsedRealtime()
+        val copy = stored[key]
+        val ageSeconds = copy?.let { (nowMs - it.storedAtMs) / MILLIS_PER_SECOND }
+        val fresh = ageSeconds != null && ageSeconds < rule.maxAgeSeconds
+        val stepAside = rule.honoursNoCache && asksCachesToStepAside(dataSpec)
+        if (copy != null && fresh && !stepAside) {
+            return Response(copy.response.body, copy.response.headers + (AGE to listOf(ageSeconds.toString())))
+        }
+        val fetched = fetch()
+        val served = Response(
+            fetched.body,
+            fetched.headers + (CACHE_CONTROL to listOf("public, max-age=${rule.maxAgeSeconds}")),
+        )
+        stored[key] = Stored(served, nowMs)
+        return served
+    }
+
+    companion object {
+        private const val MILLIS_PER_SECOND = 1_000L
+        private const val CACHE_CONTROL = "Cache-Control"
+        private const val AGE = "Age"
+
+        /** Whether [dataSpec] carries `Cache-Control: no-cache` (// spec: RFC 9111 §5.2.1.4). */
+        fun asksCachesToStepAside(dataSpec: DataSpec): Boolean = dataSpec.httpRequestHeaders.any { (name, value) ->
+            CACHE_CONTROL.equals(name, ignoreCase = true) &&
+                value.split(',').any { it.trim().equals("no-cache", ignoreCase = true) }
+        }
     }
 }

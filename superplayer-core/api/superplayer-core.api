@@ -201,6 +201,23 @@ public final class com/superplayer/core/PlayerPool$Builder {
 	public final fun setProfile (Lcom/superplayer/core/PlaybackProfile;)Lcom/superplayer/core/PlayerPool$Builder;
 }
 
+public final class com/superplayer/core/StaleLivePlaylistException : java/io/IOException {
+	public final fun getCacheBypassingReloads ()I
+	public final fun getLikelyCause ()Lcom/superplayer/core/StaleLivePlaylistException$LikelyCause;
+	public final fun getPlaylistUri ()Ljava/lang/String;
+	public final fun getServedCacheControl ()Ljava/lang/String;
+	public final fun getTargetDurationMs ()J
+	public final fun getUnchangedForMs ()J
+}
+
+public final class com/superplayer/core/StaleLivePlaylistException$LikelyCause : java/lang/Enum {
+	public static final field INTERMEDIARY_CACHE Lcom/superplayer/core/StaleLivePlaylistException$LikelyCause;
+	public static final field ORIGIN Lcom/superplayer/core/StaleLivePlaylistException$LikelyCause;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/core/StaleLivePlaylistException$LikelyCause;
+	public static fun values ()[Lcom/superplayer/core/StaleLivePlaylistException$LikelyCause;
+}
+
 public final class com/superplayer/core/SuperPlayer : androidx/media3/common/Player {
 	public static final field Companion Lcom/superplayer/core/SuperPlayer$Companion;
 	public static final field MAX_REMEMBERED_POSITIONS I

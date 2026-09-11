@@ -620,7 +620,7 @@ public class SuperPlayer private constructor(
 
     public class Builder(private val context: Context) {
 
-        private var engineConfigurator: ((ExoPlayer.Builder) -> Unit)? = null
+        private var engineConfigurator: ((EngineConfiguration) -> Unit)? = null
         private var profile: PlaybackProfile = PlaybackProfile.VIDEO_ON_DEMAND
         private var telemetry: TelemetryCollector? = null
 
@@ -693,10 +693,12 @@ public class SuperPlayer private constructor(
          * and fake data source, and both are `@UnstableApi` types that ADR-0001 rule 2 keeps out of
          * public API. Rather than widen the public surface for testing, the seam is `internal`:
          * tests configure the engine here and then drive playback entirely through the public
-         * [Player] API, so no assertion reaches past the facade.
+         * [Player] API, so no assertion reaches past the facade. [EngineConfiguration] says what
+         * may be changed, and why a fake data source goes in its transport slot rather than
+         * replacing the chain above it.
          */
         @VisibleForTesting
-        internal fun setEngineConfigurator(configurator: (ExoPlayer.Builder) -> Unit): Builder =
+        internal fun setEngineConfigurator(configurator: (EngineConfiguration) -> Unit): Builder =
             apply { engineConfigurator = configurator }
 
         public fun build(): SuperPlayer {
@@ -719,22 +721,23 @@ public class SuperPlayer private constructor(
             // be read and set on a built engine.
             val engineBuilder = ExoPlayer.Builder(context)
                 .setLoadControl(decision.buffer.toLoadControl())
-                // The loading path, composed in one place rather than defaulted by Media3. What
-                // it assembles today is exactly what `ExoPlayer.Builder` would have installed on
-                // its own, so this is a seam rather than a behaviour change; TransferChain says
-                // what wraps what, and where cache, measurement, CMCD and header refresh each go.
-                .setMediaSourceFactory(
-                    TransferChain.mediaSourceFactory(context, cmcd, measurementSession),
-                )
                 // Audio focus, becoming-noisy and the wake locks: platform rules rather than
                 // policy, which is why they are not a profile's to decide. See LifecycleBinding.kt.
                 .withLifecycleCorrectness()
-            // After the profile and the chain, so that a test's engine configuration wins over
-            // both: `docs/testing.md`'s seam substitutes Media3's FakeDataSource by installing a
-            // media source factory of its own here, which replaces the one above. Nothing else
-            // reaches this seam, and a test that needs a load control of its own is testing the
-            // engine rather than the policy.
-            engineConfigurator?.invoke(engineBuilder)
+            // After the profile, so that a test's engine configuration wins over it: the clock,
+            // the renderers, a meter a test reads through. Nothing else reaches this seam, and a
+            // test that needs a load control of its own is testing the engine rather than the policy.
+            val configuration = EngineConfiguration(engineBuilder)
+            engineConfigurator?.invoke(configuration)
+            // The loading path, composed in one place rather than defaulted by Media3; TransferChain
+            // says what wraps what, and where cache, measurement, CMCD and header refresh each go.
+            // Installed after the seam rather than before it, so that a test's fake data source
+            // stands in for the HTTP stack *under* SuperPlayer's layers instead of replacing them.
+            // Only content with no transport at all replaces the whole path.
+            engineBuilder.setMediaSourceFactory(
+                configuration.mediaSourceFactory
+                    ?: TransferChain.mediaSourceFactory(context, cmcd, measurementSession, configuration.transport),
+            )
 
             val engine = engineBuilder.build()
             // Built upon rather than replaced, so the engine's own device-derived defaults survive

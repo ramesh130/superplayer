@@ -341,10 +341,12 @@ public object HostileManifests {
     // document itself is valid at every instant, which is what `validity` describes.
     //
     // This is the one entry whose cause is not in the bytes. The headers are recorded on the stream
-    // rather than applied, because Media3's `FakeDataSource` reports none — see
-    // `HostileStream.declaredResponseHeaders` and `docs/testing.md`. What the bytes *do* reproduce
+    // and served by testkit's harness on top of them, because Media3's `FakeDataSource` reports none
+    // — see `HostileStream.declaredResponseHeaders` and `docs/testing.md`. What the bytes reproduce
     // is the consequence: a live media playlist, no EXT-X-ENDLIST, whose content never changes
-    // however often it is reloaded — which is exactly what a client behind that cache rule sees.
+    // however often it is reloaded — which is exactly what a client behind that cache rule sees, and
+    // what no reload past the cache can recover, because nothing newer exists here. The recovery is
+    // played over a live origin instead, in testkit's `LivePlaylistRevalidationTest`.
     //
     // Single severity, although `max-age` has a value, because the bytes cannot grade it. A shorter
     // max-age is a playlist that updates late rather than never, and what these bytes reproduce is

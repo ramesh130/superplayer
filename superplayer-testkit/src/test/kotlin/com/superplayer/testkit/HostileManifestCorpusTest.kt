@@ -235,7 +235,8 @@ class HostileManifestCorpusTest {
             // 17.5 s of genuinely ragged segments, played end to end.
             "hls-inconsistent-segment-durations" to Outcome.PLAYS_TO_END,
             "hls-discontinuity-without-timeline" to Outcome.PLAYS_TO_END,
-            // `PlaylistStuckException`: the frozen-live-stream ticket, reproduced.
+            // `PlaylistStuckException`: the frozen-live-stream ticket, reproduced. Unclassified
+            // today; issue #66.
             "hls-cached-live-playlist" to Outcome.FAILS,
             "dash-ladder-gap" to Outcome.PLAYS_TO_END,
             "dash-overstated-bitrate" to Outcome.PLAYS_TO_END,
@@ -243,7 +244,7 @@ class HostileManifestCorpusTest {
             // Buffers for the whole budget with no error: the stall with nothing to report.
             "dash-availability-start-time-skew" to Outcome.NEVER_STARTS,
             // Ready, but at a *negative* position — before the start of a window shorter than one
-            // segment.
+            // segment. Issue #67.
             "dash-short-time-shift-buffer-depth" to Outcome.DEGRADES,
             // Indistinguishable from the healthy baseline while playing forwards; the unkept
             // promise only matters to a seek backwards, which nothing here makes yet.

@@ -755,9 +755,9 @@ public object HostileManifests {
             add("xmlns=\"urn:mpeg:dash:schema:mpd:2011\"")
             // spec: ISO/IEC 23009-1 §8.4 (ISOBMFF live profile) for a dynamic MPD addressed by
             // SegmentTemplate, §8.5 (ISOBMFF main profile) for a static one addressed by
-            // SegmentList. Not the on-demand profile the good stream declares: §8.3 requires
-            // @type="static" and indexed self-initialising segments, so claiming it here would make
-            // every live entry malformed for a reason that is not its pathology.
+            // SegmentList — the latter being what the good stream declares too. Never the on-demand
+            // profile: §8.3 requires @type="static" and indexed self-initialising segments, so
+            // claiming it would make an entry malformed for a reason that is not its pathology.
             add("profiles=\"urn:mpeg:dash:profile:${if (live) "isoff-live" else "isoff-main"}:2011\"")
             add("type=\"${if (live) "dynamic" else "static"}\"")
             add("minBufferTime=\"PT1S\"")

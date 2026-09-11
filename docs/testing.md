@@ -83,8 +83,9 @@ every test — which a test building two players has to nest.
 
 What it does not do is drive playback. Tests reach `TestPlayerRunHelper` themselves, because what a
 test waits for is part of what it asserts, and hiding that here would make the interesting half of a
-test invisible. The one exception is `settle`, which drains a player's pending commands using a clock
-the test has no other handle on.
+test invisible. The two exceptions are `settle`, which drains a player's pending commands, and
+`awaitPeriodicWork`, which lets the engine make the periodic pass on which Media3 refreshes the
+buffered position — both timed on a clock the test has no other handle on.
 
 Composing the media is still the test's: `buildPlayer` serves the synthetic HLS stream by default,
 and a test that switches protocols or needs a longer stream passes its own `FakeDataSet`.

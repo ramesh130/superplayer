@@ -22,6 +22,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.test.utils.FakeClock
 import androidx.media3.test.utils.FakeDataSet
 import androidx.media3.test.utils.FakeDataSource
+import androidx.media3.test.utils.robolectric.RobolectricUtil
 import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
 import androidx.test.core.app.ApplicationProvider
 import com.superplayer.testmedia.SyntheticHlsStream
@@ -53,8 +54,8 @@ import org.junit.rules.ExternalResource
  *
  * What it deliberately does *not* do is drive playback. Tests reach `TestPlayerRunHelper` themselves,
  * because what a test waits for is part of what it asserts and hiding it here would make the
- * interesting half of a test invisible. The one exception is [settle], which needs a clock the test
- * has no other handle on.
+ * interesting half of a test invisible. The two exceptions are [settle] and [awaitPeriodicWork],
+ * which need a clock the test has no other handle on.
  */
 class SuperPlayerHarness : ExternalResource() {
 
@@ -200,10 +201,34 @@ class SuperPlayerHarness : ExternalResource() {
      * state that was standing before the command.
      */
     fun settle(player: SuperPlayer) {
-        val clock = checkNotNull(clocks[player]) { "This harness did not build that player" }
         TestPlayerRunHelper.advance(player)
-            .untilPendingCommandsAreFullyHandled(clock, player.applicationLooper)
+            .untilPendingCommandsAreFullyHandled(clockOf(player), player.applicationLooper)
     }
+
+    /**
+     * Lets [player]'s playback thread make its periodic pass at least once more, timed on the player's
+     * own fake clock.
+     *
+     * Needed wherever a test reads a value Media3 refreshes only on that pass rather than when it
+     * changes — the buffered position above all. A change that *is* announced, loading stopping say,
+     * is published carrying the buffered position as the last pass left it, and nothing is published
+     * when the next pass corrects it: Media3 writes the new figure in place. An assertion made the
+     * moment loading stops can therefore read the buffer as it stood one segment earlier.
+     *
+     * A ready engine makes the pass at least once per second of its own time, so waiting two leaves
+     * room for a whole one; a buffering engine makes it more often. An idle or ended one makes none,
+     * and a player in either state has no pass for this to wait for. Fake time moves only as fast as
+     * the playback thread gets through its work, so the wait means the same on a loaded host as on
+     * an idle one, and costs no real time.
+     */
+    fun awaitPeriodicWork(player: SuperPlayer) {
+        val clock = clockOf(player)
+        val untilMs = clock.elapsedRealtime() + 2 * READY_MAXIMUM_INTERVAL_MS
+        RobolectricUtil.runMainLooperUntil { clock.elapsedRealtime() >= untilMs }
+    }
+
+    private fun clockOf(player: SuperPlayer): FakeClock =
+        checkNotNull(clocks[player]) { "This harness did not build that player" }
 
     /**
      * Releases every player this harness built, newest first.
@@ -217,3 +242,8 @@ class SuperPlayerHarness : ExternalResource() {
         clocks.clear()
     }
 }
+
+// The longest a ready engine goes between two of its periodic passes, in its own milliseconds.
+// Media3's own name for it, which is private to the engine.
+// ref: https://github.com/androidx/media/blob/release/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/ExoPlayerImplInternal.java
+private const val READY_MAXIMUM_INTERVAL_MS = 1_000L

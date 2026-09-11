@@ -16,13 +16,24 @@
 
 package com.superplayer.testkit
 
+import com.superplayer.testmedia.SyntheticDashStream
+import com.superplayer.testmedia.SyntheticHlsStream
+
 /**
- * What a [PlaybackHarness] should play: how long, how many renditions, and whether it is live.
+ * What a [PlaybackHarness] should play: how long, how many renditions, and whether it is live — or,
+ * for [hls] and [dash], a real stream of that protocol.
  *
  * Described rather than authored. A test that needs an ABR upshift wants *two bitrates that can be
  * switched between*, not a hand-written manifest, and a test that needs a live window wants the
  * window rather than a segment template — so this names the property under test and the harness
  * synthesizes something with it.
+ *
+ * [hls] and [dash] are the exception, and they are a different kind of content rather than another
+ * property: they name `superplayer-testmedia`'s synthetic streams, which are parsed by Media3's own
+ * HLS and DASH parsers, demuxed by its own extractors, and fetched one segment at a time through a
+ * `DataSource` chain. Everything else here is loaded by Media3's fakes, which is faster and enough
+ * for a test about a *measurement*; a test about what the protocols actually fetch — a fault
+ * addressed at a segment, a manifest that arrives late — needs the real thing.
  *
  * **No Media3 type appears here, deliberately.** ADR-0001 rule 2 keeps `@UnstableApi` types out of
  * SuperPlayer's public API, and a test-support module is not exempt: a `Format` or a `Timeline` in
@@ -45,7 +56,29 @@ public class TestContent private constructor(
 
     /** Whether the window is a live one — what makes live-edge latency measurable. */
     internal val live: Boolean,
+
+    /** Which protocol's real stream this is, or [Protocol.DESCRIBED] for content Media3 fakes. */
+    internal val protocol: Protocol = Protocol.DESCRIBED,
+
+    /** How many media segments the synthetic stream carries. Meaningless when [protocol] is not. */
+    internal val segmentCount: Int = 1,
 ) {
+
+    /**
+     * What a test hands to `setMediaRequest`: the multivariant playlist, the MPD, or — for described
+     * content, which Media3's fakes synthesize without fetching anything — a URI nothing resolves.
+     *
+     * A `String`, because it is the only part of a synthetic stream a test needs to name and a
+     * `Uri` would drag Android's own type through this module's API for no gain.
+     */
+    public val sourceUri: String = when (protocol) {
+        Protocol.DESCRIBED -> DESCRIBED_SOURCE_URI
+        Protocol.HLS -> SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI
+        Protocol.DASH -> SyntheticDashStream.MANIFEST_URI
+    }
+
+    /** How the harness loads this content. Internal: a test says [hls] or [dash] and means it. */
+    internal enum class Protocol { DESCRIBED, HLS, DASH }
 
     public companion object {
 
@@ -89,5 +122,52 @@ public class TestContent private constructor(
             bitrateBps: Int = DEFAULT_BITRATE_BPS,
             windowDurationMs: Long = DEFAULT_DURATION_MS,
         ): TestContent = TestContent(listOf(bitrateBps), windowDurationMs, live = true)
+
+        /**
+         * A real HLS stream: a multivariant playlist, a media playlist, and [segmentCount] AAC
+         * segments in ADTS framing, played through Media3's own HLS parser and extractor.
+         *
+         * Audio-only, because that is the smallest thing an `HlsMediaSource` will parse, demux and
+         * expose as a track — and what the protocol half of a test is about is the *fetching*, not
+         * the pixels. Its DASH counterpart [dash] describes deliberately equivalent media, so a test
+         * run against both is comparing the protocols rather than two unrelated streams.
+         *
+         * [segmentCount] is what decides which segment indices a [FaultScript] can address: a fault
+         * at media segment 2 needs a stream with a segment 2.
+         */
+        @JvmStatic
+        public fun hls(segmentCount: Int = DEFAULT_SEGMENT_COUNT): TestContent = TestContent(
+            videoBitratesBps = emptyList(),
+            durationMs = SyntheticHlsStream.durationMs(segmentCount),
+            live = false,
+            protocol = Protocol.HLS,
+            segmentCount = segmentCount,
+        )
+
+        /**
+         * A real DASH stream: an MPD, a fragmented-MP4 initialization segment and [segmentCount]
+         * media segments, played through Media3's own MPD parser and fragmented-MP4 extractor.
+         *
+         * The mirror image of [hls] — same codec, same sample rate, same declared bitrate — for the
+         * reason `docs/testing.md` gives: it is what lets one [FaultScript] be run against both and
+         * be a comparison of the protocols.
+         */
+        @JvmStatic
+        public fun dash(segmentCount: Int = DEFAULT_SEGMENT_COUNT): TestContent = TestContent(
+            videoBitratesBps = emptyList(),
+            durationMs = SyntheticDashStream.durationMs(segmentCount),
+            live = false,
+            protocol = Protocol.DASH,
+            segmentCount = segmentCount,
+        )
+
+        /** Enough segments that a fault can be addressed past the first one and still play first. */
+        public const val DEFAULT_SEGMENT_COUNT: Int = 4
+
+        /**
+         * The source of content Media3's fakes synthesize: nothing fetches it, and a request for it
+         * would be a test failure rather than a 404.
+         */
+        private const val DESCRIBED_SOURCE_URI = "fake://superplayer.test/described"
     }
 }

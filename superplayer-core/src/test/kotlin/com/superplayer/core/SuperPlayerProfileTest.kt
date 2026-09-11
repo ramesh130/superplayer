@@ -24,6 +24,7 @@ import androidx.media3.test.utils.robolectric.ShadowMediaCodecConfig
 import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
+import com.superplayer.testmedia.SyntheticHlsStream
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith

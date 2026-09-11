@@ -32,6 +32,7 @@ include(":superplayer-diagnostics")
 include(":superplayer-tv")
 include(":superplayer-ui")
 include(":superplayer-testkit")
+include(":superplayer-testmedia")
 
 // `demo/` is deliberately NOT included here. It is a standalone Gradle build that
 // consumes SuperPlayer through published Maven coordinates, exactly as an external

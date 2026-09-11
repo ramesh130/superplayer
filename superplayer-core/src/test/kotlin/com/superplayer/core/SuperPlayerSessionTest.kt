@@ -31,6 +31,8 @@ import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
+import com.superplayer.testmedia.SyntheticDashStream
+import com.superplayer.testmedia.SyntheticHlsStream
 import org.junit.After
 import org.junit.Before
 import org.junit.Rule

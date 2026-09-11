@@ -22,6 +22,7 @@ import androidx.media3.datasource.TransferListener
 import androidx.media3.exoplayer.upstream.BandwidthMeter
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import androidx.test.core.app.ApplicationProvider
+import com.superplayer.testmedia.SyntheticHlsStream
 
 /**
  * Every request the engine opens, recorded — the test's window onto what a player actually sent.

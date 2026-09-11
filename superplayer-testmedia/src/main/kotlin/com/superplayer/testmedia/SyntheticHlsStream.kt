@@ -14,16 +14,15 @@
  * limitations under the License.
  */
 
-package com.superplayer.core
+package com.superplayer.testmedia
 
-import androidx.media3.test.utils.FakeDataSet
 import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlin.math.ceil
 
 /**
  * A complete, tiny HLS stream generated in memory: a multivariant playlist, one media playlist, and
- * as many identical audio segments as the caller asks for, served by Media3's [FakeDataSet].
+ * as many identical audio segments as the caller asks for, as [resources] or as files on disk.
  *
  * Generated rather than checked in as a fixture so that what the test asserts about — the codec, the
  * bitrate, the duration — is visible in this file instead of hidden inside a binary blob, and so the
@@ -32,9 +31,9 @@ import kotlin.math.ceil
  * The stream is audio-only on purpose. It is the smallest thing a real `HlsMediaSource` will parse,
  * demux, and expose as a track, which is all this slice needs to prove.
  */
-internal object SyntheticHlsStream {
+public object SyntheticHlsStream {
 
-    /** Any scheme works: [androidx.media3.test.utils.FakeDataSource] keys purely on the URI. */
+    /** Any scheme works: a test serving these from a fake data source keys purely on the URI. */
     private const val BASE_URI = "fake://superplayer.test/"
 
     private const val MULTIVARIANT_PLAYLIST_NAME = "master.m3u8"
@@ -43,15 +42,15 @@ internal object SyntheticHlsStream {
     /** The second variant's media playlist, present only when a caller asks for two. */
     private const val SECOND_MEDIA_PLAYLIST_NAME = "media-high.m3u8"
 
-    const val MULTIVARIANT_PLAYLIST_URI: String = BASE_URI + MULTIVARIANT_PLAYLIST_NAME
+    public const val MULTIVARIANT_PLAYLIST_URI: String = BASE_URI + MULTIVARIANT_PLAYLIST_NAME
 
     /** What every segment's name ends in, so a test can tell a segment request from a playlist one. */
-    const val SEGMENT_SUFFIX: String = ".aac"
+    public const val SEGMENT_SUFFIX: String = ".aac"
 
     private fun segmentName(index: Int) = "segment$index$SEGMENT_SUFFIX"
 
     /** Declared in the multivariant playlist, and therefore what the selected track should report. */
-    const val DECLARED_BITRATE_BPS: Int = 128_000
+    public const val DECLARED_BITRATE_BPS: Int = 128_000
 
     /**
      * The second variant's declared bitrate, in the two-variant form of the stream.
@@ -61,20 +60,20 @@ internal object SyntheticHlsStream {
      * single track it picks is the highest-bitrate one it is allowed. A test asserting on the
      * selected format over the two-variant stream asserts on this constant.
      */
-    const val HIGHER_DECLARED_BITRATE_BPS: Int = 256_000
+    public const val HIGHER_DECLARED_BITRATE_BPS: Int = 256_000
 
     /** `mp4a.40.2` — AAC-LC. RFC 6381 §3.3 codecs parameter, as used by RFC 8216 §4.3.4.2. */
-    const val DECLARED_CODECS: String = "mp4a.40.2"
+    public const val DECLARED_CODECS: String = "mp4a.40.2"
 
     private const val SEGMENT_DURATION_SECONDS = 2.0
 
-    const val SEGMENT_DURATION_MS: Long = (SEGMENT_DURATION_SECONDS * 1_000).toLong()
+    public const val SEGMENT_DURATION_MS: Long = (SEGMENT_DURATION_SECONDS * 1_000).toLong()
 
     /** The default stream: one segment, so the segment's own duration. */
-    const val DURATION_MS: Long = SEGMENT_DURATION_MS
+    public const val DURATION_MS: Long = SEGMENT_DURATION_MS
 
     /** What a stream of [segmentCount] segments advertises as its duration. */
-    fun durationMs(segmentCount: Int): Long = SEGMENT_DURATION_MS * segmentCount
+    public fun durationMs(segmentCount: Int): Long = SEGMENT_DURATION_MS * segmentCount
 
     // spec: ISO/IEC 13818-7 §6.2 — sampling_frequency_index 4 is 44100 Hz, channel_configuration 2
     // is stereo. They are encoded into every ADTS frame header below and are what Media3's
@@ -96,33 +95,34 @@ internal object SyntheticHlsStream {
     private const val ADTS_PAYLOAD_BYTES = 64
 
     /**
-     * Everything the player will ask for, and nothing else: an unknown URI is a test failure.
+     * Everything the player will ask for, keyed by URI, and nothing else: an unknown URI is a test
+     * failure.
      *
-     * Adds to a caller-supplied [FakeDataSet] rather than returning its own, so that a test needing
-     * more than one stream — switching protocols mid-session, say — composes them into one set.
+     * A map rather than a populated fake data source, so that this module names no Media3 type — see
+     * its build script for why that is what keeps it below every module that plays these streams. A
+     * caller serves it in one line, and a test needing more than one stream — switching protocols
+     * mid-session, say — composes two maps into one set.
      *
      * [segmentCount] is one by default, which is all a test of track formats or start positions
      * needs. A test about *buffering* needs a stream longer than the buffer it is asserting on, and
-     * asks for more; every segment is byte-identical, because what varies is how much of the stream
-     * exists and not what is in it.
+     * asks for more; every segment is byte-identical apart from its timestamp tag, because what
+     * varies is how much of the stream exists and not what is in it.
      */
-    fun addTo(fakeDataSet: FakeDataSet, segmentCount: Int = 1): FakeDataSet {
-        files(segmentCount).forEach { (name, bytes) -> fakeDataSet.setData(BASE_URI + name, bytes) }
-        return fakeDataSet
-    }
+    public fun resources(segmentCount: Int = 1, variantCount: Int = 1): Map<String, ByteArray> =
+        files(segmentCount, variantCount).mapKeys { (name, _) -> BASE_URI + name }
 
     /**
      * The same stream on disk, returning the multivariant playlist's `file:` URI.
      *
      * For the one test that must *not* substitute a data source: the transfer chain
-     * `SuperPlayer.Builder` assembles is what a consumer loads through, and a test that replaces it
-     * with [androidx.media3.test.utils.FakeDataSource] cannot see it at all. A file the real chain
-     * resolves is the nearest thing to a network fetch that a test with no network can ask for.
+     * `SuperPlayer.Builder` assembles is what a consumer loads through, and a test that replaces the
+     * whole chain with a fake data source cannot see it at all. A file the real chain resolves is
+     * the nearest thing to a network fetch that a test with no network can ask for.
      *
      * Every reference inside the playlists is relative, which is what lets the identical bytes serve
-     * from a `fake:` URI in [addTo] and from a directory here.
+     * from a `fake:` URI in [resources] and from a directory here.
      */
-    fun writeTo(directory: File, segmentCount: Int = 1, variantCount: Int = 1): String {
+    public fun writeTo(directory: File, segmentCount: Int = 1, variantCount: Int = 1): String {
         files(segmentCount, variantCount).forEach { (name, bytes) ->
             File(directory, name).writeBytes(bytes)
         }

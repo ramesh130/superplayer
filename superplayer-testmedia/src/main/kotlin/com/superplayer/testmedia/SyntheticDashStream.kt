@@ -14,15 +14,14 @@
  * limitations under the License.
  */
 
-package com.superplayer.core
+package com.superplayer.testmedia
 
-import androidx.media3.test.utils.FakeDataSet
 import java.io.ByteArrayOutputStream
 import java.util.Locale
 
 /**
  * A complete, tiny DASH stream generated in memory: an MPD, a fragmented-MP4 initialization
- * segment, and one media segment, served by Media3's [FakeDataSet].
+ * segment, and as many media segments as the caller asks for, as [resources] or as files on disk.
  *
  * The counterpart to [SyntheticHlsStream], and deliberately its mirror image: same codec, same
  * sample rate, same channel count, same declared bitrate, so that a test comparing what the facade
@@ -43,24 +42,26 @@ import java.util.Locale
  * spec: ISO/IEC 14496-12 for the box structures, ISO/IEC 23009-1 §5.3 for the MPD. Every box is
  * cited at the function that writes it.
  */
-internal object SyntheticDashStream {
+public object SyntheticDashStream {
 
-    /** Any scheme works: [androidx.media3.test.utils.FakeDataSource] keys purely on the URI. */
+    /** Any scheme works: a test serving these from a fake data source keys purely on the URI. */
     private const val BASE_URI = "fake://superplayer.test/dash/"
 
     /** `.mpd` is load-bearing: Media3 infers the content type from the URI's extension. */
-    const val MANIFEST_URI: String = BASE_URI + "manifest.mpd"
-    private const val INITIALIZATION_URI = BASE_URI + "init.mp4"
-    private const val SEGMENT_URI = BASE_URI + "segment0.m4s"
+    public const val MANIFEST_URI: String = BASE_URI + "manifest.mpd"
+    private const val INITIALIZATION_NAME = "init.mp4"
+    private const val INITIALIZATION_URI = BASE_URI + INITIALIZATION_NAME
+
+    private fun segmentName(index: Int) = "segment$index.m4s"
 
     /** Declared as the representation's `@bandwidth`, and therefore what the track should report. */
-    const val DECLARED_BITRATE_BPS: Int = 128_000
+    public const val DECLARED_BITRATE_BPS: Int = 128_000
 
     /** `mp4a.40.2` — AAC-LC. RFC 6381 §3.3, as referenced by ISO/IEC 23009-1 §5.3.7.2. */
-    const val DECLARED_CODECS: String = "mp4a.40.2"
+    public const val DECLARED_CODECS: String = "mp4a.40.2"
 
-    const val DECLARED_SAMPLE_RATE_HZ: Int = 44_100
-    const val DECLARED_CHANNEL_COUNT: Int = 2
+    public const val DECLARED_SAMPLE_RATE_HZ: Int = 44_100
+    public const val DECLARED_CHANNEL_COUNT: Int = 2
 
     /** spec: ISO/IEC 14496-3 — an AAC-LC frame carries 1024 samples. */
     private const val SAMPLES_PER_FRAME = 1024
@@ -83,49 +84,82 @@ internal object SyntheticDashStream {
 
     private const val SEGMENT_DURATION_IN_TIMESCALE = FRAME_COUNT * SAMPLES_PER_FRAME
 
-    /** What the MPD advertises as `@mediaPresentationDuration`, in the units [Player] reports. */
-    const val DURATION_MS: Long = SEGMENT_DURATION_IN_TIMESCALE * 1_000L / TIMESCALE
+    /**
+     * What a single-segment MPD advertises as `@mediaPresentationDuration`, in the milliseconds the
+     * player reports a duration in.
+     */
+    public const val DURATION_MS: Long = SEGMENT_DURATION_IN_TIMESCALE * 1_000L / TIMESCALE
 
-    /** Everything the player will ask for, and nothing else: an unknown URI is a test failure. */
-    fun addTo(fakeDataSet: FakeDataSet): FakeDataSet =
-        fakeDataSet
-            .setData(MANIFEST_URI, manifest().toByteArray())
-            .setData(INITIALIZATION_URI, initializationSegment())
-            .setData(SEGMENT_URI, mediaSegment())
+    /** What a stream of [segmentCount] segments advertises as its duration. */
+    public fun durationMs(segmentCount: Int): Long = DURATION_MS * segmentCount
+
+    /**
+     * Everything the player will ask for, keyed by URI, and nothing else: an unknown URI is a test
+     * failure.
+     *
+     * A map rather than a populated fake data source, so that this module names no Media3 type — see
+     * its build script for why that is what keeps it below every module that plays these streams.
+     *
+     * [segmentCount] is one by default, which is the stream this file has always emitted: asking for
+     * one produces byte-identical bytes to the single-segment form. More is what a test addressing a
+     * *later* segment needs — a fault at media segment 1 has to have a segment 1 to land on — and
+     * every extra segment differs from the first only in its fragment sequence number and its
+     * decode time, which is what makes them play back to back rather than all at zero.
+     */
+    public fun resources(segmentCount: Int = 1): Map<String, ByteArray> {
+        require(segmentCount >= 1) { "A stream needs at least one segment, was $segmentCount" }
+        return buildMap {
+            put(MANIFEST_URI, manifest(segmentCount).toByteArray())
+            put(INITIALIZATION_URI, initializationSegment())
+            repeat(segmentCount) { index -> put(BASE_URI + segmentName(index), mediaSegment(index)) }
+        }
+    }
 
     /**
      * spec: ISO/IEC 23009-1 §5.3 — a static, single-period, single-representation MPD.
      *
-     * `SegmentList` rather than `SegmentTemplate` because there is exactly one segment: a template
-     * would add a substitution grammar to read for no gain here.
+     * `SegmentList` rather than `SegmentTemplate` because the segments are listed one by one anyway:
+     * a template would add a substitution grammar to read for no gain here.
      */
-    private fun manifest(): String {
-        val durationSeconds = SEGMENT_DURATION_IN_TIMESCALE.toDouble() / TIMESCALE
-        return """
-        <?xml version="1.0" encoding="utf-8"?>
-        <MPD xmlns="urn:mpeg:dash:schema:mpd:2011"
-             profiles="urn:mpeg:dash:profile:isoff-on-demand:2011"
-             type="static"
-             mediaPresentationDuration="${xsDuration(durationSeconds)}"
-             minBufferTime="PT1S">
-          <Period id="0">
-            <AdaptationSet mimeType="audio/mp4" segmentAlignment="true">
-              <Representation id="0"
-                              bandwidth="$DECLARED_BITRATE_BPS"
-                              codecs="$DECLARED_CODECS"
-                              audioSamplingRate="$DECLARED_SAMPLE_RATE_HZ">
-                <AudioChannelConfiguration
-                    schemeIdUri="urn:mpeg:dash:23003:3:audio_channel_configuration:2011"
-                    value="$DECLARED_CHANNEL_COUNT"/>
-                <SegmentList timescale="$TIMESCALE" duration="$SEGMENT_DURATION_IN_TIMESCALE">
-                  <Initialization sourceURL="init.mp4"/>
-                  <SegmentURL media="segment0.m4s"/>
-                </SegmentList>
-              </Representation>
-            </AdaptationSet>
-          </Period>
-        </MPD>
-        """.trimIndent()
+    private fun manifest(segmentCount: Int): String {
+        val durationSeconds = SEGMENT_DURATION_IN_TIMESCALE.toDouble() * segmentCount / TIMESCALE
+        val segmentUrls = (0 until segmentCount).map { index ->
+            "          <SegmentURL media=\"${segmentName(index)}\"/>"
+        }
+
+        // Joined lines rather than an indented raw string, for the reason `SyntheticHlsStream`'s
+        // media playlist gives and one more this document cannot survive: a `trimIndent` block whose
+        // interpolated value is itself multi-line has no common indent left to trim, so every line
+        // — the XML declaration included — would keep the source's own eight spaces, and an XML
+        // declaration preceded by whitespace is not a document any parser will accept.
+        return (
+            listOf(
+                "<?xml version=\"1.0\" encoding=\"utf-8\"?>",
+                "<MPD xmlns=\"urn:mpeg:dash:schema:mpd:2011\"",
+                "     profiles=\"urn:mpeg:dash:profile:isoff-on-demand:2011\"",
+                "     type=\"static\"",
+                "     mediaPresentationDuration=\"${xsDuration(durationSeconds)}\"",
+                "     minBufferTime=\"PT1S\">",
+                "  <Period id=\"0\">",
+                "    <AdaptationSet mimeType=\"audio/mp4\" segmentAlignment=\"true\">",
+                "      <Representation id=\"0\"",
+                "                      bandwidth=\"$DECLARED_BITRATE_BPS\"",
+                "                      codecs=\"$DECLARED_CODECS\"",
+                "                      audioSamplingRate=\"$DECLARED_SAMPLE_RATE_HZ\">",
+                "        <AudioChannelConfiguration",
+                "            schemeIdUri=\"urn:mpeg:dash:23003:3:audio_channel_configuration:2011\"",
+                "            value=\"$DECLARED_CHANNEL_COUNT\"/>",
+                "        <SegmentList timescale=\"$TIMESCALE\" " +
+                    "duration=\"$SEGMENT_DURATION_IN_TIMESCALE\">",
+                "          <Initialization sourceURL=\"$INITIALIZATION_NAME\"/>",
+            ) + segmentUrls + listOf(
+                "        </SegmentList>",
+                "      </Representation>",
+                "    </AdaptationSet>",
+                "  </Period>",
+                "</MPD>",
+            )
+            ).joinToString(separator = "\n")
     }
 
     /** spec: ISO 8601 durations, as required by ISO/IEC 23009-1 §5.3.1.2 for `xs:duration`. */
@@ -348,9 +382,9 @@ internal object SyntheticDashStream {
      * until the `moof` has been built. Rather than write the value in by hand and have it rot the
      * next time a box is added, the `moof` is built twice: once to measure, once for real.
      */
-    private fun mediaSegment(): ByteArray {
-        val measured = movieFragmentBox(dataOffset = 0)
-        val moof = movieFragmentBox(dataOffset = measured.size + BOX_HEADER_BYTES)
+    private fun mediaSegment(index: Int): ByteArray {
+        val measured = movieFragmentBox(index, dataOffset = 0)
+        val moof = movieFragmentBox(index, dataOffset = measured.size + BOX_HEADER_BYTES)
 
         return bytes {
             write(segmentTypeBox())
@@ -367,13 +401,13 @@ internal object SyntheticDashStream {
         ascii("dash")
     }
 
-    private fun movieFragmentBox(dataOffset: Int): ByteArray = box("moof") {
+    private fun movieFragmentBox(index: Int, dataOffset: Int): ByteArray = box("moof") {
         // spec: ISO/IEC 14496-12 §8.8.5 — sequence_number counts fragments from 1.
-        write(fullBox("mfhd", version = 0, flags = 0) { int32(1) })
-        write(trackFragmentBox(dataOffset))
+        write(fullBox("mfhd", version = 0, flags = 0) { int32(index + 1) })
+        write(trackFragmentBox(index, dataOffset))
     }
 
-    private fun trackFragmentBox(dataOffset: Int): ByteArray = box("traf") {
+    private fun trackFragmentBox(index: Int, dataOffset: Int): ByteArray = box("traf") {
         // spec: ISO/IEC 14496-12 §8.8.7. Flags: default-base-is-moof (0x020000), which anchors
         // offsets to this `moof` rather than to the file, plus the three sample defaults present.
         write(
@@ -387,7 +421,14 @@ internal object SyntheticDashStream {
 
         // spec: ISO/IEC 14496-12 §8.8.12 — the fragment's first sample's decode time. Version 1 for
         // the 64-bit field, which is what every DASH packager emits.
-        write(fullBox("tfdt", version = 1, flags = 0) { int64(0) })
+        // Every segment carries the same sample count, so the nth begins exactly n segments in. A
+        // fragment that reported zero here would place its samples on top of the first segment's:
+        // the buffer would never extend past one segment and the player would never be ready.
+        write(
+            fullBox("tfdt", version = 1, flags = 0) {
+                int64(index.toLong() * SEGMENT_DURATION_IN_TIMESCALE)
+            },
+        )
 
         // spec: ISO/IEC 14496-12 §8.8.8. Flags 0x1 is data-offset-present and nothing else: every
         // sample takes the `tfhd` defaults, so the run carries no per-sample fields at all.

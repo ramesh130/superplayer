@@ -47,7 +47,7 @@ why it is not the "second seam" the next section warns about.
 | Runtime | Robolectric, via `androidx.test.ext.junit.runners.AndroidJUnit4` |
 | Time | `androidx.media3.test.utils.FakeClock`, auto-advancing |
 | Network | `androidx.media3.test.utils.FakeDataSource` over a `FakeDataSet` — except in the one class named above, which reads a `file:` URI through the real chain |
-| Media | Manifests and segments generated in the test — see `SyntheticHlsStream`, `SyntheticDashStream` |
+| Media | Manifests and segments generated in Kotlin — `superplayer-testmedia`'s `SyntheticHlsStream` and `SyntheticDashStream` |
 | Codecs | `ShadowMediaCodecConfig`, so the real renderer pipeline runs against shadow decoders |
 | Driving playback | `androidx.media3.test.utils.robolectric.TestPlayerRunHelper` |
 | Platform state | Robolectric's own shadows — see "Asserting on the platform" below |
@@ -103,17 +103,48 @@ over whatever `build()` installed, which is what keeps every test above working.
 ## Synthetic media, not fixtures
 
 Streams are generated in Kotlin rather than checked in as binaries. `SyntheticHlsStream` writes a
-multivariant playlist, a media playlist and an AAC segment in ADTS framing; `SyntheticDashStream`
-writes an MPD, a fragmented-MP4 initialization segment and one media segment. Every field a test
-asserts on — the codec, the bitrate, the sample rate — is a named constant a reader can see, and the
-repository carries no media it would have to license.
+multivariant playlist, a media playlist and AAC segments in ADTS framing; `SyntheticDashStream`
+writes an MPD, a fragmented-MP4 initialization segment and fragmented media segments. Every field a
+test asserts on — the codec, the bitrate, the sample rate — is a named constant a reader can see, and
+the repository carries no media it would have to license.
 
 The two describe deliberately equivalent media: same codec, same sample rate, same declared
 bitrate. That is what lets a test compare what the facade reports for the two protocols and be
 comparing the protocols rather than two unrelated pieces of media.
 
-Each exposes `addTo(FakeDataSet)` rather than building its own set, so a test that needs more than
-one stream — switching protocols mid-session — composes them into one.
+### Where they live, and why it is its own module
+
+Both are **`superplayer-testmedia`**, a module that exists for one reason: `superplayer-core`'s tests
+and `superplayer-testkit`'s *main* source set both play these streams, and core cannot depend on
+testkit — a later phase (`docs/modules.md`), and a cycle besides. The one home both can see has to
+sit below both, so it is a module of its own at phase 1 with no dependencies at all.
+
+The alternatives were weighed and are worse:
+
+- **Duplicating them in testkit.** Around eight hundred lines of byte-exact ADTS framing and ISO
+  BMFF box building, in two places, drifting from the moment the second copy exists.
+- **Putting them in `superplayer-core`'s main source set as `internal`**, which testkit could reach
+  as a friend. Cheapest, and it fails on what it drags with it: a generator that populated a
+  `FakeDataSet` would put `media3-test-utils` on core's *main* classpath and into its POM, so every
+  consumer of `superplayer-core` would resolve Media3's test fakes. Test-media generators inside the
+  shipped AAR are a thing a reviewer has to explain; test fakes in a consumer's dependency graph are
+  a thing nobody should have to.
+- **A cross-project source directory.** The same package compiled into two artifacts, and a consumer
+  with both on the classpath gets duplicate classes.
+
+`superplayer-testmedia` **names no Media3 type**, and that is load-bearing rather than minimal.
+`FakeDataSet` is `@UnstableApi`, so an `addTo(FakeDataSet)` in a published module's public API would
+fail `verifyNoUnstableMedia3InPublicApi` — ADR-0001 rule 2, the same rule that keeps Media3 out of
+testkit's signatures. A stream is therefore handed over as URI-to-bytes:
+
+```kotlin
+SyntheticHlsStream.resources(segmentCount = 4).forEach { (uri, bytes) -> fakeDataSet.setData(uri, bytes) }
+```
+
+That line is the caller's, in `superplayer-core`'s tests and in `PlaybackHarness`. Two copies of one
+line is the whole cost of the split, and it buys a module that cannot break the phase rule and cannot
+be a cycle. `SyntheticHlsStream.writeTo(directory)` is the same stream as files, for the one test
+that plays through the real transfer chain.
 
 
 ## Why assertions stop at the facade
@@ -260,6 +291,15 @@ the opposite of core's harness, deliberately. Auto-advancing is right when nothi
 and wrong when something is: a clock that moves by an amount no assertion can name turns every
 duration into a tolerance.
 
+**It can play a real protocol, too.** `TestContent.video()` and its siblings describe content that
+Media3's fakes synthesize — fast, and enough when the subject is a *measurement*. `TestContent.hls()`
+and `TestContent.dash()` are a different kind of content: `superplayer-testmedia`'s synthetic streams,
+parsed by Media3's own playlist and manifest parsers, demuxed by its own extractors, and fetched one
+resource at a time through a `DataSource` chain with the fault injector in it. That is what makes the
+injector's addressing observable under the protocols rather than only over a URL sequence, and
+`ProtocolPlaybackTest` plays both end to end. A test hands `content.sourceUri` to `setMediaRequest`;
+the harness names no `FakeDataSet` in its API and no Media3 type reaches the test.
+
 **What it fakes, and what that costs.** Stalls can be injected by making the video renderer stop
 being ready, which reproduces the engine's buffering state machine exactly and the *cause* of a
 rebuffer not at all; dropped frames are raised on the renderer's own callback rather than by a
@@ -298,7 +338,17 @@ and that is a **heuristic, not a protocol guarantee**: neither RFC 8216 nor ISO/
 a name for an initialization segment. It is right for what this repository generates and for the
 conventions in both specs' examples; a stream that named its media segments `init-0001.m4s` would be
 classified wrongly, and the place to fix that is `ResourceAddressBook.kindOf`, which is the one
-function that knows a URL was involved at all. Indices count *distinct resources of one kind in the order they were
+function that knows a URL was involved at all.
+
+It has since been checked against what the real parsers actually request, which is a stronger claim
+than the paragraph above could make on its own: `ProtocolPlaybackTest` plays both synthetic streams
+through Media3's own HLS and DASH sources and asserts on the addresses assigned. Under HLS they are
+the multivariant playlist, the media playlist, then the segments — two manifests and no
+initialization segment at all, because packed audio has none. Under DASH they are the MPD, the
+initialization segment, then the segments. Media segments are numbered from zero under both, which is
+what lets `FaultInjectionPlaybackTest.theSameScriptFailsTheSameSegmentUnderHlsAndUnderDash` run one
+script against both and compare the two lists. The one thing worth knowing is the asymmetry: a
+`ResourceKind.INITIALIZATION` fault addresses something under DASH and nothing under HLS. Indices count *distinct resources of one kind in the order they were
 first requested*, keyed on the URL without its query and on the byte offset asked for — so a retry
 under a refreshed signature is still the same segment, and a stream packaged as byte ranges of one
 URL is still a stream of segments.

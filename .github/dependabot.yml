@@ -1,0 +1,135 @@
+# Dependabot: dependency and CI-action updates, as pull requests.
+#
+# Lint's `GradleDependency` check notices when a newer version is published, and is deliberately left
+# a warning — the lint block in build-logic's `superplayer.android.library` convention plugin says
+# why: a time-dependent fact must not redden CI on a change that did not cause it. That reasoning is
+# right and leaves nothing watching. This file is what watches. "A newer version exists" arrives as
+# a pull request with CI attached, when it becomes true, without failing anybody else's build.
+#
+# Nothing here merges anything. Every bump is reviewed: CI passing is necessary and not sufficient,
+# and least of all for Media3.
+version: 2
+
+updates:
+  # --- Gradle ---
+  #
+  # Three directories, because this repository is three Gradle builds. What each job actually picks
+  # up was checked against dependabot-core's Gradle file fetcher rather than assumed, and it is not
+  # what the list suggests:
+  #
+  #   /             Everything that has a version. Dependabot reads `gradle/libs.versions.toml` only
+  #                 for the build rooted at the job's own directory, so this job is the one that
+  #                 sees the catalog every build shares. It also follows `includeBuild("build-logic")`
+  #                 in the root settings, so build-logic's build script is scanned here too. And it
+  #                 updates the root Gradle wrapper.
+  #   /demo         The demo's own Gradle wrapper, and nothing else. The demo is not an included
+  #                 build, so `/` never reaches it, and its settings load the catalog through
+  #                 `from(files("../gradle/libs.versions.toml"))`, which Dependabot does not follow.
+  #                 Its dependencies are therefore updated through `/` — the same file, one PR.
+  #                 Its `superplayer-core` coordinate interpolates the catalog's version, so
+  #                 Dependabot skips it, which is right: that artifact is this repository's own.
+  #   /build-logic  Nothing today. It has no wrapper of its own and names no version directly — every
+  #                 one is a catalog reference — and `/` already scans its build script. It is
+  #                 listed so that coverage of the included build does not rest solely on
+  #                 Dependabot parsing `includeBuild` out of a `pluginManagement` block.
+  #
+  # The catalog is the only file a dependency PR edits (a wrapper PR edits `gradle/wrapper/`). No
+  # build script in any of the three builds carries a version literal (ADR-0001 rule 3 for Media3,
+  # the catalog's own header for the rest), so there is nothing else for Dependabot to rewrite.
+  # Catalog entries it does NOT update:
+  #
+  #   ktlint        A bare `[versions]` entry, read by Spotless as `libs.versions.ktlint`. Dependabot
+  #                 only updates a version it can tie to a `[libraries]` or `[plugins]` coordinate,
+  #                 so ktlint moves by hand. Check it when a Spotless PR arrives.
+  #   robolectric   Ignored on purpose, below.
+  #   superplayer, jvmTarget, compileSdk, minSdk, targetSdk
+  #                 Not dependencies. Dependabot has nothing to say about them, and should not.
+  #   Compose       The individual libraries carry no version. The BOM is updated and moves them.
+  - package-ecosystem: gradle
+    directories:
+      - /
+      - /build-logic
+      - /demo
+    # Weekly: soon enough that a release is a PR within days, rarely enough that the PRs get read.
+    # A bot whose PRs are routinely ignored is worse than none, because it trains people to ignore
+    # the one that matters.
+    schedule:
+      interval: weekly
+      day: monday
+    # Bounds the backlog, where the groups below bound a single week. Five open PRs is as many as
+    # are going to be reviewed at once. Past that, a sixth is noise that waits behind the others.
+    open-pull-requests-limit: 5
+    ignore:
+      # The catalog says to keep Robolectric equal to the version `media3-test-utils-robolectric`
+      # resolves (4.16 for Media3 1.11.0), so that the two declarations cannot pull in two
+      # Robolectrics. A standalone bump would break exactly that. It moves by hand, in the Media3
+      # PR, to whatever the new Media3 resolves.
+      - dependency-name: org.robolectric:robolectric
+    # A dependency matching several groups goes to the one whose pattern is most specific. That is
+    # dependabot-core's rule, not the order below, so the catch-all `*` never takes a dependency
+    # that a named group also matches.
+    groups:
+      # Media3 is not the same kind of event as a test-library patch. The group name is what marks
+      # it, because it appears in the PR's title and branch ("Bump the media3 group ..."). Labels
+      # are per update entry here, not per group, so a label cannot single Media3 out, and the PR's
+      # body is Dependabot's own. So the obligations below do not appear in the PR itself. The
+      # group name is the reviewer's cue to come and read them here.
+      #
+      # A Media3 PR carries obligations that no CI check here enforces:
+      #   - `docs/modules.md`, "Supported Media3 versions", names the supported range (1.11.x). A
+      #     minor or major bump moves it, and that section is rewritten by hand in the same PR. A
+      #     patch within the range does not. Widening the range, rather than moving it, needs a
+      #     compatibility test first, and is not this PR's to do.
+      #   - Robolectric, ignored above, is set to whatever the new Media3 resolves.
+      # CI does enforce the rest: the tracked API surface catches a public signature that moved,
+      # and the demo's `UnsafeOptInUsageError` lint catches a new call into @UnstableApi.
+      media3:
+        patterns:
+          - "androidx.media3:*"
+      # One PR per toolchain bump, whatever Dependabot makes of several coordinates sharing one
+      # `version.ref`. The AGP artifact and both Android plugin ids resolve `agp`. The Kotlin Gradle
+      # plugin, the Android plugin and the Compose compiler plugin resolve `kotlin`. Any one of
+      # them moving without the others is not a state the build supports.
+      agp:
+        patterns:
+          - "com.android*"
+      kotlin:
+        patterns:
+          - "org.jetbrains.kotlin*"
+        exclude-patterns:
+          # Coroutines and the API-surface engine share the prefix and nothing else.
+          - "org.jetbrains.kotlinx*"
+      # The root and demo wrappers are pinned to the same Gradle, and `group-by: dependency-name`
+      # makes one PR that moves both, rather than one per directory that could merge apart. CI's
+      # `wrapper-validation` step checks the new wrapper JAR is genuine.
+      gradle-wrapper:
+        group-by: dependency-name
+        patterns:
+          - gradle-wrapper
+      # Everything else that is not a major bump, in one weekly PR, so that a quiet week does not
+      # turn into twelve. Majors stay individual PRs, because each has a changelog worth reading on
+      # its own.
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  # --- GitHub Actions ---
+  #
+  # The actions `.github/workflows/ci.yml` pins: `actions/checkout`, `actions/setup-java`,
+  # `android-actions/setup-android`, `actions/upload-artifact`, and `gradle/actions` (both
+  # `wrapper-validation` and `setup-gradle` come from that one repository, so they move together
+  # in one PR). This is the ecosystem people forget, and a stale action is how a workflow starts
+  # failing on a runner change nobody made here. `/` is where Dependabot looks for
+  # `.github/workflows`.
+  #
+  # Ungrouped: the pins are major-version tags, so every update is a major, and each deserves its
+  # own changelog read. There are five of them, so ungrouped is not noise.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5

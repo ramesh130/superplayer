@@ -1,0 +1,436 @@
+#!/usr/bin/env bash
+# Copyright 2026 The SuperPlayer Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# devicelab: drives the demo on a device and comes back with a trace, a report and the run metadata.
+#
+#   devicelab/lab run <scenario> [--data-sources a,b] [--build-type benchmark|debug] [--serial S]
+#   devicelab/lab device        ensure a booted, answering device and print its serial
+#   devicelab/lab create-avd    install the system image and create the AVD in device.properties
+#   devicelab/lab config        print the Perfetto config a run would use
+#   devicelab/lab list          list the scenarios and Perfetto data sources
+#
+# Not a test, and not part of `./gradlew check`: `run` and `device` need a device. README.md says why that sits outside docs/testing.md's no-device rule rather than against it.
+set -euo pipefail
+
+. "$(cd "$(dirname "$0")" && pwd)/lib/common.sh"
+. "$DEVICELAB_HOME/lib/device.sh"
+. "$DEVICELAB_HOME/lib/playback.sh"
+. "$DEVICELAB_HOME/lib/perfetto.sh"
+. "$DEVICELAB_HOME/lib/artifacts.sh"
+. "$DEVICELAB_HOME/lib/metadata.sh"
+. "$DEVICELAB_HOME/lib/ui.sh"
+
+DEMO_PACKAGE=com.superplayer.demo
+DEMO_ACTIVITY=.MainActivity
+DEVICE_TRACE_DIR=/data/misc/perfetto-traces
+
+usage() {
+    sed -n '4,13p' "$0" | sed 's/^# \{0,1\}//' >&2
+    cat >&2 <<'USAGE'
+
+Options:
+  --data-sources a,b   Perfetto data sources beyond the base config (`lab list` names them)
+  --build-type T       benchmark (default) or debug
+  --serial S           use this device; it is never booted or restarted (also: ANDROID_SERIAL)
+  --headless           boot the emulator without a window (the default when CI is set)
+  --out DIR            where runs are written (default: devicelab/out)
+  --trace-ms N         upper bound on the trace, overriding the scenario's
+  --trace-from W       launch or playing, overriding the scenario's
+USAGE
+    exit 2
+}
+
+# --- Arguments -------------------------------------------------------------------------------------
+
+COMMAND="${1:-}"
+[ -n "$COMMAND" ] || usage
+shift
+SCENARIO=""
+DATA_SOURCES=""
+BUILD_TYPE=benchmark
+SERIAL="${ANDROID_SERIAL:-}"
+HEADLESS=0
+[ -z "${CI:-}" ] || HEADLESS=1
+OUT="$DEVICELAB_HOME/out"
+TRACE_MS=""
+TRACE_FROM=""
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --data-sources) DATA_SOURCES="${2:?--data-sources needs a value}"; shift 2 ;;
+        --build-type) BUILD_TYPE="${2:?--build-type needs a value}"; shift 2 ;;
+        --serial) SERIAL="${2:?--serial needs a value}"; shift 2 ;;
+        --headless) HEADLESS=1; shift ;;
+        --out) OUT="${2:?--out needs a value}"; shift 2 ;;
+        --trace-ms) TRACE_MS="${2:?--trace-ms needs a value}"; shift 2 ;;
+        --trace-from) TRACE_FROM="${2:?--trace-from needs a value}"; shift 2 ;;
+        -h | --help) usage ;;
+        -*) die "unknown option $1" ;;
+        *)
+            [ -z "$SCENARIO" ] || die "one scenario per run; got '$SCENARIO' and '$1'"
+            SCENARIO="$1"
+            shift
+            ;;
+    esac
+done
+
+case "$BUILD_TYPE" in
+    benchmark | debug) ;;
+    # Release is unsigned, so it cannot be installed; `benchmark` is the release-like build that can.
+    *) die "--build-type is benchmark or debug, not '$BUILD_TYPE'" ;;
+esac
+
+ADB="$(adb_bin)"
+export HEADLESS
+
+load_scenario() {
+    local file="$DEVICELAB_HOME/scenarios/$1.sh"
+    [ -f "$file" ] || die "no scenario '$1'; available: $(list_scenarios | tr '\n' ' ')"
+    SCENARIO_TRACE_FROM=launch
+    SCENARIO_TRACE_MS=300000
+    # shellcheck source=/dev/null
+    . "$file"
+    declare -F scenario_drive >/dev/null || die "scenario '$1' defines no scenario_drive"
+    TRACE_FROM="${TRACE_FROM:-$SCENARIO_TRACE_FROM}"
+    TRACE_MS="${TRACE_MS:-$SCENARIO_TRACE_MS}"
+    case "$TRACE_FROM" in
+        launch | playing) ;;
+        *) die "the trace starts at launch or playing, not '$TRACE_FROM'" ;;
+    esac
+    # java_hprof dumps the processes that are running when its data source starts. Tracing from
+    # launch starts it before the demo is (re)started, so the dump would be of a process the run then
+    # kills, or of nothing: a heap graph that silently describes no part of the scenario.
+    case ",$DATA_SOURCES," in
+        *,java_hprof,*)
+            [ "$TRACE_FROM" = playing ] ||
+                die "java_hprof dumps the demo as it is when the trace starts, which from launch is before it runs; add --trace-from playing"
+            ;;
+    esac
+}
+
+list_scenarios() {
+    local file
+    for file in "$DEVICELAB_HOME"/scenarios/*.sh; do basename "$file" .sh; done
+}
+
+# `adb pull`, bounded, printing nothing unless it fails. It reports progress on stderr, which would
+# otherwise land in the run's output as though it were news.
+adb_pull() {
+    local output
+    output="$(ADB_TIMEOUT=600 adb_s pull "$1" "$2" 2>&1)" || {
+        printf '%s\n' "$output" >&2
+        return 1
+    }
+}
+
+# --- Build ---------------------------------------------------------------------------------------
+
+# A hash of everything that decides what a build of the tree would produce. Taken before the publish
+# and after the demo build; if it moved, the published artifact may describe neither state.
+tree_state() {
+    (
+        cd "$REPO_ROOT"
+        git rev-parse HEAD
+        git status --porcelain
+        git diff HEAD
+    ) | shasum -a 256 | awk '{print $1}'
+}
+
+gradle() { # dir, log, tasks...
+    local dir="$1" log_file="$2" where
+    shift 2
+    where="${dir#"$REPO_ROOT"}"
+    where="${where#/}"
+    log "gradle $* (in ${where:-the root build}; log: $log_file)"
+    if ! (cd "$dir" && ./gradlew --console=plain "$@") >> "$log_file" 2>&1; then
+        tail -40 "$log_file" >&2
+        die "gradle $* failed; the whole log is $log_file"
+    fi
+}
+
+# Publishes the library, then builds the demo against it. Always both, always in that order: the demo
+# resolves SuperPlayer from Maven local, so building it alone would measure whatever was there.
+build_demo() {
+    local before capitalised
+    before="$(tree_state)"
+    SP_COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+    SP_TREE_DIRTY=0
+    [ -z "$(git -C "$REPO_ROOT" status --porcelain)" ] || SP_TREE_DIRTY=1
+    [ "$SP_TREE_DIRTY" = 0 ] ||
+        log "warning: the working tree has uncommitted changes; the run records the commit as dirty"
+
+    gradle "$REPO_ROOT" "$RUN_DIR/build.log" publishToMavenLocal
+    capitalised="$(printf '%s' "$BUILD_TYPE" | cut -c1 | tr '[:lower:]' '[:upper:]')${BUILD_TYPE#?}"
+    gradle "$REPO_ROOT/demo" "$RUN_DIR/build.log" "assemble$capitalised"
+
+    [ "$(tree_state)" = "$before" ] ||
+        die "the working tree changed during the build, so the published artifact matches no one state of it"
+
+    DEMO_APK="$REPO_ROOT/demo/build/outputs/apk/$BUILD_TYPE/superplayer-demo-$BUILD_TYPE.apk"
+    [ -f "$DEMO_APK" ] || die "the build produced no $DEMO_APK"
+    DEMO_APK_SHA256="$(sha256_of "$DEMO_APK")"
+}
+
+# Installs the APK, then proves the device holds exactly it, built against exactly the library just
+# published. Either failing means the run would measure something else, so either stops it.
+install_demo() {
+    local installed installed_apk="$RUN_WORK/installed.apk"
+    ADB_TIMEOUT=300 adb_s install -r -t "$DEMO_APK" >/dev/null ||
+        die "adb install failed (a different signature installed? try: adb -s $SERIAL uninstall $DEMO_PACKAGE)"
+
+    installed="$(adb_s shell pm path "$DEMO_PACKAGE" | tr -d '\r' | sed -n 's/^package:\(.*base\.apk\)$/\1/p' | head -1)"
+    [ -n "$installed" ] || die "the demo is not installed after installing it"
+    adb_pull "$installed" "$installed_apk" || die "could not pull the installed APK back off the device"
+    [ "$(sha256_of "$installed_apk")" = "$DEMO_APK_SHA256" ] ||
+        die "the APK on the device is not the one just built; the install did not replace it"
+
+    unzip -p "$installed_apk" assets/superplayer-artifacts.txt > "$RUN_DIR/superplayer-artifacts.txt" ||
+        die "the installed APK carries no assets/superplayer-artifacts.txt; it predates stale-artifact detection"
+    verify_fingerprint "${MAVEN_REPO_LOCAL:-$HOME/.m2/repository}" "$RUN_DIR/superplayer-artifacts.txt" ||
+        die "stale SuperPlayer artifact: refusing to measure"
+    SP_ARTIFACTS_FILE="$RUN_DIR/superplayer-artifacts.txt"
+    log "installed $BUILD_TYPE build; it was built against the SuperPlayer just published"
+}
+
+# --- Perfetto --------------------------------------------------------------------------------------
+
+# The trace runs as a *detached* Perfetto session, named by the run, and is stopped by name.
+#
+# Not by signal: on API 36 the shell user may not signal the perfetto process, although `ps` lists it
+# as shell's, so `kill -TERM` — the obvious way to end a trace early — is refused, and `kill -0`
+# reports a live trace as gone. Detaching is Perfetto's own supported way to end a trace from another
+# invocation (`--attach=KEY --stop`), and `--is_detached=KEY` answers whether it is still running.
+#
+# What detaching gives up is `--background-wait`: the two are mutually exclusive, so the start no
+# longer waits for every data source to confirm it has started. A pause of TRACE_SETTLE_S (default 2)
+# stands in for that confirmation; a source slower to start than that misses the scenario's first
+# moments, and a consumer whose source is known to be slow should raise it.
+#
+# ref: https://perfetto.dev/docs/reference/perfetto-cli
+start_trace() {
+    local output
+    DEVICE_TRACE="$DEVICE_TRACE_DIR/devicelab-$RUN_ID.perfetto-trace"
+    PERFETTO_KEY="devicelab-$RUN_ID"
+    output="$(adb_s shell perfetto --txt -c - -o "$DEVICE_TRACE" "--detach=$PERFETTO_KEY" \
+        < "$RUN_DIR/perfetto-config.pbtxt" 2>&1 | tr -d '\r')" || true
+    [ "$(perfetto_session_state)" = running ] || die "perfetto did not start a session: $output"
+    sleep "${TRACE_SETTLE_S:-2}"
+    log "tracing (session $PERFETTO_KEY, bounded at ${TRACE_MS} ms)"
+}
+
+# `running` while the session exists, `ended` once it does not; anything else fails the run.
+perfetto_session_state() {
+    local code
+    code="$(adb_s shell "perfetto --is_detached=$PERFETTO_KEY >/dev/null 2>&1; echo \$?" | tr -d '\r')"
+    case "$code" in
+        0) printf 'running\n' ;;
+        2) printf 'ended\n' ;;
+        *) die "perfetto could not say whether session $PERFETTO_KEY is running (exit $code)" ;;
+    esac
+}
+
+# Ends the trace, which returns once perfetto has written it, and pulls it. A session that had
+# already ended hit its bound before the scenario finished, which the metadata records rather than
+# hides.
+stop_trace() {
+    RUN_TRACE_ENDED_BY_BOUND=0
+    if [ "$(perfetto_session_state)" = running ]; then
+        ADB_TIMEOUT=120 adb_s shell perfetto "--attach=$PERFETTO_KEY" --stop >/dev/null 2>&1 ||
+            die "perfetto did not stop session $PERFETTO_KEY"
+    else
+        RUN_TRACE_ENDED_BY_BOUND=1
+        log "warning: the trace reached its ${TRACE_MS} ms bound before the scenario ended"
+    fi
+    PERFETTO_KEY=""
+    adb_pull "$DEVICE_TRACE" "$RUN_DIR/trace.perfetto-trace" ||
+        die "could not pull $DEVICE_TRACE"
+    adb_s shell rm -f "$DEVICE_TRACE"
+    [ -s "$RUN_DIR/trace.perfetto-trace" ] || die "perfetto wrote an empty trace"
+}
+
+# On any exit with a session still open — a failed run — stop it and delete its file, rather than
+# leave the device tracing into storage until the bound runs out.
+abandon_trace() {
+    [ -n "${PERFETTO_KEY:-}" ] || return 0
+    adb_s shell perfetto "--attach=$PERFETTO_KEY" --stop >/dev/null 2>&1 || true
+    adb_s shell rm -f "$DEVICE_TRACE" >/dev/null 2>&1 || true
+}
+
+# --- The device, described -------------------------------------------------------------------------
+
+device_prop() { adb_s shell getprop "$1" | tr -d '\r'; }
+
+describe_device() {
+    DEVICE_SDK="$(device_prop ro.build.version.sdk)"
+    DEVICE_MANUFACTURER="$(device_prop ro.product.manufacturer)"
+    DEVICE_MODEL="$(device_prop ro.product.model)"
+    DEVICE_ABI="$(device_prop ro.product.cpu.abi)"
+    DEVICE_FINGERPRINT="$(device_prop ro.build.fingerprint)"
+    DEVICE_AVD="$(device_prop ro.boot.qemu.avd_name)"
+    DEVICE_IS_EMULATOR=0
+    [ "$(device_prop ro.boot.qemu)" != 1 ] && [ "$(device_prop ro.kernel.qemu)" != 1 ] || DEVICE_IS_EMULATOR=1
+}
+
+# What the installed app actually is, rather than what its build type is supposed to mean.
+#
+# Debuggable comes from the device, which reports it as a package flag. Profileable does not: on API
+# 36 `dumpsys package` prints no flag for `<profileable android:shell="true">`, so it is read from the
+# manifest of the APK pulled back off the device — the same file the stale-artifact check read.
+describe_installed_demo() {
+    local flags aapt2
+    flags="$(adb_s shell dumpsys package "$DEMO_PACKAGE" | tr -d '\r' | sed -n '/^ *pkgFlags=/{p;q;}')"
+    DEMO_DEBUGGABLE=0
+    case "$flags" in *DEBUGGABLE*) DEMO_DEBUGGABLE=1 ;; esac
+
+    DEMO_PROFILEABLE=0
+    aapt2="$( (ls -d "$(sdk_root)"/build-tools/*/ 2>/dev/null || true) | sort -V | tail -1)aapt2"
+    [ -x "$aapt2" ] || die "no aapt2 in \$ANDROID_HOME/build-tools, needed to read the installed manifest"
+    if "$aapt2" dump xmltree --file AndroidManifest.xml "$RUN_WORK/installed.apk" |
+        awk '/E: profileable / {inside = 1; next} /E: / {inside = 0} inside && /android:shell\(.*\)=true/ {found = 1} END {exit !found}'; then
+        DEMO_PROFILEABLE=1
+    fi
+
+    if [ "$DEMO_DEBUGGABLE" = 0 ] && [ "$DEMO_PROFILEABLE" = 0 ] && [ "$DEVICE_SDK" -ge 29 ]; then
+        log "warning: the installed demo is neither debuggable nor profileable; heap and CPU profilers will see nothing"
+    fi
+}
+
+# --- Commands --------------------------------------------------------------------------------------
+
+cmd_list() {
+    local name file
+    printf 'Scenarios:\n'
+    for name in $(list_scenarios); do
+        file="$DEVICELAB_HOME/scenarios/$name.sh"
+        printf '  %-16s %s\n' "$name" "$(sed -n 's/^SCENARIO_DESCRIPTION="\(.*\)"$/\1/p' "$file")"
+    done
+    printf '\nPerfetto data sources (the base config is always included):\n'
+    for name in $(perfetto_sources); do
+        printf '  %s\n' "$name"
+    done
+}
+
+cmd_config() {
+    perfetto_config "${TRACE_MS:-300000}" "$DEMO_PACKAGE" "$DATA_SOURCES"
+}
+
+# Installs the system image device.properties names, for this host's ABI, and creates the AVD from
+# it. The one description of the device, used by a laptop and by CI's android-emulator action alike.
+cmd_create_avd() {
+    local tools image
+    tools="$(sdk_root)/cmdline-tools/latest/bin"
+    [ -x "$tools/sdkmanager" ] || tools="$(dirname "$(command -v sdkmanager || die "no sdkmanager in the SDK's cmdline-tools or on PATH")")"
+    image="system-images;$(device_property system_image_api);$(device_property system_image_tag);$(host_abi)"
+    log "installing $image"
+    "$tools/sdkmanager" --install emulator platform-tools "$image" >/dev/null
+    echo no | "$tools/avdmanager" create avd --force --name "$(device_property avd)" \
+        --package "$image" --device "$(device_property device_profile)"
+    log "created AVD $(device_property avd)"
+}
+
+cmd_device() {
+    ensure_device
+    printf '%s\n' "$SERIAL"
+}
+
+cmd_run() {
+    [ -n "$SCENARIO" ] || die "run needs a scenario; available: $(list_scenarios | tr '\n' ' ')"
+    load_scenario "$SCENARIO"
+
+    RUN_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-$SCENARIO"
+    RUN_DIR="$OUT/$RUN_ID"
+    RUN_WORK="$RUN_DIR/.work"
+    RUN_SCENARIO="$SCENARIO"
+    RUN_DATA_SOURCES="$(printf '%s' "$DATA_SOURCES" | tr ',' ' ')"
+    RUN_TRACE_FROM="$TRACE_FROM"
+    RUN_TRACE_MS="$TRACE_MS"
+    DEMO_BUILD_TYPE="$BUILD_TYPE"
+    SP_VERSION="$(catalog_version superplayer)"
+    MEDIA3_VERSION="$(catalog_version media3)"
+    HOST_OS="$(uname -sr) $(uname -m)"
+    HOST_CI=0
+    [ -z "${CI:-}" ] || HOST_CI=1
+    mkdir -p "$RUN_WORK"
+    export DEVICELAB_WORK="$RUN_WORK"
+    PERFETTO_KEY=""
+    trap abandon_trace EXIT
+    log "run $RUN_ID → $RUN_DIR"
+
+    # Composed first, so a misspelt data source costs a second rather than a build and a boot.
+    perfetto_config "$TRACE_MS" "$DEMO_PACKAGE" "$DATA_SOURCES" > "$RUN_DIR/perfetto-config.pbtxt"
+
+    ensure_device
+    describe_device
+    log "device: $SERIAL ($DEVICE_MANUFACTURER $DEVICE_MODEL, API $DEVICE_SDK, $DEVICE_ABI)"
+
+    build_demo
+    assert_device_alive "the build"
+    install_demo
+    describe_installed_demo
+    grant_first_run_permissions
+    adb_s logcat -c || true
+
+    [ "$TRACE_FROM" != launch ] || start_trace
+    launch_demo
+    RUN_PLAYBACK_POSITION_MS="$(wait_for_playback "${PLAYBACK_TIMEOUT:-90}")"
+    assert_demo_in_focus
+    log "playing (position ${RUN_PLAYBACK_POSITION_MS} ms)"
+    [ "$TRACE_FROM" != playing ] || start_trace
+
+    log "driving scenario $SCENARIO"
+    scenario_drive
+    assert_device_alive "the scenario"
+
+    stop_trace
+    adb_s exec-out screencap -p > "$RUN_DIR/screen.png" || true
+    # Bounded: this run's lines only (the buffer was cleared before launch), and at most the last
+    # 20000 of them. An unbounded dump from a long-lived emulator can take minutes.
+    adb_s logcat -d -t 20000 > "$RUN_DIR/logcat.txt" || true
+
+    RUN_FINISHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    run_json > "$RUN_DIR/run.json"
+    write_report > "$RUN_DIR/report.md"
+    rm -rf "$RUN_WORK"
+    log "done: $RUN_DIR"
+    printf '%s\n' "$RUN_DIR"
+}
+
+write_report() {
+    cat <<REPORT
+# devicelab run \`$RUN_ID\`
+
+Scenario **$RUN_SCENARIO** on $DEVICE_MANUFACTURER $DEVICE_MODEL (API $DEVICE_SDK, $DEVICE_ABI$([ "$DEVICE_IS_EMULATOR" = 1 ] && printf ', emulator %s' "$DEVICE_AVD")),
+against SuperPlayer \`$SP_COMMIT\`$([ "$SP_TREE_DIRTY" = 1 ] && printf ' **plus uncommitted changes**') and Media3 $MEDIA3_VERSION,
+in the demo's \`$DEMO_BUILD_TYPE\` build (debuggable: $(json_bool "$DEMO_DEBUGGABLE"), profileable: $(json_bool "$DEMO_PROFILEABLE")).
+
+- Playback confirmed advancing at ${RUN_PLAYBACK_POSITION_MS} ms.
+- Trace from **$RUN_TRACE_FROM**, data sources: ${RUN_DATA_SOURCES:-base config only}.$([ "$RUN_TRACE_ENDED_BY_BOUND" = 1 ] && printf ' **The trace hit its %s ms bound before the scenario ended.**' "$RUN_TRACE_MS")
+- The installed APK was verified as the one just built, against the SuperPlayer just published.
+
+| File | What it is |
+| --- | --- |
+| \`trace.perfetto-trace\` | the trace; open at https://ui.perfetto.dev or query with \`trace_processor_shell\` |
+| \`perfetto-config.pbtxt\` | the config that produced it |
+| \`run.json\` | what was measured on what — the same shape for every run |
+| \`superplayer-artifacts.txt\` | the SuperPlayer artifacts the APK was built against, by sha256 |
+| \`logcat.txt\` | this run's logcat |
+| \`screen.png\` | the screen when the scenario ended |
+| \`build.log\` | the publish and the demo build |
+REPORT
+    if declare -F scenario_report >/dev/null; then
+        printf '\n## %s\n\n' "$RUN_SCENARIO"
+        scenario_report
+    fi
+}
+
+case "$COMMAND" in
+    run) cmd_run ;;
+    device) cmd_device ;;
+    create-avd) cmd_create_avd ;;
+    config) cmd_config ;;
+    list) cmd_list ;;
+    -h | --help | help) usage ;;
+    *) die "unknown command '$COMMAND'" ;;
+esac

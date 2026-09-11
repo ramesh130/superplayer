@@ -1,0 +1,198 @@
+#!/usr/bin/env bash
+# Copyright 2026 The SuperPlayer Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# The device-free half of the harness, checked without a device: the parsing, the Perfetto config
+# builder and the stale-artifact comparison. Everything here is a pure function over text, which is
+# why it can be tested at all; everything that needs `adb` is in the part this cannot reach.
+#
+#   devicelab/test/selftest
+#
+# Not part of `./gradlew check` — see ../README.md. The device workflow runs it before every run.
+set -euo pipefail
+
+here="$(cd "$(dirname "$0")" && pwd)"
+lab="$(dirname "$here")"
+fixtures="$here/fixtures"
+
+# shellcheck source=../lib/common.sh
+. "$lab/lib/common.sh"
+# shellcheck source=../lib/device.sh
+. "$lab/lib/device.sh"
+# shellcheck source=../lib/playback.sh
+. "$lab/lib/playback.sh"
+# shellcheck source=../lib/perfetto.sh
+. "$lab/lib/perfetto.sh"
+# shellcheck source=../lib/artifacts.sh
+. "$lab/lib/artifacts.sh"
+
+failures=0
+passes=0
+
+pass() { passes=$((passes + 1)); }
+fail() {
+    failures=$((failures + 1))
+    printf 'FAIL: %s\n' "$1" >&2
+    [ $# -lt 2 ] || printf '%s\n' "$2" | sed 's/^/    /' >&2
+}
+
+assert_eq() { # name expected actual
+    if [ "$2" = "$3" ]; then pass; else fail "$1" "expected: [$2]
+actual:   [$3]"; fi
+}
+
+assert_contains() { # name haystack needle
+    case "$2" in *"$3"*) pass ;; *) fail "$1" "missing: [$3]
+in: [$2]" ;; esac
+}
+
+assert_not_contains() { # name haystack needle
+    case "$2" in *"$3"*) fail "$1" "unexpected: [$3]" ;; *) pass ;; esac
+}
+
+scratch="$(mktemp -d)"
+trap 'rm -rf "$scratch"' EXIT
+
+# --- The session state the harness waits on --------------------------------------------------------
+
+assert_eq "reads the demo's session, not the first session listed" \
+    "3 12588" "$(session_state com.superplayer.demo < "$fixtures/dumpsys-media-session.txt")"
+
+assert_eq "a package with no session reads as nothing" \
+    "" "$(session_state com.example.absent < "$fixtures/dumpsys-media-session.txt")"
+
+assert_eq "a session with no playback state reads as nothing" \
+    "" "$(session_state com.android.server.telecom < "$fixtures/dumpsys-media-session.txt")"
+
+# --- Which devices are usable ----------------------------------------------------------------------
+
+assert_eq "only devices in the 'device' state are ready; offline and unauthorized are not" \
+    "emulator-5554
+R58M12345" "$(ready_serials < "$fixtures/adb-devices.txt")"
+
+assert_eq "offline serials are reported separately, since they are the ones worth waiting on" \
+    "emulator-5556" "$(serials_in_state offline < "$fixtures/adb-devices.txt")"
+
+# --- The version catalog ---------------------------------------------------------------------------
+
+assert_eq "reads a catalog version, ignoring a commented-out line" \
+    "1.11.0" "$(catalog_version media3 "$fixtures/libs.versions.toml")"
+
+assert_eq "a key that is a prefix of another is not confused with it" \
+    "0.1.0-SNAPSHOT" "$(catalog_version superplayer "$fixtures/libs.versions.toml")"
+
+if (catalog_version absent "$fixtures/libs.versions.toml") 2>/dev/null; then
+    fail "an absent catalog key fails rather than reading as empty"
+else pass; fi
+
+# --- JSON ------------------------------------------------------------------------------------------
+
+assert_eq "escapes quotes, backslashes and control characters" \
+    '"a\"b\\c\nd\te"' "$(json_str "$(printf 'a"b\\c\nd\te')")"
+
+# --- The Perfetto config builder -------------------------------------------------------------------
+
+config="$(perfetto_config 30000 com.superplayer.demo java_hprof,frametimeline)"
+
+assert_contains "the trace is bounded by the requested duration" "$config" "duration_ms: 30000"
+assert_contains "the base config always records process names" "$config" 'name: "linux.process_stats"'
+assert_contains "a requested source is included" "$config" 'name: "android.java_hprof"'
+assert_contains "a second requested source is included" "$config" 'name: "android.surfaceflinger.frametimeline"'
+assert_not_contains "an unrequested source is not" "$config" 'name: "android.heapprofd"'
+assert_contains "the target package is substituted into a source that names one" \
+    "$config" 'process_cmdline: "com.superplayer.demo"'
+assert_not_contains "no placeholder survives composition" "$config" "@"
+
+assert_eq "the base config alone is valid when no sources are requested" \
+    "1" "$(perfetto_config 1000 com.superplayer.demo "" | grep -c 'name: "linux.process_stats"')"
+
+assert_eq "a source named twice is included once" \
+    "1" "$(perfetto_config 1000 com.superplayer.demo heapprofd,heapprofd | grep -c 'name: "android.heapprofd"')"
+
+if unknown="$(perfetto_config 1000 com.superplayer.demo java_hprof,no_such_source 2>&1)"; then
+    fail "an unknown source fails the composition"
+else
+    assert_contains "an unknown source is named, with what is available" "$unknown" "no_such_source"
+    assert_contains "and the error lists the sources that do exist" "$unknown" "heapprofd"
+fi
+
+for bad in 0 -5 abc; do
+    if (perfetto_config "$bad" com.superplayer.demo "") >/dev/null 2>&1; then
+        fail "a duration of '$bad' is rejected"
+    else pass; fi
+done
+
+assert_contains "every shipped source is listed" "$(perfetto_sources | tr '\n' ' ')" \
+    "frametimeline heapprofd java_hprof"
+
+# --- Stale-artifact detection ----------------------------------------------------------------------
+#
+# The demo records the sha256 of every SuperPlayer artifact it was built against. The harness
+# recomputes the same thing from the Maven local repository it has just published to. Any difference
+# means the APK on the device is not the library at this commit.
+
+m2="$scratch/m2"
+mkdir -p "$m2/com/superplayer/superplayer-core/0.1.0-SNAPSHOT"
+printf 'fresh aar bytes' > "$m2/com/superplayer/superplayer-core/0.1.0-SNAPSHOT/superplayer-core-0.1.0-SNAPSHOT.aar"
+fresh="$(sha256_of "$m2/com/superplayer/superplayer-core/0.1.0-SNAPSHOT/superplayer-core-0.1.0-SNAPSHOT.aar")"
+
+printf 'com.superplayer:superplayer-core:0.1.0-SNAPSHOT %s\n' "$fresh" > "$scratch/built-fresh.txt"
+printf 'com.superplayer:superplayer-core:0.1.0-SNAPSHOT %s\n' \
+    "0000000000000000000000000000000000000000000000000000000000000000" > "$scratch/built-stale.txt"
+: > "$scratch/built-empty.txt"
+
+assert_eq "the published fingerprint is recomputed from the Maven local layout" \
+    "com.superplayer:superplayer-core:0.1.0-SNAPSHOT $fresh" \
+    "$(published_fingerprint "$m2" < "$scratch/built-fresh.txt")"
+
+if verify_fingerprint "$m2" "$scratch/built-fresh.txt" >/dev/null 2>&1; then pass; else
+    fail "an APK built against the artifact just published passes"
+fi
+
+if stale="$(verify_fingerprint "$m2" "$scratch/built-stale.txt" 2>&1)"; then
+    fail "an APK built against an older artifact fails"
+else
+    assert_contains "the stale artifact is named" "$stale" "com.superplayer:superplayer-core:0.1.0-SNAPSHOT"
+    assert_contains "with the hash it was built against" "$stale" "0000000000000000"
+    assert_contains "and the hash that was published" "$stale" "$fresh"
+fi
+
+if empty="$(verify_fingerprint "$m2" "$scratch/built-empty.txt" 2>&1)"; then
+    fail "an APK that records no SuperPlayer artifact fails rather than passing vacuously"
+else
+    assert_contains "and says why" "$empty" "no SuperPlayer artifact"
+fi
+
+rm "$m2/com/superplayer/superplayer-core/0.1.0-SNAPSHOT/superplayer-core-0.1.0-SNAPSHOT.aar"
+if (verify_fingerprint "$m2" "$scratch/built-fresh.txt") >/dev/null 2>&1; then
+    fail "an artifact missing from Maven local fails"
+else pass; fi
+
+# --- Run metadata ----------------------------------------------------------------------------------
+
+# shellcheck source=../lib/metadata.sh
+. "$lab/lib/metadata.sh"
+
+RUN_ID="20260911T000000Z-smoke" RUN_STARTED_AT="2026-09-11T00:00:00Z" RUN_FINISHED_AT="2026-09-11T00:01:00Z"
+RUN_SCENARIO=smoke SP_COMMIT=abc123 SP_TREE_DIRTY=1 SP_VERSION=0.1.0-SNAPSHOT
+SP_ARTIFACTS_FILE="$scratch/built-fresh.txt" MEDIA3_VERSION=1.11.0
+DEMO_PACKAGE=com.superplayer.demo DEMO_BUILD_TYPE=benchmark DEMO_DEBUGGABLE=0 DEMO_PROFILEABLE=1
+DEMO_APK_SHA256=ff SERIAL=emulator-5554 DEVICE_IS_EMULATOR=1 DEVICE_AVD=superplayer_verify_36
+DEVICE_MANUFACTURER=Google DEVICE_MODEL='sdk_gphone64 "arm64"' DEVICE_SDK=36 DEVICE_ABI=arm64-v8a
+DEVICE_FINGERPRINT=x HOST_OS=Darwin HOST_CI=0 RUN_DATA_SOURCES="java_hprof frametimeline"
+RUN_TRACE_FROM=launch RUN_TRACE_MS=120000 RUN_TRACE_ENDED_BY_BOUND=0 RUN_PLAYBACK_POSITION_MS=4200
+
+metadata="$(run_json)"
+assert_contains "the metadata names the data sources as a list" "$metadata" '"data_sources": ["java_hprof", "frametimeline"]'
+assert_contains "and the artifacts with their hashes" "$metadata" "\"sha256\": \"$fresh\""
+assert_contains "and says the tree was dirty" "$metadata" '"tree_dirty": true'
+if command -v python3 >/dev/null 2>&1; then
+    if printf '%s' "$metadata" | python3 -m json.tool >/dev/null 2>&1; then pass; else
+        fail "the run metadata is valid JSON" "$metadata"
+    fi
+fi
+
+# ---------------------------------------------------------------------------------------------------
+
+printf '%d passed, %d failed\n' "$passes" "$failures"
+[ "$failures" -eq 0 ]

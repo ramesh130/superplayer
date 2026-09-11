@@ -1,0 +1,16 @@
+MEDIA SESSION SERVICE (dumpsys media_session)
+
+  Sessions Stack - have 2 sessions:
+    com.android.server.telecom com.android.server.telecom/HeadsetMediaButton (userId=0)
+      ownerPid=1234, ownerUid=1000, userId=0
+      package=com.android.server.telecom
+      launchIntent=null
+      active=false
+      state=null
+    androidx.media3.session.id. com.superplayer.demo/androidx.media3.session.id./2 (userId=0)
+      ownerPid=5678, ownerUid=10190, userId=0
+      package=com.superplayer.demo
+      launchIntent=null
+      active=true
+      flags=3
+      state=PlaybackState {state=PLAYING(3), position=12588, buffered position=66000, speed=1.0, updated=206305, actions=7339995, custom actions=[], active item id=0, error=null}

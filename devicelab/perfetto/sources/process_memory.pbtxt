@@ -1,0 +1,15 @@
+# Every process's memory counters — RSS, swap, OOM score — polled once a second, which is what a
+# peak-RSS figure is read from. A candidate for the benchmark harness (#43).
+#
+# A second instance of linux.process_stats beside the base config's, rather than an edit to it, so
+# that a trace which did not ask for polling does not pay for it.
+#
+# ref: https://perfetto.dev/docs/data-sources/memory-counters
+data_sources {
+  config {
+    name: "linux.process_stats"
+    process_stats_config {
+      proc_stats_poll_ms: 1000
+    }
+  }
+}

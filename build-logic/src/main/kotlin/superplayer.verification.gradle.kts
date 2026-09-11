@@ -68,12 +68,33 @@ val verifyLicenseHeader =
         stampFile.set(layout.buildDirectory.file("verification/license-header.txt"))
     }
 
+// devicelab's device-free half: the `adb devices` and `dumpsys` parsing, the Perfetto config builder
+// and the stale-artifact comparison, all pure functions over text. The harness itself needs a device
+// and stays out of `check` (devicelab/README.md says why); this part needs neither a device nor a
+// network, so by this build's own rule it belongs here, where a change that breaks it fails CI rather
+// than the next device run. Shell rather than a JVM test because the harness is shell.
+val verifyDevicelab =
+    tasks.register<Exec>("verifyDevicelab") {
+        group = "verification"
+        description = "Runs devicelab's device-free self-test."
+        val devicelab = layout.projectDirectory.dir("devicelab")
+        val stamp = layout.buildDirectory.file("verification/devicelab-selftest.txt")
+        inputs.files(fileTree(devicelab) { exclude("out/**", "**/*.md") })
+            .withPropertyName("devicelab")
+            .withPathSensitivity(PathSensitivity.RELATIVE)
+        outputs.file(stamp)
+        workingDir(layout.projectDirectory)
+        commandLine(devicelab.file("test/selftest").asFile.absolutePath)
+        doLast { stamp.get().asFile.writeText("passed\n") }
+    }
+
 // So a plain `./gradlew check` at the root runs them.
 tasks.named("check") {
     dependsOn(verifyNoHardcodedMedia3Versions)
     dependsOn(verifyModulePhaseRule)
     dependsOn(verifyMedia3SupportedVersion)
     dependsOn(verifyLicenseHeader)
+    dependsOn(verifyDevicelab)
 
     // build-logic is an included build, so its tests are invisible to the root build's
     // aggregate tasks. Hooking them in here keeps `./gradlew check` — and therefore CI —

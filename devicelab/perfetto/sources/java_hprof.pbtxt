@@ -1,0 +1,16 @@
+# Java heap graph of the demo: objects, references and classes, which trace processor exposes as the
+# heap_graph_* tables. Answers "what is retaining this". Wanted by the leak hunt (#50).
+#
+# As written this takes one dump, when the data source starts. A caller that wants the heap at the
+# end of its scenario, or at intervals, wants continuous_dump_config in its own fragment.
+#
+# ref: https://perfetto.dev/docs/data-sources/java-heap-profiler
+data_sources {
+  config {
+    name: "android.java_hprof"
+    java_hprof_config {
+      process_cmdline: "@PACKAGE@"
+      dump_smaps: true
+    }
+  }
+}

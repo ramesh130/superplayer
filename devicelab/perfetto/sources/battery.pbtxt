@@ -1,0 +1,19 @@
+# Battery charge, capacity and current, polled once a second, which is what a battery delta over a
+# session is read from. A candidate for the benchmark harness (#43).
+#
+# An emulator's battery is simulated and these counters describe nothing real on one; the run
+# metadata records whether the device was an emulator, and a report reading them should check it.
+#
+# ref: https://perfetto.dev/docs/data-sources/battery-counters
+data_sources {
+  config {
+    name: "android.power"
+    android_power_config {
+      battery_poll_ms: 1000
+      battery_counters: BATTERY_COUNTER_CAPACITY_PERCENT
+      battery_counters: BATTERY_COUNTER_CHARGE
+      battery_counters: BATTERY_COUNTER_CURRENT
+      collect_power_rails: true
+    }
+  }
+}

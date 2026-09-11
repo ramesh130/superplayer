@@ -487,3 +487,9 @@ thing to question first.
 Instrumented tests on real devices and the golden trace corpus are `superplayer-testkit`'s subject
 and arrive with it — as the fault injector and throughput trace replay above already have. They
 extend this seam rather than replacing it: they still drive the library through its public API.
+
+Measurement on a device is not covered here either, because it is not testing. `devicelab/` drives
+the demo on an emulator or a phone and returns a Perfetto trace. A run fails only when it could not
+measure, for example when playback never started or the APK was stale. It never fails because of what
+it measured. So it sits outside `check` rather than breaking this document's no-device rule, and
+its README says so. Its device-free self-test is the exception, and it is in `check`.

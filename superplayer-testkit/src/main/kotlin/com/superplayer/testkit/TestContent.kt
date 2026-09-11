@@ -71,14 +71,29 @@ public class TestContent private constructor(
      * A `String`, because it is the only part of a synthetic stream a test needs to name and a
      * `Uri` would drag Android's own type through this module's API for no gain.
      */
-    public val sourceUri: String = when (protocol) {
-        Protocol.DESCRIBED -> DESCRIBED_SOURCE_URI
-        Protocol.HLS -> SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI
-        Protocol.DASH -> SyntheticDashStream.MANIFEST_URI
-    }
+    public val sourceUri: String = protocol.sourceUri
 
-    /** How the harness loads this content. Internal: a test says [hls] or [dash] and means it. */
-    internal enum class Protocol { DESCRIBED, HLS, DASH }
+    /**
+     * How the harness loads this content. Internal: a test says [hls] or [dash] and means it.
+     *
+     * Each constant carries what the harness needs to serve it — where the stream starts, and what
+     * bytes it is — rather than leaving the harness to switch on the constant twice.
+     */
+    internal enum class Protocol(
+        /** The URI a session starts from: a multivariant playlist, an MPD, or nothing fetchable. */
+        val sourceUri: String,
+
+        /** Everything a session of [segmentCount] segments will fetch, keyed by URI. */
+        val resources: (segmentCount: Int) -> Map<String, ByteArray>,
+    ) {
+
+        /** Content Media3's fakes synthesize: nothing is fetched, so there is nothing to serve. */
+        DESCRIBED(DESCRIBED_SOURCE_URI, { emptyMap() }),
+
+        HLS(SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI, { SyntheticHlsStream.resources(it) }),
+
+        DASH(SyntheticDashStream.MANIFEST_URI, { SyntheticDashStream.resources(it) }),
+    }
 
     public companion object {
 

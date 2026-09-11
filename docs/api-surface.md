@@ -4,7 +4,7 @@ Every published module's consumer-facing API is checked into this repository, as
 `<module>/api/<module>.api`, and validated on every build. Widening the surface is therefore an
 explicit, reviewed edit rather than something noticed after a release.
 
-Eleven of the twelve modules are still placeholders, so their files are empty. That is deliberate:
+Nine of the thirteen modules are still placeholders, so their files are empty. That is deliberate:
 an empty tracked file is a claim that the module publishes nothing, and it will fail the moment that
 stops being true. A missing file would be an omission instead.
 

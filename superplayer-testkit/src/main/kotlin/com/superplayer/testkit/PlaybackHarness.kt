@@ -47,8 +47,6 @@ import com.superplayer.core.PlaybackProfile
 import com.superplayer.core.PlayerPool
 import com.superplayer.core.SuperPlayer
 import com.superplayer.core.TelemetryCollector
-import com.superplayer.testmedia.SyntheticDashStream
-import com.superplayer.testmedia.SyntheticHlsStream
 import org.junit.rules.ExternalResource
 import java.util.IdentityHashMap
 import java.util.Random
@@ -473,15 +471,8 @@ public class PlaybackHarness : ExternalResource() {
      * `docs/testing.md` for why the one home both this module and `superplayer-core`'s tests can
      * reach has to be below both — so putting one into a [FakeDataSet] is this line, here.
      */
-    private fun fakeDataSetFor(content: TestContent): FakeDataSet {
-        val resources = when (content.protocol) {
-            TestContent.Protocol.DESCRIBED -> emptyMap()
-            TestContent.Protocol.HLS -> SyntheticHlsStream.resources(content.segmentCount)
-            TestContent.Protocol.DASH -> SyntheticDashStream.resources(content.segmentCount)
-        }
-        return FakeDataSet().apply {
-            resources.forEach { (uri, bytes) -> setData(uri, bytes) }
-        }
+    private fun fakeDataSetFor(content: TestContent): FakeDataSet = FakeDataSet().apply {
+        content.protocol.resources(content.segmentCount).forEach { (uri, bytes) -> setData(uri, bytes) }
     }
 
     private fun videoFormat(index: Int, bitrateBps: Int): Format = Format.Builder()

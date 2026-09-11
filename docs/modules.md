@@ -104,7 +104,7 @@ to be installed; the checked-in wrapper fetches the pinned version.
 
 ```bash
 export ANDROID_HOME=/path/to/android/sdk
-./gradlew build check                # compiles all 12 modules, runs lint and tests
+./gradlew build check                # compiles all 13 modules, runs lint and tests
 ./gradlew publishToMavenLocal        # publishes all 12 to ~/.m2
 ```
 

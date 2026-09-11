@@ -119,6 +119,11 @@ and `superplayer-testkit`'s *main* source set both play these streams, and core 
 testkit — a later phase (`docs/modules.md`), and a cycle besides. The one home both can see has to
 sit below both, so it is a module of its own at phase 1 with no dependencies at all.
 
+It is a thirteenth module and a second published artifact, and that is the price: `superplayer-testkit`
+`api`-depends on it, and a published module cannot depend on an unpublished one. So
+`com.superplayer:superplayer-testmedia` is something an adopter can resolve, exactly as
+`superplayer-testkit` already is.
+
 The alternatives were weighed and are worse:
 
 - **Duplicating them in testkit.** Around eight hundred lines of byte-exact ADTS framing and ISO
@@ -141,10 +146,11 @@ testkit's signatures. A stream is therefore handed over as URI-to-bytes:
 SyntheticHlsStream.resources(segmentCount = 4).forEach { (uri, bytes) -> fakeDataSet.setData(uri, bytes) }
 ```
 
-That line is the caller's, in `superplayer-core`'s tests and in `PlaybackHarness`. Two copies of one
-line is the whole cost of the split, and it buys a module that cannot break the phase rule and cannot
-be a cycle. `SyntheticHlsStream.writeTo(directory)` is the same stream as files, for the one test
-that plays through the real transfer chain.
+That line is the caller's, once in `superplayer-core`'s tests (`SyntheticStreams.kt`) and once in
+`PlaybackHarness` — the two modules that serve these streams, which cannot share a compilation. One
+line in each is the whole cost of the split, and it buys a module that cannot break the phase rule
+and cannot be a cycle. `SyntheticHlsStream.writeTo(directory)` is the same stream as files, for the
+one test that plays through the real transfer chain.
 
 
 ## Why assertions stop at the facade

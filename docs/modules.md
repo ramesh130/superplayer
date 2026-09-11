@@ -129,6 +129,12 @@ claiming compatibility nobody has tested. It widens when there is a compatibilit
 not before. A module that comes to support a different range from the rest states so in its own
 build file, and this table gains a column.
 
+`./gradlew verifyMedia3SupportedVersion` fails the build when the catalog pins a Media3 outside the
+minor version stated above. A Media3 bump therefore cannot land with this section left behind: a
+patch release inside 1.11.x passes, and anything else fails until the section is rewritten. It
+reads the bold **Media3 X.Y.x** in this section, so a rewording has to keep that form or teach
+the check the new one. It runs as part of `check`.
+
 ## Conventions live in `build-logic`
 
 The 12 library modules share one definition of what a SuperPlayer module is — Android library setup,

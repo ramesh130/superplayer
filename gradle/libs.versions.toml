@@ -10,7 +10,7 @@ superplayer = "0.1.0-SNAPSHOT"
 
 # --- Build toolchain ---
 agp = "9.4.0"
-kotlin = "2.4.10"
+kotlin = "2.4.20"
 jvmTarget = "17"
 
 # --- Android SDK levels ---

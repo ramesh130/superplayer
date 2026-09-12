@@ -25,7 +25,7 @@ of truth. This file records *what* is depended on and under *what license*.
 | `androidx.compose.material3:material3` | Apache-2.0 | `demo` |
 | `androidx.activity:activity-compose` | Apache-2.0 | `demo` |
 | `androidx.lifecycle:lifecycle-runtime-compose` | Apache-2.0 | `demo` |
-| `com.google.guava:guava` | Apache-2.0 | `superplayer-core`, `demo` (transitive, via `media3-common`) |
+| `com.google.guava:guava` | Apache-2.0 | `superplayer-core`, `superplayer-testkit`, `demo` (transitive, via `media3-common`) |
 | `org.jetbrains.kotlin:kotlin-stdlib` | Apache-2.0 | all modules (transitively, via the Kotlin toolchain) |
 | `org.jetbrains.kotlinx:kotlinx-coroutines-android` | Apache-2.0 | all modules |
 

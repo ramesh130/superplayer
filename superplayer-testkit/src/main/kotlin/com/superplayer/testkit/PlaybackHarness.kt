@@ -560,7 +560,15 @@ public class PlaybackHarness : ExternalResource() {
         val engine = engines[player] ?: return true
         val idle = CompletableFuture<Boolean>()
         val posted = Handler(engine.playbackLooper).post { idle.complete(Looper.myQueue().isIdle) }
-        return !posted || idle.get(CATCH_UP_WALL_CLOCK_MS, TimeUnit.MILLISECONDS)
+        if (!posted) return true
+        return try {
+            idle.get(CATCH_UP_WALL_CLOCK_MS, TimeUnit.MILLISECONDS)
+        } catch (timeout: java.util.concurrent.TimeoutException) {
+            throw IllegalStateException(
+                "The playback thread did not answer whether it was idle within $CATCH_UP_WALL_CLOCK_MS ms of real time",
+                timeout,
+            )
+        }
     }
 
     /**

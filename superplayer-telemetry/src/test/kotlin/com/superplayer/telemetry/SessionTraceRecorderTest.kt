@@ -16,6 +16,7 @@
 
 package com.superplayer.telemetry
 
+import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
@@ -40,10 +41,10 @@ class SessionTraceRecorderTest {
 
     private class Recording(val player: SuperPlayer, val collector: QoeCollector, val recorder: SessionTraceRecorder)
 
-    private fun record(content: TestContent, network: com.superplayer.testkit.ThroughputTrace? = null): Recording {
+    private fun record(content: TestContent): Recording {
         val recorder = SessionTraceRecorder()
         val collector = QoeCollector(recorder)
-        val player = harness.buildPlayer(content = content, telemetry = collector, network = network)
+        val player = harness.buildPlayer(content = content, telemetry = collector)
         recorder.attach(player)
         return Recording(player, collector, recorder)
     }
@@ -118,6 +119,22 @@ class SessionTraceRecorderTest {
         assertThat(text).contains(" load error manifest cause=IOException")
         assertThat(text).containsMatch(" error code=ERROR_CODE_IO_\\w+\n")
         assertThat(text).containsMatch(" telemetry StartupFailed category=\\w+ code=ERROR_CODE_IO_\\w+\n")
+    }
+
+    @Test
+    fun anItemNamedByAUrlIsWithheldAndOneNamedByContentIsNot() {
+        // A real stream at its real URI, named by an app the way many name items: by a signed URL.
+        val content = TestContent.hls()
+        val recording = record(content)
+        val signed = "${content.sourceUri}?token=$TOKEN"
+        recording.player.setMediaItem(MediaItem.Builder().setUri(content.sourceUri).setMediaId(signed).build())
+        harness.playToReady(recording.player)
+        val text = recording.finish().format()
+
+        assertThat(text).contains(" item id=uri-withheld reason=PLAYLIST_CHANGED")
+        assertThat(text).doesNotContain(TOKEN)
+        assertThat(text).doesNotContain("://")
+        assertThat(playThrough(TestContent.dash()).lines).contains("+0 item id=$CONTENT reason=PLAYLIST_CHANGED")
     }
 
     @Test

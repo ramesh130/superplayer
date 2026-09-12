@@ -63,7 +63,9 @@ import java.io.IOException
  *
  * 1. **No URL, host, path, query or token.** A load is named by what it is — its Media3 data type,
  *    track type and media time span — never by where it came from. `LoadEventInfo.uri` and
- *    `dataSpec` are not read.
+ *    `dataSpec` are not read. The one consumer string that is printed, the media id of an item
+ *    transition, is withheld when it is shaped like a URI, because an app that names items by URL
+ *    would otherwise put its signed URLs in every trace.
  * 2. **No request or response header.** `LoadEventInfo.responseHeaders` is not read.
  * 3. **No exception message.** Media3 puts the failing URL in the message of most I/O exceptions,
  *    so an error is recorded as its `PlaybackException` error-code name, an HTTP status when the
@@ -146,8 +148,7 @@ public class SessionTraceRecorder : TelemetrySink {
 
     private val analyticsListener = object : AnalyticsListener {
         override fun onMediaItemTransition(eventTime: AnalyticsListener.EventTime, mediaItem: MediaItem?, reason: Int) {
-            val id = mediaItem?.mediaId?.takeIf { it.isNotEmpty() } ?: "none"
-            record(eventTime.realtimeMs, Kind.ITEM, "", "id=$id reason=${transitionReason(reason)}")
+            record(eventTime.realtimeMs, Kind.ITEM, "", "id=${itemName(mediaItem)} reason=${transitionReason(reason)}")
         }
 
         override fun onPlaybackStateChanged(eventTime: AnalyticsListener.EventTime, state: Int) {
@@ -181,7 +182,7 @@ public class SessionTraceRecorder : TelemetrySink {
             retryCount: Int,
         ) {
             val retry = if (retryCount > 0) " retry=$retryCount" else ""
-            load(eventTime, "started", mediaLoadData, retry)
+            load(eventTime, Phase.STARTED, mediaLoadData, retry)
         }
 
         override fun onLoadCompleted(
@@ -189,7 +190,7 @@ public class SessionTraceRecorder : TelemetrySink {
             loadEventInfo: LoadEventInfo,
             mediaLoadData: MediaLoadData,
         ) {
-            load(eventTime, "completed", mediaLoadData)
+            load(eventTime, Phase.COMPLETED, mediaLoadData)
         }
 
         override fun onLoadCanceled(
@@ -197,7 +198,7 @@ public class SessionTraceRecorder : TelemetrySink {
             loadEventInfo: LoadEventInfo,
             mediaLoadData: MediaLoadData,
         ) {
-            load(eventTime, "canceled", mediaLoadData)
+            load(eventTime, Phase.CANCELED, mediaLoadData)
         }
 
         override fun onLoadError(
@@ -211,7 +212,7 @@ public class SessionTraceRecorder : TelemetrySink {
             val cause = (error as? HttpDataSource.InvalidResponseCodeException)
                 ?.let { "http=${it.responseCode}" }
                 ?: "cause=${error.javaClass.simpleName}"
-            load(eventTime, "error", mediaLoadData, " $cause")
+            load(eventTime, Phase.ERROR, mediaLoadData, " $cause")
         }
 
         override fun onPlayerError(eventTime: AnalyticsListener.EventTime, error: PlaybackException) {
@@ -219,11 +220,13 @@ public class SessionTraceRecorder : TelemetrySink {
         }
 
         // Rule 1: a load is named by what it is, not by where it came from.
-        private fun load(eventTime: AnalyticsListener.EventTime, phase: String, data: MediaLoadData, suffix: String = "") {
+        private fun load(eventTime: AnalyticsListener.EventTime, phase: Phase, data: MediaLoadData, suffix: String = "") {
+            val dataType = dataType(data.dataType)
+            val trackType = trackType(data.trackType)
             val resource = buildString {
-                append(dataType(data.dataType))
+                append(dataType)
                 if (data.trackType != C.TRACK_TYPE_UNKNOWN && data.trackType != C.TRACK_TYPE_NONE) {
-                    append(':').append(trackType(data.trackType))
+                    append(':').append(trackType)
                 }
                 if (data.mediaStartTimeMs != C.TIME_UNSET && data.mediaEndTimeMs != C.TIME_UNSET) {
                     append(' ').append(data.mediaStartTimeMs).append('-').append(data.mediaEndTimeMs)
@@ -237,12 +240,12 @@ public class SessionTraceRecorder : TelemetrySink {
             val key = String.format(
                 java.util.Locale.ROOT,
                 "%s:%s %020d %d",
-                dataType(data.dataType),
-                trackType(data.trackType),
+                dataType,
+                trackType,
                 if (data.mediaStartTimeMs == C.TIME_UNSET) 0L else data.mediaStartTimeMs,
-                phaseRank(phase),
+                phase.ordinal,
             )
-            record(eventTime.realtimeMs, Kind.LOAD, key, "$phase $resource$suffix")
+            record(eventTime.realtimeMs, Kind.LOAD, key, "${phase.token} $resource$suffix")
         }
     }
 
@@ -305,6 +308,14 @@ public class SessionTraceRecorder : TelemetrySink {
         TELEMETRY("telemetry"),
     }
 
+    /** A load's phases, in the order they rank within one millisecond so a start precedes its end. */
+    private enum class Phase(val token: String) {
+        STARTED("started"),
+        COMPLETED("completed"),
+        CANCELED("canceled"),
+        ERROR("error"),
+    }
+
     private class Entry(val timeMs: Long, val kind: Kind, val key: String, val text: String, val sequence: Long)
 
     private companion object {
@@ -363,11 +374,18 @@ public class SessionTraceRecorder : TelemetrySink {
             else -> "other"
         }
 
-        fun phaseRank(phase: String): Int = when (phase) {
-            "started" -> 0
-            "completed" -> 1
-            "canceled" -> 2
-            else -> 3
+        /**
+         * Rule 1 for the one place a consumer's own string reaches the trace. A `MediaRequest`'s
+         * content id is the point of the line; a `MediaItem` set directly carries whatever the app
+         * put in `mediaId`, and a common app pattern puts the URL there — token and all. Anything
+         * shaped like a URI is therefore withheld, and an item with no id is `none`.
+         */
+        fun itemName(item: MediaItem?): String {
+            val id = item?.mediaId?.takeIf { it.isNotEmpty() } ?: return "none"
+            return if (URI_SHAPED.containsMatchIn(id)) "uri-withheld" else id
         }
+
+        /** A scheme prefix, or a query: what a URL has and a content id has no reason to. */
+        val URI_SHAPED = Regex("^[A-Za-z][A-Za-z0-9+.-]*:|[?#]")
     }
 }

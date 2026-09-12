@@ -121,8 +121,11 @@ internal fun describeGoldenDrift(expected: String?, actual: String, name: String
 
 /**
  * A unified diff of two line lists, with [context] unchanged lines around each change and `...`
- * between hunks. Longest common subsequence, quadratic in the trace length, which is hundreds of
- * lines.
+ * between hunks. The textbook longest-common-subsequence table, quadratic in the trace length,
+ * which is hundreds of lines; a linear-space or O(ND) algorithm would buy nothing here.
+ *
+ * // ref: Hunt & McIlroy, "An Algorithm for Differential File Comparison", Bell Labs CSTR 41 (1976)
+ * // ref: Myers, "An O(ND) Difference Algorithm and Its Variations", Algorithmica 1(2) (1986)
  */
 private fun lineDiff(old: List<String>, new: List<String>, context: Int = 3): List<String> {
     val lcs = Array(old.size + 1) { IntArray(new.size + 1) }

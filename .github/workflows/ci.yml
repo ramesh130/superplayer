@@ -103,6 +103,22 @@ jobs:
         working-directory: demo
         run: ./gradlew assembleDebug lintDebug spotlessCheck
 
+      # The benchmark is a third separate build, and it resolves SuperPlayer from published
+      # coordinates exactly as the demo does — so this step, like the one above, is where a broken
+      # POM or a missing transitive dependency surfaces.
+      #
+      # `test` rather than a matrix run: it is the harness's own tests plus the matrix at one run per
+      # cell, which is what keeps the runner working between baselines without costing CI the
+      # three quarters of an hour a real baseline takes. A benchmark is a measurement somebody reads
+      # rather than a check a change must pass — `benchmark/README.md` says why — so nothing here
+      # gates on a number.
+      #
+      # `spotlessCheck` for the same reason as the demo's: this build applies Spotless itself and CI
+      # runs it with none of the root build running.
+      - name: Build and smoke-run the benchmark against the published artifacts
+        working-directory: benchmark
+        run: ./gradlew assembleDebug test spotlessCheck
+
       - name: Upload reports
         if: failure()
         uses: actions/upload-artifact@v4

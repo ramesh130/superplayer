@@ -11,14 +11,14 @@ of truth. This file records *what* is depended on and under *what license*.
 
 | Dependency | License | Used by |
 | --- | --- | --- |
-| `androidx.media3:media3-common` | Apache-2.0 | `superplayer-core` (api), `demo` |
-| `androidx.media3:media3-exoplayer` | Apache-2.0 | `superplayer-core` (api) |
+| `androidx.media3:media3-common` | Apache-2.0 | `superplayer-core` (api), `demo`, `benchmark` |
+| `androidx.media3:media3-exoplayer` | Apache-2.0 | `superplayer-core` (api), `benchmark` |
 | `androidx.media3:media3-exoplayer-hls` | Apache-2.0 | `superplayer-core`, `superplayer-testkit` |
 | `androidx.media3:media3-exoplayer-dash` | Apache-2.0 | `superplayer-core`, `superplayer-testkit` |
 | `androidx.media3:media3-datasource` | Apache-2.0 | `superplayer-core`, `superplayer-testkit` |
 | `androidx.media3:media3-session` | Apache-2.0 | `superplayer-core` (api), `demo` |
 | `androidx.media3:media3-ui` | Apache-2.0 | `demo` |
-| `androidx.annotation:annotation` | Apache-2.0 | `superplayer-core`, `demo` |
+| `androidx.annotation:annotation` | Apache-2.0 | `superplayer-core`, `demo`, `benchmark` |
 | `androidx.compose:compose-bom` | Apache-2.0 | `demo` (a BOM: pins versions, ships no code) |
 | `androidx.compose.ui:ui` | Apache-2.0 | `demo` |
 | `androidx.compose.foundation:foundation` | Apache-2.0 | `demo` |
@@ -33,10 +33,10 @@ of truth. This file records *what* is depended on and under *what license*.
 
 | Dependency | License | Used by |
 | --- | --- | --- |
-| `junit:junit` | Eclipse Public License 1.0 | all modules (test), `build-logic` (test) |
-| `androidx.media3:media3-test-utils` | Apache-2.0 | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit` |
-| `androidx.media3:media3-test-utils-robolectric` | Apache-2.0 | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit` |
-| `org.robolectric:robolectric` | MIT | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit` |
+| `junit:junit` | Eclipse Public License 1.0 | all modules (test), `build-logic` (test), `benchmark` (test) |
+| `androidx.media3:media3-test-utils` | Apache-2.0 | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`, `benchmark` (test) |
+| `androidx.media3:media3-test-utils-robolectric` | Apache-2.0 | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`, `benchmark` (test) |
+| `org.robolectric:robolectric` | MIT | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`, `benchmark` (test) |
 | `com.google.truth:truth` | Apache-2.0 | transitive, via `media3-test-utils` |
 | `org.mockito:mockito-core` | MIT | transitive, via `media3-test-utils` |
 | `androidx.test:core`, `androidx.test.ext:junit` | Apache-2.0 | transitive, via `media3-test-utils` |
@@ -62,6 +62,14 @@ admits weak copyleft for test-only and build-time dependencies specifically: JUn
 distributed in any published artifact, and its copyleft reaches only modifications to JUnit's own
 files, which this project does not make. No EPL-licensed code ships to consumers.
 
+`benchmark/` appears in the rows above because it is a separate build that resolves SuperPlayer from
+published Maven coordinates and declares its own dependencies, exactly as `demo/` does. It brings no
+third-party dependency this project did not already have: its arms are Media3's own `ExoPlayer` and
+`DefaultLoadControl`, its metrics come off Media3's `AnalyticsListener`, and its Robolectric arm runs
+on the same test infrastructure the library's own tests do. Its report generator writes JSON by hand
+rather than taking a serialization library, which `TraceWriter` explains — a benchmark of a library
+should not add a dependency to the tree of the thing it measures.
+
 ## Datasets
 
 None. No third-party throughput dataset is vendored: `superplayer-testkit` replays traces in its own
@@ -76,7 +84,7 @@ with its row in this section, in the same change.
 | `org.jetbrains.kotlinx:binary-compatibility-validator` | Apache-2.0 | `build-logic` |
 | `org.ow2.asm:asm` | BSD-3-Clause | `build-logic` |
 | `io.github.java-diff-utils:java-diff-utils` | Apache-2.0 | transitive, via `binary-compatibility-validator` |
-| `com.diffplug.spotless:spotless-plugin-gradle` | Apache-2.0 | root build, `demo` |
+| `com.diffplug.spotless:spotless-plugin-gradle` | Apache-2.0 | root build, `demo`, `benchmark` |
 | `com.pinterest.ktlint:ktlint-rule-engine` | MIT | resolved by Spotless, as the formatting engine |
 | `com.pinterest.ktlint:ktlint-ruleset-standard` | MIT | resolved by Spotless, as the formatting engine |
 

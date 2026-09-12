@@ -74,9 +74,9 @@ a number when the roadmap schedules it.
 Only `superplayer-core` is required by a consumer. Every other module is additive: an app depends on
 what it uses and its APK does not grow for features it does not need.
 
-## The demo is a separate build
+## Two separate builds beside this one
 
-`demo/` is **not** a module of the root build. It is a standalone Gradle build that resolves
+`demo/` and `benchmark/` are **not** modules of the root build. It is a standalone Gradle build that resolves
 SuperPlayer through published Maven coordinates:
 
 ```kotlin
@@ -88,12 +88,21 @@ exactly the class of defect an adopter hits first — a missing transitive depen
 POM, a wrong artifactId, a variant that does not resolve. Consuming the published artifact makes
 those failures happen here, during development, rather than in someone else's app.
 
-The cost is one extra step: the library must be published locally before the demo will build.
+The cost is one extra step: the library must be published locally before either will build.
 
 ```bash
 ./gradlew publishToMavenLocal        # from the repo root
 cd demo && ./gradlew assembleDebug
+benchmark/bench                      # publishes first, then runs the matrix
 ```
+
+`benchmark/` is the same arrangement for the same reason, and one more: `PRD.md` §0.2 says every
+performance number this project publishes comes from its own harness, so the harness had better be
+measuring the artifact a consumer would actually get rather than a source dependency that skips half
+of what shipping means. It also resolves `superplayer-telemetry` and, for its Robolectric arm,
+`superplayer-testkit`. [`benchmark/README.md`](../benchmark/README.md) is its manual, including why a
+benchmark sits outside [`docs/testing.md`](testing.md)'s no-device, no-network rule rather than
+against it.
 
 ## Building
 

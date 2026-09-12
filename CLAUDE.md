@@ -5,13 +5,14 @@ lifecycle. Not a fork of Media3 and not a new player. Apache-2.0, Kotlin, JDK 17
 
 ## Orientation
 
-Three Gradle builds, not one. Mistaking them for a single build is the usual first wrong turn.
+Four Gradle builds, not one. Mistaking them for a single build is the usual first wrong turn.
 
 | Build | What it is |
 | --- | --- |
 | root | the 13 `superplayer-*` library modules, listed in `settings.gradle.kts` |
 | `build-logic/` | an **included build** holding the convention plugins every module applies |
 | `demo/` | a **separate** build resolving the library from published Maven coordinates |
+| `benchmark/` | a **separate** build, the same way, running `PRD.md` §6's matrix |
 
 A module's own build file holds only its dependencies; Android setup, SDK levels, Java and Kotlin
 targets, lint, and publishing all live in the `superplayer.android.library` convention plugin.
@@ -192,6 +193,24 @@ enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `s
 and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
 requirements, and the phase table are what the issues are cut from.
 
+`benchmark/` is the fourth build and Phase 2's exit criterion: `PRD.md` §6's fixed matrix — six
+network profiles × four scenarios × three players × twenty runs — emitting a report with the raw
+traces beside it. The three players are `Arm.kt`: stock `ExoPlayer` with defaults, stock plus the
+buffer config an app writes from intuition, and a SuperPlayer profile. What makes the comparison a
+comparison is that all three are built by one `PlaybackHarness` over one shaped transport, and that
+every metric is reduced by one `SessionMetrics` from core's own `TelemetryEvent` vocabulary — so the
+definitions are shared by construction rather than by care. Arms (a) and (b) have no SuperPlayer to
+attach `QoeCollector` to, so `StockTelemetry` mirrors it callback for callback, and
+`StockTelemetryAgreementTest` attaches **both collectors to one `ExoPlayer`** and asserts they derive
+the same events; delete that test and the benchmark's central claim goes with it. `PRD.md` §6's
+honesty rules are enforced where the numbers are made rather than where the table is printed —
+`Distribution` has no mean without a spread, `ReportWriter` prints losses before wins and has no
+filter, and a difference inside two standard errors is neutral rather than a small win.
+`benchmark/README.md` is the manual, including why it sits outside `docs/testing.md`'s rules rather
+than against them, and `benchmark/baseline/` is the committed report Phase 3 is graded against. Peak
+RSS and battery need a device: `BenchmarkActivity` is that arm's app and the harness around it is
+not built, which the README and the report both say rather than leaving a reader to assume.
+
 `PLAN.md` is an untracked, local-only scratch draft that `PRD.md` supersedes. **Do not read it, cite
 it, or copy from it** — it names third parties and framings that must not reach a tracked file, and
 where the two disagree `PRD.md` is right.
@@ -205,6 +224,7 @@ where the two disagree `PRD.md` is right.
 ./gradlew convertThroughputTrace --from=… --transport=… --input=… --output=…   # docs/throughput-traces.md
 ./gradlew publishToMavenLocal     # required before the demo will build
 (cd demo && ./gradlew assembleDebug lintDebug spotlessCheck)
+benchmark/bench                   # PRD.md §6's matrix and its report; NOT in check (benchmark/README.md)
 devicelab/lab run smoke           # device run: trace, report, metadata (devicelab/README.md)
 ./gradlew huntLeaks                # the leak hunt on a device; NOT in check (devicelab/leak/README.md)
 ```
@@ -214,11 +234,12 @@ build, its tasks are invisible to the root build's aggregate tasks — its tests
 `check` depends on them explicitly. A new check that can be a Gradle task belongs in `check`, not
 only in CI (`.github/workflows/ci.yml`), so local and CI agree on what passing means.
 
-`spotlessApply` at the root covers **all three builds**. Spotless is configured by path rather than
+`spotlessApply` at the root covers **all four builds**. Spotless is configured by path rather than
 by project, so the root build's `**/*.kt` reaches `demo/` and `build-logic/` too, and one invocation
-formats the repository. The demo applies Spotless a second time over its own sources, which is why
-`spotlessCheck` is in its command line above: the demo has its own wrapper and CI builds it with the
-root build not running at all, so it has to be able to enforce the format by itself.
+formats the repository. The demo and the benchmark each apply Spotless a second time over their own
+sources, which is why `spotlessCheck` is in their command lines: each has its own wrapper and CI
+builds it with the root build not running at all, so each has to be able to enforce the format by
+itself.
 
 The rules are ktlint's, and they live in `.editorconfig` — including every rule switched off to
 leave this codebase's style alone, each with the reason. The license header is

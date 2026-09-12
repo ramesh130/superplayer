@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# Copyright 2026 The SuperPlayer Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# benchmark: runs PRD.md §6's matrix and writes the report.
+#
+#   benchmark/bench                     the full matrix, 20 runs a cell, into benchmark/out
+#   benchmark/bench --runs 5            fewer runs; the report says it is not a baseline
+#   benchmark/bench --out DIR           somewhere other than benchmark/out
+#   benchmark/bench --cells "VOD / 3G"  a substring filter, for working on the harness
+#   benchmark/bench --baseline          write into benchmark/baseline, the committed one
+#
+# Not a test, and not part of `./gradlew check`: a benchmark is a measurement someone reads rather
+# than a check a change must pass. README.md says why that sits outside docs/testing.md's rules
+# rather than against them.
+set -euo pipefail
+
+BENCH_HOME="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(dirname "$BENCH_HOME")"
+
+log() { printf '[benchmark] %s\n' "$*" >&2; }
+die() {
+    printf '[benchmark] error: %s\n' "$*" >&2
+    exit 1
+}
+
+usage() {
+    sed -n '4,14p' "$0" | sed 's/^# \{0,1\}//' >&2
+    exit 2
+}
+
+# PRD.md §6's floor. Fewer than this and the runner's report says, in the document itself, that it
+# is a smoke run rather than a baseline — so this default is the only place the number has to be
+# right for an ordinary invocation.
+RUNS=20
+OUT="$BENCH_HOME/out"
+CELLS=""
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --runs) RUNS="${2:?--runs needs a value}"; shift 2 ;;
+        --out) OUT="${2:?--out needs a value}"; shift 2 ;;
+        --cells) CELLS="${2:?--cells needs a value}"; shift 2 ;;
+        # The committed baseline lives in the repository, because it is what Phase 3 is graded
+        # against and a number nobody can find is not a baseline. See README.md.
+        --baseline) OUT="$BENCH_HOME/baseline"; shift ;;
+        -h | --help) usage ;;
+        *) die "unknown option $1" ;;
+    esac
+done
+
+case "$RUNS" in '' | *[!0-9]*) die "--runs takes a whole number, not '$RUNS'" ;; esac
+
+# The library first, always. This build resolves SuperPlayer from Maven local exactly as `demo/`
+# does, so a matrix run against a stale artifact would measure the previous version, produce a
+# perfectly plausible report, and record a commit that did not make it. The same trap
+# `CLAUDE.md` describes for the demo, and the reason it is one command rather than two.
+log "publishing the library to Maven local"
+(cd "$REPO_ROOT" && ./gradlew --console=plain --quiet publishToMavenLocal) ||
+    die "publishToMavenLocal failed; the matrix would have measured whatever was already there"
+
+if [ -n "$(git -C "$REPO_ROOT" status --porcelain)" ]; then
+    # A warning rather than a refusal: running the matrix on a work in progress is the ordinary way
+    # to develop it. The report itself says, in prose and at the top, that a dirty-tree run is not a
+    # baseline, so the thing that must not be quiet is not quiet.
+    log "warning: the working tree has uncommitted changes; the report will say it is not a baseline"
+fi
+
+log "running the matrix: $RUNS run(s) per cell → $OUT"
+[ -z "$CELLS" ] || log "cells filtered to '$CELLS' — this is not a baseline"
+
+# `testDebugUnitTest` rather than a task of our own: Robolectric is a JUnit runner and there is no
+# other way to get an Android runtime on a JVM. `BenchmarkMatrixTest`'s KDoc says why the matrix is
+# a JUnit class without being a test.
+(
+    cd "$BENCH_HOME"
+    ./gradlew --console=plain testDebugUnitTest \
+        --tests "com.superplayer.benchmark.BenchmarkMatrixTest" \
+        -Pruns="$RUNS" -Pout="$OUT" ${CELLS:+-Pcells="$CELLS"}
+) || die "the matrix failed; nothing was written that should be read"
+
+log "done: $OUT/baseline-report.md"
+printf '%s\n' "$OUT/baseline-report.md"

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- The device arm plays public streams over the real network, which is the whole reason it is
+         a device arm: `docs/testing.md` bars the network from the test suite, and README.md says
+         why a benchmark sits outside that rule rather than against it. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <application
+        android:allowBackup="false"
+        android:label="@string/app_name"
+        android:theme="@android:style/Theme.Material.NoActionBar">
+        <!-- Peak RSS and battery are what the device arm exists to measure, and Perfetto's
+             process_memory and battery data sources can only attach to an app that is debuggable or
+             profileable. The measured build type is `benchmark`, which is deliberately not
+             debuggable — a debuggable build runs differently and meaningfully slower, so a figure
+             taken from one describes a build nobody ships. This is what makes it measurable anyway.
+             See demo/src/main/AndroidManifest.xml, which carries the same declaration for the same
+             reason, and devicelab/README.md. -->
+        <profileable
+            android:shell="true"
+            tools:targetApi="29" />
+
+        <activity
+            android:name=".BenchmarkActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

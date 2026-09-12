@@ -108,6 +108,51 @@ class ReportHonestyTest {
     }
 
     @Test
+    fun theRebufferRatioAReportPrintsIsThePooledOneItPromises() {
+        // The regression this exists for: the comparison tables printed the *mean of per-session
+        // ratios* while the prose above them promised the pooled ratio — publishing exactly the
+        // aggregation `docs/telemetry-schema.md` forbids, under the name of the one it requires.
+        //
+        // The fixture makes the two numbers far apart. One long, badly stalling session and
+        // nineteen short clean ones: pooled is dominated by the long session's stalled milliseconds,
+        // while the per-session mean is dragged to nearly nothing by the nineteen zeroes.
+        val skewed = listOf(session(Arm.STOCK_DEFAULTS, 0).copy(rebufferMs = 30_000, playingMs = 30_000)) +
+            (1 until 20).map { session(Arm.STOCK_DEFAULTS, it).copy(rebufferMs = 0, playingMs = 1_000) }
+        val cell = CellResult(
+            key = CellKey(Scenario.VOD, NetworkProfileName.THREE_G, Arm.STOCK_DEFAULTS),
+            sessions = skewed,
+            excludedSessions = 0,
+        )
+
+        val pooled = requireNotNull(cell.rebufferRatio)
+        val perSessionMean = requireNotNull(cell.rebufferRatioSpread).mean
+        assertTrue("The fixture does not separate the two aggregations", pooled > perSessionMean * 5)
+
+        val comparison = CellComparison(
+            scenario = Scenario.VOD,
+            network = NetworkProfileName.THREE_G,
+            baselineArm = Arm.STOCK_DEFAULTS,
+            baseline = cell,
+            superPlayer = cell,
+        ).comparisons.single { it.metric == "rebuffer ratio" }
+
+        // The value a report may print is the pooled one; the distribution is carried only so the
+        // verdict has something to measure noise against.
+        assertEquals(pooled, comparison.displayBaseline)
+        assertEquals(pooled, comparison.displaySuperPlayer)
+    }
+
+    @Test
+    fun everyComparisonIsAccountedForBySomeSectionOfTheReport() {
+        // `ReportWriter` checks this internally and would throw; asserting it here says what the
+        // check is for. A comparison with no data belonged to none of worse, neutral or better, so
+        // three of them could vanish from a cell while the printed counts still looked plausible.
+        val markdown = ReportWriter.write(report())
+
+        assertTrue(markdown.contains("**No data — one arm produced no measurement"))
+    }
+
+    @Test
     fun aRunWithTooFewRunsPerCellSaysItIsNotABaseline() {
         val markdown = ReportWriter.write(report(runsPerCell = 3))
 

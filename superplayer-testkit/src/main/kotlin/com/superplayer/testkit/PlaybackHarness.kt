@@ -558,7 +558,31 @@ public class PlaybackHarness : ExternalResource() {
         settle(player)
     }
 
-    /** Releases every player this harness built, newest first. */
+    /**
+     * Releases [player] and forgets it.
+     *
+     * Optional for a test, which builds a handful and lets [after] release them, and **not optional
+     * for a benchmark**, which builds one per run and can build well over a thousand in a single
+     * `@Test`. Two things go wrong without it, and the second is worse than the first.
+     *
+     * The cost is quadratic: [advanceTimeMs] asks every registered player's [HarnessClockWait]
+     * whether its transfers have caught up, so a matrix of a thousand players pays a thousand-entry
+     * scan on each of hundreds of advances per run. It also keeps every `Surface`, every renderer
+     * and every released `ExoPlayer` reachable until the test method ends.
+     *
+     * The correctness half: a player that was released while a transfer was open leaves a wait that
+     * can never catch up, and [advanceTimeMs] fails on it — so a cell fails because of a player
+     * released twenty cells earlier, with a message about a load that has nothing to do with it.
+     * Handing the player back is what removes that.
+     */
+    public fun release(player: Player) {
+        player.release()
+        renderers.remove(player)
+        injectors.remove(player)
+        waits.remove(player)
+    }
+
+    /** Releases every player this harness built and still holds, newest first. */
     override fun after() {
         renderers.keys.toList().asReversed().forEach { it.release() }
         renderers.clear()
@@ -735,15 +759,45 @@ public class PlaybackHarness : ExternalResource() {
         val loadsThroughADataSource: Boolean,
     )
 
+    /**
+     * One rendition of a ladder: a bitrate, and **the resolution a stream would encode it at**.
+     *
+     * The resolution is derived from the bitrate rather than fixed, and that is load-bearing rather
+     * than decorative. A ladder whose every rung is 720p is not a ladder a resolution cap can choose
+     * within: a policy capping height at 480p excludes *all* of it, and Media3's selector then falls
+     * back to the lowest rung. The measurement that comes out is a real number produced by a
+     * degenerate mechanism — the cap did not pick a rung, it disqualified the ladder — and a
+     * benchmark reporting it as a quality trade would be describing something that did not happen.
+     * `superplayer-core`'s `DATA_SAVER` caps both height and bitrate, so this is the difference
+     * between measuring that profile and measuring a fallback path.
+     */
     private fun videoFormat(index: Int, bitrateBps: Int): Format = Format.Builder()
         .setId("video-$index")
         .setSampleMimeType(MimeTypes.VIDEO_H264)
         .setPeakBitrate(bitrateBps)
         .setAverageBitrate(bitrateBps)
-        .setWidth(WIDTH)
-        .setHeight(HEIGHT)
+        .setWidth(heightPxFor(bitrateBps) * WIDTH_NUMERATOR / HEIGHT_DENOMINATOR)
+        .setHeight(heightPxFor(bitrateBps))
         .setFrameRate(FRAME_RATE)
         .build()
+
+    /**
+     * The frame height a rendition of [bitrateBps] would be encoded at.
+     *
+     * ref: Apple, *HLS Authoring Specification for Apple Devices*, whose recommended tier tables pair
+     * each average bitrate with a frame size:
+     * https://developer.apple.com/documentation/http-live-streaming/hls-authoring-specification-for-apple-devices
+     * The thresholds below follow that pairing at the rung boundaries rather than reproducing the
+     * table, because a synthetic ladder chooses its own bitrates: what has to be true is that a
+     * higher rung is a larger picture, which is what makes a resolution ceiling select rather than
+     * exclude.
+     */
+    private fun heightPxFor(bitrateBps: Int): Int = when {
+        bitrateBps < LADDER_480P_FLOOR_BPS -> 360
+        bitrateBps < LADDER_720P_FLOOR_BPS -> 480
+        bitrateBps < LADDER_1080P_FLOOR_BPS -> 720
+        else -> 1080
+    }
 
     public companion object {
         /**
@@ -787,8 +841,16 @@ public class PlaybackHarness : ExternalResource() {
         /** Two seconds, the segment duration both the HLS and DASH interoperability profiles use. */
         private val CHUNK_DURATION_US = 2_000_000L
 
-        private val WIDTH = 1280
-        private val HEIGHT = 720
+        /** 16:9, as every rung of a modern ladder is: width is height × 16 ÷ 9. */
+        private const val WIDTH_NUMERATOR = 16
+        private const val HEIGHT_DENOMINATOR = 9
+
+        // The rung boundaries [heightPxFor] reads, which its KDoc cites. Below the first a rendition
+        // is 360p; the last is where 1080p starts.
+        private const val LADDER_480P_FLOOR_BPS = 600_000
+        private const val LADDER_720P_FLOOR_BPS = 1_200_000
+        private const val LADDER_1080P_FLOOR_BPS = 3_000_000
+
         private val FRAME_RATE = 30f
 
         /** One keyframe a second at [FRAME_RATE], which is what a real encoder ladder uses. */

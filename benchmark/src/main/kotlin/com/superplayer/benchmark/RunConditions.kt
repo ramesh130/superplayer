@@ -102,13 +102,19 @@ internal data class RunConditions(
                 .directory(repoRoot)
                 .redirectErrorStream(true)
                 .start()
+            // Read before waiting, not after. A pipe holds about 64 KB, and a child that fills it
+            // blocks on write until somebody drains it — so waiting first deadlocks the pair until
+            // the timeout fires, and `git status --porcelain` on a tree with a few thousand
+            // untracked files clears 64 KB comfortably. The timeout below would then report "we
+            // could not ask git" about a git that answered perfectly well.
+            val output = process.inputStream.bufferedReader().readText()
             if (!process.waitFor(GIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
                 process.destroyForcibly()
                 null
             } else if (process.exitValue() != 0) {
                 null
             } else {
-                process.inputStream.bufferedReader().readText().trim()
+                output.trim()
             }
         } catch (_: Exception) {
             // Any failure to ask git is "we do not know", which the caller turns into the

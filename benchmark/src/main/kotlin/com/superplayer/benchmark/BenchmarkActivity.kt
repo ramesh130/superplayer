@@ -51,7 +51,6 @@ import java.util.UUID
  * memory would be measuring the measurement.
  *
  * ```bash
- * devicelab/lab run benchmark                    # every arm, in turn
  * adb shell am start -n com.superplayer.benchmark/.BenchmarkActivity \
  *     --es arm SUPERPLAYER --es stream "VOD, HLS" --el durationMs 1800000
  * ```
@@ -60,8 +59,9 @@ import java.util.UUID
  *
  * One JSONL file per run under the app's external files directory, in `TraceWriter`'s format, so a
  * device trace and a Robolectric trace are read with the same tools. It also logs one line under
- * [TAG] when the run finishes, which is what `devicelab` waits for — a fixed sleep could not tell a
- * finished run from a stalled one, and this app publishes no media session for `dumpsys` to report.
+ * [TAG] when the run finishes, which is what a harness should wait for — a fixed sleep could not tell
+ * a finished run from a stalled one, and this app publishes no media session for `dumpsys` to
+ * report. Wiring that harness up is #95; `benchmark/README.md` has the manual recipe until then.
  *
  * ## Why this is not the demo
  *
@@ -93,6 +93,22 @@ internal class BenchmarkActivity : Activity() {
         // resident set is being measured carries only what the arms actually need.
         val surface = SurfaceView(this)
         setContentView(surface, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+
+        // Keep the screen on for the whole run, and note which problem this solves — it is the
+        // battery metric's, not a convenience.
+        //
+        // Arm (c) gets a wake lock from core's own lifecycle correctness (ADR-0006 rule 1); arms (a)
+        // and (b) are a bare `ExoPlayer` and get nothing, because that is what they *are*. So if the
+        // screen times out five minutes into a thirty-minute run, SuperPlayer plays on and the stock
+        // arms suspend — and the battery delta then reports SuperPlayer as far worse when it is the
+        // only arm that actually ran. Nothing downstream could detect that: all three would write a
+        // trace and finish.
+        //
+        // A window flag rather than a wake lock on the stock players, deliberately. Giving arms (a)
+        // and (b) a wake lock would make them not the arms they are supposed to be; keeping the
+        // screen on is a property of the *activity*, identical for all three, and it is also what a
+        // viewer watching a 30-minute video has.
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         Log.i(TAG, "run arm=${arm.name} stream=\"${stream.label}\" uri=${stream.uri} durationMs=$durationMs")
         start(arm, stream, durationMs, surface)

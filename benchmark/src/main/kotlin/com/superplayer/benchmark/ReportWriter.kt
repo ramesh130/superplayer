@@ -220,7 +220,9 @@ internal object ReportWriter {
                 return@forEach
             }
 
-            appendLine("**Worse (${losses.size} of ${comparisons.sumOf { it.comparisons.size }} comparisons):**")
+            val total = comparisons.sumOf { it.comparisons.size }
+            val noData = comparisons.flatMap { cell -> cell.comparisons.filter { !it.hasData }.map { cell to it } }
+            appendLine("**Worse (${losses.size} of $total comparisons):**")
             appendLine()
             if (losses.isEmpty()) {
                 // Said in words rather than left as an empty section, because an empty section reads
@@ -244,8 +246,29 @@ internal object ReportWriter {
             } else {
                 comparisonTable(neutrals)
             }
+
+            // Printed rather than left out, so the three counts account for every comparison. A
+            // comparison with no data is usually a cell where one arm failed to start every run,
+            // which is a finding; three of them vanishing from all three sections would leave the
+            // numbers not summing and look like an omission.
+            appendLine("**No data — one arm produced no measurement (${noData.size}):**")
+            appendLine()
+            if (noData.isEmpty()) {
+                appendLine("_None._")
+                appendLine()
+            } else {
+                comparisonTable(noData)
+            }
+
+            check(losses.size + neutrals.size + wins(comparisons).size + noData.size == total) {
+                "The summary sections do not account for every comparison of $baselineArm"
+            }
         }
     }
+
+    /** The winning comparisons of [comparisons]; see [wins] for where they are printed. */
+    private fun wins(comparisons: List<CellComparison>): List<Comparison> =
+        comparisons.flatMap { it.wins }
 
     private fun StringBuilder.wins(report: MatrixReport) {
         appendLine("## Where SuperPlayer is better")
@@ -276,8 +299,8 @@ internal object ReportWriter {
         rows.forEach { (cell, comparison) ->
             appendLine(
                 "| ${cell.scenario.label} | ${cell.network.label} | ${comparison.metric} " +
-                    "| ${value(comparison.metric, comparison.baseline)} " +
-                    "| ${value(comparison.metric, comparison.superPlayer)} " +
+                    "| ${value(comparison.metric, comparison.baseline, comparison.displayBaseline)} " +
+                    "| ${value(comparison.metric, comparison.superPlayer, comparison.displaySuperPlayer)} " +
                     "| ${change(comparison)} |",
             )
         }
@@ -508,12 +531,17 @@ internal object ReportWriter {
 
     private fun percentage(value: Double?): String = value?.let { "%.1f%%".format(it * 100) } ?: EM_DASH
 
-    /** A comparison's value column, formatted the way that metric is formatted elsewhere. */
-    private fun value(metric: String, distribution: Distribution?): String = when {
+    /**
+     * A comparison's value column, formatted the way that metric is formatted elsewhere.
+     *
+     * [display] wins when it is set, which is how rebuffer ratio prints the pooled value while its
+     * verdict comes from the distribution behind it. See `CellComparison.comparisons`.
+     */
+    private fun value(metric: String, distribution: Distribution?, display: Double?): String = when {
+        display != null -> ratio(display)
         distribution == null -> EM_DASH
         metric.contains("bit/s") -> bitrate(distribution)
         metric.contains("(ms)") -> distribution.summary { it.roundToLong().toString() }
-        metric.contains("ratio") -> distribution.summary { "%.4f".format(it) }
         else -> plain(distribution)
     }
 

@@ -78,6 +78,7 @@ public final class com/superplayer/testkit/PlaybackHarness : org/junit/rules/Ext
 	public final fun failRendering (Landroidx/media3/common/Player;)V
 	public final fun playToFailure (Landroidx/media3/common/Player;)V
 	public final fun playToReady (Landroidx/media3/common/Player;)V
+	public final fun release (Landroidx/media3/common/Player;)V
 	public final fun reportDroppedFrames (Landroidx/media3/common/Player;IJ)V
 	public final fun resumeRendering (Landroidx/media3/common/Player;)V
 	public final fun settle (Landroidx/media3/common/Player;)V

@@ -560,6 +560,15 @@ Instrumented tests on real devices and the golden trace corpus are `superplayer-
 and arrive with it — as the fault injector and throughput trace replay above already have. They
 extend this seam rather than replacing it: they still drive the library through its public API.
 
+Benchmarking is not covered here, because it is not testing either. `benchmark/` runs `PRD.md` §6's
+fixed matrix across three players and emits a report; it is a separate Gradle build, it is not in
+`check`, and a run of it fails only when it could not measure — never because of *what* it measured.
+Its Robolectric arm honours this document's rules as it happens, needing neither a device nor a
+network, and it still sits outside the suite: twenty runs of ninety cells is a measurement someone
+reads rather than a check a change must pass. Its device arm needs both a device and a network,
+because peak RSS and battery are properties of a process on a device and there is no honest way to
+take either from a JVM. `benchmark/README.md` says all of this from the other side.
+
 Measurement on a device is not covered here either, because it is not testing. `devicelab/` drives
 the demo on an emulator or a phone and returns a Perfetto trace. A run fails only when it could not
 measure, for example when playback never started or the APK was stale. It never fails because of what

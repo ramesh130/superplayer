@@ -13,7 +13,13 @@ local.properties
 /build/
 /build-logic/build/
 /demo/build/
+/benchmark/build/
 /superplayer-*/build/
 
 # Device measurement runs: traces, reports and run metadata. See devicelab/README.md.
 /devicelab/out/
+
+# Benchmark runs that are not the committed baseline. `benchmark/baseline/` is tracked on purpose —
+# it is what Phase 3 is graded against, and a baseline nobody can find is not one. See
+# benchmark/README.md.
+/benchmark/out/

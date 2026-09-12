@@ -16,7 +16,6 @@
 
 package com.superplayer.testkit
 
-import androidx.media3.common.Player
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import com.superplayer.core.MediaRequest
@@ -47,10 +46,16 @@ class FaultInjectionPlaybackTest {
         val player = harness.buildPlayer(content = TestContent.videoLadder(), faults = FaultScript.NONE)
         player.setMediaRequest(MediaRequest.Builder(CONTENT).addSource(SOURCE).build())
         harness.playToReady(player)
+        val positionAtStartMs = player.currentPosition
         harness.advanceTimeInStepsMs(player, PLAYED_MS)
 
+        // What the session did over the span rather than the state it is in at the last instant of it:
+        // a healthy player is momentarily buffering at plenty of instants, and which one a fixed span
+        // ends on is the machine's answer rather than the injector's (issue #91). Playback having
+        // moved on across the whole span is the stronger claim in any case — the state at the end
+        // says nothing about whether anything happened before it.
         assertThat(player.playerError).isNull()
-        assertThat(player.playbackState).isEqualTo(Player.STATE_READY)
+        assertThat(player.currentPosition).isGreaterThan(positionAtStartMs)
         // Segments were fetched, so the transparent case is transparent about something.
         assertThat(harness.requestedResources(player)).isNotEmpty()
     }
@@ -63,13 +68,15 @@ class FaultInjectionPlaybackTest {
                 .build()
             val player = play(script)
 
-            harness.advanceTimeInStepsMs(player, PLAYED_MS)
+            // Waited for rather than watched for: the session stops being advanced at the failure
+            // instead of running on past it, which makes "and nothing past it was fetched" a claim
+            // about the fault rather than about how many loads a span happened to allow.
+            harness.advanceUntil(player, "the injected failure", PLAYED_MS) { it.playerError != null }
 
             // The same segment every time, and *exactly* that far: every segment before the one
             // named was fetched, the one named was reached, and nothing past it was. A fault that
             // fired one segment late would still fail the session and would still have fetched
             // 0..2 — so anything weaker than the whole list would pass for a fault that moved.
-            assertThat(player.playerError).isNotNull()
             val segments = harness.requestedResources(player).filter { it.kind == ResourceKind.MEDIA_SEGMENT }
             assertThat(segments.map { it.index }).containsExactlyElementsIn(0..FAULTED_SEGMENT).inOrder()
         }
@@ -80,7 +87,9 @@ class FaultInjectionPlaybackTest {
         val script = FaultScript.Builder().expireTokenAtSegment(FAULTED_SEGMENT).build()
         val player = play(script)
 
-        harness.advanceTimeInStepsMs(player, PLAYED_MS)
+        harness.advanceUntil(player, "the failure that outlasts the retries", PLAYED_MS) {
+            it.playerError != null
+        }
 
         // Media3 retries a failed chunk load before giving up. A single failed request would be
         // absorbed by that and this test would be asserting nothing; a token that stays expired is

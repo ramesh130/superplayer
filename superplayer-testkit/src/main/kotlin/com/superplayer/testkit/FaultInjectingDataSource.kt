@@ -133,6 +133,7 @@ internal class FaultInjectingDataSource(
     private val wait: HarnessClockWait,
     private val intermediary: IntermediaryCache,
     private val cacheBypassingRequests: AtomicInteger,
+    private val countsTransfers: Boolean,
 ) : DataSource {
 
     /** A response the intermediary cache answered, served from memory in place of the upstream. */
@@ -146,11 +147,21 @@ internal class FaultInjectingDataSource(
     private var deliveryStartedAtMs = 0L
     private var upstreamOpen = false
 
+    /**
+     * This transfer's registration with the harness's clock wait.
+     *
+     * Every transfer registers, not only a delayed one: what the harness does with the count is wait
+     * for the loading thread before it advances the clock again, and a transfer that is merely slow
+     * to be scheduled is exactly the one the clock would otherwise run away from.
+     */
+    private val transfer = TransferRegistration(wait, counts = countsTransfers)
+
     override fun addTransferListener(transferListener: TransferListener) {
         upstream.addTransferListener(transferListener)
     }
 
     override fun open(dataSpec: DataSpec): Long {
+        transfer.opened()
         val address = addresses.addressOf(dataSpec)
         if (IntermediaryCache.asksCachesToStepAside(dataSpec)) cacheBypassingRequests.incrementAndGet()
         val effects = script.faults.filter { it.matches(address) }.map { it.effect }
@@ -230,6 +241,7 @@ internal class FaultInjectingDataSource(
     override fun close() {
         cached = null
         cachedUri = null
+        transfer.closed()
         if (upstreamOpen) {
             upstreamOpen = false
             upstream.close()
@@ -276,6 +288,16 @@ internal class FaultInjectingDataSource(
         private val script: FaultScript,
         private val clock: Clock,
         private val wait: HarnessClockWait = HarnessClockWait(clock),
+        /**
+         * Whether the sources this makes register their transfers with [wait] as open.
+         *
+         * On by default, because the injector is usually the outermost wrapper under a player and the
+         * count is what stops the harness's clock running ahead of a load. Off where something above
+         * it already counts — a [ShapingDataSource] over it — since one load registered by two
+         * wrappers can never be seen to catch up: the single thread carrying it waits for one
+         * deadline, and the count would ask for two.
+         */
+        private val countsTransfers: Boolean = true,
     ) : DataSource.Factory {
 
         /** Shared by every source this makes, so indices count the session rather than the load. */
@@ -307,7 +329,7 @@ internal class FaultInjectingDataSource(
 
         /** For the one caller that already holds a source: Media3's `FakeChunkSource` builds its own. */
         fun wrap(source: DataSource): DataSource =
-            FaultInjectingDataSource(source, script, clock, addresses, wait, intermediary, bypasses)
+            FaultInjectingDataSource(source, script, clock, addresses, wait, intermediary, bypasses, countsTransfers)
     }
 
     private companion object {

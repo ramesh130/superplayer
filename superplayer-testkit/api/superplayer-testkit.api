@@ -64,6 +64,9 @@ public final class com/superplayer/testkit/PlaybackHarness : org/junit/rules/Ext
 	public fun <init> ()V
 	public final fun advanceTimeInStepsMs (Lcom/superplayer/core/SuperPlayer;J)V
 	public final fun advanceTimeMs (Lcom/superplayer/core/SuperPlayer;J)V
+	public final fun advanceUntil (Lcom/superplayer/core/SuperPlayer;Ljava/lang/String;JLkotlin/jvm/functions/Function1;)V
+	public final fun advanceUntil (Lcom/superplayer/core/SuperPlayer;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public static synthetic fun advanceUntil$default (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/core/SuperPlayer;Ljava/lang/String;JLkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public final fun attachVideoOutput (Lcom/superplayer/core/SuperPlayer;)V
 	public final fun buildPlayer (Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;)Lcom/superplayer/core/SuperPlayer;
 	public static synthetic fun buildPlayer$default (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;ILjava/lang/Object;)Lcom/superplayer/core/SuperPlayer;

@@ -46,10 +46,10 @@ class ProtocolPlaybackTest {
         val player = play(content)
 
         // Played to the end rather than merely to ready: every segment the playlist names was
-        // fetched, demuxed and rendered, which is what makes this a playback test rather than a
-        // parse test.
+        // fetched, demuxed and rendered, which is what makes this a playback test rather than a parse
+        // test. `play` waits for that end and fails naming the state that arrived instead, so what is
+        // left to assert is what the session fetched on the way.
         assertThat(player.playerError).isNull()
-        assertThat(player.playbackState).isEqualTo(Player.STATE_ENDED)
 
         // The playlists first, then the segments, and the segments numbered from zero: the whole
         // claim the fault injector's addressing rests on, seen under a real HLS source.
@@ -73,7 +73,6 @@ class ProtocolPlaybackTest {
         val player = play(content)
 
         assertThat(player.playerError).isNull()
-        assertThat(player.playbackState).isEqualTo(Player.STATE_ENDED)
 
         // One manifest — the MPD — where HLS reads two, and one initialization segment where HLS
         // has none. The mirror of the HLS assertions above, and between them they are what
@@ -91,7 +90,13 @@ class ProtocolPlaybackTest {
         val player = harness.buildPlayer(content = content)
         player.setMediaRequest(MediaRequest.Builder(CONTENT).addSource(content.sourceUri).build())
         harness.playToReady(player)
-        harness.advanceTimeInStepsMs(player, content.durationMs)
+        // Waited for, not watched for exactly the content's length. Segments load on real threads,
+        // so a session that is one segment short when its own duration has passed is a busy machine
+        // rather than a stream that did not play (issue #91). Twice the content is a bound no
+        // healthy session comes near.
+        harness.advanceUntil(player, "the end of the content", 2 * content.durationMs) {
+            it.playbackState == Player.STATE_ENDED
+        }
         return player
     }
 

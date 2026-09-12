@@ -536,6 +536,24 @@ milliseconds to race ahead of real scheduling, and the net fires. ADR-0006 recor
 a test from being written. If a behaviour under test is itself timer-driven, the fake clock is the
 thing to question first.
 
+The engine's own watchdogs are timer-driven in exactly that sense, and one of them is why
+`SuperPlayerHarness` switches it off: Media3 raises a `StuckPlayerException` after ten minutes of
+buffering, measured on the player's clock, and ten minutes of auto-advancing fake time is however
+long a loaded host takes to load one chunk. `SuperPlayerHarness.useHarnessClock` carries the
+argument. A test's own wait is what reports a player that really is stuck, and it names the state
+that never arrived.
+
+**A fixed span of playback time is not a wait.** The clocks are fake but the loading threads are
+real, so how far a session gets in 40 s of playback time is the host's answer, not the stream's — and
+the three tests of issue #91 each asserted on the answer. `PlaybackHarness.advanceUntil` is the shape
+to reach for: the condition that is actually being waited for, bounded by something the content or
+the policy names, failing with the state that never arrived. A span is right only when the claim is
+itself about a span — that nothing happened over one — or when the span *is* the measurement, which is
+why the telemetry tests keep theirs: they advance a stated number of milliseconds and assert on the
+duration that comes back, so the number is the subject rather than a guess at what a machine needs. The harness helps on its side, too:
+`advanceTimeMs` will not leave a transfer behind, so the clock cannot run minutes ahead of the loads
+and present a healthy live stream to Media3 as one that stopped advancing.
+
 ## What is not covered here
 
 Instrumented tests on real devices and the golden trace corpus are `superplayer-testkit`'s subject

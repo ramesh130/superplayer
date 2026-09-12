@@ -177,7 +177,7 @@ internal class BenchmarkActivity : Activity() {
         // field names the profile a Robolectric row would carry. It is recorded as the label below
         // rather than pretended away, because a device row and a Robolectric row must not be read as
         // the same measurement.
-        val file = TraceWriter.write(directory, key, collected) { 0 }
+        val file = TraceWriter.write(directory, key, listOf(collected))
         Log.i(
             TAG,
             "finished arm=${arm.name} stream=\"${stream.label}\" events=${collected.size} trace=${file.absolutePath}",

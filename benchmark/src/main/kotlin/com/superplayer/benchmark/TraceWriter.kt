@@ -52,24 +52,28 @@ import java.io.File
 internal object TraceWriter {
 
     /**
-     * Writes [events] as one JSONL file for [key], under [directory], and returns the file.
+     * Writes one JSONL file for [key] under [directory], and returns the file.
      *
-     * [runOf] says which run each event belongs to. The runs of a cell share a file because the cell
-     * is the unit anybody compares — twenty files per cell would be six hundred files in a matrix
-     * this size, and the first thing a reader would do is concatenate them.
+     * [runs] is the cell's runs in order, each the events of one session. The runs of a cell share a
+     * file because the cell is the unit anybody compares — twenty files per cell would be six
+     * hundred files in a matrix this size, and the first thing a reader would do is concatenate them.
+     *
+     * A list of runs rather than one flat list plus a lookup from event to run index, which is what
+     * this took at first. `TelemetryEvent` is a data class, so a map keyed by one is keyed by its
+     * *values*: two byte-identical events from different runs would collide and the second would be
+     * written out under the first's run number. Nothing would fail, and a reader chasing an anomaly
+     * would find it filed under the wrong session. The run index is positional here, so that cannot
+     * happen.
      */
-    fun write(
-        directory: File,
-        key: CellKey,
-        events: List<TelemetryEvent>,
-        runOf: (TelemetryEvent) -> Int,
-    ): File {
+    fun write(directory: File, key: CellKey, runs: List<List<TelemetryEvent>>): File {
         directory.mkdirs()
         val file = File(directory, fileNameFor(key))
         file.bufferedWriter().use { writer ->
-            events.forEach { event ->
-                writer.write(line(key, runOf(event), event))
-                writer.newLine()
+            runs.forEachIndexed { run, events ->
+                events.forEach { event ->
+                    writer.write(line(key, run, event))
+                    writer.newLine()
+                }
             }
         }
         return file

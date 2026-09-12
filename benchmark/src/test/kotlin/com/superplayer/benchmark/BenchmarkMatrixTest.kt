@@ -100,17 +100,15 @@ class BenchmarkMatrixTest {
     /** Plays one cell [runs] times, writes its raw trace, and reduces it. */
     private fun runCell(key: CellKey, runs: Int, traceDirectory: File): CellResult {
         val sessions = mutableListOf<SessionMetrics>()
-        val cellEvents = mutableListOf<TelemetryEvent>()
-        val runOf = mutableMapOf<TelemetryEvent, Int>()
+        val perRunEvents = mutableListOf<List<TelemetryEvent>>()
 
-        repeat(runs) { run ->
+        repeat(runs) {
             val produced = playOneSession(key)
             sessions += SessionMetrics.from(produced.sessionId, produced.events)
-            produced.events.forEach { runOf[it] = run }
-            cellEvents += produced.events
+            perRunEvents += produced.events
         }
 
-        TraceWriter.write(traceDirectory, key, cellEvents) { runOf[it] ?: -1 }
+        TraceWriter.write(traceDirectory, key, perRunEvents)
         val result = CellResult.of(key, sessions)
         println("[benchmark] $key: ${result.runs} run(s), ${result.excludedSessions} excluded")
         return result

@@ -164,7 +164,16 @@ not override Java `default` methods and gives no warning that it hasn't: `Player
 listener wrapper forwards reflectively. `SuperPlayerForwardingTest` drives Media3's own
 forwarding-contract assertion over both and is what catches the next one Media3 adds.
 
-`superplayer-telemetry` holds `QoeCollector` and `LogcatSink`. `superplayer-testkit` holds
+`superplayer-telemetry` holds `QoeCollector`, `LogcatSink`, and `SessionTraceRecorder` — a sink
+that also reads Media3's analytics and records one session as a `SessionTrace`: every state
+transition, track selection, load by kind and media time, error and telemetry event, one fact per
+line, sorted by time then kind rather than by arrival, and redacted by construction so a trace from
+a device can go on a bug report (the class KDoc lists the six rules; the Phase 9 diagnostics bundle
+is this artifact one layer richer). Its purpose is the golden traces in
+`superplayer-telemetry/src/test/golden/`: a behaviour change appears in review as a readable diff
+rather than as a metric that moved, `./gradlew updateGoldenTraces` is the one command that
+regenerates them on the same contract as `updateApiSurface`, and `docs/testing.md`'s *Golden traces*
+section says what a diff means and what may go into one. `superplayer-testkit` holds
 `PlaybackHarness` — the deterministic playback harness every module from phase 2 onward tests
 against, which compiles as a Kotlin *friend* of core so it can reach the one internal seam
 `docs/testing.md` describes, and whose own public API names no Media3 type. `superplayer-testmedia`
@@ -187,7 +196,11 @@ of the fault injector so a trace and a `FaultScript` are one player. `NetworkPro
 Part 6's six profiles, each constant with its public source. `docs/throughput-traces.md` is the
 format's specification and the replay's limits — notably that concurrent transfers each see the whole
 link — and says how a public dataset comes in: `./gradlew convertThroughputTrace`, whose conversions
-live in `build-logic`, run locally, because no dataset is vendored.
+live in `build-logic`, run locally, because no dataset is vendored. The harness owns the loading
+threads of the players it builds (`HarnessLoadThreads`, through core's internal engine seam) and
+advances its clock only once the engine has nothing left to do at the current time, which is what
+makes a session trace byte-identical run after run; `GoldenFile` is the check-or-update comparison
+a golden test calls, and the mode reaches it from the convention plugin as a system property.
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`
 and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
@@ -220,6 +233,7 @@ where the two disagree `PRD.md` is right.
 ```bash
 ./gradlew assemble check          # build, lint, tests, repo verification, tracked API surface, format
 ./gradlew updateApiSurface        # regenerate api/<module>.api after a deliberate API change
+./gradlew updateGoldenTraces      # regenerate src/test/golden/*.trace after a deliberate behaviour change; run alone, then check
 ./gradlew spotlessApply           # reformat and stamp the Apache-2.0 header on every .kt file
 ./gradlew convertThroughputTrace --from=… --transport=… --input=… --output=…   # docs/throughput-traces.md
 ./gradlew publishToMavenLocal     # required before the demo will build

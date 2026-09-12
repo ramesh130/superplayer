@@ -14,3 +14,29 @@ public final class com/superplayer/telemetry/QoeCollector : com/superplayer/core
 	public fun startSession (Ljava/lang/String;Ljava/lang/String;)V
 }
 
+public final class com/superplayer/telemetry/SessionTrace {
+	public static final field Companion Lcom/superplayer/telemetry/SessionTrace$Companion;
+	public static final field FORMAT_HEADER Ljava/lang/String;
+	public static final field FORMAT_VERSION I
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun format ()Ljava/lang/String;
+	public final fun getLines ()Ljava/util/List;
+	public final fun getTimed ()Z
+	public fun hashCode ()I
+	public static final fun parse (Ljava/lang/String;)Lcom/superplayer/telemetry/SessionTrace;
+	public fun toString ()Ljava/lang/String;
+	public final fun withoutTimings ()Lcom/superplayer/telemetry/SessionTrace;
+}
+
+public final class com/superplayer/telemetry/SessionTrace$Companion {
+	public final fun parse (Ljava/lang/String;)Lcom/superplayer/telemetry/SessionTrace;
+}
+
+public final class com/superplayer/telemetry/SessionTraceRecorder : com/superplayer/core/TelemetrySink {
+	public fun <init> ()V
+	public final fun attach (Lcom/superplayer/core/SuperPlayer;)V
+	public final fun detach ()V
+	public fun onEvent (Lcom/superplayer/core/TelemetryEvent;)V
+	public final fun trace ()Lcom/superplayer/telemetry/SessionTrace;
+}
+

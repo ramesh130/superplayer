@@ -17,6 +17,8 @@
 package com.superplayer.testkit
 
 import android.graphics.SurfaceTexture
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.view.Surface
 import androidx.media3.common.C
@@ -43,6 +45,7 @@ import androidx.media3.test.utils.FakeDataSource
 import androidx.media3.test.utils.FakeMediaPeriod
 import androidx.media3.test.utils.FakeMediaSource
 import androidx.media3.test.utils.FakeTimeline
+import androidx.media3.test.utils.robolectric.RobolectricUtil
 import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
 import androidx.test.core.app.ApplicationProvider
 import com.superplayer.core.BufferPolicy
@@ -53,6 +56,8 @@ import com.superplayer.core.TelemetryCollector
 import org.junit.rules.ExternalResource
 import java.util.IdentityHashMap
 import java.util.Random
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.TimeUnit
 
 /**
  * Deterministic playback for a module that is not `superplayer-core`.
@@ -114,6 +119,7 @@ public class PlaybackHarness : ExternalResource() {
      * with a number measured on another — which is the whole claim a benchmark makes.
      */
     private val renderers = IdentityHashMap<Player, ControllableVideoRenderer>()
+    private val engines = IdentityHashMap<Player, ExoPlayer>()
 
     /**
      * The off-screen video outputs handed to the players, held so [after] can release them.
@@ -173,10 +179,11 @@ public class PlaybackHarness : ExternalResource() {
                     configuration.mediaSourceFactory = describedMediaSourceFactory(content, transfers)
                 } else {
                     configuration.transport = transfers.factory
+                    configuration.loadExecutor = transport.loadThreads
                 }
             }
             .build()
-        register(player, checkNotNull(built) { "The engine built no renderers" }, transport)
+        register(player, player.exoPlayer, checkNotNull(built) { "The engine built no renderers" }, transport)
         return player
     }
 
@@ -231,11 +238,13 @@ public class PlaybackHarness : ExternalResource() {
                 if (content.protocol == TestContent.Protocol.DESCRIBED) {
                     describedMediaSourceFactory(content, transport.transfers)
                 } else {
-                    DefaultMediaSourceFactory(context).setDataSourceFactory(transport.transfers.factory)
+                    DefaultMediaSourceFactory(context)
+                        .setDataSourceFactory(transport.transfers.factory)
+                        .setDownloadExecutor(transport.loadThreads)
                 },
             )
             .build()
-        register(player, checkNotNull(built) { "The engine built no renderers" }, transport)
+        register(player, player, checkNotNull(built) { "The engine built no renderers" }, transport)
         return player
     }
 
@@ -276,8 +285,9 @@ public class PlaybackHarness : ExternalResource() {
      * waited on by [awaitLoads] on identical terms — the alternative being two registration paths
      * that drift, which in a benchmark would show up as an unexplained difference between arms.
      */
-    private fun register(player: Player, renderer: ControllableVideoRenderer, transport: Transport) {
+    private fun register(player: Player, engine: ExoPlayer, renderer: ControllableVideoRenderer, transport: Transport) {
         renderers[player] = renderer
+        engines[player] = engine
         injectors[player] = transport.injector
         waits[player] = transport.wait
         attachVideoOutput(player)
@@ -354,6 +364,7 @@ public class PlaybackHarness : ExternalResource() {
             ),
             injector = injector,
             wait = wait,
+            loadThreads = HarnessLoadThreads(wait),
         )
     }
 
@@ -404,10 +415,53 @@ public class PlaybackHarness : ExternalResource() {
     public fun advanceTimeMs(player: Player, millis: Long) {
         require(millis >= 0) { "Time does not go backwards" }
         SystemClock.setCurrentTimeMillis(SystemClock.uptimeMillis() + millis)
+        // Quiet before the clock moves as well as after: a load that finished between the last
+        // settle and this call would otherwise be heard by the engine at the new time on some runs
+        // and at the old time on others.
+        quiesce(player)
         clock.advanceTime(millis)
-        awaitLoads()
-        settle(player)
+        quiesce(player)
     }
+
+    /**
+     * Settles the player until the engine has nothing left to do at this moment.
+     *
+     * [awaitLoads] waits for the loading threads; [settle] lets the playback and application
+     * threads act on what they delivered, which may be to start the next load — on a loading
+     * thread again — or to post the engine one more message about it. So the three are asked in
+     * turn until a whole round passes in which no transfer opened or closed, no load task was
+     * submitted or finished, and both loopers report nothing due. Everything the engine can do
+     * with the loads of this moment has then been done, whichever thread was scheduled first, and
+     * the clock may move on. What this buys is that a session traces identically run after run —
+     * `SessionTraceRecorderTest` in `superplayer-telemetry` is where that is held — where before it
+     * a load's completion, and the next load it triggers, reached the engine one step late on some
+     * runs and not others.
+     *
+     * [quietAt] is the activity count the last round ended on, so that a load started between two
+     * calls — by `prepare()`, say — counts as something to settle rather than as the baseline.
+     */
+    private fun quiesce(player: Player) {
+        val startedAtMs = System.currentTimeMillis()
+        var seen = quietAt
+        while (true) {
+            awaitLoads()
+            settle(player)
+            awaitLoads()
+            val now = activitySoFar()
+            if (now == seen && playbackThreadIsIdle(player) && Looper.getMainLooper().queue.isIdle) {
+                quietAt = now
+                return
+            }
+            seen = now
+            check(System.currentTimeMillis() - startedAtMs < CATCH_UP_WALL_CLOCK_MS) {
+                "The engine kept working for $CATCH_UP_WALL_CLOCK_MS ms of real time without the clock moving"
+            }
+        }
+    }
+
+    private var quietAt = 0
+
+    private fun activitySoFar(): Int = waits.values.sumOf { it.activitySoFar }
 
     /**
      * Lets every load in flight act on the time that just passed, before the engine does.
@@ -485,6 +539,28 @@ public class PlaybackHarness : ExternalResource() {
     public fun settle(player: Player) {
         TestPlayerRunHelper.advance(player)
             .untilPendingCommandsAreFullyHandled(clock, player.applicationLooper)
+        // The helper returns when its own probe has come back, and a callback the engine posted to
+        // the application looper a moment earlier may still be sitting behind it: Robolectric's main
+        // looper runs only when asked. Run it dry, so a listener hears at the time the engine spoke.
+        val mainQueue = Looper.getMainLooper().queue
+        RobolectricUtil.runMainLooperUntil { mainQueue.isIdle }
+    }
+
+    /**
+     * Whether the playback thread has nothing due, answered by the playback thread itself.
+     *
+     * A message the engine posts to itself while handling a loader's completion lands *behind* the
+     * probe [settle] sent, so the probe coming back does not mean the engine has finished reacting.
+     * Asking the queue from another thread would not do either: a message being handled is not in
+     * the queue. So the question is posted, and answered from inside the looper, where "nothing in
+     * the queue" and "nothing running" are the same fact. A released player's looper has quit and
+     * declines the post, which is as idle as it gets.
+     */
+    private fun playbackThreadIsIdle(player: Player): Boolean {
+        val engine = engines[player] ?: return true
+        val idle = CompletableFuture<Boolean>()
+        val posted = Handler(engine.playbackLooper).post { idle.complete(Looper.myQueue().isIdle) }
+        return !posted || idle.get(CATCH_UP_WALL_CLOCK_MS, TimeUnit.MILLISECONDS)
     }
 
     /**
@@ -607,6 +683,7 @@ public class PlaybackHarness : ExternalResource() {
     public fun release(player: Player) {
         player.release()
         renderers.remove(player)
+        engines.remove(player)
         injectors.remove(player)
         waits.remove(player)
     }
@@ -615,6 +692,7 @@ public class PlaybackHarness : ExternalResource() {
     override fun after() {
         renderers.keys.toList().asReversed().forEach { it.release() }
         renderers.clear()
+        engines.clear()
         injectors.clear()
         waits.clear()
         // After the players, which are what were drawing into them.
@@ -776,6 +854,7 @@ public class PlaybackHarness : ExternalResource() {
         val transfers: Transfers,
         val injector: FaultInjectingDataSource.Factory,
         val wait: HarnessClockWait,
+        val loadThreads: HarnessLoadThreads,
     )
 
     /**

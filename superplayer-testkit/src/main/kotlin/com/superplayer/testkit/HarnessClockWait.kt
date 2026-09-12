@@ -60,28 +60,69 @@ internal class HarnessClockWait(private val clock: Clock) {
     /** Transfers between their open and their close. */
     private val openTransfers = AtomicInteger()
 
+    /** Load tasks between their submission and their return, on an executor the harness supplied. */
+    private val activeLoadTasks = AtomicInteger()
+
+    /** Every transfer ever opened or closed and every load task ever submitted or finished. */
+    private val activity = AtomicInteger()
+
+    /**
+     * A count that changes whenever a transfer opens or closes or a load task is submitted or
+     * finishes, and never otherwise.
+     *
+     * What [PlaybackHarness] compares across two settles to know whether the engine has finished
+     * reacting to the loads of the current moment: the count between a load's end and the engine
+     * hearing of it is the same as the count once everything is quiet, and only a second look tells
+     * them apart.
+     */
+    val activitySoFar: Int get() = activity.get()
+
     /** A transfer has opened: until [transferClosed], it either waits here or is working. */
     fun transferOpened() {
         openTransfers.incrementAndGet()
+        activity.incrementAndGet()
     }
 
     fun transferClosed() {
         openTransfers.decrementAndGet()
+        activity.incrementAndGet()
     }
 
     /**
-     * Whether every open transfer has acted on the time that has passed: each one is waiting for a
-     * moment that has not come yet, rather than released and still working.
+     * A load task has been handed to a harness-supplied executor: until [loadTaskFinished], the
+     * loading thread is working, waiting here, or on its way to telling the engine.
+     */
+    fun loadTaskSubmitted() {
+        activeLoadTasks.incrementAndGet()
+        activity.incrementAndGet()
+    }
+
+    /** The task has returned — its transfer is closed *and* its completion has been posted. */
+    fun loadTaskFinished() {
+        activeLoadTasks.decrementAndGet()
+        activity.incrementAndGet()
+    }
+
+    /**
+     * Whether every open transfer, and every load task on an executor the harness supplied, has
+     * acted on the time that has passed: each one is waiting for a moment that has not come yet,
+     * rather than released and still working.
      *
      * What [PlaybackHarness] waits for after each advance, so that a load keeps up with the clock
      * rather than falling behind it whenever the loading thread is short of CPU. A trace's load that
      * lags reaches the engine as a stall the trace never described; a live playlist's reload that
      * lags reaches Media3's tracker as a playlist that stopped advancing (issue #91).
+     *
+     * Counting tasks and not only transfers is what makes the answer exact rather than close: a
+     * task is still active in the gap after its transfer closes and before it has posted its
+     * completion to the playback thread, and a harness that advanced the clock inside that gap
+     * would deliver the completion one step late — on some runs. A load through Media3's own
+     * threading, where the harness supplied no executor, is covered by its transfer alone.
      */
     val transfersHaveCaughtUp: Boolean
         get() {
             val now = clock.elapsedRealtime()
-            return deadlines.values.count { it > now } >= openTransfers.get()
+            return deadlines.values.count { it > now } >= maxOf(openTransfers.get(), activeLoadTasks.get())
         }
 
     /** Returns once the clock reads [deadlineMs]; [what] names the delay if the test never gets there. */

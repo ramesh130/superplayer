@@ -28,6 +28,23 @@ public final class com/superplayer/testkit/FaultScript$Builder {
 public final class com/superplayer/testkit/FaultScript$Companion {
 }
 
+public final class com/superplayer/testkit/GoldenFile {
+	public static final field DIRECTORY_PROPERTY Ljava/lang/String;
+	public static final field INSTANCE Lcom/superplayer/testkit/GoldenFile;
+	public static final field MODE_PROPERTY Ljava/lang/String;
+	public static final field UPDATE_COMMAND Ljava/lang/String;
+	public static final fun check (Ljava/lang/String;Ljava/lang/String;)V
+	public static final fun check (Ljava/lang/String;Ljava/lang/String;Ljava/io/File;Lcom/superplayer/testkit/GoldenFile$Mode;)V
+}
+
+public final class com/superplayer/testkit/GoldenFile$Mode : java/lang/Enum {
+	public static final field CHECK Lcom/superplayer/testkit/GoldenFile$Mode;
+	public static final field UPDATE Lcom/superplayer/testkit/GoldenFile$Mode;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/testkit/GoldenFile$Mode;
+	public static fun values ()[Lcom/superplayer/testkit/GoldenFile$Mode;
+}
+
 public final class com/superplayer/testkit/NetworkProfile : java/lang/Enum {
 	public static final field CONGESTED_WIFI Lcom/superplayer/testkit/NetworkProfile;
 	public static final field Companion Lcom/superplayer/testkit/NetworkProfile$Companion;

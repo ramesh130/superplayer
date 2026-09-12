@@ -114,6 +114,46 @@ val checkApiSurface = tasks.register<CheckApiSurface>("checkApiSurface") {
     mustRunAfter(updateApiSurface)
 }
 
+// Golden traces, tracked in `src/test/golden/` and validated by the module's own tests.
+//
+// The contract mirrors the API surface above: a test compares what a session produced against the
+// committed file through `GoldenFile` (superplayer-testkit), fails on any difference with the diff
+// in the message, and nothing rewrites the file implicitly. `updateGoldenTraces` is the one thing
+// that does — it runs the golden tests alone, in update mode, and the diff it leaves is reviewed
+// with the change that caused it. `docs/testing.md`, *Golden traces*, says what a diff means.
+//
+// The mode reaches the test JVM as a system property, decided once here from what was asked for on
+// the command line: there is one unit-test task per variant and it cannot run in two modes at once,
+// so `./gradlew updateGoldenTraces check` would run `check`'s tests in update mode too — run the
+// update on its own, then `check`. The directory travels the same way, relative because AGP runs
+// unit tests from the module directory, so the property carries nothing machine-specific into the
+// task's inputs.
+val goldenTracesDirectory = layout.projectDirectory.dir("src/test/golden")
+val updatingGoldenTraces = gradle.startParameter.taskNames.any { it.substringAfterLast(':') == "updateGoldenTraces" }
+
+tasks.withType<Test>().configureEach {
+    systemProperty("superplayer.golden.dir", "src/test/golden")
+    systemProperty("superplayer.golden.mode", if (updatingGoldenTraces) "update" else "check")
+    // A golden edited by hand re-runs the tests that hold it to the file.
+    inputs.files(fileTree(goldenTracesDirectory))
+        .withPropertyName("goldenTraces")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    if (updatingGoldenTraces) {
+        outputs.upToDateWhen { false }
+        filter {
+            // The convention: a test that holds a golden has `GoldenTrace` in its class name.
+            includeTestsMatching("*GoldenTrace*")
+            isFailOnNoMatchingTests = false
+        }
+    }
+}
+
+tasks.register("updateGoldenTraces") {
+    group = "verification"
+    description = "Rewrites src/test/golden/ from what this module's golden trace tests currently produce."
+    dependsOn("testDebugUnitTest")
+}
+
 val verifyNoUnstableMedia3InPublicApi =
     tasks.register<VerifyNoUnstableMedia3InPublicApi>("verifyNoUnstableMedia3InPublicApi") {
         group = "verification"

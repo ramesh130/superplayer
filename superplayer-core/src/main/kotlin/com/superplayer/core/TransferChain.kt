@@ -23,6 +23,8 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.util.ReleasableExecutor
+import com.google.common.base.Supplier
 
 /**
  * The one place the loading path below `MediaSource` is assembled.
@@ -142,18 +144,22 @@ internal object TransferChain {
      * the holder the `sid` is read from at prepare time. A disabled mode configures nothing at all.
      *
      * [transport] is what sits at the bottom of the chain in place of the HTTP stack — a test's fake
-     * data source, and nothing in production, where it is null.
+     * data source, and nothing in production, where it is null. [loadExecutor] is where the loads
+     * over it run, for the same reason and with the same default: `EngineConfiguration` says why a
+     * harness has to own that thread.
      */
     fun mediaSourceFactory(
         context: Context,
         cmcdMode: CmcdMode,
         measurementSession: MeasurementSession,
         transport: DataSource.Factory? = null,
+        loadExecutor: Supplier<ReleasableExecutor>? = null,
     ): MediaSource.Factory =
         DefaultMediaSourceFactory(dataSourceChain(context, transport))
             .apply {
                 cmcdMode.toCmcdConfigurationFactory(measurementSession)
                     ?.let(::setCmcdConfigurationFactory)
+                loadExecutor?.let(::setDownloadExecutor)
             }
 
     /**

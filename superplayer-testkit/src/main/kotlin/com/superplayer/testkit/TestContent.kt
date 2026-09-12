@@ -147,6 +147,27 @@ public class TestContent private constructor(
         ): TestContent = TestContent(listOf(bitrateBps), windowDurationMs, live = true)
 
         /**
+         * A live window with a rendition ladder: the two properties ABR on live content needs at once.
+         *
+         * [liveVideo] has one rendition and [videoLadder] is on demand, so neither can express "a
+         * live channel the player has to keep choosing a rung of" — which is the case a live linear
+         * profile exists for, and the one `PRD.md` §6's live row measures. This is those two
+         * combined and nothing else; both of them stay because most tests want exactly one of the
+         * properties and naming the other would be noise.
+         *
+         * [bitratesBps] is taken in the order given and is expected to ascend, as [videoLadder]'s is
+         * and for the same reason.
+         */
+        @JvmStatic
+        public fun liveVideoLadder(
+            bitratesBps: List<Int> = listOf(300_000, DEFAULT_BITRATE_BPS, 2_400_000),
+            windowDurationMs: Long = DEFAULT_DURATION_MS,
+        ): TestContent {
+            require(bitratesBps.isNotEmpty()) { "A ladder needs at least one rendition" }
+            return TestContent(bitratesBps, windowDurationMs, live = true)
+        }
+
+        /**
          * A real HLS stream: a multivariant playlist, a media playlist, and [segmentCount] AAC
          * segments in ADTS framing, played through Media3's own HLS parser and extractor.
          *

@@ -20,6 +20,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
+import com.superplayer.core.BufferPolicy
 import com.superplayer.core.MediaRequest
 import org.junit.Rule
 import org.junit.Test
@@ -42,9 +43,13 @@ class StockPlayerTest {
     val harness: PlaybackHarness = PlaybackHarness()
 
     @Test
-    fun aStockPlayerOfEitherTuningPlaysTheHarnessContent() {
-        StockTuning.entries.forEach { tuning ->
-            val player = harness.buildStockPlayer(content = ladder(), tuning = tuning)
+    fun aStockPlayerPlaysTheHarnessContentConfiguredOrNot() {
+        // Both shapes `benchmark/`'s arms (a) and (b) take: no buffer policy at all, and a deep one.
+        // The policy here is deliberately not the benchmark's own — that belongs to `benchmark/` —
+        // only a policy far enough from the defaults that "it was applied" and "it was ignored" are
+        // different players.
+        listOf(null, DEEP_BUFFER).forEach { policy ->
+            val player = harness.buildStockPlayer(content = ladder(), stockBufferPolicy = policy)
             player.setMediaItem(MediaItem.fromUri(ladder().sourceUri))
 
             harness.playToReady(player)
@@ -98,6 +103,16 @@ class StockPlayerTest {
 
     private companion object {
         const val CONTENT = "stock-arm"
+
+        /** Deep enough that a player built with it is not a player built without it. */
+        val DEEP_BUFFER = BufferPolicy(
+            minBufferMs = 60_000,
+            maxBufferMs = 120_000,
+            bufferForPlaybackMs = 1_000,
+            bufferForPlaybackAfterRebufferMs = 2_000,
+            backBufferMs = 0,
+            retainBackBufferFromKeyframe = false,
+        )
 
         /**
          * The floor `NetworkShapingPlaybackTest` derives: 200 000 bytes of first segment at

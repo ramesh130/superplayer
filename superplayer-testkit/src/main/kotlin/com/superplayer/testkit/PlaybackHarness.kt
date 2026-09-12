@@ -45,6 +45,7 @@ import androidx.media3.test.utils.FakeMediaSource
 import androidx.media3.test.utils.FakeTimeline
 import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
 import androidx.test.core.app.ApplicationProvider
+import com.superplayer.core.BufferPolicy
 import com.superplayer.core.PlaybackProfile
 import com.superplayer.core.PlayerPool
 import com.superplayer.core.SuperPlayer
@@ -183,11 +184,20 @@ public class PlaybackHarness : ExternalResource() {
      * A stock `ExoPlayer` with no SuperPlayer anywhere in it, over the same content, the same clock
      * and the same shaped transport [buildPlayer] uses.
      *
-     * `PRD.md` §6's arms (a) and (b) — see [StockTuning] for which is which and why both exist. This
-     * is the *comparison* half of the benchmark, and everything about it that could differ from arm
-     * (c) other than the player itself has been made not to: one [clock], one fake origin, one
-     * [ShapingDataSource] over one [ThroughputTrace], one [FaultInjectingDataSource], one renderer
-     * implementation, one video output. What is left different is the thing being measured.
+     * `PRD.md` §6's arms (a) and (b): with no [stockBufferPolicy] this is
+     * `ExoPlayer.Builder(context).build()` and nothing else, and with one it is that plus the buffer
+     * configuration the policy describes. This is the *comparison* half of the benchmark, and
+     * everything about it that could differ from arm (c) other than the player itself has been made
+     * not to: one [clock], one fake origin, one [ShapingDataSource] over one [ThroughputTrace], one
+     * [FaultInjectingDataSource], one renderer implementation, one video output. What is left
+     * different is the thing being measured.
+     *
+     * **What the arms *are* is `benchmark/`'s, not this module's.** A [BufferPolicy] arrives here
+     * rather than a named tuning because the same two arms are also run on a device against public
+     * streams, by an app that cannot load this harness at all; one value translated in two places is
+     * what stops a device result and a Robolectric result describing different arms under one name.
+     * `BufferPolicy` is `superplayer-core`'s own engine-agnostic type, so it carries the numbers
+     * without putting a `LoadControl` in this module's public API (ADR-0001 rule 2).
      *
      * `ExoPlayer` in the return type is the one `@UnstableApi` exception ADR-0001 rule 2 names —
      * the same escape hatch `SuperPlayer.exoPlayer` is, and for the same reason: there is no stable
@@ -202,7 +212,7 @@ public class PlaybackHarness : ExternalResource() {
      */
     public fun buildStockPlayer(
         content: TestContent = TestContent.video(),
-        tuning: StockTuning = StockTuning.MEDIA3_DEFAULTS,
+        stockBufferPolicy: BufferPolicy? = null,
         faults: FaultScript = FaultScript.NONE,
         network: ThroughputTrace? = null,
     ): ExoPlayer {
@@ -212,7 +222,7 @@ public class PlaybackHarness : ExternalResource() {
         val player = ExoPlayer.Builder(context)
             .setClock(clock)
             .setRenderersFactory(renderersFactory { built = it })
-            .apply { loadControlFor(tuning)?.let { setLoadControl(it) } }
+            .apply { loadControlFor(stockBufferPolicy)?.let { setLoadControl(it) } }
             .setMediaSourceFactory(
                 // The same split [buildPlayer] makes, for the same reason: described content has no
                 // transport to stand in for and replaces the loading path whole, while a real
@@ -230,18 +240,18 @@ public class PlaybackHarness : ExternalResource() {
     }
 
     /**
-     * The `LoadControl` [tuning] asks for, or null for the tuning that is the absence of one.
+     * [policy] as Media3's `LoadControl`, or null for the arm that configures nothing.
      *
-     * The translation, not the numbers: what each arm configures is [StockTuning.bufferPolicy], and
-     * that enum says why it is held there rather than here. This is the one place in the Robolectric
-     * half that turns it into Media3's vocabulary, which `superplayer-core`'s `EngineBinding` is the
-     * counterpart of for arm (c).
+     * The translation, not the numbers. `superplayer-core`'s `EngineBinding` is the counterpart of
+     * this for arm (c), and `benchmark/` holds the third: the same value, turned into a real
+     * `LoadControl` wherever one is needed, rather than the numbers written out three times.
      */
-    private fun loadControlFor(tuning: StockTuning): LoadControl? {
-        // Not `DefaultLoadControl.Builder().build()`, which would be the same object by a longer
-        // route: arm (a) is `ExoPlayer.Builder(context).build()` *and nothing else*, and building one
-        // anyway would quietly make the control arm a configured player that happens to agree today.
-        val policy = tuning.bufferPolicy ?: return null
+    private fun loadControlFor(policy: BufferPolicy?): LoadControl? {
+        // Null rather than `DefaultLoadControl.Builder().build()`, which would be the same object by
+        // a longer route: arm (a) is `ExoPlayer.Builder(context).build()` *and nothing else*, and
+        // building one anyway would quietly make the control arm a configured player that happens to
+        // agree today.
+        if (policy == null) return null
         return DefaultLoadControl.Builder()
             .setBufferDurationsMs(
                 policy.minBufferMs,
@@ -250,10 +260,10 @@ public class PlaybackHarness : ExternalResource() {
                 policy.bufferForPlaybackAfterRebufferMs,
             )
             .setBackBuffer(policy.backBufferMs, policy.retainBackBufferFromKeyframe)
-            // Part of the same recipe: it tells the engine to honour the durations above even when
-            // they exceed its memory target, which is what makes a deeper buffer actually take
-            // effect rather than being silently capped. Not a field of `BufferPolicy`, because
-            // `superplayer-core` has no profile that needs it — see `EngineBinding`.
+            // Not a field of `BufferPolicy`, because no SuperPlayer profile needs it (`EngineBinding`),
+            // and set here because a caller describing a deep buffer means it: without this the
+            // engine caps the durations at its memory target, and an arm that asked for 120 s would
+            // silently be measured with rather less.
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
     }
@@ -295,7 +305,7 @@ public class PlaybackHarness : ExternalResource() {
         // Content an origin keeps publishing is served by one that advances with the clock, and a
         // stream that declares its response headers has them served on top of its bytes.
         val origin = content.publication?.let { LiveOriginDataSource.Factory(it, clock) }
-            ?: FakeDataSource.Factory().setFakeDataSet(fakeDataSetFor(content))
+            ?: networkOrigin().setFakeDataSet(fakeDataSetFor(content))
         val injector = FaultInjectingDataSource.Factory(
             if (content.responseHeaders.isEmpty()) origin else HeaderServingDataSource.Factory(origin, content.responseHeaders),
             faults,
@@ -628,7 +638,9 @@ public class PlaybackHarness : ExternalResource() {
                             // estimate is built from, and a test whose ABR decisions moved between
                             // runs would be a test of the random number generator.
                             FakeAdaptiveDataSet.Factory(CHUNK_DURATION_US, /* bitratePercentStdDev= */ 0.0, Random(0)),
-                            FakeDataSource.Factory(),
+                            // The adaptive path is where [networkOrigin] matters most: it is the
+                            // one with renditions to choose between.
+                            networkOrigin(),
                             transfers.wrap,
                         ),
                     )
@@ -662,6 +674,34 @@ public class PlaybackHarness : ExternalResource() {
             ): MediaSource.Factory = this
         }
     }
+
+    /**
+     * A fake origin that declares itself a **network** source, which is not the default and is
+     * load-bearing.
+     *
+     * Media3's `FakeDataSource` defaults to `isNetwork = false`, which is right for what that class
+     * is usually for — standing in for something already on the device. Here it is the only thing
+     * below the shaper and the injector, so it stands in for an origin at the far end of a network,
+     * and the flag decides something much larger than it looks.
+     *
+     * `DefaultBandwidthMeter` **ignores every transfer whose source is not a network one** — the same
+     * mechanism that keeps cache hits out of the estimate (`PRD.md` §2.4, ADR-0002). With the
+     * default, the engine's bandwidth meter receives no samples at all in this harness, its estimate
+     * stays pinned at Media3's initial 1 Mbit/s for the whole session, and `AdaptiveTrackSelection`
+     * picks the highest rung fitting inside 70% of that — the bottom of any realistic ladder — and
+     * never moves off it, whatever the [ThroughputTrace] underneath is doing.
+     *
+     * The failure mode is silent, and it is the one `CLAUDE.md` warns about: a layer that drops the
+     * measurement blinds ABR without failing anything. Everything still plays. A benchmark of it
+     * reports the same bitrate on a 1 Mbit/s link and on a 20 Mbit/s one, which reads as a finding
+     * rather than as an unplugged instrument — which is how this was found.
+     *
+     * The timing the meter then sees is the shaper's, and that is correct: the wrappers forward
+     * `addTransferListener` down to this source rather than re-raising the callbacks themselves
+     * (see [TransferChunkSourceFactory]), so a byte is reported when the origin actually hands it
+     * over, which is when the shaper asked for it, paced by the trace.
+     */
+    private fun networkOrigin(): FakeDataSource.Factory = FakeDataSource.Factory().setIsNetwork(true)
 
     /**
      * The bytes [content] is served from, or an empty set for content Media3 synthesizes.

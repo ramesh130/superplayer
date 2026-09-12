@@ -72,6 +72,13 @@ class BenchmarkMatrixTest {
         val outputDirectory = File(System.getProperty(OUT_PROPERTY) ?: DEFAULT_OUT)
         val onlyCells = System.getProperty(CELLS_PROPERTY)?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
 
+        // Read **before** anything is written, which is not merely tidy. `--baseline` writes into
+        // `benchmark/baseline/`, and that directory is tracked on purpose — it is what Phase 3 is
+        // graded against. So the run's own traces dirty the working tree, and conditions read
+        // afterwards would report `treeDirty` on every baseline, disclaiming itself in prose at the
+        // top of the document. `startedAt` means the start for the same reason.
+        val conditions = RunConditions.read(repoRoot(), runsPerCell)
+
         val cells = mutableListOf<CellResult>()
         val traceDirectory = File(outputDirectory, "traces")
         outputDirectory.mkdirs()
@@ -87,10 +94,7 @@ class BenchmarkMatrixTest {
             }
         }
 
-        val report = MatrixReport(
-            conditions = RunConditions.read(repoRoot(), runsPerCell),
-            cells = cells,
-        )
+        val report = MatrixReport(conditions = conditions, cells = cells)
         File(outputDirectory, "baseline-report.md").writeText(ReportWriter.write(report))
         println("[benchmark] report: ${File(outputDirectory, "baseline-report.md").absolutePath}")
 

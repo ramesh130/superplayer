@@ -158,6 +158,17 @@ internal object ReportWriter {
         )
         appendLine()
         appendLine(
+            "**What the spread is a spread of.** The network under this arm is a deterministic trace " +
+                "replayed against a `FakeClock`, so the variance in these columns is **not** the " +
+                "variance a real device on a real link would see — it is what run-to-run scheduling " +
+                "on the host does to a session, because loads run on real threads even though " +
+                "playback time does not. That is worth having: it is the noise floor a difference has " +
+                "to clear, which is exactly what the verdicts use it for. It is not an estimate of " +
+                "how variable playback is in the field, and a p95 here should not be quoted as one. " +
+                "Field variance is the device arm's to measure.",
+        )
+        appendLine()
+        appendLine(
             "**Time to first frame is quantised to the harness's step.** The Robolectric arm advances " +
                 "a `FakeClock` in fixed steps while it waits for the first frame, so a measurement " +
                 "lands on a multiple of that step and two arms differing by less than one step read " +
@@ -296,19 +307,33 @@ internal object ReportWriter {
         appendLine()
 
         val cellular = listOf(NetworkProfileName.THREE_G, NetworkProfileName.LTE_WITH_DROPOUTS)
+        val rows = cellular.flatMap { network ->
+            Arm.entries.mapNotNull { arm ->
+                report.cell(Scenario.VOD_DATA_SAVER, network, arm)?.let { network to it }
+            }
+        }
+        if (rows.isEmpty()) {
+            // Said rather than left as an empty table. This section is here to satisfy a rule about
+            // not hiding a loss, so a run that did not measure the row the rule is about has to say
+            // so — an empty table under that heading reads as "there was no trade".
+            appendLine(
+                "_This run measured no `${Scenario.VOD_DATA_SAVER.label}` cell on a cellular profile, " +
+                    "so the trade is not shown. A filtered run (`--cells`) is the usual reason; a full " +
+                    "matrix always measures it._",
+            )
+            appendLine()
+            return
+        }
         appendLine("| Network | Arm | Average bitrate (bit/s) | Rebuffer ratio | Rebuffer count | QoE score |")
         appendLine("| --- | --- | --- | --- | --- | --- |")
-        cellular.forEach { network ->
-            Arm.entries.forEach { arm ->
-                val cell = report.cell(Scenario.VOD_DATA_SAVER, network, arm) ?: return@forEach
-                appendLine(
-                    "| ${network.label} | ${arm.label} " +
-                        "| ${bitrate(cell.averageBitrateBps)} " +
-                        "| ${ratio(cell.rebufferRatio)} " +
-                        "| ${plain(cell.rebufferCount)} " +
-                        "| ${plain(cell.qoeScore)} |",
-                )
-            }
+        rows.forEach { (network, cell) ->
+            appendLine(
+                "| ${network.label} | ${cell.key.arm.label} " +
+                    "| ${bitrate(cell.averageBitrateBps)} " +
+                    "| ${ratio(cell.rebufferRatio)} " +
+                    "| ${plain(cell.rebufferCount)} " +
+                    "| ${plain(cell.qoeScore)} |",
+            )
         }
         appendLine()
     }

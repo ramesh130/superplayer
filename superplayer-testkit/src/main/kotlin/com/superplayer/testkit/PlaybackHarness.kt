@@ -281,6 +281,35 @@ public class PlaybackHarness : ExternalResource() {
         injectors[player] = transport.injector
         waits[player] = transport.wait
         attachVideoOutput(player)
+        ignoreTheViewport(player)
+    }
+
+    /**
+     * Stops the *display size* deciding which renditions a ladder has.
+     *
+     * `DefaultTrackSelector` constrains selection to the viewport by default, which is right in an
+     * app — decoding 1080p into a 360p view is bytes and decoder time spent on pixels nobody sees.
+     * It is wrong here twice over. The output is an off-screen `SurfaceTexture` that nobody looks at,
+     * so there is no viewport to speak of; and the one Robolectric reports is a small default that
+     * has nothing to do with the device a measurement is about.
+     *
+     * Left alone it silently truncates the ladder: with rungs at 360p through 1080p and a small
+     * reported display, every rung above the bottom is filtered out before the bandwidth estimate is
+     * consulted at all, so a 20 Mbit/s link and a 1 Mbit/s link both play 365 kbit/s and no arm ever
+     * switches. That is the same class of defect as the bandwidth meter seeing no samples
+     * ([networkOrigin]) — an instrument reading zero because it is unplugged, in a shape that looks
+     * like a finding.
+     *
+     * Applied by `buildUpon` rather than by building fresh parameters, which matters: a SuperPlayer
+     * profile's own ceilings — `DATA_SAVER`'s 480p and 800 kbit/s — are already on this player, and
+     * replacing the parameters wholesale would erase the very policy arm (c) exists to measure. This
+     * removes one constraint and leaves the rest, for every arm equally.
+     */
+    private fun ignoreTheViewport(player: Player) {
+        player.trackSelectionParameters = player.trackSelectionParameters
+            .buildUpon()
+            .clearViewportSizeConstraints()
+            .build()
     }
 
     /**

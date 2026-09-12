@@ -16,6 +16,7 @@
 
 package com.superplayer.testkit
 
+import androidx.media3.common.Player
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
@@ -158,7 +159,7 @@ class LivePlaylistRevalidationTest {
         }
     }
 
-    private fun segmentsFetched(player: SuperPlayer): Int =
+    private fun segmentsFetched(player: Player): Int =
         harness.requestedResources(player).count { it.kind == ResourceKind.MEDIA_SEGMENT }
 
     private companion object {

@@ -736,7 +736,13 @@ public class SuperPlayer private constructor(
             // Only content with no transport at all replaces the whole path.
             engineBuilder.setMediaSourceFactory(
                 configuration.mediaSourceFactory
-                    ?: TransferChain.mediaSourceFactory(context, cmcd, measurementSession, configuration.transport),
+                    ?: TransferChain.mediaSourceFactory(
+                        context,
+                        cmcd,
+                        measurementSession,
+                        configuration.transport,
+                        configuration.loadExecutor,
+                    ),
             )
 
             val engine = engineBuilder.build()

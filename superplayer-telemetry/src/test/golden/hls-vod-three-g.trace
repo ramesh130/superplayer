@@ -1,0 +1,23 @@
+superplayer-session-trace v1
+timings relative-ms
++0 item id=series/expanse/s01e01 reason=PLAYLIST_CHANGED
++0 state BUFFERING
++0 load started manifest
++0 telemetry SessionStarted profile=VIDEO_ON_DEMAND minBufferMs=30000 maxBufferMs=60000 bufferForPlaybackMs=2500 bufferForPlaybackAfterRebufferMs=5000 backBufferMs=30000 retainBackBufferFromKeyframe=true maxVideoBitrateBps=2147483647 maxVideoHeightPx=2147483647
++50 load started manifest
++50 load completed manifest
++100 tracks video=none audio=128000
++100 load completed manifest
++100 load started media:audio 0-2000 bitrate=128000
++150 load completed media:audio 0-2000 bitrate=128000
++150 load started media:audio 2000-4000 bitrate=128000
++200 load completed media:audio 2000-4000 bitrate=128000
++200 load started media:audio 4000-6000 bitrate=128000
++250 state READY
++250 playing true
++250 load completed media:audio 4000-6000 bitrate=128000
++250 load started media:audio 6000-8000 bitrate=128000
++300 load completed media:audio 6000-8000 bitrate=128000
++8250 state ENDED
++8250 playing false
++8250 telemetry SessionEnded droppedEventCount=0

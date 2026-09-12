@@ -19,6 +19,8 @@ package com.superplayer.core
 import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.util.ReleasableExecutor
+import com.google.common.base.Supplier
 
 /**
  * What a test may change about an engine as it is built: the argument of
@@ -40,6 +42,13 @@ import androidx.media3.exoplayer.source.MediaSource
  * `ExoPlayer.Builder` offers no way to read a media source factory back, so a test that installed
  * one there directly could only win by being called last — which is what made every test before
  * this skip the chain entirely.
+ *
+ * [loadExecutor] is where the chain's loads run. Media3 gives every loader a thread of its own,
+ * which is right in production and is the one thread a deterministic harness cannot see: a load
+ * that finishes on it tells the playback thread by a message, and whether that message is handled
+ * before or after the harness advances its clock is a race the harness has to be able to close.
+ * A harness that supplies the executor knows when a load task has *finished*, message posted and
+ * all, rather than only when its transfer closed. Null is Media3's own threading.
  */
 internal class EngineConfiguration(val engine: ExoPlayer.Builder) {
 
@@ -48,4 +57,7 @@ internal class EngineConfiguration(val engine: ExoPlayer.Builder) {
 
     /** The whole loading path, chain and all, for content with no transport to substitute. */
     var mediaSourceFactory: MediaSource.Factory? = null
+
+    /** Where the chain's loaders run; null for a thread per loader, which is Media3's default. */
+    var loadExecutor: Supplier<ReleasableExecutor>? = null
 }

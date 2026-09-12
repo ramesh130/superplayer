@@ -509,6 +509,73 @@ bytes at the same times on every run. [`docs/throughput-traces.md`](throughput-t
 format's specification, the replay's rules and limits, where each profile's numbers come from, and
 how a public dataset is converted — none is vendored here.
 
+### Golden traces
+
+A test asserts what someone thought to assert. A golden trace records what a session *did* — every
+state transition, track selection, load by kind and media time, error and telemetry event, one per
+line in a fixed order — and holds it to a committed file, so a change in behaviour that no assertion
+names still appears in review, as a diff. "This change also moves the first segment load a step
+later on 3G" is a sentence a diff can say and a test suite cannot. The goldens live in
+`superplayer-telemetry/src/test/golden/`, one whole session each, played by `GoldenTraceTest` through
+the harness: each protocol on demand, and each over a shaped network.
+
+The recorder is `superplayer-telemetry`'s `SessionTraceRecorder`, a `TelemetrySink` that also reads
+Media3's analytics, and the artifact is a `SessionTrace`. It lives in the telemetry module rather
+than here because ADR-0008 rule 2 puts every analytics registration there, and because a trace is
+half telemetry: every `TelemetryEvent` the collector emits is a line, printed with its fields, so a
+changed number in `docs/telemetry-schema.md` is a changed line. The class documentation is the
+format's specification; two of its rules matter to a test author:
+
+- **The order is not arrival order.** Lines sort by time, then by kind, then by what the fact is —
+  two chunks that finished in the same millisecond print by media time whichever loading thread won.
+  Arrival order is a fact about the host, and the trace records none of those.
+- **A trace is redacted by construction.** No URL, header, exception message, session id, wall-clock
+  time or device identifier can reach a line, because the recorder never holds them; the class
+  documentation lists the six rules and `SessionTraceRecorderTest` plays a session through a signed
+  URL that fails, and shows none of it in the trace. That is what makes a trace captured on a device
+  attachable to a bug report — and a device trace's one normalisation is `withoutTimings()`, which
+  drops the millisecond column and keeps the order it decided.
+
+The contract is `docs/api-surface.md`'s, deliberately. Nothing regenerates a golden implicitly.
+A golden test in check mode — the default, and what `check` runs — fails on any difference with the
+diff in its message, so an uncommitted change to a golden fails `./gradlew check` and CI alike.
+Accepting a change is one command, run on its own and then reviewed:
+
+```bash
+./gradlew updateGoldenTraces     # rewrite every golden from what the tests now produce
+git diff -- '*.trace'            # the behaviour change, as a reviewable diff
+```
+
+When the diff means "fix the code" and when it means "accept the change" is the reviewer's call,
+and the point of the tool is to make it a call rather than a rubber stamp. A line that moved
+because a policy constant moved is the intended consequence of that change, and the diff is its
+documentation. A line that moved in a case the change was not about — a startup track on a network
+profile nobody edited, a load that now happens a step later — is a finding, and the golden is what
+found it. A golden that is regenerated in the same commit as an unrelated change, without a
+sentence saying why each line moved, has been rubber-stamped, and reviewers should say so.
+
+What may go into a golden is decided by one property: **the trace is byte-identical across runs and
+machines.** A golden that flakes is deleted within a month, so a case that cannot be made
+deterministic is not golden material, however interesting. Two mechanics carry that property here.
+The harness advances the clock only once the engine has nothing left to do at the current time — it
+owns the loading threads (`HarnessLoadThreads`) so it knows when a load has *finished* rather than
+only when its transfer closed, and it settles both loopers until neither has anything due
+(`PlaybackHarness.quiesce`). And the recorder stamps an engine fact with the engine's own event
+time rather than with the moment a listener heard of it, which is a looper hop later and, under a
+stepped clock, can be a step later on one run and not the next. `SessionTraceRecorderTest` plays the
+same session three times in one JVM and holds the traces equal; running `GoldenTraceTest` on a
+second machine is the other half of the demonstration. The one path that is *not* golden material
+is the described fake source (`TestContent.video`, `videoLadder`): Media3's `FakeAdaptiveMediaSource`
+takes no executor, so its loads run on a thread the harness cannot see, and its timings are exact
+to within a step rather than exact. A golden of a ladder waits on a synthetic multi-rendition stream
+in `superplayer-testmedia`.
+
+Adding a golden is a test method in a class whose name contains `GoldenTrace` — that is how
+`updateGoldenTraces` selects what to run — that plays a session and passes the formatted trace to
+`GoldenFile.check(name, text)`; the update command creates the file, and the review of that first
+commit is the review of the behaviour. The seam for `superplayer-diagnostics` is the same artifact
+one layer richer, which is why `SessionTrace` says how a kind is added without a second format.
+
 ## Determinism
 
 Tests must not sleep, poll a wall clock, or depend on ordering that real threads happen to produce.
@@ -556,9 +623,9 @@ and present a healthy live stream to Media3 as one that stopped advancing.
 
 ## What is not covered here
 
-Instrumented tests on real devices and the golden trace corpus are `superplayer-testkit`'s subject
-and arrive with it — as the fault injector and throughput trace replay above already have. They
-extend this seam rather than replacing it: they still drive the library through its public API.
+Instrumented tests on real devices are `superplayer-testkit`'s subject and arrive with it — as the
+fault injector, the throughput trace replay and the golden traces above already have. They extend
+this seam rather than replacing it: they still drive the library through its public API.
 
 Benchmarking is not covered here, because it is not testing either. `benchmark/` runs `PRD.md` §6's
 fixed matrix across three players and emits a report; it is a separate Gradle build, it is not in

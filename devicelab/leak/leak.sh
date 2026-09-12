@@ -343,7 +343,7 @@ leak_path_classes() {
         if grep -q '^Activities ' "$1"; then
             tp_csv_to_tsv < "$2" | awk -F'\t' 'NR > 1 && $4 == 1 { print $1 }'
         fi
-    } | sort -u | sed "s/'/''/g; s/.*/'&'/" | paste -sd, -
+    } | sort -u | sed "s/'/''/g; s/.*/'&'/" | tr '\n' ',' | sed 's/,$//'
 }
 
 # Phase `$1`'s native profile: what was allocated during it and not freed by its end.
@@ -395,7 +395,8 @@ leak_report() {
 
     if [ "${LEAK_GC_FORCED:-0}" = 1 ]; then
         printf 'GC forced before each dump: yes. First in the other processes holding references to the demo'"'"'s Binder objects — %s — so that a released session'"'"'s stub is not kept alive by a proxy they had not yet collected; then twice in the demo.\n\n' \
-            "$(awk '{ print $2 }' "$dir/remote-gc.txt" 2>/dev/null | sort -u | paste -sd, - | sed 's/,/, /g; s/^$/none held one/')"
+            "$(awk '{ print $2 }' "$dir/remote-gc.txt" 2>/dev/null | sort -u | tr '\n' ',' |
+                sed 's/,$//; s/,/, /g; s/^$/none held one/')"
     else
         printf 'GC forced before each dump: no — no root on this device. Only reachable objects are counted either way, but a released session'"'"'s stub may still be held by another process'"'"'s proxy.\n\n'
     fi
@@ -438,6 +439,10 @@ EOF
 # field has — field names hold no parentheses — which keeps `IN (...)` well formed. Not `''`, which is
 # the name trace processor gives every array slot.
 known_fields_sql() {
-    awk -F'\t' '/^#/ || NF == 0 { next } { print $1 }' | sed "s/'/''/g; s/.*/'&'/" | paste -sd, - |
-        awk '{ print } END { if (NR == 0) print "'"'(none)'"'" }'
+    local fields
+    # `tr` and not `paste -sd, -`: on empty input BSD paste prints nothing and GNU paste prints an
+    # empty line, so a fallback keyed on paste's output fires on a Mac and not on a Linux runner.
+    fields="$(awk -F'\t' '/^#/ || NF == 0 { next } { print $1 }' | sed "s/'/''/g; s/.*/'&'/" |
+        tr '\n' ',' | sed 's/,$//')"
+    printf '%s\n' "${fields:-'(none)'}"
 }

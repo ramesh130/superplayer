@@ -78,7 +78,13 @@ class HostileManifestCorpusTest {
         /** No error, and never ready: the player never had anything to render. */
         NEVER_STARTS,
 
-        /** Ready at some point, and buffering when the budget ran out. */
+        /**
+         * Ready at some point, and not ready again for the last [READY_WINDOW_MS] of the budget.
+         *
+         * Read over a window rather than at the budget's last instant: a session that is playing is
+         * momentarily buffering at plenty of instants, and which one the budget ends on is the host's
+         * answer rather than the pathology's (issue #91).
+         */
         STALLS,
 
         /**
@@ -89,8 +95,8 @@ class HostileManifestCorpusTest {
         DEGRADES,
 
         /**
-         * Ready at some point, and still ready when the budget ran out — which for live content,
-         * which never ends, is what playing correctly looks like.
+         * Ready within the last [READY_WINDOW_MS] of the budget — which for live content, which never
+         * ends, is what playing correctly looks like. See [STALLS] for why it is a window.
          */
         STILL_PLAYING,
 
@@ -285,6 +291,11 @@ class HostileManifestCorpusTest {
         // the state they are in when it runs out.
         var advanced = 0L
         var positionOutsideMedia = false
+        // When the player was last seen ready, so that "still playing" is not whichever single instant
+        // the budget happened to end on. Deliberately not the position: a live session's position is
+        // measured inside a window that slides forward as fast as playback does, so it stands still
+        // while the stream plays perfectly — which is most of this corpus.
+        var lastReadyAtMs: Long? = null
         while (advanced < OBSERVATION_MS && player.playerError == null &&
             player.playbackState != Player.STATE_ENDED
         ) {
@@ -292,18 +303,20 @@ class HostileManifestCorpusTest {
             // the engine one pass and never reaches the segment the pathology is about.
             harness.advanceTimeInStepsMs(player, STEP_MS)
             advanced += STEP_MS
+            if (player.playbackState == Player.STATE_READY) lastReadyAtMs = advanced
             positionOutsideMedia = positionOutsideMedia || isOutsideMedia(player.currentPosition, stream)
         }
         positionOutsideMedia = positionOutsideMedia || isOutsideMedia(player.currentPosition, stream)
 
         val error = player.playerError
+        val readyAtMs = lastReadyAtMs
         return when {
             error != null && isTyped(error.cause) -> Outcome.FAILS_TYPED
             error != null -> Outcome.FAILS
             !everReady -> Outcome.NEVER_STARTS
             positionOutsideMedia -> Outcome.DEGRADES
             player.playbackState == Player.STATE_ENDED -> Outcome.PLAYS_TO_END
-            player.playbackState == Player.STATE_READY -> Outcome.STILL_PLAYING
+            readyAtMs != null && advanced - readyAtMs <= READY_WINDOW_MS -> Outcome.STILL_PLAYING
             else -> Outcome.STALLS
         }
     }
@@ -337,6 +350,18 @@ class HostileManifestCorpusTest {
 
         /** One turn of the loop above: a few loads, so a whole session is tens of turns. */
         const val STEP_MS = 500L
+
+        /**
+         * How recently a session must have been ready to count as still playing rather than stalled:
+         * a segment's worth of playback time, which is four turns of the loop above.
+         *
+         * The point is to stop reading one instant. A session that is playing is ready at nearly every
+         * turn and momentarily buffering at some of them, so which state the last turn caught was the
+         * host's answer rather than the pathology's (issue #91); one that has stopped is never ready
+         * again, so any window shorter than the budget separates the two. A segment is the unit a
+         * player waits for when it hiccups, which makes it the honest width.
+         */
+        const val READY_WINDOW_MS = SyntheticHlsStream.SEGMENT_DURATION_MS
 
         /**
          * What each entry does today, as of the change that added it. Every id in

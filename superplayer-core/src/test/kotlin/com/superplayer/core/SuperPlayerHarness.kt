@@ -97,7 +97,7 @@ class SuperPlayerHarness : ExternalResource() {
                 .apply { profile?.let { setProfile(it) } }
                 .apply { telemetry?.let { setTelemetry(it) } }
                 .setEngineConfigurator { configuration ->
-                    configuration.engine.setClock(clock)
+                    configuration.engine.useHarnessClock(clock)
                     // In the transport's place, under the chain `build()` composes, rather than in
                     // place of the chain: what SuperPlayer does to a transfer runs in every test.
                     configuration.transport = fakeDataSourceFactory
@@ -137,7 +137,7 @@ class SuperPlayerHarness : ExternalResource() {
                 .apply { cmcdMode?.let { setCmcdMode(it) } }
                 .apply { telemetry?.let { setTelemetry(it) } }
                 .setEngineConfigurator { configuration ->
-                    configuration.engine.setClock(clock)
+                    configuration.engine.useHarnessClock(clock)
                     // Whatever a test needs *besides* the chain — the bandwidth meter a CMCD test
                     // reads request specs through. Deliberately no transport: one set here would
                     // replace the very HTTP stack this method exists to exercise.
@@ -145,6 +145,35 @@ class SuperPlayerHarness : ExternalResource() {
                 }
                 .build(),
         )
+    }
+
+    /**
+     * Puts [clock] under the engine and takes the engine's own stuck-player watchdog out of the way.
+     *
+     * The watchdog raises a `StuckPlayerException` when a player has been buffering for
+     * `DEFAULT_STUCK_BUFFERING_DETECTION_TIMEOUT_MS` — ten minutes — and it measures that on the
+     * player's clock, which here is a fake one that auto-advances. Fake time therefore moves as fast
+     * as the host lets the playback thread run, so ten minutes of it can pass while a loaded machine
+     * is still loading the first chunk: the watchdog then fires on a player that is fine, and the
+     * failure lands on whatever the test was waiting for (issue #91). The bound is set to the
+     * furthest a positive one goes — the setter rejects anything else, and `Int.MAX_VALUE` ms is
+     * twenty-five days of fake time — rather than to a bigger number of minutes, because there is no
+     * amount of fake time that means "the host is slow".
+     *
+     * Both of the detectors Media3 arms by default are switched off, not only the one that has
+     * already fired here: the suppressed-playback one runs on the same clock with the same ten
+     * minutes, and a test that parks a player without audio focus is exactly the shape that reaches
+     * it. The other two — `stuckPlaying` and `stuckPlayingNotEnding` — sit behind Media3's
+     * `experimentalEnableStuckPlayingDetection`, which leaves them at `Int.MAX_VALUE` already; when
+     * that flag turns into a default they belong here too.
+     *
+     * Nothing is lost by switching them off here. A test's own wait is what reports a player that
+     * really is stuck, and it reports it naming the state that never arrived.
+     */
+    private fun ExoPlayer.Builder.useHarnessClock(clock: FakeClock) {
+        setClock(clock)
+        setStuckBufferingDetectionTimeoutMs(Int.MAX_VALUE)
+        setStuckSuppressedDetectionTimeoutMs(Int.MAX_VALUE)
     }
 
     /**

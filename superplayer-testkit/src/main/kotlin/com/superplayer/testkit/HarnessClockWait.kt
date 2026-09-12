@@ -57,10 +57,10 @@ internal class HarnessClockWait(private val clock: Clock) {
      */
     val earliestDeadlineMs: Long? get() = deadlines.values.minOrNull()
 
-    /** Shaped transfers between their open and their close. */
+    /** Transfers between their open and their close. */
     private val openTransfers = AtomicInteger()
 
-    /** A shaped transfer has opened: until [transferClosed], it either waits here or is working. */
+    /** A transfer has opened: until [transferClosed], it either waits here or is working. */
     fun transferOpened() {
         openTransfers.incrementAndGet()
     }
@@ -70,12 +70,13 @@ internal class HarnessClockWait(private val clock: Clock) {
     }
 
     /**
-     * Whether every open shaped transfer has acted on the time that has passed: each one is waiting
-     * for a moment that has not come yet, rather than released and still working.
+     * Whether every open transfer has acted on the time that has passed: each one is waiting for a
+     * moment that has not come yet, rather than released and still working.
      *
-     * What [PlaybackHarness] waits for after each advance, so that a load paced on a trace keeps up
-     * with the clock rather than falling behind it whenever the loading thread is short of CPU — a
-     * lag that would reach the engine as a stall the trace never described.
+     * What [PlaybackHarness] waits for after each advance, so that a load keeps up with the clock
+     * rather than falling behind it whenever the loading thread is short of CPU. A trace's load that
+     * lags reaches the engine as a stall the trace never described; a live playlist's reload that
+     * lags reaches Media3's tracker as a playlist that stopped advancing (issue #91).
      */
     val transfersHaveCaughtUp: Boolean
         get() {
@@ -108,5 +109,45 @@ internal class HarnessClockWait(private val clock: Clock) {
     private companion object {
         /** Real seconds, and only ever reached when a test forgot to advance the clock. */
         const val MAX_WALL_CLOCK_WAIT_MS = 10_000L
+    }
+}
+
+/**
+ * One wrapper's registration of one transfer with a [HarnessClockWait]: opened once, closed once.
+ *
+ * Held by every [androidx.media3.datasource.DataSource] the testkit puts under a player, because the
+ * bookkeeping is identical in each and getting it wrong in one is invisible: a transfer left counted
+ * as open holds up every later advance until the wall-clock bound, and one never counted lets the
+ * clock run away from the load.
+ *
+ * [counts] is how "exactly one wrapper counts a transfer" is arranged where wrappers are stacked. The
+ * outermost one counts; the rest hold a registration that does nothing, because one load registered
+ * twice can never be seen to catch up — the single thread carrying it waits for one deadline, and the
+ * count would ask for two.
+ */
+internal class TransferRegistration(private val wait: HarnessClockWait, private val counts: Boolean = true) {
+
+    private var open = false
+
+    /** Registers the transfer, at the top of `open` so that a request that throws is still counted. */
+    fun opened() {
+        if (counts && !open) {
+            open = true
+            wait.transferOpened()
+        }
+    }
+
+    /**
+     * Releases it, and does nothing on a second call.
+     *
+     * Owed even when `open` threw — an injected status code leaves a source through `close` — and
+     * `DataSource.close` is called more than once by some callers, which is why this is idempotent
+     * rather than a bare decrement.
+     */
+    fun closed() {
+        if (open) {
+            open = false
+            wait.transferClosed()
+        }
     }
 }

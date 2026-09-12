@@ -16,7 +16,6 @@
 
 package com.superplayer.testkit
 
-import androidx.media3.common.Player
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
@@ -51,11 +50,13 @@ class LivePlaylistRevalidationTest {
         // on time costs a CDN nothing, because no request of it is changed.
         val player = play(FaultScript.NONE)
 
-        harness.advanceTimeInStepsMs(player, PLAYED_MS)
+        playPastTheFirstWindow(player)
 
+        // A session that fetched past its first window played on, which is what the state at the last
+        // instant of a fixed span was standing in for — and stood in for badly, because a healthy
+        // session is momentarily buffering at plenty of instants. The wait above is that check, so
+        // what is left to assert is the cost: here, none.
         assertThat(player.playerError).isNull()
-        assertThat(player.playbackState).isEqualTo(Player.STATE_READY)
-        assertThat(segmentsFetched(player)).isGreaterThan(SyntheticHlsStream.LIVE_WINDOW_SEGMENT_COUNT)
         assertThat(harness.cacheBypassingRequests(player)).isEqualTo(0)
     }
 
@@ -63,13 +64,16 @@ class LivePlaylistRevalidationTest {
     fun aPlaylistACacheHoldsForTenMinutesKeepsPlayingByReloadingPastIt() {
         val player = play(FaultScript.Builder().serveThroughCache(TEN_MINUTES_S, kind = ResourceKind.MANIFEST).build())
 
-        harness.advanceTimeInStepsMs(player, PLAYED_MS)
+        // Waited for, not watched for a fixed span. What the recovery needs is a playlist fetched
+        // past the cache and the segments it lists — however many turns of the tracker's own reload
+        // schedule that takes — and a span long enough to be sure of it on a quiet machine is a span
+        // spent asking a frozen playlist for more on a loaded one, which is how Media3 came to
+        // declare this healthy session stuck (issue #91).
+        playPastTheFirstWindow(player)
 
         // Still playing, and playing segments the cached copy never listed: the only way to learn of
         // one is a playlist fetched past the cache, and the requests that did it are counted.
         assertThat(player.playerError).isNull()
-        assertThat(player.playbackState).isEqualTo(Player.STATE_READY)
-        assertThat(segmentsFetched(player)).isGreaterThan(SyntheticHlsStream.LIVE_WINDOW_SEGMENT_COUNT)
         assertThat(harness.cacheBypassingRequests(player)).isGreaterThan(0)
     }
 
@@ -138,6 +142,19 @@ class LivePlaylistRevalidationTest {
     private fun request(): MediaRequest =
         MediaRequest.Builder(CONTENT).addSource(TestContent.liveHls().sourceUri).build()
 
+    /**
+     * Plays [player] until it has fetched a segment the window its first playlist named did not list.
+     *
+     * The one thing both live tests wait for, and the whole of what "kept playing" means for a live
+     * stream: a segment past that window can only be learned of from a playlist that moved on. The
+     * two differ in what it cost — a request past a cache, or nothing — which is what they assert.
+     */
+    private fun playPastTheFirstWindow(player: SuperPlayer) {
+        harness.advanceUntil(player, "segments past the first live window", PLAYED_MS) {
+            segmentsFetched(it) > SyntheticHlsStream.LIVE_WINDOW_SEGMENT_COUNT
+        }
+    }
+
     private fun segmentsFetched(player: SuperPlayer): Int =
         harness.requestedResources(player).count { it.kind == ResourceKind.MEDIA_SEGMENT }
 
@@ -151,6 +168,10 @@ class LivePlaylistRevalidationTest {
          * Long enough that a stream which had stalled on the cached copy would have been declared
          * stuck several times over — Media3 gives up at three and a half target durations, seven
          * seconds here — and short enough to stay a unit test.
+         *
+         * Two roles, and both want that number: it bounds the waits, which a healthy session reaches
+         * the far side of well inside it, and it is still the span the history test plays out before
+         * restarting a session.
          */
         const val PLAYED_MS = 40_000L
     }

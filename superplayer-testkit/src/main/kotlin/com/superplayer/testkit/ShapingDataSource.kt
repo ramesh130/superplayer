@@ -60,15 +60,16 @@ internal class ShapingDataSource(
     private var deliveryStartMs = 0L
     private var bytesDelivered = 0L
     private var upstreamOpened = false
-    private var transferOpen = false
+
+    /** This transfer's registration with the harness's clock wait — see [TransferRegistration]. */
+    private val transfer = TransferRegistration(wait)
 
     override fun addTransferListener(transferListener: TransferListener) {
         upstream.addTransferListener(transferListener)
     }
 
     override fun open(dataSpec: DataSpec): Long {
-        transferOpen = true
-        wait.transferOpened()
+        transfer.opened()
         val openedAtMs = clock.elapsedRealtime()
         val rttMs = trace.rttMsAt(openedAtMs - originMs)
         val firstByteAtMs = openedAtMs + rttMs
@@ -104,10 +105,7 @@ internal class ShapingDataSource(
     override fun getResponseHeaders(): Map<String, List<String>> = upstream.responseHeaders
 
     override fun close() {
-        if (transferOpen) {
-            transferOpen = false
-            wait.transferClosed()
-        }
+        transfer.closed()
         // `DataSource.close` is owed even when `open` threw, which is how an injected status code
         // leaves the upstream.
         if (upstreamOpened) {

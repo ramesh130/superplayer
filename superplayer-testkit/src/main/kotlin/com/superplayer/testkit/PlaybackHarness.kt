@@ -158,6 +158,10 @@ public class PlaybackHarness : ExternalResource() {
             faults,
             clock,
             wait,
+            // Only the outermost wrapper counts a transfer, and under a trace that is the shaper:
+            // one load registered twice would be a load the wait could never see catch up, because
+            // the one thread carrying it can only ever be waiting for one deadline.
+            countsTransfers = network == null,
         )
         val shaper = network?.let { ShapingDataSource.Factory(injector, it, clock, wait) }
         val transfers = Transfers(
@@ -240,28 +244,31 @@ public class PlaybackHarness : ExternalResource() {
         require(millis >= 0) { "Time does not go backwards" }
         SystemClock.setCurrentTimeMillis(SystemClock.uptimeMillis() + millis)
         clock.advanceTime(millis)
-        awaitShapedLoads()
+        awaitLoads()
         settle(player)
     }
 
     /**
-     * Lets every load paced on a [ThroughputTrace] act on the time that just passed, before the
-     * engine does.
+     * Lets every load in flight act on the time that just passed, before the engine does.
      *
-     * A shaped load runs on a loading thread and wakes once per read, so without this the test
-     * thread could run the clock ahead of it whenever that thread was short of CPU — on a busy CI
-     * runner, say — and the engine would drain a buffer the trace had filled, reporting a stall the
-     * trace never described. Waiting until every open transfer is waiting for a moment still to come
-     * narrows that gap. It is bounded in real time and fails at the bound, saying so, as every other
-     * wait here does: carrying on would hand the engine the very stall this exists to prevent, and
-     * the test would fail later for a reason it could not name. A player with no trace opens no
-     * shaped transfer, so for it this returns at once.
+     * A load runs on a loading thread and wakes once per read, so without this the test thread could
+     * run the clock ahead of it whenever that thread was short of CPU — on a busy CI runner, say.
+     * Under a [ThroughputTrace] the engine would then drain a buffer the trace had filled, reporting
+     * a stall the trace never described; under none, a live playlist reloaded on schedule would look
+     * minutes late to a tracker reading the clock rather than the thread, and Media3 would declare a
+     * healthy stream stuck (issue #91). Waiting until every open transfer is waiting for a moment
+     * still to come, or has closed, narrows both gaps.
+     *
+     * It is bounded in real time and fails at the bound, saying so, as every other wait here does:
+     * carrying on would hand the engine the very stall this exists to prevent, and the test would
+     * fail later for a reason it could not name. A player whose loads are all in memory opens no
+     * transfer at all, so for it this returns at once.
      */
-    private fun awaitShapedLoads() {
+    private fun awaitLoads() {
         val startedAtMs = System.currentTimeMillis()
         while (waits.values.any { !it.transfersHaveCaughtUp }) {
             check(System.currentTimeMillis() - startedAtMs < CATCH_UP_WALL_CLOCK_MS) {
-                "A load paced on a throughput trace did not catch up with the harness clock within " +
+                "A load did not catch up with the harness clock within " +
                     "$CATCH_UP_WALL_CLOCK_MS ms of real time"
             }
             Thread.yield()
@@ -357,18 +364,33 @@ public class PlaybackHarness : ExternalResource() {
     /**
      * Advances time in [WAIT_STEP_MS] steps until [condition] holds, or fails saying what it wanted.
      *
-     * Bounded, because a test that hangs is worse than one that fails: the message names the state
-     * that never arrived, which is the same promise `TestPlayerRunHelper`'s own waits make.
+     * The general form of [playToReady], for a test whose subject arrives at a moment no state name
+     * describes — a segment past the live window, the end of the content. Public because the
+     * alternative a test reaches for otherwise is a fixed span, and a fixed span measures the host:
+     * loads run on real threads, so how much playback time a session needs to get anywhere depends
+     * on how busy the machine is, and a span chosen on a quiet one fails on a loaded runner (issue
+     * #91). [wanted] names the thing being waited for, in the failure.
+     *
+     * Bounded by [boundMs] of *playback* time, because a test that hangs is worse than one that
+     * fails: the message names the state that never arrived, which is the same promise
+     * `TestPlayerRunHelper`'s own waits make. A bound belongs to what is being waited for — the
+     * content's own length, a buffer's drain — so a test that has one passes it.
      */
-    private fun advanceUntil(player: SuperPlayer, wanted: String, condition: (SuperPlayer) -> Boolean) {
+    @JvmOverloads
+    public fun advanceUntil(
+        player: SuperPlayer,
+        wanted: String,
+        boundMs: Long = MAX_WAIT_MS,
+        condition: (SuperPlayer) -> Boolean,
+    ) {
         settle(player)
         var waited = 0L
-        while (!condition(player) && waited < MAX_WAIT_MS) {
+        while (!condition(player) && waited < boundMs) {
             advanceTimeMs(player, WAIT_STEP_MS)
             waited += WAIT_STEP_MS
         }
         check(condition(player)) {
-            "Waited ${MAX_WAIT_MS} ms of playback time for $wanted; " +
+            "Waited $boundMs ms of playback time for $wanted; " +
                 "state=${player.playbackState} error=${player.playerError}"
         }
     }
@@ -578,7 +600,7 @@ public class PlaybackHarness : ExternalResource() {
         /** Playback time, not wall-clock: generous, and only ever reached when something is wrong. */
         private const val MAX_WAIT_MS = 30_000L
 
-        /** Real milliseconds [awaitShapedLoads] gives loads to catch up with one advance. */
+        /** Real milliseconds [awaitLoads] gives loads to catch up with one advance. */
         private const val CATCH_UP_WALL_CLOCK_MS = 10_000L
 
         /**

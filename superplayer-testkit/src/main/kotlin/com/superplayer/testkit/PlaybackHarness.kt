@@ -24,10 +24,13 @@ import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.TrackGroup
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.LoadControl
 import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.RenderersFactory
 import androidx.media3.exoplayer.drm.DrmSessionManager
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.TrackGroupArray
 import androidx.media3.test.utils.FakeAdaptiveDataSet
@@ -101,8 +104,15 @@ public class PlaybackHarness : ExternalResource() {
      */
     private val clock = FakeClock(SystemClock.elapsedRealtime(), /* isAutoAdvancing= */ false)
 
-    /** Every player built here, newest last, so [after] can release them and [rendererFor] find one. */
-    private val renderers = IdentityHashMap<SuperPlayer, ControllableVideoRenderer>()
+    /**
+     * Every player built here, newest last, so [after] can release them and [rendererFor] find one.
+     *
+     * Keyed by Media3's `Player` rather than by [SuperPlayer], because this harness builds two kinds:
+     * a SuperPlayer ([buildPlayer]) and a stock `ExoPlayer` ([buildStockPlayer]). `PRD.md` §6's three
+     * arms are driven by the same methods, over one clock, so a number measured on one is comparable
+     * with a number measured on another — which is the whole claim a benchmark makes.
+     */
+    private val renderers = IdentityHashMap<Player, ControllableVideoRenderer>()
 
     /**
      * The off-screen video outputs handed to the players, held so [after] can release them.
@@ -118,10 +128,10 @@ public class PlaybackHarness : ExternalResource() {
      * The fault injector installed under each player, so [requestedResources] can report what the
      * session actually fetched and under which address.
      */
-    private val injectors = IdentityHashMap<SuperPlayer, FaultInjectingDataSource.Factory>()
+    private val injectors = IdentityHashMap<Player, FaultInjectingDataSource.Factory>()
 
     /** How each player's loads wait on the clock, so [advanceTimeMs] can let them catch up with it. */
-    private val waits = IdentityHashMap<SuperPlayer, HarnessClockWait>()
+    private val waits = IdentityHashMap<Player, HarnessClockWait>()
 
     /**
      * A player as a consumer builds one, over synthetic content and the fakes above.
@@ -143,6 +153,139 @@ public class PlaybackHarness : ExternalResource() {
         network: ThroughputTrace? = null,
     ): SuperPlayer {
         var built: ControllableVideoRenderer? = null
+        val transport = composeTransport(content, faults, network)
+        val transfers = transport.transfers
+        val player = SuperPlayer.Builder(ApplicationProvider.getApplicationContext())
+            .apply { profile?.let { setProfile(it) } }
+            .apply { telemetry?.let { setTelemetry(it) } }
+            .setEngineConfigurator { configuration ->
+                configuration.engine.setClock(clock)
+                configuration.engine.setRenderersFactory(renderersFactory { built = it })
+                // A real protocol stream is not described by a timeline at all: the manifest says
+                // what the content is, Media3's own parser reads it, and its own extractor demuxes
+                // the segments. So the injector — and the shaper, under a trace — goes where the
+                // HTTP stack goes, beneath core's own layers exactly as a consumer's network is:
+                // every fetch passes through a fault script and a trace, and nothing SuperPlayer
+                // does to a transfer is skipped. Described content has no transport to stand in
+                // for, so it replaces the loading path whole.
+                if (content.protocol == TestContent.Protocol.DESCRIBED) {
+                    configuration.mediaSourceFactory = describedMediaSourceFactory(content, transfers)
+                } else {
+                    configuration.transport = transfers.factory
+                }
+            }
+            .build()
+        register(player, checkNotNull(built) { "The engine built no renderers" }, transport)
+        return player
+    }
+
+    /**
+     * A stock `ExoPlayer` with no SuperPlayer anywhere in it, over the same content, the same clock
+     * and the same shaped transport [buildPlayer] uses.
+     *
+     * `PRD.md` §6's arms (a) and (b) — see [StockTuning] for which is which and why both exist. This
+     * is the *comparison* half of the benchmark, and everything about it that could differ from arm
+     * (c) other than the player itself has been made not to: one [clock], one fake origin, one
+     * [ShapingDataSource] over one [ThroughputTrace], one [FaultInjectingDataSource], one renderer
+     * implementation, one video output. What is left different is the thing being measured.
+     *
+     * `ExoPlayer` in the return type is the one `@UnstableApi` exception ADR-0001 rule 2 names —
+     * the same escape hatch `SuperPlayer.exoPlayer` is, and for the same reason: there is no stable
+     * Media3 type that can be built and configured, and a benchmark of the engine has to name the
+     * engine. It is `docs/api-surface.md`'s `ADR_0001_UNSTABLE_EXCEPTIONS` set of exactly one, not a
+     * second entry.
+     *
+     * Note what this does **not** do: it installs no `TransferChain`, so a stock player gets none of
+     * core's own layers — no live-playlist revalidation, no CMCD. That is not an omission, it is
+     * arm (a). A stock ExoPlayer is what an app that wrote nothing has, and measuring it with
+     * SuperPlayer's layers underneath would be measuring neither arm.
+     */
+    public fun buildStockPlayer(
+        content: TestContent = TestContent.video(),
+        tuning: StockTuning = StockTuning.MEDIA3_DEFAULTS,
+        faults: FaultScript = FaultScript.NONE,
+        network: ThroughputTrace? = null,
+    ): ExoPlayer {
+        var built: ControllableVideoRenderer? = null
+        val transport = composeTransport(content, faults, network)
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val player = ExoPlayer.Builder(context)
+            .setClock(clock)
+            .setRenderersFactory(renderersFactory { built = it })
+            .apply { loadControlFor(tuning)?.let { setLoadControl(it) } }
+            .setMediaSourceFactory(
+                // The same split [buildPlayer] makes, for the same reason: described content has no
+                // transport to stand in for and replaces the loading path whole, while a real
+                // protocol stream loads through a `DataSource` chain that the shaper and the
+                // injector sit at the bottom of.
+                if (content.protocol == TestContent.Protocol.DESCRIBED) {
+                    describedMediaSourceFactory(content, transport.transfers)
+                } else {
+                    DefaultMediaSourceFactory(context).setDataSourceFactory(transport.transfers.factory)
+                },
+            )
+            .build()
+        register(player, checkNotNull(built) { "The engine built no renderers" }, transport)
+        return player
+    }
+
+    /**
+     * The `LoadControl` [tuning] asks for, or null for the tuning that is the absence of one.
+     *
+     * The translation, not the numbers: what each arm configures is [StockTuning.bufferPolicy], and
+     * that enum says why it is held there rather than here. This is the one place in the Robolectric
+     * half that turns it into Media3's vocabulary, which `superplayer-core`'s `EngineBinding` is the
+     * counterpart of for arm (c).
+     */
+    private fun loadControlFor(tuning: StockTuning): LoadControl? {
+        // Not `DefaultLoadControl.Builder().build()`, which would be the same object by a longer
+        // route: arm (a) is `ExoPlayer.Builder(context).build()` *and nothing else*, and building one
+        // anyway would quietly make the control arm a configured player that happens to agree today.
+        val policy = tuning.bufferPolicy ?: return null
+        return DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                policy.minBufferMs,
+                policy.maxBufferMs,
+                policy.bufferForPlaybackMs,
+                policy.bufferForPlaybackAfterRebufferMs,
+            )
+            .setBackBuffer(policy.backBufferMs, policy.retainBackBufferFromKeyframe)
+            // Part of the same recipe: it tells the engine to honour the durations above even when
+            // they exceed its memory target, which is what makes a deeper buffer actually take
+            // effect rather than being silently capped. Not a field of `BufferPolicy`, because
+            // `superplayer-core` has no profile that needs it — see `EngineBinding`.
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
+    }
+
+    /**
+     * Records a freshly built player against the transport it was built over, and gives it somewhere
+     * to draw.
+     *
+     * One place, so that a player of either kind is released by [after], found by [rendererFor], and
+     * waited on by [awaitLoads] on identical terms — the alternative being two registration paths
+     * that drift, which in a benchmark would show up as an unexplained difference between arms.
+     */
+    private fun register(player: Player, renderer: ControllableVideoRenderer, transport: Transport) {
+        renderers[player] = renderer
+        injectors[player] = transport.injector
+        waits[player] = transport.wait
+        attachVideoOutput(player)
+    }
+
+    /**
+     * The fake origin, the fault injector and the network shaper, composed once for a player of
+     * either kind.
+     *
+     * Lifted out of [buildPlayer] when [buildStockPlayer] arrived, and that is the point rather than
+     * tidiness: `PRD.md` §6's arms are only comparable if the bytes reach them the same way, and one
+     * function is the only version of that claim a reader can check.
+     */
+    private fun composeTransport(
+        content: TestContent,
+        faults: FaultScript,
+        network: ThroughputTrace?,
+    ): Transport {
         // One wait for both wrappers, so "is a load held by the clock" has one answer.
         val wait = HarnessClockWait(clock)
         // The injector's own upstream carries the synthetic stream, because that is the one path
@@ -164,36 +307,15 @@ public class PlaybackHarness : ExternalResource() {
             countsTransfers = network == null,
         )
         val shaper = network?.let { ShapingDataSource.Factory(injector, it, clock, wait) }
-        val transfers = Transfers(
-            factory = shaper ?: injector,
-            wrap = { source -> injector.wrap(source).let { shaper?.wrap(it) ?: it } },
-            loadsThroughADataSource = !faults.isEmpty() || network != null,
+        return Transport(
+            transfers = Transfers(
+                factory = shaper ?: injector,
+                wrap = { source -> injector.wrap(source).let { shaper?.wrap(it) ?: it } },
+                loadsThroughADataSource = !faults.isEmpty() || network != null,
+            ),
+            injector = injector,
+            wait = wait,
         )
-        val player = SuperPlayer.Builder(ApplicationProvider.getApplicationContext())
-            .apply { profile?.let { setProfile(it) } }
-            .apply { telemetry?.let { setTelemetry(it) } }
-            .setEngineConfigurator { configuration ->
-                configuration.engine.setClock(clock)
-                configuration.engine.setRenderersFactory(renderersFactory { built = it })
-                // A real protocol stream is not described by a timeline at all: the manifest says
-                // what the content is, Media3's own parser reads it, and its own extractor demuxes
-                // the segments. So the injector — and the shaper, under a trace — goes where the
-                // HTTP stack goes, beneath core's own layers exactly as a consumer's network is:
-                // every fetch passes through a fault script and a trace, and nothing SuperPlayer
-                // does to a transfer is skipped. Described content has no transport to stand in
-                // for, so it replaces the loading path whole.
-                if (content.protocol == TestContent.Protocol.DESCRIBED) {
-                    configuration.mediaSourceFactory = describedMediaSourceFactory(content, transfers)
-                } else {
-                    configuration.transport = transfers.factory
-                }
-            }
-            .build()
-        renderers[player] = checkNotNull(built) { "The engine built no renderers" }
-        injectors[player] = injector
-        waits[player] = wait
-        attachVideoOutput(player)
-        return player
     }
 
     /**
@@ -203,14 +325,14 @@ public class PlaybackHarness : ExternalResource() {
      * Internal: [ResourceAddress] is the injector's own vocabulary, and this module's public API
      * stays the one a test writes fault plans in. The harness's own tests are what read it.
      */
-    internal fun requestedResources(player: SuperPlayer): List<ResourceAddress> =
+    internal fun requestedResources(player: Player): List<ResourceAddress> =
         checkNotNull(injectors[player]) { "This harness did not build that player" }.addresses.requested
 
     /**
      * How many of [player]'s requests so far asked every cache on the way to step aside with
      * `Cache-Control: no-cache`. Internal for [requestedResources]'s reason.
      */
-    internal fun cacheBypassingRequests(player: SuperPlayer): Int =
+    internal fun cacheBypassingRequests(player: Player): Int =
         checkNotNull(injectors[player]) { "This harness did not build that player" }.cacheBypassingRequests
 
     /**
@@ -240,7 +362,7 @@ public class PlaybackHarness : ExternalResource() {
      * The one way time passes in a test using this harness. See the class KDoc for why the two
      * clocks move together and why neither moves on its own.
      */
-    public fun advanceTimeMs(player: SuperPlayer, millis: Long) {
+    public fun advanceTimeMs(player: Player, millis: Long) {
         require(millis >= 0) { "Time does not go backwards" }
         SystemClock.setCurrentTimeMillis(SystemClock.uptimeMillis() + millis)
         clock.advanceTime(millis)
@@ -286,7 +408,7 @@ public class PlaybackHarness : ExternalResource() {
      *
      * Time still moves by exactly [millis] in total, so a duration measured across it is still exact.
      */
-    public fun advanceTimeInStepsMs(player: SuperPlayer, millis: Long) {
+    public fun advanceTimeInStepsMs(player: Player, millis: Long) {
         require(millis >= 0) { "Time does not go backwards" }
         var advanced = 0L
         while (advanced < millis) {
@@ -305,7 +427,7 @@ public class PlaybackHarness : ExternalResource() {
      * first frame until something gives it an output — which in an app is the next row binding a
      * `PlayerView`, and here is this.
      */
-    public fun attachVideoOutput(player: SuperPlayer) {
+    public fun attachVideoOutput(player: Player) {
         val texture = SurfaceTexture(/* texName= */ 0)
         val surface = Surface(texture)
         outputs += surface to texture
@@ -321,7 +443,7 @@ public class PlaybackHarness : ExternalResource() {
      * Media3 masks a pending command's effects until the playback thread has seen it, so an
      * assertion made without this is asserting on the state that was standing before the command.
      */
-    public fun settle(player: SuperPlayer) {
+    public fun settle(player: Player) {
         TestPlayerRunHelper.advance(player)
             .untilPendingCommandsAreFullyHandled(clock, player.applicationLooper)
     }
@@ -336,7 +458,7 @@ public class PlaybackHarness : ExternalResource() {
      * no time passing — Media3's non-adaptive fake — costs no advance at all, which is what keeps a
      * time-to-first-frame measured through this method exact.
      */
-    public fun playToReady(player: SuperPlayer) {
+    public fun playToReady(player: Player) {
         player.prepare()
         player.play()
         advanceUntil(player, "ready") { it.playbackState == Player.STATE_READY }
@@ -355,7 +477,7 @@ public class PlaybackHarness : ExternalResource() {
      * initialization segment — so a test that advanced a fixed span instead would be picking a
      * number that made the slower protocol pass.
      */
-    public fun playToFailure(player: SuperPlayer) {
+    public fun playToFailure(player: Player) {
         player.prepare()
         player.play()
         advanceUntil(player, "an error") { it.playerError != null }
@@ -378,10 +500,10 @@ public class PlaybackHarness : ExternalResource() {
      */
     @JvmOverloads
     public fun advanceUntil(
-        player: SuperPlayer,
+        player: Player,
         wanted: String,
         boundMs: Long = MAX_WAIT_MS,
-        condition: (SuperPlayer) -> Boolean,
+        condition: (Player) -> Boolean,
     ) {
         settle(player)
         var waited = 0L
@@ -403,25 +525,25 @@ public class PlaybackHarness : ExternalResource() {
      * stall's measured duration, which is why it is a named constant rather than an arbitrary nudge:
      * a test asserting on a rebuffer's length adds it once at each end and gets an exact number.
      */
-    public fun stallRendering(player: SuperPlayer) {
+    public fun stallRendering(player: Player) {
         rendererFor(player).stall()
         advanceTimeMs(player, RENDER_PASS_MS)
     }
 
     /** Ends the stall [stallRendering] began, on the same terms. */
-    public fun resumeRendering(player: SuperPlayer) {
+    public fun resumeRendering(player: Player) {
         rendererFor(player).resume()
         advanceTimeMs(player, RENDER_PASS_MS)
     }
 
     /** Fails the video renderer on its next pass — a real `ExoPlaybackException` of renderer type. */
-    public fun failRendering(player: SuperPlayer) {
+    public fun failRendering(player: Player) {
         rendererFor(player).fail()
         advanceTimeMs(player, RENDER_PASS_MS)
     }
 
     /** Raises the renderer's dropped-frame callback with [count] frames over [elapsedMs]. */
-    public fun reportDroppedFrames(player: SuperPlayer, count: Int, elapsedMs: Long) {
+    public fun reportDroppedFrames(player: Player, count: Int, elapsedMs: Long) {
         rendererFor(player).reportDroppedFrames(count, elapsedMs)
         settle(player)
     }
@@ -440,7 +562,7 @@ public class PlaybackHarness : ExternalResource() {
         outputs.clear()
     }
 
-    private fun rendererFor(player: SuperPlayer): ControllableVideoRenderer =
+    private fun rendererFor(player: Player): ControllableVideoRenderer =
         checkNotNull(renderers[player]) { "This harness did not build that player" }
 
     /**
@@ -551,6 +673,17 @@ public class PlaybackHarness : ExternalResource() {
     private fun fakeDataSetFor(content: TestContent): FakeDataSet = FakeDataSet().apply {
         content.resources.forEach { (uri, bytes) -> setData(uri, bytes) }
     }
+
+    /**
+     * Everything [composeTransport] built for one player: the [Transfers] the engine loads through,
+     * and the two objects the harness keeps hold of afterwards — the injector, which records what was
+     * requested, and the wait, which is how [advanceTimeMs] knows a load has caught up with the clock.
+     */
+    private class Transport(
+        val transfers: Transfers,
+        val injector: FaultInjectingDataSource.Factory,
+        val wait: HarnessClockWait,
+    )
 
     /**
      * How a player's transfers are made: [factory] where Media3 makes its own sources, [wrap] where

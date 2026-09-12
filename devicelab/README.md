@@ -28,8 +28,16 @@ that rule governs: it does not run in the suite, gate a change, or run without a
 leak hunt does — and then a run with a failing verdict still writes everything and exits 3, apart
 from every other failure, but it is still a measurement someone reads, on a schedule, rather than a
 check a change must pass. So it sits beside the build rather than in it. `./gradlew check` does not run it, does
-not know it exists, and passes with no device attached. Like `benchmark/`, it has its own entry point
-and its own workflow, as `benchmark/` will when #43 builds it.
+not know it exists, and passes with no device attached. `benchmark/` sits outside `check` for the
+same reason and has its own entry point, `benchmark/bench` — see
+[`benchmark/README.md`](../benchmark/README.md), which makes the same argument from its side.
+
+The device half of that benchmark is **not yet a scenario here**, and the gap is worth naming: this
+harness is currently shaped around the demo throughout — the package, the activity, the APK path, and
+a readiness probe that reads a media session `benchmark/`'s app does not publish. `BenchmarkActivity`
+exists and plays a 30-minute session on a device; taking peak RSS and battery off that process means
+teaching `lab` to drive a second app, which is a change to a harness whose whole value is that it is
+reliable, and it is tracked as #95 rather than half-done.
 
 The one part that *is* checkable without a device is `devicelab/test/selftest`: the parsing, the
 Perfetto config builder, the stale-artifact comparison and the trace processor's pinning, all pure

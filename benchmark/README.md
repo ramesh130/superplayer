@@ -173,7 +173,7 @@ builds, refuses to measure a stale APK, and captures a Perfetto trace — and it
 this benchmark as a future consumer. It is currently shaped around the demo: the package, the
 activity, the APK path and the readiness probe (which reads a media session the benchmark app does
 not publish) are the demo's throughout. Wiring a second app through it is a real change to a harness
-whose whole value is that it is reliable, and it is tracked separately rather than half-done here.
+whose whole value is that it is reliable, and it is tracked as #95 rather than half-done here.
 
 **So no device run has been taken, and the peak-RSS and battery columns of the committed baseline are
 dashes.** They are printed as dashes in the report rather than left out of it, so that a reader

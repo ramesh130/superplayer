@@ -377,7 +377,7 @@ internal object ReportWriter {
         appendLine(
             "**The harness around that app is not built yet.** `devicelab/` is this repository's entry " +
                 "point for device measurement and is currently shaped around the demo; wiring a second " +
-                "app through it is tracked separately. `benchmark/README.md` has the manual `adb` " +
+                "app through it is issue #95. `benchmark/README.md` has the manual `adb` " +
                 "recipe in the meantime, and says why a benchmark sits outside `docs/testing.md`'s " +
                 "no-device rule rather than against it.",
         )

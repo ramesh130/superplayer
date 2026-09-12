@@ -64,12 +64,17 @@ internal data class CellComparison(
     /**
      * The comparisons, in `PRD.md` §6's own order of reported metrics.
      *
-     * Rebuffer ratio is compared on the *spread* of per-session ratios rather than on the pooled
-     * ratio, and that needs saying: the pooled ratio is the right headline — summing numerators and
-     * denominators is what `docs/telemetry-schema.md` requires — but it is a single number with no
-     * spread, and a verdict of "better" or "worse" has to be able to tell a real difference from
-     * run-to-run noise. So the *value* printed is pooled and the *verdict* comes from the twenty
-     * per-session ratios behind it. The report says which is which where it prints them.
+     * Rebuffer ratio takes its **verdict** from the spread of per-session ratios and its **printed
+     * value** from the pooled one, and the split is not a nicety. `docs/telemetry-schema.md`
+     * requires a cell's ratio to be the sum of numerators over the sum of denominators — averaging
+     * per-session ratios weights a five-second session like an hour-long one — but a pooled ratio is
+     * one number, and one number cannot be told from run-to-run noise. So the distribution is
+     * carried for the verdict and [displayBaseline]/[displaySuperPlayer] override what is printed.
+     *
+     * This was wrong first time round and is worth recording: the tables printed the distribution's
+     * *mean*, under a heading and a paragraph both promising the pooled value. The report said one
+     * thing and published the other, and the aggregation it published was the one the schema names
+     * as forbidden.
      */
     val comparisons: List<Comparison> = listOf(
         Comparison(
@@ -83,6 +88,8 @@ internal data class CellComparison(
             lowerIsBetter = true,
             baseline = baseline.rebufferRatioSpread,
             superPlayer = superPlayer.rebufferRatioSpread,
+            displayBaseline = baseline.rebufferRatio,
+            displaySuperPlayer = superPlayer.rebufferRatio,
         ),
         Comparison(
             metric = "rebuffer count",

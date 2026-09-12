@@ -23,8 +23,15 @@
             android:shell="true"
             tools:targetApi="29" />
 
+        <!-- `configChanges` so a rotation, a dark-mode switch or a locale change does not destroy
+             and recreate the activity halfway through a 30-minute run. Without it the first
+             attempt's telemetry is discarded, no trace is written for it, and a fresh 30-minute
+             timer starts with nothing saying the clock was reset. Handling them here means doing
+             nothing about them, which is right: this activity draws one SurfaceView and has no
+             layout to reflow. -->
         <activity
             android:name=".BenchmarkActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode|density|locale|layoutDirection|keyboardHidden"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

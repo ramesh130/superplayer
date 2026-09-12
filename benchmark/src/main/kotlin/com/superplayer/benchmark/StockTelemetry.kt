@@ -276,6 +276,13 @@ internal class StockTelemetry(private val sink: (TelemetryEvent) -> Unit) {
         decision: PlaybackDecision,
     ) {
         endSession()
+        // The same guard `QoeCollector.startSession` has, and it earns its place by the way it fails
+        // without one: `scheduleSampling` returns quietly when no player is attached, so a session
+        // opened too early produces a complete-looking event stream with **zero**
+        // `PlaybackStateSampled` events — and a bitrate column of em dashes for that arm, from a run
+        // that reported no error. Arm (c) throws here; this mirrors it, because a silently empty
+        // column is the failure mode the whole report is arranged against.
+        checkNotNull(player) { "startSession before attach" }
         val startedAtMonotonicMs = SystemClock.elapsedRealtime()
         // Resolved once, here, rather than at the frame: whether a declaration existed is a fact
         // about this session's opening, and deciding it later would let a declaration made after the

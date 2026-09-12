@@ -148,7 +148,9 @@ class BenchmarkMatrixTest {
         play(player, key.scenario.playbackMs)
         // Releasing is what ends the session and emits `SessionEnded` — the event that carries the
         // dropped count, and therefore the one that decides whether this session may be aggregated.
-        player.release()
+        // Through the harness, so it stops tracking this player: see `PlaybackHarness.release`, and
+        // note that a matrix builds well over a thousand of them inside this one test method.
+        harness.release(player)
         return awaitSession()
     }
 
@@ -182,7 +184,7 @@ class BenchmarkMatrixTest {
         play(player, key.scenario.playbackMs)
         telemetry.endSession()
         telemetry.detach()
-        player.release()
+        harness.release(player)
         return awaitSession()
     }
 

@@ -178,6 +178,19 @@ internal data class Comparison(
     val lowerIsBetter: Boolean,
     val baseline: Distribution?,
     val superPlayer: Distribution?,
+
+    /**
+     * What to print for the baseline instead of [baseline]'s mean, when the two differ.
+     *
+     * Set only for rebuffer ratio, and [CellComparison.comparisons] argues why: the verdict needs a
+     * distribution to measure noise against, and the value a report may print is the pooled ratio
+     * `docs/telemetry-schema.md` requires. Null everywhere else, where the distribution's own mean
+     * *is* the number.
+     */
+    val displayBaseline: Double? = null,
+
+    /** The counterpart of [displayBaseline] for the SuperPlayer column. */
+    val displaySuperPlayer: Double? = null,
 ) {
 
     /** The signed difference of the means, in the metric's own units, or null if either is missing. */
@@ -232,6 +245,15 @@ internal data class Comparison(
             else -> Verdict.WORSE
         }
     }
+
+    /**
+     * Whether this comparison could be made at all.
+     *
+     * Separate from the verdict because a report has to account for it: three comparisons that
+     * quietly belonged to no section would make the counts fail to sum, which is the shape of an
+     * omission rather than a finding.
+     */
+    val hasData: Boolean get() = verdict != Verdict.NO_DATA
 
     /** How SuperPlayer did against the baseline on this metric, in this cell. */
     enum class Verdict(val label: String) {

@@ -362,6 +362,14 @@ Style preferences these are not. A change violating one is not accepted, whateve
   never called on a thread the engine needs; the events are one sealed, versioned hierarchy whose
   version tracks a metric's *meaning* rather than its shape; and CMCD is a separate seam joined to
   telemetry by a shared session id.
+- **[ADR-0009](docs/adr/0009-observe-conditions-re-apply-decisions-and-remember-per-transport.md)** —
+  extends ADR-0005 for the adaptive policy: `PlaybackConditions` carries exactly the enumerated
+  observations, each a SuperPlayer type, translated from Android and Media3 in one internal core
+  file; the policy is re-consulted on named triggers only, and only where the engine can honour a
+  changed decision whole, with every change a `DecisionChanged` event; `superplayer-abr` reaches
+  core's engine construction as its second Kotlin friend through an extension interface on the
+  policy object, and a player built without it pays nothing; and a throughput estimate is remembered
+  per transport, in process memory, and nowhere else.
 - **[`docs/api-surface.md`](docs/api-surface.md)** — every published module's public API is tracked
   in `<module>/api/<module>.api` and validated by `check`. Changing it means running
   `./gradlew updateApiSurface` and committing the diff in the same change. A leaked `@UnstableApi`

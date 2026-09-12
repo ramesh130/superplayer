@@ -57,8 +57,9 @@ import java.io.ByteArrayOutputStream
  * 3. **Gives up with a name.** If the playlist is still where it was
  *    [giveUpBoundTargetDurations] target durations on, the load fails with a
  *    [StaleLivePlaylistException] carrying what was observed and what it points at. That bound is
- *    one reload short of Media3's own, and the failing load is failed before Media3 has parsed it,
- *    so the engine never gets to judge the playlist stuck and report it untyped. The engine then
+ *    [RELOADS_OF_MARGIN] unchanged reloads short of Media3's own, and the failing load is failed
+ *    before Media3 has parsed it, so the engine never gets to judge the playlist stuck and report it
+ *    untyped. The engine then
  *    retries the load under its `LoadErrorHandlingPolicy` — a few more seconds, each retry asking
  *    past the caches again — before the session ends with this as its cause. A retry that finds the
  *    playlist moved is a recovery rather than an error: nothing here latches.
@@ -124,14 +125,14 @@ internal class LivePlaylistRevalidation(private val clock: Clock) {
             return null
         }
         val nowMs = clock.elapsedRealtime()
-        // A history nobody has added to for longer than the give-up bound is not this session's: an
+        // A history nobody has added to for longer than [STALE_HISTORY_TARGET_DURATIONS] is not this
         // engine following a live playlist reloads it at least once a target duration, so a gap that
         // long is a stop and a later prepare, or a pooled player's next item. Judged against it, a
         // channel replayed after its origin restarted the media sequence would look minutes late on
         // its first load, and fail where Media3's fresh tracker plays it — so it starts afresh,
         // keeping only whether this playlist needed asking past a cache.
         val tracked = playlists[key]?.takeIf {
-            nowMs - it.loadedAtMs <= giveUpBoundTargetDurations * playlist.targetDurationMs
+            nowMs - it.loadedAtMs <= STALE_HISTORY_TARGET_DURATIONS * playlist.targetDurationMs
         }
         if (tracked == null || playlist.progress > tracked.progress) {
             playlists[key] = Tracked(playlist.progress, advancedAtMs = nowMs).apply {
@@ -319,16 +320,59 @@ internal class LivePlaylistRevalidation(private val clock: Clock) {
         private const val UNCHANGED_RELOAD_TARGET_DURATIONS: Double = 0.5
 
         /**
-         * How many target durations without a new segment before a load fails typed: one unchanged
-         * reload before Media3 would declare the playlist stuck and end the session untyped.
+         * How many unchanged reloads of margin to leave before Media3's own bound.
+         *
+         * One was not enough. This layer can only judge a playlist when a reload of it *arrives*, so
+         * one reload of margin is exactly one chance to fail the load first — and a host that delays
+         * that single reload lets Media3 reach its own bound and end the session untyped instead.
+         * That is not only a test's problem: the same starvation on a device costs a consumer the
+         * named cause and the retries that go with it. Two reloads are two chances, still inside the
+         * engine's bound (issue #91, where one commit recorded both outcomes on two runs of CI).
+         */
+        private const val RELOADS_OF_MARGIN: Double = 2.0
+
+        /**
+         * How many target durations without a new segment before a load fails typed:
+         * [RELOADS_OF_MARGIN] unchanged reloads before Media3 would declare the playlist stuck and
+         * end the session untyped.
          *
          * ref: Media3 1.11.0 `DefaultHlsPlaylistTracker`, which raises `PlaylistStuckException` once
          * a playlist has not changed for more than this coefficient times its target duration. Read
          * from Media3 rather than copied, so an engine that moves its bound moves this one with it.
+         *
+         * Still well past RFC 8216 §6.2.1's one and a half target durations, so no conforming stream
+         * is failed by this: what the margin changes is how much of the engine's own slack this layer
+         * leaves itself, not what counts as late.
          */
         val giveUpBoundTargetDurations: Double =
             DefaultHlsPlaylistTracker.DEFAULT_PLAYLIST_STUCK_TARGET_DURATION_COEFFICIENT -
-                UNCHANGED_RELOAD_TARGET_DURATIONS
+                RELOADS_OF_MARGIN * UNCHANGED_RELOAD_TARGET_DURATIONS
+
+        /**
+         * How long a playlist's history stays this session's, in target durations.
+         *
+         * Deliberately *not* [giveUpBoundTargetDurations], which it was derived from until the margin
+         * above moved: the two answer different questions. This one asks whether a gap in loads means
+         * a stop and a later prepare — an engine following a live playlist reloads it at least once a
+         * target duration, so any window comfortably over one answers it — while the give-up bound
+         * asks how much of Media3's slack to leave. Sharing one number made this move whenever that
+         * did, which is a silent change to what counts as a new session.
+         */
+        private const val STALE_HISTORY_TARGET_DURATIONS: Double = 3.0
+
+        init {
+            // The order the bounds have to keep: ask past the caches once the protocol calls the
+            // playlist late, give up while the engine still has slack, and never after it has none.
+            require(
+                UPDATE_BOUND_TARGET_DURATIONS < giveUpBoundTargetDurations &&
+                    giveUpBoundTargetDurations <
+                    DefaultHlsPlaylistTracker.DEFAULT_PLAYLIST_STUCK_TARGET_DURATION_COEFFICIENT,
+            ) {
+                "Bounds out of order: late at $UPDATE_BOUND_TARGET_DURATIONS, giving up at " +
+                    "$giveUpBoundTargetDurations, engine at " +
+                    "${DefaultHlsPlaylistTracker.DEFAULT_PLAYLIST_STUCK_TARGET_DURATION_COEFFICIENT}"
+            }
+        }
 
         /**
          * How many playlists one player follows at once. A session plays a multivariant stream's

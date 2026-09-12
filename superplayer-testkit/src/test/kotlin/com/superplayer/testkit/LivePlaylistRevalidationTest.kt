@@ -97,8 +97,11 @@ class LivePlaylistRevalidationTest {
         assertThat(cause.servedCacheControl).isEqualTo("public, max-age=$TEN_MINUTES_S")
         assertThat(cause.cacheBypassingReloads).isAtLeast(1)
         assertThat(cause.targetDurationMs).isEqualTo(SyntheticHlsStream.SEGMENT_DURATION_MS)
-        // Past the point the playlist was late, so the reloads past the cache were tried first.
-        assertThat(cause.unchangedForMs).isGreaterThan(SyntheticHlsStream.SEGMENT_DURATION_MS * 3)
+        // Past the point the playlist was late — RFC 8216 §6.2.1's one and a half target durations —
+        // so the reloads past the cache were tried before this was raised. Deliberately not measured
+        // against the give-up bound: how much of the engine's slack core leaves itself is a choice
+        // that has already moved once, and a test pinned to it fails on a change it is not about.
+        assertThat(cause.unchangedForMs).isGreaterThan(SyntheticHlsStream.SEGMENT_DURATION_MS * 3 / 2)
         assertThat(harness.cacheBypassingRequests(player)).isAtLeast(1)
     }
 
@@ -125,8 +128,8 @@ class LivePlaylistRevalidationTest {
         // can be ready, and the wait reports that error. A fixed few seconds instead measured the
         // machine — the harness's clock does not wait for the loading thread, so on a busy runner
         // the span could end with a healthy session still buffering. The frozen playlist's own
-        // give-up bound, three target durations from this session's first load, leaves the wait
-        // ample room.
+        // history is dropped once it is older than three target durations, so the restarted session
+        // starts afresh and the wait has ample room.
         harness.playToReady(player)
 
         assertWithMessage("cause: ${player.playerError?.cause}").that(player.playerError).isNull()

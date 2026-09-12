@@ -138,11 +138,23 @@ class StockTelemetryAgreementTest {
         val qoe = SessionMetrics.from(qoe().first().sessionId, qoe())
         val stock = SessionMetrics.from(stock().first().sessionId, stock())
 
-        // At the level a report is actually built at. The script contains a stall that counts toward
-        // the ratio and one that does not, so equality here is a statement about the seek exclusion
-        // landing identically rather than about there being nothing to exclude.
-        assertTrue("The script produced no counted stall", qoe.rebufferCount > 0)
-        assertTrue("The script produced no excluded stall", qoe.rebufferCount < stalls())
+        // At the level a report is actually built at.
+        //
+        // The script stalls the renderer and seeks into unbuffered content, so it exercises both
+        // sides of the exclusion — but it does not *assert* that one stall of each kind occurred,
+        // and that is deliberate. Whether the stall following a seek opens before the seek completes
+        // or inside the 1 000 ms window after it is the engine's timing, and it moves with the
+        // buffer state, the ladder and how busy the host is. An earlier version required one of each
+        // and flaked exactly there, which is how an agreement test gets deleted.
+        //
+        // Nothing is lost by dropping it. That the exclusion *rule* holds is
+        // `SessionMetricsTest.rebufferRatioCountsOnlyStallsThatWereNotSeekInduced`, over an event
+        // stream written by hand; that both collectors *apply* it to the same stalls the same way is
+        // `bothCollectorsAttributeAndMeasureEveryStallTheSameWay`, which compares the flags
+        // themselves. What this asserts is the thing neither of those does: that the shared reducer
+        // lands on identical numbers whichever collector fed it.
+        assertTrue("The script produced no stall at all", stalls() > 0)
+        assertTrue("The script issued no seek", qoe().any { it is TelemetryEvent.SeekRequested })
         assertEquals(qoe.rebufferMs, stock.rebufferMs)
         assertEquals(qoe.rebufferCount, stock.rebufferCount)
         assertEquals(qoe.playingMs, stock.playingMs)

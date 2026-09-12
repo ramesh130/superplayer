@@ -3,8 +3,9 @@
 - **Status:** Accepted
 - **Date:** 2026-09-13
 - **Deciders:** SuperPlayer maintainers
-- **Supersedes:** None — extends [ADR-0005](0005-decide-playback-policy-behind-an-engine-agnostic-boundary.md),
-  whose rules 3 and 4 are reworded below and whose rules 1 and 2 stand as written.
+- **Supersedes:** None
+- **Extends:** [ADR-0005](0005-decide-playback-policy-behind-an-engine-agnostic-boundary.md), whose
+  rules 3 and 4 are reworded below and whose rules 1 and 2 stand as written.
 
 ## Context
 
@@ -27,9 +28,12 @@ Variance is on that list for a reason the code should not have to re-argue. Yin,
 Sinopoli (SIGCOMM 2015) — already the `ref:` on `QoeScore.kt` — show that the throughput predictor is
 the weakest link of a rate-based adaptation algorithm: the error in the prediction, not the level of
 the prediction, is what produces a rebuffer, and an adaptation that discounts its estimate by that
-error is robust where one that trusts the mean is not. Media3's meter is an exponentially weighted
-moving average, which tracks the mean and reports nothing about how far the samples scatter around
-it. A buffer floor sized from the mean alone is sized for the network the viewer had on average,
+error is robust where one that trusts the mean is not. Media3's `DefaultBandwidthMeter` keeps a
+sliding window of weighted samples and reports one number from it, the weighted median; it holds
+the distribution and exposes none of it, so a policy sees a level and nothing about how far the
+samples scatter around it. (`PRD.md` §3.1 calls Media3's estimator an EWMA; it is a windowed
+median, and the point stands either way — what is missing is the spread, not the window.) A
+buffer floor sized from one central number is sized for the network the viewer had typically,
 which is not the network that stalls them.
 
 **How a decision is re-applied.** ADR-0005 rule 4 consults the policy once, at construction, because
@@ -101,7 +105,7 @@ Nine rules follow, and they are binding.
    | `throughput` | `ThroughputEstimate`: mean in bits per second, a *spread* in the same unit, a conservative percentile, the sample count and the age of the newest sample | `AdaptiveLoadControl` (raises the playback floor on spread, not the ceiling); `NetworkAwareTrackSelection` (selects on the percentile when the spread is high and on the mean when it is not) |
    | `stallHistory` | `StallHistory`: rebuffers this session, milliseconds since the last one ended, and the duration of the last one | `AdaptiveLoadControl` (post-rebuffer hysteresis: the raised floor and the held ceiling, and for how long) |
    | `streamType` | `StreamType`: `ON_DEMAND` or `LIVE`, as the manifest declared it | `AdaptiveLoadControl` (latency-priority mode is keyed on this, never on the profile) |
-   | `availableHeapBytes` | the heap this app may still use, as `DeviceCapacity.kt` already reads it | `AdaptiveLoadControl` (the memory-aware ceiling on every branch) |
+   | `heapBudgetBytes` | the heap this app is allowed, as `DeviceCapacity.kt` already reads it from `ActivityManager.memoryClass`; a budget rather than a live free-heap reading, because free heap under a collector is noise | `AdaptiveLoadControl` (the memory-aware ceiling on every branch) |
    | `playbackSpeed` | the current playback speed as a factor | `AdaptiveLoadControl` (a buffer expressed in media time drains faster than real time at 2×) |
 
    The spread is a property because of the argument in Context: variance, not mean, predicts the
@@ -141,8 +145,9 @@ Nine rules follow, and they are binding.
    produce alone is `throughput`: its source is *whatever bandwidth meter the engine was built with*,
    read through a core-internal interface that meter implements. When the meter is `BandwidthOracle`
    the estimate carries a spread and a percentile; when it is Media3's default, they are unobserved,
-   and a policy that needs them treats "unobserved" as "unknown", not as zero. The file that reads
-   the meter is the *reading* seam `docs/testing.md` already describes, so this adds no second seam.
+   and a policy that needs them treats "unobserved" as "unknown", not as zero. That interface is
+   internal and of the kind `docs/testing.md` calls a *reading* seam — it substitutes no behaviour
+   — and it is not the configuring "second seam" that document warns against.
 
 ### How a decision is re-applied
 
@@ -164,9 +169,13 @@ Nine rules follow, and they are binding.
    judgment ADR-0005 made — a decision half in force is worse than one documented as construction-time
    — applied to the case where a consumer supplies an adaptive `PlaybackPolicy` to a core-only
    player. The translation stays in `EngineBinding.kt`, which gains a second target beside the two it
-   has: the engine's own retargetable components. Media3's `TrackSelectionParameters` are set once, at
-   construction, as today; a re-application never rewrites them, so a consumer's own parameters are
-   never overwritten by a trigger.
+   has: the engine's own retargetable components. On a player built *with* them, the selection
+   ceiling belongs to `NetworkAwareTrackSelection` from construction onward, and `EngineBinding.kt`
+   lays no ceiling into Media3's `TrackSelectionParameters` at all — otherwise a construction-time
+   ceiling would clamp every later decision that raised it, which is the half-in-force contract this
+   rule exists to refuse. The parameters are set once, at construction, as today, and a
+   re-application never rewrites them, so a consumer's own parameters are never overwritten by a
+   trigger.
 
 6. **`SuperPlayer.playbackDecision` is the decision currently in force; `SessionStarted.decision`
    is the decision in force when the session started; and every change afterwards is a
@@ -218,8 +227,13 @@ Nine rules follow, and they are binding.
    Each entry is a `ThroughputEstimate` as rule 1 defines it, with the age of its newest sample.
    The holder is one per process, the way `TelemetryDelivery`'s thread is one per process, because
    the estimate is a property of the device's network and not of any one player, and sixty pooled
-   players may not mean sixty estimates. ADR-0006 rule 2 is intact: memory is not storage, nothing
-   is written anywhere, and process death forgets everything — which is stated rather than hidden.
+   players may not mean sixty estimates. ADR-0006 rule 2 is intact, including the clause that
+   forbids a `Context`-scoped singleton: that clause names a way of *holding storage* — a handle
+   to preferences or a database that outlives the player that opened it — and this holder needs
+   no `Context`, opens nothing, and keeps nothing that outlives the process. Memory is not storage,
+   nothing is written anywhere, and process death forgets everything, which is stated rather than
+   hidden. `TelemetryDelivery`'s one thread per process is the precedent for a process-wide object
+   that is not a storage decision.
 
 9. **On a transport change the estimate that follows is the previous estimate for the transport
    arrived at; on a cold process, or when that estimate is older than a stated age, it is a
@@ -237,7 +251,8 @@ Nine rules follow, and they are binding.
 
 ADR-0005 is not superseded. Its rules 1 and 2 stand as written; this ADR adds to rule 1 that the
 translation *into* the boundary is as confined as the translation out of it (rule 3 above). Two of
-its rules change wording, and the change is recorded here rather than by editing that document:
+its rules change wording. The change is recorded here, and ADR-0005 carries a pointer to it at each
+rule so that a reader of that document alone is not misled:
 
 - **Rule 3** read "The consumer names a profile, not a number." It now reads: *the consumer names a
   profile, or supplies a `PlaybackPolicy`, and never a number.* A supplied policy names decisions,

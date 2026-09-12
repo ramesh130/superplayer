@@ -4,6 +4,8 @@
 - **Date:** 2026-09-06
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
+- **Extended by:** [ADR-0009](0009-observe-conditions-re-apply-decisions-and-remember-per-transport.md),
+  which rewords rules 3 and 4 without superseding this document.
 
 ## Context
 
@@ -61,11 +63,14 @@ Four rules follow, and they are binding:
 3. **The consumer names a profile, not a number.** `SuperPlayer.Builder.setProfile` takes a
    `PlaybackProfile`; the constants behind it, and the rationale for each of them, live in the
    policy's per-profile table, which is internal and free to be retuned. Every constant that departs
-   from Media3's default says why it departs.
+   from Media3's default says why it departs. *Reworded by ADR-0009: the consumer names a profile,
+   or supplies a `PlaybackPolicy`, and never a number.*
 4. **The policy is consulted once, at construction, until the buffer half can be re-applied.** Half
    of a decision cannot be honoured after the engine exists, so consulting the policy repeatedly
    today would produce answers that are half in force — a worse contract than a documented
-   construction-time one. `SuperPlayer.playbackDecision` reports what was applied.
+   construction-time one. `SuperPlayer.playbackDecision` reports what was applied. *Reworded by
+   ADR-0009 rules 4 and 5, now that the buffer half can be: consulted at construction, and again on
+   named triggers only where the engine can honour a changed decision whole; otherwise once.*
 
 ## Consequences
 

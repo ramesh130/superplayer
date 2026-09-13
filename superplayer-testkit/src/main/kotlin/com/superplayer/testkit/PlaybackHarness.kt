@@ -447,11 +447,24 @@ public class PlaybackHarness : ExternalResource() {
         // (issue #110). The two clocks are now never apart while anything can observe them: nothing
         // runs on any looper between the two lines below.
         quiesce(player)
-        SystemClock.setCurrentTimeMillis(SystemClock.uptimeMillis() + millis)
-        clock.advanceTime(millis)
-        // The network first, then the engine: a load that completes at the new time completes on
-        // the transport the trace says the device is on at that time.
-        transportReplays[player]?.replayAt(clock.elapsedRealtime())
+        // And the engine before the loads. Moving the clock makes the engine's timed work due and a
+        // load's delay run out in the same instant, and left to the scheduler the loading thread
+        // writes the new moment's samples while that work reads the buffer: a player became ready a
+        // step earlier on a starved runner than anywhere else (issue #120). So loads stay at the old
+        // moment until the engine has done everything it will at the new one, and are released after.
+        // Every player's loads are held because every player shares the clock, but only [player] is
+        // settled in between; another player's engine hears its loads at this time, as it always did.
+        waits.values.forEach { it.holdLoads() }
+        try {
+            SystemClock.setCurrentTimeMillis(SystemClock.uptimeMillis() + millis)
+            clock.advanceTime(millis)
+            // The transport first, then the engine, then the loads: a load that completes at the new
+            // time completes on the transport the trace says the device is on at that time.
+            transportReplays[player]?.replayAt(clock.elapsedRealtime())
+            quiesce(player)
+        } finally {
+            waits.values.forEach { it.releaseLoads() }
+        }
         quiesce(player)
     }
 
@@ -496,8 +509,10 @@ public class PlaybackHarness : ExternalResource() {
     private fun activitySoFar(): Int = waits.values.sumOf { it.activitySoFar }
 
     /**
-     * Lets every load in flight act on the time that just passed, before the engine does.
+     * Lets every load in flight act on the time that has passed, before the clock moves again.
      *
+     * Within one step the engine acts first and the loads follow ([HarnessClockWait.holdLoads] says
+     * why), so a load trails the engine by that one step and never by more; this is what bounds it.
      * A load runs on a loading thread and wakes once per read, so without this the test thread could
      * run the clock ahead of it whenever that thread was short of CPU — on a busy CI runner, say.
      * Under a [ThroughputTrace] the engine would then drain a buffer the trace had filled, reporting

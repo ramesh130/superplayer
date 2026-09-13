@@ -171,6 +171,50 @@ class NetworkShapingTest {
         assertThat(failure.get()).isInstanceOf(InterruptedIOException::class.java)
     }
 
+    @Test
+    fun aHeldLoadActsOnTheClockOnlyOnceReleased() {
+        val clock = FakeClock(0L, /* isAutoAdvancing= */ false)
+        val wait = HarnessClockWait(clock)
+        val failure = AtomicReference<Throwable>()
+        val load = Thread {
+            runCatching {
+                wait.transferOpened()
+                try {
+                    wait.until(HELD_DEADLINE_MS, "a held deadline")
+                } finally {
+                    wait.transferClosed()
+                }
+            }.onFailure(failure::set)
+        }
+
+        wait.holdLoads()
+        load.start()
+        try {
+            val startedAtMs = System.currentTimeMillis()
+            while (!wait.isWaiting) {
+                check(load.isAlive && System.currentTimeMillis() - startedAtMs < JOIN_TIMEOUT_MS) {
+                    "The load never waited on the clock: ${failure.get()}"
+                }
+                Thread.yield()
+            }
+            // Past the deadline, as moving the clock for the engine's sake does: the open transfer
+            // must neither wake nor be counted as behind, or the harness could not settle the engine
+            // while it is held.
+            clock.advanceTime(HELD_DEADLINE_MS * 2)
+            load.join(HELD_GRACE_MS)
+            assertThat(load.isAlive).isTrue()
+            assertThat(wait.transfersHaveCaughtUp).isTrue()
+
+            wait.releaseLoads()
+            load.join(JOIN_TIMEOUT_MS)
+
+            assertThat(load.isAlive).isFalse()
+            assertThat(failure.get()).isNull()
+        } finally {
+            load.interrupt()
+        }
+    }
+
     /**
      * Fetches [urls] one after another through the shaper over the injector, as a player's loading
      * thread would, and returns what happened when: `name@ms:bytes` after each read, `name@ms:open`
@@ -271,5 +315,11 @@ class NetworkShapingTest {
 
         const val RUNS = 3
         const val JOIN_TIMEOUT_MS = 10_000L
+
+        /** A held load's deadline on the fake clock. */
+        const val HELD_DEADLINE_MS = 100L
+
+        /** Real time a held load is given to wake wrongly; long beside a yield loop, short beside a build. */
+        const val HELD_GRACE_MS = 200L
     }
 }

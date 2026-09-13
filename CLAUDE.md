@@ -213,9 +213,30 @@ threads of the players it builds (`HarnessLoadThreads`, through core's internal 
 advances its clock only once the engine has nothing left to do at the current time, which is what
 makes a session trace byte-identical run after run; `GoldenFile` is the check-or-update comparison
 a golden test calls, and the mode reaches it from the convention plugin as a system property.
+`superplayer-abr` holds the first of Phase 3's three components, `BandwidthOracle`: the throughput
+estimator the other two will read from, and the first real code in the module. Its public face names
+no Media3 type — `BandwidthOracle.Builder(context).build()`, `currentEstimate()`, `currentTransport()`,
+`release()` — and its Media3 half is the internal `OracleBandwidthMeter`, the `BandwidthMeter` the
+engine is built with, which reaches `EngineConfiguration`'s slot through the friend seam and also
+implements core's `ThroughputSource`, so the estimate the selector reads and the one a policy is handed
+are one number. It samples what the engine's propagated `TransferListener` reports — never a transfer
+whose source says `isNetwork = false`, which is the cache-hit exclusion, and never one Media3 flags
+as possibly throttled — and keeps one `SampleWindow` per transport in `EstimateMemory`, of which
+there is **one per process** (ADR-0009 rule 8): eight samples, an arithmetic mean, a population
+spread, and the 25th percentile, every constant argued where it is chosen. On a transport change the
+estimate is that transport's own window or its `ColdDefaults` entry, and a window ages toward the
+cold default between two and fifteen minutes (rule 9). The oracle's one platform call is the
+connectivity service, read in `BandwidthOracle` and translated by core's `ConditionsBinding.kt`. Two
+things worth knowing before touching it: Media3 hands its transfer listener to media loads only, so
+a playlist is never a sample in any Media3 player and `BandwidthOraclePlaybackTest` counts segments;
+and the `PlaybackHarness` now replays a trace's *transport* into Robolectric's connectivity shadow as
+its clock crosses a stretch (`TransportReplay`), which is what lets a reseed be asserted at the
+millisecond `NetworkProfile.HANDOVER_AT_MS` names. `AdaptiveLoadControl` and
+`NetworkAwareTrackSelection` are #100 and #101 and do not exist yet.
+
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
-enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`
-and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
+enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,
+`superplayer-abr` and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
 requirements, and the phase table are what the issues are cut from.
 
 `benchmark/` is the fourth build and Phase 2's exit criterion: `PRD.md` §6's fixed matrix — six

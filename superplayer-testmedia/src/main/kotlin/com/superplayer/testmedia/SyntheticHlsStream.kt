@@ -124,11 +124,13 @@ public object SyntheticHlsStream {
      * asks for more; every segment is byte-identical apart from its timestamp tag, because what
      * varies is how much of the stream exists and not what is in it.
      *
-     * One variant, unlike [writeTo]: the two-variant form exists for the track-selection test that
-     * plays through the real transfer chain, and nothing serving from memory has needed it.
+     * [variantCount] is one by default, as [writeTo]'s is: the two-variant form is for a test whose
+     * subject is a *selection* — which rendition was chosen, or what the selection reports about
+     * its own estimate — and a stream with one variant is selected by a fixed selection that
+     * reports nothing.
      */
-    public fun resources(segmentCount: Int = 1): Map<String, ByteArray> =
-        files(segmentCount).mapKeys { (name, _) -> BASE_URI + name }
+    public fun resources(segmentCount: Int = 1, variantCount: Int = 1): Map<String, ByteArray> =
+        files(segmentCount, variantCount).mapKeys { (name, _) -> BASE_URI + name }
 
     /**
      * The same stream on disk, returning the multivariant playlist's `file:` URI.

@@ -96,8 +96,8 @@ public final class com/superplayer/testmedia/SyntheticHlsStream {
 	public static final field SEGMENT_SUFFIX Ljava/lang/String;
 	public final fun durationMs (I)J
 	public final fun liveResources (I)Ljava/util/Map;
-	public final fun resources (I)Ljava/util/Map;
-	public static synthetic fun resources$default (Lcom/superplayer/testmedia/SyntheticHlsStream;IILjava/lang/Object;)Ljava/util/Map;
+	public final fun resources (II)Ljava/util/Map;
+	public static synthetic fun resources$default (Lcom/superplayer/testmedia/SyntheticHlsStream;IIILjava/lang/Object;)Ljava/util/Map;
 	public final fun writeTo (Ljava/io/File;II)Ljava/lang/String;
 	public static synthetic fun writeTo$default (Lcom/superplayer/testmedia/SyntheticHlsStream;Ljava/io/File;IIILjava/lang/Object;)Ljava/lang/String;
 }

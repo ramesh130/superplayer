@@ -17,8 +17,8 @@
 /**
  * superplayer-abr — AdaptiveLoadControl, NetworkAwareTrackSelection, BandwidthOracle
  *
- * Placeholder. This module is created empty and buildable so that the module boundary and
- * dependency direction are fixed and enforceable now, rather than negotiated once code
- * arrives (phase 3). It intentionally declares no public API yet.
+ * Phase 3: the adaptive policy behind the boundary ADR-0005 establishes and ADR-0009 extends.
+ * [com.superplayer.abr.BandwidthOracle] is the throughput estimator the other two read from; the
+ * load control and the track selection are the next two issues of #96.
  */
 package com.superplayer.abr

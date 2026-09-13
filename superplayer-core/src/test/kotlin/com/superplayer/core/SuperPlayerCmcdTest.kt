@@ -41,19 +41,15 @@ import org.junit.runner.RunWith
  * That listener is also the reason this can assert on values rather than only on keys: it sees the
  * `DataSpec` the chunk source built, headers and all, at the moment it is opened.
  *
- * ## The one key that cannot be asserted here, and why that is not a gap in the library
+ * ## The one key that is asserted elsewhere
  *
  * `mtp` — measured throughput — is the exception. Media3 fills it from
  * `ExoTrackSelection.getLatestBitrateEstimate()`, which only an *adaptive* selection keeps; a fixed
  * selection has no estimate and the key is omitted rather than sent empty. Nothing SuperPlayer
  * configures suppresses it: no key filter is applied at all, so every key Media3 knows how to fill
- * travels.
- *
- * Getting an adaptive selection needs a renderer that reports adaptive support, which under
- * Robolectric means video, and `docs/testing.md` bars the device and the network that a real video
- * stream would need. So `mtp` is verified where the issue's acceptance criteria put it — on the
- * emulator, against the demo's real streams — and asserted here only as far as this harness can
- * honestly reach. A test that faked an estimate to produce the key would be asserting on the fake.
+ * travels. The one-variant stream this test plays is selected by a fixed selection, so the key is
+ * not here to assert on; `superplayer-abr`'s `BandwidthOraclePlaybackTest` plays the two-variant
+ * form under an adaptive selection over the oracle's own estimate, and asserts it there.
  */
 @RunWith(AndroidJUnit4::class)
 class SuperPlayerCmcdTest {

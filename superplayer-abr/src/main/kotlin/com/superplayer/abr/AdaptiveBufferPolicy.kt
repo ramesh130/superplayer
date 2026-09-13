@@ -66,16 +66,15 @@ import kotlin.math.min
  *    fetch rather than to coast, and the decision carries a [LiveLatencyPolicy] so the engine holds
  *    the window by micro-speed correction instead of by seeking.
  * 4. **After a rebuffer → hysteresis.** For [REBUFFER_COOLDOWN_MS] after a rebuffer ends, the
- *    after-rebuffer floor is raised in proportion to how many this session has suffered, and the
- *    quality ceiling is held at what the network delivered *most of the time* — the conservative
- *    percentile — so the selector cannot climb straight back to the rung that stalled. Both lapse
- *    at the first consultation after the cooldown, which is the next trigger rather than the
- *    moment itself, because a policy is consulted on triggers and never on a timer (ADR-0009
- *    rule 4). That is the right shape and not only the permitted one: a network that moves after
- *    the stall is a trigger, and a network that stays exactly as it was is one the held ceiling
- *    already describes — the percentile *is* what it delivers — so nothing is lost by holding it
- *    until something changes. How the selector honours the ceiling is
- *    `NetworkAwareTrackSelection`'s (#101); this policy only emits it.
+ *    after-rebuffer floor is raised in proportion to how many this session has suffered. The
+ *    other half of the same hysteresis — the quality ceiling held at what the network delivered
+ *    *most of the time* — is [AdaptiveSelectionPolicy]'s, on the same cooldown, so the two lapse
+ *    together. Both lapse at the first consultation after the cooldown, which is the next trigger
+ *    rather than the moment itself, because a policy is consulted on triggers and never on a
+ *    timer (ADR-0009 rule 4). That is the right shape and not only the permitted one: a network
+ *    that moves after the stall is a trigger, and a network that stays exactly as it was is one
+ *    the held ceiling already describes — the percentile *is* what it delivers — so nothing is
+ *    lost by holding it until something changes.
  * 5. **A memory-aware ceiling on every branch.** Media3 buffers media on the Java heap, so
  *    `maxBufferMs` is a heap commitment; a quarter of the app's heap budget, at the rate the buffer
  *    can actually fill, is the most it may commit, whatever the branch above asked for.
@@ -127,10 +126,9 @@ public class AdaptiveBufferPolicy(public val profile: PlaybackProfile) : Playbac
             )
         }
 
-        val trackSelection =
-            if (cooldown && measured != null) base.trackSelection.heldAt(measured) else base.trackSelection
-
-        return PlaybackDecision(targets.toBufferPolicy(), trackSelection, liveLatency)
+        // The selection half is the static profile's: it is `AdaptiveSelectionPolicy`'s to move,
+        // and `AdaptivePolicy` composes the two so that each owns one half.
+        return PlaybackDecision(targets.toBufferPolicy(), base.trackSelection, liveLatency)
     }
 
     /**
@@ -186,18 +184,6 @@ public class AdaptiveBufferPolicy(public val profile: PlaybackProfile) : Playbac
         val ceilingMs = bufferBytes * BITS_PER_BYTE * MILLIS_PER_SECOND / fillRateBps
         val stepped = ceilingMs / CEILING_STEP_MS * CEILING_STEP_MS
         return stepped.coerceIn(CEILING_STEP_MS, Int.MAX_VALUE.toLong()).toInt()
-    }
-
-    /**
-     * Branch 4's held ceiling: the conservative percentile, or the mean where the meter has none,
-     * under the profile's own cap. What the network delivered most of the time is the most a
-     * selector should ask of it while the stall is fresh. A reading of zero holds nothing — there
-     * is no rung under it to hold at.
-     */
-    private fun TrackSelectionPolicy.heldAt(measured: ThroughputEstimate): TrackSelectionPolicy {
-        val delivered = (measured.conservativeBps ?: measured.meanBps).takeIf { it > 0 } ?: return this
-        val held = min(delivered, maxVideoBitrateBps.toLong()).toInt()
-        return copy(maxVideoBitrateBps = held)
     }
 
     /**

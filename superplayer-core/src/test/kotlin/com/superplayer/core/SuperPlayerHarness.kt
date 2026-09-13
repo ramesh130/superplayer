@@ -84,6 +84,7 @@ class SuperPlayerHarness : ExternalResource() {
         profile: PlaybackProfile? = null,
         fakeDataSet: FakeDataSet = SyntheticHlsStream.addTo(FakeDataSet()),
         telemetry: TelemetryCollector? = null,
+        policy: PlaybackPolicy? = null,
         alsoConfigureEngine: (ExoPlayer.Builder) -> Unit = {},
     ): SuperPlayer {
         // Auto-advancing: the playback thread's waits resolve as fast as the test can run them, so a
@@ -96,6 +97,7 @@ class SuperPlayerHarness : ExternalResource() {
             SuperPlayer.Builder(ApplicationProvider.getApplicationContext())
                 .apply { profile?.let { setProfile(it) } }
                 .apply { telemetry?.let { setTelemetry(it) } }
+                .apply { policy?.let { setPolicy(it) } }
                 .setEngineConfigurator { configuration ->
                     configuration.engine.useHarnessClock(clock)
                     // In the transport's place, under the chain `build()` composes, rather than in
@@ -127,6 +129,7 @@ class SuperPlayerHarness : ExternalResource() {
         profile: PlaybackProfile? = null,
         cmcdMode: CmcdMode? = null,
         telemetry: TelemetryCollector? = null,
+        policy: PlaybackPolicy? = null,
         alsoConfigureEngine: (ExoPlayer.Builder) -> Unit = {},
     ): SuperPlayer {
         val clock = FakeClock(/* isAutoAdvancing= */ true)
@@ -136,6 +139,7 @@ class SuperPlayerHarness : ExternalResource() {
                 .apply { profile?.let { setProfile(it) } }
                 .apply { cmcdMode?.let { setCmcdMode(it) } }
                 .apply { telemetry?.let { setTelemetry(it) } }
+                .apply { policy?.let { setPolicy(it) } }
                 .setEngineConfigurator { configuration ->
                     configuration.engine.useHarnessClock(clock)
                     // Whatever a test needs *besides* the chain — the bandwidth meter a CMCD test

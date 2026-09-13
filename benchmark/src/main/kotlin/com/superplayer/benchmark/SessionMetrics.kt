@@ -175,6 +175,16 @@ internal data class SessionMetrics(
     val droppedEventCount: Int,
 
     /**
+     * How many times the decision in force changed during the session.
+     *
+     * ref: `docs/telemetry-schema.md`, *Decision changes*. Zero for every arm today: the stock arms
+     * have no policy and the SuperPlayer arm's static policy is consulted once. Counted now so that
+     * the adaptive arm Phase 3 adds is compared on how often it moved as well as on where it landed
+     * — a policy that wins the bitrate column by oscillating has a cost this column shows.
+     */
+    val decisionChangeCount: Int,
+
+    /**
      * Whether the session produced a `SessionEnded` at all.
      *
      * A session that did not is one whose player was never released, which in a benchmark means the
@@ -256,6 +266,7 @@ internal data class SessionMetrics(
                     firstFrame == null &&
                     own.none { it is TelemetryEvent.StartupFailed },
                 droppedEventCount = ended?.droppedEventCount ?: 0,
+                decisionChangeCount = own.count { it is TelemetryEvent.DecisionChanged },
                 ended = ended != null,
             )
         }

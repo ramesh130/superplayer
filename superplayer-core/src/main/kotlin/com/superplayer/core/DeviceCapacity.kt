@@ -151,15 +151,36 @@ private fun memoryCapacity(context: Context): Int {
 
     if (activityManager.isLowRamDevice) return MINIMUM_CAPACITY
 
+    val heapBytes = heapBudgetBytesOf(context) ?: return MINIMUM_CAPACITY
+
+    return (heapBytes / HEAP_BYTES_PER_PLAYER).toInt()
+}
+
+/**
+ * The heap this app is allowed, in bytes, or null when the platform does not say.
+ *
+ * The one reading of the app's heap budget in the library: [PlaybackConditions.heapBudgetBytes] is
+ * this number, and the pool's memory capacity above is this number divided by a per-player budget,
+ * so the two cannot disagree about how much memory there is. A budget rather than a free-heap
+ * reading, because free heap under a garbage collector is noise.
+ *
+ * Null rather than zero for an environment that does not implement the reading, for the reason the
+ * pool gives: "I do not know" is not "none", and a policy handed a zero would size a buffer for a
+ * device with no memory.
+ *
+ * ref: https://developer.android.com/reference/android/app/ActivityManager#getMemoryClass()
+ */
+internal fun heapBudgetBytesOf(context: Context): Long? {
+    val activityManager =
+        context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return null
+
     val declaresLargeHeap =
         (context.applicationInfo.flags and ApplicationInfo.FLAG_LARGE_HEAP) != 0
     val heapMegabytes =
         if (declaresLargeHeap) activityManager.largeMemoryClass else activityManager.memoryClass
-    // Zero is what an environment that does not implement this reports, and dividing by the budget
-    // would turn "I do not know" into "none".
-    if (heapMegabytes <= 0) return MINIMUM_CAPACITY
+    if (heapMegabytes <= 0) return null
 
-    return (heapMegabytes.toLong() * BYTES_PER_MEGABYTE / HEAP_BYTES_PER_PLAYER).toInt()
+    return heapMegabytes.toLong() * BYTES_PER_MEGABYTE
 }
 
 /**

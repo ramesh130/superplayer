@@ -27,12 +27,11 @@ package com.superplayer.core
  *
  * ## Why the boundary comes before the adaptation
  *
- * The interesting version of this interface is the adaptive one: a policy that watches throughput,
- * buffer occupancy and the transport, and moves the numbers as they change. That work is
- * `superplayer-abr`'s, and writing it now would mean fixing the shape of [PlaybackConditions]
- * against a guess at what an adaptive policy needs to see. Guessing wrong there is expensive —
- * it is a public interface — and the way to guess less is to build the adaptation first and let it
- * say what it needs.
+ * The interesting version of this interface is the adaptive one: a policy that watches throughput
+ * and the transport, and moves the numbers as they change. That work is `superplayer-abr`'s. The
+ * boundary was published first with an *empty* [PlaybackConditions], so that its shape could be
+ * fixed by what the adaptation turned out to read rather than by a guess; ADR-0009 is where that
+ * was decided, and the type now carries exactly the observations it names.
  *
  * What is cheap to get right now is the *boundary*: making sure policy is reached through one
  * interface rather than being spread across Media3 callbacks and builder calls at the point where
@@ -45,16 +44,26 @@ package com.superplayer.core
  * [PlaybackProfile] whatever the conditions, every time. It ignores its argument, on purpose. A
  * consumer choosing a profile today gets a fixed, documented configuration — which is already the
  * thing most apps do not have — and gets it without SuperPlayer pretending to an adaptivity it has
- * not measured.
+ * not measured. A consumer who wants something else supplies it through
+ * [SuperPlayer.Builder.setPolicy], which takes any implementation of this interface.
  *
  * ## When the policy is consulted
  *
- * Once, when the player is built. Half of a decision — [BufferPolicy] — can only be applied at
- * construction, because Media3's `DefaultLoadControl` is fixed once the engine has it; consulting
- * the policy repeatedly today would therefore produce answers that could only be half honoured, and
- * a decision that is half in force is worse than one that is documented as construction-time.
- * Consulting it continuously is what `superplayer-abr`'s `AdaptiveLoadControl` makes possible, and
- * it is the same interface when it does.
+ * At construction, always. Again on a fixed set of named triggers — the transport changes, the
+ * stream type becomes known or changes, a rebuffer ends, the playback speed changes, the bandwidth
+ * meter reports a material move — but **only on a player whose engine was built with components
+ * that can honour a changed decision whole**, which today means one built with `superplayer-abr`'s
+ * policy. On any other player the policy is consulted once, whatever policy it is: Media3's
+ * `DefaultLoadControl` takes its durations at construction and does not accept new ones, so a
+ * re-consultation there could only have half of its answer applied, and a decision that is half in
+ * force is worse than one documented as construction-time. ADR-0009 rules 4 and 5 are the two
+ * halves of that contract; [DecisionTrigger] is the list of triggers; [SuperPlayer.playbackDecision]
+ * is the decision currently in force and `TelemetryEvent.DecisionChanged` is how a change is seen.
+ *
+ * Not on a cadence and not on every observation, because a policy asked once per bandwidth sample
+ * oscillates and a policy asked on a timer is asked with nothing new to say. Hysteresis is the
+ * policy's own: [PlaybackConditions.stallHistory] says how long ago the last stall ended, and a
+ * policy that wants a cooldown holds its previous answer until that is large enough.
  */
 public fun interface PlaybackPolicy {
 
@@ -85,23 +94,34 @@ public fun interface PlaybackPolicy {
 }
 
 /**
- * What is known about the playback at the moment a [PlaybackPolicy] is asked for a decision.
+ * The named events on which a [PlaybackPolicy] is consulted again after construction, and the only
+ * ones (ADR-0009 rule 4).
  *
- * **It carries nothing today, and that is the honest state of it.** The policy is consulted once,
- * when the player is built, and at that moment nothing about the content has been observed: no
- * manifest has been read, no track has been seen, nothing has been played. A type with an `isLive`
- * flag here would be a type reporting an observation nobody made.
- *
- * It exists as a type rather than as no parameter at all because it is the boundary's input, and
- * because what an adaptive policy needs to see — throughput, buffer occupancy, transport, whether
- * the content turned out to be live — is exactly what this grows. Growing it is a source-compatible
- * addition for every implementation that ignores the new property, which is what makes the empty
- * version worth having now instead of a signature change later.
- *
- * ADR-0005 makes the discipline explicit: a property arrives here when an implementation reads it,
- * not in anticipation of one.
+ * Each is a fact a reader can name, which is what makes a series of decisions legible after the
+ * fact: `TelemetryEvent.DecisionChanged` carries the trigger that produced it, and "every ten
+ * seconds" would not be a reason. A consultation that returns the decision already in force
+ * produces no change and no event.
  */
-public class PlaybackConditions
+public enum class DecisionTrigger {
+    /** The device moved to a different [NetworkTransport]. */
+    TRANSPORT_CHANGED,
+
+    /** The manifest said what the content is — or, for a live playlist that ended, what it became. */
+    STREAM_TYPE_CHANGED,
+
+    /** A rebuffer ended and playback resumed; [PlaybackConditions.stallHistory] has moved. */
+    REBUFFER_ENDED,
+
+    /** The playback speed changed. */
+    PLAYBACK_SPEED_CHANGED,
+
+    /**
+     * The bandwidth meter reported that its estimate moved materially, where "materially" is a
+     * threshold the meter applies to its own estimate before saying anything, so that a policy is
+     * never consulted once per sample.
+     */
+    THROUGHPUT_CHANGED,
+}
 
 /** A [PlaybackPolicy]'s answer: how to buffer, and what to cap track selection at. */
 public data class PlaybackDecision(

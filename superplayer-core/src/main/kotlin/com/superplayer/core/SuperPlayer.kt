@@ -28,6 +28,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
@@ -96,21 +97,14 @@ public class SuperPlayer private constructor(
     /**
      * The profile this player was built with — what kind of playback this is.
      *
-     * Read-only: a profile is chosen at construction and does not change, because half of what it
-     * decides can only be applied to an engine as it is built. An app that offers the choice at
-     * runtime — a data-saver switch in settings, say — builds a new player, which is what the demo
-     * does.
+     * Read-only: a profile is chosen at construction and does not change. It names the policy the
+     * player was built for, and a policy is built *for* a profile rather than observing one. An app
+     * that offers the choice at runtime — a data-saver switch in settings, say — builds a new
+     * player, which is what the demo does.
      */
     public val profile: PlaybackProfile,
-    /**
-     * The configuration [profile]'s policy produced, and what this player is running.
-     *
-     * Reported rather than merely applied, because half of it is otherwise invisible. The selection
-     * half is observable as Media3's own [Player.getTrackSelectionParameters]; the buffer half is
-     * handed to a `LoadControl` at construction and Media3 offers no way to read it back, so without
-     * this a consumer — or a test — has no way to see what their profile actually asked for.
-     */
-    public val playbackDecision: PlaybackDecision,
+    /** The decision the policy made at construction; what [playbackDecision] starts as. */
+    initialDecision: PlaybackDecision,
     private val delegate: ForwardingPlayer,
     /**
      * The track selection parameters this player was built with — what [resetForReuse] puts back.
@@ -170,7 +164,38 @@ public class SuperPlayer private constructor(
      * none.
      */
     private val measurementSession: MeasurementSession,
+    /**
+     * The trigger loop that consults the policy again and re-targets the engine, or null on a
+     * player whose engine was built with nothing that could honour a changed decision — which is
+     * every player built without `superplayer-abr`'s policy, and is the whole of what such a player
+     * pays (ADR-0009 rule 7). Every use below is null-conditional.
+     *
+     * Deliberately without a default value, for the reason [builtWithTrackSelectionParameters] has
+     * none.
+     */
+    private val reapplication: DecisionReapplication?,
 ) : Player by delegate {
+
+    /**
+     * The decision currently in force: how this player is buffering and what it is selecting
+     * tracks under.
+     *
+     * Reported rather than merely applied, because half of it is otherwise invisible. The selection
+     * half is observable as Media3's own [Player.getTrackSelectionParameters] on a player built
+     * without retargetable components; the buffer half is handed to a `LoadControl` and Media3
+     * offers no way to read it back, so without this a consumer — or a test — has no way to see
+     * what their policy actually asked for.
+     *
+     * **It can change.** On a player whose engine can honour a changed decision whole — one built
+     * with `superplayer-abr`'s policy — the policy is consulted again on the [DecisionTrigger]s and
+     * this reports its latest answer; each change is also a `TelemetryEvent.DecisionChanged`, and
+     * `SessionStarted.decision` is the value this had when the session began. On every other player
+     * it is the decision made at construction, for the player's lifetime (ADR-0009 rules 5 and 6).
+     * Written on the application thread; readable from any.
+     */
+    @Volatile
+    public var playbackDecision: PlaybackDecision = initialDecision
+        private set
 
     /**
      * The platform's memory-pressure signal, forwarded to the collector.
@@ -213,6 +238,12 @@ public class SuperPlayer private constructor(
 
     init {
         telemetryMemoryPressure?.let { applicationContext?.registerComponentCallbacks(it) }
+        // Wired here rather than in the builder so the loop never holds a half-built facade: it is
+        // started, and can first call back, only once `build()` has this object in hand.
+        reapplication?.onDecisionChanged = { decision, trigger ->
+            playbackDecision = decision
+            telemetry?.decisionChanged(decision, trigger)
+        }
     }
 
     /**
@@ -237,6 +268,8 @@ public class SuperPlayer private constructor(
         // chain and no CMCD seam can be reading the id — a collector is the only possible reader,
         // and `enabled` says exactly that. [Builder] passes its own and never falls through to this.
         measurementSession: MeasurementSession = MeasurementSession(enabled = telemetry != null),
+        // Null for an engine somebody else built, which has nothing of core's to re-target.
+        reapplication: DecisionReapplication? = null,
     ) : this(
         exoPlayer,
         profile,
@@ -246,6 +279,7 @@ public class SuperPlayer private constructor(
         telemetry,
         applicationContext,
         measurementSession,
+        reapplication,
     )
 
     /**
@@ -575,6 +609,9 @@ public class SuperPlayer private constructor(
         // The application context outlives every player it built, so a callback left registered
         // here is a leak of this player and everything it holds — for the life of the process.
         telemetryMemoryPressure?.let { applicationContext?.unregisterComponentCallbacks(it) }
+        // Before the engine goes, for the same reason: the connectivity callback is registered
+        // against the process, and would otherwise hold this player for as long as it lived.
+        reapplication?.stop()
 
         delegate.release()
         synchronized(wrappedListeners) { wrappedListeners.clear() }
@@ -622,6 +659,7 @@ public class SuperPlayer private constructor(
 
         private var engineConfigurator: ((EngineConfiguration) -> Unit)? = null
         private var profile: PlaybackProfile = PlaybackProfile.VIDEO_ON_DEMAND
+        private var policy: PlaybackPolicy? = null
         private var telemetry: TelemetryCollector? = null
 
         /**
@@ -634,13 +672,42 @@ public class SuperPlayer private constructor(
         private var cmcdMode: CmcdMode? = null
 
         /**
-         * Chooses the kind of playback this player is for — one call, and the only one policy takes.
+         * Chooses the kind of playback this player is for.
          *
          * Defaults to [PlaybackProfile.VIDEO_ON_DEMAND]. What the profile decides, and why each
          * profile decides it differently, is [PlaybackProfile] and [PlaybackPolicy]'s subject; the
-         * result is readable afterwards as [SuperPlayer.playbackDecision].
+         * result is readable afterwards as [SuperPlayer.playbackDecision]. The profile names the
+         * policy the player runs unless [setPolicy] supplies one; either way the consumer names a
+         * profile or a policy and never a number (ADR-0005 rule 3, as ADR-0009 rewords it).
          */
         public fun setProfile(profile: PlaybackProfile): Builder = apply { this.profile = profile }
+
+        /**
+         * Supplies the [PlaybackPolicy] this player decides with, in place of the profile's own
+         * static one. Any implementation: `superplayer-abr`'s adaptive policy for a profile, or a
+         * consumer's own.
+         *
+         * ```kotlin
+         * val player = SuperPlayer.Builder(context)
+         *     .setProfile(PlaybackProfile.LIVE_LINEAR)
+         *     .setPolicy(myPolicy)
+         *     .build()
+         * ```
+         *
+         * **How often it is consulted depends on what the engine was built with**, and this is a
+         * documented limit rather than a surprise (ADR-0009 rule 5). A policy that brings engine
+         * components able to honour a changed decision — `superplayer-abr`'s does — is consulted at
+         * construction and again on every [DecisionTrigger], with [PlaybackConditions] core has
+         * observed. Any other policy, a consumer's hand-written adaptive one included, is consulted
+         * **once**, at construction, with empty conditions: Media3's own `DefaultLoadControl` cannot
+         * take a new buffer target after it is built, and a decision half in force is worse than one
+         * honestly documented as construction-time. Such a policy behaves as a static one, and
+         * [SuperPlayer.playbackDecision] reports its one answer for the player's lifetime.
+         *
+         * The profile is still set separately, because a policy is built *for* one and reads it
+         * from its own constructor; [setProfile] is what the telemetry and the CMCD defaults read.
+         */
+        public fun setPolicy(policy: PlaybackPolicy): Builder = apply { this.policy = policy }
 
         /**
          * Measures this player, and writes what it measures to the collector's own sink.
@@ -702,10 +769,7 @@ public class SuperPlayer private constructor(
             apply { engineConfigurator = configurator }
 
         public fun build(): SuperPlayer {
-            // The policy boundary, consulted at its one call site. Nothing about buffering or track
-            // selection is decided below this line — see PlaybackPolicy for why it is asked once,
-            // and asked with conditions that are empty because no content has been described yet.
-            val decision = PlaybackPolicy.forProfile(profile).decide(PlaybackConditions())
+            val policy = policy ?: PlaybackPolicy.forProfile(profile)
 
             // The CMCD half, resolved once the profile is final. The holder is created here rather
             // than inside the player because both ends of the join need the same object: the
@@ -715,20 +779,43 @@ public class SuperPlayer private constructor(
                 enabled = telemetry != null || cmcd != CmcdMode.DISABLED,
             )
 
-            // The two halves of a decision are applied at the two moments Media3 accepts them, and
-            // that asymmetry is Media3's rather than a choice: a `LoadControl` is taken by the
-            // builder and fixed once the engine exists, while track selection parameters can only
-            // be read and set on a built engine.
             val engineBuilder = ExoPlayer.Builder(context)
-                .setLoadControl(decision.buffer.toLoadControl())
                 // Audio focus, becoming-noisy and the wake locks: platform rules rather than
                 // policy, which is why they are not a profile's to decide. See LifecycleBinding.kt.
                 .withLifecycleCorrectness()
-            // After the profile, so that a test's engine configuration wins over it: the clock,
-            // the renderers, a meter a test reads through. Nothing else reaches this seam, and a
-            // test that needs a load control of its own is testing the engine rather than the policy.
             val configuration = EngineConfiguration(engineBuilder)
+            // A policy that brings its own engine components fills the slots first; the test seam
+            // runs after it so a test's engine configuration wins over the policy's exactly as it
+            // wins over the profile's: the clock, the renderers, a meter a test reads through. A
+            // policy that is not an extension takes the path below untouched — nothing is looked
+            // up and nothing is registered, which is what a consumer without abr pays.
+            (policy as? EnginePolicyExtension)?.configureEngine(configuration)
             engineConfigurator?.invoke(configuration)
+
+            // The policy boundary, consulted at its one construction-time call site. Nothing about
+            // buffering or track selection is decided below this line. With a target the loop that
+            // will consult it again reads the conditions core can already observe — the transport,
+            // the heap — and hands the answer to the target; without one the conditions are empty,
+            // because nothing has been observed and nothing will be (ADR-0009 rule 5).
+            val reapplication = configuration.decisionTarget?.let { target ->
+                DecisionReapplication(
+                    context.applicationContext,
+                    policy,
+                    target,
+                    configuration.bandwidthMeter as? ThroughputSource,
+                )
+            }
+            val decision = reapplication?.decideInitially() ?: policy.decide(PlaybackConditions())
+
+            // The buffer half becomes a `DefaultLoadControl` only when nothing retargetable was
+            // installed in its place; the target already holds the decision otherwise.
+            engineBuilder.setLoadControl(configuration.loadControl ?: decision.buffer.toLoadControl())
+            configuration.bandwidthMeter?.let(engineBuilder::setBandwidthMeter)
+            // Under Media3's own selector, so the device-derived defaults are built upon, as they
+            // are for the parameters below.
+            configuration.trackSelectionFactory?.let { factory ->
+                engineBuilder.setTrackSelector(DefaultTrackSelector(context, factory))
+            }
             // The loading path, composed in one place rather than defaulted by Media3; TransferChain
             // says what wraps what, and where cache, measurement, CMCD and header refresh each go.
             // Installed after the seam rather than before it, so that a test's fake data source
@@ -746,11 +833,14 @@ public class SuperPlayer private constructor(
             )
 
             val engine = engineBuilder.build()
-            // Built upon rather than replaced, so the engine's own device-derived defaults survive
-            // the profile's ceilings. A consumer setting their own parameters afterwards overrides
-            // this, and nothing puts it back — the policy is not consulted again.
-            engine.trackSelectionParameters =
-                decision.trackSelection.applyTo(engine.trackSelectionParameters)
+            // The selection half, laid into the parameters only where no target owns it. Built upon
+            // rather than replaced, so the engine's own device-derived defaults survive the
+            // ceilings; a consumer setting their own parameters afterwards overrides this, and no
+            // trigger ever puts it back — EngineBinding.kt says why a target gets no ceiling here.
+            if (reapplication == null) {
+                engine.trackSelectionParameters =
+                    decision.trackSelection.applyTo(engine.trackSelectionParameters)
+            }
 
             val player = SuperPlayer(
                 engine,
@@ -763,6 +853,7 @@ public class SuperPlayer private constructor(
                 // Only when there is a collector to signal; see the field.
                 applicationContext = telemetry?.let { context.applicationContext },
                 measurementSession = measurementSession,
+                reapplication = reapplication,
             )
 
             // After construction rather than inside it: a collector registers against the built
@@ -770,6 +861,9 @@ public class SuperPlayer private constructor(
             // it is how a half-built object escapes. Only reached when a collector was supplied,
             // which is what makes ADR-0008 rule 2's "pays nothing" true of every other player.
             telemetry?.attach(player)
+            // Likewise, and after the collector, so that the first change a trigger produces finds
+            // a collector already attached to report it to.
+            reapplication?.start(engine)
 
             return player
         }

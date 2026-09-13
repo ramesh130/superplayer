@@ -262,6 +262,16 @@ public class SessionTraceRecorder : TelemetrySink {
                 "maxVideoBitrateBps=${tracks.maxVideoBitrateBps} maxVideoHeightPx=${tracks.maxVideoHeightPx}"
         }
 
+        is TelemetryEvent.DecisionChanged -> {
+            val buffer = event.decision.buffer
+            val tracks = event.decision.trackSelection
+            "trigger=${event.trigger} minBufferMs=${buffer.minBufferMs} maxBufferMs=${buffer.maxBufferMs} " +
+                "bufferForPlaybackMs=${buffer.bufferForPlaybackMs} " +
+                "bufferForPlaybackAfterRebufferMs=${buffer.bufferForPlaybackAfterRebufferMs} " +
+                "backBufferMs=${buffer.backBufferMs} retainBackBufferFromKeyframe=${buffer.retainBackBufferFromKeyframe} " +
+                "maxVideoBitrateBps=${tracks.maxVideoBitrateBps} maxVideoHeightPx=${tracks.maxVideoHeightPx}"
+        }
+
         is TelemetryEvent.SessionEnded -> "droppedEventCount=${event.droppedEventCount}"
 
         is TelemetryEvent.FirstFrameRendered ->

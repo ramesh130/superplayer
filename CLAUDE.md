@@ -151,11 +151,23 @@ it stops.
 That policy is reached through `PlaybackPolicy`, the boundary ADR-0005 establishes: observed
 `PlaybackConditions` in, a `PlaybackDecision` (a `BufferPolicy` and a `TrackSelectionPolicy`) out,
 with no Media3 type anywhere in it. `EngineBinding.kt` is the one place a decision becomes Media3
-configuration. The implementation that ships is a static per-profile lookup, deliberately not
-adaptive — adaptive policy is `superplayer-abr`'s, behind this same interface. The policy is
-consulted once, at construction, because `DefaultLoadControl` cannot be re-configured afterwards;
-`player.playbackDecision` reports what was applied, which is the only way to see the buffer half at
-all.
+configuration, and `ConditionsBinding.kt` is its inverse — the one place Android's and Media3's
+vocabulary becomes an observation. `PlaybackConditions` carries exactly the six observations
+ADR-0009 rule 1 enumerates (transport, throughput with its spread, stall history, stream type, heap
+budget, playback speed), every one optional, each with its reader named in its KDoc. The
+implementation that ships is a static per-profile lookup, deliberately not adaptive — adaptive policy
+is `superplayer-abr`'s, behind this same interface, supplied through `SuperPlayer.Builder.setPolicy`.
+**How often a policy is consulted depends on what the engine was built with** (ADR-0009 rules 4
+and 5): a policy that is also core's internal `EnginePolicyExtension` fills `EngineConfiguration`'s
+retargetable slots — a load control, a selection factory, a meter, and the `DecisionTarget` a changed
+decision is handed back through — and is then consulted again on the five `DecisionTrigger`s by
+`DecisionReapplication`, every change a `DecisionChanged` telemetry event; any other policy, a
+consumer's hand-written adaptive one included, is consulted once at construction with empty
+conditions, because `DefaultLoadControl` cannot take a new target and half a decision in force is
+worse than none. `player.playbackDecision` is the decision currently in force and can change on the
+first kind of player. A player built with a profile alone registers no observer, and
+`SuperPlayerPolicyTest` counts that rather than assuming it. `superplayer-abr` reaches the internal
+interface as the second Kotlin friend of core; that is a compiler flag, not a Gradle dependency.
 
 The facade *implements* `Player` by Kotlin delegation rather than extending `ForwardingPlayer`;
 ADR-0003 records why, and the shape is load-bearing rather than stylistic. Kotlin delegation does

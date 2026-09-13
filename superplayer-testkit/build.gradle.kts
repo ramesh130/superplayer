@@ -24,6 +24,9 @@ dependencies {
     // The fault injector wraps a `DataSource`, so this module names the artifact those types come
     // from rather than resolving it through `superplayer-core`'s own transitive graph.
     implementation(libs.media3.datasource)
+    // `@RequiresApi` on the one declaration Robolectric offers only from API 29, so lint holds
+    // this module to the same minimum as core and the caller says which level it runs at.
+    implementation(libs.androidx.annotation)
     // The protocols' own parsers and media sources. `DefaultMediaSourceFactory` finds them by
     // reflection, so a harness that plays synthetic HLS or DASH needs them on its *runtime*
     // classpath rather than only on a test's — and `FaultInjectionTest` reads its URL sequences out

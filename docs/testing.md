@@ -319,6 +319,19 @@ decoder limit and read it back. The tests therefore pin **which limit binds** �
 rather than a number they supplied, which a derivation that ignored the platform could not produce by
 accident.
 
+The track selector reads the device too — the display's largest mode and HDR types, and each video
+decoder's profile levels — once, when a player is built, and `superplayer-testkit`'s public
+`DeviceStatement` is how a test states them: `declareDisplay`, `declareDisplayHdrTypes`,
+`declareVideoDecoder` with its `(profile, level)` pairs, and the heap. Two things follow. The
+harness declares a television-sized display before every test, because a selector reading
+Robolectric's small default would refuse every rung above the bottom one before any estimate was
+consulted — the same defect it already closes for Media3's own viewport constraint — so a test about
+the display gate *narrows* the display rather than declaring one. And a decoder is declared before
+the test's first player is built, not only before the one it is about: the platform caches its codec
+list on first read, so `NetworkAwareTrackSelectionPlaybackTest` keeps its ungated control in a
+separate test rather than playing it first. `Display.Mode` has no public constructor, which is why
+`declareDisplay` builds the mode through Robolectric's reflection helper, in that one place.
+
 ## Proving a player was released
 
 There is no `isReleased` on `Player`, and a released Media3 player answers most questions the way a

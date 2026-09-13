@@ -21,7 +21,9 @@ import android.content.Context
 import android.hardware.display.DisplayManager
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
+import android.os.Build
 import android.view.Display
+import androidx.annotation.RequiresApi
 import androidx.test.core.app.ApplicationProvider
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.shadows.MediaCodecInfoBuilder
@@ -116,11 +118,15 @@ public object DeviceStatement {
      * No pairs is a decoder that declares no profiles, which SuperPlayer reads as *unknown* rather
      * than as *nothing*: a ladder played on it is gated on nothing.
      *
+     * Robolectric's codec builder exists from API 29, which is why the declaration says so; the
+     * pinned test runtime is above it, and a test that lowers its level cannot state a decoder.
+     *
      * Declare before the test's first player is built, and not only before the one it is about:
      * the platform caches its codec list on first read, so a decoder declared after any player has
      * read it is one no later player in the same test sees.
      */
     @JvmStatic
+    @RequiresApi(Build.VERSION_CODES.Q)
     public fun declareVideoDecoder(mimeType: String, vararg profileLevels: Pair<Int, Int>) {
         val declared = profileLevels.map { (profile, level) ->
             MediaCodecInfo.CodecProfileLevel().also {

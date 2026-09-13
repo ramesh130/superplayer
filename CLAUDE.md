@@ -253,10 +253,28 @@ media item itself declares a range, so core lays the half into the item at adopt
 playing item in place when a re-consulted decision changes it. Under the harness a dated live window
 (`TestContent.liveHls(dated = true)`) sees the player drift *ahead* of the edge, because Media3 reads
 "now" from a wall clock Robolectric does not move; `TestContent.liveHls` says why that is opt-in.
-`NetworkAwareTrackSelection` is #101 and does not exist yet; until it does, the selection half of a
-decision is emitted and **not in force** on a player built with the adaptive policy, because
-ADR-0009 rule 5 forbids laying a ceiling into a re-consulted player's parameters — `AdaptivePolicy.kt`
-says so, and a consumer who needs `DATA_SAVER`'s caps today keeps the static policy until #101.
+
+The third component is the selection half, in two pieces. `AdaptiveSelectionPolicy` is the twin of
+the buffer policy — public, pure, composed beside it by `AdaptivePolicy.forProfile` — and owns what
+is *eligible*: the profile's own cap, narrowed by `TransportCaps`' per-profile, per-transport table
+(F1's trade, real on cellular so the benchmark can show it as a bitrate loss), and the post-rebuffer
+hold, on the buffer policy's cooldown so the raised floor and the held ceiling lapse together.
+`NetworkAwareTrackSelection` is its Media3 half: Media3's own adaptive selection, built by
+SuperPlayer's own factory (Media3 1.11's is final where it builds), overriding the one hook Media3
+consults per rung per evaluation. Three refusals in order — the device (a rung the display's
+shorter edge cannot show, an HDR transfer it does not list, or a codec profile and level no declared
+decoder reaches, read *once* from core's `DeviceConstraints` as ADR-0009 rule 2 says and never
+observed), the policy's ceiling (retargeted through the same `DecisionTarget` as the load control,
+which is how a hold is honoured and why it lapses on a trigger), and the estimate discounted by its
+spread on the oracle's own stable line. Startup needs no code: Media3's first choice reads the
+meter, which is the per-transport memory or its cold default. The climb and descent thresholds are
+`SelectionThresholds`, per profile, with a reason per departure from Media3's. Three things to know
+before touching it: *unknown* refuses nothing, and that direction is load-bearing (Robolectric's
+device reports an empty codec table and a small display); the refusals go through `canSelectFormat`
+and not `isTrackExcluded`, because a ladder refused whole must fall back to its bottom rung and not
+its top; and the harness declares a television-sized display by default for the same reason it
+ignores the viewport, with `DeviceStatement` the way a test narrows it or declares a decoder —
+before its first player is built, since the platform caches the codec list on first read.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,

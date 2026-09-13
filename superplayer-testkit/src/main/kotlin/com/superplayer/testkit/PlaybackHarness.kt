@@ -751,6 +751,20 @@ public class PlaybackHarness : ExternalResource() {
     }
 
     /** Releases every player this harness built and still holds, newest first. */
+
+    /**
+     * The device every player here is built on, unless a test states otherwise first.
+     *
+     * A television-sized display, because a selector that reads the display would otherwise refuse
+     * every rung above Robolectric's small default before a bandwidth estimate was consulted — the
+     * same defect [ignoreTheViewport] closes for Media3's own viewport constraint, arriving through
+     * SuperPlayer's door. A test about the display gate narrows it with [DeviceStatement.declareDisplay]
+     * before it builds its player.
+     */
+    override fun before() {
+        DeviceStatement.declareDisplay(DeviceStatement.DEFAULT_DISPLAY_WIDTH_PX, DeviceStatement.DEFAULT_DISPLAY_HEIGHT_PX)
+    }
+
     override fun after() {
         renderers.keys.toList().asReversed().forEach { it.release() }
         renderers.clear()
@@ -793,7 +807,7 @@ public class PlaybackHarness : ExternalResource() {
      * between should not go through a chunk source that exists to choose.
      */
     private fun describedMediaSourceFactory(content: TestContent, transfers: Transfers): MediaSource.Factory {
-        val formats = content.videoBitratesBps.mapIndexed { index, bitrate -> videoFormat(index, bitrate) }
+        val formats = content.rungs.mapIndexed { index, rung -> videoFormat(index, rung) }
         val timeline = FakeTimeline(
             FakeTimeline.TimelineWindowDefinition.Builder()
                 .setDurationUs(content.durationMs * 1_000)
@@ -933,45 +947,17 @@ public class PlaybackHarness : ExternalResource() {
         val loadsThroughADataSource: Boolean,
     )
 
-    /**
-     * One rendition of a ladder: a bitrate, and **the resolution a stream would encode it at**.
-     *
-     * The resolution is derived from the bitrate rather than fixed, and that is load-bearing rather
-     * than decorative. A ladder whose every rung is 720p is not a ladder a resolution cap can choose
-     * within: a policy capping height at 480p excludes *all* of it, and Media3's selector then falls
-     * back to the lowest rung. The measurement that comes out is a real number produced by a
-     * degenerate mechanism — the cap did not pick a rung, it disqualified the ladder — and a
-     * benchmark reporting it as a quality trade would be describing something that did not happen.
-     * `superplayer-core`'s `DATA_SAVER` caps both height and bitrate, so this is the difference
-     * between measuring that profile and measuring a fallback path.
-     */
-    private fun videoFormat(index: Int, bitrateBps: Int): Format = Format.Builder()
+    /** A rung as a Media3 `Format`; what the rung says is `TestContent.Rung`'s subject, not this one's. */
+    private fun videoFormat(index: Int, rung: TestContent.Rung): Format = Format.Builder()
         .setId("video-$index")
         .setSampleMimeType(MimeTypes.VIDEO_H264)
-        .setPeakBitrate(bitrateBps)
-        .setAverageBitrate(bitrateBps)
-        .setWidth(heightPxFor(bitrateBps) * WIDTH_NUMERATOR / HEIGHT_DENOMINATOR)
-        .setHeight(heightPxFor(bitrateBps))
+        .setCodecs(rung.codecs)
+        .setPeakBitrate(rung.bitrateBps)
+        .setAverageBitrate(rung.bitrateBps)
+        .setWidth(rung.heightPx * WIDTH_NUMERATOR / HEIGHT_DENOMINATOR)
+        .setHeight(rung.heightPx)
         .setFrameRate(FRAME_RATE)
         .build()
-
-    /**
-     * The frame height a rendition of [bitrateBps] would be encoded at.
-     *
-     * ref: Apple, *HLS Authoring Specification for Apple Devices*, whose recommended tier tables pair
-     * each average bitrate with a frame size:
-     * https://developer.apple.com/documentation/http-live-streaming/hls-authoring-specification-for-apple-devices
-     * The thresholds below follow that pairing at the rung boundaries rather than reproducing the
-     * table, because a synthetic ladder chooses its own bitrates: what has to be true is that a
-     * higher rung is a larger picture, which is what makes a resolution ceiling select rather than
-     * exclude.
-     */
-    private fun heightPxFor(bitrateBps: Int): Int = when {
-        bitrateBps < LADDER_480P_FLOOR_BPS -> 360
-        bitrateBps < LADDER_720P_FLOOR_BPS -> 480
-        bitrateBps < LADDER_1080P_FLOOR_BPS -> 720
-        else -> 1080
-    }
 
     public companion object {
         /**
@@ -1018,12 +1004,6 @@ public class PlaybackHarness : ExternalResource() {
         /** 16:9, as every rung of a modern ladder is: width is height × 16 ÷ 9. */
         private const val WIDTH_NUMERATOR = 16
         private const val HEIGHT_DENOMINATOR = 9
-
-        // The rung boundaries [heightPxFor] reads, which its KDoc cites. Below the first a rendition
-        // is 360p; the last is where 1080p starts.
-        private const val LADDER_480P_FLOOR_BPS = 600_000
-        private const val LADDER_720P_FLOOR_BPS = 1_200_000
-        private const val LADDER_1080P_FLOOR_BPS = 3_000_000
 
         private val FRAME_RATE = 30f
 

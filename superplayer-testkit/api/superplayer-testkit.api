@@ -1,3 +1,15 @@
+public final class com/superplayer/testkit/DeviceStatement {
+	public static final field DEFAULT_DISPLAY_HEIGHT_PX I
+	public static final field DEFAULT_DISPLAY_WIDTH_PX I
+	public static final field INSTANCE Lcom/superplayer/testkit/DeviceStatement;
+	public static final field REPORTED_DECODER_INSTANCES I
+	public static final fun declareAppHeap (I)V
+	public static final fun declareDisplay (II)V
+	public static final fun declareDisplayHdrTypes ([I)V
+	public static final fun declareLowRamDevice ()V
+	public static final fun declareVideoDecoder (Ljava/lang/String;[Lkotlin/Pair;)V
+}
+
 public final class com/superplayer/testkit/FaultScript {
 	public static final field Companion Lcom/superplayer/testkit/FaultScript$Companion;
 	public static final field HTTP_FORBIDDEN I
@@ -123,6 +135,7 @@ public final class com/superplayer/testkit/TestContent {
 	public final fun getSourceUri ()Ljava/lang/String;
 	public static final fun hls (II)Lcom/superplayer/testkit/TestContent;
 	public static final fun hostile (Lcom/superplayer/testmedia/HostileStream;)Lcom/superplayer/testkit/TestContent;
+	public static final fun ladder (Ljava/util/List;J)Lcom/superplayer/testkit/TestContent;
 	public static final fun liveHls ()Lcom/superplayer/testkit/TestContent;
 	public static final fun liveHls (Z)Lcom/superplayer/testkit/TestContent;
 	public static final fun liveVideo (IJ)Lcom/superplayer/testkit/TestContent;
@@ -137,6 +150,8 @@ public final class com/superplayer/testkit/TestContent$Companion {
 	public final fun hls (II)Lcom/superplayer/testkit/TestContent;
 	public static synthetic fun hls$default (Lcom/superplayer/testkit/TestContent$Companion;IIILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
 	public final fun hostile (Lcom/superplayer/testmedia/HostileStream;)Lcom/superplayer/testkit/TestContent;
+	public final fun ladder (Ljava/util/List;J)Lcom/superplayer/testkit/TestContent;
+	public static synthetic fun ladder$default (Lcom/superplayer/testkit/TestContent$Companion;Ljava/util/List;JILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
 	public final fun liveHls ()Lcom/superplayer/testkit/TestContent;
 	public final fun liveHls (Z)Lcom/superplayer/testkit/TestContent;
 	public static synthetic fun liveHls$default (Lcom/superplayer/testkit/TestContent$Companion;ZILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
@@ -148,6 +163,28 @@ public final class com/superplayer/testkit/TestContent$Companion {
 	public static synthetic fun video$default (Lcom/superplayer/testkit/TestContent$Companion;IJILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
 	public final fun videoLadder (Ljava/util/List;J)Lcom/superplayer/testkit/TestContent;
 	public static synthetic fun videoLadder$default (Lcom/superplayer/testkit/TestContent$Companion;Ljava/util/List;JILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
+}
+
+public final class com/superplayer/testkit/TestContent$Rung {
+	public static final field Companion Lcom/superplayer/testkit/TestContent$Rung$Companion;
+	public fun <init> (IILjava/lang/String;)V
+	public synthetic fun <init> (IILjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (IILjava/lang/String;)Lcom/superplayer/testkit/TestContent$Rung;
+	public static synthetic fun copy$default (Lcom/superplayer/testkit/TestContent$Rung;IILjava/lang/String;ILjava/lang/Object;)Lcom/superplayer/testkit/TestContent$Rung;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBitrateBps ()I
+	public final fun getCodecs ()Ljava/lang/String;
+	public final fun getHeightPx ()I
+	public fun hashCode ()I
+	public static final fun of (I)Lcom/superplayer/testkit/TestContent$Rung;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/testkit/TestContent$Rung$Companion {
+	public final fun of (I)Lcom/superplayer/testkit/TestContent$Rung;
 }
 
 public final class com/superplayer/testkit/ThroughputTrace {

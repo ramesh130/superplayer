@@ -171,6 +171,9 @@ class AdaptivePolicyPlaybackTest {
         harness.advanceUntil(player, "the outage's rebuffer to end", RECOVERY_MARGIN_MS) {
             rebuffers.endedAtMs.any { it >= outageEndsAtMs }
         }
+        // The first rebuffer of the session, whichever it was, changed the decision on its own
+        // trigger: the floor it raises is above the profile's, so the change cannot be silent.
+        assertThat(telemetry.changes.map { it.trigger }).contains(DecisionTrigger.REBUFFER_ENDED)
         val held = player.playbackDecision
         assertThat(held.buffer.bufferForPlaybackAfterRebufferMs)
             .isGreaterThan(STATIC_SHORT_FORM.buffer.bufferForPlaybackAfterRebufferMs)

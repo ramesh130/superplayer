@@ -18,7 +18,6 @@ package com.superplayer.abr
 
 import android.view.Display
 import androidx.media3.common.C
-import androidx.media3.common.ColorInfo
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Timeline
@@ -26,6 +25,8 @@ import androidx.media3.common.TrackGroup
 import androidx.media3.common.util.Clock
 import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
 import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.source.chunk.MediaChunk
+import androidx.media3.exoplayer.source.chunk.MediaChunkIterator
 import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
 import androidx.media3.exoplayer.trackselection.ExoTrackSelection
 import androidx.media3.exoplayer.trackselection.FixedTrackSelection
@@ -46,9 +47,9 @@ import com.superplayer.core.TrackSelectionPolicy
  * [canSelectFormat], which Media3 consults for every rung on every evaluation, from the top of
  * the ladder down, returning the first rung the hook accepts. Three refusals, in order:
  *
- * 1. **The device.** A rung whose shorter edge is longer than the display's, whose HDR transfer
- *    the display does not list, or whose codec profile and level no declared decoder reaches, is
- *    refused whatever the network delivers. Read once from [DeviceConstraints] when the selection
+ * 1. **The device.** A rung whose shorter edge is longer than the display's, whose codec profile
+ *    and level no declared decoder reaches, or — where the ladder also offers an SDR rung — whose
+ *    PQ transfer the display does not list, is refused whatever the network delivers. Read once from [DeviceConstraints] when the selection
  *    is built (ADR-0009 rule 2), and *unknown* refuses nothing — the KDoc there says why that
  *    direction is load-bearing. Refused through this hook and not through `isTrackExcluded`,
  *    deliberately: when every rung is refused Media3 falls back to the lowest one it evaluated,
@@ -57,9 +58,10 @@ import com.superplayer.core.TrackSelectionPolicy
  * 2. **The policy's ceiling.** The [TrackSelectionPolicy] the [Factory] currently holds — the
  *    profile's cap, narrowed by the transport and by a post-rebuffer hold — is applied to a video
  *    rung's declared bitrate and height. It arrives through the `DecisionTarget` and is read on
- *    every evaluation, which is how a ceiling that fell below the playing rung becomes a `DOWN`
- *    switch at the next chunk and how a hold lapses on the trigger that lifted it, never on time
- *    (ADR-0009 rule 4).
+ *    every evaluation, which is how a hold lapses on the trigger that lifted it, never on time
+ *    (ADR-0009 rule 4). A ceiling that fell below the *playing* rung is a `DOWN` switch at the
+ *    next evaluation whatever the buffer holds, through [updateSelectedTrack]: Media3 would
+ *    otherwise defer the descent until the buffer drained.
  * 3. **The estimate, discounted by its spread.** Media3 offers each rung the meter's estimate
  *    times the profile's bandwidth fraction. When the oracle's spread says the mean cannot be
  *    trusted — the same line [OracleBandwidthMeter.isStable] draws and `AdaptiveBufferPolicy`'s
@@ -100,8 +102,55 @@ internal class NetworkAwareTrackSelection(
     clock,
 ) {
 
-    /** Refusal 1, decided once per rung: the device does not change under a selection. */
-    private val refusedByDevice: BooleanArray = BooleanArray(length) { gate.deviceRefuses(getFormat(it)) }
+    /**
+     * Refusal 1, decided once per rung: the device does not change under a selection.
+     *
+     * The HDR half is decided over the ladder rather than per rung: a display that lists no HDR
+     * type refuses a PQ rung only where the ladder also offers a rung it does not refuse. Android
+     * tone-maps PQ to SDR and Media3 asks it to, so an HDR-only ladder on an SDR panel is played
+     * as stock Media3 plays it — from the top — rather than collapsed to its bottom rung by a gate
+     * whose purpose is to prefer the SDR rung *when there is one*.
+     */
+    private val refusedByDevice: BooleanArray = run {
+        val refused = BooleanArray(length) { gate.deviceRefuses(getFormat(it)) }
+        val hdrRefused = BooleanArray(length) { gate.displayRefusesHdr(getFormat(it)) }
+        val anSdrRungRemains = (0 until length).any { !refused[it] && !hdrRefused[it] }
+        if (anSdrRungRemains) {
+            for (index in 0 until length) refused[index] = refused[index] || hdrRefused[index]
+        }
+        refused
+    }
+
+    override fun updateSelectedTrack(
+        playbackPositionUs: Long,
+        bufferedDurationUs: Long,
+        availableDurationUs: Long,
+        queue: List<MediaChunk>,
+        mediaChunkIterators: Array<out MediaChunkIterator>,
+    ) {
+        // Media3 defers a descent while the buffer is above the profile's descent threshold —
+        // right for a rung the estimate merely no longer affords, wrong for one the ceiling now
+        // refuses, which on a deep on-demand buffer would otherwise play on until the buffer
+        // drained. The one path Media3 leaves down at once is an *excluded* current rung, so a
+        // playing rung the ceiling refuses is excluded for this evaluation alone — and only when
+        // another rung is eligible to move to, because a ladder the ceiling refuses whole is
+        // playing its fallback already and an exclusion would only push it off it.
+        val playing = selectedIndex
+        if (playing in 0 until length && ceilingRefuses(playing) && (0 until length).any { it != playing && !ceilingRefuses(it) }) {
+            excludeTrack(playing, CEILING_EXCLUSION_MS)
+        }
+        super.updateSelectedTrack(playbackPositionUs, bufferedDurationUs, availableDurationUs, queue, mediaChunkIterators)
+    }
+
+    /** Refusals 1 and 2 for the rung at [index]: what the device and the ceiling in force say, bandwidth aside. */
+    private fun ceilingRefuses(index: Int): Boolean {
+        if (refusedByDevice[index]) return true
+        val format = getFormat(index)
+        if (!MimeTypes.isVideo(format.sampleMimeType)) return false
+        val ceiling = gate.policy
+        if (format.bitrate != Format.NO_VALUE && format.bitrate > ceiling.maxVideoBitrateBps) return true
+        return format.height != Format.NO_VALUE && format.height > ceiling.maxVideoHeightPx
+    }
 
     override fun canSelectFormat(format: Format, trackBitrate: Int, effectiveBitrate: Long): Boolean {
         // Media3's constructor chooses a provisional index through this hook before this class's
@@ -133,40 +182,35 @@ internal class NetworkAwareTrackSelection(
         @Volatile
         var policy: TrackSelectionPolicy = initial
 
+        /** The refusals that stand on their own: the display's size and the decoder. */
         fun deviceRefuses(format: Format): Boolean =
-            displayRefuses(format) || decoderRefuses(format)
+            displayRefusesSize(format) || decoderRefuses(format)
 
-        private fun displayRefuses(format: Format): Boolean {
+        private fun displayRefusesSize(format: Format): Boolean {
             if (!MimeTypes.isVideo(format.sampleMimeType)) return false
-            val shortEdge = constraints.displayShortEdgePx
-            if (shortEdge != null && format.width != Format.NO_VALUE && format.height != Format.NO_VALUE) {
-                if (minOf(format.width, format.height) > shortEdge) return true
-            }
-            val hdrTypes = constraints.displayHdrTypes
-            val color = format.colorInfo
-            if (hdrTypes != null && color != null && ColorInfo.isTransferHdr(color)) {
-                if (hdrTypesFor(color.colorTransfer).none { it in hdrTypes }) return true
-            }
-            return false
+            val shortEdge = constraints.displayShortEdgePx ?: return false
+            if (format.width == Format.NO_VALUE || format.height == Format.NO_VALUE) return false
+            return minOf(format.width, format.height) > shortEdge
         }
 
         /**
-         * Which of the display's HDR types show a transfer function: PQ (ST 2084) is what HDR10,
-         * HDR10+ and Dolby Vision carry; HLG is its own. A transfer nothing here names is one the
-         * display is not asked about.
+         * Whether the display lists no HDR type that shows [format]'s transfer — a refusal the
+         * selection applies only beside an SDR rung, for the reason its KDoc gives.
+         *
+         * PQ (ST 2084) is what HDR10, HDR10+ and Dolby Vision carry, and is what is asked about.
+         * HLG is not: it is backward compatible with an SDR display by design, so a display that
+         * lists no HLG support still shows an HLG rung acceptably (ITU-R BT.2100, the HLG system's
+         * compatibility with SDR displays). A transfer nothing here names is one the display is
+         * not asked about either.
          *
          * ref: https://developer.android.com/reference/android/view/Display.HdrCapabilities
+         * ref: https://www.itu.int/rec/R-REC-BT.2100
          */
-        private fun hdrTypesFor(colorTransfer: Int): List<Int> = when (colorTransfer) {
-            C.COLOR_TRANSFER_ST2084 -> listOf(
-                Display.HdrCapabilities.HDR_TYPE_HDR10,
-                Display.HdrCapabilities.HDR_TYPE_HDR10_PLUS,
-                Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION,
-            )
-
-            C.COLOR_TRANSFER_HLG -> listOf(Display.HdrCapabilities.HDR_TYPE_HLG)
-
-            else -> emptyList()
+        fun displayRefusesHdr(format: Format): Boolean {
+            val hdrTypes = constraints.displayHdrTypes ?: return false
+            val color = format.colorInfo ?: return false
+            if (color.colorTransfer != C.COLOR_TRANSFER_ST2084) return false
+            return PQ_DISPLAY_TYPES.none { it in hdrTypes }
         }
 
         /**
@@ -189,6 +233,23 @@ internal class NetworkAwareTrackSelection(
             if (estimate.meanBps <= 0 || conservative >= estimate.meanBps) return effectiveBitrate
             return effectiveBitrate * conservative / estimate.meanBps
         }
+    }
+
+    private companion object {
+        /** The display types that show a PQ transfer. */
+        val PQ_DISPLAY_TYPES: List<Int> = listOf(
+            Display.HdrCapabilities.HDR_TYPE_HDR10,
+            Display.HdrCapabilities.HDR_TYPE_HDR10_PLUS,
+            Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION,
+        )
+
+        /**
+         * How long a playing rung the ceiling refuses stays excluded: one millisecond, which is
+         * the evaluation the exclusion is raised in and nothing after it. The ceiling keeps the
+         * rung out on its own for as long as it stands, and a ceiling raised again finds the rung
+         * eligible at its next evaluation rather than after a timer.
+         */
+        const val CEILING_EXCLUSION_MS: Long = 1L
     }
 
     /**

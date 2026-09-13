@@ -750,8 +750,6 @@ public class PlaybackHarness : ExternalResource() {
         transportReplays.remove(player)
     }
 
-    /** Releases every player this harness built and still holds, newest first. */
-
     /**
      * The device every player here is built on, unless a test states otherwise first.
      *
@@ -765,6 +763,7 @@ public class PlaybackHarness : ExternalResource() {
         DeviceStatement.declareDisplay(DeviceStatement.DEFAULT_DISPLAY_WIDTH_PX, DeviceStatement.DEFAULT_DISPLAY_HEIGHT_PX)
     }
 
+    /** Releases every player this harness built and still holds, newest first. */
     override fun after() {
         renderers.keys.toList().asReversed().forEach { it.release() }
         renderers.clear()

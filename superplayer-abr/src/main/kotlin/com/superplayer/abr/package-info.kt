@@ -18,7 +18,8 @@
  * superplayer-abr — AdaptiveLoadControl, NetworkAwareTrackSelection, BandwidthOracle
  *
  * Phase 3: the adaptive policy behind the boundary ADR-0005 establishes and ADR-0009 extends.
- * [com.superplayer.abr.BandwidthOracle] is the throughput estimator the other two read from; the
- * load control and the track selection are the next two issues of #96.
+ * [com.superplayer.abr.BandwidthOracle] is the throughput estimator the other two read from;
+ * [com.superplayer.abr.AdaptivePolicy] composes the buffer and selection policies and installs the
+ * load control and the track selection that honour them.
  */
 package com.superplayer.abr

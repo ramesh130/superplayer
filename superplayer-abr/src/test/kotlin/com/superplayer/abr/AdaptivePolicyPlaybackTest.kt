@@ -18,6 +18,7 @@ package com.superplayer.abr
 
 import android.app.ActivityManager
 import android.content.Context
+import android.os.SystemClock
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.test.core.app.ApplicationProvider
@@ -155,28 +156,55 @@ class AdaptivePolicyPlaybackTest {
             policy = AdaptivePolicy.forProfile(context, PlaybackProfile.SHORT_FORM),
             telemetry = telemetry,
         )
+        val rebuffers = RebufferWatch().also(player::addListener)
+        val builtAtMs = harness.elapsedRealtimeMs()
         player.setMediaRequest(request())
         harness.playToReady(player)
 
-        harness.advanceUntil(player, "a rebuffer to end", OUTAGE_MS + RECOVERY_MARGIN_MS) {
-            telemetry.changes.any { change -> change.trigger == DecisionTrigger.REBUFFER_ENDED }
+        // The rebuffer the outage causes, seen on the `Player` API rather than as a decision
+        // change: a re-consultation whose answer is the decision already in force is not a change,
+        // and a short-form start floor of one second can stall once more on its first chunks,
+        // which is a rebuffer with its own raise and hold and is not this test's. Played through
+        // the outage in the harness's load steps, which is the cadence the trace is sized against.
+        val outageEndsAtMs = builtAtMs + BEFORE_OUTAGE_MS + OUTAGE_MS
+        harness.advanceTimeInStepsMs(player, outageEndsAtMs - harness.elapsedRealtimeMs())
+        harness.advanceUntil(player, "the outage's rebuffer to end", RECOVERY_MARGIN_MS) {
+            rebuffers.endedAtMs.any { it >= outageEndsAtMs }
         }
-        val rebufferEndedAtMs = harness.elapsedRealtimeMs()
         val held = player.playbackDecision
         assertThat(held.buffer.bufferForPlaybackAfterRebufferMs)
             .isGreaterThan(STATIC_SHORT_FORM.buffer.bufferForPlaybackAfterRebufferMs)
         assertThat(held.trackSelection.maxVideoBitrateBps).isLessThan(TrackSelectionPolicy.UNLIMITED)
         assertThat(held.buffer.maxBufferMs).isEqualTo(STATIC_SHORT_FORM.buffer.maxBufferMs)
 
-        // The link then steps up, after the cooldown: a material move, and the trigger on which the
-        // hold lapses. Not before it — a hold lapses on a trigger, never on time alone.
-        harness.advanceUntil(player, "the hold to be released", RECOVERED_MS + IMPROVED_MS) {
-            player.playbackDecision.trackSelection == STATIC_SHORT_FORM.trackSelection
+        // Time alone releases nothing: through a whole cooldown every re-consultation keeps a
+        // hold, whatever the link did meanwhile — a hold lapses on a trigger, never on time. The
+        // cooldown counted is the one since the *last* rebuffer, should recovery stall once more.
+        harness.advanceUntil(player, "a cooldown to pass with no further rebuffer", 4 * AdaptiveBufferPolicy.REBUFFER_COOLDOWN_MS) {
+            harness.elapsedRealtimeMs() - rebuffers.endedAtMs.last() >= AdaptiveBufferPolicy.REBUFFER_COOLDOWN_MS - STEP_MS
         }
+        val lastRebufferEndedAtMs = rebuffers.endedAtMs.last()
+        val duringCooldown = telemetry.changes.filter { it.atMs > lastRebufferEndedAtMs }
+        assertWithMessage("changes during the cooldown: ${duringCooldown.map { "${it.trigger}:${it.decision.trackSelection.maxVideoBitrateBps}" }}")
+            .that(duringCooldown.map { it.decision.trackSelection.maxVideoBitrateBps })
+            .doesNotContain(TrackSelectionPolicy.UNLIMITED)
+        assertThat(player.playbackDecision.trackSelection.maxVideoBitrateBps).isLessThan(TrackSelectionPolicy.UNLIMITED)
+
+        // Past the cooldown, the next trigger lifts both halves. A speed change is the one trigger
+        // a test can raise on the `Player` API at a chosen moment; the link's own move would do
+        // the same, on its own schedule.
+        harness.advanceTimeInStepsMs(player, 2 * STEP_MS)
+        player.setPlaybackSpeed(FASTER)
+        harness.settle(player)
         val releasedAtMs = harness.elapsedRealtimeMs()
-        assertThat(releasedAtMs - rebufferEndedAtMs).isAtLeast(AdaptiveBufferPolicy.REBUFFER_COOLDOWN_MS - STEP_MS)
-        assertThat(player.playbackDecision.buffer.bufferForPlaybackAfterRebufferMs)
-            .isEqualTo(STATIC_SHORT_FORM.buffer.bufferForPlaybackAfterRebufferMs)
+        assertThat(releasedAtMs - lastRebufferEndedAtMs).isAtLeast(AdaptiveBufferPolicy.REBUFFER_COOLDOWN_MS)
+        assertThat(telemetry.changes.last().trigger).isEqualTo(DecisionTrigger.PLAYBACK_SPEED_CHANGED)
+        // The ceiling is the profile's own again. The floor is not asserted lower here: the raise
+        // is bounded by the range's minimum, which a short-form after-rebuffer floor reaches on the
+        // first rebuffer, and the speed scales the floors it returns to — its lapse is the pure
+        // policy's to show.
+        val released = player.playbackDecision
+        assertThat(released.trackSelection).isEqualTo(STATIC_SHORT_FORM.trackSelection)
         assertThat(player.playerError).isNull()
     }
 
@@ -246,9 +274,10 @@ class AdaptivePolicyPlaybackTest {
 
     /**
      * Enough link to fill a short-form buffer, an outage long enough to drain it, the same link
-     * back for longer than the cooldown, and then a faster one: the step up is a material move the
-     * policy is consulted on, and it lands after the cooldown, so the hold is seen to lapse on a
-     * trigger rather than on time — which is the only way it can (ADR-0009 rule 4).
+     * back for longer than the cooldown, and then a faster one. The step up is a material move
+     * the policy is consulted on; whether it lands inside or after the cooldown depends on when
+     * the rebuffer ended, which is why the test raises its own trigger past the cooldown rather
+     * than waiting for this one.
      */
     private fun outageThenRecovery(): ThroughputTrace = ThroughputTrace.Builder()
         .add(BEFORE_OUTAGE_MS, LINK_BPS, NetworkTransport.WIFI)
@@ -258,6 +287,29 @@ class AdaptivePolicyPlaybackTest {
         .holdAtEnd()
         .build()
 
+    /** The rebuffers a consumer sees: a buffering state entered after the first ready, then left. */
+    private class RebufferWatch : Player.Listener {
+        val endedAtMs = mutableListOf<Long>()
+        private var readyOnce = false
+        private var stalled = false
+
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            when (playbackState) {
+                Player.STATE_BUFFERING -> if (readyOnce) stalled = true
+
+                Player.STATE_READY -> {
+                    readyOnce = true
+                    if (stalled) {
+                        stalled = false
+                        endedAtMs += SystemClock.elapsedRealtime()
+                    }
+                }
+
+                else -> stalled = false
+            }
+        }
+    }
+
     /**
      * A collector that records what core tells it, synchronously, the way core's own test double
      * does — so a decision change is asserted the moment the facade signalled it, with no delivery
@@ -265,7 +317,7 @@ class AdaptivePolicyPlaybackTest {
      */
     private class RecordingCollector : TelemetryCollector {
 
-        class Change(val decision: PlaybackDecision, val trigger: DecisionTrigger)
+        class Change(val decision: PlaybackDecision, val trigger: DecisionTrigger, val atMs: Long)
 
         val changes = mutableListOf<Change>()
 
@@ -280,7 +332,7 @@ class AdaptivePolicyPlaybackTest {
         override fun detach() = Unit
 
         override fun decisionChanged(decision: PlaybackDecision, trigger: DecisionTrigger) {
-            changes += Change(decision, trigger)
+            changes += Change(decision, trigger, SystemClock.elapsedRealtime())
         }
     }
 
@@ -309,6 +361,9 @@ class AdaptivePolicyPlaybackTest {
         const val RECOVERED_MS = 40_000L
         const val IMPROVED_MS = 120_000L
         const val RECOVERY_MARGIN_MS = 15_000L
+
+        /** A speed above real time: a trigger, and one whose scaled floors are still below the held one. */
+        const val FASTER = 1.25f
 
         const val OSCILLATION_WINDOW_MS = 60_000L
 

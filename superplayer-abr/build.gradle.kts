@@ -4,7 +4,7 @@ plugins {
     id("superplayer.android.library")
 }
 
-// AdaptivePolicy (AdaptiveBufferPolicy + AdaptiveLoadControl), BandwidthOracle; NetworkAwareTrackSelection to follow
+// AdaptivePolicy (AdaptiveBufferPolicy + AdaptiveLoadControl, AdaptiveSelectionPolicy + NetworkAwareTrackSelection), BandwidthOracle
 //
 // Phase 3. Dependency direction: see docs/modules.md. This module may depend on
 // modules from its own or an earlier phase only — never on a later one.
@@ -19,6 +19,9 @@ dependencies {
     // `ThroughputTrace` under a real player and asserts the oracle's estimate at a chosen
     // millisecond. Phase 2 on phase 3 — tests only, which `docs/modules.md` allows.
     testImplementation(project(":superplayer-testkit"))
+    // `QoeCollector`, so a track switch the selector made is asserted as the `TrackSwitched` event
+    // a consumer's sink would see rather than read from the engine. Phase 2 on phase 3, tests only.
+    testImplementation(project(":superplayer-telemetry"))
     testImplementation(libs.media3.test.utils)
     testImplementation(libs.media3.test.utils.robolectric)
     testImplementation(libs.robolectric)

@@ -4,6 +4,10 @@
 - **Date:** 2026-09-05
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
+- **Summary:** Don't run a local HTTP proxy or rewrite manifests to fake a fast start — it corrupts
+  bandwidth estimation and breaks ABR, DRM license binding, CMCD reporting, and CDN token auth.
+  Pursue startup latency instead through Media3's own supported surfaces: caching, preload/decoder
+  warming, and tuned adaptive-selection startup parameters.
 
 ## Context
 

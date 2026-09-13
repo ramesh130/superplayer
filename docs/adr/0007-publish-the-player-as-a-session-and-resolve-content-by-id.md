@@ -4,6 +4,11 @@
 - **Date:** 2026-09-07
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
+- **Summary:** A session is something a consumer chooses to create, not something every player
+  gets — `PlaybackSession` publishes a `SuperPlayer` and shares its lifetime, and `PlaybackService`
+  is the `MediaSessionService` that gives it a notification. Content named from outside the app
+  (a car, a watch, the notification) arrives as a bare id and is resolved back into a
+  `MediaRequest` by a consumer-supplied `MediaRequestResolver`.
 
 ## Context
 
@@ -73,17 +78,17 @@ Four rules follow.
 
 ## Consequences
 
-A consuming app gets background playback, a notification with working play, pause and seek, lock
-screen controls, Bluetooth and wearable transport, and an Android Auto surface, for one subclass
-with two overrides and nine lines of XML. Nothing in it builds a notification, creates a channel,
-calls `startForeground`, or constructs a `MediaSession`. The demo is that app, and the claims above
-are checked rather than asserted: `SuperPlayerSessionTest` drives the far side of the boundary with
-a real `MediaController` against a real session, and `SuperPlayerServiceTest` drives the service
-through Robolectric's own lifecycle — including that playing posts a notification carrying the title
-and subtitle the `MediaRequest` named, which is the far end of the metadata path from
-`MediaRequest.Builder.setTitle`.
+**Easier.** A consuming app gets background playback, a notification with working play, pause and
+seek, lock screen controls, Bluetooth and wearable transport, and an Android Auto surface, for one
+subclass with two overrides and nine lines of XML. Nothing in it builds a notification, creates a
+channel, calls `startForeground`, or constructs a `MediaSession`. The demo is that app, and the
+claims above are checked rather than asserted: `SuperPlayerSessionTest` drives the far side of the
+boundary with a real `MediaController` against a real session, and `SuperPlayerServiceTest` drives
+the service through Robolectric's own lifecycle — including that playing posts a notification
+carrying the title and subtitle the `MediaRequest` named, which is the far end of the metadata path
+from `MediaRequest.Builder.setTitle`.
 
-Audio focus is **not** repeated here, and that is worth stating because a service is where apps
+**Audio focus is not repeated here**, and that is worth stating because a service is where apps
 usually put it. Focus, becoming-noisy and the wake locks belong to the player (ADR-0006 rule 1) and
 are on for every player SuperPlayer builds, so a session inherits them by publishing that player. A
 service that requested focus of its own would be competing with the engine that already holds it,
@@ -91,25 +96,27 @@ and the visible symptom is a player ducking itself.
 `playbackStartedByAControllerRequestsAudioFocusLikeAnyOther` pins that a controller-initiated play
 produces exactly the one focus request a local play does.
 
-`PlaybackSession`, `PlaybackService` and `MediaRequestResolver` become public API and therefore
-compatibility commitments. All three are expressed in stable Media3 types — `MediaSession`,
-`MediaSessionService`, `SessionToken` and `MediaSession.ControllerInfo` are stable in Media3 1.11,
-unlike almost everything else this library touches — so ADR-0001 rule 2 costs nothing here, and the
-demo needed no new `@OptIn`. That is the check that would fail first if a Media3 upgrade moved one
-of them.
+**A compatibility commitment, cheaply held.** `PlaybackSession`, `PlaybackService` and
+`MediaRequestResolver` become public API. All three are expressed in stable Media3 types —
+`MediaSession`, `MediaSessionService`, `SessionToken` and `MediaSession.ControllerInfo` are stable in
+Media3 1.11, unlike almost everything else this library touches — so ADR-0001 rule 2 costs nothing
+here, and the demo needed no new `@OptIn`. That is the check that would fail first if a Media3
+upgrade moved one of them.
 
-What becomes harder is the case a session is deliberately not created for. An app that wants
-notification controls has to write a service class and a manifest entry; a `SuperPlayer` alone still
-publishes nothing. That is the accepted cost of rule 1's premise — a session is a choice about a
-*player*, and the player pool is the reason it cannot be a default.
+**Harder** is the case a session is deliberately not created for. An app that wants notification
+controls has to write a service class and a manifest entry; a `SuperPlayer` alone still publishes
+nothing. That is the accepted cost of rule 1's premise — a session is a choice about a *player*, and
+the player pool is the reason it cannot be a default.
 
-Two gaps are left open and named rather than hidden. **Playback resumption** — Media3's
-`onPlaybackResumption`, which lets the system restart the last session after a reboot from a
-Bluetooth button press — is not implemented; it needs somewhere durable to have kept the last
-request, and ADR-0006 rule 2 says SuperPlayer chooses no storage, so it belongs to an app or to a
-later decision about a persistence seam. **A playlist named from outside the app** resolves each
-item's content but keeps the controller's own start position rather than a remembered one, because a
-`MediaRequest` describes one piece of content and there is nothing yet to resume a list against.
+**Two gaps are left open and named rather than hidden.**
+
+- **Playback resumption** — Media3's `onPlaybackResumption`, which lets the system restart the last
+  session after a reboot from a Bluetooth button press — is not implemented; it needs somewhere
+  durable to have kept the last request, and ADR-0006 rule 2 says SuperPlayer chooses no storage, so
+  it belongs to an app or to a later decision about a persistence seam.
+- **A playlist named from outside the app** resolves each item's content but keeps the controller's
+  own start position rather than a remembered one, because a `MediaRequest` describes one piece of
+  content and there is nothing yet to resume a list against.
 
 ## Alternatives considered
 

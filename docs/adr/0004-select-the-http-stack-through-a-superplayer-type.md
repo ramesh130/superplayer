@@ -4,6 +4,10 @@
 - **Date:** 2026-09-06
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
+- **Summary:** No public HTTP-stack selection API ships until a phase actually needs one. When it
+  does, selection is expressed as a SuperPlayer-owned type (never a Media3 type), and every
+  transport beyond Media3's own default arrives as an optional module a consumer adds — core's
+  dependency graph stays Media3-only.
 
 ## Context
 

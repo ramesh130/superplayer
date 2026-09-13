@@ -4,6 +4,10 @@
 - **Date:** 2026-09-05
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
+- **Summary:** Depend on Media3 as an ordinary versioned library and extend it only through its
+  public extension points — never fork or patch its source. Any `@UnstableApi` type SuperPlayer
+  needs is wrapped behind SuperPlayer's own types rather than re-exported, with one named
+  exception (`player.exoPlayer`), and only one Media3 version is ever pinned.
 
 ## Context
 

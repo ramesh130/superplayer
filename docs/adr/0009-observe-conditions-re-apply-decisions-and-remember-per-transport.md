@@ -6,6 +6,13 @@
 - **Supersedes:** None
 - **Extends:** [ADR-0005](0005-decide-playback-policy-behind-an-engine-agnostic-boundary.md), whose
   rules 3 and 4 are reworded below and whose rules 1 and 2 stand as written.
+- **Summary:** Cashes in ADR-0005's bet for the adaptive engine (`superplayer-abr`). Six concrete,
+  optional observations (transport, throughput with its spread, stall history, stream type, heap
+  budget, playback speed) are added to `PlaybackConditions`; the policy is re-consulted on named
+  triggers only, and only where the engine can honor a changed decision whole; `superplayer-abr`
+  reaches core's engine construction as a second Kotlin friend, behind one public `setPolicy` call;
+  and a throughput estimate is remembered per transport, in process memory, for the process's
+  lifetime only — never persisted.
 
 ## Context
 

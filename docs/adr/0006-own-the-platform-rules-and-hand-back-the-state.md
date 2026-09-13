@@ -4,6 +4,10 @@
 - **Date:** 2026-09-07
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
+- **Summary:** Audio focus, becoming-noisy handling, and wake/Wi-Fi locks are switched on for every
+  player by default, because they're correctness rather than policy and are not configurable by
+  profile. State that needs to outlive a player — position, the current request, remembered resume
+  points — travels as a `PlaybackSnapshot` the consumer stores; SuperPlayer persists nothing itself.
 
 ## Context
 
@@ -60,23 +64,22 @@ Three rules follow.
 
 ## Consequences
 
-A player built with `SuperPlayer.Builder(context).build()` is a correct Android media citizen with
-no further call, which is the difference this library exists to make. The three behaviours are
-verified in `SuperPlayerLifecycleTest` against platform state — the focus request the `AudioManager`
-received, the `PowerManager` lock that is held — rather than against SuperPlayer's own bookkeeping,
-so the tests fail if a Media3 upgrade changes what the switches do.
+**Easier.** A player built with `SuperPlayer.Builder(context).build()` is a correct Android media
+citizen with no further call, which is the difference this library exists to make. The three
+behaviours are verified in `SuperPlayerLifecycleTest` against platform state — the focus request the
+`AudioManager` received, the `PowerManager` lock that is held — rather than against SuperPlayer's
+own bookkeeping, so the tests fail if a Media3 upgrade changes what the switches do.
 
-The wake-lock rule inherited from Media3 deserves stating plainly, because it is narrower than
-"while playing" sounds: the locks are held while the player is buffering **or** ready and
-`playWhenReady` is true, and released when it is paused, idle or ended. Buffering with intent to
-play holds them deliberately — a rebuffer needs the CPU and the radio in order to end, and releasing
-the locks there would let the device suspend inside a stall it would never leave.
+**The wake-lock rule is narrower than "while playing" sounds.** The locks are held while the player
+is buffering **or** ready and `playWhenReady` is true, and released when it is paused, idle or
+ended. Buffering with intent to play holds them deliberately — a rebuffer needs the CPU and the
+radio in order to end, and releasing the locks there would let the device suspend inside a stall it
+would never leave. This is a departure from issue #10's wording, which asked for locks held "not
+while paused or buffering", and it was **put to the issue owner and agreed** rather than decided
+here.
 
-This is a departure from issue #10's wording, which asked for locks held "not while paused or
-buffering", and it was **put to the issue owner and agreed** rather than decided here.
-
-The buffering half is argued rather than pinned by a test, and that is a known gap with a known
-cause. Asserting it needs the player held in `STATE_BUFFERING` long enough to read a lock that is
+**The buffering half is argued rather than pinned by a test, and that is a known gap with a known
+cause.** Asserting it needs the player held in `STATE_BUFFERING` long enough to read a lock that is
 taken asynchronously on the playback thread — but Media3's `WakeLockManager` arms a **1000 ms
 `UNREACTIVE_WAKELOCK_HANDLER_RELEASE_DELAY_MS` safety net on every release**, posted to a handler
 built on the injected `Clock`, which force-releases the lock if its own thread has not answered in
@@ -94,18 +97,18 @@ change to the seam rather than to a test, and it is not worth that on its own. T
 Media3's and Media3 tests it; what this project owns is the decision to switch it on, which
 `aWakeLockIsHeldWhilePlayingAndReleasedWhenPaused` covers for the pause half.
 
-What becomes harder: a consumer who wants focus handling off has to know to pass
+**Harder.** A consumer who wants focus handling off has to know to pass
 `handleAudioFocus = false` themselves, and a consumer with an unusual wake-lock need has to reach
 `player.exoPlayer`. Both are deliberate — the default is the one almost everyone wants, and the
 escape hatch already exists — but neither is discoverable from SuperPlayer's own API.
 
-Rule 2's cost is one call each way in a consumer's lifecycle methods. The alternative would have
+**Rule 2's cost** is one call each way in a consumer's lifecycle methods. The alternative would have
 been zero calls and a library that writes to storage nobody asked it to write to. It also leaves a
 real gap: **process death is not covered by anything SuperPlayer does automatically.** A snapshot
 that crossed process death works exactly as one that crossed a rotation, but only if the app put it
 somewhere that survives — which is the app's call, and is stated rather than hidden.
 
-`PlaybackSnapshot` becomes public API and therefore a compatibility commitment. Its bundle format is
+**A compatibility commitment.** `PlaybackSnapshot` becomes public API. Its bundle format is
 versionless: a field added later is absent from an old bundle and restores as its default, which
 rule 3 already requires. Anything the player pool (F7) or process-death handling later needs to
 carry is added to this type rather than to a second one.

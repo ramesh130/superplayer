@@ -512,7 +512,16 @@ It is the same mechanism as the injector, one layer out: a `DataSource` wrapper 
 harness's clock, in front of the injector, so a shaped network and a fault script are one player and
 the 403 arrives a round trip after the request, as a real one does. Arrival times are computed from
 the trace rather than accumulated, so the same requests opened at the same times deliver the same
-bytes at the same times on every run. [`docs/throughput-traces.md`](throughput-traces.md) is the
+bytes at the same times on every run. The trace's *transport* is replayed too — into Robolectric's
+connectivity service, as the clock crosses a stretch whose transport differs — so a handover is a
+change of network the library observes through the same callback it registers on a device, and
+not only a change of rate; `superplayer-abr`'s tests assert the oracle's reseeded estimate at the
+millisecond the trace names.
+
+A module whose engine components reach the player through core's extension interface puts them
+under a harness player with `buildPlayer(policy = …)`, which is `SuperPlayer.Builder.setPolicy`
+and nothing more: the extension fills the engine's slots before the harness configures the clock
+and the transport, exactly as it does for a consumer. [`docs/throughput-traces.md`](throughput-traces.md) is the
 format's specification, the replay's rules and limits, where each profile's numbers come from, and
 how a public dataset is converted — none is vendored here.
 

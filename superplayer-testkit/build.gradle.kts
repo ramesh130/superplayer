@@ -33,6 +33,11 @@ dependencies {
     implementation(libs.media3.exoplayer.dash)
     api(libs.media3.test.utils)
     api(libs.media3.test.utils.robolectric)
+    // `TransportReplay` drives Robolectric's connectivity shadow so a trace's handover is a change
+    // of network the platform reports, and `Shadows.shadowOf` lives in this artifact rather than in
+    // the shadows Media3's Robolectric utilities already bring. `implementation`: no signature in
+    // this module names a shadow.
+    implementation(libs.robolectric)
 
     // This module's own tests: the fakes above are already `api`, so only the Robolectric runtime
     // is added here — the same pin `superplayer-core` uses, for the reason `CLAUDE.md` gives about

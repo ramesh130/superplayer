@@ -1,0 +1,11 @@
+public final class com/superplayer/abr/BandwidthOracle {
+	public final fun currentEstimate ()Lcom/superplayer/core/ThroughputEstimate;
+	public final fun currentTransport ()Lcom/superplayer/core/NetworkTransport;
+	public final fun release ()V
+}
+
+public final class com/superplayer/abr/BandwidthOracle$Builder {
+	public fun <init> (Landroid/content/Context;)V
+	public final fun build ()Lcom/superplayer/abr/BandwidthOracle;
+}
+

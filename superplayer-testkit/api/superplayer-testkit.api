@@ -85,8 +85,8 @@ public final class com/superplayer/testkit/PlaybackHarness : org/junit/rules/Ext
 	public final fun advanceUntil (Landroidx/media3/common/Player;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public static synthetic fun advanceUntil$default (Lcom/superplayer/testkit/PlaybackHarness;Landroidx/media3/common/Player;Ljava/lang/String;JLkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public final fun attachVideoOutput (Landroidx/media3/common/Player;)V
-	public final fun buildPlayer (Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;)Lcom/superplayer/core/SuperPlayer;
-	public static synthetic fun buildPlayer$default (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;ILjava/lang/Object;)Lcom/superplayer/core/SuperPlayer;
+	public final fun buildPlayer (Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;Lcom/superplayer/core/PlaybackPolicy;)Lcom/superplayer/core/SuperPlayer;
+	public static synthetic fun buildPlayer$default (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;Lcom/superplayer/core/PlaybackPolicy;ILjava/lang/Object;)Lcom/superplayer/core/SuperPlayer;
 	public final fun buildPool (Ljava/lang/Integer;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/testkit/TestContent;Lkotlin/jvm/functions/Function0;)Lcom/superplayer/core/PlayerPool;
 	public static synthetic fun buildPool$default (Lcom/superplayer/testkit/PlaybackHarness;Ljava/lang/Integer;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/testkit/TestContent;Lkotlin/jvm/functions/Function0;ILjava/lang/Object;)Lcom/superplayer/core/PlayerPool;
 	public final fun buildStockPlayer (Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;)Landroidx/media3/exoplayer/ExoPlayer;
@@ -121,7 +121,7 @@ public final class com/superplayer/testkit/TestContent {
 	public static final field DEFAULT_SEGMENT_COUNT I
 	public static final fun dash (I)Lcom/superplayer/testkit/TestContent;
 	public final fun getSourceUri ()Ljava/lang/String;
-	public static final fun hls (I)Lcom/superplayer/testkit/TestContent;
+	public static final fun hls (II)Lcom/superplayer/testkit/TestContent;
 	public static final fun hostile (Lcom/superplayer/testmedia/HostileStream;)Lcom/superplayer/testkit/TestContent;
 	public static final fun liveHls ()Lcom/superplayer/testkit/TestContent;
 	public static final fun liveVideo (IJ)Lcom/superplayer/testkit/TestContent;
@@ -133,8 +133,8 @@ public final class com/superplayer/testkit/TestContent {
 public final class com/superplayer/testkit/TestContent$Companion {
 	public final fun dash (I)Lcom/superplayer/testkit/TestContent;
 	public static synthetic fun dash$default (Lcom/superplayer/testkit/TestContent$Companion;IILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
-	public final fun hls (I)Lcom/superplayer/testkit/TestContent;
-	public static synthetic fun hls$default (Lcom/superplayer/testkit/TestContent$Companion;IILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
+	public final fun hls (II)Lcom/superplayer/testkit/TestContent;
+	public static synthetic fun hls$default (Lcom/superplayer/testkit/TestContent$Companion;IIILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
 	public final fun hostile (Lcom/superplayer/testmedia/HostileStream;)Lcom/superplayer/testkit/TestContent;
 	public final fun liveHls ()Lcom/superplayer/testkit/TestContent;
 	public final fun liveVideo (IJ)Lcom/superplayer/testkit/TestContent;

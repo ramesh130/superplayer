@@ -49,6 +49,7 @@ import androidx.media3.test.utils.robolectric.RobolectricUtil
 import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
 import androidx.test.core.app.ApplicationProvider
 import com.superplayer.core.BufferPolicy
+import com.superplayer.core.PlaybackPolicy
 import com.superplayer.core.PlaybackProfile
 import com.superplayer.core.PlayerPool
 import com.superplayer.core.SuperPlayer
@@ -140,6 +141,9 @@ public class PlaybackHarness : ExternalResource() {
     /** How each player's loads wait on the clock, so [advanceTimeMs] can let them catch up with it. */
     private val waits = IdentityHashMap<Player, HarnessClockWait>()
 
+    /** The transport half of each player's trace, replayed into the platform as [advanceTimeMs] moves the clock. */
+    private val transportReplays = IdentityHashMap<Player, TransportReplay>()
+
     /**
      * A player as a consumer builds one, over synthetic content and the fakes above.
      *
@@ -150,7 +154,14 @@ public class PlaybackHarness : ExternalResource() {
      * the moment this returns — a [NetworkProfile]'s, or one read from a converted dataset. It
      * composes with [faults] rather than replacing them: the shaper sits in front of the injector,
      * so a shaped network with a 403 at segment 5 is one player, and the 403 arrives after the
-     * trace's round trip as a real one would.
+     * trace's round trip as a real one would. The trace's *transport* is replayed too, into the
+     * platform's connectivity service, so a handover in a trace is a change of network the library
+     * observes and not only a change of rate ([TransportReplay]).
+     *
+     * [policy], when set, is what `SuperPlayer.Builder.setPolicy` takes: a module's own
+     * `PlaybackPolicy`, which is how `superplayer-abr`'s tests put its engine components under a
+     * player this harness builds. A policy that is also core's extension fills the engine's slots
+     * before this harness configures the clock and the transport, exactly as it does for a consumer.
      */
     public fun buildPlayer(
         content: TestContent = TestContent.video(),
@@ -158,6 +169,7 @@ public class PlaybackHarness : ExternalResource() {
         telemetry: TelemetryCollector? = null,
         faults: FaultScript = FaultScript.NONE,
         network: ThroughputTrace? = null,
+        policy: PlaybackPolicy? = null,
     ): SuperPlayer {
         var built: ControllableVideoRenderer? = null
         val transport = composeTransport(content, faults, network)
@@ -165,6 +177,7 @@ public class PlaybackHarness : ExternalResource() {
         val player = SuperPlayer.Builder(ApplicationProvider.getApplicationContext())
             .apply { profile?.let { setProfile(it) } }
             .apply { telemetry?.let { setTelemetry(it) } }
+            .apply { policy?.let { setPolicy(it) } }
             .setEngineConfigurator { configuration ->
                 configuration.engine.setClock(clock)
                 configuration.engine.setRenderersFactory(renderersFactory { built = it })
@@ -290,6 +303,7 @@ public class PlaybackHarness : ExternalResource() {
         engines[player] = engine
         injectors[player] = transport.injector
         waits[player] = transport.wait
+        transport.transportReplay?.let { transportReplays[player] = it }
         attachVideoOutput(player)
         ignoreTheViewport(player)
     }
@@ -356,6 +370,9 @@ public class PlaybackHarness : ExternalResource() {
             countsTransfers = network == null,
         )
         val shaper = network?.let { ShapingDataSource.Factory(injector, it, clock, wait) }
+        // The network the trace starts on is the device's from before the player is built, so the
+        // transport the library reads at construction is the trace's rather than Robolectric's.
+        val transportReplay = network?.let { TransportReplay(it, clock.elapsedRealtime()).apply { replayAt(clock.elapsedRealtime()) } }
         return Transport(
             transfers = Transfers(
                 factory = shaper ?: injector,
@@ -365,6 +382,7 @@ public class PlaybackHarness : ExternalResource() {
             injector = injector,
             wait = wait,
             loadThreads = HarnessLoadThreads(wait),
+            transportReplay = transportReplay,
         )
     }
 
@@ -420,6 +438,9 @@ public class PlaybackHarness : ExternalResource() {
         // and at the old time on others.
         quiesce(player)
         clock.advanceTime(millis)
+        // The network first, then the engine: a load that completes at the new time completes on
+        // the transport the trace says the device is on at that time.
+        transportReplays[player]?.replayAt(clock.elapsedRealtime())
         quiesce(player)
     }
 
@@ -694,6 +715,7 @@ public class PlaybackHarness : ExternalResource() {
         engines.remove(player)
         injectors.remove(player)
         waits.remove(player)
+        transportReplays.remove(player)
     }
 
     /** Releases every player this harness built and still holds, newest first. */
@@ -703,6 +725,7 @@ public class PlaybackHarness : ExternalResource() {
         engines.clear()
         injectors.clear()
         waits.clear()
+        transportReplays.clear()
         // After the players, which are what were drawing into them.
         outputs.forEach { (surface, texture) ->
             surface.release()
@@ -855,14 +878,17 @@ public class PlaybackHarness : ExternalResource() {
 
     /**
      * Everything [composeTransport] built for one player: the [Transfers] the engine loads through,
-     * and the two objects the harness keeps hold of afterwards — the injector, which records what was
-     * requested, and the wait, which is how [advanceTimeMs] knows a load has caught up with the clock.
+     * and the objects the harness keeps hold of afterwards — the injector, which records what was
+     * requested; the wait, which is how [advanceTimeMs] knows a load has caught up with the clock;
+     * and under a trace its transport replay, which [advanceTimeMs] drives.
      */
     private class Transport(
         val transfers: Transfers,
         val injector: FaultInjectingDataSource.Factory,
         val wait: HarnessClockWait,
         val loadThreads: HarnessLoadThreads,
+        /** The trace's transport, replayed into the platform; null when no trace is replayed. */
+        val transportReplay: TransportReplay?,
     )
 
     /**

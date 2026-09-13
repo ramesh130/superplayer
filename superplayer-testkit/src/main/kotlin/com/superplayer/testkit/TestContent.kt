@@ -177,16 +177,18 @@ public class TestContent private constructor(
          * run against both is comparing the protocols rather than two unrelated streams.
          *
          * [segmentCount] is what decides which segment indices a [FaultScript] can address: a fault
-         * at media segment 2 needs a stream with a segment 2.
+         * at media segment 2 needs a stream with a segment 2. [variantCount] is one unless the test
+         * is about a *selection*: two variants are what gives the selector something to choose
+         * between, and only an adaptive selection reports an estimate of its own.
          */
         @JvmStatic
-        public fun hls(segmentCount: Int = DEFAULT_SEGMENT_COUNT): TestContent = TestContent(
+        public fun hls(segmentCount: Int = DEFAULT_SEGMENT_COUNT, variantCount: Int = 1): TestContent = TestContent(
             videoBitratesBps = emptyList(),
             durationMs = SyntheticHlsStream.durationMs(segmentCount),
             live = false,
             protocol = Protocol.HLS,
             sourceUri = SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI,
-            resources = SyntheticHlsStream.resources(segmentCount),
+            resources = SyntheticHlsStream.resources(segmentCount, variantCount),
         )
 
         /**

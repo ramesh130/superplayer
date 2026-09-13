@@ -36,7 +36,7 @@ than to wave the dependency through.
 | `superplayer-telemetry` | 2 | QoE collector (CTA-2066), CMCD emitter, pluggable sinks, session trace recorder and its goldens | core, testkit (tests only) |
 | `superplayer-testkit` | 2 | Fault injection, network shaping, fake manifests, golden traces | core, Media3 test utils |
 | `superplayer-testmedia` | 1 | Synthetic HLS and DASH streams: the known-good media tests play | nothing |
-| `superplayer-abr` | 3 | AdaptiveLoadControl, NetworkAwareTrackSelection, BandwidthOracle | core |
+| `superplayer-abr` | 3 | BandwidthOracle (per-transport estimates, spread beside the mean, cache hits excluded); AdaptiveLoadControl and NetworkAwareTrackSelection to follow | core, testkit (tests only) |
 | `superplayer-preload` | 4 | PreloadCoordinator: segment-0 prefetch and decoder warm-up | core |
 | `superplayer-cache` | 4 | Content-keyed CacheDataSource, tiering, eviction policy | core |
 | `superplayer-resilience` | 5 | ErrorClassifier, RetryPolicy, FallbackLadder | core |

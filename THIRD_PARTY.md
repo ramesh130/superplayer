@@ -56,6 +56,9 @@ is an AAR whose dependencies are runtime-scoped, so Robolectric's shadows reach 
 classpath but not the test *compile* classpath — and the lifecycle tests name shadow types directly,
 because a wake lock and an audio focus request are only observable through them. The catalog pins it
 to the version Media3 already resolves, so the two declarations cannot pull in two Robolectrics.
+`superplayer-testkit` declares it on its *main* compile classpath as well as its test one: the
+harness's `TransportReplay` drives the connectivity shadow so a trace's handover is a change of
+network the platform reports, and `Shadows.shadowOf` lives in this artifact.
 
 **On JUnit 4 and EPL-1.0.** EPL-1.0 is a weak, file-scoped copyleft license. `CONTRIBUTING.md`
 admits weak copyleft for test-only and build-time dependencies specifically: JUnit is not

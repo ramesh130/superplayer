@@ -46,12 +46,12 @@ import com.superplayer.testmedia.SyntheticHlsStream
 public class TestContent private constructor(
 
     /**
-     * The declared peak bitrates of the video renditions, ascending, one entry per rendition.
+     * The video renditions, ascending by bitrate, one entry per rendition.
      *
      * More than one is what makes an ABR switch possible at all; a single entry is content the
      * player has no choice about, which is what most tests want.
      */
-    internal val videoBitratesBps: List<Int>,
+    internal val rungs: List<Rung>,
 
     /** How long the content claims to be, in media milliseconds. */
     internal val durationMs: Long,
@@ -103,6 +103,65 @@ public class TestContent private constructor(
      */
     internal enum class Protocol { DESCRIBED, HLS, DASH }
 
+    /**
+     * One rendition of a ladder: a bitrate, **the resolution a stream would encode it at**, and
+     * optionally the codec profile it declares, as an RFC 6381 `codecs` string.
+     *
+     * The resolution is part of the rung rather than decorative. A ladder whose every rung is 720p
+     * is not a ladder a resolution cap can choose within: a policy capping height at 480p excludes
+     * *all* of it, and Media3's selector then falls back to the lowest rung. The measurement that
+     * comes out is a real number produced by a degenerate mechanism — the cap did not pick a rung,
+     * it disqualified the ladder — and a benchmark reporting it as a quality trade would be
+     * describing something that did not happen. `superplayer-core`'s `DATA_SAVER` caps both height
+     * and bitrate, so this is the difference between measuring that profile and measuring a
+     * fallback path.
+     *
+     * [codecs] is null for a rung that declares no profile, which is most of them: a selector gating
+     * on the decoder's profile levels has nothing to gate on and lets the rung through, so a test
+     * that is not about the decoder is not accidentally about it.
+     *
+     * ref: RFC 6381 §3.3 for the `codecs` form; `avc1.640028` is H.264 High profile level 4.0.
+     */
+    public data class Rung(
+        public val bitrateBps: Int,
+        public val heightPx: Int,
+        public val codecs: String? = null,
+    ) {
+        init {
+            require(bitrateBps > 0) { "A rung needs a positive bitrate, was $bitrateBps" }
+            require(heightPx > 0) { "A rung needs a positive height, was $heightPx" }
+        }
+
+        public companion object {
+            /**
+             * A rung of [bitrateBps] at the frame height a stream would encode it at.
+             *
+             * ref: Apple, *HLS Authoring Specification for Apple Devices*, whose recommended tier
+             * tables pair each average bitrate with a frame size:
+             * https://developer.apple.com/documentation/http-live-streaming/hls-authoring-specification-for-apple-devices
+             * The thresholds follow that pairing at the rung boundaries rather than reproducing the
+             * table, because a synthetic ladder chooses its own bitrates: what has to be true is that
+             * a higher rung is a larger picture, which is what makes a resolution ceiling select
+             * rather than exclude.
+             */
+            @JvmStatic
+            public fun of(bitrateBps: Int): Rung = Rung(bitrateBps, heightPxFor(bitrateBps))
+
+            private fun heightPxFor(bitrateBps: Int): Int = when {
+                bitrateBps < LADDER_480P_FLOOR_BPS -> 360
+                bitrateBps < LADDER_720P_FLOOR_BPS -> 480
+                bitrateBps < LADDER_1080P_FLOOR_BPS -> 720
+                else -> 1080
+            }
+
+            // The rung boundaries [heightPxFor] reads, which its KDoc cites. Below the first a
+            // rendition is 360p; the last is where 1080p starts.
+            private const val LADDER_480P_FLOOR_BPS = 600_000
+            private const val LADDER_720P_FLOOR_BPS = 1_200_000
+            private const val LADDER_1080P_FLOOR_BPS = 3_000_000
+        }
+    }
+
     public companion object {
 
         /** A rendition bitrate that reads like real 720p, so a test's numbers look like a stream's. */
@@ -116,7 +175,7 @@ public class TestContent private constructor(
         public fun video(
             bitrateBps: Int = DEFAULT_BITRATE_BPS,
             durationMs: Long = DEFAULT_DURATION_MS,
-        ): TestContent = TestContent(listOf(bitrateBps), durationMs, live = false)
+        ): TestContent = TestContent(listOf(Rung.of(bitrateBps)), durationMs, live = false)
 
         /**
          * On-demand video with a rendition ladder, which is what an ABR switch needs.
@@ -130,7 +189,25 @@ public class TestContent private constructor(
             durationMs: Long = DEFAULT_DURATION_MS,
         ): TestContent {
             require(bitratesBps.isNotEmpty()) { "A ladder needs at least one rendition" }
-            return TestContent(bitratesBps, durationMs, live = false)
+            return TestContent(bitratesBps.map(Rung::of), durationMs, live = false)
+        }
+
+        /**
+         * On-demand video with a ladder whose every rung is stated in full — the resolution and the
+         * codec profile as well as the bitrate — which is what a selector that gates on the display
+         * and on the decoder needs something to exclude by.
+         *
+         * [videoLadder] derives each rung's resolution from its bitrate and declares no codec, which
+         * is enough for a test about *switching*; a test about *gating* names the rung that should
+         * be refused, so it names the property it is refused on.
+         *
+         * [rungs] is taken in the order given and is expected to ascend by bitrate, as
+         * [videoLadder]'s is and for the same reason.
+         */
+        @JvmStatic
+        public fun ladder(rungs: List<Rung>, durationMs: Long = DEFAULT_DURATION_MS): TestContent {
+            require(rungs.isNotEmpty()) { "A ladder needs at least one rendition" }
+            return TestContent(rungs, durationMs, live = false)
         }
 
         /**
@@ -144,7 +221,7 @@ public class TestContent private constructor(
         public fun liveVideo(
             bitrateBps: Int = DEFAULT_BITRATE_BPS,
             windowDurationMs: Long = DEFAULT_DURATION_MS,
-        ): TestContent = TestContent(listOf(bitrateBps), windowDurationMs, live = true)
+        ): TestContent = TestContent(listOf(Rung.of(bitrateBps)), windowDurationMs, live = true)
 
         /**
          * A live window with a rendition ladder: the two properties ABR on live content needs at once.
@@ -164,7 +241,7 @@ public class TestContent private constructor(
             windowDurationMs: Long = DEFAULT_DURATION_MS,
         ): TestContent {
             require(bitratesBps.isNotEmpty()) { "A ladder needs at least one rendition" }
-            return TestContent(bitratesBps, windowDurationMs, live = true)
+            return TestContent(bitratesBps.map(Rung::of), windowDurationMs, live = true)
         }
 
         /**
@@ -183,7 +260,7 @@ public class TestContent private constructor(
          */
         @JvmStatic
         public fun hls(segmentCount: Int = DEFAULT_SEGMENT_COUNT, variantCount: Int = 1): TestContent = TestContent(
-            videoBitratesBps = emptyList(),
+            rungs = emptyList(),
             durationMs = SyntheticHlsStream.durationMs(segmentCount),
             live = false,
             protocol = Protocol.HLS,
@@ -201,7 +278,7 @@ public class TestContent private constructor(
          */
         @JvmStatic
         public fun dash(segmentCount: Int = DEFAULT_SEGMENT_COUNT): TestContent = TestContent(
-            videoBitratesBps = emptyList(),
+            rungs = emptyList(),
             durationMs = SyntheticDashStream.durationMs(segmentCount),
             live = false,
             protocol = Protocol.DASH,
@@ -242,7 +319,7 @@ public class TestContent private constructor(
                 null
             }
             return TestContent(
-                videoBitratesBps = emptyList(),
+                rungs = emptyList(),
                 durationMs = SyntheticHlsStream.durationMs(SyntheticHlsStream.LIVE_WINDOW_SEGMENT_COUNT),
                 live = true,
                 protocol = Protocol.HLS,
@@ -270,7 +347,7 @@ public class TestContent private constructor(
          */
         @JvmStatic
         public fun hostile(stream: HostileStream): TestContent = TestContent(
-            videoBitratesBps = emptyList(),
+            rungs = emptyList(),
             durationMs = stream.durationMs,
             live = false,
             protocol = when (stream.protocol) {

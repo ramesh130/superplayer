@@ -19,11 +19,15 @@ package com.superplayer.core
 import android.app.ActivityManager
 import android.content.Context
 import android.content.pm.ApplicationInfo
+import android.hardware.display.DisplayManager
 import android.media.MediaCodecList
 import android.media.MediaFormat
+import android.os.Build
+import android.view.Display
 
 /**
- * The one place a device is asked how many players it can afford to have alive at once.
+ * The one place a device is asked how many players it can afford to have alive at once — and, since
+ * #101, the one place it is asked what it can show and decode ([deviceConstraintsOf]).
  *
  * The counterpart of `EngineBinding.kt` and `LifecycleBinding.kt` for [PlayerPool]: the pool itself
  * decides nothing about size, it applies what this file reports. That split is what keeps the bound
@@ -218,3 +222,148 @@ private val FEED_VIDEO_MIME_TYPES: Set<String> = setOf(
     MediaFormat.MIMETYPE_VIDEO_AVC,
     MediaFormat.MIMETYPE_VIDEO_HEVC,
 )
+
+/**
+ * What the device can show and decode, read once and handed to a track selector as a constraint.
+ *
+ * A *constraint* and not a [PlaybackConditions] observation, which is ADR-0009 rule 2's line: on a
+ * phone the display and the decoder table do not change under a playing session, so the selector
+ * reads them when it is built and a policy is never consulted about them. The day they can change
+ * — an external display on a television — is Phase 8's, and it turns these into observations then.
+ *
+ * Every field is *unknown* rather than *none* where the platform does not answer, and an unknown
+ * constrains nothing. That direction is load-bearing: Robolectric's default device reports an
+ * empty codec table and a small display, and a gate that read "no decoder declared" as "nothing
+ * decodable" would exclude every rung of every ladder under test and fall back to the bottom one,
+ * which looks like a selection and is not. `MediaCodecVideoRenderer` still refuses a format the
+ * device really cannot decode; this constraint only stops the selector *asking* for one.
+ *
+ * Nothing here reads a model string. `Build.MODEL` and its siblings are how a device-specific table
+ * gets written, and a table by model is wrong on the next device the table has not met.
+ */
+internal class DeviceConstraints(
+    /**
+     * The shorter edge of the largest display mode, in physical pixels, or null when unknown.
+     *
+     * The shorter edge, because a rendition is judged by whether the display can show it at full
+     * resolution in *some* orientation: a 1080 × 2400 phone shows a 1920 × 1080 rung edge to edge
+     * in landscape, and what disqualifies a 2160p rung on it is that its own short edge is longer
+     * than the display's.
+     */
+    val displayShortEdgePx: Int?,
+
+    /**
+     * The HDR types the display reports (`Display.HdrCapabilities.HDR_TYPE_*`), or null when the
+     * platform does not say. An empty set is a display that answered and supports none.
+     */
+    val displayHdrTypes: Set<Int>?,
+
+    /**
+     * For each video MIME type (lowercased) a decoder is declared for, the profile and level pairs
+     * it declares. A MIME type with no entry is *unknown*; an entry with an empty list is a decoder
+     * that declared no profiles, which is also unknown.
+     */
+    val decodableProfileLevels: Map<String, List<ProfileLevel>>,
+) {
+    /** One `MediaCodecInfo.CodecProfileLevel`, as values: [profile] and [level] are its constants. */
+    internal data class ProfileLevel(val profile: Int, val level: Int)
+
+    /**
+     * Whether a decoder for [mimeType] declares [profile] at [level] or above, or null when the
+     * device says nothing about that MIME type.
+     *
+     * The comparison is the platform's own: equal profile, and a declared level at or above the
+     * one asked for. Levels are declared as ascending flags for every codec Android names, so the
+     * numeric comparison is the ordering.
+     *
+     * ref: https://developer.android.com/reference/android/media/MediaCodecInfo.CodecProfileLevel
+     */
+    fun canDecode(mimeType: String, profile: Int, level: Int): Boolean? {
+        val declared = decodableProfileLevels[mimeType.lowercase()]?.takeIf { it.isNotEmpty() } ?: return null
+        return declared.any { it.profile == profile && it.level >= level }
+    }
+
+    internal companion object {
+        /** A device that answered nothing: constrains nothing. */
+        val UNKNOWN: DeviceConstraints = DeviceConstraints(
+            displayShortEdgePx = null,
+            displayHdrTypes = null,
+            decodableProfileLevels = emptyMap(),
+        )
+    }
+}
+
+/**
+ * The device's constraints, read from the platform now: the default display's modes and HDR
+ * capabilities through `DisplayManager`, and the video decoders' profile levels through the same
+ * `MediaCodecList` [concurrentPlayerCapacityOf] reads.
+ *
+ * Read on demand rather than cached, for the reason the file's KDoc gives about the pool: a test
+ * states a different device per test.
+ *
+ * ref: https://developer.android.com/reference/android/view/Display#getSupportedModes()
+ * ref: https://developer.android.com/reference/android/view/Display#getHdrCapabilities()
+ */
+internal fun deviceConstraintsOf(context: Context): DeviceConstraints {
+    val display = try {
+        (context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)?.getDisplay(Display.DEFAULT_DISPLAY)
+    } catch (e: RuntimeException) {
+        null
+    }
+    val shortEdgePx = display?.supportedModes
+        ?.map { minOf(it.physicalWidth, it.physicalHeight) }
+        ?.filter { it > 0 }
+        ?.maxOrNull()
+    val hdrTypes = display?.let { readHdrTypes(it) }
+    return DeviceConstraints(
+        displayShortEdgePx = shortEdgePx,
+        displayHdrTypes = hdrTypes,
+        decodableProfileLevels = decodableProfileLevels(),
+    )
+}
+
+private fun readHdrTypes(display: Display): Set<Int>? {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return null
+    val capabilities = try {
+        display.hdrCapabilities
+    } catch (e: RuntimeException) {
+        return null
+    } ?: return null
+    return capabilities.supportedHdrTypes.toSet()
+}
+
+/**
+ * The profile levels every declared video decoder reports, by MIME type.
+ *
+ * Every decoder's entries for a MIME type are pooled rather than kept per decoder: what a selector
+ * asks is whether *some* decoder on the device takes the rung, and the platform picks which. The
+ * same `media_codecs.xml` failure mode as [decoderInstanceCapacity] is caught the same way, and
+ * answers "unknown" rather than "none".
+ */
+private fun decodableProfileLevels(): Map<String, List<DeviceConstraints.ProfileLevel>> {
+    val codecs = try {
+        MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
+    } catch (e: RuntimeException) {
+        return emptyMap()
+    }
+    val pooled = mutableMapOf<String, MutableList<DeviceConstraints.ProfileLevel>>()
+    for (codec in codecs) {
+        if (codec.isEncoder) continue
+        for (mimeType in codec.supportedTypes) {
+            val format = mimeType.lowercase()
+            if (!format.startsWith(VIDEO_MIME_PREFIX)) continue
+            val levels = try {
+                codec.getCapabilitiesForType(mimeType).profileLevels
+            } catch (e: IllegalArgumentException) {
+                continue
+            } ?: continue
+            val declared = pooled.getOrPut(format) { mutableListOf() }
+            // A profile of zero is no profile: it is what an entry constructed and never filled
+            // reports, and it names nothing a rung could ask for.
+            levels.filter { it.profile > 0 }.mapTo(declared) { DeviceConstraints.ProfileLevel(it.profile, it.level) }
+        }
+    }
+    return pooled
+}
+
+private const val VIDEO_MIME_PREFIX = "video/"

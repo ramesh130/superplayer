@@ -89,14 +89,16 @@ public object LogcatSink : TelemetrySink {
                 "evt=session_started $common profile=${event.profile} " +
                     "minBufferMs=${event.decision.buffer.minBufferMs} " +
                     "maxBufferMs=${event.decision.buffer.maxBufferMs} " +
-                    "maxBitrateBps=${event.decision.trackSelection.maxVideoBitrateBps}",
+                    "maxBitrateBps=${event.decision.trackSelection.maxVideoBitrateBps}" +
+                    event.decision.liveLatencyFields(),
             )
 
             is TelemetryEvent.DecisionChanged -> info(
                 "evt=decision_changed $common trigger=${event.trigger} " +
                     "minBufferMs=${event.decision.buffer.minBufferMs} " +
                     "maxBufferMs=${event.decision.buffer.maxBufferMs} " +
-                    "maxBitrateBps=${event.decision.trackSelection.maxVideoBitrateBps}",
+                    "maxBitrateBps=${event.decision.trackSelection.maxVideoBitrateBps}" +
+                    event.decision.liveLatencyFields(),
             )
 
             is TelemetryEvent.SessionEnded ->
@@ -175,6 +177,7 @@ public object LogcatSink : TelemetrySink {
      * can carry a space, and a message can carry a newline. A newline would end the line, which is
      * the one thing this format promises not to do.
      */
+
     private fun quote(value: String?): String =
         if (value == null) {
             "null"

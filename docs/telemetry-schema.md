@@ -209,7 +209,9 @@ change of schema. A consumer that reads the constant from this document rather t
 the one that breaks when it moves.
 
 `SessionStarted.decision` is the `PlaybackDecision` the player was actually running — the buffer
-sizes and track-selection limits in force at the start; see `DecisionChanged` for what follows. It
+sizes and track-selection limits in force at the start, and, for content the manifest declared
+live, the range of playback speeds the player holds its live window with (`liveLatency`, absent
+otherwise); see `DecisionChanged` for what follows. It
 is here because a QoE number is uninterpretable without it: a rebuffer ratio measured under
 `DATA_SAVER`'s buffer sizes and one measured under `LIVE_LINEAR`'s are two different measurements,
 and a pipeline that cannot tell them apart will average them. Carrying the decision rather than only

@@ -1,3 +1,27 @@
+public final class com/superplayer/abr/AdaptiveBufferPolicy : com/superplayer/core/PlaybackPolicy {
+	public static final field CEILING_STEP_MS J
+	public static final field Companion Lcom/superplayer/abr/AdaptiveBufferPolicy$Companion;
+	public static final field DEEP_CUSHION_MS J
+	public static final field FLOOR_STEP_MS J
+	public static final field HEAP_SHARE_DIVISOR J
+	public static final field HIGH_THROUGHPUT_BPS J
+	public static final field MAX_VARIANCE_FACTOR D
+	public static final field REBUFFER_COOLDOWN_MS J
+	public static final field REFERENCE_BITRATE_BPS J
+	public fun <init> (Lcom/superplayer/core/PlaybackProfile;)V
+	public fun decide (Lcom/superplayer/core/PlaybackConditions;)Lcom/superplayer/core/PlaybackDecision;
+	public final fun getProfile ()Lcom/superplayer/core/PlaybackProfile;
+}
+
+public final class com/superplayer/abr/AdaptiveBufferPolicy$Companion {
+	public final fun getLIVE_LATENCY ()Lcom/superplayer/core/LiveLatencyPolicy;
+}
+
+public final class com/superplayer/abr/AdaptivePolicy {
+	public static final field INSTANCE Lcom/superplayer/abr/AdaptivePolicy;
+	public final fun forProfile (Landroid/content/Context;Lcom/superplayer/core/PlaybackProfile;)Lcom/superplayer/core/PlaybackPolicy;
+}
+
 public final class com/superplayer/abr/BandwidthOracle {
 	public final fun currentEstimate ()Lcom/superplayer/core/ThroughputEstimate;
 	public final fun currentTransport ()Lcom/superplayer/core/NetworkTransport;

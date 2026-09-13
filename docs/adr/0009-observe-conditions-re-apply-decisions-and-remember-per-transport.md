@@ -177,6 +177,18 @@ Nine rules follow, and they are binding.
    re-application never rewrites them, so a consumer's own parameters are never overwritten by a
    trigger.
 
+   *Addendum (2026-09-13, #100).* A decision has a third half beside the two this rule names: a
+   `LiveLatencyPolicy`, the speed range a live window is held with. It reaches the engine by neither
+   target. Media3 takes a live speed range from the **media item** — its HLS and DASH sources pin
+   the range to exactly 1× on any stream whose manifest carries no low-latency hints unless the item
+   declares one, so a `LivePlaybackSpeedControl` built from the half would silently never be used —
+   and so core lays the half into the item when a request is adopted and, on a player that is
+   re-consulted, replaces the playing item in place when the half changes, which Media3's own
+   sources do without re-preparing. `EngineBinding.kt` still holds the one translation. The promise
+   above holds for the item as it does for the parameters: an item that already declares a range of
+   its own is never rewritten. This is an addition to the rule, not a contradiction of it, and it
+   is recorded here rather than in a superseding ADR for that reason.
+
 6. **`SuperPlayer.playbackDecision` is the decision currently in force; `SessionStarted.decision`
    is the decision in force when the session started; and every change afterwards is a
    `DecisionChanged` telemetry event.** `DecisionChanged` carries the new decision and the trigger

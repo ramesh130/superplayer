@@ -55,7 +55,7 @@ public object AdaptivePolicy {
 
     /** The adaptive policy for [profile], ready for `SuperPlayer.Builder.setPolicy`. */
     public fun forProfile(context: Context, profile: PlaybackProfile): PlaybackPolicy =
-        AdaptiveEnginePolicy(context.applicationContext, AdaptiveBufferPolicy(profile))
+        AdaptiveEnginePolicy(context.applicationContext, AdaptiveBufferPolicy(profile), AdaptiveSelectionPolicy(profile))
 }
 
 /**
@@ -72,12 +72,15 @@ public object AdaptivePolicy {
  */
 internal class AdaptiveEnginePolicy(
     private val context: Context,
-    private val policy: AdaptiveBufferPolicy,
+    private val buffer: AdaptiveBufferPolicy,
+    private val selection: AdaptiveSelectionPolicy,
 ) : EnginePolicyExtension {
 
     private var configured = false
 
-    override fun decide(conditions: PlaybackConditions): PlaybackDecision = policy.decide(conditions)
+    /** Each pure policy owns one half; the live half travels with the buffer's. */
+    override fun decide(conditions: PlaybackConditions): PlaybackDecision =
+        buffer.decide(conditions).copy(trackSelection = selection.decide(conditions).trackSelection)
 
     override fun configureEngine(configuration: EngineConfiguration) {
         check(!configured) { "An adaptive policy serves one player; build another with AdaptivePolicy.forProfile" }

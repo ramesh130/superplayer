@@ -144,7 +144,8 @@ class AdaptiveBufferPolicyTest {
         assertThat(held.buffer.bufferForPlaybackAfterRebufferMs)
             .isEqualTo(STATIC_VOD.buffer.bufferForPlaybackAfterRebufferMs * 2)
         assertThat(held.buffer.bufferForPlaybackMs).isEqualTo(STATIC_VOD.buffer.bufferForPlaybackMs)
-        assertThat(held.trackSelection.maxVideoBitrateBps).isEqualTo(3_000_000)
+        // The held ceiling is the selection policy's half, not this one's.
+        assertThat(held.trackSelection).isEqualTo(STATIC_VOD.trackSelection)
 
         // A second rebuffer raises it further; the range's minimum bounds it.
         val twice = vod().decide(justEnded.copy(stallHistory = rebuffered(count = 2, msAgo = 1_000)))
@@ -159,26 +160,6 @@ class AdaptiveBufferPolicyTest {
         assertThat(lapsed.trackSelection).isEqualTo(STATIC_VOD.trackSelection)
     }
 
-    @Test
-    fun theHeldCeilingIsTheMeanWhereThereIsNoPercentileAndNeverAboveTheProfilesOwnCap() {
-        val noPercentile = conditions(estimate(meanBps = 2_000_000, spreadBps = 100_000, conservativeBps = null))
-            .copy(stallHistory = rebuffered(count = 1, msAgo = 0))
-        assertThat(vod().decide(noPercentile).trackSelection.maxVideoBitrateBps).isEqualTo(2_000_000)
-
-        val fastNetwork = conditions(estimate(meanBps = 20_000_000, spreadBps = 100_000, conservativeBps = 18_000_000))
-            .copy(stallHistory = rebuffered(count = 1, msAgo = 0))
-        val dataSaver = AdaptiveBufferPolicy(PlaybackProfile.DATA_SAVER).decide(fastNetwork)
-        assertThat(dataSaver.trackSelection)
-            .isEqualTo(PlaybackPolicy.forProfile(PlaybackProfile.DATA_SAVER).decide(PlaybackConditions()).trackSelection)
-
-        // Nothing measured: nothing to hold at, and the floor is still raised.
-        val unmeasured = PlaybackConditions(stallHistory = rebuffered(count = 1, msAgo = 0))
-        assertThat(vod().decide(unmeasured).trackSelection).isEqualTo(STATIC_VOD.trackSelection)
-        assertThat(vod().decide(unmeasured).buffer.bufferForPlaybackAfterRebufferMs)
-            .isEqualTo(STATIC_VOD.buffer.bufferForPlaybackAfterRebufferMs * 2)
-    }
-
-    // Branch 5, on every branch above.
     @Test
     fun aLowHeapCapsTheCeilingOnEveryBranch() {
         val heap = 64L * 1_024 * 1_024

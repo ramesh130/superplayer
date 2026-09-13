@@ -22,6 +22,12 @@ public final class com/superplayer/abr/AdaptivePolicy {
 	public final fun forProfile (Landroid/content/Context;Lcom/superplayer/core/PlaybackProfile;)Lcom/superplayer/core/PlaybackPolicy;
 }
 
+public final class com/superplayer/abr/AdaptiveSelectionPolicy : com/superplayer/core/PlaybackPolicy {
+	public fun <init> (Lcom/superplayer/core/PlaybackProfile;)V
+	public fun decide (Lcom/superplayer/core/PlaybackConditions;)Lcom/superplayer/core/PlaybackDecision;
+	public final fun getProfile ()Lcom/superplayer/core/PlaybackProfile;
+}
+
 public final class com/superplayer/abr/BandwidthOracle {
 	public final fun currentEstimate ()Lcom/superplayer/core/ThroughputEstimate;
 	public final fun currentTransport ()Lcom/superplayer/core/NetworkTransport;

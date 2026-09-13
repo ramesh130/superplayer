@@ -92,6 +92,13 @@ public object LogcatSink : TelemetrySink {
                     "maxBitrateBps=${event.decision.trackSelection.maxVideoBitrateBps}",
             )
 
+            is TelemetryEvent.DecisionChanged -> info(
+                "evt=decision_changed $common trigger=${event.trigger} " +
+                    "minBufferMs=${event.decision.buffer.minBufferMs} " +
+                    "maxBufferMs=${event.decision.buffer.maxBufferMs} " +
+                    "maxBitrateBps=${event.decision.trackSelection.maxVideoBitrateBps}",
+            )
+
             is TelemetryEvent.SessionEnded ->
                 info("evt=session_ended $common dropped=${event.droppedEventCount}")
 

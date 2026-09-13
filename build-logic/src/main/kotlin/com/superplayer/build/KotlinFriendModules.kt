@@ -39,6 +39,14 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
  * relationship: these are two compilations of one library, shipped together in one phase, not a
  * consumer reaching into an implementation.
  *
+ * `superplayer-abr` is the second friend, and the argument holds for it unchanged with one
+ * difference worth stating: testkit is the same phase as the modules it serves, and abr is a later
+ * phase than core. That is fine under `docs/modules.md`'s rule, because a friend path is a compiler
+ * flag and not a Gradle dependency, and the dependency it does not create is the one the rule
+ * forbids. What abr reaches is a core-internal extension interface on its policy object, through
+ * which its engine components — `@UnstableApi` types, every one — fill the same `EngineConfiguration`
+ * the test seam fills (ADR-0009 rule 7).
+ *
  * ## Why it is not the second seam `docs/testing.md` warns about
  *
  * That warning is about *widening what is configurable*. Nothing is widened here: the same one

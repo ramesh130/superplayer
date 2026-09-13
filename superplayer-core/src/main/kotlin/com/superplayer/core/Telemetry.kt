@@ -236,6 +236,18 @@ public interface TelemetryCollector {
      */
     public fun onMemoryPressure() {}
 
+    /**
+     * The decision in force changed to [decision], because of [trigger], on the application
+     * thread. Emit it as a `TelemetryEvent.DecisionChanged` under the open session; with no session
+     * open there is nothing to stamp it on, and the next `SessionStarted` carries the decision then
+     * in force, so nothing is lost.
+     *
+     * Core signals this rather than letting the collector infer it, for the reason it signals
+     * [startSession]: only core knows the trigger, and the trigger is what makes a decision series
+     * legible (ADR-0009 rule 6). Never called on a player whose policy is consulted once.
+     */
+    public fun decisionChanged(decision: PlaybackDecision, trigger: DecisionTrigger)
+
     /** The player is about to be released. Unregister everything [attach] registered. */
     public fun detach()
 }

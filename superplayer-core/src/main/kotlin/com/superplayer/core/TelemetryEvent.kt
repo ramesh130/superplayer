@@ -102,6 +102,29 @@ public sealed class TelemetryEvent {
     ) : TelemetryEvent()
 
     /**
+     * The decision in force changed after the session started: the policy was consulted again on
+     * one of the named [DecisionTrigger]s and answered differently.
+     *
+     * A pipeline reconstructs the decision a session was running at any moment from
+     * [SessionStarted.decision] and the sequence of these — which is what makes a QoE number
+     * measured under an adaptive policy interpretable at all. Only emitted on a player whose engine
+     * can honour a changed decision whole; a player consulted once emits none (ADR-0009 rule 5).
+     *
+     * An addition of shape rather than of meaning, so not a [SCHEMA_VERSION] bump (ADR-0008
+     * rule 5); `docs/telemetry-schema.md` defines it.
+     */
+    public data class DecisionChanged(
+        override val sessionId: String,
+        override val contentId: String,
+        override val timestampMs: Long,
+        override val monotonicTimeMs: Long,
+        /** The decision now in force ([SuperPlayer.playbackDecision]). */
+        public val decision: PlaybackDecision,
+        /** Which named trigger produced the re-consultation. */
+        public val trigger: DecisionTrigger,
+    ) : TelemetryEvent()
+
+    /**
      * The session closed: the player was released, recycled into a [PlayerPool], or given different
      * content through [SuperPlayer.setMediaRequest] or [SuperPlayer.restoreSnapshot].
      *

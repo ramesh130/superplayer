@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright 2026 The SuperPlayer Authors
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      An install-time permission, declared here because core's own code reads the transport
+      (ConditionsBinding.kt) rather than only Media3's. Media3's exoplayer artifact declares the same
+      one, so no consumer gains a permission it did not already have. This is not the case ADR-0007
+      rule 4 is about: that rule keeps the foreground-service permissions — the ones that change what
+      an app is allowed to do in the background — out of the library, and this one changes nothing a
+      consumer is asked about. READ_PHONE_STATE, which would refine a cellular transport with its
+      generation, is deliberately *not* declared: it is a runtime permission, and asking for it is the
+      app's decision. ConditionsBinding.kt checks for it and reports the generation as unobserved
+      without it.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+</manifest>

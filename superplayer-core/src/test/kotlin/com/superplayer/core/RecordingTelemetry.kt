@@ -102,6 +102,20 @@ class RecordingTelemetry(private val sink: TelemetrySink) : TelemetryCollector {
         )
     }
 
+    override fun decisionChanged(decision: PlaybackDecision, trigger: DecisionTrigger) {
+        val open = openSession ?: return
+        sink.onEvent(
+            TelemetryEvent.DecisionChanged(
+                sessionId = open.sessionId,
+                contentId = open.contentId,
+                timestampMs = TIMESTAMP_MS,
+                monotonicTimeMs = MONOTONIC_MS,
+                decision = decision,
+                trigger = trigger,
+            ),
+        )
+    }
+
     /** How many times core forwarded the platform's memory-pressure signal. */
     var memoryPressureCount = 0
         private set

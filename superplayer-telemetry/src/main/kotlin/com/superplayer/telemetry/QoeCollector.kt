@@ -24,7 +24,9 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.MediaLoadData
+import com.superplayer.core.DecisionTrigger
 import com.superplayer.core.FailureCategory
+import com.superplayer.core.PlaybackDecision
 import com.superplayer.core.PlaybackFailure
 import com.superplayer.core.SuperPlayer
 import com.superplayer.core.TelemetryCollector
@@ -369,6 +371,22 @@ public class QoeCollector internal constructor(
 
     override fun declareIntent(monotonicTimeMs: Long) {
         declaredIntentMonotonicMs = monotonicTimeMs
+    }
+
+    override fun decisionChanged(decision: PlaybackDecision, trigger: DecisionTrigger) {
+        // No session, no event: the next `SessionStarted` carries the decision then in force, which
+        // is the same information under the id it belongs to.
+        val session = openSession ?: return
+        emit(
+            TelemetryEvent.DecisionChanged(
+                sessionId = session.id,
+                contentId = session.contentId,
+                timestampMs = System.currentTimeMillis(),
+                monotonicTimeMs = now(),
+                decision = decision,
+                trigger = trigger,
+            ),
+        )
     }
 
     override fun endSession() {

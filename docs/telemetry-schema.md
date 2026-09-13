@@ -183,6 +183,7 @@ additions is what you want.
 | Event | Fired when | Carries |
 | --- | --- | --- |
 | `SessionStarted` | A player takes content on | `profile`, `decision` |
+| `DecisionChanged` | The policy answered differently on a named trigger | `decision`, `trigger` |
 | `SessionEnded` | Released, recycled, or moved to other content | `droppedEventCount` |
 | `FirstFrameRendered` | The first video frame reaches the display | `timeToFirstFrameMs`, `startBoundary` |
 | `RebufferStarted` | Playback stalls for data after it started | `seekInduced` |
@@ -207,12 +208,37 @@ recorded under a different cadence still aggregates correctly and a change of de
 change of schema. A consumer that reads the constant from this document rather than from the event is
 the one that breaks when it moves.
 
-`SessionStarted.decision` is the `PlaybackDecision` the player was actually built with — the buffer
-sizes and track-selection limits in force for the whole session. It is here because a QoE number is
-uninterpretable without it: a rebuffer ratio measured under `DATA_SAVER`'s buffer sizes and one
-measured under `LIVE_LINEAR`'s are two different measurements, and a pipeline that cannot tell them
-apart will average them. Carrying the decision rather than only the profile keeps that true when a
-later phase's adaptive policy makes the profile stop predicting it.
+`SessionStarted.decision` is the `PlaybackDecision` the player was actually running — the buffer
+sizes and track-selection limits in force at the start; see `DecisionChanged` for what follows. It
+is here because a QoE number is uninterpretable without it: a rebuffer ratio measured under
+`DATA_SAVER`'s buffer sizes and one measured under `LIVE_LINEAR`'s are two different measurements,
+and a pipeline that cannot tell them apart will average them. Carrying the decision rather than only
+the profile keeps that true when an adaptive policy makes the profile stop predicting it.
+
+### Decision changes
+
+`DecisionChanged` is emitted each time the decision in force changes after `SessionStarted`, and
+carries the new `decision` and the `trigger` that produced it — one of `TRANSPORT_CHANGED`,
+`STREAM_TYPE_CHANGED`, `REBUFFER_ENDED`, `PLAYBACK_SPEED_CHANGED`, `THROUGHPUT_CHANGED`, the closed
+list ADR-0009 rule 4 names. A policy is consulted only on those triggers and never on a cadence, and
+a consultation that returns the decision already in force emits nothing, so every event is a change
+and every change has a reason a reader can name.
+
+**Join it to `SessionStarted.decision` to know what a session was running at any moment**: the
+decision in force at time *t* is `SessionStarted.decision` if no `DecisionChanged` precedes *t*,
+and otherwise the `decision` of the last one that does. Every event in this schema that reads
+differently under a different decision — the rebuffer ratio, the bitrate distribution — is read
+against that reconstruction rather than against the session's first decision.
+
+Which players emit it is a property of how they were built, and it is stated rather than left to be
+discovered: a player whose engine can honour a changed decision whole — one built with
+`superplayer-abr`'s policy — is consulted again on the triggers; every other player, whatever policy
+it was given, is consulted once at construction and emits no `DecisionChanged` at all
+(ADR-0009 rule 5). A session with none is therefore not evidence that conditions were stable.
+
+An addition of shape, not of meaning: `SCHEMA_VERSION` did not move for it. The definition of
+`SessionStarted.decision` was clarified in the same change from "in force for the whole session" to
+"in force at the start", which was only ever true because nothing could change it.
 
 ---
 

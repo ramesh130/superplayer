@@ -393,6 +393,13 @@ KDoc carries the argument. The seam is not widened: the same one configurator is
 of the library's own compilations, a consumer's compilation is never a friend of anything, and
 `internal` remains invisible outside this repository.
 
+`superplayer-abr` is the second friend, for a different seam reached the same way: its policy object
+implements a core-internal extension interface so that its engine components — every one an
+`@UnstableApi` Media3 type — can fill `EngineConfiguration`'s slots from inside
+`SuperPlayer.Builder.build()` without a Media3 type in any public signature. ADR-0009 rule 7 makes the
+argument. The extension runs *before* the test configurator, so a test's engine configuration still
+wins over the policy's exactly as it wins over the profile's.
+
 `superplayer-testkit`'s own public API names **no Media3 type**, for the reason ADR-0001 rule 2 gives:
 a `Format` or a `Timeline` in one of its signatures would put Media3's opt-in marker on every test
 that named it. A test says what it wants — `TestContent.videoLadder()`, `harness.stallRendering(player)`

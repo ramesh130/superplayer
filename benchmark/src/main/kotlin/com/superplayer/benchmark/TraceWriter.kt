@@ -118,6 +118,7 @@ internal object TraceWriter {
      */
     private fun discriminator(event: TelemetryEvent): String = when (event) {
         is TelemetryEvent.SessionStarted -> "session_started"
+        is TelemetryEvent.DecisionChanged -> "decision_changed"
         is TelemetryEvent.SessionEnded -> "session_ended"
         is TelemetryEvent.FirstFrameRendered -> "first_frame"
         is TelemetryEvent.RebufferStarted -> "rebuffer_started"
@@ -136,6 +137,16 @@ internal object TraceWriter {
     private fun specificFields(event: TelemetryEvent): String = when (event) {
         is TelemetryEvent.SessionStarted ->
             "\"profile\":${string(event.profile.name)}," +
+                "\"minBufferMs\":${event.decision.buffer.minBufferMs}," +
+                "\"maxBufferMs\":${event.decision.buffer.maxBufferMs}," +
+                "\"bufferForPlaybackMs\":${event.decision.buffer.bufferForPlaybackMs}," +
+                "\"bufferForPlaybackAfterRebufferMs\":${event.decision.buffer.bufferForPlaybackAfterRebufferMs}," +
+                "\"backBufferMs\":${event.decision.buffer.backBufferMs}," +
+                "\"maxVideoBitrateBps\":${event.decision.trackSelection.maxVideoBitrateBps}," +
+                "\"maxVideoHeightPx\":${event.decision.trackSelection.maxVideoHeightPx}"
+
+        is TelemetryEvent.DecisionChanged ->
+            "\"trigger\":${string(event.trigger.name)}," +
                 "\"minBufferMs\":${event.decision.buffer.minBufferMs}," +
                 "\"maxBufferMs\":${event.decision.buffer.maxBufferMs}," +
                 "\"bufferForPlaybackMs\":${event.decision.buffer.bufferForPlaybackMs}," +

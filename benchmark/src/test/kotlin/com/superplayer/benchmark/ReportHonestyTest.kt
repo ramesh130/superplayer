@@ -279,6 +279,7 @@ class ReportHonestyTest {
         midStreamFailed = false,
         exitBeforeVideoStart = false,
         droppedEventCount = 0,
+        decisionChangeCount = 0,
         ended = true,
     )
 }

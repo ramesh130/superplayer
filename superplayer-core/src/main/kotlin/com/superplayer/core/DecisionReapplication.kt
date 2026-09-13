@@ -41,9 +41,8 @@ import androidx.media3.exoplayer.ExoPlayer
  * - The transport, from [ConnectivityManager]'s default-network callback; the initial value is
  *   read at construction.
  * - The stream type, from the engine's timeline as it arrives and changes.
- * - The stall history, from the engine's own state transitions: a rebuffer is a buffering state
- *   entered after playback was ready, ended by playback becoming ready again, and not caused by a
- *   seek. [StallHistory] states that rule.
+ * - The stall history, from the engine's own state transitions, translated by [StallObservation]
+ *   on the same seek-induced rule the telemetry schema uses.
  * - The playback speed, from the engine's playback parameters.
  * - The throughput, from the meter if it is a [ThroughputSource]; otherwise unobserved.
  * - The heap budget, once, from `DeviceCapacity.kt`'s reading.
@@ -82,25 +81,16 @@ internal class DecisionReapplication(
     private var transport: NetworkTransport? = currentNetworkTransportOf(context)
     private var streamType: StreamType? = null
     private var playbackSpeed: Float = PlaybackParameters.DEFAULT.speed
-    private var stallHistory: StallHistory = StallHistory.NONE
+    private val stalls = StallObservation()
 
     private var engine: ExoPlayer? = null
     private var handler: Handler? = null
-
-    // The stall state machine. `readyOnce` is whether this item has ever been ready, which is what
-    // separates a rebuffer from start-up; `stallStartedAtMs` is the open stall's start on the
-    // monotonic clock, or null; `seekPending` marks a stall that a seek caused.
-    private var readyOnce = false
-    private var stallStartedAtMs: Long? = null
-    private var seekPending = false
-    private var lastRebufferEndedAtMs: Long? = null
-    private var lastRebufferDurationMs: Long? = null
 
     /** The conditions as observed now — what the policy is handed. */
     fun currentConditions(): PlaybackConditions = PlaybackConditions(
         transport = transport,
         throughput = throughput?.currentEstimate(),
-        stallHistory = stallHistory.aged(),
+        stallHistory = stalls.current(SystemClock.elapsedRealtime()),
         streamType = streamType,
         heapBudgetBytes = heapBudgetBytes,
         playbackSpeed = playbackSpeed,
@@ -181,12 +171,7 @@ internal class DecisionReapplication(
             if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) return
             // New content, new session: the history and the start-up boundary begin again, and
             // the stream type is unknown until its manifest is read.
-            readyOnce = false
-            stallStartedAtMs = null
-            seekPending = false
-            stallHistory = StallHistory.NONE
-            lastRebufferEndedAtMs = null
-            lastRebufferDurationMs = null
+            stalls.reset()
             streamType = null
         }
 
@@ -195,38 +180,16 @@ internal class DecisionReapplication(
             newPosition: Player.PositionInfo,
             reason: Int,
         ) {
-            if (reason == Player.DISCONTINUITY_REASON_SEEK) seekPending = true
+            if (reason != Player.DISCONTINUITY_REASON_SEEK) return
+            stalls.onSeekRequested(
+                SystemClock.elapsedRealtime(),
+                alreadyReady = engine?.playbackState == Player.STATE_READY,
+            )
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
-            when (playbackState) {
-                Player.STATE_BUFFERING -> {
-                    if (readyOnce && stallStartedAtMs == null && !seekPending) {
-                        stallStartedAtMs = SystemClock.elapsedRealtime()
-                    }
-                }
-
-                Player.STATE_READY -> {
-                    readyOnce = true
-                    seekPending = false
-                    val startedAt = stallStartedAtMs ?: return
-                    stallStartedAtMs = null
-                    val endedAt = SystemClock.elapsedRealtime()
-                    lastRebufferEndedAtMs = endedAt
-                    lastRebufferDurationMs = endedAt - startedAt
-                    stallHistory = StallHistory(
-                        rebufferCount = stallHistory.rebufferCount + 1,
-                        msSinceLastRebufferEnded = 0,
-                        lastRebufferDurationMs = endedAt - startedAt,
-                    )
-                    reconsult(DecisionTrigger.REBUFFER_ENDED)
-                }
-
-                // Idle or ended: a stall that did not resume is not a rebuffer that ended.
-                else -> {
-                    stallStartedAtMs = null
-                    seekPending = false
-                }
+            if (stalls.onPlaybackStateChanged(playbackState, SystemClock.elapsedRealtime())) {
+                reconsult(DecisionTrigger.REBUFFER_ENDED)
             }
         }
 
@@ -258,9 +221,11 @@ internal class DecisionReapplication(
             connectivity.registerDefaultNetworkCallback(callback)
             networkCallback = callback
         } catch (_: RuntimeException) {
-            // The platform caps network callbacks per process and throws past the cap; a pool at
-            // the limit loses an observation rather than the app. The transport then stays what
-            // construction read.
+            // The platform caps network callbacks at 100 per process and throws past the cap; a
+            // pool at the limit loses an observation rather than the app, and the transport stays
+            // what construction read. The type thrown is `TooManyRequestsException`, API 26, which
+            // cannot be named in a catch on a minSdk 24 build.
+            // ref: https://developer.android.com/reference/android/net/ConnectivityManager#registerDefaultNetworkCallback(android.net.ConnectivityManager.NetworkCallback)
         }
     }
 
@@ -270,11 +235,5 @@ internal class DecisionReapplication(
             transport = observed
             reconsult(DecisionTrigger.TRANSPORT_CHANGED)
         }
-    }
-
-    /** The history with its "since" refreshed to now: it is a duration, and durations age. */
-    private fun StallHistory.aged(): StallHistory {
-        val endedAt = lastRebufferEndedAtMs ?: return this
-        return copy(msSinceLastRebufferEnded = SystemClock.elapsedRealtime() - endedAt)
     }
 }

@@ -30,9 +30,11 @@ import androidx.media3.common.Player
  * inverse of `EngineBinding.kt`, and as confined (ADR-0009 rule 3).
  *
  * Each function here translates one reading and decides nothing. What to observe *when* is
- * [DecisionReapplication]'s; what to do with an observation is the policy's. This file is
- * deliberately the only importer of `NetworkCapabilities` and `TelephonyManager` on the policy
- * path, so that a reader asking "where does a transport come from" has one answer.
+ * [DecisionReapplication]'s; what to do with an observation is the policy's. Every translation is
+ * here — the transport, the generation, the stream type, and the stall state machine in
+ * [StallObservation] — so that a reader asking "where does an observation come from" has one
+ * answer. [DecisionReapplication] names `NetworkCapabilities` only in the callback signature the
+ * platform dictates, and hands it straight here.
  */
 
 /**
@@ -119,3 +121,106 @@ internal fun Context.connectivityManager(): ConnectivityManager? =
 
 internal fun Context.telephonyManager(): TelephonyManager? =
     getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+
+/**
+ * The translation of the engine's state transitions into a [StallHistory].
+ *
+ * A rebuffer is a buffering state entered after this item was first ready, ended by playback
+ * becoming ready again. A stall that ends in idle or ended is discarded: it did not *end*, and a
+ * policy's post-rebuffer hysteresis is about recoveries. A stall a seek caused is not a rebuffer,
+ * on **exactly the rule `docs/telemetry-schema.md` states** for `RebufferStarted.seekInduced`, so
+ * that what a policy is told and what a pipeline is told agree: a stall is seek-induced when it
+ * starts between a seek's request and its completion, or within [SEEK_EXCLUSION_WINDOW_MS] after
+ * that completion. The document is where that number is argued; it is repeated here rather than
+ * shared with `superplayer-telemetry` because core cannot depend on it, and a divergence would be a
+ * change to the document first.
+ *
+ * All times are on the monotonic clock the caller passes in, which keeps this class a translation
+ * with no clock of its own. Driven from the application thread only.
+ */
+internal class StallObservation {
+
+    private var readyOnce = false
+    private var stallStartedAtMs: Long? = null
+    private var seekRequested = false
+    private var seekCompletedAtMs: Long? = null
+    private var rebufferCount = 0
+    private var lastRebufferEndedAtMs: Long? = null
+    private var lastRebufferDurationMs: Long? = null
+
+    /** New content: the history is the next item's, and its first ready is start-up again. */
+    fun reset() {
+        readyOnce = false
+        stallStartedAtMs = null
+        seekRequested = false
+        seekCompletedAtMs = null
+        rebufferCount = 0
+        lastRebufferEndedAtMs = null
+        lastRebufferDurationMs = null
+    }
+
+    /**
+     * A seek was issued at [nowMs]. [alreadyReady] is whether playback was ready at that moment: a
+     * seek into buffered data never leaves the ready state, so it completes as it is requested.
+     */
+    fun onSeekRequested(nowMs: Long, alreadyReady: Boolean) {
+        if (alreadyReady) {
+            seekCompletedAtMs = nowMs
+        } else {
+            seekRequested = true
+        }
+    }
+
+    /** The engine's playback state became [state] at [nowMs]. Returns true when a rebuffer ended. */
+    fun onPlaybackStateChanged(state: Int, nowMs: Long): Boolean {
+        when (state) {
+            Player.STATE_BUFFERING -> {
+                if (readyOnce && stallStartedAtMs == null && !isSeekInducedAt(nowMs)) {
+                    stallStartedAtMs = nowMs
+                }
+                return false
+            }
+
+            Player.STATE_READY -> {
+                readyOnce = true
+                if (seekRequested) {
+                    seekRequested = false
+                    seekCompletedAtMs = nowMs
+                }
+                val startedAt = stallStartedAtMs ?: return false
+                stallStartedAtMs = null
+                rebufferCount++
+                lastRebufferEndedAtMs = nowMs
+                lastRebufferDurationMs = nowMs - startedAt
+                return true
+            }
+
+            else -> {
+                stallStartedAtMs = null
+                seekRequested = false
+                return false
+            }
+        }
+    }
+
+    /** The history as of [nowMs]: the "since" is a duration, and durations age. */
+    fun current(nowMs: Long): StallHistory {
+        val endedAt = lastRebufferEndedAtMs ?: return StallHistory.NONE
+        return StallHistory(
+            rebufferCount = rebufferCount,
+            msSinceLastRebufferEnded = nowMs - endedAt,
+            lastRebufferDurationMs = lastRebufferDurationMs,
+        )
+    }
+
+    private fun isSeekInducedAt(nowMs: Long): Boolean {
+        if (seekRequested) return true
+        val completedAt = seekCompletedAtMs ?: return false
+        return nowMs - completedAt <= SEEK_EXCLUSION_WINDOW_MS
+    }
+
+    private companion object {
+        /** `docs/telemetry-schema.md`, *Rebuffering* — the number, and why it is one second. */
+        const val SEEK_EXCLUSION_WINDOW_MS = 1_000L
+    }
+}

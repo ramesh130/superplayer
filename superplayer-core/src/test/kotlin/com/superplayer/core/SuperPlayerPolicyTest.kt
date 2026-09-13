@@ -55,8 +55,15 @@ import org.robolectric.shadows.ShadowNetworkCapabilities
  * test. Every assertion is on `playbackDecision`, `currentTracks`, a `Player.Listener`, or the
  * telemetry a collector received — nothing reaches past the facade.
  *
- * A rebuffer ending is the one trigger not driven here: core's tests have no fault injection, and
- * `superplayer-testkit`'s harness is where a stall can be scripted.
+ * Two triggers are not driven here: a rebuffer ending, because core's tests have no fault
+ * injection and `superplayer-testkit`'s harness is where a stall can be scripted, and a material
+ * throughput move, because no `ThroughputSource` exists until `superplayer-abr`'s meter does.
+ *
+ * What "registers nothing" counts, and what it cannot: the connectivity callback is counted through
+ * Robolectric's shadow, and the policy's consultations are counted directly. The engine listener
+ * the trigger loop adds is not countable from outside — `ExoPlayer.addListener` has no seam a test
+ * can stand in — and is registered by the same `start()` as the callback, so the callback count
+ * stands for both.
  */
 @RunWith(AndroidJUnit4::class)
 class SuperPlayerPolicyTest {

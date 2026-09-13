@@ -114,11 +114,13 @@ public data class PlaybackConditions(
  * has just moved to — and it is deliberately nothing finer: not an SSID, not a cell identity, not
  * anything that would let a remembered estimate identify a network or a place (ADR-0009 rule 8).
  *
- * A sealed hierarchy rather than a flat enum for the one case that carries more: cellular networks
- * differ by generation more than WiFi networks differ from each other, and the generation travels
- * with the transport rather than as a second property so that a policy cannot see one without the
- * other. The other cases are singletons; the whole set is finite, which is what bounds a memory
- * keyed on it.
+ * ADR-0009 rule 1 calls this "a SuperPlayer enum" whose cellular case "carries a
+ * `CellularGeneration`", and a Kotlin enum cannot carry a per-case value — so this is the sealed
+ * form of exactly that closed set, with the one case that carries something. It is the same
+ * departure in shape and none in substance: the generation travels with the transport rather than
+ * as a second [PlaybackConditions] property, so a policy cannot see one without the other, and the
+ * whole set is still finite (three singletons and one case over a three-valued enum plus null),
+ * which is what bounds a memory keyed on it. `CONTEXT.md` already words it this way.
  *
  * ref: https://developer.android.com/reference/android/net/NetworkCapabilities — the vocabulary this
  * is translated from, and which ADR-0005 rule 1 keeps out of this type.
@@ -151,9 +153,10 @@ public sealed class NetworkTransport {
 /**
  * The generation of a cellular network, as coarsely as an adaptive policy needs it.
  *
- * Three values because the throughput a policy should expect differs by an order of magnitude at
- * each step, and no finer, because the platform's own list is long, changes by release, and mixes
- * radio technologies a policy has no reason to tell apart.
+ * Three values: the steps at which the throughput a policy should expect differs enough to seed a
+ * different default — ADR-0009 rule 9's per-generation table, with its `// ref:` per value, is
+ * where those numbers and their sources live — and no finer, because the platform's own list is
+ * long, changes by release, and mixes radio technologies a policy has no reason to tell apart.
  *
  * ref: https://developer.android.com/reference/android/telephony/TelephonyManager — the network
  * types these collapse.

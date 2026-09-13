@@ -121,24 +121,56 @@ internal class HarnessClockWait(private val clock: Clock) {
      */
     val transfersHaveCaughtUp: Boolean
         get() {
-            val now = clock.elapsedRealtime()
+            val now = loadTimeMs
             return deadlines.values.count { it > now } >= maxOf(openTransfers.get(), activeLoadTasks.get())
         }
 
+    /** The moment loads are held at, or null while they follow the clock. */
+    @Volatile
+    private var heldAtMs: Long? = null
+
+    /** The time a waiting load acts on: the clock's, except while [holdLoads] keeps it at an earlier one. */
+    private val loadTimeMs: Long get() = heldAtMs ?: clock.elapsedRealtime()
+
+    /**
+     * Keeps every load waiting here at the clock's current reading, however far the clock moves,
+     * until [releaseLoads].
+     *
+     * What gives one moment a fixed order. Moving the clock does two things at once: it makes the
+     * engine's timed work due, and it releases a load whose delay has run out. Left to the
+     * scheduler, the loading thread writes the samples of the new moment into the buffer while that
+     * work is reading it — before it on some runs and after it on others — and a player found ready
+     * on the first was found ready a step later on the second: the golden traces that differed on
+     * loaded CI runners and nowhere else (issue #120). [PlaybackHarness] holds the loads while the
+     * engine acts on the new time, then releases them, so the engine always goes first.
+     *
+     * Only a load waiting here is held, and that is every load there is at the moment the clock
+     * moves: the harness moves it only once each open transfer is waiting for a later deadline or
+     * has closed. A wait nobody holds follows the clock, as before.
+     */
+    fun holdLoads() {
+        heldAtMs = clock.elapsedRealtime()
+    }
+
+    /** Lets loads act on the clock's reading again. */
+    fun releaseLoads() {
+        heldAtMs = null
+    }
+
     /** Returns once the clock reads [deadlineMs]; [what] names the delay if the test never gets there. */
     fun until(deadlineMs: Long, what: String) {
-        if (clock.elapsedRealtime() >= deadlineMs) return
+        if (loadTimeMs >= deadlineMs) return
         val thread = Thread.currentThread()
         val startedAtMs = System.currentTimeMillis()
         deadlines[thread] = deadlineMs
         try {
-            while (clock.elapsedRealtime() < deadlineMs) {
+            while (loadTimeMs < deadlineMs) {
                 if (thread.isInterrupted) throw InterruptedIOException("Cancelled while waiting for $what")
                 clock.onThreadBlocked()
                 Thread.yield()
                 check(System.currentTimeMillis() - startedAtMs < MAX_WALL_CLOCK_WAIT_MS) {
                     "Waited $MAX_WALL_CLOCK_WAIT_MS ms of real time for $what to elapse on the harness " +
-                        "clock, which is still at ${clock.elapsedRealtime()} of $deadlineMs. Advance the " +
+                        "clock, which loads read as $loadTimeMs of $deadlineMs. Advance the " +
                         "harness clock past an injected delay, or the load it holds up never completes."
                 }
             }

@@ -597,7 +597,10 @@ deterministic is not golden material, however interesting. Two mechanics carry t
 The harness advances the clock only once the engine has nothing left to do at the current time — it
 owns the loading threads (`HarnessLoadThreads`) so it knows when a load has *finished* rather than
 only when its transfer closed, and it settles both loopers until neither has anything due
-(`PlaybackHarness.quiesce`). And the recorder stamps an engine fact with the engine's own event
+(`PlaybackHarness.quiesce`). Within one step the order is fixed too: loads waiting on the clock are
+held at the old moment while the engine acts on the new one, and released onto it after, because a
+load released by the same clock move writes samples while the renderer reads them, and made a player
+ready a step early on a loaded runner (issue #120). And the recorder stamps an engine fact with the engine's own event
 time rather than with the moment a listener heard of it, which is a looper hop later and, under a
 stepped clock, can be a step later on one run and not the next. `SessionTraceRecorderTest` plays the
 same session three times in one JVM and holds the traces equal; running `GoldenTraceTest` on a

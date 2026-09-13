@@ -78,6 +78,11 @@ class QoeMetricsTest {
 
     private fun play(player: SuperPlayer, contentId: String = CONTENT) {
         player.setMediaRequest(MediaRequest.Builder(contentId).addSource(SOURCE).build())
+        // The app's own interval between taking the content on and asking for playback — a view
+        // attaching, a resolver returning. `CONTENT_ADOPTED` counts from adoption, so this is inside
+        // every measurement below by definition, and it is what separates that boundary from
+        // `prepare()`: a stopwatch started there would read [ENGINE_STARTUP_MS] here, which is zero.
+        harness.advanceTimeMs(player, ADOPT_TO_PREPARE_MS)
         harness.playToReady(player)
     }
 
@@ -104,7 +109,8 @@ class QoeMetricsTest {
 
         val firstFrame = eventsOf<TelemetryEvent.FirstFrameRendered>().single()
         assertThat(firstFrame.startBoundary).isEqualTo(TtffStartBoundary.USER_INTENT)
-        assertThat(firstFrame.timeToFirstFrameMs).isEqualTo(CATALOGUE_LOOKUP_MS + ENGINE_STARTUP_MS)
+        assertThat(firstFrame.timeToFirstFrameMs)
+            .isEqualTo(CATALOGUE_LOOKUP_MS + ADOPT_TO_PREPARE_MS + ENGINE_STARTUP_MS)
     }
 
     @Test
@@ -117,10 +123,11 @@ class QoeMetricsTest {
         // labelled rather than silently substituted — the two must never be averaged together.
         val firstFrame = eventsOf<TelemetryEvent.FirstFrameRendered>().single()
         assertThat(firstFrame.startBoundary).isEqualTo(TtffStartBoundary.CONTENT_ADOPTED)
-        // The engine's own start-up and nothing else — which is the point: the `USER_INTENT`
+        // From adoption to the frame and nothing before it — which is the point: the `USER_INTENT`
         // measurement above is this number plus the app's catalogue lookup, and that difference is
-        // the interval an app most wants to see and the one `prepare()` as a boundary would hide.
-        assertThat(firstFrame.timeToFirstFrameMs).isEqualTo(ENGINE_STARTUP_MS)
+        // the interval an app most wants to see. A boundary at `prepare()` would hide the other
+        // half too and report the bare engine start-up, which on this fixture is nothing at all.
+        assertThat(firstFrame.timeToFirstFrameMs).isEqualTo(ADOPT_TO_PREPARE_MS + ENGINE_STARTUP_MS)
     }
 
     @Test
@@ -422,7 +429,7 @@ class QoeMetricsTest {
         assertThat(frames.map { it.sessionId }).containsExactly(starts[0].sessionId, starts[1].sessionId)
         // Measured from its own session's opening, not from the pool's first one — which the second
         // player having been playing for a second by then is exactly what would break.
-        assertThat(frames[1].timeToFirstFrameMs).isEqualTo(ENGINE_STARTUP_MS)
+        assertThat(frames[1].timeToFirstFrameMs).isEqualTo(ADOPT_TO_PREPARE_MS + ENGINE_STARTUP_MS)
     }
 
     private companion object {
@@ -431,16 +438,21 @@ class QoeMetricsTest {
         const val SOURCE = "fake://superplayer.test/never-fetched"
 
         const val CATALOGUE_LOOKUP_MS = 1_500L
+        const val ADOPT_TO_PREPARE_MS = 200L
 
         /**
-         * What the engine itself costs before the first frame, in this fixture.
+         * What the engine itself costs before the first frame, in this fixture: nothing.
          *
-         * Media3's fake source is ready after one of the harness's wait steps, so that step is the
-         * whole of the engine's own start-up here. Named rather than rounded away, because a time to
-         * first frame is the app's interval *plus* this one and a test that hid it would be
-         * asserting on a number it had not accounted for.
+         * Media3's fake source prepares in the instant it is asked and its fake renderer presents a
+         * frame in the pass that enables it, so no time passes on the harness's clock between
+         * `prepare()` and the frame. Named rather than rounded away, because a time to first frame is
+         * the app's interval *plus* this one and a test that hid it would be asserting on a number it
+         * had not accounted for. It read as one wait step, 50 ms, until issue #110: the harness moved
+         * `SystemClock` before it let the engine finish the current moment, so a frame the engine
+         * presented at the old time was stamped with the new one — on a quiet machine. A starved CI
+         * runner let the engine finish first and read the truth, which looked like a failure.
          */
-        const val ENGINE_STARTUP_MS = PlaybackHarness.WAIT_STEP_MS
+        const val ENGINE_STARTUP_MS = 0L
         const val STALL_MS = 2_500L
         const val SEEK_WAIT_MS = 400L
         const val SEEK_TARGET_MS = 20_000L

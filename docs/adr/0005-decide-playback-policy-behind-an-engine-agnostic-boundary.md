@@ -6,6 +6,10 @@
 - **Supersedes:** None
 - **Extended by:** [ADR-0009](0009-observe-conditions-re-apply-decisions-and-remember-per-transport.md),
   which rewords rules 3 and 4 without superseding this document.
+- **Summary:** All buffering and track-selection policy is decided behind one engine-agnostic
+  `PlaybackPolicy` interface that maps observed conditions to a decision — no Media3 type crosses
+  it. Phase 1 ships a static per-profile lookup, deliberately non-adaptive; the consumer names a
+  use-case profile rather than tuning numbers directly.
 
 ## Context
 

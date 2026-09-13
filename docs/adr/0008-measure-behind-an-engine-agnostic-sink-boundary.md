@@ -4,6 +4,10 @@
 - **Date:** 2026-09-09
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
+- **Summary:** Telemetry leaves the library through SuperPlayer's own event vocabulary and a sink
+  interface that names no Media3 type; the seam lives in core, the collector that derives events
+  from Media3's analytics lives in `superplayer-telemetry`. Delivery is at-most-once, bounded, and
+  lossy under pressure, with every dropped event counted and reported rather than hidden.
 
 ## Context
 

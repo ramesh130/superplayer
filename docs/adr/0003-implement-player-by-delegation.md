@@ -4,6 +4,10 @@
 - **Date:** 2026-09-06
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
+- **Summary:** The facade implements Media3's `Player` interface by Kotlin interface delegation
+  rather than extending a Media3 base class such as `ForwardingPlayer` — every concrete `Player`
+  base Media3 ships is `@UnstableApi`, so extending one forces every consumer to opt in on every
+  call. A contract test guards against delegation silently skipping Java `default` members.
 
 ## Context
 

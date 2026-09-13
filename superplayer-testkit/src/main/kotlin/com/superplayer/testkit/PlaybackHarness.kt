@@ -94,7 +94,10 @@ import java.util.concurrent.TimeUnit
  *   `docs/telemetry-schema.md` defines every duration on.
  *
  * The [FakeClock] is therefore created **at the current `SystemClock` reading and with
- * auto-advancing off**, so the two start equal and stay equal. That is the opposite of core's
+ * auto-advancing off**, so the two start equal and stay equal — and [advanceTimeMs] moves them only
+ * once the engine has nothing left to do at the current time, with nothing run between the two
+ * moves, so that no callback is ever stamped on one clock for work the engine did on the other
+ * (issue #110). That is the opposite of core's
  * harness, which auto-advances so that a two-second stream costs no wall-clock time — a trade that
  * is right when nothing is being measured and wrong here, because an auto-advancing clock moves by
  * an amount no assertion can name. A test using this harness advances time in the amounts it is
@@ -432,11 +435,19 @@ public class PlaybackHarness : ExternalResource() {
      */
     public fun advanceTimeMs(player: Player, millis: Long) {
         require(millis >= 0) { "Time does not go backwards" }
-        SystemClock.setCurrentTimeMillis(SystemClock.uptimeMillis() + millis)
-        // Quiet before the clock moves as well as after: a load that finished between the last
+        // Quiet before either clock moves, as well as after: a load that finished between the last
         // settle and this call would otherwise be heard by the engine at the new time on some runs
         // and at the old time on others.
+        //
+        // *Either* clock, and both only now. This call once moved `SystemClock` first and quiesced
+        // second, so work the engine finished at the old time — Media3's fake renderer presents its
+        // first frame in the same instant it is enabled — reached the collector stamped with the new
+        // one on a quiet machine and with the old one on a starved runner, whichever thread the
+        // scheduler happened to run. A time to first frame read 50 ms or 0 ms by that accident
+        // (issue #110). The two clocks are now never apart while anything can observe them: nothing
+        // runs on any looper between the two lines below.
         quiesce(player)
+        SystemClock.setCurrentTimeMillis(SystemClock.uptimeMillis() + millis)
         clock.advanceTime(millis)
         // The network first, then the engine: a load that completes at the new time completes on
         // the transport the trace says the device is on at that time.
@@ -447,7 +458,7 @@ public class PlaybackHarness : ExternalResource() {
     /**
      * Settles the player until the engine has nothing left to do at this moment.
      *
-     * [awaitLoads] waits for the loading threads; [settle] lets the playback and application
+     * [awaitLoads] waits for the loading threads; [drainLoopers] lets the playback and application
      * threads act on what they delivered, which may be to start the next load — on a loading
      * thread again — or to post the engine one more message about it. So the three are asked in
      * turn until a whole round passes in which no transfer opened or closed, no load task was
@@ -466,7 +477,7 @@ public class PlaybackHarness : ExternalResource() {
         var seen = quietAt
         while (true) {
             awaitLoads()
-            settle(player)
+            drainLoopers(player)
             awaitLoads()
             val now = activitySoFar()
             if (now == seen && playbackThreadIsIdle(player) && Looper.getMainLooper().queue.isIdle) {
@@ -552,12 +563,33 @@ public class PlaybackHarness : ExternalResource() {
     public fun elapsedRealtimeMs(): Long = SystemClock.elapsedRealtime()
 
     /**
-     * Lets the playback thread act on everything [player] has been told so far.
+     * Lets the engine act on everything [player] has been told so far, until it has nothing left to
+     * do at the current time.
      *
      * Media3 masks a pending command's effects until the playback thread has seen it, so an
      * assertion made without this is asserting on the state that was standing before the command.
+     * And the playback thread's first reaction to a command is rarely its last: a `prepare()` has
+     * the source prepared, then the period, then the renderers enabled, each a message the engine
+     * posts to itself behind the one it is handling. This returns once that chain has run out —
+     * the same quiet [advanceTimeMs] requires before it moves the clocks — so that what a test reads
+     * next is the state of *this* moment rather than of whichever message the scheduler had reached
+     * (issue #110). A wait that stops at the first acknowledgement is [drainLoopers], and is private
+     * because a test has no use for the state between two of the engine's own messages.
      */
     public fun settle(player: Player) {
+        quiesce(player)
+    }
+
+    /**
+     * Runs both loopers once: the playback thread through its pending commands, then the application
+     * looper dry.
+     *
+     * One round of [quiesce], not a settle on its own. The probe this sends comes back after the
+     * commands pending *now*; a message the engine posts to itself while handling one of them lands
+     * behind the probe and is not waited for, which is why [quiesce] asks again until a round
+     * changes nothing.
+     */
+    private fun drainLoopers(player: Player) {
         TestPlayerRunHelper.advance(player)
             .untilPendingCommandsAreFullyHandled(clock, player.applicationLooper)
         // The helper returns when its own probe has come back, and a callback the engine posted to
@@ -571,7 +603,7 @@ public class PlaybackHarness : ExternalResource() {
      * Whether the playback thread has nothing due, answered by the playback thread itself.
      *
      * A message the engine posts to itself while handling a loader's completion lands *behind* the
-     * probe [settle] sent, so the probe coming back does not mean the engine has finished reacting.
+     * probe [drainLoopers] sent, so the probe coming back does not mean the engine has finished reacting.
      * Asking the queue from another thread would not do either: a message being handled is not in
      * the queue. So the question is posted, and answered from inside the looper, where "nothing in
      * the queue" and "nothing running" are the same fact. A released player's looper has quit and

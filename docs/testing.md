@@ -83,7 +83,8 @@ every test — which a test building two players has to nest.
 
 What it does not do is drive playback. Tests reach `TestPlayerRunHelper` themselves, because what a
 test waits for is part of what it asserts, and hiding that here would make the interesting half of a
-test invisible. The two exceptions are `settle`, which drains a player's pending commands, and
+test invisible. The two exceptions are `settle`, which lets the engine finish everything it can do at
+the current time, and
 `awaitPeriodicWork`, which lets the engine make the periodic pass on which Media3 refreshes the
 buffered position — both timed on a clock the test has no other handle on.
 
@@ -411,7 +412,14 @@ is what `declarePlaybackIntent` and a collector read, because that is the clock
 current `SystemClock` reading with auto-advancing **off**, and `advanceTimeMs` moves both — which is
 the opposite of core's harness, deliberately. Auto-advancing is right when nothing is being measured
 and wrong when something is: a clock that moves by an amount no assertion can name turns every
-duration into a tolerance.
+duration into a tolerance. And it moves them only once the engine has nothing left to do at the
+current time, with nothing run between the two moves. Media3's fakes finish a `prepare()` — source,
+period, renderers, first frame — with no time passing, in a chain of messages the engine posts to
+itself; a harness that moved `SystemClock` first and then let that chain run stamped the frame with
+the new time when the test thread won the race and with the old one when a loaded runner let the
+engine win, and a time to first frame read 50 ms or 0 ms accordingly (issue #110). `settle` is the
+same quiet, exposed: it returns when that chain has run out, not when the first message has been
+acknowledged.
 
 **It can play a real protocol, too.** `TestContent.video()` and its siblings describe content that
 Media3's fakes synthesize — fast, and enough when the subject is a *measurement*. `TestContent.hls()`

@@ -33,6 +33,15 @@ import com.superplayer.core.PlaybackProfile
  * Every departure from Media3's default carries its reason; where the default is kept it is
  * because the profile's buffer is the one the default was sized for.
  *
+ * **On ADR-0005 rule 2.** These numbers reach Media3's constructor from this table rather than
+ * through a [com.superplayer.core.PlaybackDecision], which that rule names as the shape of a bug.
+ * The departure is deliberate and said here rather than hidden: `TrackSelectionPolicy` carries a
+ * ceiling and nothing about *pace*, the pace is fixed per profile for a player's lifetime as the
+ * profile itself is, and no trigger re-targets it. Whether pace belongs in the decision — so a
+ * consumer's own policy could set it and a heap-capped buffer (`AdaptiveBufferPolicy` branch 5)
+ * could lower the climb threshold with it — is a question for a superseding ADR, not for this
+ * table to answer by growing core's public API on its own.
+ *
  * ref: https://developer.android.com/reference/androidx/media3/exoplayer/trackselection/AdaptiveTrackSelection.Factory
  */
 internal data class SelectionThresholds(

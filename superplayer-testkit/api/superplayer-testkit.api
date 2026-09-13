@@ -2,11 +2,9 @@ public final class com/superplayer/testkit/DeviceStatement {
 	public static final field DEFAULT_DISPLAY_HEIGHT_PX I
 	public static final field DEFAULT_DISPLAY_WIDTH_PX I
 	public static final field INSTANCE Lcom/superplayer/testkit/DeviceStatement;
-	public static final field REPORTED_DECODER_INSTANCES I
 	public static final fun declareAppHeap (I)V
 	public static final fun declareDisplay (II)V
 	public static final fun declareDisplayHdrTypes ([I)V
-	public static final fun declareLowRamDevice ()V
 	public static final fun declareVideoDecoder (Ljava/lang/String;[Lkotlin/Pair;)V
 }
 

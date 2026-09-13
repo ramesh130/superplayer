@@ -38,6 +38,8 @@ import com.superplayer.core.ThroughputSource
 import com.superplayer.core.TrackSelectionPolicy
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.shadows.ShadowSystemClock
+import java.time.Duration
 
 /**
  * The selection's three refusals and the retarget, each over a hand-built ladder and a stub
@@ -58,8 +60,10 @@ class NetworkAwareTrackSelectionTest {
         selection.evaluate()
         assertThat(selection.selectedFormat.bitrate).isEqualTo(6_000_000)
 
+        // A ceiling below the playing rung is honoured at once, even with a buffer so deep that
+        // Media3 would defer a descent the estimate alone asked for.
         gate.policy = TrackSelectionPolicy(maxVideoBitrateBps = 1_000_000, maxVideoHeightPx = TrackSelectionPolicy.UNLIMITED)
-        selection.evaluate()
+        selection.evaluate(bufferedUs = DEEP_BUFFER_US)
         assertThat(selection.selectedFormat.bitrate).isEqualTo(800_000)
 
         // Height is the other axis, and either alone refuses.
@@ -90,21 +94,31 @@ class NetworkAwareTrackSelectionTest {
     }
 
     @Test
-    fun theDisplayRefusesAnHdrTransferItDoesNotList() {
+    fun theDisplayRefusesAPqRungItCannotShowOnlyBesideAnSdrOne() {
         val sdrOnly = DeviceConstraints(displayShortEdgePx = null, displayHdrTypes = emptySet(), decodableProfileLevels = emptyMap())
         val hdr10 = DeviceConstraints(displayShortEdgePx = null, displayHdrTypes = setOf(Display.HdrCapabilities.HDR_TYPE_HDR10), decodableProfileLevels = emptyMap())
-        val unknown = DeviceConstraints.UNKNOWN
         val pq = video(6_000_000, 1_080, colorTransfer = C.COLOR_TRANSFER_ST2084)
         val hlg = video(6_000_000, 1_080, colorTransfer = C.COLOR_TRANSFER_HLG)
         val sdr = video(6_000_000, 1_080, colorTransfer = C.COLOR_TRANSFER_SDR)
 
-        assertThat(NetworkAwareTrackSelection.Gate(sdrOnly, null, UNCAPPED).deviceRefuses(pq)).isTrue()
-        assertThat(NetworkAwareTrackSelection.Gate(sdrOnly, null, UNCAPPED).deviceRefuses(hlg)).isTrue()
-        assertThat(NetworkAwareTrackSelection.Gate(sdrOnly, null, UNCAPPED).deviceRefuses(sdr)).isFalse()
-        assertThat(NetworkAwareTrackSelection.Gate(hdr10, null, UNCAPPED).deviceRefuses(pq)).isFalse()
-        assertThat(NetworkAwareTrackSelection.Gate(hdr10, null, UNCAPPED).deviceRefuses(hlg)).isTrue()
-        // A display that did not answer refuses nothing.
-        assertThat(NetworkAwareTrackSelection.Gate(unknown, null, UNCAPPED).deviceRefuses(pq)).isFalse()
+        assertThat(NetworkAwareTrackSelection.Gate(sdrOnly, null, UNCAPPED).displayRefusesHdr(pq)).isTrue()
+        assertThat(NetworkAwareTrackSelection.Gate(sdrOnly, null, UNCAPPED).displayRefusesHdr(sdr)).isFalse()
+        assertThat(NetworkAwareTrackSelection.Gate(hdr10, null, UNCAPPED).displayRefusesHdr(pq)).isFalse()
+        // HLG is shown by an SDR display by design, and a display that did not answer refuses nothing.
+        assertThat(NetworkAwareTrackSelection.Gate(sdrOnly, null, UNCAPPED).displayRefusesHdr(hlg)).isFalse()
+        assertThat(NetworkAwareTrackSelection.Gate(DeviceConstraints.UNKNOWN, null, UNCAPPED).displayRefusesHdr(pq)).isFalse()
+
+        // Beside an SDR rung the PQ rung is refused; alone, the ladder is played from the top.
+        meter.estimateBps = 50_000_000
+        val mixed = selection(TrackGroup(video(300_000, 360), video(2_400_000, 720, colorTransfer = C.COLOR_TRANSFER_SDR), pq), gate(constraints = sdrOnly))
+        mixed.evaluate()
+        assertThat(mixed.selectedFormat.bitrate).isEqualTo(2_400_000)
+        val pqOnly = selection(
+            TrackGroup(video(300_000, 360, colorTransfer = C.COLOR_TRANSFER_ST2084), video(2_400_000, 720, colorTransfer = C.COLOR_TRANSFER_ST2084), pq),
+            gate(constraints = sdrOnly),
+        )
+        pqOnly.evaluate()
+        assertThat(pqOnly.selectedFormat.bitrate).isEqualTo(6_000_000)
     }
 
     @Test
@@ -204,17 +218,21 @@ class NetworkAwareTrackSelectionTest {
      * (`maxDurationForQualityDecreaseMs`), so that what is asserted is eligibility and not the
      * thresholds — which are `SelectionThresholdsTest`'s.
      */
-    private fun NetworkAwareTrackSelection.evaluate() {
+    private fun NetworkAwareTrackSelection.evaluate(bufferedUs: Long = MOVABLE_BUFFER_US) {
+        // Evaluations are a chunk apart in playback; here the clock is moved by hand, so that an
+        // exclusion raised for one evaluation is over by the next as it would be under a player.
+        ShadowSystemClock.advanceBy(Duration.ofMillis(BETWEEN_EVALUATIONS_MS))
         updateSelectedTrack(
             /* playbackPositionUs= */ 0,
-            /* bufferedDurationUs= */ MOVABLE_BUFFER_US,
+            /* bufferedDurationUs= */ bufferedUs,
             /* availableDurationUs= */ C.TIME_UNSET,
             /* queue= */ emptyList(),
             /* mediaChunkIterators= */ Array(length()) { MediaChunkIterator.EMPTY },
         )
         // Media3's first evaluation only chooses; a second applies the thresholds. Twice, so every
         // assertion is on the same footing.
-        updateSelectedTrack(0, MOVABLE_BUFFER_US, C.TIME_UNSET, emptyList(), Array(length()) { MediaChunkIterator.EMPTY })
+        ShadowSystemClock.advanceBy(Duration.ofMillis(BETWEEN_EVALUATIONS_MS))
+        updateSelectedTrack(0, bufferedUs, C.TIME_UNSET, emptyList(), Array(length()) { MediaChunkIterator.EMPTY })
     }
 
     private fun ladder(topHeightPx: Int = 1_080): TrackGroup = TrackGroup(
@@ -283,5 +301,11 @@ class NetworkAwareTrackSelectionTest {
 
         /** Between the on-demand profile's 10 s climb threshold and its 25 s descent threshold. */
         const val MOVABLE_BUFFER_US = 15_000_000L
+
+        /** Above the descent threshold: a buffer on which Media3 alone would not come down. */
+        const val DEEP_BUFFER_US = 60_000_000L
+
+        /** A chunk's worth of clock between evaluations. */
+        const val BETWEEN_EVALUATIONS_MS = 2_000L
     }
 }

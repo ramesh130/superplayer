@@ -18,7 +18,7 @@ of truth. This file records *what* is depended on and under *what license*.
 | `androidx.media3:media3-datasource` | Apache-2.0 | `superplayer-core`, `superplayer-testkit` |
 | `androidx.media3:media3-session` | Apache-2.0 | `superplayer-core` (api), `demo` |
 | `androidx.media3:media3-ui` | Apache-2.0 | `demo` |
-| `androidx.annotation:annotation` | Apache-2.0 | `superplayer-core`, `demo`, `benchmark` |
+| `androidx.annotation:annotation` | Apache-2.0 | `superplayer-core`, `superplayer-abr`, `superplayer-testkit`, `demo`, `benchmark` |
 | `androidx.compose:compose-bom` | Apache-2.0 | `demo` (a BOM: pins versions, ships no code) |
 | `androidx.compose.ui:ui` | Apache-2.0 | `demo` |
 | `androidx.compose.foundation:foundation` | Apache-2.0 | `demo` |

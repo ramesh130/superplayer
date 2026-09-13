@@ -52,15 +52,6 @@ import org.robolectric.util.ReflectionHelpers.ClassParameter
  */
 public object DeviceStatement {
 
-    /**
-     * What Robolectric's `CodecCapabilities` answers for `getMaxSupportedInstances`, and the
-     * platform's own documented default for a codec that declares no limit.
-     *
-     * Not a number any test chooses: Robolectric offers no way to lower it, which is why the tests
-     * that care pin *which limit binds* rather than pinning a value they fed in.
-     */
-    public const val REPORTED_DECODER_INSTANCES: Int = 32
-
     /** A television-sized default display: 4K, so nothing under 2160p is ever refused by accident. */
     public const val DEFAULT_DISPLAY_WIDTH_PX: Int = 3840
 
@@ -159,11 +150,6 @@ public object DeviceStatement {
     @JvmStatic
     public fun declareAppHeap(megabytes: Int) {
         shadowOf(activityManager).setMemoryClass(megabytes)
-    }
-
-    @JvmStatic
-    public fun declareLowRamDevice() {
-        shadowOf(activityManager).setIsLowRamDevice(true)
     }
 
     private var declaredDecoders = 0

@@ -30,11 +30,17 @@ import com.superplayer.core.TrackSelectionPolicy
  * byte is metered — and the benchmark must show it *as a bitrate loss* beside the rebuffer win
  * (#103), which is why the cellular entries below are real and not the profile's own restated.
  *
- * The rungs are Apple's, because a ladder in the field is encoded to that table: every height here
- * is paired with the *lowest* average bitrate the specification recommends for it, rounded up, so
- * that a real ladder's rung at that height passes and the next one up does not.
- * ref: Apple, *HLS Authoring Specification for Apple Devices*, video encoding requirements —
- * 640×360 at 365 kbit/s, 1280×720 at 3 000 kbit/s, 1920×1080 at 4 500 kbit/s:
+ * The rungs are Apple's, because a ladder in the field is encoded to that table. Each entry caps
+ * both axes: the height names the rung, and the bitrate is what the transport is really being
+ * asked to carry. The bitrate a selector compares is the rung's *declared* one, which Media3 reads
+ * as the peak (`BANDWIDTH`) where a manifest states it, so every height here is paired with the
+ * *highest* average bitrate the specification recommends for it, doubled where the specification
+ * lets a peak run to twice the average: a rung encoded as the specification recommends at that
+ * height passes, one encoded hotter than it is the transport's loss to refuse, and the next height
+ * up is refused by the height.
+ * ref: Apple, *HLS Authoring Specification for Apple Devices*, video encoding requirements — the
+ * 640×360 tier at 365 kbit/s, the 1280×720 tiers up to 4 500 kbit/s, the 1920×1080 tiers up to
+ * 7 800 kbit/s, and a peak of no more than twice the average for on-demand content:
  * https://developer.apple.com/documentation/http-live-streaming/hls-authoring-specification-for-apple-devices
  *
  * A generation the platform did not name is treated as LTE — the generation most cellular sessions
@@ -55,8 +61,8 @@ internal object TransportCaps {
 
             CellularGeneration.LTE -> when (profile) {
                 // Full HD is where LTE stops paying: `ColdDefaults.CELLULAR_LTE_BPS` is 4 Mbit/s,
-                // and a 1080p rung above 4.5 Mbit/s is one an ordinary LTE cell sustains only on a
-                // good day, which is the day nobody notices and the other days are the stall.
+                // and a 1080p rung is one an ordinary LTE cell sustains only on a good day; the
+                // 1440p and 2160p tiers above it are the ones it never does.
                 PlaybackProfile.VIDEO_ON_DEMAND, PlaybackProfile.LIVE_LINEAR -> RUNG_1080P
 
                 // A feed clip is watched for seconds; the climb to 1080p is bytes spent on a rung
@@ -80,10 +86,12 @@ internal object TransportCaps {
         maxVideoHeightPx = TrackSelectionPolicy.UNLIMITED,
     )
 
-    val RUNG_1080P: TrackSelectionPolicy = TrackSelectionPolicy(maxVideoBitrateBps = 4_500_000, maxVideoHeightPx = 1_080)
+    /** The top 1080p tier's 7.8 Mbit/s average, at a peak of twice that. */
+    val RUNG_1080P: TrackSelectionPolicy = TrackSelectionPolicy(maxVideoBitrateBps = 15_600_000, maxVideoHeightPx = 1_080)
 
-    val RUNG_720P: TrackSelectionPolicy = TrackSelectionPolicy(maxVideoBitrateBps = 3_000_000, maxVideoHeightPx = 720)
+    /** The top 720p tier's 4.5 Mbit/s average, at a peak of twice that. */
+    val RUNG_720P: TrackSelectionPolicy = TrackSelectionPolicy(maxVideoBitrateBps = 9_000_000, maxVideoHeightPx = 720)
 
-    /** 400 kbit/s rather than Apple's 365: rounded up so a real ladder's 360p rung passes. */
-    val RUNG_360P: TrackSelectionPolicy = TrackSelectionPolicy(maxVideoBitrateBps = 400_000, maxVideoHeightPx = 360)
+    /** The 360p tier's 365 kbit/s average, at a peak of twice that. */
+    val RUNG_360P: TrackSelectionPolicy = TrackSelectionPolicy(maxVideoBitrateBps = 730_000, maxVideoHeightPx = 360)
 }

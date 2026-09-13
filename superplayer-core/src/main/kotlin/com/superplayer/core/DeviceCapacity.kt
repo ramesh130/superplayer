@@ -22,7 +22,6 @@ import android.content.pm.ApplicationInfo
 import android.hardware.display.DisplayManager
 import android.media.MediaCodecList
 import android.media.MediaFormat
-import android.os.Build
 import android.view.Display
 
 /**
@@ -323,7 +322,6 @@ internal fun deviceConstraintsOf(context: Context): DeviceConstraints {
 }
 
 private fun readHdrTypes(display: Display): Set<Int>? {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return null
     val capabilities = try {
         display.hdrCapabilities
     } catch (e: RuntimeException) {

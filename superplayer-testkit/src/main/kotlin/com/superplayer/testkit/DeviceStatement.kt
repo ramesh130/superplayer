@@ -115,6 +115,10 @@ public object DeviceStatement {
      *
      * No pairs is a decoder that declares no profiles, which SuperPlayer reads as *unknown* rather
      * than as *nothing*: a ladder played on it is gated on nothing.
+     *
+     * Declare before the test's first player is built, and not only before the one it is about:
+     * the platform caches its codec list on first read, so a decoder declared after any player has
+     * read it is one no later player in the same test sees.
      */
     @JvmStatic
     public fun declareVideoDecoder(mimeType: String, vararg profileLevels: Pair<Int, Int>) {

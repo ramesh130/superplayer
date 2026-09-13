@@ -78,11 +78,14 @@ internal data class SelectionThresholds(
             // A feed clip: the start target is 2.5 s, the ceiling 15 s. The climb is allowed the
             // moment the start target is met — that is the low start and the upshift, and at
             // Media3's 10 s a clip would end on its first rung — and the descent when the buffer
-            // falls to a third of the ceiling.
+            // falls to a third of the ceiling. Nothing already buffered is discarded for a better
+            // rung: Media3's 25 s to retain is above the whole buffer, deliberately, because a
+            // clip is watched for seconds and media fetched twice is bytes on a metered link, and
+            // because a buffer cut back to a few seconds on every climb is one a marginal link
+            // starves.
             PlaybackProfile.SHORT_FORM -> MEDIA3_DEFAULT.copy(
                 minDurationForQualityIncreaseMs = 2_500,
                 maxDurationForQualityDecreaseMs = 5_000,
-                minDurationToRetainAfterDiscardMs = 5_000,
             )
 
             // Slow to climb, quick to descend, and choosing with more headroom: every climb is

@@ -28,6 +28,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import com.superplayer.core.DecisionTarget
+import com.superplayer.core.DeviceConstraints
 import com.superplayer.core.EngineConfiguration
 import com.superplayer.core.EnginePolicyExtension
 import com.superplayer.core.MediaRequest
@@ -214,6 +215,11 @@ class BandwidthOraclePlaybackTest {
         val last = checkNotNull(segments.last().cmcdKeys()["mtp"]) { "No mtp on ${segments.last().uri}: ${segments.last().httpRequestHeaders}" }
         assertThat(last.toLong()).isGreaterThan(0)
         assertThat(last.toLong()).isAtMost(STABLE_WIFI_BPS / 1_000)
+        // spec: CTA-5004 §3.1 — `br`, the encoded bitrate of the requested object in kbps. On a
+        // link that affords the whole ladder the selection settles on its top variant, and `br` is
+        // that variant's declared rate: the selection is what CMCD describes.
+        val br = checkNotNull(segments.last().cmcdKeys()["br"]) { "No br on ${segments.last().uri}" }
+        assertThat(br.toInt()).isEqualTo(SyntheticHlsStream.HIGHER_DECLARED_BITRATE_BPS / 1_000)
         assertThat(player.playerError).isNull()
     }
 
@@ -256,8 +262,14 @@ class BandwidthOraclePlaybackTest {
             oracle.configure(configuration)
             meter?.let { configuration.bandwidthMeter = it }
             if (adaptiveAudio) {
+                // SuperPlayer's own selection factory, over the recording meter, so what `mtp`
+                // reports is what `NetworkAwareTrackSelection` inherits from Media3 unchanged.
+                val selections = NetworkAwareTrackSelection.Factory(
+                    SelectionThresholds.forProfile(PlaybackProfile.VIDEO_ON_DEMAND),
+                    NetworkAwareTrackSelection.Gate(DeviceConstraints.UNKNOWN, oracle.meter, UNCAPPED.trackSelection),
+                )
                 configuration.engine.setTrackSelector(
-                    DefaultTrackSelector(ApplicationProvider.getApplicationContext()).apply {
+                    DefaultTrackSelector(ApplicationProvider.getApplicationContext(), selections).apply {
                         parameters = buildUponParameters()
                             .setAllowAudioMixedChannelCountAdaptiveness(true)
                             .setAllowAudioMixedSampleRateAdaptiveness(true)

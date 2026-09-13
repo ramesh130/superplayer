@@ -123,11 +123,56 @@ public enum class DecisionTrigger {
     THROUGHPUT_CHANGED,
 }
 
-/** A [PlaybackPolicy]'s answer: how to buffer, and what to cap track selection at. */
-public data class PlaybackDecision(
+/**
+ * A [PlaybackPolicy]'s answer: how to buffer, what to cap track selection at, and — for content
+ * the manifest declared live — how to hold the live window.
+ *
+ * [liveLatency] is null for every decision about on-demand content and for any policy that has
+ * nothing to say about live playback: null means the engine's own live behaviour, unchanged. It is
+ * a third half rather than a field of [BufferPolicy] because it is applied by a different route —
+ * the buffer durations become a load control, the speed range travels on the media item — and
+ * a component that can re-target one has nothing to do with the other.
+ */
+public data class PlaybackDecision
+@JvmOverloads
+constructor(
     public val buffer: BufferPolicy,
     public val trackSelection: TrackSelectionPolicy,
+    public val liveLatency: LiveLatencyPolicy? = null,
 )
+
+/**
+ * How a live window is held: the range of playback speeds the player may drift through to stay at
+ * its target distance behind the live edge.
+ *
+ * The standard low-latency technique. A live player that falls behind its target — a stall, a
+ * pause, a slow segment — has two ways back: a seek, which the viewer sees, or playing a little
+ * faster than real time until it has caught up, which at a few percent they do not. The same in
+ * the other direction when it runs ahead. The engine measures the offset error and picks a speed
+ * inside this range; the range is the policy's because how much drift a viewer tolerates is a
+ * product decision and not an engine constant.
+ *
+ * What the player runs is this range, over both the engine's own default and any the manifest
+ * declares: for an ordinary live stream — one whose manifest carries no low-latency hints — Media3
+ * adjusts speed not at all unless the item it plays says it may, so a policy that decides a range
+ * is the difference between a live window that is held and one that is seeked back to. A policy
+ * that decides nothing (a null half) leaves the stream to the manifest and the engine.
+ *
+ * ref: https://developer.android.com/media/media3/exoplayer/live-streaming
+ */
+public data class LiveLatencyPolicy(
+    /** The slowest the player may play to fall back toward its target. At most `1.0`. */
+    public val minPlaybackSpeed: Float,
+    /** The fastest the player may play to catch up to its target. At least `1.0`. */
+    public val maxPlaybackSpeed: Float,
+) {
+    init {
+        require(minPlaybackSpeed > 0f && minPlaybackSpeed <= 1f) {
+            "minPlaybackSpeed must be in (0, 1], was $minPlaybackSpeed"
+        }
+        require(maxPlaybackSpeed >= 1f) { "maxPlaybackSpeed must be at least 1, was $maxPlaybackSpeed" }
+    }
+}
 
 /**
  * How much to buffer, in milliseconds.

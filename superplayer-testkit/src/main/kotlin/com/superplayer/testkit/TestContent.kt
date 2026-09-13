@@ -221,19 +221,41 @@ public class TestContent private constructor(
          * §6.2.1 promises it. [FaultScript.Builder.serveThroughCache] puts a cache in front of it.
          */
         @JvmStatic
-        public fun liveHls(): TestContent = TestContent(
-            videoBitratesBps = emptyList(),
-            durationMs = SyntheticHlsStream.durationMs(SyntheticHlsStream.LIVE_WINDOW_SEGMENT_COUNT),
-            live = true,
-            protocol = Protocol.HLS,
-            sourceUri = SyntheticHlsStream.LIVE_MULTIVARIANT_PLAYLIST_URI,
-            publication = { elapsedMs ->
-                SyntheticHlsStream.liveResources(
-                    SyntheticHlsStream.LIVE_WINDOW_SEGMENT_COUNT +
-                        (elapsedMs / SyntheticHlsStream.SEGMENT_DURATION_MS).toInt(),
-                )
-            },
-        )
+        @JvmOverloads
+        public fun liveHls(dated: Boolean = false): TestContent {
+            // A dated window (`EXT-X-PROGRAM-DATE-TIME`) is what a player measures its live offset
+            // against, and the harness cannot keep the two clocks that measurement needs together:
+            // Media3 anchors a dated HLS window on `System.currentTimeMillis()`, which Robolectric
+            // leaves to the real machine, while every other clock here is the harness's and runs
+            // far ahead of real time. A dated window therefore sees the player drift *ahead* of the
+            // live edge at one second per harness second, and the engine holds the window the only
+            // way it can — by playing at the slowest speed its live policy allows. That is a real
+            // engine behaviour on an unreal clock, so it is opt-in: `LiveLatencyBindingTest` wants
+            // exactly that, and everything else wants a window with no date and no offset at all,
+            // which is also what many real origins serve. Segment 0 is dated so that the first
+            // window's live edge is the moment this content was made, which is the moment the origin
+            // starts publishing from: a player joining at the default position starts at its target.
+            val liveEdgeAtStartMs = System.currentTimeMillis()
+            val firstSegmentDateTimeMs = if (dated) {
+                liveEdgeAtStartMs - SyntheticHlsStream.durationMs(SyntheticHlsStream.LIVE_WINDOW_SEGMENT_COUNT)
+            } else {
+                null
+            }
+            return TestContent(
+                videoBitratesBps = emptyList(),
+                durationMs = SyntheticHlsStream.durationMs(SyntheticHlsStream.LIVE_WINDOW_SEGMENT_COUNT),
+                live = true,
+                protocol = Protocol.HLS,
+                sourceUri = SyntheticHlsStream.LIVE_MULTIVARIANT_PLAYLIST_URI,
+                publication = { elapsedMs ->
+                    SyntheticHlsStream.liveResources(
+                        SyntheticHlsStream.LIVE_WINDOW_SEGMENT_COUNT +
+                            (elapsedMs / SyntheticHlsStream.SEGMENT_DURATION_MS).toInt(),
+                        firstSegmentDateTimeMs,
+                    )
+                },
+            )
+        }
 
         /**
          * One entry of [HostileManifests]: a known-good stream of its protocol with one thing wrong.

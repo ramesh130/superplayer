@@ -241,7 +241,17 @@ public class SuperPlayer private constructor(
         // Wired here rather than in the builder so the loop never holds a half-built facade: it is
         // started, and can first call back, only once `build()` has this object in hand.
         reapplication?.onDecisionChanged = { decision, trigger ->
+            val previous = playbackDecision
             playbackDecision = decision
+            // The live half travels on the media item, so a changed one is laid into the item that
+            // is playing — replaced in place, which Media3's own sources do without re-preparing
+            // when nothing but the live configuration differs. The other halves went to the target.
+            if (decision.liveLatency != previous.liveLatency) {
+                delegate.currentMediaItem?.let { current ->
+                    val updated = current.withLiveLatency(decision.liveLatency)
+                    if (updated != current) delegate.replaceMediaItem(delegate.currentMediaItemIndex, updated)
+                }
+            }
             telemetry?.decisionChanged(decision, trigger)
         }
     }
@@ -393,7 +403,11 @@ public class SuperPlayer private constructor(
         // open closes it first — core signals the edge, the collector keeps the bookkeeping.
         //
         openMeasurementSession(request.contentId)
-        return AdoptedRequest(request.toMediaItem(), request.resolvedStartPositionMs())
+        // The decision's live half rides on the item; EngineBinding.kt says why it goes here.
+        return AdoptedRequest(
+            request.toMediaItem().withLiveLatency(playbackDecision.liveLatency),
+            request.resolvedStartPositionMs(),
+        )
     }
 
     /**
@@ -470,7 +484,7 @@ public class SuperPlayer private constructor(
             // Deliberately not routed through `adopt`, which would remember a position for content
             // this player never played.
             openMeasurementSession(request.contentId)
-            delegate.setMediaItem(request.toMediaItem(), snapshot.positionMs)
+            delegate.setMediaItem(request.toMediaItem().withLiveLatency(playbackDecision.liveLatency), snapshot.positionMs)
         }
         delegate.playWhenReady = snapshot.playWhenReady
     }

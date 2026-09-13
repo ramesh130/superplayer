@@ -231,8 +231,32 @@ things worth knowing before touching it: Media3 hands its transfer listener to m
 a playlist is never a sample in any Media3 player and `BandwidthOraclePlaybackTest` counts segments;
 and the `PlaybackHarness` now replays a trace's *transport* into Robolectric's connectivity shadow as
 its clock crosses a stretch (`TransportReplay`), which is what lets a reseed be asserted at the
-millisecond `NetworkProfile.HANDOVER_AT_MS` names. `AdaptiveLoadControl` and
-`NetworkAwareTrackSelection` are #100 and #101 and do not exist yet.
+millisecond `NetworkProfile.HANDOVER_AT_MS` names.
+
+The second component is the buffer half of the decision, recomputed on conditions.
+`AdaptivePolicy.forProfile(context, profile)` is the module's entry point and returns a
+`PlaybackPolicy` — the object also implements core's internal extension, which is how it installs the
+oracle's meter, an `AdaptiveLoadControl` and a `DecisionTarget` without a Media3 type in any public
+signature. The policy itself is `AdaptiveBufferPolicy`, public and pure: `PRD.md` §3.1's five branches
+over `PlaybackConditions`, starting from the profile's static numbers and departing under a named
+observation — a deep cushion on a stable, fast, unmetered link; floors raised on the coefficient of
+variation with the ceiling untouched; the live profile's buffer plus a `LiveLatencyPolicy` when the
+*manifest* says live; a raised after-rebuffer floor and a held bitrate ceiling for a cooldown after a
+stall; and a heap-derived cap on `maxBufferMs` on every branch. Every constant carries its reason
+where it is chosen. `AdaptiveLoadControl` holds not one duration: it rebuilds a `DefaultLoadControl`
+through `EngineBinding.kt` when a decision arrives, and does so lazily on the engine's next poll,
+because Media3's load control pins itself to the playback thread. Two things are easy to get wrong:
+a hold or a raise lapses at the next *trigger* after its cooldown, never on time alone, because a
+policy is consulted on triggers only (ADR-0009 rule 4); and the live half does **not** go to a
+`LivePlaybackSpeedControl` — Media3 pins an ordinary live stream's speed to exactly 1× unless the
+media item itself declares a range, so core lays the half into the item at adoption and replaces the
+playing item in place when a re-consulted decision changes it. Under the harness a dated live window
+(`TestContent.liveHls(dated = true)`) sees the player drift *ahead* of the edge, because Media3 reads
+"now" from a wall clock Robolectric does not move; `TestContent.liveHls` says why that is opt-in.
+`NetworkAwareTrackSelection` is #101 and does not exist yet; until it does, the selection half of a
+decision is emitted and **not in force** on a player built with the adaptive policy, because
+ADR-0009 rule 5 forbids laying a ceiling into a re-consulted player's parameters — `AdaptivePolicy.kt`
+says so, and a consumer who needs `DATA_SAVER`'s caps today keeps the static policy until #101.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,

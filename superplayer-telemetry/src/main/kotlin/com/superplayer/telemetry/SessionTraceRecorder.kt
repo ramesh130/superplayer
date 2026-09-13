@@ -259,7 +259,8 @@ public class SessionTraceRecorder : TelemetrySink {
                 "bufferForPlaybackMs=${buffer.bufferForPlaybackMs} " +
                 "bufferForPlaybackAfterRebufferMs=${buffer.bufferForPlaybackAfterRebufferMs} " +
                 "backBufferMs=${buffer.backBufferMs} retainBackBufferFromKeyframe=${buffer.retainBackBufferFromKeyframe} " +
-                "maxVideoBitrateBps=${tracks.maxVideoBitrateBps} maxVideoHeightPx=${tracks.maxVideoHeightPx}"
+                "maxVideoBitrateBps=${tracks.maxVideoBitrateBps} maxVideoHeightPx=${tracks.maxVideoHeightPx}" +
+                event.decision.liveLatencyFields()
         }
 
         is TelemetryEvent.DecisionChanged -> {
@@ -269,7 +270,8 @@ public class SessionTraceRecorder : TelemetrySink {
                 "bufferForPlaybackMs=${buffer.bufferForPlaybackMs} " +
                 "bufferForPlaybackAfterRebufferMs=${buffer.bufferForPlaybackAfterRebufferMs} " +
                 "backBufferMs=${buffer.backBufferMs} retainBackBufferFromKeyframe=${buffer.retainBackBufferFromKeyframe} " +
-                "maxVideoBitrateBps=${tracks.maxVideoBitrateBps} maxVideoHeightPx=${tracks.maxVideoHeightPx}"
+                "maxVideoBitrateBps=${tracks.maxVideoBitrateBps} maxVideoHeightPx=${tracks.maxVideoHeightPx}" +
+                event.decision.liveLatencyFields()
         }
 
         is TelemetryEvent.SessionEnded -> "droppedEventCount=${event.droppedEventCount}"

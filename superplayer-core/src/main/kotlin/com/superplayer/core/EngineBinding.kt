@@ -16,9 +16,12 @@
 
 package com.superplayer.core
 
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
 import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.LoadControl
+import androidx.media3.exoplayer.upstream.DefaultAllocator
 
 /**
  * The one place a [PlaybackDecision] becomes Media3 configuration.
@@ -36,9 +39,17 @@ import androidx.media3.exoplayer.LoadControl
  * Applied at construction and fixed thereafter — Media3's [DefaultLoadControl] takes its durations
  * when it is built and does not accept new ones — which is the constraint that makes a policy on
  * such a player a construction-time consultation (ADR-0009 rule 5). See [PlaybackPolicy].
+ *
+ * [allocator] is for the one caller that builds these more than once for one player: a
+ * retargetable load control that honours a changed decision by building a fresh
+ * [DefaultLoadControl] around the durations. The sample queues hold on to the allocator they were
+ * given at prepare time, so every load control built for one player has to account against the
+ * same one, or the byte-target back-pressure would be measured against an allocator nothing
+ * allocates from. Null builds Media3's own.
  */
-internal fun BufferPolicy.toLoadControl(): LoadControl =
+internal fun BufferPolicy.toLoadControl(allocator: DefaultAllocator? = null): LoadControl =
     DefaultLoadControl.Builder()
+        .apply { allocator?.let { setAllocator(it) } }
         .setBufferDurationsMs(
             minBufferMs,
             maxBufferMs,
@@ -47,6 +58,44 @@ internal fun BufferPolicy.toLoadControl(): LoadControl =
         )
         .setBackBuffer(backBufferMs, retainBackBufferFromKeyframe)
         .build()
+
+/**
+ * The decision's live-latency half, laid into the [MediaItem] the engine plays, which is where
+ * Media3 takes a speed range from.
+ *
+ * Not from the `LivePlaybackSpeedControl` the engine is built with, although that is where the
+ * range is *used*: the control's own range is only a fallback, and Media3's HLS and DASH sources
+ * pin the range to exactly 1× for any stream whose manifest declares no low-latency hints unless the
+ * item itself says otherwise — so a range set on the control alone is silently never used on an
+ * ordinary live stream. The item's live configuration is the one route that always takes, and it
+ * overrides both the control's fallback and the manifest's own hints, which is what a policy that
+ * has decided a range wants.
+ *
+ * A null half leaves the item exactly as it was, whatever it declared: "nothing decided" is not
+ * "decided 1×". So does an item that already declares a range of its own — a consumer who set one
+ * on their `MediaItem` has made the same decision one level up, and the promise ADR-0009 rule 5
+ * makes for a consumer's `TrackSelectionParameters` holds here too: nothing of theirs is rewritten
+ * by a trigger. An item core built from a `MediaRequest` declares none, and takes the policy's.
+ * Applied when a request is adopted, and again to the playing item when a re-consulted decision
+ * changes the half — an engine can replace a playing item in place when only its live
+ * configuration differs, which is what makes this half re-targetable on every player without a
+ * component of its own (ADR-0009 rule 5, addendum).
+ *
+ * ref: https://developer.android.com/media/media3/exoplayer/live-streaming — the media item's live
+ * configuration as the app's way of setting the range.
+ */
+internal fun MediaItem.withLiveLatency(policy: LiveLatencyPolicy?): MediaItem {
+    if (policy == null) return this
+    val declaresItsOwn = liveConfiguration.minPlaybackSpeed != C.RATE_UNSET ||
+        liveConfiguration.maxPlaybackSpeed != C.RATE_UNSET
+    if (declaresItsOwn) return this
+    val configuration = liveConfiguration.buildUpon()
+        .setMinPlaybackSpeed(policy.minPlaybackSpeed)
+        .setMaxPlaybackSpeed(policy.maxPlaybackSpeed)
+        .build()
+    if (configuration == liveConfiguration) return this
+    return buildUpon().setLiveConfiguration(configuration).build()
+}
 
 /**
  * The decision's selection half, as Media3's own [TrackSelectionParameters], applied on top of

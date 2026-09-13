@@ -4,7 +4,7 @@ plugins {
     id("superplayer.android.library")
 }
 
-// AdaptiveLoadControl, NetworkAwareTrackSelection, BandwidthOracle
+// AdaptivePolicy (AdaptiveBufferPolicy + AdaptiveLoadControl), BandwidthOracle; NetworkAwareTrackSelection to follow
 //
 // Phase 3. Dependency direction: see docs/modules.md. This module may depend on
 // modules from its own or an earlier phase only — never on a later one.

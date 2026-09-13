@@ -68,7 +68,8 @@ import com.google.common.base.Supplier
  * policy is consulted once, and the buffer half becomes a `DefaultLoadControl` while the selection
  * half is laid into the engine's `TrackSelectionParameters` (ADR-0009 rule 5). An extension that
  * sets a target is promising that its components honour *both* halves of every decision it is
- * handed, from the first one at construction on.
+ * handed, from the first one at construction on. The decision's live half is not the target's: it
+ * travels on the media item, which core lays it into on every player (`EngineBinding.kt`).
  *
  * Each slot is one both friends of core can see, and the question to ask of any slot added here is
  * whether it is a slot or a widening: a fake in the transport slot stands in for the HTTP stack and

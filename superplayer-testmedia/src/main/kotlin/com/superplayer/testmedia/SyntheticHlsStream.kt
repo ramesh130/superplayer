@@ -18,6 +18,10 @@ package com.superplayer.testmedia
 
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import kotlin.math.ceil
 
 /**
@@ -62,6 +66,16 @@ public object SyntheticHlsStream {
 
     /** What every segment's name ends in, so a test can tell a segment request from a playlist one. */
     public const val SEGMENT_SUFFIX: String = ".aac"
+
+    /**
+     * spec: RFC 8216 §4.3.2.6 — the date is ISO/IEC 8601:2004 with millisecond precision and a time
+     * zone; UTC, written as `Z`. `java.text` rather than `java.time`, which needs API 26 and this
+     * module's floor is lower.
+     */
+    private fun iso8601(unixMs: Long): String =
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
+            .apply { timeZone = TimeZone.getTimeZone("UTC") }
+            .format(Date(unixMs))
 
     internal fun segmentName(index: Int) = "segment$index$SEGMENT_SUFFIX"
 
@@ -197,15 +211,21 @@ public object SyntheticHlsStream {
 
     // spec: RFC 8216 §4.3.3.2 — EXT-X-MEDIA-SEQUENCE is the sequence number of the first segment
     // listed, which is what lets a live playlist slide its window and still name every segment once.
-    private fun mediaPlaylist(indices: IntRange, live: Boolean): String {
+    private fun mediaPlaylist(indices: IntRange, live: Boolean, firstSegmentDateTimeMs: Long? = null): String {
         val header = listOf(
             "#EXTM3U",
             "#EXT-X-VERSION:3",
             "#EXT-X-TARGETDURATION:${ceil(SEGMENT_DURATION_SECONDS).toInt()}",
             "#EXT-X-MEDIA-SEQUENCE:${indices.first}",
         )
-        val segments = indices.flatMap { index ->
-            listOf("#EXTINF:$SEGMENT_DURATION_SECONDS,", segmentName(index))
+        // spec: RFC 8216 §4.3.2.6 — EXT-X-PROGRAM-DATE-TIME dates the first sample of the segment
+        // that follows it, and one tag is enough: the date of every later segment follows from the
+        // EXTINF durations between. It is what lets a player measure its distance from the live
+        // edge at all; a live playlist without one has a window but no clock to hold it against.
+        val dated = firstSegmentDateTimeMs?.let { listOf("#EXT-X-PROGRAM-DATE-TIME:${iso8601(it)}") }.orEmpty()
+        val segments = indices.flatMapIndexed { position, index ->
+            (if (position == 0) dated else emptyList()) +
+                listOf("#EXTINF:$SEGMENT_DURATION_SECONDS,", segmentName(index))
         }
         val tail = if (live) emptyList() else listOf("#EXT-X-ENDLIST")
 
@@ -226,16 +246,24 @@ public object SyntheticHlsStream {
      * Served from its own directory, so it and [resources] can sit in one data set. Every segment is
      * [resources]'s segment of the same index, timestamp tag and all, so the timeline runs on across
      * the window as a real live stream's does.
+     *
+     * [firstSegmentDateTimeMs], when given, is the wall-clock time in Unix milliseconds at which
+     * segment 0 began, and dates the window with `EXT-X-PROGRAM-DATE-TIME` — the tag a player needs
+     * before it can measure its live offset and hold it. Whoever serves this decides what "wall
+     * clock" means, because this module names no clock; without it the window carries no date and
+     * a player reports no live offset, as it does for many real origins.
      */
-    public fun liveResources(publishedSegmentCount: Int): Map<String, ByteArray> {
+    @JvmOverloads
+    public fun liveResources(publishedSegmentCount: Int, firstSegmentDateTimeMs: Long? = null): Map<String, ByteArray> {
         require(publishedSegmentCount >= LIVE_WINDOW_SEGMENT_COUNT) {
             "A live window of $LIVE_WINDOW_SEGMENT_COUNT segments needs that many published, " +
                 "not $publishedSegmentCount"
         }
         val window = (publishedSegmentCount - LIVE_WINDOW_SEGMENT_COUNT) until publishedSegmentCount
+        val windowDateTimeMs = firstSegmentDateTimeMs?.let { it + window.first * SEGMENT_DURATION_MS }
         return buildMap {
             put(MULTIVARIANT_PLAYLIST_NAME, multivariantPlaylist(variantCount = 1).toByteArray())
-            put(MEDIA_PLAYLIST_NAME, mediaPlaylist(window, live = true).toByteArray())
+            put(MEDIA_PLAYLIST_NAME, mediaPlaylist(window, live = true, windowDateTimeMs).toByteArray())
             window.forEach { index -> put(segmentName(index), adtsSegment(index)) }
         }.mapKeys { (name, _) -> LIVE_BASE_URI + name }
     }

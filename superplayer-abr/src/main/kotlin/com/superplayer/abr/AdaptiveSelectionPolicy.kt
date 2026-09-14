@@ -76,16 +76,11 @@ public class AdaptiveSelectionPolicy(public val profile: PlaybackProfile) : Play
         }
 
         val measured = conditions.throughput?.takeIf { it.sampleCount > 0 }
-        if (measured != null && inCooldown(conditions.stallHistory)) {
+        if (measured != null && conditions.stallHistory.inRebufferCooldown()) {
             selection = selection.heldAt(measured)
         }
 
         return base.copy(trackSelection = selection)
-    }
-
-    private fun inCooldown(history: StallHistory): Boolean {
-        val since = history.msSinceLastRebufferEnded ?: return false
-        return since < AdaptiveBufferPolicy.REBUFFER_COOLDOWN_MS
     }
 
     /** The tighter of two ceilings on each axis, at this policy's pace. */

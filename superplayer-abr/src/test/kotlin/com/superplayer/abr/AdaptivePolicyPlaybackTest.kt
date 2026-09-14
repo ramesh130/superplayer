@@ -185,7 +185,11 @@ class AdaptivePolicyPlaybackTest {
 
         // Time alone releases nothing: through a whole cooldown every re-consultation keeps a
         // hold, whatever the link did meanwhile — a hold lapses on a trigger, never on time. The
-        // cooldown counted is the one since the *last* rebuffer, should recovery stall once more.
+        // cooldown counted is the one since the *last* rebuffer, because recovery can stall once
+        // more on this content with no decision involved: with the refill no longer cut short by a
+        // decision change (#129), the player loads toward the ceiling, stops, and — as stock Media3
+        // does — starts again only below the short-form floor, which is about one of this content's
+        // one-sample chunks, so the next chunk can land after the buffered one is consumed (#117).
         harness.advanceUntil(player, "a cooldown to pass with no further rebuffer", 4 * AdaptiveBufferPolicy.REBUFFER_COOLDOWN_MS) {
             harness.elapsedRealtimeMs() - rebuffers.endedAtMs.last() >= AdaptiveBufferPolicy.REBUFFER_COOLDOWN_MS - STEP_MS
         }
@@ -211,6 +215,42 @@ class AdaptivePolicyPlaybackTest {
         // policy's to show. The pace is the profile's too, and is `SelectionPacesTest`'s to show.
         val released = player.playbackDecision
         assertThat(released.trackSelection.copy(pace = null)).isEqualTo(STATIC_SHORT_FORM.trackSelection)
+        assertThat(player.playerError).isNull()
+    }
+
+    // The swap under a real player: a decision that changes mid-refill must not stop the refill (#129).
+    @Test
+    fun aDecisionChangeMidRefillLeavesTheBufferFillingTowardItsCeiling() {
+        val telemetry = RecordingCollector()
+        val player = harness.buildPlayer(
+            content = TestContent.videoLadder(durationMs = LONG_CONTENT_MS),
+            profile = PlaybackProfile.SHORT_FORM,
+            network = NetworkProfile.STABLE_WIFI.trace,
+            policy = AdaptivePolicy.forProfile(context, PlaybackProfile.SHORT_FORM),
+            telemetry = telemetry,
+        )
+        player.setMediaRequest(request())
+        harness.playToReady(player)
+        harness.advanceUntil(player, "a decision change", CHANGE_BOUND_MS) { telemetry.changes.isNotEmpty() }
+
+        // The change lands with the buffer between the decision's floor and its ceiling, which is
+        // the band where Media3 keeps loading if it was, and where a delegate that forgot it had
+        // been loading waits for the floor instead.
+        val atChange = player.playbackDecision.buffer
+        assertWithMessage("buffered at the change, against floor ${atChange.minBufferMs} ms")
+            .that(player.totalBufferedDuration)
+            .isAtLeast(atChange.minBufferMs.toLong())
+
+        val refilledMs = atChange.maxBufferMs - CHUNK_MS
+        var drained: String? = null
+        harness.advanceUntil(player, "the buffer to refill to $refilledMs ms", REFILL_BOUND_MS) {
+            val floor = player.playbackDecision.buffer.minBufferMs
+            if (drained == null && it.totalBufferedDuration < floor) {
+                drained = "buffered=${it.totalBufferedDuration} under floor=$floor, loading=${it.isLoading}"
+            }
+            drained != null || it.totalBufferedDuration >= refilledMs
+        }
+        assertWithMessage("the buffer drained to its floor before refilling").that(drained).isNull()
         assertThat(player.playerError).isNull()
     }
 
@@ -372,6 +412,15 @@ class AdaptivePolicyPlaybackTest {
         const val FASTER = 1.25f
 
         const val OSCILLATION_WINDOW_MS = 60_000L
+
+        /** A short-form session on a stable link changes its decision within its first few seconds. */
+        const val CHANGE_BOUND_MS = 10_000L
+
+        /** `TestContent.videoLadder`'s chunk: the granularity the buffer is filled in. */
+        const val CHUNK_MS = 2_000
+
+        /** A fifteen-second ceiling refilled at 20 Mbit/s against a 2.4 Mbit/s top rung, with room. */
+        const val REFILL_BOUND_MS = 10_000L
 
         /**
          * One change per ten seconds, against a trace that changes rate sixty times in the window.

@@ -393,6 +393,15 @@ class HostileManifestCorpusTest {
             // nothing newer, and the session ends with a `StaleLivePlaylistException` pointing at
             // the cache the served `max-age=600` names — rather than Media3's unclassified
             // `PlaylistStuckException`, which was this row until issue #66.
+            //
+            // Ordered by the harness, not by luck, and the only whole-session check that the two
+            // bounds are. Core's layer judges every playlist response it passes and fails one past its
+            // bound before Media3 parses it, so Media3 can only call the playlist stuck if the clock
+            // moves between the layer reading a response and the engine processing it, by the whole
+            // target duration of margin. `HarnessClockWait` counts a load from its issue to its posted
+            // completion and `PlaybackHarness.quiesce` counts what the playback thread issues while it
+            // is asked if it is idle, so the clock never moves in that gap. This row once read
+            // `FAILS` on loaded runners, on a harness that counted open transfers only (issue #105).
             "hls-cached-live-playlist" to Outcome.FAILS_TYPED,
             "dash-ladder-gap" to Outcome.PLAYS_TO_END,
             "dash-overstated-bitrate" to Outcome.PLAYS_TO_END,

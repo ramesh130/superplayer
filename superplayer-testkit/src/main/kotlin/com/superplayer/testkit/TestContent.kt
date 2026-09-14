@@ -118,7 +118,9 @@ public class TestContent private constructor(
      *
      * [codecs] is null for a rung that declares no profile, which is most of them: a selector gating
      * on the decoder's profile levels has nothing to gate on and lets the rung through, so a test
-     * that is not about the decoder is not accidentally about it.
+     * that is not about the decoder is not accidentally about it. A non-null [codecs] also names
+     * the rung's MIME type, as a manifest's would, so `dvhe.08.07` is a Dolby Vision rung; one with
+     * none is H.264. Media3 adapts within one MIME type, so a ladder mixing them is not a ladder.
      *
      * ref: RFC 6381 §3.3 for the `codecs` form; `avc1.640028` is H.264 High profile level 4.0.
      */

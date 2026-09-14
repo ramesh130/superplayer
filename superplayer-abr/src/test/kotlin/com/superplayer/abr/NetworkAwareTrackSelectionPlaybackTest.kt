@@ -152,6 +152,51 @@ class NetworkAwareTrackSelectionPlaybackTest {
         assertWithMessage("gated: ${gated.map { it.toBitrateBps }}").that(gated.maxOf { it.toBitrateBps }).isEqualTo(800_000)
     }
 
+    // #116: Media3's renderer decodes a Dolby Vision profile 8 rung's HEVC base layer on an HEVC
+    // Main10 decoder, so the gate must not refuse what the renderer would play. Three tests, for
+    // the codec-list caching above. With no Dolby Vision decoder at all the gate never refused —
+    // the MIME type is unknown — so the case that was refused is a Dolby Vision decoder that
+    // declares only profile 5, which has no base layer and is what many devices ship.
+    @Test
+    fun anHevcMain10DecoderAloneReachesTheDolbyVisionProfile8TopRung() {
+        DeviceStatement.declareVideoDecoder(MediaFormat.MIMETYPE_VIDEO_HEVC, CodecProfileLevel.HEVCProfileMain10 to CodecProfileLevel.HEVCMainTierLevel51)
+        val fallback = playAndCollectSwitches(dolbyVisionLadder())
+        assertWithMessage("fallback: ${fallback.map { it.toBitrateBps }}").that(fallback.maxOf { it.toBitrateBps }).isEqualTo(4_000_000)
+    }
+
+    @Test
+    fun aProfile5OnlyDolbyVisionDecoderStillReachesProfile8RungsThroughHevcMain10() {
+        DeviceStatement.declareVideoDecoder(MediaFormat.MIMETYPE_VIDEO_DOLBY_VISION, CodecProfileLevel.DolbyVisionProfileDvheStn to CodecProfileLevel.DolbyVisionLevelUhd60)
+        DeviceStatement.declareVideoDecoder(MediaFormat.MIMETYPE_VIDEO_HEVC, CodecProfileLevel.HEVCProfileMain10 to CodecProfileLevel.HEVCMainTierLevel51)
+        val fallback = playAndCollectSwitches(dolbyVisionLadder())
+        assertWithMessage("fallback: ${fallback.map { it.toBitrateBps }}").that(fallback.maxOf { it.toBitrateBps }).isEqualTo(4_000_000)
+    }
+
+    // The control: a fallback decoder that does not reach the base layer's profile refuses, so the
+    // fallback is not "refuse nothing" — the ladder is refused whole and falls to its bottom rung.
+    @Test
+    fun aProfile5OnlyDolbyVisionDecoderBesideHevcMainNeverPlaysAProfile8Rung() {
+        DeviceStatement.declareVideoDecoder(MediaFormat.MIMETYPE_VIDEO_DOLBY_VISION, CodecProfileLevel.DolbyVisionProfileDvheStn to CodecProfileLevel.DolbyVisionLevelUhd60)
+        DeviceStatement.declareVideoDecoder(MediaFormat.MIMETYPE_VIDEO_HEVC, CodecProfileLevel.HEVCProfileMain to CodecProfileLevel.HEVCMainTierLevel51)
+        val gated = playAndCollectSwitches(dolbyVisionLadder())
+        assertWithMessage("gated: ${gated.map { it.toBitrateBps }}").that(gated.map { it.toBitrateBps }.distinct()).containsExactly(300_000)
+    }
+
+    /**
+     * Every rung Dolby Vision profile 8, because Media3 adapts only within one MIME type.
+     * dvhe.PP.LL: 08 = profile 8 (HEVC Main10 base layer); 03 = FHD 24, 07 = UHD 30, as
+     * Media3 1.11's `MediaCodecUtil` parses them.
+     */
+    private fun dolbyVisionLadder(): TestContent = TestContent.ladder(
+        listOf(
+            Rung(300_000, 360, codecs = "dvhe.08.03"),
+            Rung(800_000, 480, codecs = "dvhe.08.03"),
+            Rung(2_400_000, 720, codecs = "dvhe.08.03"),
+            Rung(4_000_000, 2_160, codecs = "dvhe.08.07"),
+        ),
+        durationMs = LONG_CONTENT_MS,
+    )
+
     /** ref: RFC 6381 §3.3 — avc1.PPCCLL: 4D = Main, 64 = High; 1F = level 3.1, 28 = level 4.0. */
     private fun profiledLadder(): TestContent = TestContent.ladder(
         listOf(

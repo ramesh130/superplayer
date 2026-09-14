@@ -501,7 +501,9 @@ public class PlaybackHarness : ExternalResource() {
             // runs whatever was due on it ahead of the question, and what was due may be a live
             // playlist's reload that Media3's tracker scheduled for this moment: issued inside the
             // probe, it is activity a count read before the probe cannot see, and the round would
-            // end with the load not yet waited for (issue #105).
+            // end with the load not yet waited for (issue #105). Argued rather than pinned: no test can
+            // make the engine schedule its reload inside that probe on demand, and the next round's
+            // count, before any clock moves, would catch it anyway — this makes it the same round.
             val loopersIdle = playbackThreadIsIdle(player) && Looper.getMainLooper().queue.isIdle
             val now = activitySoFar()
             if (loopersIdle && now == seen) {

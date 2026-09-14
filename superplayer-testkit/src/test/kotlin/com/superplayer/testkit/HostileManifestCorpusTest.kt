@@ -394,14 +394,16 @@ class HostileManifestCorpusTest {
             // the cache the served `max-age=600` names — rather than Media3's unclassified
             // `PlaylistStuckException`, which was this row until issue #66.
             //
-            // Ordered by the harness, not by luck, and the only whole-session check that the two
-            // bounds are. Core's layer judges every playlist response it passes and fails one past its
-            // bound before Media3 parses it, so Media3 can only call the playlist stuck if the clock
-            // moves between the layer reading a response and the engine processing it, by the whole
-            // target duration of margin. `HarnessClockWait` counts a load from its issue to its posted
-            // completion and `PlaybackHarness.quiesce` counts what the playback thread issues while it
-            // is asked if it is idle, so the clock never moves in that gap. This row once read
-            // `FAILS` on loaded runners, on a harness that counted open transfers only (issue #105).
+            // The only whole-session check that the two bounds are ordered, and ordered by the
+            // harness rather than by luck. Core's layer fails a response past its bound before Media3
+            // parses it, so Media3 can only call the playlist stuck if the clock moves between the
+            // layer reading a response and the engine processing it, by the whole target duration of
+            // margin. `HarnessClockWait.transfersHaveCaughtUp` and `PlaybackHarness.quiesce` say why
+            // it never does: a reload due at the new moment is work on the playback thread, which the
+            // idle probe runs and the load counts then hold. It also relies on [STEP_MS]: a clock that
+            // jumped more than three target durations past a reload would find the layer's history
+            // expired and Media3's not. This row once read `FAILS` on loaded runners, on a harness that
+            // counted open transfers only (issue #105).
             "hls-cached-live-playlist" to Outcome.FAILS_TYPED,
             "dash-ladder-gap" to Outcome.PLAYS_TO_END,
             "dash-overstated-bitrate" to Outcome.PLAYS_TO_END,

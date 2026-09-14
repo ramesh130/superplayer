@@ -4,6 +4,8 @@
 - **Date:** 2026-09-07
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
+- **Refined by:** [ADR-0010](0010-cache-in-consumer-chosen-storage-and-preload-on-the-one-chain.md),
+  which states rule 2's scope for a content cache without changing its wording.
 - **Summary:** Audio focus, becoming-noisy handling, and wake/Wi-Fi locks are switched on for every
   player by default, because they're correctness rather than policy and are not configurable by
   profile. State that needs to outlive a player — position, the current request, remembered resume
@@ -59,6 +61,10 @@ Three rules follow.
    value, `PlaybackSnapshot.toBundle()` renders it in the form `onSaveInstanceState`,
    `rememberSaveable` and a `ViewModel` all already take, and where that `Bundle` lives is the
    app's decision. No `SharedPreferences`, no database, no file, no `Context`-scoped singleton.
+   *Refined by ADR-0010 rules 1, 2 and 5: the list means no such thing chosen on a consumer's
+   behalf. A content cache is storage the consumer opened — they name the directory and the
+   budget, everything it writes lands inside that directory, and SuperPlayer never creates a cache
+   it was not handed.*
 3. **A snapshot restores as far as it can and never throws.** It is read on the way back into an
    app, where an exception is a crash a user sees and a missing field costs a resumed position.
 

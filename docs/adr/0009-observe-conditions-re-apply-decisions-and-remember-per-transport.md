@@ -246,6 +246,13 @@ Nine rules follow, and they are binding.
    `docs/modules.md`'s rule, because a friend path is a compiler flag and not a Gradle dependency,
    and the dependency it does not create is the one the rule forbids.
 
+   *Addendum (2026-09-14, ADR-0010 rules 3, 6 and 8).* `superplayer-cache` and
+   `superplayer-preload` are the third and fourth friends, on this argument unchanged: the cache
+   fills `TransferChain`'s cache slot from behind a public core type with an internal constructor,
+   and the coordinator fills the engine seam of the pool it is attached to. Rule 9 of that ADR
+   also reaches this one's rule 5: on a pool with preload attached the retargetable components are
+   shared by every player on it, and a re-applied decision is honoured whole across the pool.
+
 ### What an estimate may remember, and where
 
 8. **A throughput estimate is remembered per transport, for the lifetime of the process, in memory

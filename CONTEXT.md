@@ -99,3 +99,29 @@ _Avoid_: Initial bitrate, seed, fallback
 The state that outlives one player, as a value the consumer stores. Estimate memory is not a
 snapshot, because it belongs to the process rather than to a player.
 _Avoid_: Saved state, checkpoint
+
+### Storage and preload
+
+**Content cache**:
+Storage the consumer opened — a directory they named and a byte budget they passed — that
+SuperPlayer writes fetched media into, keyed by content identity rather than by URL. A cache read is
+never a throughput sample. Estimate memory is not a cache; a cache is not a snapshot.
+_Avoid_: Disk cache SuperPlayer manages, default cache, `cacheDir`
+
+**Warm set**:
+The items a preload coordinator holds ahead of the viewport in a prepared, tracks-selected or
+range-loaded state, bounded by the pool's player bound for decoders and by the memory guard for
+bytes.
+_Avoid_: Preload queue, buffer pool
+
+**Prefetch depth**:
+The policy half that says how many items ahead to hold warm, how far into each, and whether a
+decoder is held. Decided behind `PlaybackPolicy`, per profile and per condition; ignored on a
+player with no coordinator.
+_Avoid_: Preload count, lookahead constant
+
+**Memory guard**:
+The platform rule that caps the warm set against the heap budget, short-circuits on a low-RAM
+device, and releases everything warm on a memory trim. On for every coordinator; not a profile's
+to vary.
+_Avoid_: Preload policy, memory policy

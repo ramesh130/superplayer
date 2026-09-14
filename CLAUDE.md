@@ -480,6 +480,16 @@ Style preferences these are not. A change violating one is not accepted, whateve
   core's engine construction as its second Kotlin friend through an extension interface on the
   policy object, and a player built without it pays nothing; and a throughput estimate is remembered
   per transport, in process memory, and nowhere else.
+- **[ADR-0010](docs/adr/0010-cache-in-consumer-chosen-storage-and-preload-on-the-one-chain.md)** —
+  refines ADR-0006 rule 2 for Phase 4: a content cache is storage the consumer opened, naming the
+  directory and the budget, everything it writes lands inside that directory, and SuperPlayer never
+  creates a cache it was not handed; preload builds its sources through the `MediaSource.Factory`
+  `TransferChain` assembles, shares the chain's cache, and hands a preloaded source to a player only
+  through `setMediaRequest`; `PlayerPool` owns the players and the decoder budget and
+  `PreloadCoordinator` is attached to one, taking its bound from the pool rather than reading the
+  device again; prefetch depth is a third half of `PlaybackDecision`, the memory guard and the
+  data-saver rule are platform rules on for everyone, and cache size is the consumer's; and a
+  player built with neither module registers and allocates nothing for them, which a test counts.
 - **[`docs/api-surface.md`](docs/api-surface.md)** — every published module's public API is tracked
   in `<module>/api/<module>.api` and validated by `check`. Changing it means running
   `./gradlew updateApiSurface` and committing the diff in the same change. A leaked `@UnstableApi`

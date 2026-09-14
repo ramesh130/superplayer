@@ -26,6 +26,7 @@ import com.superplayer.core.PlaybackPolicy
 import com.superplayer.core.PlaybackProfile
 import com.superplayer.core.StallHistory
 import com.superplayer.core.ThroughputEstimate
+import com.superplayer.core.TrackSelectionPolicy
 import org.junit.Test
 
 /**
@@ -40,7 +41,7 @@ class AdaptiveSelectionPolicyTest {
     fun withNothingObservedEveryProfileAnswersAsItsStaticProfileDoes() {
         for (profile in PlaybackProfile.entries) {
             val static = PlaybackPolicy.forProfile(profile).decide(PlaybackConditions())
-            assertThat(AdaptiveSelectionPolicy(profile).decide(PlaybackConditions())).isEqualTo(static)
+            assertThat(AdaptiveSelectionPolicy(profile).decide(PlaybackConditions())).isEqualTo(static.copy(trackSelection = static.trackSelection.paced(profile)))
         }
     }
 
@@ -52,7 +53,7 @@ class AdaptiveSelectionPolicyTest {
             val onLte = AdaptiveSelectionPolicy(profile).decide(PlaybackConditions(transport = NetworkTransport.Cellular(CellularGeneration.LTE)))
             val static = PlaybackPolicy.forProfile(profile).decide(PlaybackConditions()).trackSelection
 
-            assertWithMessage("$profile on WiFi").that(onWifi.trackSelection).isEqualTo(static)
+            assertWithMessage("$profile on WiFi").that(onWifi.trackSelection).isEqualTo(static.paced(profile))
             assertWithMessage("$profile on LTE").that(onLte.trackSelection.maxVideoBitrateBps).isLessThan(onWifi.trackSelection.maxVideoBitrateBps)
             assertWithMessage("$profile on LTE").that(onLte.trackSelection.maxVideoHeightPx).isAtMost(onWifi.trackSelection.maxVideoHeightPx)
         }
@@ -63,7 +64,7 @@ class AdaptiveSelectionPolicyTest {
         val dataSaver = PlaybackPolicy.forProfile(PlaybackProfile.DATA_SAVER).decide(PlaybackConditions()).trackSelection
         for (transport in listOf(NetworkTransport.Wifi, NetworkTransport.Ethernet, NetworkTransport.Unknown, NetworkTransport.Cellular(CellularGeneration.NR))) {
             val decided = AdaptiveSelectionPolicy(PlaybackProfile.DATA_SAVER).decide(PlaybackConditions(transport = transport)).trackSelection
-            assertWithMessage("$transport").that(decided).isEqualTo(dataSaver)
+            assertWithMessage("$transport").that(decided).isEqualTo(dataSaver.paced(PlaybackProfile.DATA_SAVER))
         }
         // Older cellular is the tightest entry, and it lands under the data saver's own 480p.
         val older = AdaptiveSelectionPolicy(PlaybackProfile.DATA_SAVER)
@@ -92,7 +93,7 @@ class AdaptiveSelectionPolicyTest {
 
         // Once the cooldown has lapsed it goes back: the history is still there, the hold is not.
         val lapsed = justEnded.copy(stallHistory = rebuffered(count = 1, msAgo = AdaptiveBufferPolicy.REBUFFER_COOLDOWN_MS))
-        assertThat(vod().decide(lapsed).trackSelection).isEqualTo(STATIC_VOD.trackSelection)
+        assertThat(vod().decide(lapsed).trackSelection).isEqualTo(STATIC_VOD.trackSelection.paced(PlaybackProfile.VIDEO_ON_DEMAND))
     }
 
     @Test
@@ -105,19 +106,19 @@ class AdaptiveSelectionPolicyTest {
         val fastNetwork = conditions(estimate(meanBps = 20_000_000, spreadBps = 100_000, conservativeBps = 18_000_000))
             .copy(stallHistory = rebuffered(count = 1, msAgo = 0))
         assertThat(AdaptiveSelectionPolicy(PlaybackProfile.DATA_SAVER).decide(fastNetwork).trackSelection)
-            .isEqualTo(PlaybackPolicy.forProfile(PlaybackProfile.DATA_SAVER).decide(PlaybackConditions()).trackSelection)
+            .isEqualTo(PlaybackPolicy.forProfile(PlaybackProfile.DATA_SAVER).decide(PlaybackConditions()).trackSelection.paced(PlaybackProfile.DATA_SAVER))
         // …and under the transport's cap where that is the tighter one.
         val fastLte = fastNetwork.copy(transport = NetworkTransport.Cellular(CellularGeneration.LTE))
-        assertThat(vod().decide(fastLte).trackSelection).isEqualTo(TransportCaps.RUNG_1080P)
+        assertThat(vod().decide(fastLte).trackSelection).isEqualTo(TransportCaps.RUNG_1080P.paced(PlaybackProfile.VIDEO_ON_DEMAND))
 
         // Nothing measured, or a seeded estimate only: nothing to hold at.
         val unmeasured = PlaybackConditions(stallHistory = rebuffered(count = 1, msAgo = 0))
-        assertThat(vod().decide(unmeasured).trackSelection).isEqualTo(STATIC_VOD.trackSelection)
+        assertThat(vod().decide(unmeasured).trackSelection).isEqualTo(STATIC_VOD.trackSelection.paced(PlaybackProfile.VIDEO_ON_DEMAND))
         val seeded = conditions(estimate(meanBps = 2_000_000, spreadBps = 0, sampleCount = 0)).copy(stallHistory = rebuffered(count = 1, msAgo = 0))
-        assertThat(vod().decide(seeded).trackSelection).isEqualTo(STATIC_VOD.trackSelection)
+        assertThat(vod().decide(seeded).trackSelection).isEqualTo(STATIC_VOD.trackSelection.paced(PlaybackProfile.VIDEO_ON_DEMAND))
         // A meter reading zero holds nothing: there is no rung under it.
         val dead = conditions(estimate(meanBps = 0, spreadBps = 0, conservativeBps = 0)).copy(stallHistory = rebuffered(count = 1, msAgo = 0))
-        assertThat(vod().decide(dead).trackSelection).isEqualTo(STATIC_VOD.trackSelection)
+        assertThat(vod().decide(dead).trackSelection).isEqualTo(STATIC_VOD.trackSelection.paced(PlaybackProfile.VIDEO_ON_DEMAND))
     }
 
     // The buffer half is never this policy's to move.
@@ -130,6 +131,9 @@ class AdaptiveSelectionPolicyTest {
     }
 
     private fun vod() = AdaptiveSelectionPolicy(PlaybackProfile.VIDEO_ON_DEMAND)
+
+    /** A ceiling at the pace this policy decides for [profile], which rule 4 adds to every ceiling. */
+    private fun TrackSelectionPolicy.paced(profile: PlaybackProfile): TrackSelectionPolicy = copy(pace = SelectionPaces.forProfile(profile))
 
     private fun conditions(throughput: ThroughputEstimate?): PlaybackConditions = PlaybackConditions(
         transport = NetworkTransport.Wifi,

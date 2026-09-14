@@ -32,7 +32,7 @@ import androidx.media3.exoplayer.upstream.BandwidthMeter
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import com.superplayer.core.DeviceConstraints
-import com.superplayer.core.PlaybackProfile
+import com.superplayer.core.SelectionPace
 import com.superplayer.core.ThroughputEstimate
 import com.superplayer.core.ThroughputSource
 import com.superplayer.core.TrackSelectionPolicy
@@ -175,9 +175,67 @@ class NetworkAwareTrackSelectionTest {
         assertThat(selection.selectedFormat.bitrate).isEqualTo(6_000_000)
     }
 
+    // #114: the pace is read on every evaluation, so a decision reaches the selection already playing.
+    @Test
+    fun aRetargetedPaceIsHonouredByTheSelectionAlreadyPlaying() {
+        val gate = gate()
+        val selection = selection(ladder(), gate)
+        meter.estimateBps = 400_000
+        selection.evaluate()
+        assertThat(selection.selectedFormat.bitrate).isEqualTo(300_000)
+
+        // A link that affords the top, and a climb threshold above the buffer: the climb waits…
+        meter.estimateBps = 20_000_000
+        gate.policy = UNCAPPED.copy(pace = SelectionPace.ENGINE_DEFAULT.copy(climbAfterBufferedMs = 30_000))
+        selection.evaluate()
+        assertThat(selection.selectedFormat.bitrate).isEqualTo(300_000)
+        // …until a decision brings the threshold under the buffer, when the same selection climbs.
+        gate.policy = UNCAPPED.copy(pace = SelectionPace.ENGINE_DEFAULT.copy(climbAfterBufferedMs = 10_000))
+        selection.evaluate()
+        assertThat(selection.selectedFormat.bitrate).isEqualTo(6_000_000)
+
+        // A descent the estimate asks for waits while the buffer is over the descent threshold…
+        meter.estimateBps = 1_500_000
+        gate.policy = UNCAPPED.copy(pace = SelectionPace.ENGINE_DEFAULT.copy(descendBelowBufferedMs = 10_000))
+        selection.evaluate()
+        assertThat(selection.selectedFormat.bitrate).isEqualTo(6_000_000)
+        // …and not once the threshold is above it: 70 % of 1.5 Mbit/s affords 800 kbit/s.
+        gate.policy = UNCAPPED.copy(pace = SelectionPace.ENGINE_DEFAULT.copy(descendBelowBufferedMs = 20_000))
+        selection.evaluate()
+        assertThat(selection.selectedFormat.bitrate).isEqualTo(800_000)
+
+        // The fraction is the pace's too: 3 Mbit/s at 70 % is 2.1 Mbit/s, at 90 % it affords 2.4.
+        meter.estimateBps = 3_000_000
+        gate.policy = UNCAPPED
+        selection.evaluate()
+        assertThat(selection.selectedFormat.bitrate).isEqualTo(800_000)
+        gate.policy = UNCAPPED.copy(pace = SelectionPace.ENGINE_DEFAULT.copy(bandwidthFraction = 0.9f))
+        selection.evaluate()
+        assertThat(selection.selectedFormat.bitrate).isEqualTo(2_400_000)
+    }
+
+    // As Media3: a rung excluded for any reason — here as a load error would — is left without
+    // hysteresis, so the climb does not wait for a cushion the excluded rung was holding out for.
+    @Test
+    fun anExcludedPlayingRungIsLeftWithoutWaitingForTheClimbThreshold() {
+        val gate = gate(policy = UNCAPPED.copy(pace = SelectionPace.ENGINE_DEFAULT.copy(climbAfterBufferedMs = 30_000)))
+        val selection = selection(ladder(), gate)
+        meter.estimateBps = 400_000
+        selection.evaluate()
+        assertThat(selection.selectedFormat.bitrate).isEqualTo(300_000)
+
+        meter.estimateBps = 20_000_000
+        selection.evaluate()
+        assertThat(selection.selectedFormat.bitrate).isEqualTo(300_000)
+
+        selection.excludeTrack(selection.selectedIndex, 60_000)
+        selection.evaluate()
+        assertThat(selection.selectedFormat.bitrate).isEqualTo(6_000_000)
+    }
+
     @Test
     fun theFactoryBuildsAnAdaptiveSelectionForALadderAndAFixedOneForASingleTrack() {
-        val factory = NetworkAwareTrackSelection.Factory(SelectionThresholds.forProfile(PlaybackProfile.VIDEO_ON_DEMAND), gate())
+        val factory = NetworkAwareTrackSelection.Factory(gate())
         val ladder = ladder()
         val single = TrackGroup(video(128_000, 360))
         val built = factory.createTrackSelections(
@@ -207,16 +265,15 @@ class NetworkAwareTrackSelectionTest {
             IntArray(group.length) { it },
             /* type= */ 0,
             meter,
-            SelectionThresholds.forProfile(PlaybackProfile.VIDEO_ON_DEMAND),
             gate,
             androidx.media3.common.util.Clock.DEFAULT,
         ).also { it.enable() }
 
     /**
-     * One evaluation, with a buffer Media3's own thresholds let move either way: deep enough to
-     * allow a climb (`minDurationForQualityIncreaseMs`) and shallow enough to allow a descent
-     * (`maxDurationForQualityDecreaseMs`), so that what is asserted is eligibility and not the
-     * thresholds — which are `SelectionThresholdsTest`'s.
+     * One evaluation, with a buffer the engine's default pace lets move either way: deep enough to
+     * allow a climb (`climbAfterBufferedMs`) and shallow enough to allow a descent
+     * (`descendBelowBufferedMs`), so that what is asserted is eligibility and not the pace — except
+     * where a test retargets the pace to assert exactly that.
      */
     private fun NetworkAwareTrackSelection.evaluate(bufferedUs: Long = MOVABLE_BUFFER_US) {
         // Evaluations are a chunk apart in playback; here the clock is moved by hand, so that an

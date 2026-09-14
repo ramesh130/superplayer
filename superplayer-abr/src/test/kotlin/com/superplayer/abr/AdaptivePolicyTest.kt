@@ -70,9 +70,24 @@ class AdaptivePolicyTest {
     }
 
     @Test
-    fun nothingObservedIsStillTheStaticProfile() {
+    fun nothingObservedIsStillTheStaticProfileAtTheProfilesPace() {
         val static = PlaybackPolicy.forProfile(PlaybackProfile.DATA_SAVER).decide(PlaybackConditions())
-        assertThat(dataSaver().decide(PlaybackConditions())).isEqualTo(static)
+        val decided = dataSaver().decide(PlaybackConditions())
+        assertThat(decided.copy(trackSelection = decided.trackSelection.copy(pace = null))).isEqualTo(static)
+        assertThat(decided.trackSelection.pace).isEqualTo(SelectionPaces.forProfile(PlaybackProfile.DATA_SAVER))
+    }
+
+    // #114: a memory ceiling under the profile's climb threshold brings the threshold within reach
+    // of the buffer, in the same decision, and moves nothing else of the pace.
+    @Test
+    fun aHeapCappedBufferBringsTheClimbThresholdWithinReach() {
+        val capped = dataSaver().decide(fastLink(NetworkTransport.Wifi))
+        val table = SelectionPaces.forProfile(PlaybackProfile.DATA_SAVER)
+        assertThat(capped.buffer.maxBufferMs).isLessThan(table.climbAfterBufferedMs)
+
+        val pace = checkNotNull(capped.trackSelection.pace)
+        assertThat(pace.climbAfterBufferedMs).isEqualTo(capped.buffer.maxBufferMs - SelectionPaces.SEGMENT_ALLOWANCE_MS)
+        assertThat(pace.copy(climbAfterBufferedMs = table.climbAfterBufferedMs)).isEqualTo(table)
     }
 
     private fun dataSaver(): PlaybackPolicy = AdaptivePolicy.forProfile(context, PlaybackProfile.DATA_SAVER)

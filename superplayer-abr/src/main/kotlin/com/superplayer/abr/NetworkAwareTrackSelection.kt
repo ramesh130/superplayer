@@ -33,19 +33,22 @@ import androidx.media3.exoplayer.trackselection.FixedTrackSelection
 import androidx.media3.exoplayer.upstream.BandwidthMeter
 import com.superplayer.abr.OracleBandwidthMeter.Companion.isStable
 import com.superplayer.core.DeviceConstraints
+import com.superplayer.core.SelectionPace
 import com.superplayer.core.ThroughputSource
 import com.superplayer.core.TrackSelectionPolicy
+import kotlin.math.min
 
 /**
  * Media3's adaptive selection, choosing among what is *eligible*: under the ceiling the policy
- * currently emits, on the estimate the oracle's spread says can be trusted, and never a rung the
- * display cannot show or the decoder cannot decode. The third of Phase 3's components; the
- * Media3 half of [AdaptiveSelectionPolicy], as `AdaptiveLoadControl` is of the buffer policy.
+ * currently emits, at the pace it currently emits, on the estimate the oracle's spread says can be
+ * trusted, and never a rung the display cannot show or the decoder cannot decode. The third of
+ * Phase 3's components; the Media3 half of [AdaptiveSelectionPolicy], as `AdaptiveLoadControl` is
+ * of the buffer policy.
  *
- * Everything that *chooses* is Media3's own — the estimate, the climb and descent thresholds
- * ([SelectionThresholds]), the queue discard — and this class overrides one hook,
- * [canSelectFormat], which Media3 consults for every rung on every evaluation, from the top of
- * the ladder down, returning the first rung the hook accepts. Three refusals, in order:
+ * Everything that *chooses* is Media3's own — the estimate, the ideal rung, the queue discard —
+ * and this class overrides one hook, [canSelectFormat], which Media3 consults for every rung on
+ * every evaluation, from the top of the ladder down, returning the first rung the hook accepts.
+ * Four refusals, in order:
  *
  * 1. **The device.** A rung whose shorter edge is longer than the display's, whose codec profile
  *    and level no declared decoder reaches, or — where the ladder also offers an SDR rung — whose
@@ -62,39 +65,51 @@ import com.superplayer.core.TrackSelectionPolicy
  *    (ADR-0009 rule 4). A ceiling that fell below the *playing* rung is a `DOWN` switch at the
  *    next evaluation whatever the buffer holds, through [updateSelectedTrack]: Media3 would
  *    otherwise defer the descent until the buffer drained.
- * 3. **The estimate, discounted by its spread.** Media3 offers each rung the meter's estimate
- *    times the profile's bandwidth fraction. When the oracle's spread says the mean cannot be
- *    trusted — the same line [OracleBandwidthMeter.isStable] draws and `AdaptiveBufferPolicy`'s
- *    branch 2 reads, so there is one threshold — the offer is scaled by the conservative
- *    percentile over the mean: a noisy link selects on what it delivers most of the time, a
- *    steady one on the mean. ADR-0009 rule 1 assigns the spread to this selector by name.
+ * 3. **The pace.** A rung above the playing one is refused while the buffer is under the pace's
+ *    climb threshold, and the playing rung is kept while the buffer is over its descent
+ *    threshold. That is Media3's own hysteresis, moved into this hook so that it reads the
+ *    [SelectionPace] in force on each evaluation rather than the constants the selection was built
+ *    with: Media3 takes its thresholds in the constructor and keeps them for the life of the
+ *    selection, so a pace changed by a trigger — a memory ceiling that moved under the climb
+ *    threshold, #114 — would otherwise wait for the next period to be honoured. Media3's own
+ *    thresholds are built inert for the same reason ([INERT_DESCENT_MS]).
+ * 4. **The estimate, discounted by its spread.** Each rung is offered the meter's estimate times
+ *    the pace's bandwidth fraction. When the oracle's spread says the mean cannot be trusted — the
+ *    same line [OracleBandwidthMeter.isStable] draws and `AdaptiveBufferPolicy`'s branch 2 reads,
+ *    so there is one threshold — the offer is scaled by the conservative percentile over the mean:
+ *    a noisy link selects on what it delivers most of the time, a steady one on the mean. ADR-0009
+ *    rule 1 assigns the spread to this selector by name.
  *
  * The startup choice needs no code here: Media3's first evaluation reads the meter, which is the
  * per-transport memory's estimate or its cold default (#99), so a seeded transport starts above
  * the bottom rung and an unseeded one on the default the transport's own numbers argue for.
  *
- * `mtp` in CMCD is Media3's reading of this selection's latest estimate, unchanged.
+ * `mtp` in CMCD is Media3's reading of this selection's latest estimate, unchanged: Media3 records
+ * the meter's estimate before applying any fraction, so moving the fraction here moves nothing.
  */
 internal class NetworkAwareTrackSelection(
     group: TrackGroup,
     tracks: IntArray,
     type: Int,
     bandwidthMeter: BandwidthMeter,
-    thresholds: SelectionThresholds,
     private val gate: Gate,
-    clock: Clock,
+    private val clock: Clock,
 ) : AdaptiveTrackSelection(
     group,
     tracks,
     type,
     bandwidthMeter,
-    thresholds.minDurationForQualityIncreaseMs.toLong(),
-    thresholds.maxDurationForQualityDecreaseMs.toLong(),
-    thresholds.minDurationToRetainAfterDiscardMs.toLong(),
+    // Refusal 3 is the pace, read per evaluation; Media3's own thresholds are made inert so that
+    // they neither hold a climb nor defer a descent the hook has already decided.
+    /* minDurationForQualityIncreaseMs= */ 0L,
+    /* maxDurationForQualityDecreaseMs= */ INERT_DESCENT_MS,
+    // Superseded by [getMinDurationToRetainAfterDiscardUs], which reads the pace in force.
+    /* minDurationToRetainAfterDiscardMs= */ 0L,
     DEFAULT_MAX_WIDTH_TO_DISCARD,
     DEFAULT_MAX_HEIGHT_TO_DISCARD,
-    thresholds.bandwidthFraction,
-    thresholds.bufferedFractionToLiveEdgeForQualityIncrease,
+    // The whole estimate; refusal 4 applies the pace's fraction.
+    /* bandwidthFraction= */ 1f,
+    DEFAULT_BUFFERED_FRACTION_TO_LIVE_EDGE_FOR_QUALITY_INCREASE,
     // No checkpoints: each adaptive selection sees the whole allocatable bandwidth. That is the
     // single-video-ladder case, which is every stream this library has met; an adaptive audio
     // ladder beside a video one would share nothing and is the limit this line names.
@@ -121,6 +136,24 @@ internal class NetworkAwareTrackSelection(
         refused
     }
 
+    /**
+     * The evaluation [updateSelectedTrack] is running, for [canSelectFormat] to apply refusal 3
+     * against; null outside one — the constructor's provisional choice, and Media3's queue-size
+     * evaluation, which has no hysteresis of its own to replace.
+     */
+    private var evaluation: Evaluation? = null
+
+    private class Evaluation(
+        val pace: SelectionPace,
+        /** The rung Media3 compares every candidate against: the last queued chunk's, or the selected one. */
+        val comparedIndex: Int,
+        val bufferedDurationUs: Long,
+        /** The pace's climb threshold for this evaluation, live window included. */
+        val climbThresholdUs: Long,
+        /** False on Media3's first evaluation, and when the compared rung is excluded: both choose without hysteresis. */
+        val appliesHysteresis: Boolean,
+    )
+
     override fun updateSelectedTrack(
         playbackPositionUs: Long,
         bufferedDurationUs: Long,
@@ -136,10 +169,49 @@ internal class NetworkAwareTrackSelection(
         // another rung is eligible to move to, because a ladder the ceiling refuses whole is
         // playing its fallback already and an exclusion would only push it off it.
         val playing = selectedIndex
-        if (playing in 0 until length && ceilingRefuses(playing) && (0 until length).any { it != playing && !ceilingRefuses(it) }) {
+        val ceilingExcludes = playing in 0 until length && ceilingRefuses(playing) && (0 until length).any { it != playing && !ceilingRefuses(it) }
+        if (ceilingExcludes) {
             excludeTrack(playing, CEILING_EXCLUSION_MS)
         }
-        super.updateSelectedTrack(playbackPositionUs, bufferedDurationUs, availableDurationUs, queue, mediaChunkIterators)
+        // What Media3 compares every candidate against: the rung of the last queued chunk, which
+        // differs from the selected one after a switch not yet loaded or a discard, and the
+        // selected one only when nothing is queued.
+        val compared = queue.lastOrNull()?.let { indexOf(it.trackFormat) }?.takeIf { it != C.INDEX_UNSET } ?: playing
+        val pace = gate.pace
+        evaluation = Evaluation(
+            pace = pace,
+            comparedIndex = compared,
+            bufferedDurationUs = bufferedDurationUs,
+            climbThresholdUs = climbThresholdUs(pace, availableDurationUs, queue),
+            // Media3's first evaluation chooses without hysteresis, and so does any evaluation
+            // whose compared rung is excluded — by the ceiling above or by a load error alike.
+            appliesHysteresis = selectionReason != C.SELECTION_REASON_UNKNOWN &&
+                !isTrackExcluded(compared, clock.elapsedRealtime()),
+        )
+        try {
+            super.updateSelectedTrack(playbackPositionUs, bufferedDurationUs, availableDurationUs, queue, mediaChunkIterators)
+        } finally {
+            evaluation = null
+        }
+    }
+
+    /**
+     * Media3's own climb threshold, at the pace in force: the pace's duration, or on a live window
+     * too short to hold it, a fraction of the distance to the live edge less a chunk — a buffer
+     * can never hold more than the window offers.
+     *
+     * ref: `androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection.minDurationForQualityIncreaseUs`.
+     * Media3 subtracts the *next* chunk's duration, read from the chunk iterators; this subtracts
+     * the last queued chunk's, as Media3's own queue evaluation does, because an iterator advanced
+     * here is one Media3's read would find already advanced.
+     */
+    private fun climbThresholdUs(pace: SelectionPace, availableDurationUs: Long, queue: List<MediaChunk>): Long {
+        val climbUs = pace.climbAfterBufferedMs * MICROS_PER_MILLI
+        if (availableDurationUs == C.TIME_UNSET) return climbUs
+        val last = queue.lastOrNull()
+        val chunkUs = if (last != null && last.startTimeUs != C.TIME_UNSET && last.endTimeUs != C.TIME_UNSET) last.endTimeUs - last.startTimeUs else 0L
+        val towardLiveEdgeUs = ((availableDurationUs - chunkUs) * DEFAULT_BUFFERED_FRACTION_TO_LIVE_EDGE_FOR_QUALITY_INCREASE).toLong()
+        return min(towardLiveEdgeUs, climbUs)
     }
 
     /** Refusals 1 and 2 for the rung at [index]: what the device and the ceiling in force say, bandwidth aside. */
@@ -160,18 +232,34 @@ internal class NetworkAwareTrackSelection(
         val refused: BooleanArray? = this.refusedByDevice
         if (gate == null || refused == null) return trackBitrate <= effectiveBitrate
 
-        if (refused[indexOf(format)]) return false
+        val index = indexOf(format)
+        if (refused[index]) return false
         if (MimeTypes.isVideo(format.sampleMimeType)) {
             val ceiling = gate.policy
             if (trackBitrate > ceiling.maxVideoBitrateBps) return false
             if (format.height != Format.NO_VALUE && format.height > ceiling.maxVideoHeightPx) return false
         }
-        return trackBitrate <= gate.trusted(effectiveBitrate)
+
+        // Refusal 3, as Media3 applies its own thresholds after choosing: a climb waits for the
+        // cushion, and a descent waits while there is one. Rungs are offered from the top down,
+        // so a climb the cushion allows is chosen before the playing rung is reached.
+        val evaluation = this.evaluation
+        val pace = evaluation?.pace ?: gate.pace
+        if (evaluation != null && evaluation.appliesHysteresis) {
+            val playingBitrate = getFormat(evaluation.comparedIndex).bitrate
+            if (trackBitrate > playingBitrate && evaluation.bufferedDurationUs < evaluation.climbThresholdUs) return false
+            if (index == evaluation.comparedIndex && evaluation.bufferedDurationUs >= pace.descendBelowBufferedMs * MICROS_PER_MILLI) return true
+        }
+
+        return trackBitrate <= gate.trusted((effectiveBitrate * pace.bandwidthFraction).toLong())
     }
 
+    /** What a climb keeps of the buffered queue, at the pace in force rather than the one built with. */
+    override fun getMinDurationToRetainAfterDiscardUs(): Long = gate.pace.retainAfterDiscardMs * MICROS_PER_MILLI
+
     /**
-     * What one factory's selections share: the device, read once; the ceiling, retargeted by the
-     * `DecisionTarget`; and the source whose spread discounts the estimate.
+     * What one factory's selections share: the device, read once; the ceiling and the pace,
+     * retargeted by the `DecisionTarget`; and the source whose spread discounts the estimate.
      */
     internal class Gate(
         private val constraints: DeviceConstraints,
@@ -181,6 +269,10 @@ internal class NetworkAwareTrackSelection(
         /** Written on the thread a decision arrives on, read on the loading thread: volatile, not locked. */
         @Volatile
         var policy: TrackSelectionPolicy = initial
+
+        /** The pace in force: the decision's, or the engine's own where the decision carries none. */
+        val pace: SelectionPace
+            get() = policy.pace ?: SelectionPace.ENGINE_DEFAULT
 
         /** The refusals that stand on their own: the display's size and the decoder. */
         fun deviceRefuses(format: Format): Boolean =
@@ -225,7 +317,7 @@ internal class NetworkAwareTrackSelection(
             return constraints.canDecode(mimeType, profileLevel.first, profileLevel.second) == false
         }
 
-        /** Refusal 3: the offered bitrate, scaled down by `conservative / mean` on an unstable link. */
+        /** Refusal 4's discount: the offered bitrate, scaled down by `conservative / mean` on an unstable link. */
         fun trusted(effectiveBitrate: Long): Long {
             val estimate = source?.currentEstimate() ?: return effectiveBitrate
             if (estimate.sampleCount == 0 || estimate.isStable()) return effectiveBitrate
@@ -250,6 +342,14 @@ internal class NetworkAwareTrackSelection(
          * eligible at its next evaluation rather than after a timer.
          */
         const val CEILING_EXCLUSION_MS: Long = 1L
+
+        /**
+         * A descent threshold no buffer reaches, so Media3 never defers a descent on its own. The
+         * largest millisecond count Media3 can convert to microseconds without overflowing.
+         */
+        const val INERT_DESCENT_MS: Long = Long.MAX_VALUE / 1_000L
+
+        const val MICROS_PER_MILLI: Long = 1_000L
     }
 
     /**
@@ -257,18 +357,17 @@ internal class NetworkAwareTrackSelection(
      * builds the selection: a [NetworkAwareTrackSelection] for every adaptive definition, and
      * Media3's fixed selection for the rest, which is what Media3's factory does with its own.
      *
-     * One [Gate] for every selection it builds, so a retargeted ceiling reaches the selection that
-     * is playing and the one the next period will build alike.
+     * One [Gate] for every selection it builds, so a retargeted ceiling and pace reach the
+     * selection that is playing and the one the next period will build alike.
      *
      * ref: `androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection.Factory.createTrackSelections`
      */
     internal class Factory(
-        private val thresholds: SelectionThresholds,
         private val gate: Gate,
         private val clock: Clock = Clock.DEFAULT,
     ) : ExoTrackSelection.Factory {
 
-        /** The ceiling from now on; the `DecisionTarget` calls this with each decision's selection half. */
+        /** The ceiling and pace from now on; the `DecisionTarget` calls this with each decision's selection half. */
         fun retarget(policy: TrackSelectionPolicy) {
             gate.policy = policy
         }
@@ -281,7 +380,7 @@ internal class NetworkAwareTrackSelection(
         ): Array<ExoTrackSelection?> = Array(definitions.size) { index ->
             val definition = definitions[index] ?: return@Array null
             if (definition.tracks.size > 1) {
-                NetworkAwareTrackSelection(definition.group, definition.tracks, definition.type, bandwidthMeter, thresholds, gate, clock)
+                NetworkAwareTrackSelection(definition.group, definition.tracks, definition.type, bandwidthMeter, gate, clock)
             } else {
                 FixedTrackSelection(definition.group, definition.tracks[0], definition.type)
             }

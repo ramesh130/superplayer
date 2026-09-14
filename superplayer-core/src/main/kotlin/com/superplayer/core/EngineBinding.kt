@@ -21,6 +21,8 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.LoadControl
+import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
+import androidx.media3.exoplayer.trackselection.ExoTrackSelection
 import androidx.media3.exoplayer.upstream.DefaultAllocator
 
 /**
@@ -121,6 +123,27 @@ internal fun TrackSelectionPolicy.applyTo(
         // width the policy did not decide — no ceiling is decided here, which is ADR-0005 rule 2.
         .setMaxVideoSize(TrackSelectionPolicy.UNLIMITED, maxVideoHeightPx)
         .build()
+
+/**
+ * The decision's selection pace, as the factory Media3's own `DefaultTrackSelector` builds its
+ * adaptive selections with, on a player with no retargetable selection factory of its own.
+ *
+ * Fixed at construction, as the `DefaultLoadControl` above is and for the same reason (ADR-0009
+ * rule 5): Media3's adaptive selection takes its thresholds when it is built. Where a factory was
+ * installed, the pace arrives through the [DecisionTarget] with the rest of the decision and this
+ * is not called. A null pace installs nothing, so a policy that decides none builds exactly the
+ * engine it built before. The live-edge fraction and the discard dimensions stay Media3's own:
+ * they are not policy, and the pace does not carry them.
+ *
+ * ref: https://developer.android.com/reference/androidx/media3/exoplayer/trackselection/AdaptiveTrackSelection.Factory
+ */
+internal fun SelectionPace.toTrackSelectionFactory(): ExoTrackSelection.Factory =
+    AdaptiveTrackSelection.Factory(
+        climbAfterBufferedMs,
+        descendBelowBufferedMs,
+        retainAfterDiscardMs,
+        bandwidthFraction,
+    )
 
 /**
  * The third target a decision can reach, beside the two above: the engine's own retargetable

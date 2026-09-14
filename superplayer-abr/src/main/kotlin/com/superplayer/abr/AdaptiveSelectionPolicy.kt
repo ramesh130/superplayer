@@ -54,6 +54,10 @@ import kotlin.math.min
  *    consulted on triggers and not on a timer; the buffer policy's KDoc argues why that is the
  *    right shape as well as the permitted one. One cooldown, defined once on the buffer policy,
  *    cited from both: the raised floor and the held ceiling lapse together.
+ * 4. **The profile's pace.** How eagerly selection climbs and descends under the ceiling, from
+ *    [SelectionPaces]. Alone this policy emits the table's pace, which sits inside the profile's
+ *    own buffer; composed, [AdaptivePolicy] brings its climb threshold within reach of the buffer
+ *    the other half decided, which only the composition can see.
  *
  * What is *not* here: the display and the decoder. Those are constraints the selector reads once
  * when it is built (ADR-0009 rule 2), not observations a policy is consulted about, and
@@ -65,7 +69,7 @@ public class AdaptiveSelectionPolicy(public val profile: PlaybackProfile) : Play
 
     override fun decide(conditions: PlaybackConditions): PlaybackDecision {
         val base = staticProfile.decide(conditions)
-        var selection = base.trackSelection
+        var selection = base.trackSelection.copy(pace = SelectionPaces.forProfile(profile))
 
         conditions.transport?.let { transport ->
             selection = selection.under(TransportCaps.capFor(profile, transport))
@@ -84,8 +88,8 @@ public class AdaptiveSelectionPolicy(public val profile: PlaybackProfile) : Play
         return since < AdaptiveBufferPolicy.REBUFFER_COOLDOWN_MS
     }
 
-    /** The tighter of two ceilings on each axis. */
-    private fun TrackSelectionPolicy.under(cap: TrackSelectionPolicy): TrackSelectionPolicy = TrackSelectionPolicy(
+    /** The tighter of two ceilings on each axis, at this policy's pace. */
+    private fun TrackSelectionPolicy.under(cap: TrackSelectionPolicy): TrackSelectionPolicy = copy(
         maxVideoBitrateBps = min(maxVideoBitrateBps, cap.maxVideoBitrateBps),
         maxVideoHeightPx = min(maxVideoHeightPx, cap.maxVideoHeightPx),
     )

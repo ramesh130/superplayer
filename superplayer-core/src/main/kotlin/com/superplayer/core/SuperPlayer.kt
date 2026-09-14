@@ -826,8 +826,9 @@ public class SuperPlayer private constructor(
             engineBuilder.setLoadControl(configuration.loadControl ?: decision.buffer.toLoadControl())
             configuration.bandwidthMeter?.let(engineBuilder::setBandwidthMeter)
             // Under Media3's own selector, so the device-derived defaults are built upon, as they
-            // are for the parameters below.
-            configuration.trackSelectionFactory?.let { factory ->
+            // are for the parameters below. A decided pace with no factory installed to own it
+            // becomes Media3's own adaptive factory, fixed as the load control above is.
+            (configuration.trackSelectionFactory ?: decision.trackSelection.pace?.toTrackSelectionFactory())?.let { factory ->
                 engineBuilder.setTrackSelector(DefaultTrackSelector(context, factory))
             }
             // The loading path, composed in one place rather than defaulted by Media3; TransferChain

@@ -168,11 +168,14 @@ internal class NetworkAwareTrackSelection(
     private class Pass(val estimate: ThroughputEstimate?)
 
     private inline fun <T> inPass(walk: () -> T): T {
+        // Restored rather than cleared, so a pass Media3 ever opened inside another would not end
+        // the outer one's memo early.
+        val enclosing = pass
         pass = Pass(gate.currentEstimate())
         try {
             return walk()
         } finally {
-            pass = null
+            pass = enclosing
         }
     }
 

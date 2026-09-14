@@ -104,8 +104,23 @@ boot_avd() {
 }
 
 # Waits up to `$2` seconds for `$1` to be listed, answering, and booted.
+#
+# `$3` is 1 when the harness adopted `$1` rather than being handed it, and may therefore put its own
+# AVD in the place of an emulator that leaves the device listing. An emulator listed `offline` is
+# usually on its way in, but can be on its way out — crashed, slept, taken down by its `adb` client —
+# and then vanishes; polling a name nothing answers to would only wait out the timeout. Once gone it
+# cannot be asked which AVD it ran, but nothing of anyone's is left to harm either: an empty listing
+# is exactly when ensure_device boots the harness's AVD anyway. A lingering qemu process of that AVD
+# would hold its lock, so it is killed first. A device named explicitly, or a physical device, fails at
+# once instead, since nothing can be booted in its place. The replacement then gets the full timeout
+# a boot is allowed, and SERIAL follows it.
+#
+# A serial counts as gone only after it has been listed and then missing for VANISHED_GRACE seconds:
+# an `adb` server restart empties the listing for a few seconds, and that is not a dead emulator. A
+# serial never yet listed is simply waited for, as a device being plugged in is.
 wait_for_boot() {
-    local serial="$1" timeout="$2" deadline state
+    local serial="$1" timeout="$2" replaceable="${3:-0}" deadline state seen=0 missing_since=""
+    local grace="${VANISHED_GRACE:-20}" avd
     deadline=$(($(date +%s) + timeout))
     while :; do
         state="$(adb_devices | awk -F '\t' -v s="$serial" '$1 == s {print $2}')"
@@ -117,9 +132,28 @@ wait_for_boot() {
             tail -20 "$EMULATOR_LOG" >&2 || true
             die "the emulator exited before $serial finished booting"
         fi
+        if [ -n "$state" ]; then
+            seen=1 missing_since=""
+        elif [ "$seen" = 1 ]; then
+            missing_since="${missing_since:-$(date +%s)}"
+            if [ $(($(date +%s) - missing_since)) -ge "$grace" ]; then
+                case "$replaceable:$serial" in
+                    1:emulator-*) ;;
+                    *) die "$serial left the device listing while it was being waited on, and nothing can be booted in its place" ;;
+                esac
+                avd="$(device_property avd)"
+                log "$serial left the device listing while it was being waited on; booting $avd in its place"
+                [ -z "$(emulator_pids "$avd")" ] || kill_emulator "$serial" "$avd"
+                boot_avd
+                serial="$SERIAL" replaceable=0 seen=0 missing_since=""
+                deadline=$(($(date +%s) + timeout))
+                continue
+            fi
+        fi
         [ "$(date +%s)" -lt "$deadline" ] ||
             die "$serial did not finish booting within ${timeout}s (state: ${state:-not listed})"
-        sleep 5
+        # A boot takes a minute or more, so five seconds between polls; the self-test shortens it.
+        sleep "${BOOT_POLL_INTERVAL:-5}"
     done
 }
 
@@ -161,7 +195,7 @@ ensure_device() {
         boot_avd
     fi
 
-    wait_for_boot "$SERIAL" "$boot_timeout"
+    wait_for_boot "$SERIAL" "$boot_timeout" 1
     device_answers "$SERIAL" || die "$SERIAL booted but is not answering"
 }
 

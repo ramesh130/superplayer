@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.superplayer.benchmark
+package com.superplayer.telemetry
 
 import com.superplayer.core.BufferPolicy
 import com.superplayer.core.FailureCategory
@@ -261,7 +261,7 @@ class SessionMetricsTest {
         contentId = CONTENT,
         timestampMs = 0,
         monotonicTimeMs = at,
-        samplingIntervalMs = StockTelemetry.SAMPLING_INTERVAL_MS,
+        samplingIntervalMs = SAMPLING_INTERVAL_MS,
         videoBitrateBps = bitrateBps,
         bufferedDurationMs = 20_000,
         playing = playing,
@@ -289,5 +289,9 @@ class SessionMetricsTest {
     private companion object {
         const val SESSION = "session-under-test"
         const val CONTENT = "benchmark:ladder"
+
+        // The schema's ten-second cadence (`docs/telemetry-schema.md`, *Bitrate*). A literal rather than
+        // the collector's constant: the reducer weights by what each sample says, not by a cadence.
+        const val SAMPLING_INTERVAL_MS = 10_000L
     }
 }

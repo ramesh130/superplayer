@@ -185,7 +185,14 @@ is this artifact one layer richer). Its purpose is the golden traces in
 `superplayer-telemetry/src/test/golden/`: a behaviour change appears in review as a readable diff
 rather than as a metric that moved, `./gradlew updateGoldenTraces` is the one command that
 regenerates them on the same contract as `updateApiSurface`, and `docs/testing.md`'s *Golden traces*
-section says what a diff means and what may go into one. `superplayer-testkit` holds
+section says what a diff means and what may go into one. It also holds `SessionMetrics` and
+`QoeScore`, the reduction of a session's events to `PRD.md` §6's numbers and to the QoE objective.
+They were the benchmark's, and they moved here so the benchmark and the QoE regression gate share one
+implementation rather than two. The gate is `superplayer-abr`'s `QoeRegressionGateTest`, in
+`check`. It plays every `NetworkProfile` three times through `AdaptivePolicy` and judges the median
+against `superplayer-abr/src/test/qoe-floors.tsv`, and nothing writes that file: a floor moves only
+in a commit that says why in the row. `docs/testing.md`'s *The QoE regression gate* argues the margin
+and the median. `superplayer-testkit` holds
 `PlaybackHarness` — the deterministic playback harness every module from phase 2 onward tests
 against, which compiles as a Kotlin *friend* of core so it can reach the one internal seam
 `docs/testing.md` describes, and whose own public API names no Media3 type. `superplayer-testmedia`
@@ -292,7 +299,7 @@ network profiles × four scenarios × three players × twenty runs — emitting 
 traces beside it. The three players are `Arm.kt`: stock `ExoPlayer` with defaults, stock plus the
 buffer config an app writes from intuition, and a SuperPlayer profile. What makes the comparison a
 comparison is that all three are built by one `PlaybackHarness` over one shaped transport, and that
-every metric is reduced by one `SessionMetrics` from core's own `TelemetryEvent` vocabulary — so the
+every metric is reduced by one `SessionMetrics` (now `superplayer-telemetry`'s) from core's own `TelemetryEvent` vocabulary — so the
 definitions are shared by construction rather than by care. Arms (a) and (b) have no SuperPlayer to
 attach `QoeCollector` to, so `StockTelemetry` mirrors it callback for callback, and
 `StockTelemetryAgreementTest` attaches **both collectors to one `ExoPlayer`** and asserts they derive

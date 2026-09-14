@@ -33,7 +33,7 @@ than to wave the dependency through.
 | Module | Phase | Purpose | Depends on |
 | --- | --- | --- | --- |
 | `superplayer-core` | 1 | SuperPlayer facade, PlaybackSession, config profiles, player pool, transfer chain (live-playlist revalidation) | Media3 only |
-| `superplayer-telemetry` | 2 | QoE collector (CTA-2066), CMCD emitter, pluggable sinks, session trace recorder and its goldens | core, testkit (tests only) |
+| `superplayer-telemetry` | 2 | QoE collector (CTA-2066), CMCD emitter, pluggable sinks, session trace recorder and its goldens, and the session reduction and QoE objective (`SessionMetrics`, `QoeScore`) the benchmark and the QoE regression gate share | core, testkit (tests only) |
 | `superplayer-testkit` | 2 | Fault injection, network shaping, fake manifests, golden traces | core, Media3 test utils |
 | `superplayer-testmedia` | 1 | Synthetic HLS and DASH streams: the known-good media tests play | nothing |
 | `superplayer-abr` | 3 | BandwidthOracle (per-transport estimates, spread beside the mean, cache hits excluded); AdaptivePolicy — AdaptiveBufferPolicy's five branches over a retargetable AdaptiveLoadControl, and AdaptiveSelectionPolicy's transport caps and hold over NetworkAwareTrackSelection, which also gates on the display and the decoder | core, testkit and telemetry (tests only) |

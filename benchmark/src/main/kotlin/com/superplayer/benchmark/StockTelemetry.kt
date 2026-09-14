@@ -45,7 +45,7 @@ import com.superplayer.core.TtffStartBoundary
  * Three things are done about that, and none of them is care:
  *
  * 1. **This emits `superplayer-core`'s own [TelemetryEvent] types, not numbers.** Every metric in a
- *    report is computed by [SessionMetrics] from an event stream, and [SessionMetrics] cannot tell
+ *    report is computed by `SessionMetrics` from an event stream, and `SessionMetrics` cannot tell
  *    which arm produced one. So the *definitions* — the rebuffer denominator, the seek exclusion,
  *    the bitrate weighting — are shared by construction rather than by discipline: there is one
  *    implementation of them and all three arms go through it. What is left here is *derivation*:

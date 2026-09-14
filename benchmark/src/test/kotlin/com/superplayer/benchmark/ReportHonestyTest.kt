@@ -17,6 +17,7 @@
 package com.superplayer.benchmark
 
 import com.superplayer.core.TtffStartBoundary
+import com.superplayer.telemetry.SessionMetrics
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

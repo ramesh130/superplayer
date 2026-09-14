@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.superplayer.benchmark
+package com.superplayer.telemetry
 
 import com.superplayer.core.TelemetryEvent
 import com.superplayer.core.TrackSwitchDirection
@@ -37,11 +37,16 @@ import kotlin.math.abs
  * `TelemetryEvent.kt`. Every metric below cites the section it implements, and where this file has
  * to make a choice the document leaves open — because a benchmark needs a number and a schema
  * describes an event stream — it says so with the reason.
+ *
+ * **Why a `superplayer-telemetry` type.** It was the benchmark's, and `superplayer-abr`'s QoE
+ * regression gate needs the same reduction from inside the root build, which cannot see
+ * `benchmark/`. A copy would be two definitions of one metric, so it moved here, beside the
+ * collector whose events it reads; `QoeScore` says the same for the objective.
  */
-internal data class SessionMetrics(
+public data class SessionMetrics(
 
     /** The session these numbers are of. */
-    val sessionId: String,
+    public val sessionId: String,
 
     /**
      * Milliseconds from the start boundary to the first rendered frame, or null when no frame ever
@@ -51,7 +56,7 @@ internal data class SessionMetrics(
      * recomputed: the boundary is settled when the session opens and the collector is the only thing
      * that knows which boundary applied.
      */
-    val timeToFirstFrameMs: Long?,
+    public val timeToFirstFrameMs: Long?,
 
     /**
      * Which boundary [timeToFirstFrameMs] was measured from, or null when there is no measurement.
@@ -61,20 +66,20 @@ internal data class SessionMetrics(
      * declares intent on every arm, so every cell should be `USER_INTENT` — and a cell that is not
      * is a defect in the runner rather than a number to publish.
      */
-    val startBoundary: TtffStartBoundary?,
+    public val startBoundary: TtffStartBoundary?,
 
     /**
      * Milliseconds of involuntary stall, **excluding seek-induced stalls**.
      *
      * ref: `docs/telemetry-schema.md`, *Rebuffering*. The numerator of [rebufferRatio].
      */
-    val rebufferMs: Long,
+    public val rebufferMs: Long,
 
     /**
      * How many such stalls there were. `PRD.md` §6 reports the count as well as the ratio, because
      * one long stall and six short ones are different experiences with the same ratio.
      */
-    val rebufferCount: Int,
+    public val rebufferCount: Int,
 
     /**
      * Milliseconds during which the playback position was advancing.
@@ -92,7 +97,7 @@ internal data class SessionMetrics(
      * grew a pause would have to account for it here rather than discover the overstatement in a
      * report.
      */
-    val playingMs: Long,
+    public val playingMs: Long,
 
     /**
      * The declared peak bitrate the session played, weighted by the time it played it.
@@ -113,7 +118,7 @@ internal data class SessionMetrics(
      * Null when the session produced no playing sample carrying a bitrate: a session shorter than
      * one sampling interval, or one that never chose a video rendition.
      */
-    val averageBitrateBps: Double?,
+    public val averageBitrateBps: Double?,
 
     /**
      * How many times the video rendition changed after the initial choice.
@@ -122,13 +127,13 @@ internal data class SessionMetrics(
      * switch from — and counting it would give every session that played at all a switch it did not
      * make, which matters most on the profiles that make the fewest.
      */
-    val switchCount: Int,
+    public val switchCount: Int,
 
     /** Of [switchCount], how many went up. `PRD.md` §3.4 asks for the two directions separately. */
-    val upshiftCount: Int,
+    public val upshiftCount: Int,
 
     /** Of [switchCount], how many went down. See [upshiftCount]. */
-    val downshiftCount: Int,
+    public val downshiftCount: Int,
 
     /**
      * The total size of the rendition changes, in bits per second summed over every switch.
@@ -140,7 +145,7 @@ internal data class SessionMetrics(
      *
      * `INITIAL` contributes nothing: it has no `fromBitrateBps` to have moved from.
      */
-    val switchMagnitudeBpsSum: Long,
+    public val switchMagnitudeBpsSum: Long,
 
     /**
      * Whether playback failed before the first frame.
@@ -149,10 +154,10 @@ internal data class SessionMetrics(
      * `PRD.md` §6 reports is this over the sessions of a cell, which is the standard's shape:
      * start failures over sessions that attempted playback.
      */
-    val startupFailed: Boolean,
+    public val startupFailed: Boolean,
 
     /** Whether playback failed after the first frame. See [startupFailed] for the split. */
-    val midStreamFailed: Boolean,
+    public val midStreamFailed: Boolean,
 
     /**
      * Whether the session ended having produced neither a frame nor a startup failure.
@@ -162,7 +167,7 @@ internal data class SessionMetrics(
      * every session to a fixed span and never abandons one. A cell reporting any is reporting a
      * defect in the runner, which is why it is surfaced rather than folded into the failure rate.
      */
-    val exitBeforeVideoStart: Boolean,
+    public val exitBeforeVideoStart: Boolean,
 
     /**
      * How many of this session's events the delivery path discarded under pressure.
@@ -172,7 +177,7 @@ internal data class SessionMetrics(
      * metric summed from a partially-dropped stream is a plausible wrong number that nobody audits.
      * [usable] is that rule; the runner counts what it excluded and the report prints it.
      */
-    val droppedEventCount: Int,
+    public val droppedEventCount: Int,
 
     /**
      * How many times the decision in force changed during the session.
@@ -182,7 +187,7 @@ internal data class SessionMetrics(
      * the adaptive arm Phase 3 adds is compared on how often it moved as well as on where it landed
      * — a policy that wins the bitrate column by oscillating has a cost this column shows.
      */
-    val decisionChangeCount: Int,
+    public val decisionChangeCount: Int,
 
     /**
      * Whether the session produced a `SessionEnded` at all.
@@ -191,7 +196,7 @@ internal data class SessionMetrics(
      * run itself went wrong rather than that the content did. It has no end timestamp, so it has no
      * playing span and no ratio, and [usable] excludes it.
      */
-    val ended: Boolean,
+    public val ended: Boolean,
 ) {
 
     /**
@@ -203,10 +208,10 @@ internal data class SessionMetrics(
      * **Per session, and not the thing to average across sessions.** The schema is explicit: a cell's
      * ratio is the sum of numerators over the sum of denominators, never the mean of per-session
      * ratios, because the second weights a five-second session equally with a two-hour one.
-     * [CellResult] aggregates it that way; this value exists for a single session's row in a raw
-     * trace.
+     * The benchmark's `CellResult` aggregates it that way; this value exists for a single
+     * session's row in a raw trace.
      */
-    val rebufferRatio: Double?
+    public val rebufferRatio: Double?
         get() {
             val denominator = rebufferMs + playingMs
             return if (denominator <= 0) null else rebufferMs.toDouble() / denominator
@@ -220,9 +225,9 @@ internal data class SessionMetrics(
      * `SessionEnded` — one whose player was never released, which in a benchmark means the run
      * itself went wrong.
      */
-    val usable: Boolean get() = droppedEventCount == 0 && ended
+    public val usable: Boolean get() = droppedEventCount == 0 && ended
 
-    companion object {
+    public companion object {
 
         /**
          * Reduces one session's events to its metrics.
@@ -232,7 +237,7 @@ internal data class SessionMetrics(
          * process of concurrent players can pass it whole — though the benchmark plays one session
          * at a time and does not need that.
          */
-        fun from(sessionId: String, events: List<TelemetryEvent>): SessionMetrics {
+        public fun from(sessionId: String, events: List<TelemetryEvent>): SessionMetrics {
             val own = events.filter { it.sessionId == sessionId }
             val firstFrame = own.filterIsInstance<TelemetryEvent.FirstFrameRendered>().firstOrNull()
             val ended = own.filterIsInstance<TelemetryEvent.SessionEnded>().lastOrNull()

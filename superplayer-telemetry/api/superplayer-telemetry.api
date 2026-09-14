@@ -15,6 +15,79 @@ public final class com/superplayer/telemetry/QoeCollector : com/superplayer/core
 	public fun startSession (Ljava/lang/String;Ljava/lang/String;)V
 }
 
+public final class com/superplayer/telemetry/QoeScore {
+	public static final field INSTANCE Lcom/superplayer/telemetry/QoeScore;
+	public final fun breakdown (Lcom/superplayer/telemetry/SessionMetrics;I)Lcom/superplayer/telemetry/QoeScore$Breakdown;
+	public final fun of (Lcom/superplayer/telemetry/SessionMetrics;I)Ljava/lang/Double;
+	public final fun rebufferPenaltyPerSecond (I)D
+}
+
+public final class com/superplayer/telemetry/QoeScore$Breakdown {
+	public fun <init> (DDD)V
+	public final fun component1 ()D
+	public final fun component2 ()D
+	public final fun component3 ()D
+	public final fun copy (DDD)Lcom/superplayer/telemetry/QoeScore$Breakdown;
+	public static synthetic fun copy$default (Lcom/superplayer/telemetry/QoeScore$Breakdown;DDDILjava/lang/Object;)Lcom/superplayer/telemetry/QoeScore$Breakdown;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBitrateUtility ()D
+	public final fun getRebufferPenalty ()D
+	public final fun getScore ()D
+	public final fun getSwitchPenalty ()D
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/telemetry/SessionMetrics {
+	public static final field Companion Lcom/superplayer/telemetry/SessionMetrics$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/Long;Lcom/superplayer/core/TtffStartBoundary;JIJLjava/lang/Double;IIIJZZZIIZ)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component10 ()I
+	public final fun component11 ()J
+	public final fun component12 ()Z
+	public final fun component13 ()Z
+	public final fun component14 ()Z
+	public final fun component15 ()I
+	public final fun component16 ()I
+	public final fun component17 ()Z
+	public final fun component2 ()Ljava/lang/Long;
+	public final fun component3 ()Lcom/superplayer/core/TtffStartBoundary;
+	public final fun component4 ()J
+	public final fun component5 ()I
+	public final fun component6 ()J
+	public final fun component7 ()Ljava/lang/Double;
+	public final fun component8 ()I
+	public final fun component9 ()I
+	public final fun copy (Ljava/lang/String;Ljava/lang/Long;Lcom/superplayer/core/TtffStartBoundary;JIJLjava/lang/Double;IIIJZZZIIZ)Lcom/superplayer/telemetry/SessionMetrics;
+	public static synthetic fun copy$default (Lcom/superplayer/telemetry/SessionMetrics;Ljava/lang/String;Ljava/lang/Long;Lcom/superplayer/core/TtffStartBoundary;JIJLjava/lang/Double;IIIJZZZIIZILjava/lang/Object;)Lcom/superplayer/telemetry/SessionMetrics;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAverageBitrateBps ()Ljava/lang/Double;
+	public final fun getDecisionChangeCount ()I
+	public final fun getDownshiftCount ()I
+	public final fun getDroppedEventCount ()I
+	public final fun getEnded ()Z
+	public final fun getExitBeforeVideoStart ()Z
+	public final fun getMidStreamFailed ()Z
+	public final fun getPlayingMs ()J
+	public final fun getRebufferCount ()I
+	public final fun getRebufferMs ()J
+	public final fun getRebufferRatio ()Ljava/lang/Double;
+	public final fun getSessionId ()Ljava/lang/String;
+	public final fun getStartBoundary ()Lcom/superplayer/core/TtffStartBoundary;
+	public final fun getStartupFailed ()Z
+	public final fun getSwitchCount ()I
+	public final fun getSwitchMagnitudeBpsSum ()J
+	public final fun getTimeToFirstFrameMs ()Ljava/lang/Long;
+	public final fun getUpshiftCount ()I
+	public final fun getUsable ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/telemetry/SessionMetrics$Companion {
+	public final fun from (Ljava/lang/String;Ljava/util/List;)Lcom/superplayer/telemetry/SessionMetrics;
+}
+
 public final class com/superplayer/telemetry/SessionTrace {
 	public static final field Companion Lcom/superplayer/telemetry/SessionTrace$Companion;
 	public static final field FORMAT_HEADER Ljava/lang/String;

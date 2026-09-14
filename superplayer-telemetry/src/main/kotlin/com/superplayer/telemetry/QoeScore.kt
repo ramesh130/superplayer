@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.superplayer.benchmark
+package com.superplayer.telemetry
 
 /**
  * The standard QoE objective `PRD.md` Part 5 names: bitrate utility, less a rebuffer penalty, less a
@@ -35,8 +35,8 @@ package com.superplayer.benchmark
  * is a judgement that can be made to come out however the reader hoped. A stated objective is that
  * judgement written down once, in advance, where it can be argued with.
  *
- * **It does not replace the columns.** [ReportWriter] prints the components beside the score, always,
- * because the score's whole job is to be *decomposable* — an arm that wins on score by trading
+ * **It does not replace the columns.** The benchmark's `ReportWriter` prints the components beside
+ * the score, always, because the score's whole job is to be *decomposable* — an arm that wins on score by trading
  * bitrate for stalls has done something specific and a reader should be able to see which. `PRD.md`
  * §6's F1 rule is exactly this case: the cellular bitrate loss must appear *as a loss* next to the
  * rebuffer win, and a score that absorbed both into one figure would be the thing that rule forbids.
@@ -56,45 +56,69 @@ package com.superplayer.benchmark
  * `docs/telemetry-schema.md` explains why the vocabulary is shaped that way, and the resolution is
  * identical for all three arms so no arm is advantaged by it.
  *
- * ## Whether this gates CI — the call issue #43 asks for, made
+ * ## Whether this gates CI
  *
- * **Not yet, and here is the reasoning rather than a preference.** A regression gate protects
- * something from getting worse. Today there is nothing to protect: `PlaybackPolicy`'s shipped
- * implementation is a static per-profile table that ignores the conditions it is handed, so there is
- * no adaptive behaviour a change could regress, and the only thing a gate would catch is somebody
- * editing `StaticProfilePolicy` — which is a four-line diff a reviewer can already see. Against that
- * it would cost every pull request the full matrix, and it would fail on runner noise, which is how
- * a gate stops being read.
+ * **It does, from Phase 3 on: `superplayer-abr`'s `QoeRegressionGateTest`, under `./gradlew check`.**
+ * Issue #43 asked the question and this section used to answer "not yet", with three reasons — the
+ * shipped policy was a static table with no adaptive behaviour to regress, a gate would cost every
+ * pull request the full matrix, and it would fail on runner noise. Issue #102 answers all three:
+ * Phase 3's adaptive policy is the thing to protect, the gate replays six traces three times each
+ * rather than the matrix, and the harness's clock plus a median of those three makes what variation
+ * remains a behaviour change rather than a slow runner. `docs/testing.md`, *The QoE regression gate*, is where the gate is described,
+ * and its committed floors are in `superplayer-abr/src/test/qoe-floors.tsv`.
  *
- * `PRD.md` Part 5 does say "regression-gate on that score in CI", and this is a decision about *when*
- * rather than a disagreement. The gate belongs with the thing it protects, which is Phase 3: ABR and
- * buffering are what will make this score move for reasons other than an edit, and Phase 3's own exit
- * criterion is already "measured improvement over the Phase-1 baseline with no regression on stable
- * WiFi" — a sentence that is a gate in prose. The baseline this harness commits is what that gate
- * will compare against, so building the score now and gating on it later is the order that leaves
- * Phase 3 with something to be graded on rather than an intuition to defend.
+ * ## Why this lives in `superplayer-telemetry`
+ *
+ * It was written in `benchmark/`, and the gate runs in the root build, which cannot see that one.
+ * Copying it would give the benchmark and the gate two definitions of one score, which is the
+ * failure [SessionMetrics] exists to prevent, so the reducer and the objective moved to the module
+ * that owns the events' collector. Both builds now reach the same file: the gate as a project
+ * dependency, the benchmark through the published artifact.
  */
-internal object QoeScore {
+public object QoeScore {
 
     /**
      * The score for one session, in Mbps-equivalent units per second of playing time.
      *
      * Null when the session has no playing time or no bitrate to speak of — a startup failure, or a
-     * session shorter than one sampling interval. Null rather than zero, for [Distribution.of]'s
-     * reason: a failed session has no score, and a zero would sit in the middle of the range and
-     * flatter it.
+     * session shorter than one sampling interval. Null rather than zero, for the same reason the
+     * benchmark's `Distribution` drops it: a failed session has no score, and a zero would sit in
+     * the middle of the range and flatter it.
      */
-    fun of(metrics: SessionMetrics, ladderTopBitrateBps: Int): Double? {
+    public fun of(metrics: SessionMetrics, ladderTopBitrateBps: Int): Double? =
+        breakdown(metrics, ladderTopBitrateBps)?.score
+
+    /**
+     * The score and the three terms it is made of, or null exactly when [of] is.
+     *
+     * The terms are separate because the score is meant to be taken apart: a change that holds the
+     * score by trading bitrate for stalls has done something specific, and a regression report that
+     * printed only the total would hide which.
+     */
+    public fun breakdown(metrics: SessionMetrics, ladderTopBitrateBps: Int): Breakdown? {
         val bitrateBps = metrics.averageBitrateBps ?: return null
         val playingSeconds = metrics.playingMs / MS_PER_SECOND
         if (playingSeconds <= 0.0) return null
 
-        val utility = bitrateBps / BPS_PER_MBPS
-        val rebufferPenalty = rebufferPenaltyPerSecond(ladderTopBitrateBps) *
-            (metrics.rebufferMs / MS_PER_SECOND) / playingSeconds
-        val switchPenalty = (metrics.switchMagnitudeBpsSum / BPS_PER_MBPS) / playingSeconds
+        return Breakdown(
+            bitrateUtility = bitrateBps / BPS_PER_MBPS,
+            rebufferPenalty = rebufferPenaltyPerSecond(ladderTopBitrateBps) *
+                (metrics.rebufferMs / MS_PER_SECOND) / playingSeconds,
+            switchPenalty = (metrics.switchMagnitudeBpsSum / BPS_PER_MBPS) / playingSeconds,
+        )
+    }
 
-        return utility - rebufferPenalty - switchPenalty
+    /** One session's score, as its three terms. Every figure is in Mbps-equivalent per second played. */
+    public data class Breakdown(
+        /** `Σ q(R_k)`, per second played: the time-weighted average bitrate, in Mbps. */
+        public val bitrateUtility: Double,
+        /** `μ Σ T_k`, per second played. See [rebufferPenaltyPerSecond] for `μ`. */
+        public val rebufferPenalty: Double,
+        /** `Σ |q(R_{k+1}) − q(R_k)|`, per second played. */
+        public val switchPenalty: Double,
+    ) {
+        /** The objective: utility, less both penalties. */
+        public val score: Double get() = bitrateUtility - rebufferPenalty - switchPenalty
     }
 
     /**
@@ -111,7 +135,7 @@ internal object QoeScore {
      * something — a player that stalls for a tenth of its playing time gives up a tenth of the top
      * rung — rather than making the trade a tuning constant this project chose.
      */
-    fun rebufferPenaltyPerSecond(ladderTopBitrateBps: Int): Double = ladderTopBitrateBps / BPS_PER_MBPS
+    public fun rebufferPenaltyPerSecond(ladderTopBitrateBps: Int): Double = ladderTopBitrateBps / BPS_PER_MBPS
 
     /** Bits per second in one megabit per second, as a double so the divisions do not truncate. */
     private const val BPS_PER_MBPS = 1_000_000.0

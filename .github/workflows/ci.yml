@@ -74,6 +74,10 @@ jobs:
       # device-free self-test, and the build-logic test suite, which is an included build and
       # therefore invisible to the root build's `test` above.
       #
+      # The QoE regression gate is not a step of its own: it is a unit test of `superplayer-abr`, so
+      # `test` above runs it, and `docs/testing.md` says why it lives there rather than in a
+      # benchmark step below.
+      #
       # Spotless is configured by path rather than by project, so this covers the demo's and
       # build-logic's Kotlin files as well as the library modules'. `./gradlew spotlessApply`
       # is the local fix.

@@ -7,6 +7,8 @@ import com.superplayer.build.DumpApiSurface
 import com.superplayer.build.UpdateApiSurface
 import com.superplayer.build.VerifyNoUnstableMedia3InPublicApi
 import org.gradle.api.attributes.Attribute
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
+import org.gradle.api.tasks.testing.logging.TestLogEvent
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.dsl.KotlinAndroidProjectExtension
 
@@ -132,6 +134,14 @@ val goldenTracesDirectory = layout.projectDirectory.dir("src/test/golden")
 val updatingGoldenTraces = gradle.startParameter.taskNames.any { it.substringAfterLast(':') == "updateGoldenTraces" }
 
 tasks.withType<Test>().configureEach {
+    // A failed assertion's message in the console, not only in the XML report. Truth puts what was
+    // expected and what was observed in the message, and Gradle's default prints the exception's
+    // class and line alone, so a table test like the hostile corpus went red on CI saying nothing
+    // about which row moved until the build-reports artifact was downloaded (issue #105).
+    testLogging {
+        events(TestLogEvent.FAILED)
+        exceptionFormat = TestExceptionFormat.FULL
+    }
     systemProperty("superplayer.golden.dir", "src/test/golden")
     systemProperty("superplayer.golden.mode", if (updatingGoldenTraces) "update" else "check")
     // A golden edited by hand re-runs the tests that hold it to the file.

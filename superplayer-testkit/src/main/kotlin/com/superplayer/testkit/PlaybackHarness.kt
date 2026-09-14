@@ -497,8 +497,14 @@ public class PlaybackHarness : ExternalResource() {
             awaitLoads()
             drainLoopers(player)
             awaitLoads()
+            // The loopers first and the count second. Asking the playback thread whether it is idle
+            // runs whatever was due on it ahead of the question, and what was due may be a live
+            // playlist's reload that Media3's tracker scheduled for this moment: issued inside the
+            // probe, it is activity a count read before the probe cannot see, and the round would
+            // end with the load not yet waited for (issue #105).
+            val loopersIdle = playbackThreadIsIdle(player) && Looper.getMainLooper().queue.isIdle
             val now = activitySoFar()
-            if (now == seen && playbackThreadIsIdle(player) && Looper.getMainLooper().queue.isIdle) {
+            if (loopersIdle && now == seen) {
                 quietAt = now
                 return
             }

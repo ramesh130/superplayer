@@ -172,6 +172,57 @@ class NetworkShapingTest {
     }
 
     @Test
+    fun aLoadIsBehindTheClockFromItsIssueToItsCompletionAndNotOnlyWhileItsTransferIsOpen() {
+        // Issue #105's window, at both ends. A playlist reload the engine has issued but whose loading
+        // thread has not opened a transfer yet counts no open transfer, and neither does one whose
+        // transfer has closed but whose completion has not reached the engine. Counted by transfers
+        // alone, the clock could move on in either gap, and a frozen live playlist that core's layer
+        // read before its bound would reach Media3's tracker after the tracker's bound: an untyped
+        // `PlaylistStuckException` where `StaleLivePlaylistException` was due, on some runs.
+        val clock = FakeClock(0L, /* isAutoAdvancing= */ false)
+        val wait = HarnessClockWait(clock)
+        val failure = AtomicReference<Throwable>()
+        val load = Thread {
+            runCatching {
+                wait.transferOpened()
+                try {
+                    wait.until(HELD_DEADLINE_MS, "a reload's round trip")
+                } finally {
+                    wait.transferClosed()
+                }
+            }.onFailure(failure::set)
+        }
+
+        wait.loadTaskSubmitted()
+        assertThat(wait.transfersHaveCaughtUp).isFalse()
+
+        load.start()
+        try {
+            val startedAtMs = System.currentTimeMillis()
+            while (!wait.isWaiting) {
+                check(load.isAlive && System.currentTimeMillis() - startedAtMs < JOIN_TIMEOUT_MS) {
+                    "The load never waited on the clock: ${failure.get()}"
+                }
+                Thread.yield()
+            }
+            // Waiting for a moment still to come: the one state in which the clock may move.
+            assertThat(wait.transfersHaveCaughtUp).isTrue()
+
+            clock.advanceTime(HELD_DEADLINE_MS)
+            load.join(JOIN_TIMEOUT_MS)
+            assertThat(load.isAlive).isFalse()
+            assertThat(failure.get()).isNull()
+            // Transfer closed, completion not yet posted.
+            assertThat(wait.transfersHaveCaughtUp).isFalse()
+
+            wait.loadTaskFinished()
+            assertThat(wait.transfersHaveCaughtUp).isTrue()
+        } finally {
+            load.interrupt()
+        }
+    }
+
+    @Test
     fun aHeldLoadActsOnTheClockOnlyOnceReleased() {
         val clock = FakeClock(0L, /* isAutoAdvancing= */ false)
         val wait = HarnessClockWait(clock)

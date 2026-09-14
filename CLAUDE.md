@@ -316,9 +316,13 @@ filter, and a difference inside two standard errors is neutral rather than a sma
 `benchmark/README.md` is the manual, including why it sits outside `docs/testing.md`'s rules rather
 than against them. `benchmark/baseline/` is the frozen Phase 1 report Phase 3 was graded against, and
 `benchmark/phase3/` is the Phase 3 report (issue #103) — the current reference, the one
-`bench --baseline` writes, and what the next phase is graded against. Its opening section is
+`bench --baseline` writes, and where Phase 10 starts from. Its opening section is
 `ExitCriterion`'s verdict: adaptive against the static profile, a QoE win and no QoE loss on each
-shaped profile, and nothing worse on stable WiFi, by the two-standard-error rule. Peak
+shaped profile, and nothing worse on stable WiFi, by the two-standard-error rule. **That verdict is
+Phase 10's exit criterion, not Phase 3's**: `PRD.md` Part 4 puts every "a number moved" criterion —
+this one, the feed demo's p50 TTFF target, peak RSS and battery — in a tuning phase after the
+functional ones, so a "Not met" is a finding to park there rather than work that blocks the next
+phase. Peak
 RSS and battery need a device: `BenchmarkActivity` is that arm's app and the harness around it is
 not built, which the README and the report both say rather than leaving a reader to assume.
 

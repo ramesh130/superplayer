@@ -228,12 +228,17 @@ public class MediaRequest private constructor(
  * The display fields travel as Media3's own [MediaMetadata], which is what a `MediaSession`
  * publishes to everything outside the app. They are attached to the *item* rather than pushed onto
  * the player, so they change when the content does and cannot go stale against it.
+ *
+ * [identified] lays a [ContentIdentity] on the item as its tag, which is how the identity reaches a
+ * cache's key. A player with no cache passes false, so its items are exactly what they were before a
+ * cache existed (ADR-0010 rule 13).
  */
-internal fun MediaRequest.toMediaItem(): MediaItem =
+internal fun MediaRequest.toMediaItem(identified: Boolean = false): MediaItem =
     MediaItem.Builder()
         .setMediaId(contentId)
         .setUri(sources.first())
         .setMediaMetadata(toMediaMetadata())
+        .apply { if (identified) setTag(ContentIdentity(contentId)) }
         .build()
 
 /**

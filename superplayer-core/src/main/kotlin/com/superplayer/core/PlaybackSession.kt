@@ -272,7 +272,11 @@ private class ResolvingSessionCallback(
         mediaItems: MutableList<MediaItem>,
     ): ListenableFuture<MutableList<MediaItem>> =
         Futures.immediateFuture(
-            mediaItems.map { item -> resolver.resolve(item)?.toMediaItem() ?: item }.toMutableList(),
+            mediaItems.map { item ->
+                resolver.resolve(item)?.let { request ->
+                    (mediaSession.player as? SuperPlayer)?.itemOf(request) ?: request.toMediaItem()
+                } ?: item
+            }.toMutableList(),
         )
 
     override fun onSetMediaItems(

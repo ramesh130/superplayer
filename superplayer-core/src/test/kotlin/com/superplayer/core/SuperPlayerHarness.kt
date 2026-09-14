@@ -79,12 +79,17 @@ class SuperPlayerHarness : ExternalResource() {
      * left unset by default rather than defaulted to [PlaybackProfile.VIDEO_ON_DEMAND], so that a
      * test asserting on the *library's* default is asserting on the library's rather than on this
      * file's.
+     *
+     * [cache] goes through the public `setCache`, as a consumer's would. [alsoConfigure] is for a test
+     * about one of [EngineConfiguration]'s own slots, and runs after the transport is in place.
      */
-    fun buildPlayer(
+    internal fun buildPlayer(
         profile: PlaybackProfile? = null,
         fakeDataSet: FakeDataSet = SyntheticHlsStream.addTo(FakeDataSet()),
         telemetry: TelemetryCollector? = null,
         policy: PlaybackPolicy? = null,
+        cache: ContentCache? = null,
+        alsoConfigure: (EngineConfiguration) -> Unit = {},
         alsoConfigureEngine: (ExoPlayer.Builder) -> Unit = {},
     ): SuperPlayer {
         // Auto-advancing: the playback thread's waits resolve as fast as the test can run them, so a
@@ -98,11 +103,13 @@ class SuperPlayerHarness : ExternalResource() {
                 .apply { profile?.let { setProfile(it) } }
                 .apply { telemetry?.let { setTelemetry(it) } }
                 .apply { policy?.let { setPolicy(it) } }
+                .apply { cache?.let { setCache(it) } }
                 .setEngineConfigurator { configuration ->
                     configuration.engine.useHarnessClock(clock)
                     // In the transport's place, under the chain `build()` composes, rather than in
                     // place of the chain: what SuperPlayer does to a transfer runs in every test.
                     configuration.transport = fakeDataSourceFactory
+                    alsoConfigure(configuration)
                     // Last, so a test that is specifically about the engine's construction — the
                     // analytics collector a telemetry test counts registrations on — can replace
                     // what the seam above installed rather than merely add to it.

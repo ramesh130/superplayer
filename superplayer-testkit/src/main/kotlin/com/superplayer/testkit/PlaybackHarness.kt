@@ -835,8 +835,15 @@ public class PlaybackHarness : ExternalResource() {
      */
     private fun describedMediaSourceFactory(content: TestContent, transfers: Transfers): MediaSource.Factory {
         val formats = content.rungs.mapIndexed { index, rung -> videoFormat(index, rung) }
-        val timeline = FakeTimeline(
+
+        // Per item, and carrying the item it was asked for. Media3's fakes otherwise report their own
+        // placeholder `MediaItem`, which a real source never does: a player that replaces the playing
+        // item — core lays a live latency range into it that way — would read the placeholder back,
+        // see its change missing, and replace it again, keeping the engine busy for ever with the
+        // clock stopped (issue #144).
+        fun timeline(mediaItem: androidx.media3.common.MediaItem) = FakeTimeline(
             FakeTimeline.TimelineWindowDefinition.Builder()
+                .setMediaItem(mediaItem)
                 .setDurationUs(content.durationMs * 1_000)
                 // Zero, against Media3's own non-zero default. The default puts the window at an
                 // offset inside its period, so the renderer's stream positions start ~123 s in
@@ -866,7 +873,7 @@ public class PlaybackHarness : ExternalResource() {
                 // memory, so there is no transfer for an injector or a shaper to sit in front of.
                 if (formats.size > 1 || transfers.loadsThroughADataSource) {
                     FakeAdaptiveMediaSource(
-                        timeline,
+                        timeline(mediaItem),
                         TrackGroupArray(TrackGroup(*formats.toTypedArray())),
                         TransferChunkSourceFactory(
                             // A fixed seed: the chunk sizes this generates are what a bandwidth
@@ -886,7 +893,7 @@ public class PlaybackHarness : ExternalResource() {
                     // so every injected stall would be invisible and every buffering assertion
                     // would pass for the wrong reason.
                     FakeMediaSource(
-                        timeline,
+                        timeline(mediaItem),
                         DrmSessionManager.DRM_UNSUPPORTED,
                         FakeMediaPeriod.TrackDataFactory.samplesWithRateDurationAndKeyframeInterval(
                             /* initialSampleTimeUs= */ 0,

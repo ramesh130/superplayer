@@ -87,15 +87,6 @@ internal object ReportWriter {
                 "scenario and worse in none; on stable WiFi, no metric of any scenario worse.",
         )
         appendLine()
-        UnmeasuredCells.entries.forEach { skip ->
-            // Here as well as under "Cells this matrix does not cover", because a verdict judged
-            // without a scenario has to say so where the verdict is read, not four sections later.
-            appendLine(
-                "> **Not judged: ${skip.scenario.label} × ${skip.arm.label}.** ${skip.gap.why} " +
-                    "_Closed by:_ ${skip.gap.closedBy}",
-            )
-            appendLine()
-        }
         if (judgement.met) {
             appendLine("**Met.** Every shaped profile improved on the static profile, and stable WiFi regressed nowhere.")
         } else {
@@ -581,7 +572,7 @@ internal object ReportWriter {
                 "a cell that passed.",
         )
         appendLine()
-        (PublicStreams.gaps + UnmeasuredCells.entries.map { it.gap }).forEach { gap ->
+        PublicStreams.gaps.forEach { gap ->
             appendLine("**${gap.cell}**")
             appendLine()
             appendLine(gap.why)

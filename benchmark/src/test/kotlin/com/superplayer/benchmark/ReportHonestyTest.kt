@@ -139,20 +139,6 @@ class ReportHonestyTest {
     }
 
     @Test
-    fun aCellTheRunnerSkipsIsNamedWhereTheVerdictIsReadWithTheIssueThatClosesIt() {
-        val markdown = ReportWriter.write(report())
-        val verdict = markdown.substringAfter("## Exit criterion").substringBefore("## What this was measured on")
-
-        // A verdict judged without a scenario that says so only in an appendix reads as a verdict on
-        // every scenario. So each skipped cell is named in the section the verdict is in.
-        UnmeasuredCells.entries.forEach { skip ->
-            assertTrue("The exit criterion does not name the skipped ${skip.scenario.label} cells", verdict.contains("Not judged: ${skip.scenario.label}"))
-            assertTrue(verdict.contains("#144"))
-            assertTrue(markdown.substringAfter("Cells this matrix does not cover").contains(skip.gap.cell))
-        }
-    }
-
-    @Test
     fun aDifferenceInsideTheNoiseIsNeutralRatherThanASmallWin() {
         // Two distributions a hair apart with a wide spread: the sort of difference that is tempting
         // to report as an improvement and is not one.

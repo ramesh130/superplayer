@@ -172,7 +172,7 @@ class NetworkShapingTest {
     }
 
     @Test
-    fun aLoadIsBehindTheClockFromItsIssueToItsCompletionAndNotOnlyWhileItsTransferIsOpen() {
+    fun aLoadHoldsTheClockFromItsIssueToItsPostedCompletion() {
         // Issue #105's window, at both ends. A playlist reload the engine has issued but whose loading
         // thread has not opened a transfer yet counts no open transfer, and neither does one whose
         // transfer has closed but whose completion has not reached the engine. Counted by transfers

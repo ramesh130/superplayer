@@ -8,7 +8,7 @@
 #   benchmark/bench --runs 5            fewer runs; the report says it is not a baseline
 #   benchmark/bench --out DIR           somewhere other than benchmark/out
 #   benchmark/bench --cells "VOD / 3G"  a substring filter, for working on the harness
-#   benchmark/bench --baseline          write into benchmark/baseline, the committed one
+#   benchmark/bench --baseline          write into benchmark/phase3, the committed reference
 #
 # Not a test, and not part of `./gradlew check`: a benchmark is a measurement someone reads rather
 # than a check a change must pass. README.md says why that sits outside docs/testing.md's rules
@@ -41,9 +41,10 @@ while [ $# -gt 0 ]; do
         --runs) RUNS="${2:?--runs needs a value}"; shift 2 ;;
         --out) OUT="${2:?--out needs a value}"; shift 2 ;;
         --cells) CELLS="${2:?--cells needs a value}"; shift 2 ;;
-        # The committed baseline lives in the repository, because it is what Phase 3 is graded
-        # against and a number nobody can find is not a baseline. See README.md.
-        --baseline) OUT="$BENCH_HOME/baseline"; shift ;;
+        # The committed reference lives in the repository, because it is what the next phase is
+        # graded against and a number nobody can find is not a baseline. `baseline/` is the Phase 1
+        # report and is frozen — this never writes there again. See README.md.
+        --baseline) OUT="$BENCH_HOME/phase3"; shift ;;
         -h | --help) usage ;;
         *) die "unknown option $1" ;;
     esac

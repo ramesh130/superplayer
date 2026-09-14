@@ -1,11 +1,11 @@
 # benchmark
 
-Runs the fixed matrix of [`PRD.md`](../PRD.md) §6 and emits a report: three players, six network
+Runs the fixed matrix of [`PRD.md`](../PRD.md) §6 and emits a report: four players, six network
 profiles, four content scenarios, twenty runs a cell, with the raw traces beside the summary.
 
 ```bash
 benchmark/bench                            # the full matrix, into benchmark/out
-benchmark/bench --baseline                 # into benchmark/baseline, the committed one
+benchmark/bench --baseline                 # into benchmark/phase3, the committed reference
 benchmark/bench --runs 5                   # faster; the report says it is not a baseline
 benchmark/bench --cells "VOD / 3G"         # a substring filter, for working on the harness
 (cd benchmark && ./gradlew test)           # the harness's own tests, and one run a cell
@@ -59,18 +59,26 @@ one implementation, and this build imports them from the published artifact like
 
 ## The matrix
 
-**Three arms** (`Arm.kt`), because two would not be a comparison:
+**Four arms** (`Arm.kt`), because two would not be a comparison:
 
 | | What it is |
 | --- | --- |
 | (a) stock (defaults) | `ExoPlayer.Builder(context).build()` and nothing else |
 | (b) stock (naive tuning) | the same, plus the buffer configuration an app writes from intuition |
-| (c) SuperPlayer | `SuperPlayer.Builder(context).setProfile(…)` |
+| (c) SuperPlayer | `SuperPlayer.Builder(context).setProfile(…)`: the static profile |
+| (d) SuperPlayer (adaptive) | the same, plus `setPolicy(AdaptivePolicy.forProfile(context, …))` from `superplayer-abr` |
 
 Arm (b) exists because arm (a) alone would be a straw man: the question an adopter is actually
 choosing between is not whether configuring beats not configuring, it is whether configuring *by use
 case with the reasoning written down* beats configuring *by intuition*. A cell where arm (b) wins is
-a cell where SuperPlayer's profile has nothing to offer, and it is reported like any other.
+a cell where SuperPlayer has nothing to offer, and it is reported like any other.
+
+Arm (d) is the one a report grades, against each of the other three. Arm (c) stays beside it because
+the claim `superplayer-abr` makes is that it beats the *static profile*, and beating stock would not
+show that. Before each arm (d) session the runner lets the harness clock run past the fifteen minutes
+after which a remembered throughput estimate is forgotten (ADR-0009 rule 9), so every adaptive
+session starts cold, whichever cells ran before it. The memory is internal, and this build reaches
+nothing a consumer could not.
 
 **Six network profiles** — `PRD.md` §6's, replayed from `superplayer-testkit`'s `NetworkProfile`,
 where each number carries its public source.
@@ -94,7 +102,7 @@ which the two sides measure differently is not a comparison.
 
 Three things, none of which is care:
 
-1. **One transport.** All three players are built by one `PlaybackHarness`
+1. **One transport.** All four players are built by one `PlaybackHarness`
    (`superplayer-testkit`), on one clock, over one fake origin, under one `ShapingDataSource`
    replaying one `ThroughputTrace`, with one renderer and one video output. What is left different
    between the arms is the player.
@@ -124,7 +132,8 @@ would have to go out of its way to defeat:
 | Publish the raw traces | `TraceWriter`, one JSONL file per cell, every event of every run |
 | Publish neutral and worse cells | `ReportWriter` prints losses **before** wins, in the same words, and has no filter |
 | A difference inside the noise is not a win | `Comparison.verdict`, one rule fixed in advance, symmetric in both directions |
-| The F1 bitrate trade appears as a loss | its own section of the report, from the `VOD (data saver)` row |
+| The F1 bitrate trade appears as a loss | its own section of the report: every cellular cell, adaptive against static, bitrate beside stalls |
+| The phase's verdict is decided by a rule, not read off the tables | `ExitCriterion`, printed as the report's opening section |
 | Excluded sessions are counted, not dropped quietly | `CellResult.excludedSessions`, printed in the report |
 
 `ReportHonestyTest` holds the report generator to the ones that are about presentation, against a
@@ -137,16 +146,33 @@ liked, which is why it is not there now.
 
 ---
 
-## The committed baseline
+## The committed reports
 
-`benchmark/baseline/` holds a report and its traces, committed, because **this is what Phase 3 is
-graded against** and a number nobody can find is not a baseline. It records the SuperPlayer commit,
-the Media3 version, the Robolectric SDK, the JDK, the host and the runs per cell alongside the
-numbers: a number without its conditions cannot be compared to anything.
+Two, each a report and its traces in the same layout, committed because a number nobody can find is
+not a baseline. Each records the SuperPlayer commit, the Media3 version, the Robolectric SDK, the JDK,
+the host and the runs per cell alongside the numbers: a number without its conditions cannot be
+compared to anything.
 
-Re-take it with `benchmark/bench --baseline`, on a clean tree. A run with uncommitted changes says so
-in prose at the top of its own report, because it describes a state of the repository that nobody can
-check out.
+| Directory | What it is | Status |
+| --- | --- | --- |
+| `benchmark/baseline/` | The Phase 1 baseline: arms (a) to (c), what Phase 3 was graded against | **Frozen.** Nothing writes here again |
+| `benchmark/phase3/` | The Phase 3 report (issue #103): all four arms, and Phase 3's exit criterion as its opening section | **The current reference**, and what the next phase is graded against |
+
+**How the two are compared.** Not by copying numbers across. The Phase 3 run re-runs arms (a) to
+(c) under its own conditions, so "old beside new" is a column in one report measured by one Media3,
+one Robolectric SDK and one JDK, and a verdict is only ever drawn between arms of the same run. The
+Phase 1 report stays as the record of what was claimed then. Arms (a) to (c) keep their trace file
+names, so `diff -r baseline/traces phase3/traces` compares a cell with itself. A difference there
+means the harness, Media3 or the static profile moved between the two commits, which is a finding
+in its own right. The matrix (`Scenario.kt`, `PublicStreams.kt`, `NetworkProfile`) is unchanged
+between them, which is what makes this a comparison at all. Changing any of it means re-taking the
+earlier report at its own commit first.
+
+Re-take the current reference with `benchmark/bench --baseline`, on a clean tree. A run with
+uncommitted changes says so in prose at the top of its own report, because it describes a state of
+the repository that nobody can check out. When a later phase needs its own reference, it gets a
+sibling directory, `--baseline` moves to point at it, and this table gains a row. `phase3/` is then
+frozen the way `baseline/` is now.
 
 ---
 
@@ -202,9 +228,12 @@ against public content, and none is carried in from anywhere else.
 Two cells of §6's content axis are documented gaps rather than silent omissions, and the report
 prints both with what would close them:
 
-- **Widevine (DRM)** — Phase 6. `superplayer-drm` is an empty placeholder, so arm (c) would be a
-  SuperPlayer with no DRM behaviour and the row would compare three players that are, on this axis,
+- **Widevine (DRM)** — Phase 6. `superplayer-drm` is an empty placeholder, so arms (c) and (d) would
+  be SuperPlayers with no DRM behaviour and the row would compare players that are, on this axis,
   the same player.
+- **Live on the adaptive arm** — #144. Under the harness the adaptive policy on the synthetic live
+  ladder keeps the engine busy without the clock moving, so `UnmeasuredCells` skips live × arm (d)
+  explicitly, and the report says so in its exit-criterion section as well as in its gaps.
 - **Live on the device arm** — the Robolectric arm covers live; the device half is open because a
   live URL is a claim that something is publishing right now and nothing here can verify one.
 
@@ -212,8 +241,8 @@ prints both with what would close them:
 
 ## Running it, and what costs time
 
-The full matrix is 4 scenarios × 6 networks × 3 arms × 20 runs = 1 440 sessions, and takes roughly
-three quarters of an hour on a laptop. Time inside a session is a `FakeClock`, so the cost is CPU
+The full matrix is 4 scenarios × 6 networks × 4 arms × 20 runs = 1 920 sessions, and takes roughly
+an hour on a laptop. Time inside a session is a `FakeClock`, so the cost is CPU
 rather than wall clock, and it is dominated by the harness advancing that clock in load-sized steps.
 
 - **Republish after any library change.** `bench` does it for you. Doing it by hand and forgetting is

@@ -159,6 +159,9 @@ dependencies {
     // Arm (c)'s metrics come from the shipped collector rather than from anything written here,
     // which is half of what makes the three arms comparable. The other half is `StockTelemetry`.
     implementation("com.superplayer:superplayer-telemetry:${libs.versions.superplayer.get()}")
+    // Arm (d)'s policy, through the public entry an adopter uses (`AdaptivePolicy.forProfile`), and
+    // from published coordinates for the same reason as core: the report describes the artifact.
+    implementation("com.superplayer:superplayer-abr:${libs.versions.superplayer.get()}")
     // Arms (a) and (b) are a bare `ExoPlayer`, and `StockTelemetry` reads Media3's own
     // `AnalyticsListener`. Both are named directly here rather than reached through core's graph,
     // because this build depends on them deliberately rather than incidentally.

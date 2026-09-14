@@ -47,9 +47,14 @@ import com.google.common.base.Supplier
  * something can answer it:
  *
  * ```
+ *   window depth     core, today: LiveWindowDepthCheck. Reads each DASH manifest the engine receives
+ *                    and fails one whose live window no playhead can sit inside. Outermost, above
+ *                    revalidation and for its reason: what it judges is what reached the engine. It
+ *                    changes no request, so its order against revalidation is otherwise free.
  *   revalidation     core, today: LivePlaylistRevalidation. Reads each live HLS playlist the engine
  *                    receives and, once one is overdue by RFC 8216's own bound, asks past the
- *                    caches for it. Outermost, because what it judges is what reached the engine,
+ *                    caches for it. Outermost of the layers that change a request, because what it
+ *                    judges is what reached the engine,
  *                    whichever layer below answered; a local cache that held a live playlist would
  *                    be one more stale copy to it, and has to honour the same request directive.
  *   cache            superplayer-cache: a content-keyed CacheDataSource. Outermost of the layers
@@ -122,8 +127,14 @@ import com.google.common.base.Supplier
  * the defect is in the transfer, the fix has to be in the chain, and a consumer with only
  * `superplayer-core` is the one most likely to be behind a misconfigured CDN. `superplayer-resilience`'s
  * classifier, when it arrives, reads the [StaleLivePlaylistException] this raises rather than
- * re-deriving it. CMCD above all of it is configuration on the media source factory rather than a
- * link in the chain.
+ * re-deriving it.
+ *
+ * Above that, a second: [LiveWindowDepthCheck], which ends a live DASH stream whose
+ * `@timeShiftBufferDepth` is no deeper than a segment takes to become available, with a
+ * [LiveWindowTooShortException] — issue #67, where Media3 alone plays such a stream outside its
+ * window and reports a negative position. It changes no request and no byte of any manifest it lets
+ * through, and it is core's for the same reason. CMCD above all of it is configuration on the media
+ * source factory rather than a link in the chain.
  *
  * A test's fake data source arrives as [mediaSourceFactory]'s `transport`, through the engine
  * configurator's [EngineConfiguration], and takes the HTTP stack's place and no other: the layers
@@ -168,6 +179,8 @@ internal object TransferChain {
      * per-session state.
      */
     private fun dataSourceChain(context: Context, transport: DataSource.Factory?): DataSource.Factory =
-        LivePlaylistRevalidation(Clock.DEFAULT)
-            .over(transport ?: DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory()))
+        LiveWindowDepthCheck.over(
+            LivePlaylistRevalidation(Clock.DEFAULT)
+                .over(transport ?: DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory())),
+        )
 }

@@ -45,12 +45,16 @@ internal class TransportReplay(private val trace: ThroughputTrace, private val o
 
     private var replayed: NetworkTransport? = null
 
-    /** Makes the device's network the trace's at [nowMs] on the harness's clock, if it changed. */
-    fun replayAt(nowMs: Long) {
+    /**
+     * Makes the device's network the trace's at [nowMs] on the harness's clock, if it changed, and
+     * says whether it did — a change is something the engine has to be settled on.
+     */
+    fun replayAt(nowMs: Long): Boolean {
         val transport = trace.transportAt(maxOf(0L, nowMs - originMs))
-        if (transport == replayed) return
+        if (transport == replayed) return false
         replayed = transport
         setDeviceTransport(transport)
+        return true
     }
 
     private fun setDeviceTransport(transport: NetworkTransport) {

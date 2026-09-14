@@ -128,6 +128,34 @@ class BandwidthOraclePlaybackTest {
     }
 
     @Test
+    fun bytesThatArrivedBeforeAHandoverInFlightAreNotTheNewTransportsSample() {
+        // A handover during startup, where a segment is certainly in flight across it: what that
+        // transfer received on WiFi in the step before the handover is neither network's sample, and
+        // above all not cellular's (#125). One second is four load steps, so the change lands on a
+        // step boundary exactly as the profile's handover does.
+        val trace = com.superplayer.testkit.ThroughputTrace.Builder()
+            .add(IN_FLIGHT_HANDOVER_AT_MS, STABLE_WIFI_BPS, com.superplayer.testkit.NetworkTransport.WIFI)
+            .add(IN_FLIGHT_HANDOVER_AT_MS, LTE_BPS, com.superplayer.testkit.NetworkTransport.CELLULAR)
+            .holdAtEnd()
+            .build()
+        val oracle = build()
+        val player = harness.buildPlayer(
+            content = TestContent.videoLadder(durationMs = LONG_CONTENT_MS),
+            network = trace,
+            policy = OracleInstallingPolicy(oracle),
+        )
+        player.setMediaRequest(request())
+        player.prepare()
+        harness.advanceTimeInStepsMs(player, IN_FLIGHT_HANDOVER_AT_MS)
+        assertThat(oracle.currentTransport()).isEqualTo(NetworkTransport.Cellular(null))
+        assertThat(oracle.currentEstimate().sampleCount).isEqualTo(0)
+
+        harness.advanceUntil(player, "a sample on cellular") { oracle.currentEstimate().sampleCount > 0 }
+        assertThat(oracle.currentEstimate().meanBps).isAtMost(LTE_BPS)
+        assertThat(player.playerError).isNull()
+    }
+
+    @Test
     fun everyTransferThroughTheRealChainIsSampledExactlyOnce() {
         val oracle = build()
         val content = TestContent.hls(segmentCount = SEGMENTS)
@@ -332,6 +360,9 @@ class BandwidthOraclePlaybackTest {
 
         /** The harness's own load step, so the handover lands on a step boundary. */
         const val STEP_MS = 250L
+
+        /** Four load steps in: a handover while startup still has a segment in flight. */
+        const val IN_FLIGHT_HANDOVER_AT_MS = 4 * STEP_MS
 
         /** `NetworkShapingPlaybackTest`'s margin, for the same drain. */
         const val DRAIN_MARGIN_MS = 5_000L

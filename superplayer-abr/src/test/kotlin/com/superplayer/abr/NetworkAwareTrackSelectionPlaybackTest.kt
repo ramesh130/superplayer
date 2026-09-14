@@ -184,7 +184,8 @@ class NetworkAwareTrackSelectionPlaybackTest {
 
     /**
      * Every rung Dolby Vision profile 8, because Media3 adapts only within one MIME type.
-     * ref: ETSI TS 103 572 Annex A — dvhe.PP.LL: 08 = profile 8 (HEVC Main10 base layer); 03 = FHD 24, 07 = UHD 30.
+     * dvhe.PP.LL: 08 = profile 8 (HEVC Main10 base layer); 03 = FHD 24, 07 = UHD 30, as
+     * Media3 1.11's `MediaCodecUtil` parses them.
      */
     private fun dolbyVisionLadder(): TestContent = TestContent.ladder(
         listOf(

@@ -156,7 +156,8 @@ class NetworkAwareTrackSelectionTest {
         val avcHigh = MimeTypes.VIDEO_H264 to DeviceConstraints.ProfileLevel(CodecProfileLevel.AVCProfileHigh, CodecProfileLevel.AVCLevel31)
         val dolbyVision = MimeTypes.VIDEO_DOLBY_VISION to DeviceConstraints.ProfileLevel(CodecProfileLevel.DolbyVisionProfileDvheSt, CodecProfileLevel.DolbyVisionLevelFhd24)
 
-        // ref: ETSI TS 103 572 §A.2 — dvhe.PP.LL / dvav.PP.LL: 05, 08, 09 are profiles; 03 = level FHD 24, 09 = level UHD 60.
+        // dvhe.PP.LL / dvav.PP.LL: 05, 08, 09 are profiles; 03 = level FHD 24, 09 = level UHD 60,
+        // as MediaCodecUtil.getDolbyVisionProfileAndLevel parses them (Media3 1.11).
         fun rung(codecs: String) = video(8_000_000, 2_160, codecs = codecs, mimeType = MimeTypes.VIDEO_DOLBY_VISION)
 
         // Profile 8 decodes on HEVC Main10 at any level, as Media3 maps it; not on HEVC Main.

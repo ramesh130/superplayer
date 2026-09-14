@@ -268,7 +268,13 @@ observed), the policy's ceiling (retargeted through the same `DecisionTarget` as
 which is how a hold is honoured and why it lapses on a trigger), and the estimate discounted by its
 spread on the oracle's own stable line. Startup needs no code: Media3's first choice reads the
 meter, which is the per-transport memory or its cold default. The climb and descent thresholds are
-`SelectionThresholds`, per profile, with a reason per departure from Media3's. Three things to know
+a `SelectionPace` — core's public type, carried on `TrackSelectionPolicy` so that pace is decided
+behind `PlaybackPolicy` like the ceiling — chosen per profile in `SelectionPaces` with a reason per
+departure from Media3's. The selector reads the pace in force on every evaluation (Media3's own
+thresholds are built inert, because Media3 fixes them per selection), and the composed policy
+lowers the climb threshold to one segment under the buffer ceiling, because a heap-capped buffer
+below it never climbs (#114). On a player with no selection factory, `EngineBinding.kt` installs a
+decided pace as Media3's own adaptive factory, fixed at construction. Three things to know
 before touching it: *unknown* refuses nothing, and that direction is load-bearing (Robolectric's
 device reports an empty codec table and a small display); the refusals go through `canSelectFormat`
 and not `isTrackExcluded`, because a ladder refused whole must fall back to its bottom rung and not

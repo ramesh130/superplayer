@@ -196,6 +196,15 @@ Nine rules follow, and they are binding.
    its own is never rewritten. This is an addition to the rule, not a contradiction of it, and it
    is recorded here rather than in a superseding ADR for that reason.
 
+   *Addendum (2026-09-14, #114).* The selection half now carries a pace as well as a ceiling
+   (ADR-0005 rule 2, addendum), and "honoured whole" reaches it. Media3's adaptive selection fixes
+   its thresholds when it is built, so `NetworkAwareTrackSelection` builds Media3's own thresholds
+   inert and applies the pace in force through its per-rung hook on every evaluation — the same
+   hysteresis, compared against the same rung and skipped in the same cases. A re-consulted pace
+   therefore reaches the selection already playing rather than the next period's. On a player
+   without that component the pace becomes Media3's own adaptive factory at construction and, like
+   the rest of such a player's decision, is fixed there.
+
 6. **`SuperPlayer.playbackDecision` is the decision currently in force; `SessionStarted.decision`
    is the decision in force when the session started; and every change afterwards is a
    `DecisionChanged` telemetry event.** `DecisionChanged` carries the new decision and the trigger

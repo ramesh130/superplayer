@@ -220,14 +220,16 @@ public data class BufferPolicy(
 }
 
 /**
- * The ceiling track selection may not choose above.
+ * The ceiling track selection may not choose above, and the pace it moves at under it.
  *
  * A ceiling rather than a choice: which of the tracks *under* it to play is adaptive selection's
  * decision, made continuously by the engine from throughput and buffer level, and a policy that
  * pinned a track instead of a ceiling would be taking that decision away at the worst possible
  * moment — the one where the network has just changed.
  */
-public data class TrackSelectionPolicy(
+public data class TrackSelectionPolicy
+@JvmOverloads
+constructor(
     /** Ceiling on a video track's declared bitrate in bits per second, or [UNLIMITED]. */
     public val maxVideoBitrateBps: Int,
     /**
@@ -238,6 +240,12 @@ public data class TrackSelectionPolicy(
      * content was encoded in is one a consumer can check against their own ladder.
      */
     public val maxVideoHeightPx: Int,
+    /**
+     * How eagerly selection climbs and descends under the ceiling, or null for the engine's own
+     * pace. Null is not "decided the engine's defaults": as for [PlaybackDecision.liveLatency], it
+     * leaves the engine exactly as it would otherwise be built.
+     */
+    public val pace: SelectionPace? = null,
 ) {
     init {
         require(maxVideoBitrateBps > 0) {
@@ -254,5 +262,61 @@ public data class TrackSelectionPolicy(
          * a consumer who has set nothing produce identical `TrackSelectionParameters`.
          */
         public const val UNLIMITED: Int = Int.MAX_VALUE
+    }
+}
+
+/**
+ * How adaptive selection moves under a [TrackSelectionPolicy]'s ceiling: how much media must be
+ * buffered before it climbs, how little before it descends at once, how much of a rung already
+ * buffered it keeps when it climbs, and how much of the throughput estimate a rung may spend.
+ *
+ * Pace rather than a choice, for the ceiling's own reason: which rung plays stays the engine's
+ * decision, made on every chunk. What a policy decides is the hysteresis around it — a climb that
+ * waits for a cushion is one the next dip does not undo, and a descent that waits for nothing is
+ * a stall avoided — and the right hysteresis depends on the buffer the same policy decided. A
+ * climb threshold above the most media the buffer may hold is a climb that never happens, which
+ * is why the pace travels in the decision beside the buffer rather than in a table beside the
+ * engine: only a policy that decided both can keep one within reach of the other.
+ *
+ * Named as Media3's `AdaptiveTrackSelection` names the values, less its vocabulary of minimums
+ * and maximums, so a consumer comparing a pace against their own selector's configuration can.
+ *
+ * ref: https://developer.android.com/reference/androidx/media3/exoplayer/trackselection/AdaptiveTrackSelection.Factory
+ */
+public data class SelectionPace(
+    /** Media buffered ahead of the playhead before selection may choose a higher rung. */
+    public val climbAfterBufferedMs: Int,
+    /**
+     * The buffer below which selection chooses a lower rung as soon as the estimate asks for one.
+     * Above it a descent waits, because the buffer can absorb the shortfall for a while.
+     */
+    public val descendBelowBufferedMs: Int,
+    /** Media of an already-buffered rung that is kept, rather than discarded and refetched, on a climb. */
+    public val retainAfterDiscardMs: Int,
+    /** The share of the throughput estimate a chosen rung may use, the rest being headroom. In (0, 1]. */
+    public val bandwidthFraction: Float,
+) {
+    init {
+        require(climbAfterBufferedMs >= 0) { "climbAfterBufferedMs must not be negative, was $climbAfterBufferedMs" }
+        require(descendBelowBufferedMs >= 0) { "descendBelowBufferedMs must not be negative, was $descendBelowBufferedMs" }
+        require(retainAfterDiscardMs >= 0) { "retainAfterDiscardMs must not be negative, was $retainAfterDiscardMs" }
+        require(bandwidthFraction > 0f && bandwidthFraction <= 1f) {
+            "bandwidthFraction must be in (0, 1], was $bandwidthFraction"
+        }
+    }
+
+    public companion object {
+        /**
+         * The engine's own pace, stated: Media3's `AdaptiveTrackSelection` defaults of 10 s to
+         * climb, 25 s to descend, 25 s retained and 70 % of the estimate. What a selection that
+         * reads a pace uses where the decision carries none.
+         */
+        @JvmField
+        public val ENGINE_DEFAULT: SelectionPace = SelectionPace(
+            climbAfterBufferedMs = 10_000,
+            descendBelowBufferedMs = 25_000,
+            retainAfterDiscardMs = 25_000,
+            bandwidthFraction = 0.7f,
+        )
     }
 }

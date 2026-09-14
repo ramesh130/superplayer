@@ -64,6 +64,16 @@ Four rules follow, and they are binding:
    that have one right answer for all of it: [ADR-0006](0006-own-the-platform-rules-and-hand-back-the-state.md)
    draws that line for Android's lifecycle rules, and argues why they sit outside this boundary
    rather than inside it.
+
+   *Addendum (2026-09-14, #114).* Selection **pace** — how much must be buffered before a climb,
+   how little before an immediate descent, what is retained on a climb, and the share of the
+   estimate a rung may spend — is policy under this rule, not engine tuning. It had been a
+   per-profile table of Media3 constructor arguments in `superplayer-abr`, which is the shape this
+   rule calls a bug, and the cost was concrete: a memory-capped buffer below the table's climb
+   threshold could never climb, because the buffer policy and the table could not see each other.
+   The pace is now a `SelectionPace` on `TrackSelectionPolicy`, decided beside the buffer, null
+   meaning the engine's own. Media3's live-edge fraction and discard dimensions stay outside it:
+   they have one right answer for all content. This extends the rule rather than contradicting it.
 3. **The consumer names a profile, not a number.** `SuperPlayer.Builder.setProfile` takes a
    `PlaybackProfile`; the constants behind it, and the rationale for each of them, live in the
    policy's per-profile table, which is internal and free to be retuned. Every constant that departs

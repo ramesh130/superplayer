@@ -293,7 +293,6 @@ class BandwidthOraclePlaybackTest {
                 // SuperPlayer's own selection factory, over the recording meter, so what `mtp`
                 // reports is what `NetworkAwareTrackSelection` inherits from Media3 unchanged.
                 val selections = NetworkAwareTrackSelection.Factory(
-                    SelectionThresholds.forProfile(PlaybackProfile.VIDEO_ON_DEMAND),
                     NetworkAwareTrackSelection.Gate(DeviceConstraints.UNKNOWN, oracle.meter, UNCAPPED.trackSelection),
                 )
                 configuration.engine.setTrackSelector(

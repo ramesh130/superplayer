@@ -205,9 +205,9 @@ class AdaptivePolicyPlaybackTest {
         // The ceiling is the profile's own again. The floor is not asserted lower here: the raise
         // is bounded by the range's minimum, which a short-form after-rebuffer floor reaches on the
         // first rebuffer, and the speed scales the floors it returns to — its lapse is the pure
-        // policy's to show.
+        // policy's to show. The pace is the profile's too, and is `SelectionPacesTest`'s to show.
         val released = player.playbackDecision
-        assertThat(released.trackSelection).isEqualTo(STATIC_SHORT_FORM.trackSelection)
+        assertThat(released.trackSelection.copy(pace = null)).isEqualTo(STATIC_SHORT_FORM.trackSelection)
         assertThat(player.playerError).isNull()
     }
 

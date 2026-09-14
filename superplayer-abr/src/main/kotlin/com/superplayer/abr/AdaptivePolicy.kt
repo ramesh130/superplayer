@@ -83,11 +83,16 @@ internal class AdaptiveEnginePolicy(
     /**
      * Each pure policy owns one half; the live half travels with the buffer's. The selection half
      * is decided first because the buffer's memory ceiling is sized at the rate the selector can
-     * fill it, which is the ceiling in force and not the profile's own (#115).
+     * fill it, which is the ceiling in force and not the profile's own (#115). Then the pace's
+     * climb threshold is brought within reach of the buffer just decided, because a memory
+     * ceiling under the threshold is a player pinned to its first rung (#114) and neither pure
+     * policy sees the other's number.
      */
     override fun decide(conditions: PlaybackConditions): PlaybackDecision {
         val trackSelection = selection.decide(conditions).trackSelection
-        return buffer.decide(conditions, selectionInForce = trackSelection).copy(trackSelection = trackSelection)
+        val decided = buffer.decide(conditions, selectionInForce = trackSelection)
+        val pace = trackSelection.pace?.let { SelectionPaces.reachableWithin(it, decided.buffer) }
+        return decided.copy(trackSelection = trackSelection.copy(pace = pace))
     }
 
     override fun configureEngine(configuration: EngineConfiguration) {
@@ -96,14 +101,13 @@ internal class AdaptiveEnginePolicy(
 
         val oracle = BandwidthOracle.Builder(context).build()
         val loadControl = AdaptiveLoadControl(onEngineReleased = oracle::release)
-        // The device is read here, once, and the first ceiling is the profile's own with nothing
-        // observed: the same answer the first consultation gives, so nothing moves before it.
+        // The device is read here, once, and the first ceiling and pace are the profile's own with
+        // nothing observed; the first consultation's decision replaces them before anything plays.
         val selections = NetworkAwareTrackSelection.Factory(
-            SelectionThresholds.forProfile(selection.profile),
             NetworkAwareTrackSelection.Gate(
                 constraints = deviceConstraintsOf(context),
                 source = oracle.meter,
-                initial = selection.decide(PlaybackConditions()).trackSelection,
+                initial = decide(PlaybackConditions()).trackSelection,
             ),
         )
 

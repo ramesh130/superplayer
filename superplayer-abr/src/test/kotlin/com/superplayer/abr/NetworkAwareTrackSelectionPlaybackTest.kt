@@ -99,7 +99,7 @@ class NetworkAwareTrackSelectionPlaybackTest {
         harness.advanceTimeInStepsMs(player, NetworkProfile.HANDOVER_AT_MS - (harness.elapsedRealtimeMs() - builtAtMs))
         harness.advanceUntil(player, "the transport decision") { decisions().any { it.trigger == DecisionTrigger.TRANSPORT_CHANGED } }
         val onCellular = decisions().last { it.trigger == DecisionTrigger.TRANSPORT_CHANGED }.decision.trackSelection
-        assertThat(onCellular).isEqualTo(TransportCaps.RUNG_360P)
+        assertThat(onCellular.copy(pace = null)).isEqualTo(TransportCaps.RUNG_360P)
         assertThat(onCellular.maxVideoBitrateBps).isLessThan(800_000)
 
         // The switch lands once the buffer WiFi filled has drained to the next chunk choice.
@@ -112,7 +112,7 @@ class NetworkAwareTrackSelectionPlaybackTest {
         assertThat(down.toBitrateBps).isEqualTo(300_000)
         // The cap did that, not the link: cellular's 5 Mbit/s at the data saver's bandwidth
         // fraction affords the 800 kbit/s rung several times over.
-        val affordedByLink = LTE_BPS * SelectionThresholds.forProfile(PlaybackProfile.DATA_SAVER).bandwidthFraction
+        val affordedByLink = LTE_BPS * SelectionPaces.forProfile(PlaybackProfile.DATA_SAVER).bandwidthFraction
         assertThat(affordedByLink).isGreaterThan(800_000f)
         assertThat(player.playerError).isNull()
     }
@@ -206,6 +206,46 @@ class NetworkAwareTrackSelectionPlaybackTest {
         assertThat(player.playerError).isNull()
     }
 
+    // #114: a buffer the heap caps below the profile's climb threshold must still climb — with the
+    // uncapped control first, so a climb the link never affords cannot pass as one the pace refused.
+    @Test
+    fun aDataSaverWhoseHeapCapsTheBufferUnderItsClimbThresholdStillClimbs() {
+        val uncapped = playDataSaverFromTheBottomRung()
+        assertWithMessage("control: ${uncapped.switches.map { it.toBitrateBps }}")
+            .that(uncapped.switches.map { it.direction }).contains(TrackSwitchDirection.UP)
+
+        DeviceStatement.declareAppHeap(TINY_HEAP_MB)
+        val capped = playDataSaverFromTheBottomRung()
+        assertWithMessage("the heap ceiling")
+            .that(capped.maxBufferMs).isLessThan(SelectionPaces.forProfile(PlaybackProfile.DATA_SAVER).climbAfterBufferedMs)
+        assertWithMessage("capped: ${capped.switches.map { it.toBitrateBps }}")
+            .that(capped.switches.map { it.direction }).contains(TrackSwitchDirection.UP)
+    }
+
+    private class DataSaverRun(val switches: List<TelemetryEvent.TrackSwitched>, val maxBufferMs: Int)
+
+    /** A data saver on a fast, stable link, started on the bottom rung by a remembered slow WiFi. */
+    private fun playDataSaverFromTheBottomRung(): DataSaverRun {
+        events.clear()
+        EstimateMemory.PROCESS.forget()
+        EstimateMemory.PROCESS.record(NetworkTransport.Wifi, SLOW_WIFI_BPS, harness.elapsedRealtimeMs())
+        val player = harness.buildPlayer(
+            content = TestContent.videoLadder(durationMs = LONG_CONTENT_MS),
+            profile = PlaybackProfile.DATA_SAVER,
+            telemetry = QoeCollector(sink),
+            network = NetworkProfile.STABLE_WIFI.trace,
+            policy = AdaptivePolicy.forProfile(context, PlaybackProfile.DATA_SAVER),
+        )
+        player.setMediaRequest(request())
+        harness.playToReady(player)
+        harness.advanceTimeInStepsMs(player, PLAYED_MS)
+        assertThat(player.playerError).isNull()
+        assertWithMessage("the start").that(switches().first().toBitrateBps).isEqualTo(300_000)
+        val run = DataSaverRun(switches(), player.playbackDecision.buffer.maxBufferMs)
+        player.release()
+        return run
+    }
+
     private fun playAndCollectSwitches(content: TestContent, playedMs: Long = PLAYED_MS): List<TelemetryEvent.TrackSwitched> {
         events.clear()
         val player = harness.buildPlayer(
@@ -248,6 +288,15 @@ class NetworkAwareTrackSelectionPlaybackTest {
 
         /** What a previous WiFi session is remembered as: enough for the top rung from the first chunk. */
         const val SEEDED_WIFI_BPS = 20_000_000L
+
+        /** A remembered WiFi too slow for any rung, so the first choice is the bottom one. */
+        const val SLOW_WIFI_BPS = 200_000L
+
+        /**
+         * 4 MB: a quarter of it at the data saver's 800 kbit/s cap is a 10 s ceiling, under the
+         * profile's 14 s climb threshold and over its 5 s resume floor.
+         */
+        const val TINY_HEAP_MB = 4
 
         val LTE_BPS = NetworkProfile.WIFI_TO_CELLULAR_HANDOVER.trace.bandwidthBpsAt(NetworkProfile.HANDOVER_AT_MS)
     }

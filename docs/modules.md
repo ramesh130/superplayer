@@ -37,14 +37,20 @@ than to wave the dependency through.
 | `superplayer-testkit` | 2 | Fault injection, network shaping, fake manifests, golden traces | core, Media3 test utils |
 | `superplayer-testmedia` | 1 | Synthetic HLS and DASH streams: the known-good media tests play | nothing |
 | `superplayer-abr` | 3 | BandwidthOracle (per-transport estimates, spread beside the mean, cache hits excluded); AdaptivePolicy — AdaptiveBufferPolicy's five branches over a retargetable AdaptiveLoadControl, and AdaptiveSelectionPolicy's transport caps and hold over NetworkAwareTrackSelection, which also gates on the display and the decoder | core, testkit and telemetry (tests only) |
-| `superplayer-preload` | 4 | PreloadCoordinator, attached to a PlayerPool: Media3's preload manager over the chain core assembles, first-segment prefetch in scroll order, decoder warm-up bounded by the pool, the memory guard and the data-saver rule (ADR-0010) | core (as its fourth Kotlin friend), testkit (tests only) |
-| `superplayer-cache` | 4 | ContentCache opened by the consumer in a directory they name: content-keyed CacheDataSource, LRU eviction within their budget, a pinned region for offline (ADR-0010) | core (as its third Kotlin friend), testkit (tests only) |
+| `superplayer-preload` | 4 | PreloadCoordinator, attached to a PlayerPool: Media3's preload manager over the chain core assembles, first-segment prefetch in scroll order, decoder warm-up bounded by the pool, the memory guard and the data-saver rule (ADR-0010) | core, testkit (tests only) |
+| `superplayer-cache` | 4 | ContentCache opened by the consumer in a directory they name: content-keyed CacheDataSource, LRU eviction within their budget, a pinned region for offline (ADR-0010) | core, testkit (tests only) |
 | `superplayer-resilience` | 5 | ErrorClassifier, RetryPolicy, FallbackLadder | core |
 | `superplayer-drm` | 6 | WidevineSessionManager, provisioning, offline licenses, fallback ladder | core |
 | `superplayer-offline` | 7 | DownloadManager wrapper, WorkManager constraints, battery policy | core |
 | `superplayer-tv` | 8 | CTV: display capability, Leanback and Compose-for-TV surfaces | core |
 | `superplayer-diagnostics` | 9 | MediaSourceDoctor, session trace bundle, on-device debug HUD | core |
 | `superplayer-ui` | — † | Optional Compose player surface | core |
+
+`superplayer-testkit`, `superplayer-abr`, `superplayer-cache` and `superplayer-preload` also
+compile as Kotlin *friends* of core (`docs/testing.md`'s *Reaching that seam from another module*,
+ADR-0009 rule 7, ADR-0010 rule 3). A friend path is a compiler flag rather than a Gradle
+dependency, which is why it does not appear in the column above and why it is not what the rule
+measures.
 
 `superplayer-testmedia` is the one module that depends on nothing, and that is what it is for. Its
 synthetic HLS and DASH streams are played by `superplayer-core`'s tests *and* by

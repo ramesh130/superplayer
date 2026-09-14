@@ -6,8 +6,8 @@
 - **Supersedes:** None
 - **Refines:** [ADR-0006](0006-own-the-platform-rules-and-hand-back-the-state.md) rule 2, whose
   wording is kept and whose scope is stated below; [ADR-0005](0005-decide-playback-policy-behind-an-engine-agnostic-boundary.md)
-  rule 2 and [ADR-0009](0009-observe-conditions-re-apply-decisions-and-remember-per-transport.md)
-  rules 4, 5 and 7, each extended by one addendum recorded here.
+  rule 2, and [ADR-0009](0009-observe-conditions-re-apply-decisions-and-remember-per-transport.md)
+  rules 5 and 7 — each extended by an addendum recorded at ADR-0005 rule 2 and ADR-0009 rule 7.
 - **Summary:** Decides Phase 4's shape before any of its code lands (#153). A disk cache is storage
   the consumer opened — they name the directory and the budget, SuperPlayer writes only inside it
   and never creates one it was not handed — which refines ADR-0006 rule 2 rather than contradicting
@@ -59,9 +59,10 @@ serving several players is its contract, not an abuse of it. Today `AdaptivePoli
 `MediaItem` whose `mediaId` is the `contentId`, where the resume position is read, where the live
 latency half is laid into the item, and where the telemetry session starts and the CMCD `sid` is
 minted (`MeasurementSession`). A preload manager keys its sources by `MediaItem` equality and hands
-one back through `getMediaSource(MediaItem)`, which a player plays through `setMediaSource` — a
-Media3 call the facade forwards and `adopt` never sees. A preloaded item that reached a player that
-way would play without an identity, without its resume position, and outside its session.
+one back through `getMediaSource(MediaItem)`, which a player plays through `ExoPlayer.setMediaSource`
+— not a `Player` method, so not on the facade at all, reachable only through `player.exoPlayer`,
+and never seen by `adopt`. A preloaded item that reached a player that way would play without an
+identity, without its resume position, and outside its session.
 
 **Two things bound how many things can be warm.** `PlayerPool` bounds the players a screen may have
 alive at once by what `DeviceCapacity.kt` reads: the platform's concurrent-decoder limit and a heap
@@ -95,7 +96,7 @@ is decided behind `PlaybackPolicy`; the memory guard and the data-saver rule are
 for everyone; the cache budget is the consumer's. A player built with neither module registers and
 allocates nothing for them, and a test counts it.**
 
-Twelve rules follow, and they are binding.
+Thirteen rules follow, and they are binding.
 
 ### The cache and ADR-0006 rule 2
 
@@ -194,7 +195,9 @@ Twelve rules follow, and they are binding.
    must precede the first player because the platform caches the codec list. The coordinator never
    builds a player and never reads `DeviceCapacity.kt`: its bound on warm decoders is
    `pool.maxSize`, public today, less the one the feed is playing, and its bound on prefetched
-   bytes is its own (rule 11). One reading, in one file, as `DeviceCapacity.kt`'s KDoc already
+   bytes is its own (rule 11). `maxSize` already carries a heap term, so a warm decoder is counted
+   against the heap twice — once as a player, once as the bytes it holds — which is conservative
+   rather than wrong, and is stated so nobody removes one count believing it a mistake. One reading, in one file, as `DeviceCapacity.kt`'s KDoc already
    requires — and #143 changes that reading in one place, with the coordinator following through
    `maxSize` untouched.
 
@@ -220,7 +223,9 @@ Twelve rules follow, and they are binding.
     `LIVE_LINEAR` has nothing to prefetch. That is ADR-0005's domain by its own definition: a
     decision with different right answers for different content, that a policy constant at a
     Media3 call site would hide. `PlaybackDecision` gains a `PreloadPolicy` (an addendum to
-    ADR-0005 rule 2, of the kind its live-latency and pace additions were), `StaticProfilePolicy`
+    ADR-0005 rule 2, of the kind its live-latency and pace additions were) with a default of
+    *none*, so every `PlaybackPolicy` written before it keeps compiling and decides no prefetch —
+    the same shape ADR-0009 rule 1 gave a new condition. `StaticProfilePolicy`
     carries a per-profile table with a reason per row, and `AdaptivePolicy` varies it. It is
     re-applied on ADR-0009 rule 4's triggers and no others, and "honoured whole" (rule 5) reaches
     it: Media3 consults `TargetPreloadStatusControl` per item on `invalidate`, so a changed depth is
@@ -251,18 +256,19 @@ Twelve rules follow, and they are binding.
 
 ### The pay-nothing claim
 
-A player, a pool or a session built without `setCache` and without a coordinator attached
-**registers nothing and allocates nothing for either**: no `Cache` is opened, no cache layer sits in
-the chain (the slot is empty and the chain is what it was in Phase 3, byte for byte in a golden
-trace), no `DefaultPreloadManager` exists, no adoption source is consulted, no `onTrimMemory`
-callback and no connectivity callback is registered for preload, and no class from either module is
-loaded. It is asserted the way ADR-0008 rule 2 and ADR-0009 rule 7 are: a core test builds a player
-with a profile alone and counts what was registered — component callbacks through Robolectric's
-shadow, chain layers through the engine seam a test already reaches, memory callbacks the way
-`aPlayerBuiltWithNoTelemetryRegistersNoMemoryCallbackAtAll` counts them — and the counts are zero;
-the same counts are taken with the modules attached so the counter is shown to see what it counts.
-A golden trace of a core-only session that changes when Phase 4 lands is a violation of this
-paragraph, whatever the diff says.
+13. **A player, a pool or a session built without `setCache` and without a coordinator attached
+    registers nothing and allocates nothing for either, and a test counts it.** No `Cache` is
+    opened, no cache layer sits in the chain (the slot is empty and the chain is what it was in
+    Phase 3, byte for byte in a golden trace), no `DefaultPreloadManager` exists, no adoption
+    source is consulted, no `onTrimMemory` callback and no connectivity callback is registered for
+    preload, and no class from either module is loaded. It is asserted the way ADR-0008 rule 2 and
+    ADR-0009 rule 7 are: a core test builds a player with a profile alone and counts what was
+    registered — component callbacks through Robolectric's shadow, chain layers through the engine
+    seam a test already reaches, memory callbacks the way
+    `aPlayerBuiltWithNoTelemetryRegistersNoMemoryCallbackAtAll` counts them — and the counts are
+    zero; the same counts are taken with the modules attached so the counter is shown to see what
+    it counts. A golden trace of a core-only session that changes when Phase 4 lands is a violation
+    of this rule, whatever the diff says.
 
 ## Consequences
 

@@ -114,4 +114,25 @@ internal class EngineConfiguration(val engine: ExoPlayer.Builder) {
      * decision whole, and is what turns re-consultation on — see the class KDoc.
      */
     var decisionTarget: DecisionTarget? = null
+
+    /**
+     * Told the media source factory the engine loads through, once it is assembled and before the
+     * engine is built — the entry `superplayer-preload` builds its sources through (ADR-0010 rule 6).
+     *
+     * A reading slot rather than a substituting one: what it is handed is the factory installed on
+     * the engine, the same instance, so a source built from it runs through every layer of the chain,
+     * the cache slot included, and carries the same content identity a source the player built for
+     * that item would. Null, which is every player without preload attached, calls nothing.
+     */
+    var preloadEntry: PreloadEntry? = null
+}
+
+/**
+ * Where the media source factory an engine was built with is handed on — see
+ * [EngineConfiguration.preloadEntry].
+ */
+internal fun interface PreloadEntry {
+
+    /** Called once per `build()`, on the thread building the player. */
+    fun onLoadingPathAssembled(mediaSourceFactory: MediaSource.Factory)
 }

@@ -132,7 +132,12 @@ can fire (issue #66) — and, above it, `LiveWindowDepthCheck`, which fails a li
 `timeShiftBufferDepth` is no deeper than a segment takes to become available with the public
 `LiveWindowTooShortException`, because no playhead fits inside such a window and Media3 alone plays it
 outside, at a negative position (issue #67). What the chain exists for is the order, which its KDoc writes down along with where `superplayer-cache`, `-abr`, `-telemetry`, `-resilience` and `-offline` each
-insert themselves (`PRD.md` §2.4). Two of those insert nothing into the chain and the KDoc is mostly
+insert themselves (`PRD.md` §2.4). The cache slot is built: `SuperPlayer.Builder.setCache` takes a
+`ContentCache` (core's public type, internal constructor, made by `superplayer-cache`) whose internal
+`CacheLayer` fills it, and on such a player each item adopted from a `MediaRequest` stamps its
+`ContentIdentity` onto every request it opens, so a key can be `contentId` rather than URL. A player
+with no cache has an empty slot and the Phase 3 factory, and `SuperPlayerContentCacheTest` counts it;
+`EngineConfiguration.preloadEntry` hands preload the same factory the engine loads through (ADR-0010). Two of those insert nothing into the chain and the KDoc is mostly
 about them: measurement is a propagated `TransferListener`, so a layer that drops the registration
 blinds ABR silently, and cache hits stay out of the estimate through Media3's `isNetwork` flag rather
 than through chain position — ADR-0002's argument arriving through a different door. CMCD attaches to

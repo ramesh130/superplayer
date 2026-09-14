@@ -37,6 +37,9 @@ public final class com/superplayer/core/CmcdMode : java/lang/Enum {
 	public static fun values ()[Lcom/superplayer/core/CmcdMode;
 }
 
+public abstract class com/superplayer/core/ContentCache {
+}
+
 public final class com/superplayer/core/DecisionTrigger : java/lang/Enum {
 	public static final field PLAYBACK_SPEED_CHANGED Lcom/superplayer/core/DecisionTrigger;
 	public static final field REBUFFER_ENDED Lcom/superplayer/core/DecisionTrigger;
@@ -504,6 +507,7 @@ public final class com/superplayer/core/SuperPlayer : androidx/media3/common/Pla
 public final class com/superplayer/core/SuperPlayer$Builder {
 	public fun <init> (Landroid/content/Context;)V
 	public final fun build ()Lcom/superplayer/core/SuperPlayer;
+	public final fun setCache (Lcom/superplayer/core/ContentCache;)Lcom/superplayer/core/SuperPlayer$Builder;
 	public final fun setCmcdMode (Lcom/superplayer/core/CmcdMode;)Lcom/superplayer/core/SuperPlayer$Builder;
 	public final fun setPolicy (Lcom/superplayer/core/PlaybackPolicy;)Lcom/superplayer/core/SuperPlayer$Builder;
 	public final fun setProfile (Lcom/superplayer/core/PlaybackProfile;)Lcom/superplayer/core/SuperPlayer$Builder;

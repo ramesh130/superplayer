@@ -17,14 +17,20 @@
 package com.superplayer.core
 
 import android.content.Context
+import androidx.media3.common.MediaItem
 import androidx.media3.common.util.Clock
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.drm.DrmSessionManagerProvider
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.upstream.CmcdConfiguration
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import androidx.media3.exoplayer.util.ReleasableExecutor
+import androidx.media3.extractor.text.SubtitleParser
 import com.google.common.base.Supplier
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * The one place the loading path below `MediaSource` is assembled.
@@ -57,10 +63,12 @@ import com.google.common.base.Supplier
  *                    judges is what reached the engine,
  *                    whichever layer below answered; a local cache that held a live playlist would
  *                    be one more stale copy to it, and has to honour the same request directive.
- *   cache            superplayer-cache: a content-keyed CacheDataSource. Outermost of the layers
- *                    that answer a read, so a hit is answered without any layer below it running at all — which is the point of
- *                    a cache, and also what makes its position the one that must not drift.
- *                    superplayer-offline shares this layer and its key policy (PRD.md §3.5).
+ *   cache            built, and empty unless the player was given a ContentCache: then that cache's
+ *                    CacheLayer, which superplayer-cache fills with a content-keyed CacheDataSource.
+ *                    Outermost of the layers that answer a read, so a hit is answered without any
+ *                    layer below it running at all — which is the point of a cache, and also what
+ *                    makes its position the one that must not drift. superplayer-offline shares this
+ *                    layer and its key policy (PRD.md §3.5).
  *   header refresh   superplayer-resilience: the HeaderProvider re-invoked on 401/403, closest to
  *                    the transport so that a token refresh and the retry it triggers are a single
  *                    transfer to everything above.
@@ -110,6 +118,26 @@ import com.google.common.base.Supplier
  * the [CmcdMode] the profile or the consumer chose. `CmcdBinding.kt` is what turns the mode into
  * Media3's `CmcdConfiguration`, and it is the only file that names one.
  *
+ * ## The cache slot, and how content identity reaches its key
+ *
+ * The slot is built. A player given a [ContentCache] through `SuperPlayer.Builder.setCache` has that
+ * cache's [CacheLayer] composed into it, below revalidation and above the transport; a player given
+ * none has nothing there, and its chain and media source factory are exactly the ones Phase 3 built
+ * (ADR-0010 rule 13). Nothing in core opens a cache — `superplayer-cache` does, in storage the
+ * consumer named (ADR-0010 rules 1 and 2).
+ *
+ * A cache keys by content, not URL (ADR-0010 rule 4), and a layer in a chain shared by every item
+ * cannot tell which item a request is for. So on a player with a cache, an item adopted from a
+ * [MediaRequest] carries a [ContentIdentity], and [mediaSourceFactory] builds each item's source
+ * over the chain with that identity stamped onto every request it opens — above every layer, so the
+ * slot sees it whichever layer passed the request on. An item set through `setMediaItem` has none,
+ * and its requests reach the slot with none. [ContentIdentity] says why it travels with the request
+ * rather than in a holder beside the chain.
+ *
+ * Preload builds its sources from the same factory, handed to it through
+ * `EngineConfiguration.preloadEntry`, so a source warmed ahead of the viewport loads through this
+ * chain under the same identity (ADR-0010 rule 6).
+ *
  * ## What is assembled today
  *
  * The transport, which is deliberately the same thing `ExoPlayer.Builder` would have installed by
@@ -158,6 +186,8 @@ internal object TransferChain {
      * data source, and nothing in production, where it is null. [loadExecutor] is where the loads
      * over it run, for the same reason and with the same default: `EngineConfiguration` says why a
      * harness has to own that thread.
+     *
+     * [cache] fills the cache slot and turns on content identity; null leaves both off.
      */
     fun mediaSourceFactory(
         context: Context,
@@ -165,22 +195,85 @@ internal object TransferChain {
         measurementSession: MeasurementSession,
         transport: DataSource.Factory? = null,
         loadExecutor: Supplier<ReleasableExecutor>? = null,
-    ): MediaSource.Factory =
-        DefaultMediaSourceFactory(dataSourceChain(context, transport))
-            .apply {
-                cmcdMode.toCmcdConfigurationFactory(measurementSession)
-                    ?.let(::setCmcdConfigurationFactory)
-                loadExecutor?.let(::setDownloadExecutor)
-            }
+        cache: ContentCache? = null,
+    ): MediaSource.Factory {
+        val chain = dataSourceChain(context, transport, cache)
+        // Without a cache, exactly the factory Phase 3 built: nothing about a request is stamped,
+        // because nothing below would read it (ADR-0010 rule 13).
+        val factory = if (cache == null) DefaultMediaSourceFactory(chain) else ContentKeyedMediaSourceFactory(chain)
+        return factory.apply {
+            cmcdMode.toCmcdConfigurationFactory(measurementSession)
+                ?.let(::setCmcdConfigurationFactory)
+            loadExecutor?.let(::setDownloadExecutor)
+        }
+    }
 
     /**
      * The chain itself — see the composition order above for what wraps what — over [transport], or
-     * over the HTTP stack when there is none. One call is one player's chain: the layers hold
-     * per-session state.
+     * over the HTTP stack when there is none, with [cache]'s layer in the cache slot when there is
+     * one. One call is one player's chain: the layers hold per-session state.
      */
-    private fun dataSourceChain(context: Context, transport: DataSource.Factory?): DataSource.Factory =
-        LiveWindowDepthCheck.over(
+    private fun dataSourceChain(
+        context: Context,
+        transport: DataSource.Factory?,
+        cache: ContentCache?,
+    ): DataSource.Factory {
+        val bottom = transport ?: DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory())
+        return LiveWindowDepthCheck.over(
             LivePlaylistRevalidation(Clock.DEFAULT)
-                .over(transport ?: DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory())),
+                .over(cache?.layer?.over(bottom) ?: bottom),
         )
+    }
+
+    /**
+     * Media3's own media source factory, built per item over [chain] stamped with that item's
+     * [ContentIdentity] — the way content identity reaches the cache slot's key.
+     *
+     * Per item because `DefaultMediaSourceFactory` takes its data source factory once, and the HLS and
+     * DASH sources it builds open requests with no word of which item they are for. One factory per
+     * item is the price of a key that is right when a preload manager loads several items at once
+     * through one factory; the chain beneath the stamp is still built once per player, so its layers'
+     * state is shared exactly as before. Every setting the engine or a caller makes on this factory is
+     * recorded and replayed onto each per-item one, in order.
+     *
+     * An item with no identity — one set through `setMediaItem` — is built over the unstamped chain.
+     */
+    private class ContentKeyedMediaSourceFactory(private val chain: DataSource.Factory) : MediaSource.Factory {
+
+        /** Settings replayed onto each per-item factory; written as the engine is built, read on loads. */
+        private val settings = CopyOnWriteArrayList<(MediaSource.Factory) -> Unit>()
+
+        private fun record(setting: (MediaSource.Factory) -> Unit): MediaSource.Factory =
+            apply { settings += setting }
+
+        override fun setCmcdConfigurationFactory(factory: CmcdConfiguration.Factory): MediaSource.Factory =
+            record { it.setCmcdConfigurationFactory(factory) }
+
+        override fun setDrmSessionManagerProvider(provider: DrmSessionManagerProvider): MediaSource.Factory =
+            record { it.setDrmSessionManagerProvider(provider) }
+
+        override fun setLoadErrorHandlingPolicy(policy: LoadErrorHandlingPolicy): MediaSource.Factory =
+            record { it.setLoadErrorHandlingPolicy(policy) }
+
+        override fun experimentalParseSubtitlesDuringExtraction(parse: Boolean): MediaSource.Factory =
+            record { it.experimentalParseSubtitlesDuringExtraction(parse) }
+
+        override fun setSubtitleParserFactory(factory: SubtitleParser.Factory): MediaSource.Factory =
+            record { it.setSubtitleParserFactory(factory) }
+
+        override fun experimentalSetCodecsToParseWithinGopSampleDependencies(codecFlags: Int): MediaSource.Factory =
+            record { it.experimentalSetCodecsToParseWithinGopSampleDependencies(codecFlags) }
+
+        override fun setDownloadExecutor(supplier: Supplier<ReleasableExecutor>): MediaSource.Factory =
+            record { it.setDownloadExecutor(supplier) }
+
+        override fun getSupportedTypes(): IntArray = DefaultMediaSourceFactory(chain).supportedTypes
+
+        override fun createMediaSource(mediaItem: MediaItem): MediaSource {
+            val itemChain = ContentIdentity.of(mediaItem)?.let(chain::stampedWith) ?: chain
+            val factory: MediaSource.Factory = DefaultMediaSourceFactory(itemChain)
+            settings.forEach { it(factory) }
+            return factory.createMediaSource(mediaItem)
+        }
+    }
 }

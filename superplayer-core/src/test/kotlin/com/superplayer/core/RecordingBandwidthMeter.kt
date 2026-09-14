@@ -91,6 +91,12 @@ class RecordingBandwidthMeter private constructor(
     fun cmcdKeysOfSegmentRequests(): List<Map<String, String>> =
         segmentRequests().map { it.cmcdKeys() }
 
+    /**
+     * Every transfer the meter was told about, in the order they started. Media3 hands its transfer
+     * listener to media loads only, so this is segments of whichever protocol was played.
+     */
+    fun openedRequests(): List<DataSpec> = synchronized(opened) { opened.toList() }
+
     /** Media segments only: the playlists are `.m3u8`, and CMCD says different things about those. */
     private fun segmentRequests(): List<DataSpec> = synchronized(opened) { opened.toList() }
         .filter { it.uri.path.orEmpty().endsWith(SyntheticHlsStream.SEGMENT_SUFFIX) }

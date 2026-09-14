@@ -174,6 +174,15 @@ public class SuperPlayer private constructor(
      * none.
      */
     private val reapplication: DecisionReapplication?,
+    /**
+     * Whether items this player adopts carry their [ContentIdentity], which is true exactly when the
+     * engine was built with a [ContentCache] whose key needs it. False lays nothing on an item, so a
+     * player without a cache builds the items it always did (ADR-0010 rule 13).
+     *
+     * Deliberately without a default value, for the reason [builtWithTrackSelectionParameters] has
+     * none.
+     */
+    private val identifiesContent: Boolean,
 ) : Player by delegate {
 
     /**
@@ -280,6 +289,8 @@ public class SuperPlayer private constructor(
         measurementSession: MeasurementSession = MeasurementSession(enabled = telemetry != null),
         // Null for an engine somebody else built, which has nothing of core's to re-target.
         reapplication: DecisionReapplication? = null,
+        // False for an engine somebody else built: no chain of core's has a cache slot to key.
+        identifiesContent: Boolean = false,
     ) : this(
         exoPlayer,
         profile,
@@ -290,6 +301,7 @@ public class SuperPlayer private constructor(
         applicationContext,
         measurementSession,
         reapplication,
+        identifiesContent,
     )
 
     /**
@@ -405,10 +417,17 @@ public class SuperPlayer private constructor(
         openMeasurementSession(request.contentId)
         // The decision's live half rides on the item; EngineBinding.kt says why it goes here.
         return AdoptedRequest(
-            request.toMediaItem().withLiveLatency(playbackDecision.liveLatency),
+            itemOf(request).withLiveLatency(playbackDecision.liveLatency),
             request.resolvedStartPositionMs(),
         )
     }
+
+    /**
+     * [request] as this player's engine item: carrying its [ContentIdentity] when the engine has a
+     * cache to key by it, and not otherwise. Every path that turns a request into an item for this
+     * player goes through here, so an item a controller added and an item the app set are keyed alike.
+     */
+    internal fun itemOf(request: MediaRequest): MediaItem = request.toMediaItem(identified = identifiesContent)
 
     /**
      * Opens a measurement session for [contentId] and tells the collector, if there is one.
@@ -484,7 +503,7 @@ public class SuperPlayer private constructor(
             // Deliberately not routed through `adopt`, which would remember a position for content
             // this player never played.
             openMeasurementSession(request.contentId)
-            delegate.setMediaItem(request.toMediaItem().withLiveLatency(playbackDecision.liveLatency), snapshot.positionMs)
+            delegate.setMediaItem(itemOf(request).withLiveLatency(playbackDecision.liveLatency), snapshot.positionMs)
         }
         delegate.playWhenReady = snapshot.playWhenReady
     }
@@ -675,6 +694,7 @@ public class SuperPlayer private constructor(
         private var profile: PlaybackProfile = PlaybackProfile.VIDEO_ON_DEMAND
         private var policy: PlaybackPolicy? = null
         private var telemetry: TelemetryCollector? = null
+        private var cache: ContentCache? = null
 
         /**
          * The CMCD mode a consumer chose, or null for "whatever the profile defaults to".
@@ -768,6 +788,23 @@ public class SuperPlayer private constructor(
         public fun setCmcdMode(mode: CmcdMode): Builder = apply { cmcdMode = mode }
 
         /**
+         * Loads this player's media through [cache]: reads it can answer are answered from the
+         * consumer's storage, and what is fetched is written there.
+         *
+         * The cache is `superplayer-cache`'s, opened by the consumer in a directory they named and
+         * within a budget they chose, and released by them; this call opens nothing and a player
+         * built without it has no cache at all (ADR-0010 rules 1 and 13). The type is a
+         * [ContentCache] rather than a directory or a size for the reason [setTelemetry] takes a
+         * collector: a configuration value passed on its own would compile and cache nothing.
+         *
+         * Content is keyed by [MediaRequest.contentId], so what [setMediaRequest] plays is found again
+         * whichever of its sources it came from. Content set through `setMediaItem` has no identity
+         * and is keyed by its URL. Fixed for the player's lifetime: the cache is composed into the
+         * loading path as the engine is built.
+         */
+        public fun setCache(cache: ContentCache): Builder = apply { this.cache = cache }
+
+        /**
          * The single seam through which tests reach the engine's construction.
          *
          * A test that must run without a device or a network has to substitute Media3's fake clock
@@ -836,16 +873,19 @@ public class SuperPlayer private constructor(
             // Installed after the seam rather than before it, so that a test's fake data source
             // stands in for the HTTP stack *under* SuperPlayer's layers instead of replacing them.
             // Only content with no transport at all replaces the whole path.
-            engineBuilder.setMediaSourceFactory(
-                configuration.mediaSourceFactory
-                    ?: TransferChain.mediaSourceFactory(
-                        context,
-                        cmcd,
-                        measurementSession,
-                        configuration.transport,
-                        configuration.loadExecutor,
-                    ),
-            )
+            val mediaSourceFactory = configuration.mediaSourceFactory
+                ?: TransferChain.mediaSourceFactory(
+                    context,
+                    cmcd,
+                    measurementSession,
+                    configuration.transport,
+                    configuration.loadExecutor,
+                    cache,
+                )
+            engineBuilder.setMediaSourceFactory(mediaSourceFactory)
+            // The instance the engine loads through, so preload's sources are built on the same
+            // chain under the same identity. Only when preload is attached; otherwise nothing runs.
+            configuration.preloadEntry?.onLoadingPathAssembled(mediaSourceFactory)
 
             val engine = engineBuilder.build()
             // The selection half, laid into the parameters only where no target owns it. Built upon
@@ -869,6 +909,9 @@ public class SuperPlayer private constructor(
                 applicationContext = telemetry?.let { context.applicationContext },
                 measurementSession = measurementSession,
                 reapplication = reapplication,
+                // Only a chain core composed around the cache reads the identity; a test that
+                // replaced the whole loading path has no slot to key.
+                identifiesContent = cache != null && configuration.mediaSourceFactory == null,
             )
 
             // After construction rather than inside it: a collector registers against the built

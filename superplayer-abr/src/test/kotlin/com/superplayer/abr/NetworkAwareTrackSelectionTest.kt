@@ -175,6 +175,22 @@ class NetworkAwareTrackSelectionTest {
         assertThat(selection.selectedFormat.bitrate).isEqualTo(6_000_000)
     }
 
+    // #118: one evaluation walks the ladder top-down, and a sample landing between two rungs must
+    // not judge them against two estimates — so the oracle is read once per evaluation, not per rung.
+    @Test
+    fun theEstimateIsReadOncePerEvaluationWhateverTheLadderLength() {
+        val source = StubSource()
+        source.estimate = estimate(meanBps = 400_000, spreadBps = 100_000, conservativeBps = 350_000)
+        val selection = selection(ladder(), gate(source = source))
+        // A link only the bottom rung fits, so every rung of the four is asked about.
+        meter.estimateBps = 400_000
+        source.reads = 0
+        selection.evaluate()
+        assertThat(selection.selectedFormat.bitrate).isEqualTo(300_000)
+        // `evaluate` is two evaluations.
+        assertThat(source.reads).isEqualTo(2)
+    }
+
     // #114: the pace is read on every evaluation, so a decision reaches the selection already playing.
     @Test
     fun aRetargetedPaceIsHonouredByTheSelectionAlreadyPlaying() {
@@ -346,7 +362,13 @@ class NetworkAwareTrackSelectionTest {
     private class StubSource : ThroughputSource {
         var estimate: ThroughputEstimate? = null
 
-        override fun currentEstimate(): ThroughputEstimate? = estimate
+        /** How many times the selection has asked. */
+        var reads: Int = 0
+
+        override fun currentEstimate(): ThroughputEstimate? {
+            reads++
+            return estimate
+        }
 
         override fun addListener(listener: ThroughputSource.Listener) = Unit
 

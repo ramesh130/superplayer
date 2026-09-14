@@ -34,6 +34,7 @@ import androidx.media3.exoplayer.upstream.BandwidthMeter
 import com.superplayer.abr.OracleBandwidthMeter.Companion.isStable
 import com.superplayer.core.DeviceConstraints
 import com.superplayer.core.SelectionPace
+import com.superplayer.core.ThroughputEstimate
 import com.superplayer.core.ThroughputSource
 import com.superplayer.core.TrackSelectionPolicy
 import kotlin.math.min
@@ -154,6 +155,33 @@ internal class NetworkAwareTrackSelection(
         val appliesHysteresis: Boolean,
     )
 
+    /**
+     * The pass over the ladder in progress, for [canSelectFormat] to judge every rung against one
+     * estimate; null outside one. Media3 offers the rungs one at a time from the top, so an estimate
+     * read per rung is one a sample landing mid-pass would change between two rungs. Both of
+     * Media3's passes are covered — [updateSelectedTrack] and [evaluateQueueSize] each walk the
+     * ladder through the hook.
+     */
+    private var pass: Pass? = null
+
+    /** A holder rather than the estimate itself, because "no source" is null inside a pass too. */
+    private class Pass(val estimate: ThroughputEstimate?)
+
+    private inline fun <T> inPass(walk: () -> T): T {
+        // Restored rather than cleared, so a pass Media3 ever opened inside another would not end
+        // the outer one's memo early.
+        val enclosing = pass
+        pass = Pass(gate.currentEstimate())
+        try {
+            return walk()
+        } finally {
+            pass = enclosing
+        }
+    }
+
+    override fun evaluateQueueSize(playbackPositionUs: Long, queue: List<MediaChunk>): Int =
+        inPass { super.evaluateQueueSize(playbackPositionUs, queue) }
+
     override fun updateSelectedTrack(
         playbackPositionUs: Long,
         bufferedDurationUs: Long,
@@ -189,7 +217,7 @@ internal class NetworkAwareTrackSelection(
                 !isTrackExcluded(compared, clock.elapsedRealtime()),
         )
         try {
-            super.updateSelectedTrack(playbackPositionUs, bufferedDurationUs, availableDurationUs, queue, mediaChunkIterators)
+            inPass { super.updateSelectedTrack(playbackPositionUs, bufferedDurationUs, availableDurationUs, queue, mediaChunkIterators) }
         } finally {
             evaluation = null
         }
@@ -251,7 +279,9 @@ internal class NetworkAwareTrackSelection(
             if (index == evaluation.comparedIndex && evaluation.bufferedDurationUs >= pace.descendBelowBufferedMs * MICROS_PER_MILLI) return true
         }
 
-        return trackBitrate <= gate.trusted((effectiveBitrate * pace.bandwidthFraction).toLong())
+        val pass = this.pass
+        val estimate = if (pass != null) pass.estimate else gate.currentEstimate()
+        return trackBitrate <= gate.trusted((effectiveBitrate * pace.bandwidthFraction).toLong(), estimate)
     }
 
     /** What a climb keeps of the buffered queue, at the pace in force rather than the one built with. */
@@ -317,9 +347,12 @@ internal class NetworkAwareTrackSelection(
             return constraints.canDecode(mimeType, profileLevel.first, profileLevel.second) == false
         }
 
+        /** What the source estimates now, or null with none: read once per pass by the selection. */
+        fun currentEstimate(): ThroughputEstimate? = source?.currentEstimate()
+
         /** Refusal 4's discount: the offered bitrate, scaled down by `conservative / mean` on an unstable link. */
-        fun trusted(effectiveBitrate: Long): Long {
-            val estimate = source?.currentEstimate() ?: return effectiveBitrate
+        fun trusted(effectiveBitrate: Long, estimate: ThroughputEstimate?): Long {
+            if (estimate == null) return effectiveBitrate
             if (estimate.sampleCount == 0 || estimate.isStable()) return effectiveBitrate
             val conservative = estimate.conservativeBps ?: return effectiveBitrate
             if (estimate.meanBps <= 0 || conservative >= estimate.meanBps) return effectiveBitrate

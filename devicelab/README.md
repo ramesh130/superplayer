@@ -60,7 +60,10 @@ In this order. Each step is a failure somebody already hit by hand, and most of 
 2. **Gets a device** (`lib/device.sh`). It uses the one you named with `--serial` or
    `ANDROID_SERIAL`, or adopts the one that is attached, or boots the AVD in `device.properties`.
    Readiness means `sys.boot_completed`, never the device listing, because an emulator shows as
-   `offline` for a while after it appears. An offline emulator is waited on rather than duplicated.
+   `offline` for a while after it appears. An offline emulator is waited on rather than duplicated —
+   unless it is on its way out rather than in: one that leaves the listing for longer than
+   `VANISHED_GRACE` seconds (20 by default, so an `adb` restart is not mistaken for it) is replaced by
+   a fresh boot of the harness's AVD instead of being waited on until `BOOT_TIMEOUT`.
    Every `adb` call is bounded, because an emulator can stay listed as `device` with an adbd that no
    longer answers. An unbounded call to one hangs forever, which reads as a slow run. If the
    harness's own AVD stops answering, it is killed and booted again, since that AVD is disposable. A

@@ -69,6 +69,79 @@ R58M12345" "$(ready_serials < "$fixtures/adb-devices.txt")"
 assert_eq "offline serials are reported separately, since they are the ones worth waiting on" \
     "emulator-5556" "$(serials_in_state offline < "$fixtures/adb-devices.txt")"
 
+# --- Waiting on a device that leaves the listing ---------------------------------------------------
+#
+# wait_for_boot against a scripted `adb devices`: each poll reads the next listing in `$@`, and the
+# last one repeats. `adb` itself answers `sys.boot_completed` as 1, so a serial listed as `device` is
+# booted. Restarting and booting are recorded rather than done; the fake boot lists emulator-5558.
+# Run in a subshell, since `die` exits and the fakes must not outlive the case.
+waits() { # replaceable listing...
+    local replaceable="$1" i=0 listing
+    shift
+    rm -rf "$scratch/wait" && mkdir -p "$scratch/wait"
+    for listing in "$@"; do
+        i=$((i + 1))
+        printf 'List of devices attached\n%b' "$listing" > "$scratch/wait/listing-$i"
+    done
+    printf '#!/bin/sh\necho 1\n' > "$scratch/wait/adb" && chmod +x "$scratch/wait/adb"
+    (
+        ADB="$scratch/wait/adb" BOOT_POLL_INTERVAL=0.1 VANISHED_GRACE=1 EMULATOR_PID="" SERIAL=emulator-5556
+        adb_devices() {
+            local n
+            n="$(cat "$scratch/wait/polls" 2>/dev/null || echo 0)"
+            n=$((n + 1))
+            printf '%s' "$n" > "$scratch/wait/polls"
+            if [ -f "$scratch/wait/booted" ]; then
+                printf 'List of devices attached\nemulator-5558\tdevice\n'
+            elif [ "$n" -le "$i" ]; then
+                cat "$scratch/wait/listing-$n"
+            else
+                cat "$scratch/wait/listing-$i"
+            fi
+        }
+        emulator_pids() { [ -z "${ZOMBIE:-}" ] || echo 4242; }
+        kill_emulator() { echo "kill_emulator $*" >> "$scratch/wait/calls"; }
+        boot_avd() {
+            echo boot_avd >> "$scratch/wait/calls"
+            touch "$scratch/wait/booted"
+            EMULATOR_PID=$$ SERIAL=emulator-5558
+        }
+        device_property() { echo superplayer_verify_36; }
+        SERIAL="${WAIT_SERIAL:-$SERIAL}"
+        wait_for_boot "$SERIAL" 20 "$replaceable" && echo "ready: $SERIAL"
+    ) 2>&1
+    cat "$scratch/wait/calls" 2>/dev/null || true
+}
+
+waited="$(waits 1 'emulator-5556\toffline\n' '' 'emulator-5556\tdevice\n')"
+assert_contains "a serial missing for one poll, inside the grace period, is waited on" "$waited" "ready: emulator-5556"
+assert_not_contains "and nothing is booted in its place" "$waited" "boot_avd"
+
+started=$(date +%s)
+waited="$(waits 1 'emulator-5556\toffline\n' '')"
+assert_contains "an adopted emulator that leaves the listing is replaced by a fresh boot" "$waited" "boot_avd"
+assert_contains "and the wait follows the new serial to readiness" "$waited" "ready: emulator-5558"
+assert_eq "without waiting out the boot timeout" 1 "$(($(date +%s) - started < 15 ? 1 : 0))"
+assert_not_contains "with no emulator process of the harness's AVD left, there is nothing to kill" \
+    "$waited" "kill_emulator"
+
+waited="$(ZOMBIE=1 waits 1 'emulator-5556\toffline\n' '')"
+assert_contains "one whose qemu process for the harness's AVD lingers is killed before the fresh boot" \
+    "$waited" "kill_emulator emulator-5556 superplayer_verify_36
+boot_avd"
+
+waited="$(waits 0 'emulator-5556\toffline\n' '')"
+assert_contains "a named serial that leaves the listing fails at once, and says so" "$waited" "left the device listing"
+assert_not_contains "and is not replaced" "$waited" "boot_avd"
+
+waited="$(WAIT_SERIAL=R58M12345 waits 1 'R58M12345\toffline\n' '')"
+assert_contains "a vanished physical device fails at once, since nothing can be booted in its place" \
+    "$waited" "left the device listing"
+assert_not_contains "and nothing is booted" "$waited" "boot_avd"
+
+waited="$(waits 1 '' '' 'emulator-5556\tdevice\n')"
+assert_contains "a serial never yet listed is waited for, not taken as gone" "$waited" "ready: emulator-5556"
+
 # --- The version catalog ---------------------------------------------------------------------------
 
 assert_eq "reads a catalog version, ignoring a commented-out line" \

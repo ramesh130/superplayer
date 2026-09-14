@@ -423,16 +423,26 @@ Each phase ends with something demonstrable and measured. Effort assumes one eng
 | **0 — Scaffold** (1 wk) | Gradle multi-module build, Media3 version catalog, CI (build, unit, lint, API compatibility), `CONTRIBUTING.md` clean-room rules, ADR-0001. | Green CI; empty modules publish to `mavenLocal`. |
 | **1 — Core + demo** (2 wks) | `SuperPlayer` facade, profiles, `MediaRequest`, player pool, lifecycle and `MediaSession`, the transfer-chain seam (§2.4). Demo plays HLS and DASH public test streams on phone. | Demo plays; `Player` delegation verified against Media3's own forwarding-contract suite; the chain is composed in one place with insertion points documented. |
 | **2 — Telemetry + testkit** (2 wks) | QoE collector, CTA-2066 metrics, CMCD, sinks. Testkit: network shaping, fault injection, golden traces. **Built before tuning, deliberately.** | The benchmark harness (§6) emits a reproducible baseline report. |
-| **3 — ABR + buffering** (3 wks) | `AdaptiveLoadControl`, `BandwidthOracle`, `NetworkAwareTrackSelection`, behind the §2.5 boundary. | Measured improvement over the Phase-1 baseline on the shaped-network suite, with no regression on stable WiFi. |
-| **4 — Preload + cache** (2–3 wks) | `PreloadCoordinator`, decoder warm-up, content-keyed cache. Short-form feed demo. | p50 TTFF in the feed demo under the §6 target; memory flat over a 200-item scroll. |
+| **3 — ABR + buffering** (3 wks) | `AdaptiveLoadControl`, `BandwidthOracle`, `NetworkAwareTrackSelection`, behind the §2.5 boundary. | The three components ship behind the boundary; the QoE regression gate is in `check`; the Phase 3 report grades the adaptive arm against the other three on the full matrix and is committed, whatever its verdict. |
+| **4 — Preload + cache** (2–3 wks) | `PreloadCoordinator`, decoder warm-up, content-keyed cache. Short-form feed demo. | TTFF in the feed demo measured and reported; memory flat over a 200-item scroll. |
 | **5 — Resilience** (2 wks) | Classifier, retry policy, fallback ladder, token refresh. | Every injected fault either recovers or produces a typed, actionable error. Zero unclassified errors. |
 | **6 — DRM** (3 wks) | Widevine online and offline, provisioning, security-level ladder, key rotation, secure surface. | Playback on L1 and L3 devices; offline license acquire → play offline → renew → release; all DRM errors typed. |
 | **7 — Offline downloads** (2 wks) | Download stack, `WorkManager` policy, license binding. | A download survives process death, network loss, and reboot; battery policy verified with a battery profiler. |
 | **8 — TV** (2–3 wks) | `superplayer-tv`, leanback demo. | Runs on a TV device and emulator; frame-rate matching verified; HDMI and audio-capability changes handled. |
 | **9 — Diagnostics + docs** (2 wks) | `MediaSourceDoctor`, trace bundle, debug HUD, docs, the ADR set. | Doctor correctly identifies each pathology in a curated set of deliberately broken manifests. |
+| **10 — Tuning** (open-ended) | Iterating the adaptive policy, the preload path and the profiles against the §6 matrix; the benchmark's device arm, for peak RSS and battery. | Measured improvement of the adaptive policy over the static profile on the shaped-network suite, with no regression on stable WiFi; p50 TTFF in the feed demo under a target this phase sets and argues; peak RSS and battery delta reported from a device. |
 
-Roughly five months at a sustainable part-time pace. Phases 0–5 (about three months) constitute a
-complete, coherent library on their own.
+Roughly five months at a sustainable part-time pace, before tuning. Phases 0–5 (about three months)
+constitute a complete, coherent library on their own.
+
+**Function before tuning.** Phases 0–9 end on behaviour that is built, tested and *measured*; none
+ends on a number having moved in the right direction. Moving a benchmark number is iterative and
+its outcome is not known in advance — a policy change fixes one cell and costs another, and each
+attempt is a full matrix run — so it is Phase 10's alone, and no earlier phase waits on it. The
+measurement is not deferred with it: the harness, the report and the QoE gate stay in the phases
+that build them, so Phase 10 starts from committed reports rather than from nothing, and a
+functional phase's report is a finding for Phase 10 rather than a reason to retune before
+committing it.
 
 ---
 
@@ -485,7 +495,8 @@ These are the commitments the rest of the document is downstream of. A change th
 argues the case explicitly and produces a superseding ADR.
 
 1. **Measurement before tuning.** Telemetry and the benchmark harness are Phase 2, ahead of ABR in
-   Phase 3. Tuning without a harness is guessing, and the phase order says so out loud.
+   Phase 3. Tuning without a harness is guessing, and the phase order says so out loud. The same
+   order puts tuning itself last: Phase 10 moves the numbers the earlier phases measure.
 2. **Composition over forking**, using public extension points only, with a documented compatibility
    strategy for Media3 upgrades. The library is meant to be maintained, not only shipped.
 3. **Solve the problem at the layer that owns it** (§2.3). Where a popular approach works around a

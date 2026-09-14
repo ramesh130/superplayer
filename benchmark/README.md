@@ -156,7 +156,7 @@ compared to anything.
 | Directory | What it is | Status |
 | --- | --- | --- |
 | `benchmark/baseline/` | The Phase 1 baseline: arms (a) to (c), what Phase 3 was graded against | **Frozen.** Nothing writes here again |
-| `benchmark/phase3/` | The Phase 3 report (issue #103): all four arms, and Phase 3's exit criterion as its opening section | **The current reference**, and what the next phase is graded against |
+| `benchmark/phase3/` | The Phase 3 report (issue #103): all four arms, and the adaptive policy's exit criterion as its opening section. `PRD.md` Part 4 has since moved that criterion to Phase 10, tuning; the committed report predates the move and still calls it Phase 3's until it is next re-taken | **The current reference**, and where Phase 10 starts from |
 
 **How the two are compared.** Not by copying numbers across. The Phase 3 run re-runs arms (a) to
 (c) under its own conditions, so "old beside new" is a column in one report measured by one Media3,
@@ -181,7 +181,8 @@ frozen the way `baseline/` is now.
 Peak RSS and battery delta over a 30-minute session are in `PRD.md` §6's reported list and are
 **absent from the Robolectric report on purpose**. Both are properties of a process on a device, and
 reporting a JVM heap figure as though it were an Android app's resident set would be a plausible
-wrong number — which is the failure mode this whole harness is arranged against.
+wrong number — which is the failure mode this whole harness is arranged against. Reporting them is
+`PRD.md` Part 4's Phase 10, tuning, and no earlier phase waits on the harness below being finished.
 
 `BenchmarkActivity` is the device arm's app, and it is built: given an arm, one of the public streams
 in `PublicStreams.kt`, and a duration, it plays a 30-minute session on a real device over a real

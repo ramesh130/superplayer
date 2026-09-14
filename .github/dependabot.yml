@@ -58,7 +58,12 @@ updates:
       day: monday
     # Bounds the backlog, where the groups below bound a single week. Five open PRs is as many as
     # are going to be reviewed at once. Past that, a sixth is noise that waits behind the others.
-    open-pull-requests-limit: 5
+    #
+    # PAUSED (2026-09-14): version updates are deferred until the project has most of the features
+    # it needs, and will then be taken together. Zero stops version-update PRs without losing the
+    # configuration; security updates are a separate repository setting and are not affected.
+    # Resume by setting this back to 5.
+    open-pull-requests-limit: 0
     ignore:
       # The catalog says to keep Robolectric equal to the version `media3-test-utils-robolectric`
       # resolves (4.16 for Media3 1.11.0), so that the two declarations cannot pull in two
@@ -137,4 +142,5 @@ updates:
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 5
+    # PAUSED (2026-09-14), for the reason the Gradle entry gives. Resume by setting this back to 5.
+    open-pull-requests-limit: 0

@@ -124,7 +124,7 @@ row and holds prepared first frames for the rest, which is what the demo's `Feed
 Everything below `MediaSource` loads through one `DataSource.Factory` chain, and `TransferChain` is
 the single internal place it and the `MediaSource.Factory` over it are assembled — reached from
 `SuperPlayer.Builder.build()`, because `ExoPlayer` has no runtime media-source-factory setter. What it
-composes today is Media3's own default transport under one layer of core's, `LivePlaylistRevalidation`
+composes today is Media3's own default transport under two layers of core's. First `LivePlaylistRevalidation`
 — which changes no request of a live HLS playlist that advances on time, reloads an overdue one with
 `Cache-Control: no-cache`, and fails one that still will not move with the public
 `StaleLivePlaylistException` naming the likely cause, before Media3's untyped `PlaylistStuckException`

@@ -98,7 +98,7 @@ class RecordingBandwidthMeter private constructor(
     fun openedRequests(): List<DataSpec> = synchronized(opened) { opened.toList() }
 
     /** Media segments only: the playlists are `.m3u8`, and CMCD says different things about those. */
-    private fun segmentRequests(): List<DataSpec> = synchronized(opened) { opened.toList() }
+    private fun segmentRequests(): List<DataSpec> = openedRequests()
         .filter { it.uri.path.orEmpty().endsWith(SyntheticHlsStream.SEGMENT_SUFFIX) }
 }
 

@@ -231,9 +231,10 @@ public class MediaRequest private constructor(
  *
  * [identified] lays a [ContentIdentity] on the item as its tag, which is how the identity reaches a
  * cache's key. A player with no cache passes false, so its items are exactly what they were before a
- * cache existed (ADR-0010 rule 13).
+ * cache existed (ADR-0010 rule 13). No default, so that a new call site has to decide rather than
+ * quietly build an item a cache cannot key: `SuperPlayer.itemOf` is the one that knows.
  */
-internal fun MediaRequest.toMediaItem(identified: Boolean = false): MediaItem =
+internal fun MediaRequest.toMediaItem(identified: Boolean): MediaItem =
     MediaItem.Builder()
         .setMediaId(contentId)
         .setUri(sources.first())

@@ -267,7 +267,10 @@ internal object TransferChain {
         override fun setDownloadExecutor(supplier: Supplier<ReleasableExecutor>): MediaSource.Factory =
             record { it.setDownloadExecutor(supplier) }
 
-        override fun getSupportedTypes(): IntArray = DefaultMediaSourceFactory(chain).supportedTypes
+        // Fixed by which Media3 source modules are on the classpath, so asked once rather than per call.
+        private val typesOnClasspath: IntArray by lazy { DefaultMediaSourceFactory(chain).supportedTypes }
+
+        override fun getSupportedTypes(): IntArray = typesOnClasspath.copyOf()
 
         override fun createMediaSource(mediaItem: MediaItem): MediaSource {
             val itemChain = ContentIdentity.of(mediaItem)?.let(chain::stampedWith) ?: chain

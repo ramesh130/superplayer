@@ -108,6 +108,12 @@ SuperPlayer writes fetched media into, keyed by content identity rather than by 
 never a throughput sample. Estimate memory is not a cache; a cache is not a snapshot.
 _Avoid_: Disk cache SuperPlayer manages, default cache, `cacheDir`
 
+**Adoption source**:
+The core-internal hook `setMediaRequest` consults after adopting a request, asking whether a
+preloaded source exists for the item it just built. Installed by a coordinator through the engine
+seam; absent, and never consulted, on any other player.
+_Avoid_: Preload lookup, source provider
+
 **Warm set**:
 The items a preload coordinator holds ahead of the viewport in a prepared, tracks-selected or
 range-loaded state, bounded by the pool's player bound for decoders and by the memory guard for

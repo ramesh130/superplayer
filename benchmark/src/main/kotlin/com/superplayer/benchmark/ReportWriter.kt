@@ -160,22 +160,32 @@ internal object ReportWriter {
         appendLine(
             "**What the spread is a spread of.** The network under this arm is a deterministic trace " +
                 "replayed against a `FakeClock`, so the variance in these columns is **not** the " +
-                "variance a real device on a real link would see — it is what run-to-run scheduling " +
-                "on the host does to a session, because loads run on real threads even though " +
-                "playback time does not. That is worth having: it is the noise floor a difference has " +
-                "to clear, which is exactly what the verdicts use it for. It is not an estimate of " +
-                "how variable playback is in the field, and a p95 here should not be quoted as one. " +
-                "Field variance is the device arm's to measure.",
+                "variance a real device on a real link would see. The harness holds every load to " +
+                "its clock, so most sessions replay identically and many cells have no spread at " +
+                "all; what spread remains is what run-to-run scheduling on the host still reaches, " +
+                "because loads run on real threads even though playback time does not. A cell with " +
+                "no spread makes any difference from another arm a verdict, however small, so read " +
+                "the size of a difference beside its verdict and treat one of a step or two as the " +
+                "harness's resolution rather than the player's. None of this estimates how variable " +
+                "playback is in the field, and a p95 here should not be quoted as one. Field " +
+                "variance is the device arm's to measure.",
         )
         appendLine()
         appendLine(
             "**Time to first frame is quantised to the harness's step.** The Robolectric arm advances " +
-                "a `FakeClock` in fixed steps while it waits for the first frame, so a measurement " +
-                "lands on a multiple of that step and two arms differing by less than one step read " +
-                "as identical. It is the same step for every arm, so it moves no comparison, but it " +
-                "does put a floor on the difference this column can resolve — and a row of exactly " +
-                "equal start-up times across three arms is that floor rather than three players " +
-                "agreeing to the millisecond.",
+                "a `FakeClock` in fixed 50 ms steps (`PlaybackHarness.WAIT_STEP_MS`) while it waits " +
+                "for the player to become ready, so a measurement lands on a multiple of that step " +
+                "and two arms differing by less than one step read as identical. That puts a floor " +
+                "on the difference this column can resolve, and a row of exactly equal start-up " +
+                "times across three arms is that floor rather than three players agreeing to the " +
+                "millisecond. The harness lets the engine finish everything due at one moment " +
+                "before either clock moves, so a first frame is stamped with the step in which it " +
+                "was rendered and never with the next one. Within a step the engine acts before the " +
+                "loads, though, so each finished load reaches the engine one step later than a " +
+                "free-running player would hear it. Start-up therefore carries up to a step of " +
+                "delay per load it waits on. The delay is the same run after run, but an arm that " +
+                "waits on more loads before its first frame carries more of it, so a start-up " +
+                "difference of a step or two between arms is within what the harness itself adds.",
         )
         appendLine()
         appendLine(

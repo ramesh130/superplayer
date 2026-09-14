@@ -127,8 +127,7 @@ public class AdaptiveBufferPolicy(public val profile: PlaybackProfile) : Playbac
 
         conditions.playbackSpeed?.takeIf { it > 1f }?.let { targets = targets.scaledBy(it) }
 
-        val cooldown = inCooldown(conditions.stallHistory)
-        if (cooldown) {
+        if (conditions.stallHistory.inRebufferCooldown()) {
             targets = targets.withAfterRebufferFloorRaisedFor(conditions.stallHistory.rebufferCount)
         }
 
@@ -168,11 +167,6 @@ public class AdaptiveBufferPolicy(public val profile: PlaybackProfile) : Playbac
         val spread = checkNotNull(measured.spreadBps)
         if (measured.meanBps <= 0) return MAX_VARIANCE_FACTOR
         return min(1.0 + spread.toDouble() / measured.meanBps, MAX_VARIANCE_FACTOR)
-    }
-
-    private fun inCooldown(history: StallHistory): Boolean {
-        val since = history.msSinceLastRebufferEnded ?: return false
-        return since < REBUFFER_COOLDOWN_MS
     }
 
     /**
@@ -388,4 +382,16 @@ public class AdaptiveBufferPolicy(public val profile: PlaybackProfile) : Playbac
         private const val BITS_PER_BYTE: Long = 8L
         private const val MILLIS_PER_SECOND: Long = 1_000L
     }
+}
+
+/**
+ * Whether a rebuffer ended less than [AdaptiveBufferPolicy.REBUFFER_COOLDOWN_MS] ago.
+ *
+ * The one test of the cooldown, read by branch 4's raised floor here and by
+ * [AdaptiveSelectionPolicy]'s held ceiling: one function rather than two, so the floor and the
+ * hold cannot lapse at different moments.
+ */
+internal fun StallHistory.inRebufferCooldown(): Boolean {
+    val since = msSinceLastRebufferEnded ?: return false
+    return since < AdaptiveBufferPolicy.REBUFFER_COOLDOWN_MS
 }

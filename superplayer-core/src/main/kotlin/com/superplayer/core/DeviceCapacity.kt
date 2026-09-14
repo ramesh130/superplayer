@@ -48,8 +48,8 @@ import android.view.Display
  *
  * - **Decoders.** A device has a fixed number of hardware decoder instances, and the eleventh
  *   `MediaCodec` on a device that offers ten does not fail slowly — it throws, or it silently falls
- *   back to a software decoder that drops frames. [decoderInstanceCapacity] asks the platform's own
- *   codec list rather than guessing.
+ *   back to a software decoder that drops frames. [DecoderTable.instanceCapacity] asks the platform's
+ *   own codec list rather than guessing.
  * - **Memory.** A player that has a decoder also has Media3's load-control allocation, which is
  *   Java heap and which the decoder count knows nothing about. [memoryCapacity] budgets that against
  *   the heap this app is actually allowed.
@@ -65,14 +65,32 @@ import android.view.Display
  * player being recycled hard.
  */
 internal fun concurrentPlayerCapacityOf(context: Context): Int =
-    minOf(decoderInstanceCapacity(), memoryCapacity(context)).coerceAtLeast(MINIMUM_CAPACITY)
+    minOf(readDecoderTable().instanceCapacity, memoryCapacity(context)).coerceAtLeast(MINIMUM_CAPACITY)
 
 /**
- * The number of concurrent decoder instances the platform reports for the video codecs a feed
- * actually uses.
+ * What one walk of the platform's decoder list reports: the pool's decoder bound and the selector's
+ * profile levels, together.
  *
- * `MediaCodecInfo.CodecCapabilities.getMaxSupportedInstances` is the platform's own answer to
- * "how many of these can I have at once", populated from the device's codec configuration.
+ * One walk producing both rather than one walk per reading, so that this file being the one place
+ * the device is asked holds in the strong sense: `MediaCodecList` is constructed in exactly one
+ * function, and the pool and the selector cannot read the table two different ways. Each caller
+ * still walks it once per build — a pool's, or a selector's — for the reason the file's KDoc gives
+ * against a cache.
+ */
+private class DecoderTable(
+    /** [concurrentPlayerCapacityOf]'s decoder term, with the reductions [readDecoderTable] argues. */
+    val instanceCapacity: Int,
+    /** [DeviceConstraints.decodableProfileLevels], pooled by MIME type as [readDecoderTable] argues. */
+    val profileLevels: Map<String, List<DeviceConstraints.ProfileLevel>>,
+)
+
+/**
+ * The decoder list, walked once for both of [DecoderTable]'s values.
+ *
+ * **Instance capacity** is the number of concurrent decoder instances the platform reports for the
+ * video codecs a feed actually uses. `MediaCodecInfo.CodecCapabilities.getMaxSupportedInstances` is
+ * the platform's own answer to "how many of these can I have at once", populated from the device's
+ * codec configuration.
  *
  * Two reductions, and the direction of each matters. Across the *decoders for one MIME type* the
  * answer is the **largest**, because a device that ships a hardware decoder reporting 16 and a
@@ -80,27 +98,34 @@ internal fun concurrentPlayerCapacityOf(context: Context): Int =
  * *MIME types* the answer is the **smallest**, because a pool does not know what a feed will contain
  * and a bound that only holds for H.264 is not a bound.
  *
- * Only H.264 and HEVC are consulted. They are what feed content is encoded in; folding in every
- * video MIME type a device declares would let some rarely-implemented format nobody is going to
- * play — reported by a stub decoder with a limit of one — set the bound for everything.
+ * Only H.264 and HEVC are consulted for it. They are what feed content is encoded in; folding in
+ * every video MIME type a device declares would let some rarely-implemented format nobody is going
+ * to play — reported by a stub decoder with a limit of one — set the bound for everything.
  *
  * A device that reports no usable video decoder at all falls to [MINIMUM_CAPACITY]. That is not a
  * theoretical case: it is what an emulator image with no codec table looks like, and the honest
  * reading of "I cannot tell you" is one, not many.
  *
+ * **Profile levels** are every declared video decoder's, pooled by MIME type rather than kept per
+ * decoder: what a selector asks is whether *some* decoder on the device takes the rung, and the
+ * platform picks which.
+ *
  * ref: https://developer.android.com/reference/android/media/MediaCodecInfo.CodecCapabilities#getMaxSupportedInstances()
+ * ref: https://developer.android.com/reference/android/media/MediaCodecInfo.CodecProfileLevel
  */
-private fun decoderInstanceCapacity(): Int {
+private fun readDecoderTable(): DecoderTable {
     val codecs = try {
         MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
     } catch (e: RuntimeException) {
         // A malformed `media_codecs.xml` makes the platform throw from here, and it is the OEM's
         // file rather than anything an app can fix. A pool that crashed on such a device would be
-        // strictly worse than one that ran a single player on it.
-        return MINIMUM_CAPACITY
+        // strictly worse than one that ran a single player on it, and the selector reads the same
+        // failure as "unknown" rather than "none".
+        return DecoderTable(instanceCapacity = MINIMUM_CAPACITY, profileLevels = emptyMap())
     }
 
     val bestPerMimeType = mutableMapOf<String, Int>()
+    val pooled = mutableMapOf<String, MutableList<DeviceConstraints.ProfileLevel>>()
     for (codec in codecs) {
         if (codec.isEncoder) continue
         for (mimeType in codec.supportedTypes) {
@@ -110,20 +135,32 @@ private fun decoderInstanceCapacity(): Int {
             // the software fallback would get two entries, and the `minOrNull` below would then take
             // the fallback's limit of one as the bound for the whole feed.
             val format = mimeType.lowercase()
-            if (format !in FEED_VIDEO_MIME_TYPES) continue
-            val instances = try {
-                codec.getCapabilitiesForType(mimeType).maxSupportedInstances
+            if (!format.startsWith(VIDEO_MIME_PREFIX)) continue
+            val capabilities = try {
+                codec.getCapabilitiesForType(mimeType)
             } catch (e: IllegalArgumentException) {
                 // Declared in `supportedTypes` but not answerable — a device inconsistency, and one
                 // this codec simply does not get a vote on.
                 continue
             }
-            if (instances <= 0) continue
-            bestPerMimeType[format] = maxOf(bestPerMimeType[format] ?: 0, instances)
+
+            if (format in FEED_VIDEO_MIME_TYPES) {
+                val instances = capabilities.maxSupportedInstances
+                if (instances > 0) bestPerMimeType[format] = maxOf(bestPerMimeType[format] ?: 0, instances)
+            }
+
+            val levels = capabilities.profileLevels ?: continue
+            val declared = pooled.getOrPut(format) { mutableListOf() }
+            // A profile of zero is no profile: it is what an entry constructed and never filled
+            // reports, and it names nothing a rung could ask for.
+            levels.filter { it.profile > 0 }.mapTo(declared) { DeviceConstraints.ProfileLevel(it.profile, it.level) }
         }
     }
 
-    return bestPerMimeType.values.minOrNull() ?: MINIMUM_CAPACITY
+    return DecoderTable(
+        instanceCapacity = bestPerMimeType.values.minOrNull() ?: MINIMUM_CAPACITY,
+        profileLevels = pooled,
+    )
 }
 
 /**
@@ -295,7 +332,7 @@ internal class DeviceConstraints(
 /**
  * The device's constraints, read from the platform now: the default display's modes and HDR
  * capabilities through `DisplayManager`, and the video decoders' profile levels through the same
- * `MediaCodecList` [concurrentPlayerCapacityOf] reads.
+ * walk of the decoder list [concurrentPlayerCapacityOf] reads, [readDecoderTable].
  *
  * Read on demand rather than cached, for the reason the file's KDoc gives about the pool: a test
  * states a different device per test.
@@ -317,7 +354,7 @@ internal fun deviceConstraintsOf(context: Context): DeviceConstraints {
     return DeviceConstraints(
         displayShortEdgePx = shortEdgePx,
         displayHdrTypes = hdrTypes,
-        decodableProfileLevels = decodableProfileLevels(),
+        decodableProfileLevels = readDecoderTable().profileLevels,
     )
 }
 
@@ -328,40 +365,6 @@ private fun readHdrTypes(display: Display): Set<Int>? {
         return null
     } ?: return null
     return capabilities.supportedHdrTypes.toSet()
-}
-
-/**
- * The profile levels every declared video decoder reports, by MIME type.
- *
- * Every decoder's entries for a MIME type are pooled rather than kept per decoder: what a selector
- * asks is whether *some* decoder on the device takes the rung, and the platform picks which. The
- * same `media_codecs.xml` failure mode as [decoderInstanceCapacity] is caught the same way, and
- * answers "unknown" rather than "none".
- */
-private fun decodableProfileLevels(): Map<String, List<DeviceConstraints.ProfileLevel>> {
-    val codecs = try {
-        MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
-    } catch (e: RuntimeException) {
-        return emptyMap()
-    }
-    val pooled = mutableMapOf<String, MutableList<DeviceConstraints.ProfileLevel>>()
-    for (codec in codecs) {
-        if (codec.isEncoder) continue
-        for (mimeType in codec.supportedTypes) {
-            val format = mimeType.lowercase()
-            if (!format.startsWith(VIDEO_MIME_PREFIX)) continue
-            val levels = try {
-                codec.getCapabilitiesForType(mimeType).profileLevels
-            } catch (e: IllegalArgumentException) {
-                continue
-            } ?: continue
-            val declared = pooled.getOrPut(format) { mutableListOf() }
-            // A profile of zero is no profile: it is what an entry constructed and never filled
-            // reports, and it names nothing a rung could ask for.
-            levels.filter { it.profile > 0 }.mapTo(declared) { DeviceConstraints.ProfileLevel(it.profile, it.level) }
-        }
-    }
-    return pooled
 }
 
 private const val VIDEO_MIME_PREFIX = "video/"

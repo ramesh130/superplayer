@@ -16,7 +16,6 @@
 
 package com.superplayer.abr
 
-import android.app.ActivityManager
 import android.content.Context
 import android.os.SystemClock
 import androidx.media3.common.Player
@@ -34,6 +33,7 @@ import com.superplayer.core.PlaybackProfile
 import com.superplayer.core.SuperPlayer
 import com.superplayer.core.TelemetryCollector
 import com.superplayer.core.TrackSelectionPolicy
+import com.superplayer.testkit.DeviceStatement
 import com.superplayer.testkit.NetworkProfile
 import com.superplayer.testkit.NetworkTransport
 import com.superplayer.testkit.PlaybackHarness
@@ -44,7 +44,6 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.Shadows.shadowOf
 
 /**
  * The adaptive policy under a real player, on the harness's clock, over a replayed network: the
@@ -66,7 +65,7 @@ class AdaptivePolicyPlaybackTest {
 
     @Before
     fun aCapableDeviceAndACleanMemory() {
-        declareAppHeap(LARGE_HEAP_MB)
+        DeviceStatement.declareAppHeap(LARGE_HEAP_MB)
         EstimateMemory.PROCESS.forget()
     }
 
@@ -283,7 +282,7 @@ class AdaptivePolicyPlaybackTest {
     // Branch 5, from construction: the heap core read is the heap the policy capped on.
     @Test
     fun aSmallHeapCapsTheCeilingFromTheFirstDecision() {
-        declareAppHeap(SMALL_HEAP_MB)
+        DeviceStatement.declareAppHeap(SMALL_HEAP_MB)
         val player = harness.buildPlayer(
             profile = PlaybackProfile.VIDEO_ON_DEMAND,
             policy = AdaptivePolicy.forProfile(context, PlaybackProfile.VIDEO_ON_DEMAND),
@@ -311,11 +310,6 @@ class AdaptivePolicyPlaybackTest {
     private fun periodPositionMs(player: Player): Long {
         val window = player.currentTimeline.getWindow(player.currentMediaItemIndex, Timeline.Window())
         return window.positionInFirstPeriodMs + player.currentPosition
-    }
-
-    private fun declareAppHeap(megabytes: Int) {
-        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        shadowOf(activityManager).setMemoryClass(megabytes)
     }
 
     /**

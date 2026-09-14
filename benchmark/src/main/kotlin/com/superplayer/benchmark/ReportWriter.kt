@@ -36,13 +36,20 @@ import kotlin.math.roundToLong
  * a benchmark table with no losses in it is a marketing document and will be read as one.
  *
  * Whether a difference *is* a win or a loss is not decided here either. [Comparison.verdict] decides
- * it, by one rule, in advance, for every metric of every cell. This file renders what it is given.
+ * it, by one rule, in advance, for every metric of every cell, and [ExitCriterion] decides what those
+ * verdicts add up to for the phase. This file renders what it is given.
+ *
+ * The one thing it adds is the order: the exit criterion first, because issue #103 makes met or not
+ * met the report's opening paragraph — and a verdict that has to be found after the tables is one
+ * a reader can miss.
  */
 internal object ReportWriter {
 
     /** The report as Markdown. See the class KDoc for what this function deliberately cannot do. */
     fun write(report: MatrixReport): String = buildString {
-        header(report)
+        title()
+        exitCriterion(report)
+        conditions(report)
         howToReadThis(report)
         // Losses first. See the class KDoc — this ordering is the rule, not a layout preference.
         lossesAndNeutrals(report)
@@ -54,16 +61,78 @@ internal object ReportWriter {
         rawTraces(report)
     }
 
-    private fun StringBuilder.header(report: MatrixReport) {
-        val conditions = report.conditions
-        appendLine("# SuperPlayer benchmark — Phase 1 baseline")
+    private fun StringBuilder.title() {
+        appendLine("# SuperPlayer benchmark — Phase 3 report")
         appendLine()
         appendLine(
-            "The fixed matrix of [`PRD.md`](../PRD.md) §6, run by `benchmark/`. Every number here is " +
-                "produced by this harness against content this repository generates or public streams " +
-                "it names (§0.2); none is carried in from anywhere else.",
+            "The fixed matrix of [`PRD.md`](../PRD.md) §6, run by `benchmark/`, with `superplayer-abr`'s " +
+                "adaptive policy as the arm under test and the Phase 1 baseline's three players re-run " +
+                "beside it. Every number here is produced by this harness against content this " +
+                "repository generates or public streams it names (§0.2); none is carried in from " +
+                "anywhere else, and none is copied from [the Phase 1 baseline](../baseline/baseline-report.md).",
         )
         appendLine()
+    }
+
+    private fun StringBuilder.exitCriterion(report: MatrixReport) {
+        val judgement = ExitCriterion.judge(report)
+        appendLine("## Exit criterion")
+        appendLine()
+        appendLine(
+            "Phase 3's exit criterion is *measured improvement over the Phase 1 baseline on the " +
+                "shaped-network suite, with no regression on stable WiFi*. It is judged against " +
+                "**${ExitCriterion.REFERENCE.label}** — the static profile the Phase 1 baseline measured, " +
+                "re-run here — by the two-standard-error rule below, and the rule was fixed before this " +
+                "run (`ExitCriterion.kt`): on a shaped profile, a QoE score better in at least one " +
+                "scenario and worse in none; on stable WiFi, no metric of any scenario worse.",
+        )
+        appendLine()
+        UnmeasuredCells.entries.forEach { skip ->
+            // Here as well as under "Cells this matrix does not cover", because a verdict judged
+            // without a scenario has to say so where the verdict is read, not four sections later.
+            appendLine(
+                "> **Not judged: ${skip.scenario.label} × ${skip.arm.label}.** ${skip.gap.why} " +
+                    "_Closed by:_ ${skip.gap.closedBy}",
+            )
+            appendLine()
+        }
+        if (judgement.met) {
+            appendLine("**Met.** Every shaped profile improved on the static profile, and stable WiFi regressed nowhere.")
+        } else {
+            val failing = judgement.networks.filterNot { it.met }.joinToString { it.network.label }
+            appendLine(
+                "**Not met.** The criterion fails on: $failing. The cells that decided it are listed " +
+                    "below, and each is a finding for the next phase rather than a reason to retune " +
+                    "before committing this report.",
+            )
+        }
+        appendLine()
+        appendLine("| Network | Judged on | Verdict | QoE better in | Worse in |")
+        appendLine("| --- | --- | --- | --- | --- |")
+        judgement.networks.forEach { network ->
+            val judgedOn = if (network.network == NetworkProfileName.STABLE_WIFI) "every metric" else "QoE score"
+            val verdict = when {
+                !network.measured -> "**not met** — not measured"
+                network.met -> "met"
+                else -> "**not met**"
+            }
+            val better = network.improvements.joinToString { (cell, _) -> cell.scenario.label }.ifEmpty { EM_DASH }
+            val worse = (network.regressions + network.missing)
+                .joinToString { (cell, comparison) -> "${cell.scenario.label}: ${comparison.metric} (${comparison.verdict.label})" }
+                .ifEmpty { EM_DASH }
+            appendLine("| ${network.network.label} | $judgedOn | $verdict | $better | $worse |")
+        }
+        appendLine()
+        val deciding = judgement.networks.flatMap { it.regressions + it.missing }
+        if (deciding.isNotEmpty()) {
+            appendLine("The comparisons that failed it, ${ExitCriterion.CANDIDATE.label} against ${ExitCriterion.REFERENCE.label}:")
+            appendLine()
+            comparisonTable(deciding)
+        }
+    }
+
+    private fun StringBuilder.conditions(report: MatrixReport) {
+        val conditions = report.conditions
         appendLine("## What this was measured on")
         appendLine()
         appendLine("| | |")
@@ -84,7 +153,7 @@ internal object ReportWriter {
             appendLine(
                 "> **The working tree had uncommitted changes when this ran.** These numbers describe " +
                     "a state of the repository that is not the commit above and that nobody else can " +
-                    "reproduce. A baseline Phase 3 will be graded against must be re-run on a clean tree.",
+                    "reproduce. A report a phase is graded against must be re-run on a clean tree.",
             )
             appendLine()
         }
@@ -102,7 +171,7 @@ internal object ReportWriter {
     private fun StringBuilder.howToReadThis(report: MatrixReport) {
         appendLine("## How to read this")
         appendLine()
-        appendLine("**The three arms** (`PRD.md` §6, and `Arm.kt`):")
+        appendLine("**The four arms** (`PRD.md` §6, and `Arm.kt`):")
         appendLine()
         Arm.entries.forEach { arm ->
             val what = when (arm) {
@@ -118,18 +187,35 @@ internal object ReportWriter {
 
                 Arm.SUPERPLAYER ->
                     "`SuperPlayer.Builder(context).setProfile(…)`, with the profile each scenario " +
-                        "names. What it was actually configured with is in the raw traces, on every " +
-                        "`session_started` line."
+                        "names and its static policy: the player the Phase 1 baseline measured. What it " +
+                        "was configured with is in the raw traces, on every `session_started` line."
+
+                Arm.ADAPTIVE ->
+                    "the same, plus `setPolicy(AdaptivePolicy.forProfile(context, profile))` from " +
+                        "`superplayer-abr`'s published artifact — the arm this report grades. Every " +
+                        "comparison below is this arm against one of the other three."
             }
             appendLine("- **${arm.label}** — $what")
         }
         appendLine()
         appendLine(
+            "**Every adaptive session starts from a cold estimate.** `superplayer-abr` remembers a " +
+                "throughput estimate per transport for the life of the process (ADR-0009 rule 8), and " +
+                "the whole matrix is one process, so without care a cell's adaptive number would depend " +
+                "on which cells ran before it. The runner cannot clear that memory — it is internal, " +
+                "and this build is a consumer — so before each adaptive session it lets the harness " +
+                "clock run past the age at which a remembered estimate is forgotten (ADR-0009 rule 9), " +
+                "on an idle player. Each adaptive session is therefore a first session on its network, " +
+                "which is also how `superplayer-abr`'s QoE regression gate plays one. A returning " +
+                "viewer's warm estimate is not measured here.",
+        )
+        appendLine()
+        appendLine(
             "**The metric definitions are [`docs/telemetry-schema.md`](../docs/telemetry-schema.md)**, " +
                 "not this document and not the source. Every metric below is computed by one function, " +
-                "`SessionMetrics`, from one event vocabulary, for all three arms — which is what makes " +
-                "the columns comparable at all. Arm (c)'s events come from the shipped `QoeCollector`; " +
-                "arms (a) and (b) have no SuperPlayer in them, so their events come from " +
+                "`SessionMetrics`, from one event vocabulary, for all four arms — which is what makes " +
+                "the columns comparable at all. Arms (c) and (d)'s events come from the shipped " +
+                "`QoeCollector`; arms (a) and (b) have no SuperPlayer in them, so their events come from " +
                 "`StockTelemetry`, which mirrors that collector callback for callback and is held to it " +
                 "by `StockTelemetryAgreementTest`.",
         )
@@ -177,7 +263,7 @@ internal object ReportWriter {
                 "for the player to become ready, so a measurement lands on a multiple of that step " +
                 "and two arms differing by less than one step read as identical. That puts a floor " +
                 "on the difference this column can resolve, and a row of exactly equal start-up " +
-                "times across three arms is that floor rather than three players agreeing to the " +
+                "times across the arms is that floor rather than players agreeing to the " +
                 "millisecond. The harness lets the engine finish everything due at one moment " +
                 "before either clock moves, so a first frame is stamped with the step in which it " +
                 "was rendered and never with the next one. Within a step the engine acts before the " +
@@ -192,7 +278,7 @@ internal object ReportWriter {
             "**Bitrate is sampled at ten seconds**, which is the cadence `PlaybackStateSampled` carries " +
                 "and therefore the resolution of any time-weighted average taken from it. A rendition " +
                 "held for less than one interval can fall between samples. This is identical for all " +
-                "three arms, so it moves no comparison, but it does mean the bitrate column is coarser " +
+                "arms, so it moves no comparison, but it does mean the bitrate column is coarser " +
                 "than the switch column.",
         )
         appendLine()
@@ -207,17 +293,22 @@ internal object ReportWriter {
         appendLine()
     }
 
+    /** Every arm the candidate is compared against, in `Arm.kt`'s order: stock first, the static profile last. */
+    private val references: List<Arm> get() = Arm.entries.filter { it != ExitCriterion.CANDIDATE }
+
     private fun StringBuilder.lossesAndNeutrals(report: MatrixReport) {
-        appendLine("## Where SuperPlayer is worse, or no better")
+        appendLine("## Where the adaptive policy is worse, or no better")
         appendLine()
         appendLine(
             "This section comes before the wins deliberately. `PRD.md` §6: *publish the cases where " +
                 "SuperPlayer is neutral or worse — a benchmark table with no losses in it is a " +
-                "marketing document and will be read as one.*",
+                "marketing document and will be read as one.* A loss against " +
+                "${Arm.STOCK_NAIVE_TUNING.label} is stated as plainly as any other: it is a cell where " +
+                "configuring by intuition did as well, and a finding for the next phase.",
         )
         appendLine()
 
-        Arm.entries.filter { it.isStock }.forEach { baselineArm ->
+        references.forEach { baselineArm ->
             val comparisons = report.comparisonsAgainst(baselineArm)
             val losses = comparisons.flatMap { cell -> cell.losses.map { cell to it } }
             val neutrals = comparisons.flatMap { cell -> cell.neutrals.map { cell to it } }
@@ -281,9 +372,9 @@ internal object ReportWriter {
         comparisons.flatMap { it.wins }
 
     private fun StringBuilder.wins(report: MatrixReport) {
-        appendLine("## Where SuperPlayer is better")
+        appendLine("## Where the adaptive policy is better")
         appendLine()
-        Arm.entries.filter { it.isStock }.forEach { baselineArm ->
+        references.forEach { baselineArm ->
             val comparisons = report.comparisonsAgainst(baselineArm)
             val wins = comparisons.flatMap { cell -> cell.wins.map { cell to it } }
             appendLine("### Against ${baselineArm.label}")
@@ -304,7 +395,8 @@ internal object ReportWriter {
      * losses in the same voice as wins": there is no second, gentler table for the bad news.
      */
     private fun StringBuilder.comparisonTable(rows: List<Pair<CellComparison, Comparison>>) {
-        appendLine("| Scenario | Network | Metric | ${rows.first().first.baselineArm.label} | SuperPlayer | Change |")
+        val first = rows.first().first
+        appendLine("| Scenario | Network | Metric | ${first.baselineArm.label} | ${first.candidateArm.label} | Change |")
         appendLine("| --- | --- | --- | --- | --- | --- |")
         rows.forEach { (cell, comparison) ->
             appendLine(
@@ -323,52 +415,39 @@ internal object ReportWriter {
         appendLine(
             "`PRD.md` F1's trade is *lower bitrate on a constrained link, in exchange for fewer stalls*, " +
                 "and §6 requires it to appear **as a bitrate loss beside the rebuffer win** rather than " +
-                "as a rebuffer win on its own. The row it is visible in today is " +
-                "**${Scenario.VOD_DATA_SAVER.label}**, because `DATA_SAVER` is the one shipped profile " +
-                "that caps quality — 800 kbit/s and 480p — and therefore the one that gives bitrate up " +
-                "on purpose.",
-        )
-        appendLine()
-        appendLine(
-            "**What this is not.** F1 as `PRD.md` states it is *adaptive*: a bandwidth estimate lowering " +
-                "the rendition when the link cannot hold it. That is `superplayer-abr` and Phase 3, and " +
-                "it does not exist yet. What is measured below is a profile making the same trade " +
-                "statically, once, at construction — a real instance of the trade and a real loss to " +
-                "report, but not the harder thing. Reading this row as evidence that adaptive policy " +
-                "works would be reading it wrong.",
+                "as a rebuffer win on its own. In the Phase 1 baseline the only instance was " +
+                "`DATA_SAVER`'s static cap. The adaptive policy makes the trade on purpose — " +
+                "`TransportCaps` narrows the eligible ladder on cellular, and the estimate discounts " +
+                "a rung by its spread — so it is shown here on every cellular cell, " +
+                "${ExitCriterion.CANDIDATE.label} against ${ExitCriterion.REFERENCE.label}, with the " +
+                "bitrate row and the stall rows side by side and each verdict by the same rule as " +
+                "everywhere else. A bitrate cut with no stall win beside it is a trade that bought " +
+                "nothing, and reads that way below.",
         )
         appendLine()
 
-        val cellular = listOf(NetworkProfileName.THREE_G, NetworkProfileName.LTE_WITH_DROPOUTS)
-        val rows = cellular.flatMap { network ->
-            Arm.entries.mapNotNull { arm ->
-                report.cell(Scenario.VOD_DATA_SAVER, network, arm)?.let { network to it }
-            }
-        }
+        val cellular = listOf(
+            NetworkProfileName.THREE_G,
+            NetworkProfileName.LTE_WITH_DROPOUTS,
+            NetworkProfileName.WIFI_TO_CELLULAR_HANDOVER,
+        )
+        val traded = setOf("average bitrate (bit/s)", "rebuffer ratio", "rebuffer count", ExitCriterion.QOE_METRIC)
+        val rows = report.comparisonsAgainst(ExitCriterion.REFERENCE)
+            .filter { it.network in cellular }
+            .sortedBy { cellular.indexOf(it.network) }
+            .flatMap { cell -> cell.comparisons.filter { it.metric in traded }.map { cell to it } }
         if (rows.isEmpty()) {
             // Said rather than left as an empty table. This section is here to satisfy a rule about
-            // not hiding a loss, so a run that did not measure the row the rule is about has to say
+            // not hiding a loss, so a run that did not measure the cells the rule is about has to say
             // so — an empty table under that heading reads as "there was no trade".
             appendLine(
-                "_This run measured no `${Scenario.VOD_DATA_SAVER.label}` cell on a cellular profile, " +
-                    "so the trade is not shown. A filtered run (`--cells`) is the usual reason; a full " +
-                    "matrix always measures it._",
+                "_This run measured no cellular cell for both arms, so the trade is not shown. A " +
+                    "filtered run (`--cells`) is the usual reason; a full matrix always measures it._",
             )
             appendLine()
             return
         }
-        appendLine("| Network | Arm | Average bitrate (bit/s) | Rebuffer ratio | Rebuffer count | QoE score |")
-        appendLine("| --- | --- | --- | --- | --- | --- |")
-        rows.forEach { (network, cell) ->
-            appendLine(
-                "| ${network.label} | ${cell.key.arm.label} " +
-                    "| ${bitrate(cell.averageBitrateBps)} " +
-                    "| ${ratio(cell.rebufferRatio)} " +
-                    "| ${plain(cell.rebufferCount)} " +
-                    "| ${plain(cell.qoeScore)} |",
-            )
-        }
-        appendLine()
+        comparisonTable(rows)
     }
 
     private fun StringBuilder.fullTables(report: MatrixReport) {
@@ -383,7 +462,7 @@ internal object ReportWriter {
             appendLine("### ${scenario.label}")
             appendLine()
             appendLine(
-                "Profile for arm (c): `${scenario.profile}`. Ladder: " +
+                "Profile for arms (c) and (d): `${scenario.profile}`. Ladder: " +
                     "${scenario.ladderBitratesBps.joinToString(", ") { "${it / 1000} kbit/s" }}. " +
                     "Session length: ${scenario.playbackMs / 1000} s.",
             )
@@ -441,16 +520,16 @@ internal object ReportWriter {
         )
         appendLine()
         appendLine(
-            "**These columns are unpopulated in this baseline.** A device run has not been taken " +
+            "**These columns are unpopulated in this report.** A device run has not been taken " +
                 "against this commit, and a table of dashes is the honest way to say so — the " +
                 "alternative being to leave the metrics out of the document and let a reader assume " +
                 "the matrix covered them.",
         )
         appendLine()
-        appendLine("| Metric | Arm (a) | Arm (b) | Arm (c) |")
-        appendLine("| --- | --- | --- | --- |")
-        appendLine("| Peak RSS (MiB) | — | — | — |")
-        appendLine("| Battery delta over 30 min (%) | — | — | — |")
+        appendLine("| Metric | Arm (a) | Arm (b) | Arm (c) | Arm (d) |")
+        appendLine("| --- | --- | --- | --- | --- |")
+        appendLine("| Peak RSS (MiB) | — | — | — | — |")
+        appendLine("| Battery delta over 30 min (%) | — | — | — | — |")
         appendLine()
     }
 
@@ -464,7 +543,9 @@ internal object ReportWriter {
                 "reproducible, and a stream fetched over the internet is the one thing that cannot be — " +
                 "the same reasoning `docs/testing.md` gives for barring the network from the test suite. " +
                 "The ladders follow Apple's HLS Authoring Specification in shape; the exact rungs are " +
-                "chosen against `PRD.md` §6's network profiles, and `Scenario.kt` argues them.",
+                "chosen against `PRD.md` §6's network profiles, and `Scenario.kt` argues them. The " +
+                "scenarios, the streams and the network profiles are unchanged from the Phase 1 " +
+                "baseline, so the two reports describe one matrix.",
         )
         appendLine()
         appendLine("**The device arm plays public streams**, each listed with the page that publishes it:")
@@ -482,7 +563,7 @@ internal object ReportWriter {
                 "a cell that passed.",
         )
         appendLine()
-        PublicStreams.gaps.forEach { gap ->
+        (PublicStreams.gaps + UnmeasuredCells.entries.map { it.gap }).forEach { gap ->
             appendLine("**${gap.cell}**")
             appendLine()
             appendLine(gap.why)
@@ -504,12 +585,13 @@ internal object ReportWriter {
         appendLine(
             "One JSONL file per cell in `traces/`, one line per telemetry event, field names as " +
                 "`LogcatSink` writes them. Each line carries its scenario, network, arm and run index, " +
-                "so files concatenate without losing what they were.",
+                "so files concatenate without losing what they were. Arms (a) to (c) keep the Phase 1 " +
+                "baseline's file names, so `diff` against `../baseline/traces/` compares a cell with itself.",
         )
         appendLine()
         appendLine("```text")
-        appendLine("grep '\"evt\":\"rebuffer_ended\"' traces/*.jsonl     # every stall in the matrix")
-        appendLine("grep '\"run\":3' traces/vod__3g__superplayer.jsonl   # one session, end to end")
+        appendLine("grep '\"evt\":\"rebuffer_ended\"' traces/*.jsonl                  # every stall in the matrix")
+        appendLine("grep '\"run\":3' traces/vod__3g__superplayer-adaptive.jsonl       # one session, end to end")
         appendLine("```")
         appendLine()
         appendLine("${report.cells.size} cell(s), ${report.cells.sumOf { it.runs }} aggregated session(s).")
@@ -558,7 +640,7 @@ internal object ReportWriter {
     /**
      * The change column: the signed difference, its relative size, and the verdict.
      *
-     * The sign is always the raw arithmetic one — SuperPlayer minus baseline — rather than "an
+     * The sign is always the raw arithmetic one — candidate minus reference — rather than "an
      * improvement of". A column that flipped its sign according to whether lower was better would
      * make every row read as a positive number, which is precisely the presentation `PRD.md` §6 is
      * written against. The verdict word is what says which direction is good.

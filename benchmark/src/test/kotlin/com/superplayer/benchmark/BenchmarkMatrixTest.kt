@@ -19,6 +19,7 @@ package com.superplayer.benchmark
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.superplayer.abr.AdaptivePolicy
 import com.superplayer.core.MediaRequest
 import com.superplayer.core.PlaybackDecision
 import com.superplayer.core.TelemetryEvent
@@ -90,6 +91,7 @@ class BenchmarkMatrixTest {
                 Arm.entries.forEach { arm ->
                     val key = CellKey(scenario, network, arm)
                     if (onlyCells != null && onlyCells.none { key.toString().contains(it) }) return@forEach
+                    if (UnmeasuredCells.skips(key)) return@forEach
                     cells += runCell(key, runsPerCell, traceDirectory)
                 }
             }
@@ -132,17 +134,28 @@ class BenchmarkMatrixTest {
         }
     }
 
-    /** Arm (c): the shipped facade, the shipped collector, and the shipped profile for the scenario. */
+    /**
+     * Arms (c) and (d): the shipped facade, the shipped collector, and the shipped profile for the
+     * scenario — and for arm (d), `superplayer-abr`'s adaptive policy for that profile, built through
+     * the public entry an adopter calls.
+     */
     private fun playSuperPlayerSession(
         key: CellKey,
         content: TestContent,
         trace: com.superplayer.testkit.ThroughputTrace,
     ): Produced {
+        val adaptive = key.arm == Arm.ADAPTIVE
+        if (adaptive) startFromAColdEstimate(content)
         val player = harness.buildPlayer(
             content = content,
             profile = key.scenario.profile,
             telemetry = QoeCollector { events += it },
             network = trace,
+            policy = if (adaptive) {
+                AdaptivePolicy.forProfile(org.robolectric.RuntimeEnvironment.getApplication(), key.scenario.profile)
+            } else {
+                null
+            },
         )
         // Declared for every arm, so time to first frame is measured from `USER_INTENT` throughout.
         // The schema is explicit that `CONTENT_ADOPTED` reads lower and that the two must not be
@@ -157,6 +170,23 @@ class BenchmarkMatrixTest {
         // note that a matrix builds well over a thousand of them inside this one test method.
         harness.release(player)
         return awaitSession()
+    }
+
+    /**
+     * Lets `superplayer-abr`'s remembered throughput estimate go stale before an adaptive session.
+     *
+     * The estimate is remembered per transport for the life of the process (ADR-0009 rule 8) and the
+     * whole matrix is one process, so without this a cell's adaptive numbers would depend on which
+     * cells ran before it. `superplayer-abr`'s own gate clears the memory directly; this build cannot,
+     * because the memory is internal and this build is a consumer. What a consumer *can* observe is
+     * rule 9: an estimate older than fifteen minutes is forgotten. So the clock runs past that on an
+     * idle player nobody plays, before the session's own player — and its shaped transport, whose
+     * trace starts when the player is built — exists.
+     */
+    private fun startFromAColdEstimate(content: TestContent) {
+        val idle = harness.buildStockPlayer(content = content)
+        harness.advanceTimeMs(idle, ESTIMATE_FORGOTTEN_AFTER_MS)
+        harness.release(idle)
     }
 
     /** Arms (a) and (b): a bare `ExoPlayer` under the same transport, measured by `StockTelemetry`. */
@@ -279,7 +309,8 @@ class BenchmarkMatrixTest {
      * one yet.
      */
     private fun assertTheRunWasSound(report: MatrixReport, runsPerCell: Int) {
-        val expectedCells = Scenario.entries.size * NetworkProfileName.entries.size * Arm.entries.size
+        val expectedCells = Scenario.entries.size * NetworkProfileName.entries.size * Arm.entries.size -
+            UnmeasuredCells.entries.size * NetworkProfileName.entries.size
         if (System.getProperty(CELLS_PROPERTY) == null) {
             assertTrue(
                 "The matrix ran ${report.cells.size} cells, not $expectedCells",
@@ -338,6 +369,13 @@ class BenchmarkMatrixTest {
          * `SessionMetrics.playingMs` states that precondition rather than defending against it.
          */
         const val CONTENT_MS = 300_000L
+
+        /**
+         * How long an estimate goes unrefreshed before the next adaptive session: past the fifteen
+         * minutes after which ADR-0009 rule 9 forgets it, with a minute's margin so the boundary's
+         * inclusive or exclusive edge cannot matter.
+         */
+        const val ESTIMATE_FORGOTTEN_AFTER_MS = 16 * 60_000L
 
         /** Playback time allowed for the first frame or a failure, before the wait is a bug. */
         const val READY_BOUND_MS = 60_000L

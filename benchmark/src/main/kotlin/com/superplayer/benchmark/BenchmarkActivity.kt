@@ -26,6 +26,7 @@ import android.view.SurfaceView
 import android.view.ViewGroup
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import com.superplayer.abr.AdaptivePolicy
 import com.superplayer.core.MediaRequest
 import com.superplayer.core.PlaybackDecision
 import com.superplayer.core.SuperPlayer
@@ -145,6 +146,9 @@ internal class BenchmarkActivity : Activity() {
             val built = SuperPlayer.Builder(this)
                 .setProfile(DEVICE_SCENARIO.profile)
                 .setTelemetry(QoeCollector { events += it })
+                .apply {
+                    if (arm == Arm.ADAPTIVE) setPolicy(AdaptivePolicy.forProfile(this@BenchmarkActivity, DEVICE_SCENARIO.profile))
+                }
                 .build()
             built.declarePlaybackIntent()
             built.setVideoSurfaceView(surface)

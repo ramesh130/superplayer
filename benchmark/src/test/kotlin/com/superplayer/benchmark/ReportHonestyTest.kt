@@ -33,7 +33,7 @@ import org.junit.Test
  * will be read as one* — so the rules are held here rather than remembered.
  *
  * What is asserted is that a **losing** report says so, loudly and in the same words a winning one
- * would use. The fixture is therefore built to lose: SuperPlayer worse on one metric, better on
+ * would use. The fixture is therefore built to lose: the adaptive arm worse on one metric, better on
  * another, and inside the noise on a third, so that each verdict has something to be about.
  */
 class ReportHonestyTest {
@@ -42,8 +42,8 @@ class ReportHonestyTest {
     fun aLossIsStatedBeforeAnyWin() {
         val markdown = ReportWriter.write(report())
 
-        val losses = markdown.indexOf("## Where SuperPlayer is worse, or no better")
-        val wins = markdown.indexOf("## Where SuperPlayer is better")
+        val losses = markdown.indexOf(LOSSES_HEADING)
+        val wins = markdown.indexOf(WINS_HEADING)
         assertTrue("The report has no losses section", losses >= 0)
         assertTrue("The report has no wins section", wins >= 0)
         // Ordering, because a summary that begins with wins is one a reader stops reading before the
@@ -55,8 +55,7 @@ class ReportHonestyTest {
     fun aLossAppearsInTheReportWithItsSizeAndTheWordWorse() {
         val markdown = ReportWriter.write(report())
 
-        val lossesSection = markdown.substringAfter("## Where SuperPlayer is worse, or no better")
-            .substringBefore("## Where SuperPlayer is better")
+        val lossesSection = markdown.substringAfter(LOSSES_HEADING).substringBefore(WINS_HEADING)
         // The metric that regressed, named, in the losses section, with the verdict spelled out. A
         // report that quietly omitted it would still contain the number in the full tables further
         // down, which is exactly the kind of technically-complete presentation the rule is against.
@@ -65,6 +64,92 @@ class ReportHonestyTest {
             lossesSection.contains("time to first frame"),
         )
         assertTrue("The losses section does not say 'worse'", lossesSection.contains("**worse**"))
+    }
+
+    @Test
+    fun theAdaptiveArmIsComparedAgainstTheStaticProfileAndNotOnlyAgainstStock() {
+        val lossesSection = ReportWriter.write(report()).substringAfter(LOSSES_HEADING).substringBefore(WINS_HEADING)
+
+        // Issue #103: beating stock is not the claim `superplayer-abr` makes. Beating the static
+        // SuperPlayer profile is, so that comparison has a section of its own like the other two.
+        Arm.entries.filter { it != Arm.ADAPTIVE }.forEach { reference ->
+            assertTrue("No comparison against ${reference.label}", lossesSection.contains("### Against ${reference.label}"))
+        }
+    }
+
+    @Test
+    fun theExitCriterionIsTheReportsOpeningSection() {
+        val markdown = ReportWriter.write(report())
+
+        val verdict = markdown.indexOf("## Exit criterion")
+        assertTrue("The report states no exit criterion", verdict >= 0)
+        // Issue #103: met or not met is the report's opening paragraph, not a conclusion a reader
+        // reaches after the tables — so it sits above the conditions, the reading notes and the losses.
+        assertTrue(verdict < markdown.indexOf("## What this was measured on"))
+        assertTrue(verdict < markdown.indexOf(LOSSES_HEADING))
+    }
+
+    @Test
+    fun aRegressionOnStableWifiFailsTheExitCriterionWhateverElseImproved() {
+        // The fixture's adaptive arm starts slower than the static profile: a loss outside the noise.
+        val report = report(network = NetworkProfileName.STABLE_WIFI)
+
+        val judgement = ExitCriterion.judge(report)
+        val stable = judgement.network(NetworkProfileName.STABLE_WIFI)
+
+        assertFalse("A time-to-first-frame regression on stable WiFi was judged met", stable.met)
+        assertTrue(stable.regressions.any { (_, comparison) -> comparison.metric == "time to first frame (ms)" })
+        assertFalse("One network not met, and the phase was judged met", judgement.met)
+        assertTrue(ReportWriter.write(report).contains("**Not met.**"))
+    }
+
+    @Test
+    fun aQoeWinOnAShapedProfileWithNoQoeLossMeetsThatProfilesCriterion() {
+        // Same start-up, fewer stalls: the adaptive arm's QoE score is better than the static
+        // profile's by more than the noise, which is what "improvement" means in the criterion.
+        val report = report(network = NetworkProfileName.THREE_G, candidateStartsSlower = false)
+
+        val threeG = ExitCriterion.judge(report).network(NetworkProfileName.THREE_G)
+
+        assertTrue("A QoE win on 3G with no QoE loss was judged not met: $threeG", threeG.met)
+        assertTrue(threeG.regressions.isEmpty())
+    }
+
+    @Test
+    fun aNetworkTheRunDidNotMeasureIsNotMet() {
+        // Absence of evidence is not a pass. A filtered run that skipped a profile must not report
+        // the phase as having met its criterion on it.
+        val judgement = ExitCriterion.judge(report(network = NetworkProfileName.THREE_G))
+
+        val unmeasured = judgement.network(NetworkProfileName.HIGH_LATENCY)
+        assertFalse(unmeasured.measured)
+        assertFalse(unmeasured.met)
+        assertFalse(judgement.met)
+    }
+
+    @Test
+    fun theF1TradeIsPrintedAsABitrateLossOnACellularCell() {
+        // The adaptive arm plays 3G at a lower bitrate than the static profile, and stalls less.
+        val markdown = ReportWriter.write(report(network = NetworkProfileName.THREE_G, candidateBitrateCut = true))
+
+        val trade = markdown.substringAfter("## The F1 trade, as a loss").substringBefore("\n## ")
+        val bitrateRow = trade.lines().firstOrNull { it.contains("average bitrate") && it.contains("3G") }
+        assertTrue("The F1 section has no 3G bitrate row:\n$trade", bitrateRow != null)
+        assertTrue("The bitrate cut is not called a loss: $bitrateRow", bitrateRow!!.contains("**worse**"))
+    }
+
+    @Test
+    fun aCellTheRunnerSkipsIsNamedWhereTheVerdictIsReadWithTheIssueThatClosesIt() {
+        val markdown = ReportWriter.write(report())
+        val verdict = markdown.substringAfter("## Exit criterion").substringBefore("## What this was measured on")
+
+        // A verdict judged without a scenario that says so only in an appendix reads as a verdict on
+        // every scenario. So each skipped cell is named in the section the verdict is in.
+        UnmeasuredCells.entries.forEach { skip ->
+            assertTrue("The exit criterion does not name the skipped ${skip.scenario.label} cells", verdict.contains("Not judged: ${skip.scenario.label}"))
+            assertTrue(verdict.contains("#144"))
+            assertTrue(markdown.substringAfter("Cells this matrix does not cover").contains(skip.gap.cell))
+        }
     }
 
     @Test
@@ -216,6 +301,7 @@ class ReportHonestyTest {
         // the matrix covered them.
         assertTrue(markdown.contains("Peak RSS"))
         assertTrue(markdown.contains("Battery delta over 30 min"))
+        assertTrue(markdown.contains("#95"))
         assertFalse(
             "A Robolectric run reported a peak RSS, which it cannot measure",
             markdown.contains("| Peak RSS (MiB) | 0"),
@@ -225,19 +311,21 @@ class ReportHonestyTest {
     // --- A report built to lose ---------------------------------------------------------------------
 
     /**
-     * A one-cell matrix in which SuperPlayer is worse on start-up, better on stalls, and inside the
-     * noise on bitrate.
+     * A one-cell matrix in which the adaptive arm is worse on start-up, better on stalls, and inside
+     * the noise on bitrate, against both stock arms and the static profile alike.
      *
-     * Built to lose on purpose. A fixture where SuperPlayer won everything would let every assertion
-     * above pass against a report generator that could not express a loss at all.
+     * Built to lose on purpose. A fixture where the adaptive arm won everything would let every
+     * assertion above pass against a report generator that could not express a loss at all.
      */
     private fun report(
         runsPerCell: Int = 20,
         treeDirty: Boolean = false,
         excluded: Int = 0,
+        network: NetworkProfileName = NetworkProfileName.THREE_G,
+        candidateStartsSlower: Boolean = true,
+        candidateBitrateCut: Boolean = false,
     ): MatrixReport {
         val scenario = Scenario.VOD
-        val network = NetworkProfileName.THREE_G
         return MatrixReport(
             conditions = RunConditions(
                 startedAt = "2026-09-12T00:00:00Z",
@@ -253,34 +341,54 @@ class ReportHonestyTest {
             cells = Arm.entries.map { arm ->
                 CellResult(
                     key = CellKey(scenario, network, arm),
-                    sessions = (0 until runsPerCell).map { run -> session(arm, run) },
-                    excludedSessions = if (arm == Arm.SUPERPLAYER) excluded else 0,
+                    sessions = (0 until runsPerCell).map { run ->
+                        session(arm, run, candidateStartsSlower, candidateBitrateCut)
+                    },
+                    excludedSessions = if (arm == Arm.ADAPTIVE) excluded else 0,
                 )
             },
         )
     }
 
-    /** One session of [arm], shaped so the arms differ in the three ways the fixture needs. */
-    private fun session(arm: Arm, run: Int): SessionMetrics = SessionMetrics(
-        sessionId = "$arm-$run",
-        // SuperPlayer starts markedly slower here: the loss.
-        timeToFirstFrameMs = if (arm == Arm.SUPERPLAYER) 800L else 300L,
-        startBoundary = TtffStartBoundary.USER_INTENT,
-        // And stalls markedly less: the win.
-        rebufferMs = if (arm == Arm.SUPERPLAYER) 0L else 4_000L,
-        rebufferCount = if (arm == Arm.SUPERPLAYER) 0 else 2,
-        playingMs = 60_000L,
-        // And is a hair apart on bitrate, with enough spread that the hair is noise: the neutral.
-        averageBitrateBps = 365_000.0 + if (arm == Arm.SUPERPLAYER) run.toDouble() else run + 1.0,
-        switchCount = 1,
-        upshiftCount = 1,
-        downshiftCount = 0,
-        switchMagnitudeBpsSum = 365_000,
-        startupFailed = false,
-        midStreamFailed = false,
-        exitBeforeVideoStart = false,
-        droppedEventCount = 0,
-        decisionChangeCount = 0,
-        ended = true,
-    )
+    /** One session of [arm], shaped so the adaptive arm differs from the rest in the ways a test needs. */
+    private fun session(
+        arm: Arm,
+        run: Int,
+        candidateStartsSlower: Boolean = true,
+        candidateBitrateCut: Boolean = false,
+    ): SessionMetrics {
+        val candidate = arm == Arm.ADAPTIVE
+        return SessionMetrics(
+            sessionId = "$arm-$run",
+            // The adaptive arm starts markedly slower here: the loss.
+            timeToFirstFrameMs = if (candidate && candidateStartsSlower) 800L else 300L,
+            startBoundary = TtffStartBoundary.USER_INTENT,
+            // And stalls markedly less: the win.
+            rebufferMs = if (candidate) 0L else 4_000L,
+            rebufferCount = if (candidate) 0 else 2,
+            playingMs = 60_000L,
+            // And is a hair apart on bitrate, with enough spread that the hair is noise: the neutral —
+            // unless the test asks for F1's trade, where it plays a rung lower on purpose.
+            averageBitrateBps = when {
+                candidate && candidateBitrateCut -> 365_000.0 + run
+                candidate -> 730_000.0 + run
+                else -> 730_000.0 + run + 1.0
+            },
+            switchCount = 1,
+            upshiftCount = 1,
+            downshiftCount = 0,
+            switchMagnitudeBpsSum = 365_000,
+            startupFailed = false,
+            midStreamFailed = false,
+            exitBeforeVideoStart = false,
+            droppedEventCount = 0,
+            decisionChangeCount = 0,
+            ended = true,
+        )
+    }
+
+    private companion object {
+        const val LOSSES_HEADING = "## Where the adaptive policy is worse, or no better"
+        const val WINS_HEADING = "## Where the adaptive policy is better"
+    }
 }

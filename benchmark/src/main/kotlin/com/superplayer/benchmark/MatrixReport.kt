@@ -34,31 +34,38 @@ internal data class MatrixReport(
         cells.firstOrNull { it.key.scenario == scenario && it.key.network == network && it.key.arm == arm }
 
     /**
-     * Every metric of every cell, SuperPlayer against one stock arm.
+     * Every metric of every cell, [candidate] against one reference arm.
      *
      * The list is produced whole and consumed whole. There is deliberately no parameter here for
      * which comparisons to include and no ordering by how favourable they are: `PRD.md` §6 requires
      * the neutral and worse cells to be published, and the way a report generator stops publishing
-     * them is by growing an option that makes it easy not to.
+     * them is by growing an option that makes it easy not to. Which *arms* are compared is not such
+     * an option: every report compares the adaptive arm against every other one.
      */
-    fun comparisonsAgainst(baseline: Arm): List<CellComparison> = buildList {
+    fun comparisonsAgainst(baseline: Arm, candidate: Arm = Arm.ADAPTIVE): List<CellComparison> = buildList {
         Scenario.entries.forEach { scenario ->
             NetworkProfileName.entries.forEach { network ->
-                val stock = cell(scenario, network, baseline) ?: return@forEach
-                val superPlayer = cell(scenario, network, Arm.SUPERPLAYER) ?: return@forEach
-                add(CellComparison(scenario, network, baseline, stock, superPlayer))
+                val reference = cell(scenario, network, baseline) ?: return@forEach
+                val graded = cell(scenario, network, candidate) ?: return@forEach
+                add(CellComparison(scenario, network, baseline, reference, graded, candidate))
             }
         }
     }
 }
 
-/** One cell's worth of SuperPlayer-against-a-baseline comparisons, one per reported metric. */
+/**
+ * One cell's worth of candidate-against-a-reference comparisons, one per reported metric.
+ *
+ * [superPlayer] is the candidate — the adaptive arm in every report this build writes — and keeps
+ * its name from when the candidate was the only SuperPlayer in the matrix.
+ */
 internal data class CellComparison(
     val scenario: Scenario,
     val network: NetworkProfileName,
     val baselineArm: Arm,
     val baseline: CellResult,
     val superPlayer: CellResult,
+    val candidateArm: Arm = Arm.ADAPTIVE,
 ) {
 
     /**

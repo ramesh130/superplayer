@@ -16,6 +16,7 @@
 
 package com.superplayer.benchmark
 
+import android.annotation.SuppressLint
 import java.io.File
 import java.time.Instant
 import java.util.concurrent.TimeUnit
@@ -47,6 +48,12 @@ internal data class RunConditions(
     val host: String,
 ) {
 
+    // `NewApi` is suppressed because this never runs on a device. It reads the conditions of a
+    // Robolectric matrix run on the host JVM (Java 17, where `Instant` and `Process.waitFor` with a
+    // timeout have always existed), and `BenchmarkActivity` — the only code here that does run on a
+    // device — never calls it. Raising the benchmark app's minSdk to satisfy lint would change the
+    // device arm for the sake of a function the device arm does not use.
+    @SuppressLint("NewApi")
     companion object {
 
         /**

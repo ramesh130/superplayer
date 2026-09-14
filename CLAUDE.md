@@ -297,11 +297,14 @@ enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `s
 `superplayer-abr` and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
 requirements, and the phase table are what the issues are cut from.
 
-`benchmark/` is the fourth build and Phase 2's exit criterion: `PRD.md` §6's fixed matrix — six
-network profiles × four scenarios × three players × twenty runs — emitting a report with the raw
-traces beside it. The three players are `Arm.kt`: stock `ExoPlayer` with defaults, stock plus the
-buffer config an app writes from intuition, and a SuperPlayer profile. What makes the comparison a
-comparison is that all three are built by one `PlaybackHarness` over one shaped transport, and that
+`benchmark/` is the fourth build and the phases' exit criteria: `PRD.md` §6's fixed matrix — six
+network profiles × four scenarios × four players × twenty runs — emitting a report with the raw
+traces beside it. The four players are `Arm.kt`: stock `ExoPlayer` with defaults, stock plus the
+buffer config an app writes from intuition, a SuperPlayer profile, and the same profile under
+`superplayer-abr`'s `AdaptivePolicy`, the arm a report grades against each of the other three. Every
+adaptive session starts from a cold estimate: the runner idles the clock past ADR-0009 rule 9's stale
+age first, because the estimate memory is per process and internal. What makes the comparison a
+comparison is that all four are built by one `PlaybackHarness` over one shaped transport, and that
 every metric is reduced by one `SessionMetrics` (now `superplayer-telemetry`'s) from core's own `TelemetryEvent` vocabulary — so the
 definitions are shared by construction rather than by care. Arms (a) and (b) have no SuperPlayer to
 attach `QoeCollector` to, so `StockTelemetry` mirrors it callback for callback, and
@@ -311,7 +314,11 @@ honesty rules are enforced where the numbers are made rather than where the tabl
 `Distribution` has no mean without a spread, `ReportWriter` prints losses before wins and has no
 filter, and a difference inside two standard errors is neutral rather than a small win.
 `benchmark/README.md` is the manual, including why it sits outside `docs/testing.md`'s rules rather
-than against them, and `benchmark/baseline/` is the committed report Phase 3 is graded against. Peak
+than against them. `benchmark/baseline/` is the frozen Phase 1 report Phase 3 was graded against, and
+`benchmark/phase3/` is the Phase 3 report (issue #103) — the current reference, the one
+`bench --baseline` writes, and what the next phase is graded against. Its opening section is
+`ExitCriterion`'s verdict: adaptive against the static profile, a QoE win and no QoE loss on each
+shaped profile, and nothing worse on stable WiFi, by the two-standard-error rule. Peak
 RSS and battery need a device: `BenchmarkActivity` is that arm's app and the harness around it is
 not built, which the README and the report both say rather than leaving a reader to assume.
 

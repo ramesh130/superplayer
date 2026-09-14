@@ -20,15 +20,19 @@ import com.superplayer.core.BufferPolicy
 import com.superplayer.core.TrackSelectionPolicy
 
 /**
- * The three players `PRD.md` §6 compares, and the only place this project says what each one is.
+ * The players `PRD.md` §6 compares, and the only place this project says what each one is.
  *
  * ```text
  * (a) STOCK_DEFAULTS       ExoPlayer.Builder(context).build(), and nothing else
  * (b) STOCK_NAIVE_TUNING   the same, plus the buffer configuration an app writes from intuition
  * (c) SUPERPLAYER          SuperPlayer.Builder(context).setProfile(…).build()
+ * (d) ADAPTIVE             the same, plus .setPolicy(AdaptivePolicy.forProfile(context, …))
  * ```
  *
- * All three, or the report has no claim in it — which is `PRD.md` §6's wording and is a statement
+ * Arm (d) is Phase 3's, added for the report issue #103 grades the phase with; arm (c) stays, as the
+ * static profile the adaptive policy has to beat.
+ *
+ * At least three, or the report has no claim in it — which is `PRD.md` §6's wording and is a statement
  * about what a two-arm comparison would be worth rather than about completeness. Against [STOCK_DEFAULTS]
  * alone, any configuration at all looks like an improvement; [STOCK_NAIVE_TUNING] is what makes the
  * question the one an adopter is actually choosing between, which is whether configuring *by use
@@ -121,10 +125,22 @@ internal enum class Arm(
      * stock on content the profile was not written for measures nothing anybody would ship.
      */
     SUPERPLAYER(label = "SuperPlayer", stockBufferPolicy = null),
+
+    /**
+     * (d) A SuperPlayer built with the same profile *and* `superplayer-abr`'s adaptive policy for it.
+     *
+     * Built the way an adopter builds it — `setPolicy(AdaptivePolicy.forProfile(context, profile))`,
+     * the public entry ADR-0009 chose, from published coordinates — so a report describes the
+     * artifact an adopter gets. Beside [SUPERPLAYER] rather than instead of it, because issue #103's
+     * claim is that the adaptive policy beats the *static* profile, and beating stock alone would
+     * not show that. Its label keeps [SUPERPLAYER]'s trace file names unchanged from the Phase 1
+     * baseline, so the two directories compare file by file.
+     */
+    ADAPTIVE(label = "SuperPlayer (adaptive)", stockBufferPolicy = null),
     ;
 
     /** Whether this arm is one of the two stock ones, which is what decides how a player is built. */
-    val isStock: Boolean get() = this != SUPERPLAYER
+    val isStock: Boolean get() = this == STOCK_DEFAULTS || this == STOCK_NAIVE_TUNING
 
     companion object {
 

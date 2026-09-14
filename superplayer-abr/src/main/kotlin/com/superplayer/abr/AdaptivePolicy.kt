@@ -80,9 +80,15 @@ internal class AdaptiveEnginePolicy(
 
     private var configured = false
 
-    /** Each pure policy owns one half; the live half travels with the buffer's. */
-    override fun decide(conditions: PlaybackConditions): PlaybackDecision =
-        buffer.decide(conditions).copy(trackSelection = selection.decide(conditions).trackSelection)
+    /**
+     * Each pure policy owns one half; the live half travels with the buffer's. The selection half
+     * is decided first because the buffer's memory ceiling is sized at the rate the selector can
+     * fill it, which is the ceiling in force and not the profile's own (#115).
+     */
+    override fun decide(conditions: PlaybackConditions): PlaybackDecision {
+        val trackSelection = selection.decide(conditions).trackSelection
+        return buffer.decide(conditions, selectionInForce = trackSelection).copy(trackSelection = trackSelection)
+    }
 
     override fun configureEngine(configuration: EngineConfiguration) {
         check(!configured) { "An adaptive policy serves one player; build another with AdaptivePolicy.forProfile" }

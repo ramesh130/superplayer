@@ -74,6 +74,13 @@ Four rules follow, and they are binding:
    The pace is now a `SelectionPace` on `TrackSelectionPolicy`, decided beside the buffer, null
    meaning the engine's own. Media3's live-edge fraction and discard dimensions stay outside it:
    they have one right answer for all content. This extends the rule rather than contradicting it.
+
+   *Addendum (2026-09-14, ADR-0010 rule 10).* Prefetch **depth** — how many items ahead of a
+   viewport to hold warm, how far into each, and whether a decoder is held — is policy under this
+   rule for the same reason: it has a different right answer per profile and per transport. It is a
+   third half of `PlaybackDecision`, a `PreloadPolicy`, decided beside the other two and ignored on
+   a player with no coordinator. The memory guard and the data-saver rule it is bounded by are
+   ADR-0006 rule 1's kind, not this rule's.
 3. **The consumer names a profile, not a number.** `SuperPlayer.Builder.setProfile` takes a
    `PlaybackProfile`; the constants behind it, and the rationale for each of them, live in the
    policy's per-profile table, which is internal and free to be retuned. Every constant that departs

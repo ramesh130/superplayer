@@ -241,8 +241,9 @@ prints both with what would close them:
 
 ## Running it, and what costs time
 
-The full matrix is 4 scenarios × 6 networks × 4 arms × 20 runs = 1 920 sessions, and takes roughly
-an hour on a laptop. Time inside a session is a `FakeClock`, so the cost is CPU
+The full matrix is 4 scenarios × 6 networks × 4 arms × 20 runs = 1 920 sessions, less the 120 live
+sessions of arm (d) that `UnmeasuredCells` skips, and the Phase 3 run took under a minute and a half
+of Gradle time on a 10-core laptop, plus publishing. Time inside a session is a `FakeClock`, so the cost is CPU
 rather than wall clock, and it is dominated by the harness advancing that clock in load-sized steps.
 
 - **Republish after any library change.** `bench` does it for you. Doing it by hand and forgetting is

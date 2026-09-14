@@ -182,6 +182,18 @@ public class TestContent private constructor(
          *
          * [bitratesBps] is taken in the order given and is expected to ascend, because that is what a
          * manifest declares and what makes `UP` and `DOWN` mean what they say.
+         *
+         * Each two-second chunk is **one sample**: Media3's fake chunk source loads every chunk as a
+         * `SingleSampleMediaChunk`. The player enters `READY` on buffered *duration*, but the
+         * renderer consumes that one sample at once and is ready again only when the next chunk's
+         * sample is in — so a player that starts on a single chunk goes back to buffering as soon
+         * as its position moves, with most of the chunk still reported as buffered, until the next
+         * chunk lands. Any start floor of at most one chunk does that on a link that has not
+         * delivered the second chunk by the time playback starts: `SHORT_FORM`'s does, with no
+         * switch, ceiling or policy involved (#117). That is this content's granularity, not the
+         * profile's behaviour; a real stream's samples are frames tens of milliseconds apart.
+         *
+         * ref: `androidx.media3.test.utils.FakeChunkSource.createMediaChunk` (Media3 1.11)
          */
         @JvmStatic
         public fun videoLadder(

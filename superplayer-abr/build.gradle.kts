@@ -34,3 +34,11 @@ dependencies {
 // ADR-0009 rule 7 makes the argument, and `KotlinFriendModules.kt` says why a friend path is a
 // compiler flag rather than the Gradle dependency `docs/modules.md` forbids.
 declareKotlinFriendModule(":superplayer-core")
+
+// The QoE regression gate's committed floors (`QoeRegressionGateTest`, `docs/testing.md`). Declared
+// as an input so a floor moved by hand re-runs the gate instead of reading as up to date. `files`
+// rather than `file`, so a checkout without the file fails in the gate, with the rows to commit,
+// rather than in Gradle's configuration with a message about a missing input.
+tasks.withType<Test>().configureEach {
+    inputs.files("src/test/qoe-floors.tsv").withPropertyName("qoeFloors").withPathSensitivity(PathSensitivity.RELATIVE)
+}

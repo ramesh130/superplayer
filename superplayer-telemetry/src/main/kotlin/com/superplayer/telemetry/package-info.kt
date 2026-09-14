@@ -22,7 +22,8 @@
  * that derives them — `QoeCollector` — and every Media3 analytics type it reads. ADR-0008 draws
  * that line and `docs/modules.md` enforces the direction of it.
  *
- * `QoeCollector` today emits the session boundary only. The CTA-2066 QoE metrics and the CMCD
- * emitter this module is named for arrive in issues #35 to #38.
+ * `SessionMetrics` and `QoeScore` reduce a session's events to the numbers `PRD.md` §6 reports and to
+ * the QoE objective. They name no Media3 type, and they are here so that `benchmark/` and
+ * `superplayer-abr`'s QoE regression gate share one implementation of each.
  */
 package com.superplayer.telemetry

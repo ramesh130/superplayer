@@ -16,6 +16,8 @@
 
 package com.superplayer.benchmark
 
+import com.superplayer.telemetry.QoeScore
+import com.superplayer.telemetry.SessionMetrics
 import kotlin.math.sqrt
 
 /** Which cell of the matrix a result belongs to: one scenario, one network, one arm. */

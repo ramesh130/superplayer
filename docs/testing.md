@@ -616,6 +616,81 @@ Adding a golden is a test method in a class whose name contains `GoldenTrace` �
 commit is the review of the behaviour. The seam for `superplayer-diagnostics` is the same artifact
 one layer richer, which is why `SessionTrace` says how a kind is added without a second format.
 
+### The QoE regression gate
+
+A golden says a session *changed*; it cannot say whether the change was worse. `PRD.md` Part 5 asks
+for that too — replay throughput traces through the selection and buffering logic, score each session
+with the QoE objective, and gate on the score — and `superplayer-abr`'s `QoeRegressionGateTest` is
+that gate. It fails `./gradlew check` when a trace's score drops past its committed floor.
+
+**Where it runs, and why there.** In `superplayer-abr`'s own unit tests, under the harness, because
+that is where the thing it protects is built and because `check` is this repository's definition of
+passing. The full `PRD.md` §6 matrix in `benchmark/` was the other candidate and is the wrong one: it
+is a separate build that `check` cannot reach, twenty runs of ninety cells is a measurement rather
+than a check, and it compares three players where a gate asks one question of one. CI runs the gate
+because it runs `check`, and nothing else.
+
+**What a session is.** The benchmark's arm (c) with the adaptive policy in it — its VOD ladder, its
+sixty-second session, `AdaptivePolicy.forProfile(VIDEO_ON_DEMAND)`, `QoeCollector` as the source of
+events — played for every `NetworkProfile`, all six. Stable WiFi and high latency are in it beside the
+four the phase is meant to improve, so a change that wins on cellular by losing on WiFi meets a WiFi
+floor. The score is not computed twice: `SessionMetrics` and `QoeScore` moved from `benchmark/` into
+`superplayer-telemetry` for this, so the gate and the benchmark reduce events through the same file.
+
+**Which traces.** Synthetic only, each named by its `NetworkProfile`, and that is a decision rather
+than a gap. A recorded trace could only reach the gate converted at build time, which needs the
+network this document bars, or converted once and committed, which makes it a vendored dataset with
+a licence to record in `THIRD_PARTY.md`. The profiles are deterministic, cite their numbers, and make
+a regression attributable to a named condition; a recorded trace joins the gate when one is committed
+on those terms, as a row in the floors file like any other.
+
+**The floor and the margin.** `superplayer-abr/src/test/qoe-floors.tsv` holds one row per trace: the
+score, its three terms, and why the floor is where it is. A run fails when a trace scores more than
+**0.05** below its row, in the objective's own unit of Mbps-equivalent per second played. The gate
+plays each trace **three times and judges the median run**. Both numbers come from a measurement:
+ten runs of every trace in one JVM agreed to within 0.001 on a quiet host, and the same ten under
+contention on every core agreed on five traces while congested WiFi scored 0.923 once against 0.711
+nine times. That outlier comes from the described fake source, which *Golden traces* above already
+calls exact to within a step rather than exact, and a single run of it would have been a one-in-ten flake. A median
+of three absorbs one outlier in either direction. It costs a few seconds of `check`.
+
+That is an exception to *Determinism* below, which says a flaky test is a bug in the test, and it is
+taken knowingly rather than overlooked. The variation is not the gate's own: Media3's
+`FakeAdaptiveMediaSource` loads on a thread the harness cannot see, and nothing inside this repository
+can hold that thread to the clock. The alternatives were worse. Audio-only synthetic HLS carries no
+video bitrate to score. A single run would fail roughly one `check` in ten under load. A margin wide
+enough to swallow a 0.2 jump would pass three seconds of stall a minute. The median ends when a
+synthetic multi-rendition *video* stream lands in `superplayer-testmedia`, the same thing a ladder
+golden trace waits on. At that point the gate plays each trace once and `RUNS_PER_TRACE` goes.
+
+What the median leaves behind, stated rather than implied: if one run in ten is an outlier, two in
+three happen about 3% of the time for that trace on a fully loaded runner. That fails the gate only
+when both outliers fall *below* the floor, and the one outlier measured went above it — which passes.
+A `check` that fails with a congested-WiFi row and runs that disagree past the margin is the case to
+re-run once before reading it as a regression, and the gate prints the three scores so that is visible.
+
+The margin sits well above that spread and below what anyone would call a small regression. One more
+second of stall per minute costs 4.5 / 60 ≈ 0.075, because `μ` is the ladder's top rung. A drop of
+0.05 is also a 50 kbit/s fall in time-weighted bitrate, a seventh of the smallest step between rungs.
+A margin that passed a second of stall a minute would not be a gate.
+
+**What a failure means.** A behaviour change, not a slow runner: the harness replays each trace on
+its own clock, and the median takes care of the one path that is not exact. The failure prints every
+trace in one table, worst first, with score, bitrate utility, rebuffer penalty and switch penalty each
+shown floor → this run, so the review is of *which term moved* and not of one number. Fix the change,
+or, when the loss is the intended price of something, lower the floor in the same commit and say why
+in the row.
+
+**Moving a floor is a decision.** Nothing writes the floors file; there is no update command, on
+purpose. A trace that improves past the margin passes, and the gate prints the row that would record
+it — and leaves the floor where it was. A floor that followed improvements on its own would let an
+unrelated gain on one trace pay for a regression that lands on it later, invisibly. So a floor rises
+when a change commits the new row with the reason in its last column, and the gate refuses a row with
+no reason, a trace listed twice, or a score its own terms do not add up to. What the gate cannot
+check is that a reason is *new*: a score moved with the old reason left beside it passes the parser.
+That half is review's, and a diff to `qoe-floors.tsv` whose last column did not change is the thing
+to ask about.
+
 ## Determinism
 
 Tests must not sleep, poll a wall clock, or depend on ordering that real threads happen to produce.

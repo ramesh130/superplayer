@@ -1,0 +1,17 @@
+# The QoE regression gate's committed floors. QoeRegressionGateTest reads this file and never writes it.
+#
+# One row per NetworkProfile (superplayer-testkit), each the score that trace's session earned when its
+# floor was set, beside the three terms the score is made of. Every figure is QoeScore's, in
+# Mbps-equivalent per second played. The gate fails when a run scores more than its margin below a row.
+#
+# Moving a floor, up or down, is a decision: change the row in the commit that justifies it and put the
+# reason in the last column. The gate prints the exact row to paste when a trace improves past the
+# margin; it does not raise the floor itself. docs/testing.md, "The QoE regression gate", is the manual.
+#
+trace	score	bitrateUtility	rebufferPenalty	switchPenalty	why
+STABLE_WIFI	4.045	4.083	0.000	0.038	First floor (#102): the Phase 3 adaptive policy as committed at 4fc4885
+CONGESTED_WIFI	0.711	0.730	0.000	0.019	First floor (#102): the Phase 3 adaptive policy as committed at 4fc4885
+LTE_WITH_DROPOUTS	2.000	2.000	0.000	0.000	First floor (#102): the Phase 3 adaptive policy as committed at 4fc4885
+THREE_G	0.341	0.365	0.000	0.024	First floor (#102): the Phase 3 adaptive policy as committed at 4fc4885
+WIFI_TO_CELLULAR_HANDOVER	4.045	4.083	0.000	0.038	First floor (#102): the Phase 3 adaptive policy as committed at 4fc4885
+HIGH_LATENCY	4.046	4.083	0.000	0.038	First floor (#102): the Phase 3 adaptive policy as committed at 4fc4885

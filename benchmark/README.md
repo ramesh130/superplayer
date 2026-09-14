@@ -48,6 +48,13 @@ this repository's own rule that a check which can be a Gradle task should be one
 currently held by `ReportHonestyTest` under `(cd benchmark && ./gradlew test)`, which CI runs as a
 separate step.
 
+**The gate on the score is not here either, and does run in `check`.** `PRD.md` Part 5's QoE
+regression gate replays the six network profiles through the adaptive policy from inside
+`superplayer-abr`'s tests and fails on a score below a committed floor. `docs/testing.md`, *The QoE
+regression gate*, says why it is there and not a reduced matrix here. What it shares with this build
+is the reduction. `SessionMetrics` and `QoeScore` live in `superplayer-telemetry` so that both reach
+one implementation, and this build imports them from the published artifact like everything else.
+
 ---
 
 ## The matrix

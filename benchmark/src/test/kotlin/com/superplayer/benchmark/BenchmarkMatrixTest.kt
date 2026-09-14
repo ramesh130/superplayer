@@ -23,6 +23,7 @@ import com.superplayer.core.MediaRequest
 import com.superplayer.core.PlaybackDecision
 import com.superplayer.core.TelemetryEvent
 import com.superplayer.telemetry.QoeCollector
+import com.superplayer.telemetry.SessionMetrics
 import com.superplayer.testkit.NetworkProfile
 import com.superplayer.testkit.PlaybackHarness
 import com.superplayer.testkit.TestContent

@@ -458,14 +458,19 @@ public class PlaybackHarness : ExternalResource() {
         try {
             SystemClock.setCurrentTimeMillis(SystemClock.uptimeMillis() + millis)
             clock.advanceTime(millis)
-            // The transport first, then the engine, then the loads: a load that completes at the new
-            // time completes on the transport the trace says the device is on at that time.
-            transportReplays[player]?.replayAt(clock.elapsedRealtime())
             quiesce(player)
         } finally {
             waits.values.forEach { it.releaseLoads() }
         }
         quiesce(player)
+        // The transport last, once the loads have caught up with the new moment. A transfer open
+        // across a handover reads, on release, every byte that arrived on the old network during
+        // the step, and a meter hears a byte when it is read; a network changed before that heard
+        // those bytes as the new one's and timed them from the change — a WiFi-rate sample recorded
+        // as cellular, whenever a segment happened to be in flight (issue #125).
+        transportReplays[player]?.let { replay ->
+            if (replay.replayAt(clock.elapsedRealtime())) quiesce(player)
+        }
     }
 
     /**

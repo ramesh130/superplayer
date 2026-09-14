@@ -144,6 +144,31 @@ class AdaptivePolicyPlaybackTest {
         assertThat(periodPositionMs(player) - before).isAtLeast(HELD_WINDOW_MS - DROPOUT_ALLOWANCE_MS)
     }
 
+    // Branch 3 on the benchmark's live row: the synthetic live ladder, whose range reaches the playing
+    // item once rather than on every pass. Before issue #144 the harness's fake read back its own
+    // placeholder item, the facade replaced it again, and the engine never became ready.
+    @Test
+    fun aLiveLadderTakesTheLatencyRangeOnceAndBecomesReady() {
+        val player = harness.buildPlayer(
+            content = TestContent.liveVideoLadder(bitratesBps = BENCHMARK_LADDER_BPS, windowDurationMs = BENCHMARK_LIVE_WINDOW_MS),
+            profile = PlaybackProfile.LIVE_LINEAR,
+            network = NetworkProfile.STABLE_WIFI.trace,
+            policy = AdaptivePolicy.forProfile(context, PlaybackProfile.LIVE_LINEAR),
+        )
+        val playlistChanges = PlaylistChangeCount().also(player::addListener)
+        player.setMediaRequest(request())
+        harness.playToReady(player)
+        harness.settle(player)
+
+        assertThat(player.playerError).isNull()
+        assertThat(player.playbackState).isEqualTo(Player.STATE_READY)
+        val live = checkNotNull(player.currentMediaItem).liveConfiguration
+        assertThat(live.minPlaybackSpeed).isEqualTo(AdaptiveBufferPolicy.LIVE_LATENCY.minPlaybackSpeed)
+        assertThat(live.maxPlaybackSpeed).isEqualTo(AdaptiveBufferPolicy.LIVE_LATENCY.maxPlaybackSpeed)
+        // The request's adoption, and the range laid in once the manifest said live — not a loop.
+        assertThat(playlistChanges.count).isEqualTo(2)
+    }
+
     // Branch 4, through the facade: the rebuffer, the raised floor, the held ceiling, the release.
     @Test
     fun aRebufferRaisesTheFloorAndHoldsTheCeilingUntilATriggerAfterTheCooldown() {
@@ -327,6 +352,15 @@ class AdaptivePolicyPlaybackTest {
         .holdAtEnd()
         .build()
 
+    /** Playlist changes: the request's adoption, and each in-place replacement of the playing item. */
+    private class PlaylistChangeCount : Player.Listener {
+        var count = 0
+
+        override fun onTimelineChanged(timeline: Timeline, reason: Int) {
+            if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) count++
+        }
+    }
+
     /** The rebuffers a consumer sees: a buffering state entered after the first ready, then left. */
     private class RebufferWatch : Player.Listener {
         val endedAtMs = mutableListOf<Long>()
@@ -380,6 +414,10 @@ class AdaptivePolicyPlaybackTest {
         const val CONTENT = "series/expanse/s01e03"
         const val SOURCE = "fake://superplayer.test/never-fetched"
         const val LONG_CONTENT_MS = 240_000L
+
+        /** The benchmark's full ladder and live window (`Scenario.kt`), which is where #144 was found. */
+        val BENCHMARK_LADDER_BPS = listOf(365_000, 730_000, 2_000_000, 4_500_000)
+        const val BENCHMARK_LIVE_WINDOW_MS = 300_000L
         const val LARGE_HEAP_MB = 2_048
         const val SMALL_HEAP_MB = 64
 

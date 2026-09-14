@@ -91,7 +91,6 @@ class BenchmarkMatrixTest {
                 Arm.entries.forEach { arm ->
                     val key = CellKey(scenario, network, arm)
                     if (onlyCells != null && onlyCells.none { key.toString().contains(it) }) return@forEach
-                    if (UnmeasuredCells.skips(key)) return@forEach
                     cells += runCell(key, runsPerCell, traceDirectory)
                 }
             }
@@ -309,8 +308,7 @@ class BenchmarkMatrixTest {
      * one yet.
      */
     private fun assertTheRunWasSound(report: MatrixReport, runsPerCell: Int) {
-        val expectedCells = Scenario.entries.size * NetworkProfileName.entries.size * Arm.entries.size -
-            UnmeasuredCells.entries.size * NetworkProfileName.entries.size
+        val expectedCells = Scenario.entries.size * NetworkProfileName.entries.size * Arm.entries.size
         if (System.getProperty(CELLS_PROPERTY) == null) {
             assertTrue(
                 "The matrix ran ${report.cells.size} cells, not $expectedCells",

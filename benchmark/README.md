@@ -231,9 +231,6 @@ prints both with what would close them:
 - **Widevine (DRM)** — Phase 6. `superplayer-drm` is an empty placeholder, so arms (c) and (d) would
   be SuperPlayers with no DRM behaviour and the row would compare players that are, on this axis,
   the same player.
-- **Live on the adaptive arm** — #144. Under the harness the adaptive policy on the synthetic live
-  ladder keeps the engine busy without the clock moving, so `UnmeasuredCells` skips live × arm (d)
-  explicitly, and the report says so in its exit-criterion section as well as in its gaps.
 - **Live on the device arm** — the Robolectric arm covers live; the device half is open because a
   live URL is a claim that something is publishing right now and nothing here can verify one.
 
@@ -241,8 +238,8 @@ prints both with what would close them:
 
 ## Running it, and what costs time
 
-The full matrix is 4 scenarios × 6 networks × 4 arms × 20 runs = 1 920 sessions, less the 120 live
-sessions of arm (d) that `UnmeasuredCells` skips, and the Phase 3 run took under a minute and a half
+The full matrix is 4 scenarios × 6 networks × 4 arms × 20 runs = 1 920 sessions, and the Phase 3
+run took under a minute and a half
 of Gradle time on a 10-core laptop, plus publishing. Time inside a session is a `FakeClock`, so the cost is CPU
 rather than wall clock, and it is dominated by the harness advancing that clock in load-sized steps.
 

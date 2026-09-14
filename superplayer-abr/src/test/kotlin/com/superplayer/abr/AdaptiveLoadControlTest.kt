@@ -61,6 +61,35 @@ class AdaptiveLoadControlTest {
         assertThat(control.shouldStartPlayback(parameters(bufferedMs = 2_500))).isTrue()
     }
 
+    // Between the floor and the ceiling Media3 keeps whatever it was doing; a rebuild must too (#129).
+    @Test
+    fun aRebuiltDelegateKeepsLoadingBetweenTheFloorAndTheCeilingWhereTheOutgoingOneWas() {
+        val control = AdaptiveLoadControl()
+        control.retarget(policy(bufferForPlaybackMs = 1_000))
+        control.onPrepared(playerId)
+        control.onTracksSelected(parameters(bufferedMs = 0), TrackGroupArray.EMPTY, arrayOfNulls(0))
+        assertThat(control.shouldContinueLoading(parameters(bufferedMs = 5_000))).isTrue()
+
+        control.retarget(policy(bufferForPlaybackMs = 2_000))
+
+        assertThat(control.shouldContinueLoading(parameters(bufferedMs = 15_000))).isTrue()
+        assertThat(control.shouldContinueLoading(parameters(bufferedMs = 20_000))).isFalse()
+    }
+
+    @Test
+    fun aRebuiltDelegateStaysStoppedBetweenTheFloorAndTheCeilingWhereTheOutgoingOneHadStopped() {
+        val control = AdaptiveLoadControl()
+        control.retarget(policy(bufferForPlaybackMs = 1_000))
+        control.onPrepared(playerId)
+        control.onTracksSelected(parameters(bufferedMs = 0), TrackGroupArray.EMPTY, arrayOfNulls(0))
+        assertThat(control.shouldContinueLoading(parameters(bufferedMs = 20_000))).isFalse()
+
+        control.retarget(policy(bufferForPlaybackMs = 2_000))
+
+        assertThat(control.shouldContinueLoading(parameters(bufferedMs = 15_000))).isFalse()
+        assertThat(control.shouldContinueLoading(parameters(bufferedMs = 5_000))).isTrue()
+    }
+
     @Test
     fun theBackBufferFollowsTheDecisionToo() {
         val control = AdaptiveLoadControl()

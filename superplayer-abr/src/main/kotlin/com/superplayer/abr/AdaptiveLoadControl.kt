@@ -56,6 +56,17 @@ import com.superplayer.core.toLoadControl
  * The allocator is shared across every delegate for the reason `EngineBinding.kt` gives at
  * `toLoadControl`: the sample queues account against the one they were handed at prepare time.
  *
+ * It also has to be told whether it was loading. `DefaultLoadControl` loads with hysteresis: it
+ * starts below `minBufferMs`, stops at `maxBufferMs`, and in between keeps doing whichever it last
+ * did — and a fresh one's last was "not loading". Left at that, every decision change mid-refill
+ * would stop the refill and wait for the buffer to drain to the floor (#129), which lands worst
+ * right after a rebuffer, when the policy has just asked for a deeper cushion. So when the outgoing
+ * delegate's last answer to `shouldContinueLoading` was yes, the rebuilt one is polled once with
+ * that poll's parameters and nothing buffered: Media3's own logic then enters its loading state, or
+ * declines to on its byte target, and the engine's next real poll carries on from there. The
+ * hysteresis is Media3's, not a copy of it here (ADR-0001), and the priming poll names no duration
+ * of the policy's (ADR-0005).
+ *
  * [onEngineReleased] runs when the engine releases this control: it is the one hook Media3 offers
  * for "this player is gone", and it is how the policy's oracle is released with the player it
  * measured for rather than leaking a connectivity callback.
@@ -78,6 +89,9 @@ internal class AdaptiveLoadControl(
     private val prepared = LinkedHashSet<PlayerId>()
     private val selections = HashMap<PlayerId, Selection>()
 
+    // The last poll the delegate answered "keep loading", per player still loading.
+    private val loading = HashMap<PlayerId, LoadControl.Parameters>()
+
     /** The policy the next poll runs under. Any thread. */
     fun retarget(policy: BufferPolicy) {
         synchronized(lock) { pending = policy }
@@ -88,6 +102,7 @@ internal class AdaptiveLoadControl(
     override fun onPrepared(playerId: PlayerId) {
         current().onPrepared(playerId)
         prepared += playerId
+        loading -= playerId
     }
 
     override fun onTracksSelected(
@@ -101,12 +116,14 @@ internal class AdaptiveLoadControl(
 
     override fun onStopped(playerId: PlayerId) {
         selections -= playerId
+        loading -= playerId
         current().onStopped(playerId)
     }
 
     override fun onReleased(playerId: PlayerId) {
         selections -= playerId
         prepared -= playerId
+        loading -= playerId
         current().onReleased(playerId)
         onEngineReleased()
     }
@@ -115,7 +132,11 @@ internal class AdaptiveLoadControl(
 
     override fun retainBackBufferFromKeyframe(playerId: PlayerId): Boolean = current().retainBackBufferFromKeyframe(playerId)
 
-    override fun shouldContinueLoading(parameters: LoadControl.Parameters): Boolean = current().shouldContinueLoading(parameters)
+    override fun shouldContinueLoading(parameters: LoadControl.Parameters): Boolean {
+        val shouldLoad = current().shouldContinueLoading(parameters)
+        if (shouldLoad) loading[parameters.playerId] = parameters else loading -= parameters.playerId
+        return shouldLoad
+    }
 
     override fun shouldContinuePreloading(
         playerId: PlayerId,
@@ -134,11 +155,26 @@ internal class AdaptiveLoadControl(
             for (playerId in prepared) {
                 rebuilt.onPrepared(playerId)
                 selections[playerId]?.let { rebuilt.onTracksSelected(it.parameters, it.trackGroups, it.trackSelections) }
+                loading[playerId]?.let { rebuilt.shouldContinueLoading(it.withNothingBuffered()) }
             }
             delegate = rebuilt
         }
         return checkNotNull(delegate) { "No decision has reached this load control yet" }
     }
+
+    /** The same poll below any floor, which is what enters `DefaultLoadControl`'s loading state. */
+    private fun LoadControl.Parameters.withNothingBuffered() = LoadControl.Parameters(
+        playerId,
+        timeline,
+        mediaPeriodId,
+        playbackPositionUs,
+        /* bufferedDurationUs= */ 0,
+        playbackSpeed,
+        playWhenReady,
+        rebuffering,
+        targetLiveOffsetUs,
+        lastRebufferRealtimeMs,
+    )
 
     private class Selection(
         val parameters: LoadControl.Parameters,

@@ -966,10 +966,16 @@ public class PlaybackHarness : ExternalResource() {
         val loadsThroughADataSource: Boolean,
     )
 
-    /** A rung as a Media3 `Format`; what the rung says is `TestContent.Rung`'s subject, not this one's. */
+    /**
+     * A rung as a Media3 `Format`; what the rung says is `TestContent.Rung`'s subject, not this one's.
+     *
+     * The sample MIME type is the one the rung's `codecs` names, as a manifest parser derives it, so
+     * a `dvhe` rung is Dolby Vision rather than H.264 carrying a Dolby Vision codecs string; a rung
+     * with no `codecs` is H.264.
+     */
     private fun videoFormat(index: Int, rung: TestContent.Rung): Format = Format.Builder()
         .setId("video-$index")
-        .setSampleMimeType(MimeTypes.VIDEO_H264)
+        .setSampleMimeType(MimeTypes.getVideoMediaMimeType(rung.codecs) ?: MimeTypes.VIDEO_H264)
         .setCodecs(rung.codecs)
         .setPeakBitrate(rung.bitrateBps)
         .setAverageBitrate(rung.bitrateBps)

@@ -16,6 +16,7 @@
 
 package com.superplayer.abr
 
+import android.media.MediaCodecInfo.CodecProfileLevel
 import android.view.Display
 import androidx.media3.common.C
 import androidx.media3.common.Format
@@ -309,13 +310,52 @@ internal class NetworkAwareTrackSelection(
          * Media3's own parsing of the `codecs` string into a profile and level, against what the
          * device declared: a rung with no `codecs`, or a codec Media3 cannot parse, is asked
          * nothing, and a MIME type the device declared nothing about refuses nothing.
+         *
+         * A Dolby Vision rung is also asked of the decoder Media3's renderer falls back to, and
+         * refused only when some answer is *no* and none is *yes*: a device with no Dolby Vision
+         * decoder still plays a backward-compatible profile's base layer, and a gate that refused
+         * it would hold a ladder whose 4K rungs are all profile 8 at 1080p (#116).
          */
         private fun decoderRefuses(format: Format): Boolean {
             val mimeType = format.sampleMimeType ?: return false
             if (!MimeTypes.isVideo(mimeType)) return false
             val profileLevel = MediaCodecUtil.getCodecProfileAndLevel(format) ?: return false
-            return constraints.canDecode(mimeType, profileLevel.first, profileLevel.second) == false
+            val answers = listOfNotNull(
+                constraints.canDecode(mimeType, profileLevel.first, profileLevel.second),
+                baseLayerOf(mimeType, profileLevel.first)?.let { constraints.canDecode(it.mimeType, it.profile, it.level) },
+            )
+            return false in answers && true !in answers
         }
+
+        /**
+         * The decoder and profile a Dolby Vision rung's base layer decodes on, or null for a format
+         * with none. Media3's own fallback, mirrored rather than re-derived: profiles 4 and 8 carry an
+         * HEVC Main10 base layer, profile 9 an H.264 High one, and profile 10 an AV1 Main10 one; the
+         * level is any, as Media3 assumes, because a Dolby Vision level does not name a base layer's.
+         * Profile 5 has no backward-compatible base layer and falls back to nothing. Media3 also
+         * refuses profile 10's fallback for full-range PQ, which the colour check here leaves to
+         * the renderer: the gate only ever refuses less than the renderer does.
+         *
+         * ref: androidx.media3.exoplayer.mediacodec.MediaCodecUtil#getAlternativeCodecMimeType
+         * ref: androidx.media3.exoplayer.mediacodec.MediaCodecInfo#isCodecProfileAndLevelSupported
+         * spec: ETSI TS 103 572, Annex A (Dolby Vision profiles and their base-layer codecs)
+         */
+        private fun baseLayerOf(mimeType: String, profile: Int): BaseLayer? {
+            if (mimeType != MimeTypes.VIDEO_DOLBY_VISION) return null
+            return when (profile) {
+                CodecProfileLevel.DolbyVisionProfileDvheDtr, CodecProfileLevel.DolbyVisionProfileDvheSt ->
+                    BaseLayer(MimeTypes.VIDEO_H265, CodecProfileLevel.HEVCProfileMain10)
+
+                CodecProfileLevel.DolbyVisionProfileDvavSe -> BaseLayer(MimeTypes.VIDEO_H264, CodecProfileLevel.AVCProfileHigh)
+
+                CodecProfileLevel.DolbyVisionProfileDvav110 -> BaseLayer(MimeTypes.VIDEO_AV1, CodecProfileLevel.AV1ProfileMain10)
+
+                else -> null
+            }
+        }
+
+        /** A fallback decoder's MIME type and profile, at [level] 0: any declared level reaches it. */
+        private class BaseLayer(val mimeType: String, val profile: Int, val level: Int = 0)
 
         /** Refusal 4's discount: the offered bitrate, scaled down by `conservative / mean` on an unstable link. */
         fun trusted(effectiveBitrate: Long): Long {

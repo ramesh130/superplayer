@@ -145,6 +145,35 @@ class NetworkAwareTrackSelectionTest {
     }
 
     @Test
+    fun aDolbyVisionRungIsDecodableThroughTheBaseLayerDecoderMedia3FallsBackTo() {
+        fun gateFor(vararg declared: Pair<String, DeviceConstraints.ProfileLevel>) = NetworkAwareTrackSelection.Gate(
+            DeviceConstraints(displayShortEdgePx = null, displayHdrTypes = null, decodableProfileLevels = declared.groupBy({ it.first }, { it.second })),
+            null,
+            UNCAPPED,
+        )
+        val hevcMain10 = MimeTypes.VIDEO_H265 to DeviceConstraints.ProfileLevel(CodecProfileLevel.HEVCProfileMain10, CodecProfileLevel.HEVCMainTierLevel41)
+        val hevcMain = MimeTypes.VIDEO_H265 to DeviceConstraints.ProfileLevel(CodecProfileLevel.HEVCProfileMain, CodecProfileLevel.HEVCMainTierLevel62)
+        val avcHigh = MimeTypes.VIDEO_H264 to DeviceConstraints.ProfileLevel(CodecProfileLevel.AVCProfileHigh, CodecProfileLevel.AVCLevel31)
+        val dolbyVision = MimeTypes.VIDEO_DOLBY_VISION to DeviceConstraints.ProfileLevel(CodecProfileLevel.DolbyVisionProfileDvheSt, CodecProfileLevel.DolbyVisionLevelFhd24)
+
+        // ref: ETSI TS 103 572 §A.2 — dvhe.PP.LL / dvav.PP.LL: 05, 08, 09 are profiles; 03 = level FHD 24, 09 = level UHD 60.
+        fun rung(codecs: String) = video(8_000_000, 2_160, codecs = codecs, mimeType = MimeTypes.VIDEO_DOLBY_VISION)
+
+        // Profile 8 decodes on HEVC Main10 at any level, as Media3 maps it; not on HEVC Main.
+        assertThat(gateFor(hevcMain10).deviceRefuses(rung("dvhe.08.09"))).isFalse()
+        assertThat(gateFor(hevcMain).deviceRefuses(rung("dvhe.08.09"))).isTrue()
+        // Profile 9 decodes on H.264 High; an HEVC decoder is not its fallback and so says nothing.
+        assertThat(gateFor(avcHigh).deviceRefuses(rung("dvav.09.09"))).isFalse()
+        assertThat(gateFor(hevcMain10).deviceRefuses(rung("dvav.09.09"))).isFalse()
+        // Profile 5 has no backward-compatible base layer: HEVC is not asked, and says nothing.
+        assertThat(gateFor(hevcMain10).deviceRefuses(rung("dvhe.05.09"))).isFalse()
+        // A declared Dolby Vision decoder that stops below the level refuses only if the fallback does too.
+        assertThat(gateFor(dolbyVision, hevcMain).deviceRefuses(rung("dvhe.08.09"))).isTrue()
+        assertThat(gateFor(dolbyVision, hevcMain10).deviceRefuses(rung("dvhe.08.09"))).isFalse()
+        assertThat(gateFor(dolbyVision).deviceRefuses(rung("dvhe.08.03"))).isFalse()
+    }
+
+    @Test
     fun aLadderTheDeviceRefusesWholeFallsBackToItsBottomRung() {
         val tiny = DeviceConstraints(displayShortEdgePx = 240, displayHdrTypes = null, decodableProfileLevels = emptyMap())
         val selection = selection(ladder(), gate(constraints = tiny))

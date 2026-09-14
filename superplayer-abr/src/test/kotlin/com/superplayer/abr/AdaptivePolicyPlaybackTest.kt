@@ -162,17 +162,20 @@ class AdaptivePolicyPlaybackTest {
         harness.playToReady(player)
 
         // The rebuffer the outage causes, seen on the `Player` API rather than as a decision
-        // change: a re-consultation whose answer is the decision already in force is not a change,
-        // and a short-form start floor of one second can stall once more on its first chunks,
-        // which is a rebuffer with its own raise and hold and is not this test's. Played through
-        // the outage in the harness's load steps, which is the cadence the trace is sized against.
+        // change: a re-consultation whose answer is the decision already in force is not a change.
+        // It is not the session's first rebuffer either: on this link the short-form start floor,
+        // which is no more than one of this content's chunks, stalls moments after playback starts
+        // and recovers about 2.3 s after the player is built, when the second chunk lands —
+        // `TestContent.videoLadder` says why (#117). That startup stall is not this test's.
+        // Played through the outage in the harness's load steps, which is the cadence the trace is
+        // sized against.
         val outageEndsAtMs = builtAtMs + BEFORE_OUTAGE_MS + OUTAGE_MS
         harness.advanceTimeInStepsMs(player, outageEndsAtMs - harness.elapsedRealtimeMs())
         harness.advanceUntil(player, "the outage's rebuffer to end", RECOVERY_MARGIN_MS) {
             rebuffers.endedAtMs.any { it >= outageEndsAtMs }
         }
-        // The first rebuffer of the session, whichever it was, changed the decision on its own
-        // trigger: the floor it raises is above the profile's, so the change cannot be silent.
+        // A rebuffer of the session, whichever it was, changed the decision on its own trigger:
+        // the floor it raises is above the profile's, so the change cannot be silent.
         assertThat(telemetry.changes.map { it.trigger }).contains(DecisionTrigger.REBUFFER_ENDED)
         val held = player.playbackDecision
         assertThat(held.buffer.bufferForPlaybackAfterRebufferMs)

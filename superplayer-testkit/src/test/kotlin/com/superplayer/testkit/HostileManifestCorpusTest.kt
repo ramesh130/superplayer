@@ -20,6 +20,7 @@ import androidx.media3.common.Player
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
+import com.superplayer.core.LiveWindowTooShortException
 import com.superplayer.core.MediaRequest
 import com.superplayer.core.StaleLivePlaylistException
 import com.superplayer.testmedia.HostileManifests
@@ -322,7 +323,8 @@ class HostileManifestCorpusTest {
     }
 
     /** Whether [cause] is one of the failures SuperPlayer names, rather than the engine's own. */
-    private fun isTyped(cause: Throwable?): Boolean = cause is StaleLivePlaylistException
+    private fun isTyped(cause: Throwable?): Boolean =
+        cause is StaleLivePlaylistException || cause is LiveWindowTooShortException
 
     /**
      * Whether [positionMs] is somewhere [stream] has no media: before zero, or more than a segment
@@ -397,9 +399,11 @@ class HostileManifestCorpusTest {
             "dash-missing-codecs" to Outcome.PLAYS_TO_END,
             // Buffers for the whole budget with no error: the stall with nothing to report.
             "dash-availability-start-time-skew" to Outcome.NEVER_STARTS,
-            // Ready, but at a *negative* position — before the start of a window shorter than one
-            // segment. Issue #67.
-            "dash-short-time-shift-buffer-depth" to Outcome.DEGRADES,
+            // A window shorter than one segment holds no playhead: a segment is fetchable only once
+            // complete, so every playable position lies before the window's start. Media3 played it
+            // anyway, audibly and seconds outside the window, at a negative position — `DEGRADES`
+            // until issue #67, which ends it with a `LiveWindowTooShortException` instead.
+            "dash-short-time-shift-buffer-depth" to Outcome.FAILS_TYPED,
             // Indistinguishable from the healthy baseline while playing forwards; the unkept
             // promise only matters to a seek backwards, which nothing here makes yet.
             "dash-missing-time-shift-buffer-depth" to Outcome.STILL_PLAYING,
@@ -435,10 +439,11 @@ class HostileManifestCorpusTest {
             // A skew of one segment only adds latency, which this table cannot see; an hour means
             // nothing is available at all.
             "dash-availability-start-time-skew" to graded(Outcome.STILL_PLAYING, Outcome.STILL_PLAYING, Outcome.NEVER_STARTS),
-            // The cliff is at one segment, not below it: a window exactly as deep as the stream's
-            // presentation delay already puts the player at a negative position, so the defect issue
-            // #67 describes starts at `BORDERLINE`. Four segments play on.
-            "dash-short-time-shift-buffer-depth" to graded(Outcome.STILL_PLAYING, Outcome.DEGRADES, Outcome.DEGRADES),
+            // The cliff is at one segment, not below it: a window exactly one segment deep already
+            // leaves a playhead outside it the moment a fetch takes any time, so `BORDERLINE` fails
+            // named as `SEVERE` does — both were `DEGRADES`, at a negative position, until issue #67.
+            // Four segments play on untouched, which is the false positive that must not happen.
+            "dash-short-time-shift-buffer-depth" to graded(Outcome.STILL_PLAYING, Outcome.FAILS_TYPED, Outcome.FAILS_TYPED),
             "dash-missing-time-shift-buffer-depth" to binary(Outcome.STILL_PLAYING),
             "dash-mid-stream-ladder-change" to graded(Outcome.PLAYS_TO_END, Outcome.PLAYS_TO_END, Outcome.PLAYS_TO_END),
         )

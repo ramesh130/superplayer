@@ -77,7 +77,10 @@ import kotlin.math.min
  *    lost by holding it until something changes.
  * 5. **A memory-aware ceiling on every branch.** Media3 buffers media on the Java heap, so
  *    `maxBufferMs` is a heap commitment; a quarter of the app's heap budget, at the rate the buffer
- *    can actually fill, is the most it may commit, whatever the branch above asked for.
+ *    can actually fill, is the most it may commit, whatever the branch above asked for. That rate
+ *    is bounded by the selection ceiling in force, which only the composed [AdaptivePolicy]
+ *    knows; alone, this policy is consulted once with nothing observed (ADR-0009 rule 5), when
+ *    the ceiling in force is the profile's own and the two answers agree.
  *
  * Playback speed scales the whole target: a buffer expressed in media time drains faster than real
  * time at 2×, so every duration is multiplied by the speed when it is above real time.
@@ -93,7 +96,17 @@ public class AdaptiveBufferPolicy(public val profile: PlaybackProfile) : Playbac
     /** Branch 3's buffer: the live profile's own, whatever profile the consumer named. */
     private val latencyPriority: PlaybackPolicy = PlaybackPolicy.forProfile(PlaybackProfile.LIVE_LINEAR)
 
-    override fun decide(conditions: PlaybackConditions): PlaybackDecision {
+    override fun decide(conditions: PlaybackConditions): PlaybackDecision = decide(conditions, selectionInForce = null)
+
+    /**
+     * The decision, with branch 5's fill rate bounded by [selectionInForce] — the ceiling the
+     * selector will actually honour — rather than by the profile's static cap. `AdaptivePolicy`
+     * composes this policy with [AdaptiveSelectionPolicy] and passes that half in, because the
+     * transport's cap and the post-rebuffer hold can both sit under the profile's, and a fill rate
+     * taken from the higher cap sizes the ceiling tighter in seconds than the heap warrants. Alone,
+     * with nothing in force but the profile, it is the profile's cap.
+     */
+    internal fun decide(conditions: PlaybackConditions, selectionInForce: TrackSelectionPolicy?): PlaybackDecision {
         val base = staticProfile.decide(conditions)
         val measured = conditions.throughput?.takeIf { it.sampleCount > 0 }
         val live = conditions.streamType == StreamType.LIVE
@@ -121,7 +134,7 @@ public class AdaptiveBufferPolicy(public val profile: PlaybackProfile) : Playbac
 
         conditions.heapBudgetBytes?.let { heap ->
             targets = targets.cappedTo(
-                ceilingMs = heapCeilingMs(heap, measured, base.trackSelection),
+                ceilingMs = heapCeilingMs(heap, measured, selectionInForce ?: base.trackSelection),
                 notBelowMs = base.buffer.bufferForPlaybackAfterRebufferMs,
             )
         }
@@ -166,10 +179,12 @@ public class AdaptiveBufferPolicy(public val profile: PlaybackProfile) : Playbac
      * Branch 5's ceiling in milliseconds: the bytes a quarter of the heap holds, at the rate the
      * buffer can actually fill.
      *
-     * The rate is the smaller of what the network delivers and what the profile lets the selector
-     * choose — media cannot arrive faster than the link, and the selector cannot pick above the
-     * cap — and, before either is known, [REFERENCE_BITRATE_BPS]. A slow link therefore gets a
-     * *higher* ceiling in seconds, which is right: seconds are cheap when they are small.
+     * The rate is the smaller of what the network delivers and the ceiling the selector is held
+     * under — media cannot arrive faster than the link, and the selector cannot pick above the
+     * ceiling — and, before either is known, [REFERENCE_BITRATE_BPS]. The ceiling is the one in
+     * force where the composed policy knows it, so a transport cap or a post-rebuffer hold lowers
+     * the rate as a slow link does. A slow link therefore gets a *higher* ceiling in seconds,
+     * which is right: seconds are cheap when they are small.
      */
     private fun heapCeilingMs(
         heapBudgetBytes: Long,

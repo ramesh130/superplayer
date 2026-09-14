@@ -241,10 +241,15 @@ internal class FaultInjectingDataSource(
     override fun close() {
         cached = null
         cachedUri = null
-        transfer.closed()
-        if (upstreamOpen) {
-            upstreamOpen = false
-            upstream.close()
+        // After the upstream's close, not before: that close raises `onTransferEnd`, and a transfer
+        // released from the count first lets the clock move before its listeners return (issue #140).
+        try {
+            if (upstreamOpen) {
+                upstreamOpen = false
+                upstream.close()
+            }
+        } finally {
+            transfer.closed()
         }
     }
 

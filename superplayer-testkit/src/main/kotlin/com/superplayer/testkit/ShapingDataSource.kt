@@ -105,12 +105,18 @@ internal class ShapingDataSource(
     override fun getResponseHeaders(): Map<String, List<String>> = upstream.responseHeaders
 
     override fun close() {
-        transfer.closed()
-        // `DataSource.close` is owed even when `open` threw, which is how an injected status code
-        // leaves the upstream.
-        if (upstreamOpened) {
-            upstreamOpened = false
-            upstream.close()
+        // Released from the count only once the upstream has closed, because closing it is what
+        // raises `onTransferEnd` — where a bandwidth meter records its sample — and the harness must
+        // not move the clock while that sample is still on its way to the estimate (issue #140).
+        try {
+            // `DataSource.close` is owed even when `open` threw, which is how an injected status code
+            // leaves the upstream.
+            if (upstreamOpened) {
+                upstreamOpened = false
+                upstream.close()
+            }
+        } finally {
+            transfer.closed()
         }
     }
 

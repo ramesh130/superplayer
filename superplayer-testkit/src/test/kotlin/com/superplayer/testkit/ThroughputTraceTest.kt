@@ -181,6 +181,32 @@ class ThroughputTraceTest {
         assertThat(perSecond.toSet().size).isGreaterThan(perSecond.size / 2)
     }
 
+    /**
+     * When a first two-second chunk of each benchmark rung arrives on congested WiFi (issue #134).
+     *
+     * The seeded trace's first second runs at 4 374 064 bit/s and its second at 1 625 936, with no
+     * round trip, and Media3's fake chunk is its rung's bitrate times `PlaybackHarness`'s two-second
+     * chunk duration in bytes. The rungs are the benchmark's `FULL_LADDER` (`Scenario.kt`), and the
+     * transfer opens at the trace's origin because a ladder has no manifest to load first. So the
+     * benchmark's congested WiFi time to first frame is decided by the starting rung rather than by
+     * the one-second sample edge: 730 kbit/s lands at 334 ms and reads 400 once stepped, 2 Mbit/s at
+     * 915 ms reads 1000, and 4.5 Mbit/s, crossing two edges, at 2786 ms reads 2850. The benchmark
+     * report's caveat rests on these numbers, and a change to the seed or the swing moves them.
+     */
+    @Test
+    fun congestedWifiDeliversEachRungsFirstChunkWhereTheBenchmarkReadsIt() {
+        val trace = NetworkProfile.CONGESTED_WIFI.trace
+        val chunkDurationS = 2 // PlaybackHarness.CHUNK_DURATION_US
+        fun firstChunkArrivalMs(bitrateBps: Long) = trace.arrivalMs(startMs = 0, bytes = bitrateBps * chunkDurationS / 8)
+
+        assertThat(trace.rttMsAt(0)).isEqualTo(0)
+        assertThat(trace.bandwidthBpsAt(0)).isEqualTo(4_374_064L)
+        assertThat(trace.bandwidthBpsAt(1_000)).isEqualTo(1_625_936L)
+        assertThat(firstChunkArrivalMs(730_000)).isEqualTo(334)
+        assertThat(firstChunkArrivalMs(2_000_000)).isEqualTo(915)
+        assertThat(firstChunkArrivalMs(4_500_000)).isEqualTo(2_786)
+    }
+
     @Test
     fun lteDropsOutForTwoSecondsEveryPeriod() {
         val trace = NetworkProfile.LTE_WITH_DROPOUTS.trace

@@ -43,7 +43,8 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          # Matches `jvmTarget` in gradle/libs.versions.toml and build-logic's toolchain.
+          # Matches `jvmTarget` in gradle/libs.versions.toml, build-logic's toolchain, and the daemon
+          # JVM criteria in gradle/gradle-daemon-jvm.properties (and demo/'s and benchmark/'s copies).
           java-version: '17'
 
       # The SDK and the compileSdk platform, looked up from the version catalog. A composite

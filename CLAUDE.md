@@ -357,12 +357,20 @@ Building needs an Android SDK: set `ANDROID_HOME`, or write `sdk.dir` into `loca
 (gitignored). Gradle itself does not need installing; the checked-in wrapper fetches the pinned
 version.
 
-**Run Gradle on JDK 17**, the version CI uses and the catalog's `jvmTarget`. This matters more than
-it looks: the Robolectric runtime the tests load is pinned in
-`superplayer-core/src/test/resources/robolectric.properties`, and Robolectric's runtimes each
-require a minimum Java version. A daemon started on a newer JDK — Android Studio's bundled JBR, say
-— will happily run configurations that then fail in CI. Check with `./gradlew --version` when a
-test passes locally and fails there.
+**The Gradle daemon runs on JDK 17**, the version CI uses and the catalog's `jvmTarget`, and the
+builds enforce it rather than asking for it. This matters more than it looks: the Robolectric
+runtime the tests load is pinned in `superplayer-core/src/test/resources/robolectric.properties`,
+and Robolectric's runtimes each require a minimum Java version, so a daemon on a newer JDK (Android
+Studio's bundled JBR, say) would run configurations that then fail in CI. The other half of that
+pairing is the daemon JVM criteria in `gradle/gradle-daemon-jvm.properties`: `toolchainVersion=17`.
+`demo/` and `benchmark/` carry a copy each, because each has its own wrapper. Whatever `JAVA_HOME`
+the launcher starts with, Gradle runs the daemon on a local JDK 17 it finds, and fails naming the
+requirement when there is none. It downloads nothing: no toolchain resolver is declared, so a
+missing JDK 17 is installed by hand. Any vendor will do. CI's is Temurin, set by `setup-java` in
+`.github/workflows/ci.yml` and `device-run.yml`. Moving the version means changing the three
+criteria files and those two workflows together. Edit the files by hand, because
+`./gradlew updateDaemonJvm` refuses to write one without a resolver. `./gradlew --version` prints
+the criteria in force on its `Daemon JVM:` line.
 
 ### Running the demo on an emulator
 

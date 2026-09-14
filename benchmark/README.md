@@ -218,7 +218,8 @@ rather than wall clock, and it is dominated by the harness advancing that clock 
 
 - **Republish after any library change.** `bench` does it for you. Doing it by hand and forgetting is
   how a report ends up describing the previous version.
-- **Run on JDK 17**, the version CI uses. The report records the JDK it ran on, so a baseline taken
+- **Run on JDK 17**, the version CI uses, which `gradle/gradle-daemon-jvm.properties` enforces for
+  the Gradle daemon. The report records the JDK it ran on, so a baseline taken
   on another one says so rather than quietly comparing badly.
 - **`--cells` is for working on the harness, not for a baseline.** A filtered run skips the runner's
   completeness assertion, and its report is a report of whatever ran.

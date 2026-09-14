@@ -274,6 +274,24 @@ internal object ReportWriter {
                 "difference of a step or two between arms is within what the harness itself adds.",
         )
         appendLine()
+        // The arrivals below are pinned by ThroughputTraceTest; if that test moves, so does this text.
+        appendLine(
+            "**On congested WiFi, time to first frame is the starting rung's first chunk.** The " +
+                "profile's first second carries 4.37 Mbit/s with no round trip, so a two-second chunk " +
+                "at 730 kbit/s arrives at 334 ms and reads 400, one at 2 Mbit/s arrives at 915 ms and " +
+                "reads 1000, and one at 4.5 Mbit/s arrives at 2786 ms and reads 2850 " +
+                "(`ThroughputTraceTest` pins the arrivals; issue #134). A column of 1000s is therefore " +
+                "every arm starting on 2 Mbit/s, not a sample edge the harness imposed: the column " +
+                "separates arms by the rung they start on and by nothing finer, and two arms that " +
+                "start on the same rung read identically on this profile whatever else differs. The " +
+                "arrivals are computed from the trace rather than observed, since a trace here carries " +
+                "no load events, and they account for every reading in the congested WiFi cells: the " +
+                "stock defaults' one 2850 is its first run, which starts on 4.5 Mbit/s before Media3's " +
+                "process-wide meter has a sample, and a data-saver arm reads 400 because its cap starts " +
+                "it on 730 kbit/s. A time-to-first-frame verdict on this profile is therefore a " +
+                "verdict on the starting rung.",
+        )
+        appendLine()
         appendLine(
             "**Bitrate is sampled at ten seconds**, which is the cadence `PlaybackStateSampled` carries " +
                 "and therefore the resolution of any time-weighted average taken from it. A rendition " +

@@ -141,6 +141,32 @@ class NetworkShapingTest {
     }
 
     @Test
+    fun aTransferHoldsTheClockUntilItsEndListenersHaveReturned() {
+        // Issue #140. A bandwidth meter records its sample in `onTransferEnd`, which the origin raises
+        // from inside `close`. A transfer released from the count before that call lets the harness
+        // move the clock while the sample is still on its way to the estimate, and the selector's next
+        // evaluation reads an estimate one sample behind on whichever runs the loading thread lost —
+        // the QoE gate's flake on CI. Ladder content loads on Media3's own threads, where no load task
+        // is counted, so the transfer is the only thing holding the clock there.
+        val caughtUpDuringEnd = mutableListOf<Boolean>()
+        val clock = FakeClock(0L, /* isAutoAdvancing= */ false)
+        val wait = HarnessClockWait(clock)
+        val listener = object : TransferListener {
+            override fun onTransferInitializing(s: DataSource, d: DataSpec, isNetwork: Boolean) = Unit
+            override fun onTransferStart(s: DataSource, d: DataSpec, isNetwork: Boolean) = Unit
+            override fun onBytesTransferred(s: DataSource, d: DataSpec, isNetwork: Boolean, count: Int) = Unit
+            override fun onTransferEnd(s: DataSource, d: DataSpec, isNetwork: Boolean) {
+                caughtUpDuringEnd += wait.transfersHaveCaughtUp
+            }
+        }
+        val trace = ThroughputTrace.Builder().add(1_000, SLOW_BPS, NetworkTransport.WIFI).build()
+
+        session(trace, SEGMENTS.take(2), listener = listener, clock = clock, wait = wait)
+
+        assertThat(caughtUpDuringEnd).containsExactly(false, false)
+    }
+
+    @Test
     fun aCancelledLoadStopsWaitingOnTheClock() {
         val clock = FakeClock(0L, /* isAutoAdvancing= */ false)
         val wait = HarnessClockWait(clock)
@@ -277,9 +303,9 @@ class NetworkShapingTest {
         urls: List<String>,
         script: FaultScript = FaultScript.NONE,
         listener: TransferListener? = null,
+        clock: FakeClock = FakeClock(0L, /* isAutoAdvancing= */ false),
+        wait: HarnessClockWait = HarnessClockWait(clock),
     ): List<String> {
-        val clock = FakeClock(0L, /* isAutoAdvancing= */ false)
-        val wait = HarnessClockWait(clock)
         val shaper = factory(trace, script, clock, wait)
         val log = mutableListOf<String>()
         onALoadingThread(clock, wait) {

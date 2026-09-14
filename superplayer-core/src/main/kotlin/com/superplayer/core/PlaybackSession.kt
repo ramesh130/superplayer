@@ -274,7 +274,9 @@ private class ResolvingSessionCallback(
         Futures.immediateFuture(
             mediaItems.map { item ->
                 resolver.resolve(item)?.let { request ->
-                    (mediaSession.player as? SuperPlayer)?.itemOf(request) ?: request.toMediaItem()
+                    // The player decides whether its items carry identity; a session is only ever
+                    // built over a SuperPlayer, so the fallback is for the type system, not a case.
+                    (mediaSession.player as? SuperPlayer)?.itemOf(request) ?: request.toMediaItem(identified = false)
                 } ?: item
             }.toMutableList(),
         )

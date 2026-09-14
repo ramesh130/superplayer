@@ -53,7 +53,15 @@ public abstract class ContentCache internal constructor(
  * a hit out of the throughput estimate (`TransferChain`'s KDoc, ADR-0010 rule 4).
  *
  * What a cache key is built from is on each request: [ContentIdentity.of] reads the content's id off
- * a `DataSpec`, and the `DataSpec`'s own URI, position, length and key name the representation.
+ * a `DataSpec`, and the `DataSpec` itself says which representation and which bytes of it are being
+ * loaded — its key when the source set one, its URI's path, its position and length. A key is the id
+ * plus the part of that which names the rendition, never the URI whole: the host is exactly what
+ * must not split one piece of content into two entries (ADR-0010 rule 4). A request with no id is
+ * content set through `setMediaItem`, and only such a request is keyed by its URL.
+ *
+ * Every media source factory setting is replayed per item by a recorded list in `TransferChain`, so a
+ * setter Media3 adds to `MediaSource.Factory` later has to be added there, or it is dropped on a
+ * player with a cache.
  */
 internal fun interface CacheLayer {
 

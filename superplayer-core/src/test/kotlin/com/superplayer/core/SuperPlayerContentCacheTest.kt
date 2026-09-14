@@ -59,6 +59,11 @@ class SuperPlayerContentCacheTest {
      * ADR-0010 rule 13, counted: a player built without a cache stamps no request with an identity
      * and lays none on its item. The same count on a player *with* one is non-zero, so the counter is
      * shown to see what it counts.
+     *
+     * The rule's other half — that a core-only chain is unchanged — is held by the golden traces in
+     * `superplayer-telemetry`, which are core-only sessions and which this change leaves byte-identical.
+     * Preload has nothing to count here: its entry is a slot a player without preload never sets, and
+     * `build()` reads it null-conditionally.
      */
     @Test
     fun aPlayerBuiltWithoutACacheStampsNothingAndACachedOneStampsEveryRequest() {
@@ -196,7 +201,9 @@ class SuperPlayerContentCacheTest {
         override fun over(upstream: DataSource.Factory): DataSource.Factory =
             DataSource.Factory { Recording(upstream.createDataSource()) }
 
-        private inner class Recording(private val upstream: DataSource) : DataSource by upstream {
+        // Every method written out rather than delegated with `by`: `getResponseHeaders` is a Java
+        // default method, which Kotlin delegation would not forward (ADR-0003's trap).
+        private inner class Recording(private val upstream: DataSource) : DataSource {
 
             override fun addTransferListener(transferListener: TransferListener) {
                 upstream.addTransferListener(transferListener)
@@ -205,6 +212,16 @@ class SuperPlayerContentCacheTest {
             override fun open(dataSpec: DataSpec): Long {
                 synchronized(seen) { seen += SeenRequest(dataSpec.uri, ContentIdentity.of(dataSpec)) }
                 return upstream.open(dataSpec)
+            }
+
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int = upstream.read(buffer, offset, length)
+
+            override fun getUri(): Uri? = upstream.uri
+
+            override fun getResponseHeaders(): Map<String, List<String>> = upstream.responseHeaders
+
+            override fun close() {
+                upstream.close()
             }
         }
     }

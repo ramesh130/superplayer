@@ -73,6 +73,13 @@ public final class com/superplayer/core/LiveLatencyPolicy {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class com/superplayer/core/LiveWindowTooShortException : java/io/IOException {
+	public final fun getAvailabilityTimeOffsetMs ()J
+	public final fun getManifestUri ()Ljava/lang/String;
+	public final fun getSegmentDurationMs ()J
+	public final fun getTimeShiftBufferDepthMs ()J
+}
+
 public final class com/superplayer/core/MediaRequest {
 	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;Lcom/superplayer/core/MediaRequest$StartPosition;Ljava/lang/String;Ljava/lang/String;Landroid/net/Uri;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getArtworkUri ()Landroid/net/Uri;

@@ -315,7 +315,9 @@ not be.
   misconfigured CDN is the one with only `superplayer-core`. `ErrorClassifier` maps the
   `StaleLivePlaylistException` core raises into its taxonomy rather than re-deriving it, and the
   cache-bypassing reload is not a `RetryPolicy` rung. The rungs above it — the next host, then the
-  next source — still apply to a playlist that core has given up on.
+  next source — still apply to a playlist that core has given up on. The same holds for a live DASH
+  window too short to play inside: core's chain raises `LiveWindowTooShortException` (issue #67),
+  and the classifier maps it rather than re-deriving it.
 - **Resume-position preservation across every rung.** A fallback that restarts from zero is worse
   than the error.
 - **Token refresh hook** — `HeaderProvider` re-invoked on 401/403 before the retry, so expiring CDN

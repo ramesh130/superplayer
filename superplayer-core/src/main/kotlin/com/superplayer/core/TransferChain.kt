@@ -48,11 +48,13 @@ import com.google.common.base.Supplier
  *
  * ```
  *   window depth     core, today: LiveWindowDepthCheck. Reads each DASH manifest the engine receives
- *                    and fails one whose live window no playhead can sit inside. Outermost for
- *                    revalidation's reason: what it judges is what reached the engine.
+ *                    and fails one whose live window no playhead can sit inside. Outermost, above
+ *                    revalidation and for its reason: what it judges is what reached the engine. It
+ *                    changes no request, so its order against revalidation is otherwise free.
  *   revalidation     core, today: LivePlaylistRevalidation. Reads each live HLS playlist the engine
  *                    receives and, once one is overdue by RFC 8216's own bound, asks past the
- *                    caches for it. Outermost, because what it judges is what reached the engine,
+ *                    caches for it. Outermost of the layers that change a request, because what it
+ *                    judges is what reached the engine,
  *                    whichever layer below answered; a local cache that held a live playlist would
  *                    be one more stale copy to it, and has to honour the same request directive.
  *   cache            superplayer-cache: a content-keyed CacheDataSource. Outermost of the layers

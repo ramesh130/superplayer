@@ -497,9 +497,9 @@ public object HostileManifests {
 
     // spec: ISO/IEC 23009-1 §5.3.1.2 — @timeShiftBufferDepth is the guaranteed availability window
     // for any segment, and any positive duration conforms. At its severe setting, half a second is
-    // shorter than one segment, so by the time a segment has been fetched the manifest no longer
-    // promises it: a resume, a seek back, or a slow network drops the client off the end of its own
-    // window. [timeShiftBufferDepthSeconds] argues each severity's depth.
+    // shorter than one segment, and §5.3.9.5.3 makes a segment available only once it is complete, so
+    // by the time a segment can be fetched its start has already left the window: no playhead fits
+    // inside it at all (issue #67). [timeShiftBufferDepthSeconds] argues each severity's depth.
     public fun dashShortTimeShiftBufferDepth(severity: Severity = Severity.SEVERE): HostileStream {
         val depthSeconds = timeShiftBufferDepthSeconds(severity)
         return dashLiveStream(
@@ -719,10 +719,11 @@ public object HostileManifests {
         // doctor must not flag.
         Severity.BENIGN -> 4 * segmentDurationSeconds()
 
-        // One segment: the window holds the segment being played, and the player's one-segment
-        // @suggestedPresentationDelay reaches exactly to its far end, so a rebuffer or a seek back
-        // leaves it. Below RFC 8216's floor and not yet shorter than a segment, so a doctor may
-        // reasonably flag it or not.
+        // One segment: the first depth that is not shorter than a segment, and below RFC 8216's floor.
+        // Not yet shorter, but already too short: a segment is fetchable only once complete
+        // (ISO/IEC 23009-1 §5.3.9.5.3), so a playhead starting it is a whole segment behind the edge —
+        // at the window's far end only if the fetch took no time. Measured, it sat outside the window
+        // just as `SEVERE` did (issue #67), so this is the level where the cliff is, not a judgement.
         Severity.BORDERLINE -> segmentDurationSeconds()
 
         // Half a second, shorter than one segment: by the time a segment has been fetched the

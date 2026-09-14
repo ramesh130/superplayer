@@ -16,7 +16,9 @@
 
 package com.superplayer.testkit
 
+import androidx.media3.common.C
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import com.superplayer.core.LiveWindowTooShortException
@@ -43,6 +45,9 @@ import org.junit.runner.RunWith
  * the playhead is where it is because a segment cannot be fetched before it is complete, not
  * because the offset was chosen badly.
  *
+ * So every test here also watches the position on every turn, in both directions: never before the
+ * window's start, and never past its end by more than a segment — the swing measured went both ways.
+ *
  * Here rather than in core's tests because only this module has the live DASH origin
  * (`HostileManifests`, through `TestContent.hostile`), the same reason `LivePlaylistRevalidationTest`
  * lives here.
@@ -56,7 +61,7 @@ class LiveWindowDepthTest {
     @Test
     fun aWindowShorterThanASegmentEndsTheSessionNamingBothDurations() {
         val stream = HostileManifests.dashShortTimeShiftBufferDepth(Severity.SEVERE)
-        val (player, positions) = playToFailureWatchingPosition(stream)
+        val (player, outside) = playToFailureWatchingPosition(stream)
 
         val cause = player.playerError?.cause
         assertThat(cause).isInstanceOf(LiveWindowTooShortException::class.java)
@@ -65,7 +70,7 @@ class LiveWindowDepthTest {
         assertThat(cause.segmentDurationMs).isEqualTo(SyntheticDashStream.DURATION_MS)
         assertThat(cause.availabilityTimeOffsetMs).isEqualTo(0L)
         assertThat(cause.manifestUri).endsWith(".mpd")
-        assertThat(positions.filter { it < 0 }).isEmpty()
+        assertThat(outside).isEmpty()
     }
 
     @Test
@@ -74,10 +79,10 @@ class LiveWindowDepthTest {
         // starting it is a whole segment behind the edge — at the far end of a one-segment window
         // at best, and outside it as soon as the fetch takes any time at all.
         val stream = HostileManifests.dashShortTimeShiftBufferDepth(Severity.BORDERLINE)
-        val (player, positions) = playToFailureWatchingPosition(stream)
+        val (player, outside) = playToFailureWatchingPosition(stream)
 
         assertThat(player.playerError?.cause).isInstanceOf(LiveWindowTooShortException::class.java)
-        assertThat(positions.filter { it < 0 }).isEmpty()
+        assertThat(outside).isEmpty()
     }
 
     @Test
@@ -99,20 +104,22 @@ class LiveWindowDepthTest {
         assertPlaysOnInsideTheWindow(HostileManifests.dashMissingTimeShiftBufferDepth())
     }
 
-    private fun playToFailureWatchingPosition(stream: HostileStream): Pair<SuperPlayer, List<Long>> {
+    /** Plays [stream] until it fails, returning the failure and every position seen outside the window. */
+    private fun playToFailureWatchingPosition(stream: HostileStream): Pair<SuperPlayer, List<String>> {
         val player = playerFor(stream)
-        val positions = mutableListOf<Long>()
+        val outside = mutableListOf<String>()
         player.prepare()
         player.play()
         harness.advanceUntil(player, "an error") {
-            positions += it.currentPosition
+            outsideTheWindow(it)?.let(outside::add)
             it.playerError != null
         }
-        return player to positions
+        return player to outside
     }
 
     private fun assertPlaysOnInsideTheWindow(stream: HostileStream) {
         val player = playerFor(stream)
+        val outside = mutableListOf<String>()
         player.prepare()
         player.play()
         var advanced = 0L
@@ -120,9 +127,30 @@ class LiveWindowDepthTest {
             harness.advanceTimeInStepsMs(player, STEP_MS)
             advanced += STEP_MS
             assertThat(player.playerError).isNull()
-            assertThat(player.currentPosition).isAtLeast(0L)
+            outsideTheWindow(player)?.let(outside::add)
         }
+        assertThat(outside).isEmpty()
         assertThat(player.playbackState).isEqualTo(Player.STATE_READY)
+    }
+
+    /**
+     * The player's position described, when it lies outside the live window its timeline reports:
+     * before the start, or more than a segment past the end — the corpus's own slack, because a
+     * position is reported at the granularity of the engine's loop. Null when it is inside, or when
+     * there is no window yet to be outside of — an empty timeline, or the placeholder one an item has
+     * before its manifest arrives, whose window has no duration.
+     */
+    private fun outsideTheWindow(player: Player): String? {
+        val position = player.currentPosition
+        val timeline = player.currentTimeline
+        val windowMs = if (timeline.isEmpty) {
+            null
+        } else {
+            timeline.getWindow(player.currentMediaItemIndex, Timeline.Window()).durationMs
+                .takeIf { it != C.TIME_UNSET }
+        }
+        val beyond = windowMs != null && position > windowMs + SyntheticDashStream.DURATION_MS
+        return if (position < 0 || beyond) "position $position ms in a window of $windowMs ms" else null
     }
 
     private fun playerFor(stream: HostileStream): SuperPlayer {

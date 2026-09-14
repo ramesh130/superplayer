@@ -65,7 +65,7 @@ public class LiveWindowTooShortException internal constructor(
     public val manifestUri: String,
     /** Its `@timeShiftBufferDepth`. */
     public val timeShiftBufferDepthMs: Long,
-    /** The longest segment it addresses — the one whose availability lag the window was judged against. */
+    /** The duration of the segment with the longest availability lag — the one the window was judged against. */
     public val segmentDurationMs: Long,
     /** How much earlier than complete that segment is declared available; zero for an ordinary stream. */
     public val availabilityTimeOffsetMs: Long,

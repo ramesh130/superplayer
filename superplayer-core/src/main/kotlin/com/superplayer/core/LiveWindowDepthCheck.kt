@@ -40,8 +40,9 @@ import java.io.ByteArrayOutputStream
  * Not a policy, and so not behind `PlaybackPolicy` (ADR-0005): nothing here is a number to tune. The
  * one comparison is the protocol's own availability rule applied to what the manifest says, and the
  * outcome is a failure rather than a configuration — which is `superplayer-resilience`'s to classify
- * and core's to raise, for the reason [LivePlaylistRevalidation] gives: the defect is in the content
- * served, and the consumer most likely to meet it has only `superplayer-core`.
+ * and core's to raise. It is a link in the chain because the chain is the one place a manifest can be
+ * refused before the engine parses it without forking the engine's DASH source (ADR-0001), and it is
+ * core's because the consumer most likely to meet a misconfigured packager has only `superplayer-core`.
  *
  * ## What it reads
  *
@@ -72,7 +73,7 @@ internal object LiveWindowDepthCheck {
 
         val lag = longestAvailabilityLag(manifest) ?: return null
         val depthUs = Util.msToUs(manifest.timeShiftBufferDepthMs)
-        if (depthUs > lag.segmentDurationUs - lag.availabilityTimeOffsetUs) return null
+        if (depthUs > lag.us) return null
         return LiveWindowTooShortException(
             manifestUri = uri.toString(),
             timeShiftBufferDepthMs = manifest.timeShiftBufferDepthMs,
@@ -92,18 +93,22 @@ internal object LiveWindowDepthCheck {
      * The longest because a player plays every track it selects at once: one rendition whose segments
      * cannot be reached inside the window holds the whole presentation outside it.
      */
-    private fun longestAvailabilityLag(manifest: DashManifest): AvailabilityLag? =
-        (0 until manifest.periodCount).asSequence()
+    private fun longestAvailabilityLag(manifest: DashManifest): AvailabilityLag? {
+        // A dynamic MPD must carry @publishTime (// spec: ISO/IEC 23009-1 §5.3.1.2); one that does not
+        // gives no "now" to read availability at, and an index read at an unset time is noise.
+        if (manifest.publishTimeMs == C.TIME_UNSET) return null
+        val nowUnixTimeUs = Util.msToUs(manifest.publishTimeMs)
+        return (0 until manifest.periodCount).asSequence()
             .flatMap { periodIndex ->
                 val period = manifest.getPeriod(periodIndex)
                 val periodDurationUs = manifest.getPeriodDurationUs(periodIndex)
-                val nowUnixTimeUs = Util.msToUs(manifest.publishTimeMs)
                 period.adaptationSets.asSequence()
                     .flatMap { it.representations.asSequence() }
                     .mapNotNull { it.index }
                     .mapNotNull { lagOf(it, periodDurationUs, nowUnixTimeUs) }
             }
             .maxByOrNull { it.us }
+    }
 
     /**
      * One segment index's [AvailabilityLag], or null when its availability offset cannot be read.
@@ -117,8 +122,9 @@ internal object LiveWindowDepthCheck {
      * is not judged: an offset nobody can read may be a low-latency one, and refusing a stream on a
      * guess is worse than letting Media3 play it as it did before.
      *
-     * The duration is the index's first segment's: every index this can judge is a `SegmentTemplate`
-     * with a constant `@duration` (// spec: ISO/IEC 23009-1 §5.3.9.4), whose segments are all alike.
+     * The duration is that same next segment's: every index this can judge is a `SegmentTemplate` with
+     * a constant `@duration` (// spec: ISO/IEC 23009-1 §5.3.9.4), whose segments are all alike but for
+     * a last one a period's end may cut short — which the next segment at publish time is not.
      */
     private fun lagOf(
         index: DashSegmentIndex,
@@ -148,7 +154,9 @@ internal object LiveWindowDepthCheck {
      * Media3's manifest parser stops reading at the closing `</MPD>` and never asks for the end of input
      * — so a layer waiting for it never judges anything — and the engine closes a manifest load quietly,
      * so a failure raised on close is swallowed. Open is the last moment a failure still reaches the
-     * engine as the load's own error.
+     * engine as the load's own error. A consequence for any listener: a manifest's bytes are transferred
+     * during `open` rather than `read` — harmless today, because Media3 registers no transfer listener
+     * on a manifest load.
      */
     private class CheckingDataSource(private val upstream: DataSource) : DataSource {
 
@@ -213,7 +221,7 @@ internal object LiveWindowDepthCheck {
         }
     }
 
-    /** spec: ISO/IEC 23009-1 Annex C — the MPD media type; `.mpd` is the naming every packager uses. */
+    /** // spec: ISO/IEC 23009-1 Annex C — the MPD media type; `.mpd` is the naming every packager uses. */
     private fun isManifest(uri: Uri, headers: Map<String, List<String>>): Boolean {
         if (uri.path.orEmpty().lowercase().endsWith(".mpd")) return true
         val contentType = headers.entries.firstOrNull { it.key.equals(CONTENT_TYPE, ignoreCase = true) }

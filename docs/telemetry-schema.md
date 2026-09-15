@@ -75,6 +75,12 @@ Three things a data engineer needs before writing that query.
   strip the quotes before joining — and a progressive `.mp4` produces no CMCD at all, because there
   is no adaptive request to describe. Sessions of such content appear in this schema and never in the
   CDN half of the join.
+- **A prefetched item's `sid` is minted before its session exists, and may join to nothing.** A
+  `PreloadCoordinator` fetches the first segment of rows a feed has not reached yet, and those requests
+  carry the `sid` the row's session will report if it plays — that first segment is the request the
+  join most needs. A row the viewer never reaches leaves CDN log lines whose `sid` matches no
+  `SessionStarted`; no phantom session is emitted for it (ADR-0010 rule 7). Count them as prefetch
+  cost, not as missing telemetry.
 
 `cid` is the same `contentId` these events carry, so a per-title question can be asked of the CDN's
 log directly, without joining at all.

@@ -24,6 +24,8 @@ import com.superplayer.core.PlaybackConditions
 import com.superplayer.core.PlaybackDecision
 import com.superplayer.core.PlaybackPolicy
 import com.superplayer.core.PlaybackProfile
+import com.superplayer.core.PreloadDepth
+import com.superplayer.core.PreloadPolicy
 import com.superplayer.core.StallHistory
 import com.superplayer.core.StreamType
 import com.superplayer.core.ThroughputEstimate
@@ -140,8 +142,23 @@ public class AdaptiveBufferPolicy(public val profile: PlaybackProfile) : Playbac
 
         // The selection half is the static profile's: it is `AdaptiveSelectionPolicy`'s to move,
         // and `AdaptivePolicy` composes the two so that each owns one half.
-        return PlaybackDecision(targets.toBufferPolicy(), base.trackSelection, liveLatency)
+        return PlaybackDecision(targets.toBufferPolicy(), base.trackSelection, liveLatency, preloadOn(conditions.transport, base.preload))
     }
+
+    /**
+     * The prefetch half (ADR-0010 rule 10): the profile's own, less its media on a metered link.
+     *
+     * A loaded range is media fetched for a row the viewer may never reach, and on cellular that is
+     * data they pay for — branch 1's trade, and F1's, in `PRD.md` §3.1. A prepared source keeps the
+     * reach and the manifest round trips it saves, and spends kilobytes. An unknown transport keeps
+     * the profile's depth, because what is not observed refuses nothing (ADR-0009 rule 1).
+     */
+    private fun preloadOn(transport: NetworkTransport?, static: PreloadPolicy): PreloadPolicy =
+        if (transport is NetworkTransport.Cellular && static.depth is PreloadDepth.Loaded) {
+            static.copy(depth = PreloadDepth.SourcePrepared)
+        } else {
+            static
+        }
 
     /**
      * Branch 1's test. On-demand is the profile's intent (the stream type is checked by the

@@ -1,0 +1,13 @@
+public final class com/superplayer/preload/PreloadCoordinator {
+	public final fun release ()V
+	public final fun setItems (Ljava/util/List;)V
+	public final fun setScrollPosition (I)V
+	public final fun setScrollPosition (IF)V
+	public static synthetic fun setScrollPosition$default (Lcom/superplayer/preload/PreloadCoordinator;IFILjava/lang/Object;)V
+}
+
+public final class com/superplayer/preload/PreloadCoordinator$Builder {
+	public fun <init> (Lcom/superplayer/core/PlayerPool;)V
+	public final fun build ()Lcom/superplayer/preload/PreloadCoordinator;
+}
+

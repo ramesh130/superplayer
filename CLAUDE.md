@@ -141,7 +141,22 @@ that is why a cached player builds HLS and DASH sources per protocol rather than
 `DefaultMediaSourceFactory`: only the source knows which request is a playlist, and a cache answers
 media alone. A player
 with no cache has an empty slot and the Phase 3 factory, and `SuperPlayerContentCacheTest` counts it;
-`EngineConfiguration.preloadEntry` hands preload the same factory the engine loads through (ADR-0010).
+`superplayer-preload` fills the other end of ADR-0010: `PreloadCoordinator.Builder(pool).build()` attaches
+to a `PlayerPool` before its first player, through core's internal `PoolAttachment`, and from then on the
+pool builds every player on one `PooledEngine` — the first player's load control, meter, selection
+factory and decision target, and one playback thread — and hands those `SharedComponents`, its chain's
+media source factory included, to the coordinator, which builds Media3's `DefaultPreloadManager` over
+them. `setItems` and `setScrollPosition(index, velocity)` are the feed's input; how many rows ahead and
+behind and how deep is `PlaybackDecision.preload`, a `PreloadPolicy` that defaults to none and that
+`StaticProfilePolicy` sets per profile. A row plays through `setMediaRequest` and nothing else:
+core asks the attachment for a warm source after adoption, and the id the item's session opens with is
+one the coordinator minted before its first prefetched request (`PremintedSessionIds`), so the CMCD
+`sid` join holds. Two things are easy to get wrong: a feed moves its position *before* it hands a row
+a player, so the current row keeps its registration; and Media3 releases a source a player holds only
+once the player lets go, which is why removing an adopted item is safe. `PreloadCoordinatorPlaybackTest`
+drives a scripted scroll through `harness.buildPool`, whose players share one transport so
+`networkRequests(pool)` is the screen's. A pool built with `setPolicy(AdaptivePolicy…)` is one engine
+too, with its oracle released by the last player (`AdaptivePolicyPoolTest`).
 `superplayer-cache` fills the slot: `CachePolicy.contentKeyed(directory, maxBytes)` opens a
 `ContentKeyedCache` — core's third Kotlin friend — over Media3's `SimpleCache`, with its index in a
 database file inside the consumer's directory rather than Media3's `StandaloneDatabaseProvider`
@@ -316,7 +331,7 @@ before its first player is built, since the platform caches the codec list on fi
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,
-`superplayer-abr`, `superplayer-cache` and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
+`superplayer-abr`, `superplayer-cache`, `superplayer-preload` and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
 requirements, and the phase table are what the issues are cut from.
 
 `benchmark/` is the fourth build and the phases' exit criteria: `PRD.md` §6's fixed matrix — six

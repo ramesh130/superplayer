@@ -22,9 +22,7 @@ import androidx.media3.common.Player
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
-import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.test.utils.FakeDataSet
-import androidx.media3.test.utils.MediaSourceTestRunner
 import androidx.media3.test.utils.robolectric.ShadowMediaCodecConfig
 import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -62,8 +60,7 @@ class SuperPlayerContentCacheTest {
      *
      * The rule's other half — that a core-only chain is unchanged — is held by the golden traces in
      * `superplayer-telemetry`, which are core-only sessions and which this change leaves byte-identical.
-     * Preload has nothing to count here: its entry is a slot a player without preload never sets, and
-     * `build()` reads it null-conditionally.
+     * Preload's half is counted in `PooledEngineTest`.
      */
     @Test
     fun aPlayerBuiltWithoutACacheStampsNothingAndACachedOneStampsEveryRequest() {
@@ -170,35 +167,6 @@ class SuperPlayerContentCacheTest {
         assertThat(meter.segmentRequest()).isNotNull()
         assertThat(cache.recorder.seen().map { it.uri })
             .containsAtLeastElementsIn(meter.openedRequests().map { it.uri })
-    }
-
-    /**
-     * The preload entry: a source built from the factory it is handed, for the item `setMediaRequest`
-     * adopted, loads through the same chain — cache slot included — under the same content identity.
-     */
-    @Test
-    fun aSourceBuiltThroughThePreloadEntryLoadsThroughTheSameChainUnderTheSameIdentity() {
-        val cache = RecordingContentCache()
-        var handedFactory: MediaSource.Factory? = null
-        val player = harness.buildPlayer(
-            cache = cache,
-            alsoConfigure = { it.preloadEntry = PreloadEntry { factory -> handedFactory = factory } },
-        )
-        player.setMediaRequest(hlsRequest("episode:preloaded"))
-        val adoptedItem = checkNotNull(player.currentMediaItem)
-
-        val runner = MediaSourceTestRunner(checkNotNull(handedFactory).createMediaSource(adoptedItem))
-        try {
-            runner.prepareSource()
-            runner.releaseSource()
-        } finally {
-            runner.release()
-        }
-
-        // Nothing was prepared on the player, so every request the cache saw is the preloaded source's.
-        val seen = cache.recorder.seen()
-        assertThat(seen.map { it.uri.toString() }).contains(SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI)
-        assertThat(seen.map { it.contentId }.toSet()).containsExactly("episode:preloaded")
     }
 
     private fun hlsRequest(contentId: String): MediaRequest =

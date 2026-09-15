@@ -113,8 +113,38 @@ public class PlayerPool private constructor(
      * row needs to know when it cannot.
      */
     public val maxSize: Int,
-    private val newPlayer: () -> SuperPlayer,
+    private val newPlayer: (PooledEngine?) -> SuperPlayer,
+    /** Whether the pool's policy is an extension, whose components one engine per pool has to share. */
+    private val policyBringsComponents: Boolean,
 ) {
+
+    /**
+     * The engine every player is built on, when they have to share one (ADR-0010 rule 9) — see
+     * [PooledEngine] — or null for a pool whose players are each built as a player of their own.
+     */
+    private var pooledEngine: PooledEngine? = if (policyBringsComponents) PooledEngine(attachment = null) else null
+
+    private var attached = false
+
+    /**
+     * Attaches [attachment] to this pool, so every player it builds from now on is built on one shared
+     * engine and adopts through it (ADR-0010 rule 8). `superplayer-preload`'s `PreloadCoordinator.Builder`
+     * is the caller.
+     *
+     * Before the first player, because the components a preload manager requires are the ones every
+     * player is built with, and a player already built was built with its own: throws, naming the rule,
+     * rather than serving a pool half of whose players the attachment cannot use. One attachment per pool.
+     */
+    internal fun attach(attachment: PoolAttachment) {
+        check(!isReleased) { "This PlayerPool has been released" }
+        check(!attached) { "A PlayerPool takes one attachment; this one already has a PreloadCoordinator" }
+        check(size == 0) {
+            "A PreloadCoordinator is attached before its pool builds a player (ADR-0010 rule 8); " +
+                "this pool has already built $size"
+        }
+        attached = true
+        pooledEngine = PooledEngine(attachment)
+    }
 
     /**
      * Players that have been built and handed back, newest first.
@@ -170,7 +200,7 @@ public class PlayerPool private constructor(
         }
         if (inUse.size >= maxSize) return null
 
-        return newPlayer().also { inUse += it }
+        return newPlayer(pooledEngine).also { inUse += it }
     }
 
     /**
@@ -199,6 +229,9 @@ public class PlayerPool private constructor(
         }
 
         player.resetForReuse()
+        // After the reset, once the player has let its item go: a prefetched source the attachment
+        // releases now is released behind the player's own release of it, on the same thread.
+        pooledEngine?.onRecycled(player)
         idle.addLast(player)
     }
 
@@ -216,11 +249,15 @@ public class PlayerPool private constructor(
         if (isReleased) return
         isReleased = true
 
+        // The attachment first, while the playback thread its prefetches run on is still alive.
+        pooledEngine?.onPoolReleasing()
         // In-use first: those are the ones a caller may still be touching, and the sooner they stop
         // holding a decoder the better. Order is otherwise immaterial — release is per player.
         (inUse + idle).forEach { it.release() }
         inUse.clear()
         idle.clear()
+        // Last, once no player is left to run on the shared thread.
+        pooledEngine?.release()
     }
 
     /**
@@ -232,7 +269,9 @@ public class PlayerPool private constructor(
 
         private var profile: PlaybackProfile = PlaybackProfile.SHORT_FORM
         private var requestedMaxSize: Int? = null
-        private var playerFactory: (() -> SuperPlayer)? = null
+        private var policy: PlaybackPolicy? = null
+        private var cache: ContentCache? = null
+        private var playerFactory: ((PooledEngine?) -> SuperPlayer)? = null
 
         /**
          * The kind of playback every player in this pool is for.
@@ -261,26 +300,53 @@ public class PlayerPool private constructor(
         }
 
         /**
+         * The policy every player in this pool decides with — what [SuperPlayer.Builder.setPolicy]
+         * takes, for each of them.
+         *
+         * One policy object serves the whole pool. A policy that brings engine components of its
+         * own — `superplayer-abr`'s — configures one engine, and every player the pool builds shares
+         * it, so a decision re-applied on one row is re-applied for all: the rows are one screen on
+         * one network (ADR-0010 rule 9).
+         */
+        public fun setPolicy(policy: PlaybackPolicy): Builder = apply { this.policy = policy }
+
+        /**
+         * The cache every player in this pool loads through — what [SuperPlayer.Builder.setCache]
+         * takes, for each of them. Opened and released by the consumer (ADR-0010 rule 1); a pool
+         * built without it has no cache.
+         */
+        public fun setCache(cache: ContentCache): Builder = apply { this.cache = cache }
+
+        /**
          * How the pool builds a player — the seam tests reach construction through.
          *
          * The same seam as [SuperPlayer.Builder.setEngineConfigurator] rather than a second one:
          * tests hand this a lambda that builds a player on the existing harness, so a pooled player
          * gets the fake clock and fake data source every other test player gets, from the one place
          * that decides those. Without it a test would have to fake the pool's construction and the
-         * engine's separately, and the two would drift.
+         * engine's separately, and the two would drift. The lambda is handed the pool's shared engine,
+         * or null, for [SuperPlayer.Builder.setPooledEngine].
          */
         @VisibleForTesting
-        internal fun setPlayerFactory(factory: () -> SuperPlayer): Builder =
+        internal fun setPlayerFactory(factory: (PooledEngine?) -> SuperPlayer): Builder =
             apply { playerFactory = factory }
 
         public fun build(): PlayerPool {
             val deviceCapacity = concurrentPlayerCapacityOf(context)
             val maxSize = requestedMaxSize?.coerceAtMost(deviceCapacity) ?: deviceCapacity
             val profile = profile
-            val factory = playerFactory
-                ?: { SuperPlayer.Builder(context).setProfile(profile).build() }
+            val policy = policy
+            val cache = cache
+            val factory = playerFactory ?: { pooled ->
+                SuperPlayer.Builder(context)
+                    .setProfile(profile)
+                    .apply { policy?.let { setPolicy(it) } }
+                    .apply { cache?.let { setCache(it) } }
+                    .setPooledEngine(pooled)
+                    .build()
+            }
 
-            return PlayerPool(maxSize, factory)
+            return PlayerPool(maxSize, factory, policyBringsComponents = policy is EnginePolicyExtension)
         }
     }
 }

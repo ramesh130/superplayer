@@ -124,14 +124,19 @@ public enum class DecisionTrigger {
 }
 
 /**
- * A [PlaybackPolicy]'s answer: how to buffer, what to cap track selection at, and — for content
- * the manifest declared live — how to hold the live window.
+ * A [PlaybackPolicy]'s answer: how to buffer, what to cap track selection at, — for content the
+ * manifest declared live — how to hold the live window, and how far ahead of a feed to prefetch.
  *
  * [liveLatency] is null for every decision about on-demand content and for any policy that has
  * nothing to say about live playback: null means the engine's own live behaviour, unchanged. It is
- * a third half rather than a field of [BufferPolicy] because it is applied by a different route —
+ * a half of its own rather than a field of [BufferPolicy] because it is applied by a different route —
  * the buffer durations become a load control, the speed range travels on the media item — and
  * a component that can re-target one has nothing to do with the other.
+ *
+ * [preload] is read by a `PreloadCoordinator` attached to the [PlayerPool] this player came from,
+ * and by nothing else: on any other player it is decided and ignored, and [SuperPlayer.playbackDecision]
+ * still says what was decided (ADR-0010 rule 10). It defaults to [PreloadPolicy.NONE], so a policy
+ * written before it existed decides no prefetch.
  */
 public data class PlaybackDecision
 @JvmOverloads
@@ -139,7 +144,69 @@ constructor(
     public val buffer: BufferPolicy,
     public val trackSelection: TrackSelectionPolicy,
     public val liveLatency: LiveLatencyPolicy? = null,
+    public val preload: PreloadPolicy = PreloadPolicy.NONE,
 )
+
+/**
+ * How much of a feed to prefetch around the row that is playing: how many items in the direction
+ * of the scroll, how many behind it, and how far into each.
+ *
+ * Counts rather than a set of indices, because *which* items are ahead is the feed's to say at
+ * runtime — its scroll position and direction — and not a policy's (ADR-0010 rule 10). A policy
+ * decides how much a prefetch may cost; the coordinator decides what the next item is.
+ *
+ * What a coordinator actually holds can be less than this and never more: the memory guard and the
+ * data-saver rule are applied after the decision, as platform rules (ADR-0010 rule 11).
+ */
+public data class PreloadPolicy(
+    /** Items in the direction the feed is moving, nearest first. */
+    public val itemsAhead: Int,
+    /** Items against the direction the feed is moving, for a viewer who swipes back. */
+    public val itemsBehind: Int,
+    /** How far into each of those items to go. */
+    public val depth: PreloadDepth,
+) {
+    init {
+        require(itemsAhead >= 0) { "itemsAhead must not be negative, was $itemsAhead" }
+        require(itemsBehind >= 0) { "itemsBehind must not be negative, was $itemsBehind" }
+    }
+
+    /** Whether this prefetches anything at all. */
+    public val isNone: Boolean
+        get() = itemsAhead == 0 && itemsBehind == 0
+
+    public companion object {
+        /** No prefetch: what every policy decides unless it says otherwise. */
+        @JvmField
+        public val NONE: PreloadPolicy = PreloadPolicy(itemsAhead = 0, itemsBehind = 0, depth = PreloadDepth.SourcePrepared)
+    }
+}
+
+/**
+ * How far into an item a prefetch goes, from cheapest to dearest.
+ *
+ * Each stage includes the ones before it. The first two spend requests on manifests and nothing on
+ * media; [Loaded] spends media bytes, and is the one that removes a fetch from a row's start.
+ */
+public sealed class PreloadDepth {
+
+    /** The manifest is fetched and parsed, so the item's tracks are known. */
+    public object SourcePrepared : PreloadDepth() {
+        override fun toString(): String = "SourcePrepared"
+    }
+
+    /** As [SourcePrepared], and a rendition has been chosen for the first period. */
+    public object TracksSelected : PreloadDepth() {
+        override fun toString(): String = "TracksSelected"
+    }
+
+    /** As [TracksSelected], and [durationMs] of media from the item's start has been loaded into memory. */
+    public data class Loaded(public val durationMs: Int) : PreloadDepth() {
+        init {
+            require(durationMs > 0) { "durationMs must be positive, was $durationMs" }
+        }
+    }
+}
 
 /**
  * How a live window is held: the range of playback speeds the player may drift through to stay at

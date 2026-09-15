@@ -21,6 +21,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.LoadControl
+import androidx.media3.exoplayer.source.preload.DefaultPreloadManager
 import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
 import androidx.media3.exoplayer.trackselection.ExoTrackSelection
 import androidx.media3.exoplayer.upstream.DefaultAllocator
@@ -144,6 +145,18 @@ internal fun SelectionPace.toTrackSelectionFactory(): ExoTrackSelection.Factory 
         retainAfterDiscardMs,
         bandwidthFraction,
     )
+
+/**
+ * The decision's prefetch depth, as the status Media3's preload manager holds an item at — read by a
+ * `PreloadCoordinator` for each item in its window (ADR-0010 rule 10).
+ *
+ * ref: https://developer.android.com/reference/androidx/media3/exoplayer/source/preload/DefaultPreloadManager.PreloadStatus
+ */
+internal fun PreloadDepth.toPreloadStatus(): DefaultPreloadManager.PreloadStatus = when (this) {
+    PreloadDepth.SourcePrepared -> DefaultPreloadManager.PreloadStatus.PRELOAD_STATUS_SOURCE_PREPARED
+    PreloadDepth.TracksSelected -> DefaultPreloadManager.PreloadStatus.PRELOAD_STATUS_TRACKS_SELECTED
+    is PreloadDepth.Loaded -> DefaultPreloadManager.PreloadStatus.specifiedRangeLoaded(durationMs.toLong())
+}
 
 /**
  * The third target a decision can reach, beside the two above: the engine's own retargetable

@@ -16,9 +16,11 @@
 
 package com.superplayer.core
 
+import androidx.media3.common.util.Clock
 import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.LoadControl
+import androidx.media3.exoplayer.RenderersFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.trackselection.ExoTrackSelection
 import androidx.media3.exoplayer.upstream.BandwidthMeter
@@ -116,23 +118,20 @@ internal class EngineConfiguration(val engine: ExoPlayer.Builder) {
     var decisionTarget: DecisionTarget? = null
 
     /**
-     * Told the media source factory the engine loads through, once it is assembled and before the
-     * engine is built — the entry `superplayer-preload` builds its sources through (ADR-0010 rule 6).
+     * The clock the engine runs on, or null for the platform's.
      *
-     * A reading slot rather than a substituting one: what it is handed is the factory installed on
-     * the engine, the same instance, so a source built from it runs through every layer of the chain,
-     * the cache slot included, and carries the same content identity a source the player built for
-     * that item would. Null, which is every player without preload attached, calls nothing.
+     * A slot rather than a call on [engine] for the preload manager's sake: a pooled player's engine
+     * shares its clock with the manager a coordinator builds (ADR-0010 rule 9), and `build()` can
+     * only hand on a clock it can read back. A test's fake clock goes here.
      */
-    var preloadEntry: PreloadEntry? = null
-}
+    var clock: Clock? = null
 
-/**
- * Where the media source factory an engine was built with is handed on — see
- * [EngineConfiguration.preloadEntry].
- */
-internal fun interface PreloadEntry {
-
-    /** Called once per `build()`, on the thread building the player. */
-    fun onLoadingPathAssembled(mediaSourceFactory: MediaSource.Factory)
+    /**
+     * The renderers the engine is built with, or null for Media3's own.
+     *
+     * A slot for [clock]'s reason: a preload manager selects tracks against the capabilities of the
+     * renderers its players will play with, so a pool hands it the renderers factory its first player
+     * was built with. A test's fake renderers go here.
+     */
+    var renderersFactory: RenderersFactory? = null
 }

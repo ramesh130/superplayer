@@ -91,6 +91,7 @@ class SuperPlayerHarness : ExternalResource() {
         cache: ContentCache? = null,
         alsoConfigure: (EngineConfiguration) -> Unit = {},
         alsoConfigureEngine: (ExoPlayer.Builder) -> Unit = {},
+        pooled: PooledEngine? = null,
     ): SuperPlayer {
         // Auto-advancing: the playback thread's waits resolve as fast as the test can run them, so a
         // two-second stream does not cost two seconds.
@@ -104,6 +105,7 @@ class SuperPlayerHarness : ExternalResource() {
                 .apply { telemetry?.let { setTelemetry(it) } }
                 .apply { policy?.let { setPolicy(it) } }
                 .apply { cache?.let { setCache(it) } }
+                .setPooledEngine(pooled)
                 .setEngineConfigurator { configuration ->
                     configuration.engine.useHarnessClock(clock)
                     // In the transport's place, under the chain `build()` composes, rather than in
@@ -214,24 +216,30 @@ class SuperPlayerHarness : ExternalResource() {
      * profile from the one it claims would be a lie in the fixture. The two defaults are written
      * down twice, so `PlayerPoolTest.aPoolWithNoFactoryBuildsPlayersOfItsOwnProfile` builds a pool
      * through the real factory and pins them together.
+     *
+     * [attachment], when set, is attached before the pool builds anything, the way
+     * `superplayer-preload`'s coordinator attaches (ADR-0010 rule 8).
      */
-    fun buildPool(
+    internal fun buildPool(
         maxSize: Int? = null,
         profile: PlaybackProfile? = null,
         fakeDataSet: FakeDataSet = SyntheticHlsStream.addTo(FakeDataSet()),
         telemetry: TelemetryCollector? = null,
+        cache: ContentCache? = null,
+        attachment: PoolAttachment? = null,
     ): PlayerPool = PlayerPool.Builder(ApplicationProvider.getApplicationContext())
         .apply {
             maxSize?.let { setMaxSize(it) }
             profile?.let { setProfile(it) }
         }
-        .setPlayerFactory {
+        .setPlayerFactory { pooled ->
             // A collector measures one player, so a pool given one is a pool a test sized to build
             // one — which is what every telemetry test here does, because the interesting case is a
             // player handed out twice rather than two players.
-            buildPlayer(profile ?: PlaybackProfile.SHORT_FORM, fakeDataSet, telemetry)
+            buildPlayer(profile ?: PlaybackProfile.SHORT_FORM, fakeDataSet, telemetry, cache = cache, pooled = pooled)
         }
         .build()
+        .apply { attachment?.let { attach(it) } }
 
     /**
      * Lets the playback thread act on everything [player] has been told so far.

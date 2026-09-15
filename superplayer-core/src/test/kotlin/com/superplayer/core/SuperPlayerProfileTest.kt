@@ -88,6 +88,7 @@ class SuperPlayerProfileTest {
                 maxVideoBitrateBps = TrackSelectionPolicy.UNLIMITED,
                 maxVideoHeightPx = TrackSelectionPolicy.UNLIMITED,
             ),
+            preload = PreloadPolicy(itemsAhead = 1, itemsBehind = 0, depth = PreloadDepth.SourcePrepared),
         )
     }
 
@@ -126,6 +127,7 @@ class SuperPlayerProfileTest {
                 maxVideoBitrateBps = TrackSelectionPolicy.UNLIMITED,
                 maxVideoHeightPx = 1_080,
             ),
+            preload = PreloadPolicy(itemsAhead = 2, itemsBehind = 1, depth = PreloadDepth.Loaded(durationMs = 1_000)),
         )
     }
 
@@ -297,11 +299,12 @@ class SuperPlayerProfileTest {
         profile: PlaybackProfile,
         buffer: BufferPolicy,
         trackSelection: TrackSelectionPolicy,
+        preload: PreloadPolicy = PreloadPolicy.NONE,
     ) {
         val player = harness.buildPlayer(profile)
 
         assertThat(player.profile).isEqualTo(profile)
-        assertThat(player.playbackDecision).isEqualTo(PlaybackDecision(buffer, trackSelection))
+        assertThat(player.playbackDecision).isEqualTo(PlaybackDecision(buffer, trackSelection, preload = preload))
 
         val parameters = player.trackSelectionParameters
         assertThat(parameters.maxVideoBitrate).isEqualTo(trackSelection.maxVideoBitrateBps)

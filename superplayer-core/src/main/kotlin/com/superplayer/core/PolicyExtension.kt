@@ -49,6 +49,14 @@ internal interface EnginePolicyExtension : PlaybackPolicy {
      * `build()`, on the thread building the player, before the test configurator.
      */
     fun configureEngine(configuration: EngineConfiguration)
+
+    /**
+     * Another engine is being built on the components [configureEngine] installed: a player of a
+     * [PlayerPool] after its first, which takes the first player's components rather than asking for
+     * its own (ADR-0010 rule 9). Called once per such `build()`, before the engine exists, so an
+     * extension that releases something with its last engine can count this one in. Nothing by default.
+     */
+    fun onComponentsShared() {}
 }
 
 /**

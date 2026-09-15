@@ -104,6 +104,39 @@ public class TestContent private constructor(
     internal enum class Protocol { DESCRIBED, HLS, DASH }
 
     /**
+     * This content, also served from [host]: every resource at its own address and at the same
+     * address on [host], byte for byte, with [sourceUri] naming the copy on [host].
+     *
+     * A second CDN host in front of one origin, which is what `PRD.md`'s F7 is about: the same
+     * rendition under a URL that differs only in its host. Playing [sourceUri] from before this call
+     * and from after it is playing one piece of content from two hosts. The synthetic streams
+     * reference their segments relatively, so a playlist fetched from [host] names [host]'s segments.
+     *
+     * Only for content served from fixed resources — a real HLS or DASH stream, not described content
+     * and not a live origin that keeps publishing.
+     */
+    public fun servedFrom(host: String): TestContent {
+        require(protocol != Protocol.DESCRIBED && publication == null) {
+            "Only a real protocol stream with fixed resources can be served from a second host"
+        }
+        return TestContent(
+            rungs = rungs,
+            durationMs = durationMs,
+            live = live,
+            protocol = protocol,
+            sourceUri = onHost(sourceUri, host),
+            resources = resources + resources.mapKeys { (uri, _) -> onHost(uri, host) },
+            responseHeaders = responseHeaders + responseHeaders.mapKeys { (uri, _) -> onHost(uri, host) },
+        )
+    }
+
+    private fun onHost(uri: String, host: String): String {
+        val parsed = java.net.URI(uri)
+        return java.net.URI(parsed.scheme, parsed.userInfo, host, parsed.port, parsed.path, parsed.query, parsed.fragment)
+            .toString()
+    }
+
+    /**
      * One rendition of a ladder: a bitrate, **the resolution a stream would encode it at**, and
      * optionally the codec profile it declares, as an RFC 6381 `codecs` string.
      *

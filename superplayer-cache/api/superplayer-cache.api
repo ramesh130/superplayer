@@ -1,0 +1,11 @@
+public final class com/superplayer/cache/CachePolicy {
+	public static final field INSTANCE Lcom/superplayer/cache/CachePolicy;
+	public static final fun contentKeyed (Ljava/io/File;J)Lcom/superplayer/cache/ContentKeyedCache;
+}
+
+public final class com/superplayer/cache/ContentKeyedCache : com/superplayer/core/ContentCache {
+	public final fun getDirectory ()Ljava/io/File;
+	public final fun getMaxBytes ()J
+	public final fun release ()V
+}
+

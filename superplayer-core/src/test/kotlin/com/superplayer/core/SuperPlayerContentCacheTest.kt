@@ -114,6 +114,32 @@ class SuperPlayerContentCacheTest {
         assertThat(seen.any { it.uri.toString() != SyntheticDashStream.MANIFEST_URI }).isTrue()
     }
 
+    /**
+     * What a cache may answer is on the request: the playlists and the MPD are manifests, the
+     * segments are media — for both protocols, and for content set as a `MediaItem` too, so a live
+     * playlist is never a cache's to store whichever way the content arrived.
+     */
+    @Test
+    fun theCacheSlotIsToldWhichLoadsAreManifestsAndWhichAreMedia() {
+        val cache = RecordingContentCache()
+        val hls = harness.buildPlayer(fakeDataSet = bothProtocols, cache = cache)
+        playUntilReady(hls, hlsRequest("episode:hls"))
+        val dash = harness.buildPlayer(fakeDataSet = bothProtocols, cache = cache)
+        dash.setMediaItem(MediaItem.fromUri(SyntheticDashStream.MANIFEST_URI))
+        dash.prepare()
+        TestPlayerRunHelper.advance(dash).untilState(Player.STATE_READY)
+
+        val seen = cache.recorder.seen()
+        val manifests = seen.filter { it.kind == LoadKind.MANIFEST }.map { it.uri.toString() }.toSet()
+        assertThat(manifests).containsAtLeast(SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI, SyntheticDashStream.MANIFEST_URI)
+        assertThat(manifests.all { it.endsWith(".m3u8") || it.endsWith(".mpd") }).isTrue()
+        val media = seen.filter { it.kind == LoadKind.MEDIA }.map { it.uri.toString() }
+        assertThat(media.any { it.endsWith(SyntheticHlsStream.SEGMENT_SUFFIX) }).isTrue()
+        assertThat(media.any { it.startsWith(SyntheticDashStream.MANIFEST_URI.substringBeforeLast('/')) }).isTrue()
+        assertThat(media.none { it.endsWith(".m3u8") || it.endsWith(".mpd") }).isTrue()
+        assertThat(seen.filter { it.kind == LoadKind.UNCLASSIFIED }).isEmpty()
+    }
+
     /** ADR-0010 rule 4: content with no `MediaRequest` has no identity, and the key seam is told so. */
     @Test
     fun contentSetAsAMediaItemReachesTheCacheSlotWithNoIdentity() {
@@ -188,7 +214,7 @@ class SuperPlayerContentCacheTest {
     private class RecordingContentCache(val recorder: RecordingCacheLayer = RecordingCacheLayer()) : ContentCache(recorder)
 
     /** One request as the key seam saw it. */
-    private data class SeenRequest(val uri: Uri, val contentId: String?)
+    private data class SeenRequest(val uri: Uri, val contentId: String?, val kind: LoadKind)
 
     /** Records what each request carries on its way to the transport, and changes nothing about it. */
     private class RecordingCacheLayer : CacheLayer {
@@ -210,7 +236,7 @@ class SuperPlayerContentCacheTest {
             }
 
             override fun open(dataSpec: DataSpec): Long {
-                synchronized(seen) { seen += SeenRequest(dataSpec.uri, ContentIdentity.of(dataSpec)) }
+                synchronized(seen) { seen += SeenRequest(dataSpec.uri, ContentIdentity.of(dataSpec), LoadKind.of(dataSpec)) }
                 return upstream.open(dataSpec)
             }
 

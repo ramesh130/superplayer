@@ -38,7 +38,7 @@ than to wave the dependency through.
 | `superplayer-testmedia` | 1 | Synthetic HLS and DASH streams: the known-good media tests play | nothing |
 | `superplayer-abr` | 3 | BandwidthOracle (per-transport estimates, spread beside the mean, cache hits excluded); AdaptivePolicy — AdaptiveBufferPolicy's five branches over a retargetable AdaptiveLoadControl, and AdaptiveSelectionPolicy's transport caps and hold over NetworkAwareTrackSelection, which also gates on the display and the decoder | core, testkit and telemetry (tests only) |
 | `superplayer-preload` | 4 | PreloadCoordinator, attached to a PlayerPool: Media3's preload manager over the chain core assembles, first-segment prefetch in scroll order, decoder warm-up bounded by the pool, the memory guard and the data-saver rule (ADR-0010) | core, testkit (tests only) |
-| `superplayer-cache` | 4 | ContentCache opened by the consumer in a directory they name: content-keyed CacheDataSource, LRU eviction within their budget, a pinned region for offline (ADR-0010) | core, testkit (tests only) |
+| `superplayer-cache` | 4 | ContentCache opened by the consumer in a directory they name: content-keyed CacheDataSource, LRU eviction within their budget, a pinned region for offline (ADR-0010) | core; testkit, abr and telemetry (tests only) |
 | `superplayer-resilience` | 5 | ErrorClassifier, RetryPolicy, FallbackLadder | core |
 | `superplayer-drm` | 6 | WidevineSessionManager, provisioning, offline licenses, fallback ladder | core |
 | `superplayer-offline` | 7 | DownloadManager wrapper, WorkManager constraints, battery policy | core |

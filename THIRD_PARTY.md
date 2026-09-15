@@ -15,7 +15,8 @@ of truth. This file records *what* is depended on and under *what license*.
 | `androidx.media3:media3-exoplayer` | Apache-2.0 | `superplayer-core` (api), `benchmark` |
 | `androidx.media3:media3-exoplayer-hls` | Apache-2.0 | `superplayer-core`, `superplayer-testkit` |
 | `androidx.media3:media3-exoplayer-dash` | Apache-2.0 | `superplayer-core`, `superplayer-testkit` |
-| `androidx.media3:media3-datasource` | Apache-2.0 | `superplayer-core`, `superplayer-testkit` |
+| `androidx.media3:media3-datasource` | Apache-2.0 | `superplayer-core`, `superplayer-testkit`, `superplayer-cache` |
+| `androidx.media3:media3-database` | Apache-2.0 | `superplayer-cache` (the `DatabaseProvider` interface its cache index is kept through) |
 | `androidx.media3:media3-session` | Apache-2.0 | `superplayer-core` (api), `demo` |
 | `androidx.media3:media3-ui` | Apache-2.0 | `demo` |
 | `androidx.annotation:annotation` | Apache-2.0 | `superplayer-core`, `superplayer-abr`, `superplayer-testkit`, `demo`, `benchmark` |
@@ -34,9 +35,9 @@ of truth. This file records *what* is depended on and under *what license*.
 | Dependency | License | Used by |
 | --- | --- | --- |
 | `junit:junit` | Eclipse Public License 1.0 | all modules (test), `build-logic` (test), `benchmark` (test) |
-| `androidx.media3:media3-test-utils` | Apache-2.0 | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`, `benchmark` (test) |
-| `androidx.media3:media3-test-utils-robolectric` | Apache-2.0 | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`, `benchmark` (test) |
-| `org.robolectric:robolectric` | MIT | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`, `benchmark` (test) |
+| `androidx.media3:media3-test-utils` | Apache-2.0 | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`, `superplayer-abr`, `superplayer-cache`, `benchmark` (test) |
+| `androidx.media3:media3-test-utils-robolectric` | Apache-2.0 | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`, `superplayer-abr`, `superplayer-cache`, `benchmark` (test) |
+| `org.robolectric:robolectric` | MIT | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`, `superplayer-abr`, `superplayer-cache`, `benchmark` (test) |
 | `com.google.truth:truth` | Apache-2.0 | transitive, via `media3-test-utils` |
 | `org.mockito:mockito-core` | MIT | transitive, via `media3-test-utils` |
 | `androidx.test:core`, `androidx.test.ext:junit` | Apache-2.0 | transitive, via `media3-test-utils` |

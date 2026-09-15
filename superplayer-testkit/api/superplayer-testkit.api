@@ -74,6 +74,13 @@ public final class com/superplayer/testkit/NetworkProfile : java/lang/Enum {
 public final class com/superplayer/testkit/NetworkProfile$Companion {
 }
 
+public final class com/superplayer/testkit/NetworkRequest {
+	public final fun getHeaders ()Ljava/util/Map;
+	public final fun getKind ()Lcom/superplayer/testkit/ResourceKind;
+	public final fun getUri ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/superplayer/testkit/NetworkTransport : java/lang/Enum {
 	public static final field CELLULAR Lcom/superplayer/testkit/NetworkTransport;
 	public static final field ETHERNET Lcom/superplayer/testkit/NetworkTransport;
@@ -95,14 +102,15 @@ public final class com/superplayer/testkit/PlaybackHarness : org/junit/rules/Ext
 	public final fun advanceUntil (Landroidx/media3/common/Player;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public static synthetic fun advanceUntil$default (Lcom/superplayer/testkit/PlaybackHarness;Landroidx/media3/common/Player;Ljava/lang/String;JLkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public final fun attachVideoOutput (Landroidx/media3/common/Player;)V
-	public final fun buildPlayer (Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;Lcom/superplayer/core/PlaybackPolicy;)Lcom/superplayer/core/SuperPlayer;
-	public static synthetic fun buildPlayer$default (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;Lcom/superplayer/core/PlaybackPolicy;ILjava/lang/Object;)Lcom/superplayer/core/SuperPlayer;
+	public final fun buildPlayer (Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;Lcom/superplayer/core/PlaybackPolicy;Lcom/superplayer/core/ContentCache;)Lcom/superplayer/core/SuperPlayer;
+	public static synthetic fun buildPlayer$default (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;Lcom/superplayer/core/PlaybackPolicy;Lcom/superplayer/core/ContentCache;ILjava/lang/Object;)Lcom/superplayer/core/SuperPlayer;
 	public final fun buildPool (Ljava/lang/Integer;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/testkit/TestContent;Lkotlin/jvm/functions/Function0;)Lcom/superplayer/core/PlayerPool;
 	public static synthetic fun buildPool$default (Lcom/superplayer/testkit/PlaybackHarness;Ljava/lang/Integer;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/testkit/TestContent;Lkotlin/jvm/functions/Function0;ILjava/lang/Object;)Lcom/superplayer/core/PlayerPool;
 	public final fun buildStockPlayer (Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;)Landroidx/media3/exoplayer/ExoPlayer;
 	public static synthetic fun buildStockPlayer$default (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;ILjava/lang/Object;)Landroidx/media3/exoplayer/ExoPlayer;
 	public final fun elapsedRealtimeMs ()J
 	public final fun failRendering (Landroidx/media3/common/Player;)V
+	public final fun networkRequests (Landroidx/media3/common/Player;)Ljava/util/List;
 	public final fun playToFailure (Landroidx/media3/common/Player;)V
 	public final fun playToReady (Landroidx/media3/common/Player;)V
 	public final fun release (Landroidx/media3/common/Player;)V
@@ -138,6 +146,7 @@ public final class com/superplayer/testkit/TestContent {
 	public static final fun liveHls (Z)Lcom/superplayer/testkit/TestContent;
 	public static final fun liveVideo (IJ)Lcom/superplayer/testkit/TestContent;
 	public static final fun liveVideoLadder (Ljava/util/List;J)Lcom/superplayer/testkit/TestContent;
+	public final fun servedFrom (Ljava/lang/String;)Lcom/superplayer/testkit/TestContent;
 	public static final fun video (IJ)Lcom/superplayer/testkit/TestContent;
 	public static final fun videoLadder (Ljava/util/List;J)Lcom/superplayer/testkit/TestContent;
 }

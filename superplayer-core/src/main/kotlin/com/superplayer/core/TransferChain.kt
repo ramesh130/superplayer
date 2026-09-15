@@ -17,12 +17,18 @@
 package com.superplayer.core
 
 import android.content.Context
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.Clock
+import androidx.media3.common.util.Util
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.dash.DashMediaSource
+import androidx.media3.exoplayer.dash.DefaultDashChunkSource
 import androidx.media3.exoplayer.drm.DrmSessionManagerProvider
+import androidx.media3.exoplayer.hls.HlsDataSourceFactory
+import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.upstream.CmcdConfiguration
@@ -134,6 +140,13 @@ import java.util.concurrent.CopyOnWriteArrayList
  * and its requests reach the slot with none. [ContentIdentity] says why it travels with the request
  * rather than in a holder beside the chain.
  *
+ * The same stamp says what kind of load a request is ([LoadKind]), on every item a cached player
+ * plays, identified or not: a cache answers media and never a manifest, because a stored live
+ * playlist is exactly the stale copy revalidation exists to get past. Only the media source knows the
+ * kind — HLS asks for a data source per data type, DASH takes a manifest factory beside its chunk
+ * factory — so an HLS or DASH item's source is built per protocol with a stamped chain for each kind,
+ * rather than by `DefaultMediaSourceFactory` over one chain.
+ *
  * Preload builds its sources from the same factory, handed to it through
  * `EngineConfiguration.preloadEntry`, so a source warmed ahead of the viewport loads through this
  * chain under the same identity (ADR-0010 rule 6).
@@ -236,7 +249,9 @@ internal object TransferChain {
      * state is shared exactly as before. Every setting the engine or a caller makes on this factory is
      * recorded and replayed onto each per-item one, in order.
      *
-     * An item with no identity — one set through `setMediaItem` — is built over the unstamped chain.
+     * Every item's requests are stamped with their [LoadKind], so the slot can keep manifests out of a
+     * cache; an item with no identity — one set through `setMediaItem` — is stamped with the kind and
+     * no identity, and a cache keys it by its URL.
      */
     private class ContentKeyedMediaSourceFactory(private val chain: DataSource.Factory) : MediaSource.Factory {
 
@@ -273,10 +288,66 @@ internal object TransferChain {
         override fun getSupportedTypes(): IntArray = typesOnClasspath.copyOf()
 
         override fun createMediaSource(mediaItem: MediaItem): MediaSource {
-            val itemChain = ContentIdentity.of(mediaItem)?.let(chain::stampedWith) ?: chain
-            val factory: MediaSource.Factory = DefaultMediaSourceFactory(itemChain)
+            val identity = ContentIdentity.of(mediaItem)
+            val factory: MediaSource.Factory = when (packagingOf(mediaItem)) {
+                Packaging.HLS -> {
+                    val manifests = chain.stampedWith(identity, LoadKind.MANIFEST)
+                    val media = chain.stampedWith(identity, LoadKind.MEDIA)
+                    val other = chain.stampedWith(identity, LoadKind.UNCLASSIFIED)
+                    HlsMediaSource.Factory(
+                        HlsDataSourceFactory { dataType ->
+                            when (dataType) {
+                                C.DATA_TYPE_MEDIA, C.DATA_TYPE_MEDIA_INITIALIZATION -> media
+
+                                C.DATA_TYPE_MANIFEST, C.DATA_TYPE_STEERING_MANIFEST -> manifests
+
+                                // An EXT-X-KEY's key (DATA_TYPE_DRM), and anything Media3 adds later.
+                                else -> other
+                            }.createDataSource()
+                        },
+                    )
+                }
+
+                // The MPD and its UTCTiming source load through the manifest factory, and every
+                // initialization, index and media segment through the chunk source's.
+                Packaging.DASH -> DashMediaSource.Factory(
+                    DefaultDashChunkSource.Factory(chain.stampedWith(identity, LoadKind.MEDIA)),
+                    chain.stampedWith(identity, LoadKind.MANIFEST),
+                )
+
+                Packaging.PROGRESSIVE -> DefaultMediaSourceFactory(chain.stampedWith(identity, LoadKind.MEDIA))
+
+                Packaging.UNCLASSIFIED -> DefaultMediaSourceFactory(chain.stampedWith(identity, LoadKind.UNCLASSIFIED))
+            }
             settings.forEach { it(factory) }
             return factory.createMediaSource(mediaItem)
         }
+
+        /**
+         * How [item] is packaged, which decides how its requests can be told apart.
+         *
+         * Media3's own inference, so an item is read as HLS or DASH exactly when
+         * `DefaultMediaSourceFactory` would read it so. An HLS or DASH item that asks for what only
+         * `DefaultMediaSourceFactory` adds around a source — side-loaded subtitles, clipping, ads — is
+         * built by it, and its requests cannot be classified: they go uncached rather than risk a
+         * manifest being answered from storage. Items adopted from a [MediaRequest] carry none of those.
+         * A progressive file has no manifest, so every request it makes is media. Smooth Streaming and
+         * RTSP, if a consumer adds them, have manifests this does not build by kind.
+         */
+        private fun packagingOf(item: MediaItem): Packaging {
+            val local = item.localConfiguration ?: return Packaging.UNCLASSIFIED
+            val packaging = when (Util.inferContentTypeForUriAndMimeType(local.uri, local.mimeType)) {
+                C.CONTENT_TYPE_HLS -> Packaging.HLS
+                C.CONTENT_TYPE_DASH -> Packaging.DASH
+                C.CONTENT_TYPE_OTHER -> return Packaging.PROGRESSIVE
+                else -> return Packaging.UNCLASSIFIED
+            }
+            val decorated = local.subtitleConfigurations.isNotEmpty() ||
+                item.clippingConfiguration != MediaItem.ClippingConfiguration.UNSET ||
+                local.adsConfiguration != null
+            return if (decorated) Packaging.UNCLASSIFIED else packaging
+        }
     }
+
+    private enum class Packaging { HLS, DASH, PROGRESSIVE, UNCLASSIFIED }
 }

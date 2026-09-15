@@ -15,10 +15,10 @@
  */
 
 /**
- * superplayer-cache — Content-keyed CacheDataSource, tiering, eviction policy
+ * superplayer-cache — a content cache keyed by `MediaRequest.contentId` rather than by URL, in storage
+ * the consumer opened.
  *
- * Placeholder. This module is created empty and buildable so that the module boundary and
- * dependency direction are fixed and enforceable now, rather than negotiated once code
- * arrives (phase 4). It intentionally declares no public API yet.
+ * [CachePolicy.contentKeyed] is the entry point and [ContentKeyedCache] what it returns; ADR-0010
+ * rules 1 to 4 are the decisions this module implements, and its sizing and eviction are #157's.
  */
 package com.superplayer.cache

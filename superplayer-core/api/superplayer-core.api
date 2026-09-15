@@ -310,6 +310,17 @@ public final class com/superplayer/core/PlayerPool$Builder {
 public abstract class com/superplayer/core/PreloadDepth {
 }
 
+public final class com/superplayer/core/PreloadDepth$DecoderWarmed : com/superplayer/core/PreloadDepth {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lcom/superplayer/core/PreloadDepth$DecoderWarmed;
+	public static synthetic fun copy$default (Lcom/superplayer/core/PreloadDepth$DecoderWarmed;IILjava/lang/Object;)Lcom/superplayer/core/PreloadDepth$DecoderWarmed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDurationMs ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/superplayer/core/PreloadDepth$Loaded : com/superplayer/core/PreloadDepth {
 	public fun <init> (I)V
 	public final fun component1 ()I

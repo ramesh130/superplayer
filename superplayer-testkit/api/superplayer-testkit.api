@@ -5,6 +5,7 @@ public final class com/superplayer/testkit/DeviceStatement {
 	public static final fun declareAppHeap (I)V
 	public static final fun declareDisplay (II)V
 	public static final fun declareDisplayHdrTypes ([I)V
+	public static final fun declareVideoDecoder (Ljava/lang/String;I[Lkotlin/Pair;)V
 	public static final fun declareVideoDecoder (Ljava/lang/String;[Lkotlin/Pair;)V
 }
 
@@ -119,6 +120,7 @@ public final class com/superplayer/testkit/PlaybackHarness : org/junit/rules/Ext
 	public final fun resumeRendering (Landroidx/media3/common/Player;)V
 	public final fun settle (Landroidx/media3/common/Player;)V
 	public final fun stallRendering (Landroidx/media3/common/Player;)V
+	public final fun videoDecodersHeld (Lcom/superplayer/core/PlayerPool;)I
 }
 
 public final class com/superplayer/testkit/PlaybackHarness$Companion {

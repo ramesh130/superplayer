@@ -150,11 +150,12 @@ public class AdaptiveBufferPolicy(public val profile: PlaybackProfile) : Playbac
      *
      * A loaded range is media fetched for a row the viewer may never reach, and on cellular that is
      * data they pay for — branch 1's trade, and F1's, in `PRD.md` §3.1. A prepared source keeps the
-     * reach and the manifest round trips it saves, and spends kilobytes. An unknown transport keeps
-     * the profile's depth, because what is not observed refuses nothing (ADR-0009 rule 1).
+     * reach and the manifest round trips it saves, and spends kilobytes. A warmed decoder goes the same
+     * way, because it is held on a loaded range. An unknown transport keeps the profile's depth,
+     * because what is not observed refuses nothing (ADR-0009 rule 1).
      */
     private fun preloadOn(transport: NetworkTransport?, static: PreloadPolicy): PreloadPolicy =
-        if (transport is NetworkTransport.Cellular && static.depth is PreloadDepth.Loaded) {
+        if (transport is NetworkTransport.Cellular && (static.depth is PreloadDepth.Loaded || static.depth is PreloadDepth.DecoderWarmed)) {
             static.copy(depth = PreloadDepth.SourcePrepared)
         } else {
             static

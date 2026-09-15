@@ -58,6 +58,16 @@ class DeviceStatementTest {
     }
 
     @Test
+    fun aDeclaredDecoderReportsItsInstanceLimit() {
+        DeviceStatement.declareVideoDecoder(MediaFormat.MIMETYPE_VIDEO_HEVC, maxSupportedInstances = 3)
+
+        val limits = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
+            .filter { !it.isEncoder && MediaFormat.MIMETYPE_VIDEO_HEVC in it.supportedTypes }
+            .map { it.getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_HEVC).maxSupportedInstances }
+        assertThat(limits).containsExactly(3)
+    }
+
+    @Test
     fun aDeclaredDecoderReportsItsProfileLevels() {
         DeviceStatement.declareVideoDecoder(
             MediaFormat.MIMETYPE_VIDEO_AVC,

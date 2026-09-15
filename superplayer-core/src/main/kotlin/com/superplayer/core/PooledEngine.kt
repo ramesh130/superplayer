@@ -95,8 +95,16 @@ internal class PooledEngine(private val attachment: PoolAttachment?) {
         attachment?.onEngineAssembled(assembled)
     }
 
-    /** A warm source for [item], which [player] is adopting, or null to load it cold. */
-    fun sourceFor(player: SuperPlayer, item: MediaItem): MediaSource? = attachment?.sourceFor(player, item)
+    /** How [player], adopting [item], starts warm, or null to load it cold. */
+    fun sourceFor(player: SuperPlayer, item: MediaItem): WarmStart? = attachment?.sourceFor(player, item)
+
+    /** Which of [idle] the pool hands out next, or null for the pool's own choice. */
+    fun preferredIdle(idle: List<SuperPlayer>): SuperPlayer? = attachment?.preferredIdle(idle)
+
+    /** Tells the attachment [player] has left the idle set for a caller, before the caller has it. */
+    fun onAcquired(player: SuperPlayer) {
+        attachment?.onAcquired(player)
+    }
 
     /** Tells the attachment [player] was handed back, once it has been reset. */
     fun onRecycled(player: SuperPlayer) {
@@ -183,6 +191,16 @@ internal class SharedComponents(
     }
 }
 
+/** How a pooled player adopting an item starts, when it does not start cold. */
+internal sealed class WarmStart {
+
+    /** From a prefetched source, which the player plays from now on. */
+    class Source(val source: MediaSource) : WarmStart()
+
+    /** From the source it already holds prepared, decoders initialised: there is nothing to set. */
+    object Prepared : WarmStart()
+}
+
 /**
  * What attaches to a [PlayerPool] to change how its players are built and what they adopt — the seam
  * `superplayer-preload`'s coordinator is attached through, as core's fourth Kotlin friend (ADR-0010
@@ -194,10 +212,19 @@ internal interface PoolAttachment {
     fun onEngineAssembled(components: SharedComponents)
 
     /**
-     * A warm source for [item], which [player] is adopting through `setMediaRequest`, or null to load
-     * it cold. A source returned here is [player]'s from now on.
+     * How [player], adopting [item] through `setMediaRequest`, starts warm, or null to load it cold. A
+     * source returned here is [player]'s from now on.
      */
-    fun sourceFor(player: SuperPlayer, item: MediaItem): MediaSource?
+    fun sourceFor(player: SuperPlayer, item: MediaItem): WarmStart?
+
+    /**
+     * Which of [idle] — never empty, newest last — the pool hands out on its next `acquire`, or null
+     * for the pool's own choice, the newest. One of [idle] if not null.
+     */
+    fun preferredIdle(idle: List<SuperPlayer>): SuperPlayer?
+
+    /** [player] has left the idle set for a caller, who does not have it yet. */
+    fun onAcquired(player: SuperPlayer)
 
     /**
      * [player] was handed back to the pool and has been reset: it plays nothing, and a source it

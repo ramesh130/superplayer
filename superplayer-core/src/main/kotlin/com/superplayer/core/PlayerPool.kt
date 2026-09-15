@@ -181,6 +181,10 @@ public class PlayerPool private constructor(
     public val inUseCount: Int
         get() = inUse.size
 
+    /** The players built and handed back, newest last: what an attachment may hold warm. */
+    internal val idlePlayers: List<SuperPlayer>
+        get() = idle.toList()
+
     /**
      * A player to show one item with, or null if every player this device can afford is already out.
      *
@@ -194,7 +198,13 @@ public class PlayerPool private constructor(
     public fun acquire(): SuperPlayer? {
         check(!isReleased) { "This PlayerPool has been released" }
 
-        idle.removeLastOrNull()?.let { reused ->
+        if (idle.isNotEmpty()) {
+            // Newest first, unless an attachment holds a player warm on the row the feed has just
+            // made current — or holds the others warm, and would rather hand out one holding nothing.
+            val reused = pooledEngine?.preferredIdle(idle.toList()) ?: idle.last()
+            check(idle.remove(reused)) { "An attachment preferred a player that is not idle in this pool" }
+            // Before the caller has it, so a warm decoder held for some other row is let go first.
+            pooledEngine?.onAcquired(reused)
             inUse += reused
             return reused
         }
@@ -229,10 +239,11 @@ public class PlayerPool private constructor(
         }
 
         player.resetForReuse()
-        // After the reset, once the player has let its item go: a prefetched source the attachment
-        // releases now is released behind the player's own release of it, on the same thread.
-        pooledEngine?.onRecycled(player)
         idle.addLast(player)
+        // After the reset, once the player has let its item go: a prefetched source the attachment
+        // releases now is released behind the player's own release of it, on the same thread. And
+        // once it is idle, so an attachment can hold the next row warm on it.
+        pooledEngine?.onRecycled(player)
     }
 
     /**

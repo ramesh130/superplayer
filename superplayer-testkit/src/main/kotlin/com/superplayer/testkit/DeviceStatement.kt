@@ -119,6 +119,27 @@ public object DeviceStatement {
     @JvmStatic
     @RequiresApi(Build.VERSION_CODES.Q)
     public fun declareVideoDecoder(mimeType: String, vararg profileLevels: Pair<Int, Int>) {
+        addVideoDecoder(mimeType, maxSupportedInstances = null, profileLevels)
+    }
+
+    /**
+     * As [declareVideoDecoder], and reporting [maxSupportedInstances] from
+     * `CodecCapabilities.getMaxSupportedInstances` — how many of this decoder the device runs at once,
+     * which is what a pool's bound, and so a coordinator's warm decoders, are derived from.
+     *
+     * Robolectric's codec builder has no setter for it and answers 32 without one, so the value is
+     * written into the built capabilities through Robolectric's reflection helper — the second hidden
+     * platform member this module names, here for the reason [declareDisplay] names the first.
+     */
+    @JvmStatic
+    @RequiresApi(Build.VERSION_CODES.Q)
+    public fun declareVideoDecoder(mimeType: String, maxSupportedInstances: Int, vararg profileLevels: Pair<Int, Int>) {
+        require(maxSupportedInstances > 0) { "A decoder runs at least one instance, not $maxSupportedInstances" }
+        addVideoDecoder(mimeType, maxSupportedInstances, profileLevels)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private fun addVideoDecoder(mimeType: String, maxSupportedInstances: Int?, profileLevels: Array<out Pair<Int, Int>>) {
         val declared = profileLevels.map { (profile, level) ->
             MediaCodecInfo.CodecProfileLevel().also {
                 it.profile = profile
@@ -131,6 +152,11 @@ public object DeviceStatement {
             .setColorFormats(intArrayOf(MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible))
             .setProfileLevels(declared.toTypedArray())
             .build()
+        // After `build`, which writes Robolectric's own 32 into the same field: the one the platform's
+        // `getMaxSupportedInstances` returns, filled from `max-concurrent-instances` on a device.
+        // ref: https://developer.android.com/reference/android/media/MediaCodecInfo.CodecCapabilities#getMaxSupportedInstances()
+        // ref: https://cs.android.com/android/platform/superproject/+/android-15.0.0_r1:frameworks/base/media/java/android/media/MediaCodecInfo.java
+        maxSupportedInstances?.let { ReflectionHelpers.setField(capabilities, "mMaxSupportedInstances", it) }
         ShadowMediaCodecList.addCodec(
             MediaCodecInfoBuilder.newBuilder()
                 .setName("test.decoder.${mimeType.substringAfterLast('/')}.${declaredDecoders++}")

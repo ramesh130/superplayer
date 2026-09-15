@@ -155,7 +155,17 @@ one the coordinator minted before its first prefetched request (`PremintedSessio
 a player, so the current row keeps its registration; and Media3 releases a source a player holds only
 once the player lets go, which is why removing an adopted item is safe. `PreloadCoordinatorPlaybackTest`
 drives a scripted scroll through `harness.buildPool`, whose players share one transport so
-`networkRequests(pool)` is the screen's. A pool built with `setPolicy(AdaptivePolicy…)` is one engine
+`networkRequests(pool)` is the screen's. At `PreloadDepth.DecoderWarmed` — `SHORT_FORM`'s — the nearest
+rows also get a decoder: an *idle* pooled player prepared on the row's prefetched source with no surface,
+session or `playWhenReady` (`SuperPlayer.holdWarm`), because Media3's preload manager has no decoder
+stage. Only players the feed has handed back are warmed, so warm decoders never exceed `maxSize` less the
+players out — the device's reading, never read again — and `acquire()` prefers the one warm on the
+current row, which `setMediaRequest` then keeps (`WarmStart.Prepared`). The coordinator's `warm` and
+`adopted` maps are identity maps keyed by player: compare their *values* by equality, because `itemOf`
+builds an equal item, never the same one. `DecoderWarmupTest` states the limit with
+`DeviceStatement.declareVideoDecoder(mime, maxSupportedInstances)` and counts with
+`harness.videoDecodersHeld(pool)`; the harness cannot show a warm first frame arriving sooner, and
+that test's KDoc says why. A pool built with `setPolicy(AdaptivePolicy…)` is one engine
 too, with its oracle released by the last player (`AdaptivePolicyPoolTest`).
 `superplayer-cache` fills the slot: `CachePolicy.contentKeyed(directory, maxBytes)` opens a
 `ContentKeyedCache` — core's third Kotlin friend — over Media3's `SimpleCache`, with its index in a

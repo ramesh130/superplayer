@@ -186,7 +186,8 @@ public data class PreloadPolicy(
  * How far into an item a prefetch goes, from cheapest to dearest.
  *
  * Each stage includes the ones before it. The first two spend requests on manifests and nothing on
- * media; [Loaded] spends media bytes, and is the one that removes a fetch from a row's start.
+ * media; [Loaded] spends media bytes, and is the one that removes a fetch from a row's start;
+ * [DecoderWarmed] spends a decoder instance too, and removes the decoder's start as well.
  */
 public sealed class PreloadDepth {
 
@@ -202,6 +203,17 @@ public sealed class PreloadDepth {
 
     /** As [TracksSelected], and [durationMs] of media from the item's start has been loaded into memory. */
     public data class Loaded(public val durationMs: Int) : PreloadDepth() {
+        init {
+            require(durationMs > 0) { "durationMs must be positive, was $durationMs" }
+        }
+    }
+
+    /**
+     * As [Loaded], and for the nearest of those items a decoder initialised on what was loaded — as many
+     * as the pool's idle players allow, which the pool bounds by the device's concurrent decoder
+     * instances. The items past that are held [Loaded].
+     */
+    public data class DecoderWarmed(public val durationMs: Int) : PreloadDepth() {
         init {
             require(durationMs > 0) { "durationMs must be positive, was $durationMs" }
         }

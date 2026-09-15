@@ -263,9 +263,10 @@ platform lookup. `android-emulator` enables KVM, then runs `devicelab/lab create
 `devicelab/lab device`. The device description and the boot-wait therefore live in the harness alone
 rather than being written a second time in YAML.
 
-Its first scheduled consumer is [`leak-hunt.yml`](../.github/workflows/leak-hunt.yml), nightly,
-which raises the job's bound through the `timeout-minutes` input. Neither has been run on GitHub yet,
-so that first night is the workflow's first real test. Two things are worth watching on that run: that the emulator started in one
+Its first consumer is [`leak-hunt.yml`](../.github/workflows/leak-hunt.yml), which raises the job's
+bound through the `timeout-minutes` input. It was nightly, and now runs only when started by hand once a
+phase is complete, to stay inside the GitHub Actions minutes budget. Neither has been run on GitHub yet,
+so that first run is the workflow's first real test. Two things are worth watching on that run: that the emulator started in one
 step is still running in the next, and that boot fits in the job's timeout on a KVM runner.
 
 ## Limits

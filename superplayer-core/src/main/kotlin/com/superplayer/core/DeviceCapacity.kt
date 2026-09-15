@@ -21,7 +21,6 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.hardware.display.DisplayManager
 import android.media.MediaCodecList
-import android.media.MediaFormat
 import android.view.Display
 
 /**
@@ -63,9 +62,13 @@ import android.view.Display
  * pool
  * hand back nothing at all and a feed show no video anywhere, which is a worse answer than one
  * player being recycled hard.
+ *
+ * [feedCodecs] are the codecs the feed's content is in, which only the consumer knows; the decoder
+ * term is read over those alone.
  */
-internal fun concurrentPlayerCapacityOf(context: Context): Int =
-    minOf(readDecoderTable().instanceCapacity, memoryCapacity(context)).coerceAtLeast(MINIMUM_CAPACITY)
+internal fun concurrentPlayerCapacityOf(context: Context, feedCodecs: Set<VideoCodec>): Int =
+    minOf(readDecoderTable().instanceCapacityFor(feedCodecs), memoryCapacity(context))
+        .coerceAtLeast(MINIMUM_CAPACITY)
 
 /**
  * What one walk of the platform's decoder list reports: the pool's decoder bound and the selector's
@@ -78,11 +81,22 @@ internal fun concurrentPlayerCapacityOf(context: Context): Int =
  * against a cache.
  */
 private class DecoderTable(
-    /** [concurrentPlayerCapacityOf]'s decoder term, with the reductions [readDecoderTable] argues. */
-    val instanceCapacity: Int,
+    /**
+     * For each video MIME type (lowercased), the largest instance limit any of its decoders reports;
+     * a MIME type with no positive report has no entry.
+     */
+    val instancesPerMimeType: Map<String, Int>,
     /** [DeviceConstraints.decodableProfileLevels], pooled by MIME type as [readDecoderTable] argues. */
     val profileLevels: Map<String, List<DeviceConstraints.ProfileLevel>>,
-)
+) {
+    /**
+     * [concurrentPlayerCapacityOf]'s decoder term for a feed in [codecs]: the smallest of their
+     * limits, with a codec the device reports nothing for left out — or [MINIMUM_CAPACITY] when that
+     * leaves nothing.
+     */
+    fun instanceCapacityFor(codecs: Set<VideoCodec>): Int =
+        codecs.mapNotNull { instancesPerMimeType[it.mimeType] }.minOrNull() ?: MINIMUM_CAPACITY
+}
 
 /**
  * The decoder list, walked once for both of [DecoderTable]'s values.
@@ -94,17 +108,22 @@ private class DecoderTable(
  *
  * Two reductions, and the direction of each matters. Across the *decoders for one MIME type* the
  * answer is the **largest**, because a device that ships a hardware decoder reporting 16 and a
- * software fallback reporting 1 can run 16 — the fallback is not a ceiling on the hardware. Across
- * *MIME types* the answer is the **smallest**, because a pool does not know what a feed will contain
- * and a bound that only holds for H.264 is not a bound.
+ * software fallback reporting 1 can run 16 — the fallback is not a ceiling on the hardware. That one
+ * is taken here, for every video MIME type. Across *codecs* the answer is the **smallest**, because a
+ * bound that holds for H.264 is no bound for a feed that also plays AV1 — and that one is taken by
+ * [DecoderTable.instanceCapacityFor], over the codecs the consumer declared the feed to contain.
  *
- * Only H.264 and HEVC are consulted for it. They are what feed content is encoded in; folding in
- * every video MIME type a device declares would let some rarely-implemented format nobody is going
- * to play — reported by a stub decoder with a limit of one — set the bound for everything.
+ * Declared, not every codec the device has. Which codecs a feed is encoded in is a fact about the
+ * content, not the device — H.264 and HEVC for most, AV1 or VP9 for a growing share of short-form —
+ * and folding in every video MIME type a device declares would let a codec the feed never touches,
+ * reported by a stub decoder with a limit of one, set the bound for everything.
  *
- * A device that reports no usable video decoder at all falls to [MINIMUM_CAPACITY]. That is not a
- * theoretical case: it is what an emulator image with no codec table looks like, and the honest
- * reading of "I cannot tell you" is one, not many.
+ * A declared codec the device reports no decoder for is left out rather than read as a limit of
+ * zero, which is the direction [DeviceConstraints] reads an unknown in: the renderer still refuses
+ * what cannot be decoded, and one missing codec is no reason to make every other one's feed a pool of
+ * one. A device that reports no usable decoder for *any* declared codec falls to [MINIMUM_CAPACITY].
+ * That is not a theoretical case: it is what an emulator image with no codec table looks like, and
+ * the honest reading of "I cannot tell you" is one, not many.
  *
  * **Profile levels** are every declared video decoder's, pooled by MIME type rather than kept per
  * decoder: what a selector asks is whether *some* decoder on the device takes the rung, and the
@@ -121,7 +140,7 @@ private fun readDecoderTable(): DecoderTable {
         // file rather than anything an app can fix. A pool that crashed on such a device would be
         // strictly worse than one that ran a single player on it, and the selector reads the same
         // failure as "unknown" rather than "none".
-        return DecoderTable(instanceCapacity = MINIMUM_CAPACITY, profileLevels = emptyMap())
+        return DecoderTable(instancesPerMimeType = emptyMap(), profileLevels = emptyMap())
     }
 
     val bestPerMimeType = mutableMapOf<String, Int>()
@@ -132,8 +151,8 @@ private fun readDecoderTable(): DecoderTable {
             // Normalised once, and used as the key as well as for the test. Keying on the raw string
             // would undo the max-per-format reduction on exactly the devices the normalisation is
             // here for: a phone reporting `video/avc` from its hardware decoder and `VIDEO/AVC` from
-            // the software fallback would get two entries, and the `minOrNull` below would then take
-            // the fallback's limit of one as the bound for the whole feed.
+            // the software fallback would get two entries, and the minimum across codecs would then
+            // take the fallback's limit of one as the bound for the whole feed.
             val format = mimeType.lowercase()
             if (!format.startsWith(VIDEO_MIME_PREFIX)) continue
             val capabilities = try {
@@ -144,10 +163,8 @@ private fun readDecoderTable(): DecoderTable {
                 continue
             }
 
-            if (format in FEED_VIDEO_MIME_TYPES) {
-                val instances = capabilities.maxSupportedInstances
-                if (instances > 0) bestPerMimeType[format] = maxOf(bestPerMimeType[format] ?: 0, instances)
-            }
+            val instances = capabilities.maxSupportedInstances
+            if (instances > 0) bestPerMimeType[format] = maxOf(bestPerMimeType[format] ?: 0, instances)
 
             val levels = capabilities.profileLevels ?: continue
             val declared = pooled.getOrPut(format) { mutableListOf() }
@@ -158,7 +175,7 @@ private fun readDecoderTable(): DecoderTable {
     }
 
     return DecoderTable(
-        instanceCapacity = bestPerMimeType.values.minOrNull() ?: MINIMUM_CAPACITY,
+        instancesPerMimeType = bestPerMimeType,
         profileLevels = pooled,
     )
 }
@@ -251,13 +268,11 @@ private const val BYTES_PER_MEGABYTE: Long = 1024L * 1024L
 private const val MINIMUM_CAPACITY: Int = 1
 
 /**
- * The video codecs a bound is derived from. Lowercased, because `supportedTypes` is not
- * case-normalised across devices.
+ * The codecs a pool's bound is derived from when its consumer declares none: H.264 and HEVC, which
+ * is what every pool was bounded by before a feed could say otherwise (#143), and what most feeds
+ * are still delivered in.
  */
-private val FEED_VIDEO_MIME_TYPES: Set<String> = setOf(
-    MediaFormat.MIMETYPE_VIDEO_AVC,
-    MediaFormat.MIMETYPE_VIDEO_HEVC,
-)
+internal val DEFAULT_FEED_CODECS: Set<VideoCodec> = setOf(VideoCodec.H264, VideoCodec.HEVC)
 
 /**
  * What the device can show and decode, read once and handed to a track selector as a constraint.

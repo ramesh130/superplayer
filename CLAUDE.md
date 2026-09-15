@@ -112,7 +112,9 @@ A screen that needs many players at once — a feed, a grid — builds them thro
 than one per item, because concurrent hardware decoder instances are a device resource that a long
 scroll will find the end of. `PlayerPool.Builder(context).build()` derives its bound from what the
 device reports — `DeviceCapacity.kt` is the only place that reading happens, and it is the min of the
-platform's concurrent-decoder limit for H.264/HEVC and a per-player budget against the *app's* heap
+platform's concurrent-decoder limit over the codecs the feed declares (`setFeedCodecs(VideoCodec…)`,
+H.264 and HEVC by default; a declared codec the device has no decoder for is left out rather than
+collapsing the bound) and a per-player budget against the *app's* heap
 (`ActivityManager.memoryClass`, since Media3 buffers on the Java heap), never below one. `acquire()` returns null rather than growing past the bound, `recycle(player)` hands
 one back, and `SuperPlayer.resetForReuse` is what makes a reused player carry nothing of the last
 item: surface detached first (a stale frame in a recycled view is the tell of a hand-rolled pool),

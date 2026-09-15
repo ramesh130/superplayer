@@ -96,11 +96,37 @@ class PlayerPoolCapacityTest {
         TestDevice.declareAppHeap(megabytes = 2048)
         val avcOnly = harness.buildPool().maxSize
 
-        // A second format the device also decodes. The bound may not go *up* for adding one: a pool
-        // does not know which format a feed's items are in, so a bound that only held for H.264
-        // would not be a bound at all.
+        // A second format the device also decodes, and one the default feed codecs name. The bound
+        // may not go *up* for adding one: a pool bounded for H.264 alone is no bound for a feed that
+        // also plays HEVC.
         TestDevice.declareVideoDecoder(MediaFormat.MIMETYPE_VIDEO_HEVC)
         assertThat(harness.buildPool().maxSize).isAtMost(avcOnly)
+    }
+
+    @Test
+    fun aDeclaredFeedCodecWithALowerInstanceLimitDecidesTheBound() {
+        TestDevice.declareVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC)
+        TestDevice.declareVideoDecoder(MediaFormat.MIMETYPE_VIDEO_HEVC, maxSupportedInstances = 16)
+        TestDevice.declareVideoDecoder(VideoCodec.AV1.mimeType, maxSupportedInstances = 4)
+        TestDevice.declareAppHeap(megabytes = 2048)
+
+        // An AV1 feed on a device whose AV1 decoder runs four: a pool of sixteen would find the fifth
+        // decoder partway down the scroll, which is the failure the bound is there to prevent.
+        assertThat(harness.buildPool(feedCodecs = setOf(VideoCodec.AV1)).maxSize).isEqualTo(4)
+        assertThat(harness.buildPool(feedCodecs = setOf(VideoCodec.H264, VideoCodec.AV1)).maxSize).isEqualTo(4)
+        // And a pool that did not declare AV1 is not bounded by it: a feed that never plays AV1 does
+        // not pay for a decoder it never opens. H.264 and HEVC are the default, so HEVC's sixteen.
+        assertThat(harness.buildPool().maxSize).isEqualTo(16)
+    }
+
+    @Test
+    fun aDeclaredFeedCodecTheDeviceHasNoDecoderForDoesNotCollapseTheBound() {
+        TestDevice.declareVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC, maxSupportedInstances = 12)
+        TestDevice.declareAppHeap(megabytes = 2048)
+
+        // No VP9 decoder is declared. The device has said nothing about VP9, and nothing is not
+        // "none" — the same direction the selector reads an unknown in — so H.264's limit stands.
+        assertThat(harness.buildPool(feedCodecs = setOf(VideoCodec.H264, VideoCodec.VP9)).maxSize).isEqualTo(12)
     }
 
     @Test

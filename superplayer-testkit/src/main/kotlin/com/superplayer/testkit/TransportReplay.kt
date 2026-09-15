@@ -62,12 +62,22 @@ internal class TransportReplay(private val trace: ThroughputTrace, private val o
         val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val network = checkNotNull(connectivity.activeNetwork) { "Robolectric's connectivity service has no active network" }
         val capabilities = ShadowNetworkCapabilities.newInstance()
+        // WiFi and Ethernet are reported unmetered and cellular metered, which is how the platform
+        // reports each unless the user has marked a WiFi network metered by hand. A trace has no way to
+        // say that it was, so it is the common case that is replayed.
+        // ref: https://developer.android.com/reference/android/net/NetworkCapabilities#NET_CAPABILITY_NOT_METERED
         when (transport) {
-            NetworkTransport.WIFI -> shadowOf(capabilities).addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+            NetworkTransport.WIFI -> {
+                shadowOf(capabilities).addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+                shadowOf(capabilities).addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+            }
 
             NetworkTransport.CELLULAR -> shadowOf(capabilities).addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
 
-            NetworkTransport.ETHERNET -> shadowOf(capabilities).addTransportType(NetworkCapabilities.TRANSPORT_ETHERNET)
+            NetworkTransport.ETHERNET -> {
+                shadowOf(capabilities).addTransportType(NetworkCapabilities.TRANSPORT_ETHERNET)
+                shadowOf(capabilities).addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+            }
 
             // A network with no transport the platform names, which is what core classifies as
             // unknown: connected, but to nothing SuperPlayer can key an estimate on.

@@ -56,6 +56,9 @@ at-end loop
     phase 3's `BandwidthOracle` reseeds on it. The harness replays it into the platform's
     connectivity service as the clock crosses a stretch, so whatever observes the transport —
     core's own conditions, the oracle — sees the handover at the millisecond the trace names.
+    `WIFI` and `ETHERNET` are replayed unmetered and `CELLULAR` metered, the platform's usual report,
+    which is what a coordinator's data-saver rule reads; a trace cannot say a WiFi network was
+    marked metered by hand.
   - `rtt_ms` — optional, default 0: the round trip a request opened during the stretch pays before
     its first byte. Public throughput datasets do not record it, which is why it is optional.
 

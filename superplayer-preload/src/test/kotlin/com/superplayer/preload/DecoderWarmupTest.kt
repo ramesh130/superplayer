@@ -16,7 +16,10 @@
 
 package com.superplayer.preload
 
+import android.app.Application
+import android.content.ComponentCallbacks2
 import android.media.MediaFormat
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
@@ -144,6 +147,23 @@ class DecoderWarmupTest {
         harness.advanceTimeInStepsMs(playing, SPAN_MS)
 
         assertThat(harness.videoDecodersHeld(pool)).isEqualTo(PLAYING_ROW)
+    }
+
+    /**
+     * Released on a memory trim (ADR-0010 rule 11), and warmed again once the feed next moves. The level
+     * is `TRIM_MEMORY_UI_HIDDEN`, and that is deliberate: from API 34 it is one of the only two levels the
+     * platform still delivers, and the decoders it releases were warm for a screen nobody can see.
+     */
+    @Test
+    fun aMemoryTrimLetsEveryWarmDecoderGoUntilTheFeedMoves() {
+        val (pool, preload, playing) = threeWarmBesideRowOne()
+
+        ApplicationProvider.getApplicationContext<Application>().onTrimMemory(ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN)
+        harness.advanceTimeInStepsMs(playing, SPAN_MS)
+        assertWithMessage("decoders held after the trim").that(harness.videoDecodersHeld(pool)).isEqualTo(PLAYING_ROW)
+
+        preload.setScrollPosition(1)
+        harness.advanceUntil(playing, "three warm decoders again") { harness.videoDecodersHeld(pool) == PLAYING_ROW + 3 }
     }
 
     /** Released with its row: a feed that no longer holds a row lets the decoder warm on it go. */

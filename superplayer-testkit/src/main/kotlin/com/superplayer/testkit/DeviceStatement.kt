@@ -21,6 +21,7 @@ import android.content.Context
 import android.hardware.display.DisplayManager
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
+import android.net.ConnectivityManager
 import android.os.Build
 import android.view.Display
 import androidx.annotation.RequiresApi
@@ -178,6 +179,30 @@ public object DeviceStatement {
         shadowOf(activityManager).setMemoryClass(megabytes)
     }
 
+    /**
+     * A device whose manufacturer declared it memory-constrained: `ActivityManager.isLowRamDevice`
+     * answers true. SuperPlayer treats the flag as the platform's instruction rather than as a hint,
+     * whatever heap [declareAppHeap] states beside it.
+     */
+    @JvmStatic
+    public fun declareLowRamDevice() {
+        shadowOf(activityManager).setIsLowRamDevice(true)
+    }
+
+    /**
+     * The user has turned Data Saver on and not exempted this app:
+     * `ConnectivityManager.getRestrictBackgroundStatus` answers `RESTRICT_BACKGROUND_STATUS_ENABLED`.
+     *
+     * A setting, not a network. Whether the platform applies it depends on whether the network in use
+     * is metered, which a `ThroughputTrace`'s transport says as the harness replays it.
+     *
+     * ref: https://developer.android.com/develop/connectivity/network-ops/data-saver
+     */
+    @JvmStatic
+    public fun declareDataSaverOn() {
+        shadowOf(connectivityManager).setRestrictBackgroundStatus(ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED)
+    }
+
     private var declaredDecoders = 0
 
     private val context: Context
@@ -185,6 +210,9 @@ public object DeviceStatement {
 
     private val activityManager: ActivityManager
         get() = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+
+    private val connectivityManager: ConnectivityManager
+        get() = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
     private val displayManager: DisplayManager
         get() = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager

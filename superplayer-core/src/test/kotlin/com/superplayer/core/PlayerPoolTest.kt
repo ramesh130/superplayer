@@ -121,6 +121,31 @@ class PlayerPoolTest {
     }
 
     @Test
+    fun aPoolWithTelemetryGivesEveryPlayerItBuildsACollectorOfItsOwn() {
+        // Through the real factory, for the reason the test above gives: the harness substitutes its
+        // own, so this is the only place `setTelemetry` reaches `SuperPlayer.Builder`.
+        val collectors = mutableListOf<RecordingTelemetry>()
+        val pool = PlayerPool.Builder(ApplicationProvider.getApplicationContext())
+            .setMaxSize(2)
+            .setTelemetry { RecordingTelemetry(TelemetrySink { }).also { collectors += it } }
+            .build()
+        try {
+            val first = checkNotNull(pool.acquire())
+            checkNotNull(pool.acquire())
+            assertThat(collectors).hasSize(2)
+            assertThat(collectors.map { it.attachCount }).containsExactly(1, 1)
+
+            // A recycled player keeps its collector rather than being handed a new one.
+            pool.recycle(first)
+            checkNotNull(pool.acquire())
+            assertThat(collectors).hasSize(2)
+            assertThat(collectors.map { it.detachCount }).containsExactly(0, 0)
+        } finally {
+            pool.release()
+        }
+    }
+
+    @Test
     fun aPoolBuildsNoPlayerUntilOneIsAskedFor() {
         val pool = harness.buildPool(maxSize = 3)
 

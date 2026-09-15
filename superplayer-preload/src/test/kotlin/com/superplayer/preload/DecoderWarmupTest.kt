@@ -97,6 +97,7 @@ class DecoderWarmupTest {
 
         assertWithMessage("decoders held beside the playing row at a limit of $limit")
             .that(harness.videoDecodersHeld(pool) - PLAYING_ROW).isEqualTo(warm)
+        assertWithMessage("what the coordinator reports as warm").that(preload.warmDecoderCount).isEqualTo(warm)
     }
 
     /**
@@ -161,6 +162,7 @@ class DecoderWarmupTest {
         ApplicationProvider.getApplicationContext<Application>().onTrimMemory(ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN)
         harness.advanceTimeInStepsMs(playing, SPAN_MS)
         assertWithMessage("decoders held after the trim").that(harness.videoDecodersHeld(pool)).isEqualTo(PLAYING_ROW)
+        assertWithMessage("reported warm after the trim").that(preload.warmDecoderCount).isEqualTo(0)
 
         preload.setScrollPosition(1)
         harness.advanceUntil(playing, "three warm decoders again") { harness.videoDecodersHeld(pool) == PLAYING_ROW + 3 }

@@ -310,9 +310,13 @@ private fun DemoApp(launch: DemoLaunch) {
 
     // Loading is a function of which player exists and which stream is selected, so a newly bound
     // service and a newly picked stream take the same one path.
-    LaunchedEffect(player, selectedStream) {
+    //
+    // Not while the feed is open. The service's player is built to play, and a prepared player that is
+    // set to play takes audio focus, which would pause the feed's first row the moment the service binds.
+    LaunchedEffect(player, selectedStream, selectedScreen) {
         val current = player ?: return@LaunchedEffect
         val boundService = service ?: return@LaunchedEffect
+        if (selectedScreen != DemoScreen.PLAYER) return@LaunchedEffect
 
         // Not reloaded if it is already what is playing. That case is the one background playback
         // creates: coming back to the app finds the service still playing the selected stream, and
@@ -328,6 +332,17 @@ private fun DemoApp(launch: DemoLaunch) {
         // Where the request landed, read straight off the player. Media3 applies a new item's start
         // position to the reported state at once, without waiting for the content to load.
         status = Status(selectedStream, startedAtMs = current.currentPosition)
+    }
+
+    // The feed plays its own rows, and audio focus is one token: a service player still playing when
+    // the feed opens takes focus from the feed's first row the moment it connects, and Media3 answers
+    // by pausing that row. The load above keeps a player the feed finds unprepared from taking it; this
+    // pauses one that was already playing — background playback, then the feed. An unprepared player is
+    // left alone, so the player screen still starts playing when the viewer switches to it. Leaving the
+    // feed does not resume a paused one; the viewer presses play, as after any other pause.
+    LaunchedEffect(player, selectedScreen) {
+        val current = player ?: return@LaunchedEffect
+        if (selectedScreen == DemoScreen.FEED && current.playbackState != Player.STATE_IDLE) current.pause()
     }
 
     MaterialTheme(colorScheme = darkColorScheme()) {

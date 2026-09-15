@@ -26,6 +26,7 @@ import androidx.media3.datasource.cache.CacheKeyFactory
 import com.superplayer.core.CacheLayer
 import com.superplayer.core.ContentIdentity
 import com.superplayer.core.LoadKind
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * What a [ContentKeyedCache] puts into the transfer chain's cache slot: a `CacheDataSource` keyed by
@@ -41,11 +42,28 @@ import com.superplayer.core.LoadKind
  */
 internal class ContentKeyedCacheLayer(private val cache: Cache) : CacheLayer {
 
+    private val hits = AtomicLong()
+
+    /** Media requests answered at least partly from the cache, over every chain this layer is in. */
+    val hitCount: Long
+        get() = hits.get()
+
     override fun over(upstream: DataSource.Factory): DataSource.Factory {
         val cached = CacheDataSource.Factory()
             .setCache(cache)
             .setCacheKeyFactory(ContentKeys)
             .setUpstreamDataSourceFactory(upstream)
+            // Told once per request, as it closes, and only when some of it came from the cache. Called
+            // on a loading thread, hence the atomic.
+            .setEventListener(
+                object : CacheDataSource.EventListener {
+                    override fun onCachedBytesRead(cacheSizeBytes: Long, cachedBytesRead: Long) {
+                        hits.incrementAndGet()
+                    }
+
+                    override fun onCacheIgnored(reason: Int) = Unit
+                },
+            )
             // A cache that cannot be read is a cache to go around, not a playback failure: the request
             // is fetched upstream instead. Resilience's retries are Phase 5's, and a broken disk is not
             // a transfer to retry.

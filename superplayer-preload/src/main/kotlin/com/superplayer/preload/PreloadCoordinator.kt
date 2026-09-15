@@ -190,6 +190,16 @@ public class PreloadCoordinator private constructor(private val pool: PlayerPool
     private var released = false
 
     /**
+     * How many players hold a row warm right now: idle in the pool on a prefetched row, or handed out for
+     * that row and not yet adopted it. Never more than `pool.maxSize` less the players out with the feed.
+     *
+     * A reading for a screen that shows what preload is doing, sampled on the application thread; zero
+     * below [PreloadDepth.DecoderWarmed], after a trim until the feed next moves, and once released.
+     */
+    public val warmDecoderCount: Int
+        get() = warm.size
+
+    /**
      * The feed, in feed order: every item a row may play, whether or not it will be prefetched.
      *
      * Replaces the previous list. Items still in the window at the same index keep what was fetched

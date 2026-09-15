@@ -203,6 +203,11 @@ dependencies {
     // The version comes from the shared catalog, so it cannot drift from what the library
     // actually publishes.
     implementation("com.superplayer:superplayer-core:${libs.versions.superplayer.get()}")
+    // The feed's three additive modules, by published coordinates for the same reason: a POM that
+    // forgets core, or a module that forgets a Media3 artifact it loads through, fails here first.
+    implementation("com.superplayer:superplayer-preload:${libs.versions.superplayer.get()}")
+    implementation("com.superplayer:superplayer-cache:${libs.versions.superplayer.get()}")
+    implementation("com.superplayer:superplayer-telemetry:${libs.versions.superplayer.get()}")
     implementation(libs.media3.ui)
     // For `androidx.annotation.OptIn`, the form of opt-in that works on Media3's Java
     // `@UnstableApi` marker — see MainActivity.showBufferingSpinner. Named here rather than

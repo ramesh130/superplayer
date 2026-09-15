@@ -77,10 +77,12 @@ class ContentKeyedCachePlaybackTest {
         first.setMediaRequest(request(CONTENT_ID, content.sourceUri))
         playToEnd(first)
         assertThat(segmentsFetched(first)).isEqualTo(SEGMENTS)
+        assertWithMessage("hits on the cold play").that(cache.hitCount).isEqualTo(0)
 
         val second = harness.buildPlayer(content = mirrored, cache = cache)
         second.setMediaRequest(request(CONTENT_ID, mirrored.sourceUri))
         playToEnd(second)
+        assertWithMessage("hits on the warm replay").that(cache.hitCount).isAtLeast(SEGMENTS.toLong())
 
         // The playlists came from the second host — a manifest is never a cache's to answer — and not
         // one segment did.

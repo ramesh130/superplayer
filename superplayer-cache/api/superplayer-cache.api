@@ -6,6 +6,7 @@ public final class com/superplayer/cache/CachePolicy {
 
 public final class com/superplayer/cache/ContentKeyedCache : com/superplayer/core/ContentCache {
 	public final fun getDirectory ()Ljava/io/File;
+	public final fun getHitCount ()J
 	public final fun getMaxBytes ()J
 	public final fun isPinned (Ljava/lang/String;)Z
 	public final fun pin (Ljava/lang/String;)V

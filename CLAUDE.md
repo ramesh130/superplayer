@@ -167,7 +167,13 @@ current row, which `setMediaRequest` then keeps (`WarmStart.Prepared`). The coor
 builds an equal item, never the same one. `DecoderWarmupTest` states the limit with
 `DeviceStatement.declareVideoDecoder(mime, maxSupportedInstances)` and counts with
 `harness.videoDecodersHeld(pool)`; the harness cannot show a warm first frame arriving sooner, and
-that test's KDoc says why. A pool built with `setPolicy(AdaptivePolicy…)` is one engine
+that test's KDoc says why. ADR-0010 rule 11's two platform rules cut the window after the decision, in
+`PlatformRules.kt`: a memory guard that admits the window in priority order against a quarter of the
+heap budget (the next row only on a low-RAM device) and releases everything nobody is playing on a trim
+until the feed next moves, and a data-saver rule that prefetches nothing while Data Saver restricts a
+metered network — watched through the default network's capabilities, so a handover applies at the
+change. `PreloadPlatformRulesTest` states the device with `DeviceStatement.declareAppHeap`,
+`declareLowRamDevice` and `declareDataSaverOn`. A pool built with `setPolicy(AdaptivePolicy…)` is one engine
 too, with its oracle released by the last player (`AdaptivePolicyPoolTest`).
 `superplayer-cache` fills the slot: `CachePolicy.contentKeyed(directory, maxBytes)` opens a
 `ContentKeyedCache` — core's third Kotlin friend — over Media3's `SimpleCache`, with its index in a

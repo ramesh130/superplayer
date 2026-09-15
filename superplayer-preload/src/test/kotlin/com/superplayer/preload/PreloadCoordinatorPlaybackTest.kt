@@ -17,7 +17,6 @@
 package com.superplayer.preload
 
 import android.media.MediaFormat
-import android.net.Uri
 import androidx.media3.test.utils.robolectric.RobolectricUtil.runMainLooperUntil
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
@@ -33,7 +32,6 @@ import com.superplayer.testkit.DeviceStatement
 import com.superplayer.testkit.NetworkProfile
 import com.superplayer.testkit.NetworkRequest
 import com.superplayer.testkit.PlaybackHarness
-import com.superplayer.testkit.ResourceKind
 import com.superplayer.testkit.TestContent
 import org.junit.After
 import org.junit.Assert.assertThrows
@@ -57,7 +55,7 @@ class PreloadCoordinatorPlaybackTest {
     @get:Rule
     val harness: PlaybackHarness = PlaybackHarness()
 
-    private val feed = Feed(rows = ROWS)
+    private val feed = Feed(rows = ROWS, segments = SEGMENTS)
     private val coordinators = mutableListOf<PreloadCoordinator>()
     private val pools = mutableListOf<PlayerPool>()
 
@@ -304,39 +302,6 @@ class PreloadCoordinatorPlaybackTest {
     /** A CMCD key's value as a request carried it, from whichever CMCD header holds it. */
     private fun cmcdKey(request: NetworkRequest, key: String): String? =
         request.headers.values.firstNotNullOfOrNull { Regex("""(?:^|,)$key="([^"]*)"""").find(it)?.groupValues?.get(1) }
-
-    /** [rows] rows, each the same stream served from a host of its own. */
-    private class Feed(rows: Int) {
-        val hosts: List<String> = (0 until rows).map { "row$it.feed.test" }
-        val content: TestContent
-        val requests: List<MediaRequest>
-
-        init {
-            var served = TestContent.hls(SEGMENTS)
-            val uris = hosts.map { host ->
-                served = served.servedFrom(host)
-                served.sourceUri
-            }
-            content = served
-            requests = uris.mapIndexed { row, uri -> MediaRequest.Builder(contentId(row)).addSource(uri).build() }
-        }
-
-        fun contentId(row: Int): String = "feed:row$row"
-
-        fun resuming(row: Int): MediaRequest = MediaRequest.Builder(contentId(row))
-            .addSource(requests[row].sources.first())
-            .setStartPosition(MediaRequest.StartPosition.ResumeFromLastKnown)
-            .build()
-
-        fun rowOf(request: NetworkRequest): Int? = hosts.indexOf(Uri.parse(request.uri).host).takeIf { it >= 0 }
-
-        /** Each row's first media segment request, in the order they were made. */
-        fun firstSegmentOrder(requests: List<NetworkRequest>): List<Int> =
-            requests.filter { it.kind == ResourceKind.MEDIA_SEGMENT }.mapNotNull { rowOf(it) }.distinct()
-
-        fun manifestsFor(row: Int, requests: List<NetworkRequest>): Int =
-            requests.count { it.kind == ResourceKind.MANIFEST && rowOf(it) == row }
-    }
 
     private companion object {
         const val ROWS = 12

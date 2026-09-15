@@ -16,6 +16,8 @@
 
 package com.superplayer.preload
 
+import android.os.Handler
+import android.os.Looper
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.source.preload.DefaultPreloadManager
 import androidx.media3.exoplayer.source.preload.DefaultPreloadManager.PreloadStatus
@@ -116,6 +118,20 @@ import kotlin.math.roundToInt
  * `setMediaRequest` for that row adopts it; ADR-0010 rule 7's addendum records that reading, and rule
  * 8's that the coordinator drives the pool's idle players to do it.
  *
+ * ## What it holds less than the decision says
+ *
+ * ADR-0010 rule 11's two platform rules apply after the decision, whatever the profile or policy, in
+ * `PlatformRules.kt`:
+ *
+ * - **The memory guard.** The window is admitted in priority order until its estimated cost would pass a
+ *   quarter of the app's heap budget. The rows cut are the ones the scroll is least likely to reach. A
+ *   low-RAM device is admitted the next row only. A trim at `TRIM_MEMORY_RUNNING_LOW` or above releases
+ *   every prefetch and every warm decoder that nobody is playing, and nothing is fetched again until the
+ *   feed's next [setItems] or [setScrollPosition].
+ * - **The data-saver rule.** While Data Saver restricts this app on a metered network, nothing is
+ *   prefetched and nothing is warm. A row is fetched when it is played. A change of network is applied
+ *   when it happens, which releases what a WiFi prefetch held once the link hands over to cellular.
+ *
  * ## Lifetimes
  *
  * An item that leaves the window is removed, and its prefetch cancelled. An item a player took is left
@@ -131,11 +147,10 @@ import kotlin.math.roundToInt
  *
  * ## Where this stops short of ADR-0010, stated
  *
- * - **Rule 11's memory guard and data-saver rule are not here yet**; they are #160's, and until then a
- *   coordinator prefetches and warms what the decision says whatever the heap or the data-saver setting.
- * - **A warm player buffers past its prefetch.** Once prepared it is a paused player on the pool's load
- *   control, which loads to the profile's `minBufferMs` rather than stopping at the depth's range.
- *   Bounding that is the bytes half of rule 11, #160's.
+ * - **Rule 11's cap is an estimate, not a count.** Items are costed at a reference bitrate before any
+ *   rendition is chosen, not measured from what the allocator holds. A warm player still buffers past its
+ *   prefetch: once prepared it is a paused player on the pool's load control, which loads to the
+ *   profile's `minBufferMs`. The guard costs a warm item at that depth rather than stopping the load.
  * - **Rule 6's `setCache` is not called.** It exists so the manager's cached stage writes where the
  *   chain reads, and no [PreloadDepth] decides a cached range yet: every prefetch is a load through the
  *   chain, whose cache slot writes a segment to the pool's cache like any other read. The call arrives
@@ -168,6 +183,10 @@ public class PreloadCoordinator private constructor(private val pool: PlayerPool
      */
     private val warm = IdentityHashMap<SuperPlayer, MediaItem>()
 
+    /** ADR-0010 rule 11's two platform rules, from the moment the pool's engine exists until [release]. */
+    private var memoryGuard: MemoryGuard? = null
+    private var dataSaver: DataSaverRule? = null
+
     private var released = false
 
     /**
@@ -179,6 +198,7 @@ public class PreloadCoordinator private constructor(private val pool: PlayerPool
     public fun setItems(requests: List<MediaRequest>) {
         check(!released) { "This PreloadCoordinator has been released" }
         this.requests = requests.toList()
+        memoryGuard?.resume()
         sync()
     }
 
@@ -203,6 +223,7 @@ public class PreloadCoordinator private constructor(private val pool: PlayerPool
         }
         position = currentIndex
         heading = currentIndex + (velocityItemsPerSecond * HEADING_HORIZON_MS / MS_PER_SECOND).roundToInt()
+        memoryGuard?.resume()
         sync()
     }
 
@@ -216,6 +237,8 @@ public class PreloadCoordinator private constructor(private val pool: PlayerPool
     public fun release() {
         if (released) return
         released = true
+        memoryGuard?.unregister()
+        dataSaver?.unregister()
         // Idle warm players only. One handed out for its row and not yet adopted is the feed's now: its
         // `setMediaRequest` finds no coordinator and sets the row cold, which replaces the warm source.
         val idle = pool.idlePlayers
@@ -233,14 +256,15 @@ public class PreloadCoordinator private constructor(private val pool: PlayerPool
         val manager = manager ?: return
         val shared = checkNotNull(components)
         val policy = shared.decision.preload
-        val order = priorityOrder(policy)
+        val idle = pool.idlePlayers
+        val order = guarded(priorityOrder(policy), policy, shared, idle.size)
         ranking.ranks = order.withIndex().associate { (rank, index) -> index to rank }
         val wanted = order.associateBy { shared.itemOf(requests[it]) }
         val current = currentItem()
+        val trimmed = memoryGuard?.trimmed == true
 
         // Decoders first, while every source they hold is still registered.
-        val idle = pool.idlePlayers
-        val toWarm = warmTargets(policy, order.map { shared.itemOf(requests[it]) }, current, idle.size)
+        val toWarm = if (trimmed) emptyList() else warmTargets(policy, order.map { shared.itemOf(requests[it]) }, current, idle.size)
         for ((player, item) in warm.toList()) {
             if (player in idle && item !in toWarm) coolDown(player)
         }
@@ -248,8 +272,9 @@ public class PreloadCoordinator private constructor(private val pool: PlayerPool
         for ((item, entry) in registered.toList()) {
             val stillWanted = wanted[item] == entry.index
             // The row the feed has just made current keeps what was fetched for it: a feed moves its
-            // position before it hands the row a player, and the row is about to take the source.
-            val aboutToPlay = entry.index == position && requests.getOrNull(position)?.contentId == entry.contentId
+            // position before it hands the row a player, and the row is about to take the source. Not
+            // through a trim, which releases everything nobody is playing.
+            val aboutToPlay = !trimmed && entry.index == position && requests.getOrNull(position)?.contentId == entry.contentId
             if (!stillWanted && !aboutToPlay && !isAdopted(item) && !isWarm(item)) forget(item)
         }
         for ((item, index) in wanted) {
@@ -270,6 +295,15 @@ public class PreloadCoordinator private constructor(private val pool: PlayerPool
             player.holdWarm(source)
         }
         manager.invalidate()
+    }
+
+    /**
+     * ADR-0010 rule 11, applied after the decision and here, where a reviewer can find it: nothing under
+     * Data Saver on a metered link, and otherwise no more of [order] than the memory guard admits.
+     */
+    private fun guarded(order: List<Int>, policy: PreloadPolicy, shared: SharedComponents, idlePlayers: Int): List<Int> {
+        if (dataSaver?.restrictsPrefetch() == true) return emptyList()
+        return memoryGuard?.admit(order, policy, shared.decision.buffer, warmable = idlePlayers) ?: order
     }
 
     /**
@@ -338,6 +372,15 @@ public class PreloadCoordinator private constructor(private val pool: PlayerPool
         override fun onEngineAssembled(components: SharedComponents) {
             if (released) return
             this@PreloadCoordinator.components = components
+            // The thread the engine is assembled on, which is the pool's: every rule's callback is brought
+            // back to it. A callback queued before `release` runs after it, so each checks.
+            val handler = Handler(Looper.myLooper() ?: Looper.getMainLooper())
+            val onApplicationThread: (() -> Unit) -> Unit = { action ->
+                if (handler.looper.isCurrentThread) action() else handler.post(action)
+            }
+            val resync = { if (!released) sync() }
+            memoryGuard = MemoryGuard(components.applicationContext, onApplicationThread, resync).also { it.register() }
+            dataSaver = DataSaverRule(components.applicationContext, onApplicationThread, resync).also { it.register() }
             manager = DefaultPreloadManager.Builder(
                 components.applicationContext,
                 ranking,

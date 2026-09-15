@@ -206,12 +206,22 @@ private fun memoryCapacity(context: Context): Int {
         context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
             ?: return MINIMUM_CAPACITY
 
-    if (activityManager.isLowRamDevice) return MINIMUM_CAPACITY
+    if (isLowRamDeviceOf(context)) return MINIMUM_CAPACITY
 
     val heapBytes = heapBudgetBytesOf(context) ?: return MINIMUM_CAPACITY
 
     return (heapBytes / HEAP_BYTES_PER_PLAYER).toInt()
 }
+
+/**
+ * Whether the manufacturer declared this device memory-constrained. Read here, beside the heap budget,
+ * so the pool and a preload coordinator's memory guard (ADR-0010 rules 8 and 11) share one reading of
+ * the device rather than each making their own.
+ *
+ * ref: https://developer.android.com/reference/android/app/ActivityManager#isLowRamDevice()
+ */
+internal fun isLowRamDeviceOf(context: Context): Boolean =
+    (context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.isLowRamDevice == true
 
 /**
  * The heap this app is allowed, in bytes, or null when the platform does not say.

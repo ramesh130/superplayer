@@ -61,9 +61,21 @@ internal class ResourceAddressBook {
     private val assigned = LinkedHashMap<String, ResourceAddress>()
     private val nextIndex = mutableMapOf<ResourceKind, Int>()
 
+    private val opened = mutableListOf<NetworkRequest>()
+
     /** Every address handed out, in the order it was first requested. What a test asserts on. */
     val requested: List<ResourceAddress>
         @Synchronized get() = assigned.values.toList()
+
+    /** Every request opened, repeats included, in the order it was opened. */
+    val requests: List<NetworkRequest>
+        @Synchronized get() = opened.toList()
+
+    /** [dataSpec]'s address, with the request recorded as having reached the network. */
+    @Synchronized
+    fun record(dataSpec: DataSpec): ResourceAddress = addressOf(dataSpec).also { address ->
+        opened += NetworkRequest(dataSpec.uri.toString(), address.kind, dataSpec.httpRequestHeaders.toMap())
+    }
 
     @Synchronized
     fun addressOf(dataSpec: DataSpec): ResourceAddress = assigned.getOrPut(key(dataSpec)) {
@@ -162,7 +174,7 @@ internal class FaultInjectingDataSource(
 
     override fun open(dataSpec: DataSpec): Long {
         transfer.opened()
-        val address = addresses.addressOf(dataSpec)
+        val address = addresses.record(dataSpec)
         if (IntermediaryCache.asksCachesToStepAside(dataSpec)) cacheBypassingRequests.incrementAndGet()
         val effects = script.faults.filter { it.matches(address) }.map { it.effect }
 

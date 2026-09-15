@@ -135,9 +135,21 @@ outside, at a negative position (issue #67). What the chain exists for is the or
 insert themselves (`PRD.md` §2.4). The cache slot is built: `SuperPlayer.Builder.setCache` takes a
 `ContentCache` (core's public type, internal constructor, made by `superplayer-cache`) whose internal
 `CacheLayer` fills it, and on such a player each item adopted from a `MediaRequest` stamps its
-`ContentIdentity` onto every request it opens, so a key can be `contentId` rather than URL. A player
+`ContentIdentity` onto every request it opens, so a key can be `contentId` rather than URL. The same
+stamp carries a `LoadKind` on every item such a player plays — media, manifest, or unclassified — and
+that is why a cached player builds HLS and DASH sources per protocol rather than through
+`DefaultMediaSourceFactory`: only the source knows which request is a playlist, and a cache answers
+media alone. A player
 with no cache has an empty slot and the Phase 3 factory, and `SuperPlayerContentCacheTest` counts it;
-`EngineConfiguration.preloadEntry` hands preload the same factory the engine loads through (ADR-0010). Two of those insert nothing into the chain and the KDoc is mostly
+`EngineConfiguration.preloadEntry` hands preload the same factory the engine loads through (ADR-0010).
+`superplayer-cache` fills the slot: `CachePolicy.contentKeyed(directory, maxBytes)` opens a
+`ContentKeyedCache` — core's third Kotlin friend — over Media3's `SimpleCache`, with its index in a
+database file inside the consumer's directory rather than Media3's `StandaloneDatabaseProvider`
+(ADR-0010 rule 2). `ContentKeys` is the keying rule and its KDoc the reasons: content id plus URI
+*path*, never host, query or Media3's own `DataSpec` key; `setMediaItem` content keyed by URL under a
+prefix a request's key can never carry. `ContentKeyedCachePlaybackTest` proves F7 through the harness,
+whose `networkRequests(player)` counts what left the chain and `TestContent.servedFrom(host)` is the
+second CDN host; sizing, eviction and the pinned region are #157's. Two of those insert nothing into the chain and the KDoc is mostly
 about them: measurement is a propagated `TransferListener`, so a layer that drops the registration
 blinds ABR silently, and cache hits stay out of the estimate through Media3's `isNetwork` flag rather
 than through chain position — ADR-0002's argument arriving through a different door. CMCD attaches to
@@ -299,7 +311,7 @@ before its first player is built, since the platform caches the codec list on fi
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,
-`superplayer-abr` and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
+`superplayer-abr`, `superplayer-cache` and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
 requirements, and the phase table are what the issues are cut from.
 
 `benchmark/` is the fourth build and the phases' exit criteria: `PRD.md` §6's fixed matrix — six

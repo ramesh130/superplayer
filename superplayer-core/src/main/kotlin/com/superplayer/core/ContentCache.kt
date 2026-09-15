@@ -59,6 +59,12 @@ public abstract class ContentCache internal constructor(
  * must not split one piece of content into two entries (ADR-0010 rule 4). A request with no id is
  * content set through `setMediaItem`, and only such a request is keyed by its URL.
  *
+ * Whether a request may be cached at all is on it too: [LoadKind.of] says whether it loads media, a
+ * manifest, or something the chain could not classify. Only media is a cache's to answer. A manifest
+ * describes where media is *now* — a live playlist is stale the moment it is stored, and a VOD one
+ * names its own host's segments — so it is always passed upstream, where live-playlist revalidation
+ * above the slot sees what the origin said.
+ *
  * Every media source factory setting is replayed per item by a recorded list in `TransferChain`, so a
  * setter Media3 adds to `MediaSource.Factory` later has to be added there, or it is dropped on a
  * player with a cache.
@@ -90,7 +96,7 @@ internal data class ContentIdentity(val contentId: String) {
     companion object {
 
         /** The content id [dataSpec] was stamped with, or null for content with no identity. */
-        fun of(dataSpec: DataSpec): String? = (dataSpec.customData as? ContentIdentity)?.contentId
+        fun of(dataSpec: DataSpec): String? = RequestStamp.of(dataSpec)?.identity?.contentId
 
         /** The identity [item] carries, or null for an item not adopted from a request on a cached player. */
         fun of(item: MediaItem): ContentIdentity? = item.localConfiguration?.tag as? ContentIdentity
@@ -98,19 +104,64 @@ internal data class ContentIdentity(val contentId: String) {
 }
 
 /**
- * This factory, with every request its sources open stamped with [identity].
+ * What a request loads, as far as a cache is concerned.
+ *
+ * Only the media source knows: the HLS source asks its data source factory for a data source *per
+ * data type* and the DASH source takes one factory for its manifest and another for its chunks, while
+ * the `DataSpec` both open names a URI and nothing about what it is. So `TransferChain` builds each
+ * item's source with a factory per kind and stamps the kind on, and the cache slot reads it here
+ * rather than guessing from a URL's extension, which a manifest served from `/play?id=7` does not have.
+ */
+internal enum class LoadKind {
+
+    /** Samples, or what decoding them needs: a segment, an initialization segment, a progressive file. */
+    MEDIA,
+
+    /** A description of where media is: an HLS playlist, a DASH MPD, a steering manifest, a time sync. */
+    MANIFEST,
+
+    /** Anything else — an encryption key, a packaging the chain does not build by kind, an unstamped request. */
+    UNCLASSIFIED,
+    ;
+
+    companion object {
+
+        /** The kind [dataSpec] was stamped with; unstamped is [UNCLASSIFIED]. */
+        fun of(dataSpec: DataSpec): LoadKind = RequestStamp.of(dataSpec)?.kind ?: UNCLASSIFIED
+    }
+}
+
+/**
+ * What a request carries into the cache slot: the content it belongs to, when it has an identity, and
+ * what kind of load it is. Stored as the `DataSpec`'s `customData`; [ContentIdentity] says why the
+ * request is where it travels. A value type, because Media3 compares a `DataSpec` by its fields.
+ */
+internal data class RequestStamp(val identity: ContentIdentity?, val kind: LoadKind) {
+
+    companion object {
+
+        /** The stamp on [dataSpec], or null for a request no stamping source opened. */
+        fun of(dataSpec: DataSpec): RequestStamp? = dataSpec.customData as? RequestStamp
+    }
+}
+
+/**
+ * This factory, with every request its sources open stamped with [identity] — null for content set
+ * through `setMediaItem` — and [kind].
  *
  * A request that already carries `customData` is passed on unchanged: that slot belongs to whoever
- * set it, and the content is then keyed by its URL, as content with no identity is. Nothing in the
+ * set it, and such a request is then [LoadKind.UNCLASSIFIED], which no cache answers. Nothing in the
  * HLS or DASH sources Media3 1.11.0 builds sets it.
  */
-internal fun DataSource.Factory.stampedWith(identity: ContentIdentity): DataSource.Factory =
-    DataSource.Factory { IdentityStampingDataSource(createDataSource(), identity) }
+internal fun DataSource.Factory.stampedWith(identity: ContentIdentity?, kind: LoadKind): DataSource.Factory {
+    val stamp = RequestStamp(identity, kind)
+    return DataSource.Factory { RequestStampingDataSource(createDataSource(), stamp) }
+}
 
 /** Stamps each opened request and forwards everything else, the transfer listener included. */
-private class IdentityStampingDataSource(
+private class RequestStampingDataSource(
     private val upstream: DataSource,
-    private val identity: ContentIdentity,
+    private val stamp: RequestStamp,
 ) : DataSource {
 
     override fun addTransferListener(transferListener: TransferListener) {
@@ -118,7 +169,7 @@ private class IdentityStampingDataSource(
     }
 
     override fun open(dataSpec: DataSpec): Long = upstream.open(
-        if (dataSpec.customData == null) dataSpec.buildUpon().setCustomData(identity).build() else dataSpec,
+        if (dataSpec.customData == null) dataSpec.buildUpon().setCustomData(stamp).build() else dataSpec,
     )
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int = upstream.read(buffer, offset, length)

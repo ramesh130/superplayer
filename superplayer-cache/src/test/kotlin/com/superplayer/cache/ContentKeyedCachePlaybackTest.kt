@@ -1,0 +1,301 @@
+/*
+ * Copyright 2026 The SuperPlayer Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.superplayer.cache
+
+import android.content.Context
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.test.utils.robolectric.RobolectricUtil.runMainLooperUntil
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.common.truth.Truth.assertThat
+import com.google.common.truth.Truth.assertWithMessage
+import com.superplayer.abr.AdaptivePolicy
+import com.superplayer.abr.BandwidthOracle
+import com.superplayer.core.MediaRequest
+import com.superplayer.core.PlaybackProfile
+import com.superplayer.core.SuperPlayer
+import com.superplayer.core.TelemetryEvent
+import com.superplayer.core.TelemetrySink
+import com.superplayer.telemetry.QoeCollector
+import com.superplayer.testkit.FaultScript
+import com.superplayer.testkit.NetworkProfile
+import com.superplayer.testkit.PlaybackHarness
+import com.superplayer.testkit.ResourceKind
+import com.superplayer.testkit.TestContent
+import com.superplayer.testmedia.SyntheticHlsStream
+import org.junit.After
+import org.junit.Rule
+import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import org.junit.runner.RunWith
+import java.util.concurrent.CopyOnWriteArrayList
+
+/**
+ * `PRD.md` F7 closed, from a consumer's side: real HLS played through a player with a
+ * [ContentKeyedCache] in its chain, with what reached the network counted by the harness's origin —
+ * which sits below every layer SuperPlayer composes, so a read the cache answered is never counted.
+ */
+@RunWith(AndroidJUnit4::class)
+class ContentKeyedCachePlaybackTest {
+
+    @get:Rule
+    val folder: TemporaryFolder = TemporaryFolder()
+
+    @get:Rule
+    val harness: PlaybackHarness = PlaybackHarness()
+
+    private val context: Context = ApplicationProvider.getApplicationContext()
+    private val content = TestContent.hls(SEGMENTS)
+    private val caches = mutableListOf<ContentKeyedCache>()
+
+    @After
+    fun releaseCaches() {
+        caches.forEach { it.release() }
+    }
+
+    @Test
+    fun theSameContentFromASecondHostIsServedFromTheCache() {
+        val cache = openCache()
+        val mirrored = content.servedFrom(MIRROR_HOST)
+
+        val first = harness.buildPlayer(content = mirrored, cache = cache)
+        first.setMediaRequest(request(CONTENT_ID, content.sourceUri))
+        playToEnd(first)
+        assertThat(segmentsFetched(first)).isEqualTo(SEGMENTS)
+
+        val second = harness.buildPlayer(content = mirrored, cache = cache)
+        second.setMediaRequest(request(CONTENT_ID, mirrored.sourceUri))
+        playToEnd(second)
+
+        // The playlists came from the second host — a manifest is never a cache's to answer — and not
+        // one segment did.
+        val requests = harness.networkRequests(second)
+        assertThat(requests.filter { it.kind == ResourceKind.MANIFEST }).isNotEmpty()
+        assertThat(requests.all { it.uri.contains(MIRROR_HOST) }).isTrue()
+        assertThat(segmentsFetched(second)).isEqualTo(0)
+    }
+
+    /**
+     * The same for DASH, whose manifest and segments reach the cache through a different pair of
+     * factories than HLS's: the MPD from the second host is fetched, and neither the initialization
+     * segment nor a media segment is.
+     */
+    @Test
+    fun theSameDashContentFromASecondHostIsServedFromTheCache() {
+        val cache = openCache()
+        val dash = TestContent.dash(SEGMENTS)
+        val mirrored = dash.servedFrom(MIRROR_HOST)
+
+        val first = harness.buildPlayer(content = mirrored, cache = cache)
+        first.setMediaRequest(request(CONTENT_ID, dash.sourceUri))
+        playToEnd(first)
+        assertThat(segmentsFetched(first)).isEqualTo(SEGMENTS)
+
+        val second = harness.buildPlayer(content = mirrored, cache = cache)
+        second.setMediaRequest(request(CONTENT_ID, mirrored.sourceUri))
+        playToEnd(second)
+
+        val requests = harness.networkRequests(second)
+        assertThat(requests.map { it.kind }.toSet()).containsExactly(ResourceKind.MANIFEST)
+        assertThat(requests.all { it.uri.contains(MIRROR_HOST) }).isTrue()
+    }
+
+    @Test
+    fun aDifferentContentIdAtAnIdenticalUrlIsAMiss() {
+        val cache = openCache()
+
+        val first = harness.buildPlayer(content = content, cache = cache)
+        first.setMediaRequest(request("episode:one", content.sourceUri))
+        playToEnd(first)
+
+        val second = harness.buildPlayer(content = content, cache = cache)
+        second.setMediaRequest(request("episode:two", content.sourceUri))
+        playToEnd(second)
+
+        assertThat(segmentsFetched(second)).isEqualTo(SEGMENTS)
+    }
+
+    /**
+     * ADR-0010 rule 4's fallback: content set through `setMediaItem` has no content id, is keyed by its
+     * URL — so the same URL again is a hit and another host's is not — and shares no entry with a
+     * `MediaRequest` at the same URL, in either direction.
+     */
+    @Test
+    fun contentSetAsAMediaItemIsKeyedByItsUrlAndNeverSharesAnEntryWithARequest() {
+        val cache = openCache()
+        val mirrored = content.servedFrom(MIRROR_HOST)
+
+        val byUrl = harness.buildPlayer(content = mirrored, cache = cache)
+        byUrl.setMediaItem(MediaItem.fromUri(content.sourceUri))
+        playToEnd(byUrl)
+        assertThat(segmentsFetched(byUrl)).isEqualTo(SEGMENTS)
+
+        val byRequest = harness.buildPlayer(content = mirrored, cache = cache)
+        byRequest.setMediaRequest(request(CONTENT_ID, content.sourceUri))
+        playToEnd(byRequest)
+        assertWithMessage("a request at a URL an item was cached under").that(segmentsFetched(byRequest)).isEqualTo(SEGMENTS)
+
+        val sameUrl = harness.buildPlayer(content = mirrored, cache = cache)
+        sameUrl.setMediaItem(MediaItem.fromUri(content.sourceUri))
+        playToEnd(sameUrl)
+        assertWithMessage("the same URL again").that(segmentsFetched(sameUrl)).isEqualTo(0)
+
+        val otherHost = harness.buildPlayer(content = mirrored, cache = cache)
+        otherHost.setMediaItem(MediaItem.fromUri(mirrored.sourceUri))
+        playToEnd(otherHost)
+        assertWithMessage("another host's URL").that(segmentsFetched(otherHost)).isEqualTo(SEGMENTS)
+    }
+
+    /**
+     * ADR-0010 rule 4, proven with a real cache: a hit is read from a local file, which reports
+     * itself as no network transfer, so an adaptive player's estimate after a warm replay is exactly
+     * the estimate the cold play left. The cold play moving it first is what shows the observer sees
+     * the estimate at all. One player plays both, so the replay is measured by the same policy's
+     * oracle and meter that measured the cold play.
+     *
+     * The estimate is read through an oracle of the test's own, because the memory behind it is one
+     * per process (ADR-0009 rule 8) — the policy's oracle and this one read the same windows.
+     */
+    @Test
+    fun aWarmReplayLeavesTheThroughputEstimateWhereTheColdPlayLeftIt() {
+        val cache = openCache()
+        val player = harness.buildPlayer(
+            content = content,
+            network = NetworkProfile.STABLE_WIFI.trace,
+            policy = adaptivePolicy(),
+            cache = cache,
+        )
+        val observer = BandwidthOracle.Builder(context).build()
+        try {
+            val untouched = observer.currentEstimate()
+            player.setMediaRequest(request(CONTENT_ID, content.sourceUri))
+            playToEnd(player)
+            val afterColdPlay = observer.currentEstimate()
+            val segmentRequestsAfterColdPlay = segmentRequests(player)
+            assertThat(segmentsFetched(player)).isEqualTo(SEGMENTS)
+            assertWithMessage("a cold play's segments are samples").that(afterColdPlay).isNotEqualTo(untouched)
+
+            // The same request again, on the same player: a new source, whose segments the cache holds.
+            player.setMediaRequest(request(CONTENT_ID, content.sourceUri))
+            playToEnd(player)
+
+            assertWithMessage("segment requests during the replay").that(segmentRequests(player)).isEqualTo(segmentRequestsAfterColdPlay)
+            val afterWarmReplay = observer.currentEstimate()
+            // Every number the estimate is made of is where the cold play left it. Only the newest
+            // sample's age has moved, and it has only grown: a sample taken during the replay would
+            // have reset it.
+            assertThat(afterWarmReplay.copy(newestSampleAgeMs = afterColdPlay.newestSampleAgeMs)).isEqualTo(afterColdPlay)
+            assertThat(afterWarmReplay.newestSampleAgeMs).isGreaterThan(afterColdPlay.newestSampleAgeMs)
+        } finally {
+            observer.release()
+        }
+    }
+
+    /**
+     * The cache sits below live-playlist revalidation and never holds a playlist: a live stream behind
+     * an intermediary that freezes its playlist for ten minutes still plays on by reloading past it,
+     * with the content cache in the chain, and the cache holds segments and no playlist afterwards.
+     */
+    @Test
+    fun liveHlsKeepsRevalidatingItsPlaylistAndNoPlaylistIsCached() {
+        val cache = openCache()
+        val live = TestContent.liveHls()
+        val player = harness.buildPlayer(
+            content = live,
+            faults = FaultScript.Builder().serveThroughCache(TEN_MINUTES_S, kind = ResourceKind.MANIFEST).build(),
+            cache = cache,
+        )
+        player.setMediaRequest(request("channel:live", live.sourceUri))
+        harness.playToReady(player)
+
+        harness.advanceUntil(player, "segments past the first live window", LIVE_PLAYED_MS) {
+            segmentsFetched(it) > SyntheticHlsStream.LIVE_WINDOW_SEGMENT_COUNT
+        }
+
+        assertThat(player.playerError).isNull()
+        assertThat(harness.networkRequests(player).count { it.headers[CACHE_CONTROL] == "no-cache" }).isGreaterThan(0)
+        assertThat(cache.keys()).isNotEmpty()
+        assertThat(cache.keys().filter { it.endsWith(".m3u8") }).isEmpty()
+    }
+
+    /**
+     * CMCD rides the requests that still reach the network: every one a cold play and a warm replay
+     * sent carries a `sid`, and each player's `sid` is its own telemetry session id.
+     */
+    @Test
+    fun everyRequestThatReachesTheNetworkCarriesTheTelemetrySessionIdAsCmcd() {
+        val cache = openCache()
+
+        for (replay in listOf("cold", "warm")) {
+            val events = CopyOnWriteArrayList<TelemetryEvent>()
+            val player = harness.buildPlayer(content = content, telemetry = QoeCollector(TelemetrySink { events += it }), cache = cache)
+            player.setMediaRequest(request(CONTENT_ID, content.sourceUri))
+            playToEnd(player)
+            // Delivery is off the engine's threads by design (ADR-0008 rules 3 and 4).
+            runMainLooperUntil { events.any { it is TelemetryEvent.SessionStarted } }
+            val sessionId = events.filterIsInstance<TelemetryEvent.SessionStarted>().single().sessionId
+
+            val requests = harness.networkRequests(player)
+            assertWithMessage("$replay requests").that(requests).isNotEmpty()
+            requests.forEach { sent ->
+                assertWithMessage("$replay: $sent").that(sent.headers[CMCD_SESSION].orEmpty()).contains("sid=\"$sessionId\"")
+            }
+        }
+    }
+
+    private fun openCache(): ContentKeyedCache =
+        CachePolicy.contentKeyed(folder.newFolder(), MAX_BYTES).also { caches += it }
+
+    private fun adaptivePolicy() = AdaptivePolicy.forProfile(context, PlaybackProfile.VIDEO_ON_DEMAND)
+
+    private fun request(contentId: String, uri: String): MediaRequest = MediaRequest.Builder(contentId).addSource(uri).build()
+
+    private fun playToEnd(player: SuperPlayer) {
+        harness.playToReady(player)
+        harness.advanceUntil(player, "the end of the content") { it.playbackState == Player.STATE_ENDED || it.playerError != null }
+        assertWithMessage("cause: ${player.playerError?.cause}").that(player.playerError).isNull()
+    }
+
+    /** Every segment request sent to the network so far, repeats included. */
+    private fun segmentRequests(player: Player): Int =
+        harness.networkRequests(player).count { it.kind == ResourceKind.MEDIA_SEGMENT }
+
+    /** Distinct segments fetched from the network, so a re-opened range is not a second segment. */
+    private fun segmentsFetched(player: Player): Int =
+        harness.networkRequests(player).filter { it.kind == ResourceKind.MEDIA_SEGMENT }.map { it.uri }.toSet().size
+
+    private companion object {
+        const val SEGMENTS = 4
+        const val CONTENT_ID = "episode:cached"
+        const val MIRROR_HOST = "mirror.superplayer.test"
+
+        /** Far more than four short audio segments, so nothing in these tests is ever evicted. */
+        const val MAX_BYTES = 16L * 1024 * 1024
+
+        /** The intermediary's rule from `LivePlaylistRevalidationTest`: a whole path held for ten minutes. */
+        const val TEN_MINUTES_S = 600L
+
+        /** Long enough to play past the first live window by reloading past the frozen playlist. */
+        const val LIVE_PLAYED_MS = 30_000L
+
+        const val CACHE_CONTROL = "Cache-Control"
+
+        // spec: CTA-5004 §2.1 — the header shard carrying the session keys, `sid` among them.
+        const val CMCD_SESSION = "CMCD-Session"
+    }
+}

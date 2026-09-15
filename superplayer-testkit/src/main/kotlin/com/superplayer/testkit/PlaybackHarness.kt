@@ -49,6 +49,7 @@ import androidx.media3.test.utils.robolectric.RobolectricUtil
 import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
 import androidx.test.core.app.ApplicationProvider
 import com.superplayer.core.BufferPolicy
+import com.superplayer.core.ContentCache
 import com.superplayer.core.PlaybackPolicy
 import com.superplayer.core.PlaybackProfile
 import com.superplayer.core.PlayerPool
@@ -165,6 +166,10 @@ public class PlaybackHarness : ExternalResource() {
      * `PlaybackPolicy`, which is how `superplayer-abr`'s tests put its engine components under a
      * player this harness builds. A policy that is also core's extension fills the engine's slots
      * before this harness configures the clock and the transport, exactly as it does for a consumer.
+     *
+     * [cache], when set, is what `SuperPlayer.Builder.setCache` takes. It sits in the chain above the
+     * transport this harness installs, so a read it answers never reaches [networkRequests] — which
+     * is how a test tells a cache hit from a miss. Several players may share one, as a feed's do.
      */
     public fun buildPlayer(
         content: TestContent = TestContent.video(),
@@ -173,6 +178,7 @@ public class PlaybackHarness : ExternalResource() {
         faults: FaultScript = FaultScript.NONE,
         network: ThroughputTrace? = null,
         policy: PlaybackPolicy? = null,
+        cache: ContentCache? = null,
     ): SuperPlayer {
         var built: ControllableVideoRenderer? = null
         val transport = composeTransport(content, faults, network)
@@ -181,6 +187,7 @@ public class PlaybackHarness : ExternalResource() {
             .apply { profile?.let { setProfile(it) } }
             .apply { telemetry?.let { setTelemetry(it) } }
             .apply { policy?.let { setPolicy(it) } }
+            .apply { cache?.let { setCache(it) } }
             .setEngineConfigurator { configuration ->
                 configuration.engine.setClock(clock)
                 configuration.engine.setRenderersFactory(renderersFactory { built = it })
@@ -397,14 +404,28 @@ public class PlaybackHarness : ExternalResource() {
      * stays the one a test writes fault plans in. The harness's own tests are what read it.
      */
     internal fun requestedResources(player: Player): List<ResourceAddress> =
-        checkNotNull(injectors[player]) { "This harness did not build that player" }.addresses.requested
+        injectorFor(player).addresses.requested
+
+    /**
+     * Every request [player] has sent to the network so far, repeats included, in the order opened.
+     *
+     * Counted where the HTTP stack would be, under every layer SuperPlayer composes: a read a content
+     * cache answered is not here, and a request an intermediary [FaultScript.Builder.serveThroughCache]
+     * answered is, because it left the player.
+     */
+    public fun networkRequests(player: Player): List<NetworkRequest> =
+        injectorFor(player).addresses.requests
 
     /**
      * How many of [player]'s requests so far asked every cache on the way to step aside with
      * `Cache-Control: no-cache`. Internal for [requestedResources]'s reason.
      */
     internal fun cacheBypassingRequests(player: Player): Int =
-        checkNotNull(injectors[player]) { "This harness did not build that player" }.cacheBypassingRequests
+        injectorFor(player).cacheBypassingRequests
+
+    /** The fault injector under [player], which is where everything it fetched is recorded. */
+    private fun injectorFor(player: Player): FaultInjectingDataSource.Factory =
+        checkNotNull(injectors[player]) { "This harness did not build that player" }
 
     /**
      * A [PlayerPool] whose players are this harness's, so a pooled player is a player like any

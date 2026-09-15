@@ -414,6 +414,20 @@ implements a core-internal extension interface so that its engine components —
 argument. The extension runs *before* the test configurator, so a test's engine configuration still
 wins over the policy's exactly as it wins over the profile's.
 
+`superplayer-cache` is the third, because `ContentCache`'s constructor, `CacheLayer` and the request
+stamp a key is read from are core's internals (ADR-0010 rule 3). Its tests hand a cache to
+`harness.buildPlayer(cache = …)` and count cache hits as requests that did *not* reach
+`harness.networkRequests(player)`, which records at the transport below every layer core composes;
+`TestContent.servedFrom(host)` serves one stream from a second host, which is what a content key has
+to survive.
+
+Two of its tests read past the facade, and this is where that is recorded rather than left to be
+found. `ContentKeysTest` drives the internal key factory with hand-built requests, because the
+cases it pins — a rendition under a second path, a signed query, an id that looks like a path — are
+ones no synthetic stream produces. And the live-stream test asserts on the internal
+`ContentKeyedCache.keys()` that no playlist was *stored*: network requests show a playlist was
+fetched, not that a copy was never written, and a written copy is the defect the rule exists against.
+
 `superplayer-testkit`'s own public API names **no Media3 type**, for the reason ADR-0001 rule 2 gives:
 a `Format` or a `Timeline` in one of its signatures would put Media3's opt-in marker on every test
 that named it. A test says what it wants — `TestContent.videoLadder()`, `harness.stallRendering(player)`

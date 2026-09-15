@@ -1,5 +1,6 @@
 public final class com/superplayer/preload/PreloadCoordinator {
 	public synthetic fun <init> (Lcom/superplayer/core/PlayerPool;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getWarmDecoderCount ()I
 	public final fun release ()V
 	public final fun setItems (Ljava/util/List;)V
 	public final fun setScrollPosition (I)V

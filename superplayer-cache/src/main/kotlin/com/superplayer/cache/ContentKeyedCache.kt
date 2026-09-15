@@ -55,7 +55,16 @@ public class ContentKeyedCache internal constructor(
     /** The budget the consumer passed, in bytes of media. */
     public val maxBytes: Long,
     internal val storage: CacheStorage,
-) : ContentCache(ContentKeyedCacheLayer(storage.cache)) {
+    private val keyedLayer: ContentKeyedCacheLayer = ContentKeyedCacheLayer(storage.cache),
+) : ContentCache(keyedLayer) {
+
+    /**
+     * How many media requests have been answered at least partly from this cache since it was opened, by
+     * every player loading through it. A reading for a screen that shows the cache working; a replay
+     * that reaches the network for nothing counts every segment it read.
+     */
+    public val hitCount: Long
+        get() = keyedLayer.hitCount
 
     /**
      * Pins [contentId]: nothing stored under it is evicted, whatever the budget, until it is [unpin]ned.

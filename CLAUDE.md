@@ -119,9 +119,13 @@ collapsing the bound) and a per-player budget against the *app's* heap
 one back, and `SuperPlayer.resetForReuse` is what makes a reused player carry nothing of the last
 item: surface detached first (a stale frame in a recycled view is the tell of a hand-rolled pool),
 then content, playback state, listeners, audio attributes and the remembered-position map. Audio
-focus is a single token, so concurrently *playing* pooled players contend for it — a feed plays one
-row and holds prepared first frames for the rest, which is what the demo's `FeedScreen` does across
-200 rows with a live count of what the pool has built — the scroll `./gradlew huntLeaks` measures.
+focus is a single token, so concurrently *playing* pooled players contend for it — a feed gives a
+player to the row being watched and leaves the rest to preload. The demo's `FeedScreen` is that
+recipe across 200 rows, and its KDoc is the lifecycle a consumer copies: cache, then a pool with
+`setTelemetry { QoeCollector(sink) }` (a collector per player), then a `PreloadCoordinator` attached
+before the first player, released in reverse. Its header samples `inUseCount`, `size`,
+`PreloadCoordinator.warmDecoderCount` and `ContentKeyedCache.hitCount`, and each row shows its time
+to first frame from `declarePlaybackIntent()` — the scroll `./gradlew huntLeaks` measures.
 
 Everything below `MediaSource` loads through one `DataSource.Factory` chain, and `TransferChain` is
 the single internal place it and the `MediaSource.Factory` over it are assembled — reached from

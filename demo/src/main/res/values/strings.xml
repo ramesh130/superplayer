@@ -32,10 +32,13 @@
     <string name="policy_quality_bitrate">max %1$d kbps</string>
     <string name="policy_quality_height_and_bitrate">max %1$dp at %2$d kbps</string>
 
-    <!-- The feed screen. The pool summary is the whole point of that screen: it is what makes "the
-         number of live players is bounded" something a viewer can watch rather than a claim. -->
+    <!-- The feed screen. The summary and the per-row first frame are the whole point of that screen:
+         they make "players are bounded, decoders are held warm, the cache is being read" something a
+         viewer can watch rather than a claim. -->
     <string name="screen_player">Player</string>
     <string name="screen_feed">Feed</string>
-    <string name="feed_pool_summary">Pool: %1$d in use, %2$d built, max %3$d</string>
+    <string name="feed_summary">Pool: %1$d in use, %2$d built, max %3$d \u00b7 %4$d warm \u00b7 %5$d cache hits</string>
     <string name="feed_row_placeholder">%1$s \u2014 no player free</string>
+    <string name="feed_row_first_frame">first frame %1$d ms</string>
+    <string name="feed_row_first_frame_from_adoption">first frame %1$d ms (from adoption, not intent)</string>
 </resources>

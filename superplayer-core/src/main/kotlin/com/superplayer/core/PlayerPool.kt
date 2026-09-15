@@ -283,6 +283,7 @@ public class PlayerPool private constructor(
         private var feedCodecs: Set<VideoCodec> = DEFAULT_FEED_CODECS
         private var policy: PlaybackPolicy? = null
         private var cache: ContentCache? = null
+        private var telemetry: (() -> TelemetryCollector)? = null
         private var playerFactory: ((PooledEngine?) -> SuperPlayer)? = null
 
         /**
@@ -348,6 +349,20 @@ public class PlayerPool private constructor(
         public fun setCache(cache: ContentCache): Builder = apply { this.cache = cache }
 
         /**
+         * Measures every player this pool builds, each with the collector [collectorFactory] returns
+         * for it — what [SuperPlayer.Builder.setTelemetry] takes, once per player.
+         *
+         * A factory rather than a collector because a collector measures one player, and a pool builds
+         * several. A recycled player keeps its collector: recycling ends the measurement session and
+         * the next `setMediaRequest` opens another, so every row a player shows is its own session. A
+         * pool built without this call builds its players without a collector, so each pays what
+         * `SuperPlayerTelemetryTest.aPlayerBuiltWithNoTelemetryRegistersNoAnalyticsListener` counts:
+         * nothing (ADR-0008 rule 2).
+         */
+        public fun setTelemetry(collectorFactory: () -> TelemetryCollector): Builder =
+            apply { telemetry = collectorFactory }
+
+        /**
          * How the pool builds a player — the seam tests reach construction through.
          *
          * The same seam as [SuperPlayer.Builder.setEngineConfigurator] rather than a second one:
@@ -367,11 +382,13 @@ public class PlayerPool private constructor(
             val profile = profile
             val policy = policy
             val cache = cache
+            val telemetry = telemetry
             val factory = playerFactory ?: { pooled ->
                 SuperPlayer.Builder(context)
                     .setProfile(profile)
                     .apply { policy?.let { setPolicy(it) } }
                     .apply { cache?.let { setCache(it) } }
+                    .apply { telemetry?.let { setTelemetry(it()) } }
                     .setPooledEngine(pooled)
                     .build()
             }

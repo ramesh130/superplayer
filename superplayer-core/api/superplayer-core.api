@@ -306,6 +306,7 @@ public final class com/superplayer/core/PlayerPool$Builder {
 	public final fun setMaxSize (I)Lcom/superplayer/core/PlayerPool$Builder;
 	public final fun setPolicy (Lcom/superplayer/core/PlaybackPolicy;)Lcom/superplayer/core/PlayerPool$Builder;
 	public final fun setProfile (Lcom/superplayer/core/PlaybackProfile;)Lcom/superplayer/core/PlayerPool$Builder;
+	public final fun setTelemetry (Lkotlin/jvm/functions/Function0;)Lcom/superplayer/core/PlayerPool$Builder;
 }
 
 public abstract class com/superplayer/core/PreloadDepth {

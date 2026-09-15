@@ -59,13 +59,15 @@ portrait, playing HLS through the service's session:
    released with it.
 
 **Feed**, `LEAK_FEED_PASSES` times (default 6): the whole `LEAK_FEED_ROWS`-row feed (default 200,
-the PRD's Phase 4 figure) scrolled to the end and back to the top. Each row that enters the screen
-acquires a pooled player, prepares it, and registers a first-frame listener it never removes.
-Recycling a player is what removes it (`FeedScreen.kt` says why the row relies on that). Each row
-that leaves recycles its player. Most rows scrolled past take no player at all: they find the pool
-at its bound and show their label, which is the pool's contract. The negative test measured it: a pass
-sends about 23 players through `SuperPlayer.resetForReuse` on the API 36 emulator, not the 400 a
-count of rows would suggest. The scroll overshoots by construction (`leak_feed_swipes`), and
+the PRD's Phase 4 figure) scrolled to the end and back to the top. The feed plays on a
+`PreloadCoordinator` and a content-keyed cache, and only the row at the top takes a player. It
+acquires a pooled player, plays it, and registers a first-frame listener it never removes. Recycling
+a player is what removes it (`FeedScreen.kt` says why the row relies on that). A row recycles its
+player when it stops being the top row, and the coordinator warms idle players ahead of it, so a
+scroll is expected to send a player through `SuperPlayer.resetForReuse` about once for every row
+that reaches the top. That is not yet measured. The negative test below measured about 23 recycles
+per pass on the API 36 emulator before #161, when every *visible* row took a player and most found
+the pool at its bound. Re-measure before relying on either number. The scroll overshoots by construction (`leak_feed_swipes`), and
 a screenshot at the bottom of each pass is kept as the evidence it got there.
 
 The two dumps of a phase are taken at the same point of it, after a settle of `LEAK_SETTLE_S`

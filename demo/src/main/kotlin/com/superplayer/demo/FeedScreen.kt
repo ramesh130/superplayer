@@ -16,6 +16,10 @@
 
 package com.superplayer.demo
 
+import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,6 +36,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -44,55 +49,82 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
 import androidx.media3.ui.PlayerView
+import com.superplayer.cache.CachePolicy
+import com.superplayer.cache.ContentKeyedCache
 import com.superplayer.core.MediaRequest
 import com.superplayer.core.PlaybackProfile
 import com.superplayer.core.PlayerPool
 import com.superplayer.core.SuperPlayer
+import com.superplayer.core.TelemetryEvent
+import com.superplayer.core.TelemetrySink
+import com.superplayer.core.TtffStartBoundary
+import com.superplayer.preload.PreloadCoordinator
+import com.superplayer.telemetry.QoeCollector
+import kotlinx.coroutines.delay
+import java.io.File
 
 /**
- * A long scrolling feed, played out of a [PlayerPool] — the screen the pool exists for.
+ * A long short-form feed, built the way a consumer's should be: one [PlayerPool], a
+ * [PreloadCoordinator] attached to it, a [ContentKeyedCache] under both, and a player only on the row
+ * being watched.
  *
- * The claim it demonstrates is the one that is invisible in a single-player demo: a feed has no
- * fixed number of videos in it, and the naive implementation gives every row its own player and
- * falls over somewhere down the scroll when the device runs out of decoder instances. Here the
- * number of live players never exceeds what the device reported it can afford, however far the
- * viewer scrolls, and the counter at the top says so while they do it.
+ * The header says what each piece is doing while the viewer scrolls — players in use and built against
+ * the device's bound, decoders held warm ahead of the scroll, and requests answered from the cache —
+ * and every row that has played says how long its first frame took, from the moment it became the row
+ * being watched.
  *
- * Scroll it and watch the header. "in use" rises to the pool's bound and stops; "built" rises to the
- * bound and stops. Rows past that point get no player and say so, which is the pool's actual
- * contract rather than an error path.
+ * ## The lifecycle to copy
  *
- * ## One row plays, and the rest are deliberately more expensive than a real feed's
+ * [FeedPlayback] is the part of this file a consumer's feed should look like, and its order matters:
  *
- * That one row plays is forced rather than chosen. Every SuperPlayer requests audio focus while it
- * plays — ADR-0006 rule 1, and not a profile's to switch off — and focus is a single token, so a
- * second row calling `play()` takes it from the first and Media3 answers by clearing that row's
- * `playWhenReady`. Two playing rows is one playing row and one that stopped.
+ * 1. **Open the cache**, in a directory the app names, with a budget the app passes
+ *    (ADR-0010 rule 1). [CachePolicy.deviceAware] suggests one from the device.
+ * 2. **Build the pool** on that cache and a collector per player. The pool's players are the only ones
+ *    the feed uses, so they are the ones measured.
+ * 3. **Attach the coordinator before the pool builds its first player.** From then on every player the
+ *    pool builds shares one engine with the coordinator, which is what lets a prefetched row be played
+ *    rather than fetched again.
+ * 4. **Hand the coordinator the feed** ([PreloadCoordinator.setItems]) as soon as it is known, and the
+ *    same `MediaRequest`s the rows will play: a row is warm only for the content it was prefetched as.
+ * 5. **Release in reverse**: the coordinator, then the pool, then the cache — a cache released under a
+ *    player still loading through it fails that player's loads.
  *
- * What every *other* visible row does here is a demonstration choice, and not what a production feed
- * should copy. Each of them takes a pooled player, prepares it, and shows its first decoded frame.
- * A real feed — YouTube's is the reference — gives a player only to the active row and shows the
- * uploader's **artwork** for all the others: a designed image with the title and a duration badge on
- * it, which is one cached image decode rather than a manifest fetch, a media segment and a scarce
- * decoder instance spent on a row the viewer may scroll straight past. Frame zero is usually a fade
- * or a slate, so it is a worse picture as well as a dearer one, and `MediaRequest.artworkUri` is the
- * library's own name for the better one.
+ * ## One row plays, and the rest show their label
  *
- * This screen is greedier on purpose: taking a player per visible row is what drives the pool to its
- * bound where a viewer can watch it happen, which is the one thing a feed built the right way would
- * never show. Issue #28 tracks the production-shaped recipe.
+ * Every other row is the stand-in for an item's artwork: one cached image rather than a manifest, a
+ * segment and a decoder spent on a row the viewer may scroll straight past. What they would have spent,
+ * the coordinator spends instead, and only ahead of where the feed is going, within what the pool and
+ * the device's memory allow. That is also why the demo only plays one row: every SuperPlayer requests
+ * audio focus (ADR-0006 rule 1), so a second playing row would stop the first.
+ *
+ * When a row becomes the one being watched, [FeedRow] does four things in an order that is not
+ * incidental. It tells the coordinator where the feed is *before* asking for a player, so the pool can
+ * hand it the player holding that row warm. It declares playback intent before setting content, so
+ * time to first frame is measured from the row becoming current — the frame in which this effect runs,
+ * a frame after the scroll that caused it — rather than from whenever the player adopted the item. It sets content through `setMediaRequest`, the only path a warm source is
+ * handed over on. And it plays.
+ *
+ * ## What the numbers can and cannot show
+ *
+ * A row's first frame is a [TelemetryEvent.FirstFrameRendered], delivered to the collector's sink on
+ * telemetry's own thread and posted here to the main one. A row that shows "from adoption" had no
+ * declared intent, and its number is not comparable with the others.
+ *
+ * The cache's count is every media request answered at least partly from disk, by any player in the
+ * pool. It rises on a first scroll as well as on a replay, because what the coordinator prefetched was
+ * stored on the way in and a row that plays it reads it back. The count alone does not say which of
+ * those a hit was.
+ *
+ * The header is sampled twice a second rather than observed. A pool, a coordinator and a cache are
+ * playback types, not UI ones, and their counts change on threads Compose does not watch.
  *
  * ## Where the recycling actually happens
  *
- * `LazyColumn` disposes a row's composition once it is far enough off screen, so [FeedRow]'s
- * [DisposableEffect] is the whole of the lifecycle: acquire on enter, recycle on leave. That is not
- * demo scaffolding — it is the same shape a `RecyclerView.Adapter` writes in `onViewAttachedToWindow`
- * and `onViewDetachedFromWindow`, and it is deliberately the only pool code in this file.
- *
- * Note what is *not* here. Nothing restores the volume this row muted, resets playback speed, or
- * removes the listener this row registered; [PlayerPool.recycle] does all of that, which is the point
- * of it being in the library. A hand-rolled pool is usually a pool plus a slowly-growing list of those
- * corrections, each added after someone noticed a frame from the wrong video.
+ * [FeedRow]'s [DisposableEffect], keyed on whether the row is the one being watched, is the whole of a
+ * row's player lifecycle: acquire when it becomes current, recycle when it stops. That is the same shape
+ * a `RecyclerView` feed writes on its snap-to-item callback. Nothing restores the volume the row muted
+ * or removes the listener it registered; [PlayerPool.recycle] does, which is the point of it being in
+ * the library.
  *
  * ## How long it is
  *
@@ -104,38 +136,46 @@ import com.superplayer.core.SuperPlayer
 @Composable
 internal fun FeedScreen(rowCount: Int = FeedItem.DEFAULT_COUNT, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-
-    // One pool for the screen, sized by the device rather than by a number chosen here. It outlives
-    // every row and is released when the screen goes, which is the lifetime a pool has.
-    val pool = remember {
-        PlayerPool.Builder(context)
-            // What a feed is: short items, none of them watched to the end.
-            .setProfile(PlaybackProfile.SHORT_FORM)
-            .build()
-    }
-    DisposableEffect(pool) {
-        onDispose { pool.release() }
-    }
-
-    // A pool reports `size` and `inUseCount` as plain values rather than as observable state — it is
-    // a playback type, not a UI one — so the screen samples them at the two moments they can change,
-    // which are the two moments this file already knows about: a row arriving and a row leaving.
-    var summary by remember { mutableStateOf(PoolSummary.of(pool)) }
-    val refreshSummary = { summary = PoolSummary.of(pool) }
-
-    // Which row is playing. `firstVisibleItemIndex` rather than anything cleverer: the point is that
-    // one row plays, not which one, and a viewer scrolling sees the audio follow them down the list.
-    val listState = rememberLazyListState()
-    val playingIndex by remember { derivedStateOf { listState.firstVisibleItemIndex } }
     val items = remember(rowCount) { FeedItem.all(rowCount) }
+
+    // Per row, keyed by content id, the last first frame telemetry reported for it.
+    val firstFrames = remember { mutableStateMapOf<String, FirstFrame>() }
+
+    // Built with the screen and released with it. A production app with more than one feed screen
+    // would hold the cache at application scope instead, since it outlives any one screen.
+    // The feed is handed over as the playback types are built, not in an effect: an effect runs after the
+    // first rows have composed, and row 0 would ask for a player before the coordinator knew any row.
+    val feed = remember(items) {
+        FeedPlayback(context.applicationContext, items.map { it.request }) { contentId, frame ->
+            firstFrames[contentId] = frame
+        }
+    }
+    DisposableEffect(feed) {
+        onDispose { feed.release() }
+    }
+
+    var summary by remember { mutableStateOf(FeedSummary.of(feed)) }
+    LaunchedEffect(feed) {
+        while (true) {
+            summary = FeedSummary.of(feed)
+            delay(SUMMARY_REFRESH_MS)
+        }
+    }
+
+    // The row being watched is the first one visible: the feed snaps nothing, so this is the row at
+    // the top, and a viewer scrolling sees the playing row follow them down the list.
+    val listState = rememberLazyListState()
+    val currentIndex by remember { derivedStateOf { listState.firstVisibleItemIndex } }
 
     Column(modifier = modifier.fillMaxSize()) {
         Text(
             text = stringResource(
-                R.string.feed_pool_summary,
+                R.string.feed_summary,
                 summary.inUse,
                 summary.built,
                 summary.max,
+                summary.warm,
+                summary.cacheHits,
             ),
             modifier = Modifier
                 .fillMaxWidth()
@@ -145,10 +185,11 @@ internal fun FeedScreen(rowCount: Int = FeedItem.DEFAULT_COUNT, modifier: Modifi
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
             itemsIndexed(items, key = { _, item -> item.contentId }) { index, item ->
                 FeedRow(
+                    index = index,
                     item = item,
-                    pool = pool,
-                    isPlaying = index == playingIndex,
-                    onPoolChanged = refreshSummary,
+                    feed = feed,
+                    isCurrent = index == currentIndex,
+                    firstFrame = firstFrames[item.contentId],
                 )
             }
         }
@@ -156,34 +197,92 @@ internal fun FeedScreen(rowCount: Int = FeedItem.DEFAULT_COUNT, modifier: Modifi
 }
 
 /**
- * One row: a pooled player if the pool has one to give, and the row's own label if it does not.
+ * The cache, the pool and the coordinator a feed plays through, opened and released in the order
+ * [FeedScreen]'s KDoc gives.
  *
- * With a player, the label stays over the surface until the first frame is rendered. That is the
- * production shape — artwork until there is a picture — with a label standing in for the artwork, and
- * it is the one thing this row needs a [Player.Listener] for.
+ * [onFirstFrame] is called on the main thread with the row's content id.
+ */
+private class FeedPlayback(
+    context: Context,
+    requests: List<MediaRequest>,
+    onFirstFrame: (String, FirstFrame) -> Unit,
+) {
+
+    private val mainThread = Handler(Looper.getMainLooper())
+
+    val cache: ContentKeyedCache = File(context.cacheDir, CACHE_DIRECTORY).let { directory ->
+        directory.mkdirs()
+        CachePolicy.contentKeyed(directory, CachePolicy.deviceAware(context, directory))
+    }
+
+    // Called on telemetry's delivery thread, never the main one (ADR-0008 rule 4), so the one event
+    // this screen shows is handed across rather than written into Compose state from there.
+    private val sink = TelemetrySink { event ->
+        if (event is TelemetryEvent.FirstFrameRendered) {
+            val frame = FirstFrame(
+                ms = event.timeToFirstFrameMs,
+                fromIntent = event.startBoundary == TtffStartBoundary.USER_INTENT,
+            )
+            mainThread.post { onFirstFrame(event.contentId, frame) }
+        }
+    }
+
+    val pool: PlayerPool = PlayerPool.Builder(context)
+        // What a feed is: short items, none of them watched to the end. It is also the profile that
+        // decides warm decoders ahead of the scroll.
+        .setProfile(PlaybackProfile.SHORT_FORM)
+        .setCache(cache)
+        // A collector per player, because a collector measures one.
+        .setTelemetry { QoeCollector(sink) }
+        .build()
+
+    // Immediately, before any row has asked the pool for a player (step 3 above).
+    val preload: PreloadCoordinator = PreloadCoordinator.Builder(pool).build().apply { setItems(requests) }
+
+    fun release() {
+        preload.release()
+        pool.release()
+        cache.release()
+    }
+}
+
+/**
+ * One row: the player if it is the row being watched and the pool had one to give, and its label
+ * otherwise, with the row's last time to first frame under either.
  *
- * The null branch is not an error path. A pool hands out at most what the device can afford, so a
- * feed scrolled quickly will find it empty, and a caller has to have an answer for that. A
- * production feed's answer is the item's artwork; this screen's is a label naming the row, because
- * the demo carries no images and an image loader is a dependency it does not need to make the point.
- * A demo that hid this case would be hiding the pool's actual contract.
+ * The label stays over the surface until the first frame is rendered — artwork until there is a
+ * picture — which is the one thing this row needs a [Player.Listener] for.
+ *
+ * A current row with no player is not an error path: a pool hands out at most what the device can
+ * afford, and a caller has to have an answer for it. Here the answer is the label, saying so.
  */
 @Composable
 private fun FeedRow(
+    index: Int,
     item: FeedItem,
-    pool: PlayerPool,
-    isPlaying: Boolean,
-    onPoolChanged: () -> Unit,
+    feed: FeedPlayback,
+    isCurrent: Boolean,
+    firstFrame: FirstFrame?,
 ) {
     val context = LocalContext.current
     var player by remember { mutableStateOf<SuperPlayer?>(null) }
-    val playerView = remember { PlayerView(context) }
+    // No transport controls: a feed row is played by scrolling to it, not by a button over the picture.
+    val playerView = remember { PlayerView(context).apply { useController = false } }
     var hasFirstFrame by remember { mutableStateOf(false) }
 
-    DisposableEffect(item.contentId) {
-        val acquired = pool.acquire()
+    DisposableEffect(item.contentId, isCurrent) {
+        // When the watched row moves, the row it left and the row it reached change in one frame, and
+        // Compose disposes the old effect before it runs the new one — so the previous player is back
+        // in the pool before this row asks for one, even on a device that affords a single player.
+        val acquired = if (isCurrent) {
+            // Where the feed is, first: the pool then prefers the player holding this row warm.
+            feed.preload.setScrollPosition(index)
+            feed.pool.acquire()
+        } else {
+            null
+        }
         player = acquired
-        onPoolChanged()
+        hasFirstFrame = false
 
         acquired?.let {
             // Registered and never removed here. Recycling a player removes every listener registered
@@ -198,14 +297,16 @@ private fun FeedRow(
                     }
                 },
             )
-            it.setMediaRequest(item.toMediaRequest())
-            // Prepared but not played. Preparing is what decodes the first frame, so a paused row is
-            // a still frame rather than a black rectangle; whether it also *runs* is the effect
-            // below, because that changes as the viewer scrolls and this does not.
-            it.prepare()
-            // Muted: a feed that makes noise as it is scrolled is not a feed, and every real one
-            // does this. The pool puts the volume back, so the next item is not silently muted.
+            // Muted: a feed that makes noise as it is scrolled is not a feed. The pool puts the volume
+            // back, so the next item is not silently muted.
             it.volume = 0f
+            // The viewer's arrival is the start of time to first frame, so it is declared before the
+            // content is: a player that adopts content before intent measures from adoption instead.
+            it.declarePlaybackIntent()
+            // The one path a warm source is handed over on: a prefetched row keeps what was prepared.
+            it.setMediaRequest(item.request)
+            it.prepare()
+            it.playWhenReady = true
         }
 
         onDispose {
@@ -214,75 +315,106 @@ private fun FeedRow(
             // which is what stops the next row from seeing this item's last frame.
             playerView.player = null
             player = null
-            acquired?.let {
-                pool.recycle(it)
-                onPoolChanged()
-            }
+            acquired?.let { feed.pool.recycle(it) }
         }
     }
 
-    // Follows the viewport rather than the row's lifetime, so scrolling moves playback between rows
-    // that are already prepared. Nothing here is a seek or a reload.
-    LaunchedEffect(player, isPlaying) {
-        player?.playWhenReady = isPlaying
+    // The watched row's playhead, one greppable line a second. A pooled player publishes no session, so
+    // this is what shows it advancing on a device, where a screenshot cannot tell a frame from a stall:
+    //   adb logcat -d -t 2000 -s SuperPlayerFeed
+    LaunchedEffect(player) {
+        val playing = player ?: return@LaunchedEffect
+        while (true) {
+            Log.i(
+                FEED_LOG_TAG,
+                "row=$index contentId=${item.contentId} positionMs=${playing.currentPosition} " +
+                    "state=${playing.playbackState} playWhenReady=${playing.playWhenReady} " +
+                    "isPlaying=${playing.isPlaying} bufferedMs=${playing.bufferedPosition}",
+            )
+            delay(POSITION_LOG_INTERVAL_MS)
+        }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(16f / 9f)
-            .padding(4.dp)
-            .background(Color.DarkGray),
-        contentAlignment = Alignment.Center,
-    ) {
-        val current = player
-        if (current == null) {
-            Text(text = stringResource(R.string.feed_row_placeholder, item.label))
-        } else {
-            AndroidView(
-                factory = { playerView },
-                update = { view ->
-                    // The assignment the whole facade exists to make ordinary, in a feed this time.
-                    view.player = current
-                },
-                onRelease = { view -> view.player = null },
-                modifier = Modifier.fillMaxSize(),
+    Column {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .padding(4.dp)
+                .background(Color.DarkGray),
+            contentAlignment = Alignment.Center,
+        ) {
+            val current = player
+            when {
+                current != null -> {
+                    AndroidView(
+                        factory = { playerView },
+                        update = { view ->
+                            // The assignment the whole facade exists to make ordinary, in a feed this time.
+                            view.player = current
+                        },
+                        onRelease = { view -> view.player = null },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    if (!hasFirstFrame) Text(text = item.label)
+                }
+
+                isCurrent -> Text(text = stringResource(R.string.feed_row_placeholder, item.label))
+
+                else -> Text(text = item.label)
+            }
+        }
+        firstFrame?.let {
+            Text(
+                text = stringResource(
+                    if (it.fromIntent) R.string.feed_row_first_frame else R.string.feed_row_first_frame_from_adoption,
+                    it.ms,
+                ),
+                modifier = Modifier.padding(horizontal = 8.dp),
             )
-            if (!hasFirstFrame) Text(text = item.label)
         }
     }
 }
 
+/** A row's time to first frame, and whether it was measured from declared intent. */
+private data class FirstFrame(val ms: Long, val fromIntent: Boolean)
+
 /**
- * What the header says, sampled off the pool.
+ * What the header says, sampled off the feed's playback types.
  *
- * A value class rather than three states, so that the three numbers cannot be refreshed apart and
- * show a moment that never happened — "3 in use, 2 built".
+ * One value rather than five states, so that the numbers cannot be refreshed apart and show a moment
+ * that never happened — "3 in use, 2 built".
  */
-private data class PoolSummary(val inUse: Int, val built: Int, val max: Int) {
+private data class FeedSummary(val inUse: Int, val built: Int, val max: Int, val warm: Int, val cacheHits: Long) {
     companion object {
-        fun of(pool: PlayerPool) = PoolSummary(pool.inUseCount, pool.size, pool.maxSize)
+        fun of(feed: FeedPlayback) = FeedSummary(
+            inUse = feed.pool.inUseCount,
+            built = feed.pool.size,
+            max = feed.pool.maxSize,
+            warm = feed.preload.warmDecoderCount,
+            cacheHits = feed.cache.hitCount,
+        )
     }
 }
 
 /**
  * A row's content: a label and an identity, over the public streams the demo already has.
  *
- * The items cycle through [DemoStream] rather than naming a hundred URLs, because what the screen is
- * about is *how many players exist*, not what is in them. Each row still gets a content id of its
- * own — a feed where every item were the same content would be a feed where recycling could not go
- * wrong in the way this screen exists to show it does not.
+ * The items cycle through [DemoStream] rather than naming two hundred URLs, because what the screen is
+ * about is how rows start, not what is in them. Each row still gets a content id of its own — the cache
+ * is keyed by it, so a feed where every item were the same content would be one long cache hit.
  */
-internal class FeedItem(val label: String, val contentId: String, private val stream: DemoStream) {
+internal class FeedItem(val label: String, val contentId: String, stream: DemoStream) {
 
-    fun toMediaRequest(): MediaRequest = MediaRequest.Builder(contentId)
+    /** Built once, so the coordinator is handed the same request the row plays. */
+    val request: MediaRequest = MediaRequest.Builder(contentId)
         .addSource(stream.uri)
         .build()
 
     companion object {
         /**
          * The PRD's 200-item scroll (Phase 4's exit criterion), which is also comfortably past the
-         * pool's bound — the only way the counter at the top says anything at all.
+         * pool's bound.
          */
         const val DEFAULT_COUNT = 200
 
@@ -296,3 +428,12 @@ internal class FeedItem(val label: String, val contentId: String, private val st
         }
     }
 }
+
+/** Under the app's cache directory, which the platform may clear under storage pressure; so may this. */
+private const val CACHE_DIRECTORY = "feed-media"
+
+private const val SUMMARY_REFRESH_MS = 500L
+
+private const val FEED_LOG_TAG = "SuperPlayerFeed"
+
+private const val POSITION_LOG_INTERVAL_MS = 1_000L

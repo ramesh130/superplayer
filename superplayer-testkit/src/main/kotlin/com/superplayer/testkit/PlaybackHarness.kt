@@ -53,6 +53,7 @@ import com.superplayer.core.ContentCache
 import com.superplayer.core.PlaybackPolicy
 import com.superplayer.core.PlaybackProfile
 import com.superplayer.core.PlayerPool
+import com.superplayer.core.PooledEngine
 import com.superplayer.core.SuperPlayer
 import com.superplayer.core.TelemetryCollector
 import org.junit.rules.ExternalResource
@@ -148,6 +149,9 @@ public class PlaybackHarness : ExternalResource() {
     /** The transport half of each player's trace, replayed into the platform as [advanceTimeMs] moves the clock. */
     private val transportReplays = IdentityHashMap<Player, TransportReplay>()
 
+    /** The one fault injector each pool's players share, so [networkRequests] can answer for the pool. */
+    private val poolInjectors = IdentityHashMap<PlayerPool, FaultInjectingDataSource.Factory>()
+
     /**
      * A player as a consumer builds one, over synthetic content and the fakes above.
      *
@@ -179,18 +183,34 @@ public class PlaybackHarness : ExternalResource() {
         network: ThroughputTrace? = null,
         policy: PlaybackPolicy? = null,
         cache: ContentCache? = null,
+    ): SuperPlayer = buildPlayerOver(composeTransport(content, faults, network), content, profile, telemetry, policy, cache, pooled = null)
+
+    /**
+     * [buildPlayer] over a transport already composed, which a pool's players share, and on the
+     * pool's engine when it has one.
+     */
+    private fun buildPlayerOver(
+        transport: Transport,
+        content: TestContent,
+        profile: PlaybackProfile?,
+        telemetry: TelemetryCollector?,
+        policy: PlaybackPolicy?,
+        cache: ContentCache?,
+        pooled: PooledEngine?,
     ): SuperPlayer {
         var built: ControllableVideoRenderer? = null
-        val transport = composeTransport(content, faults, network)
         val transfers = transport.transfers
         val player = SuperPlayer.Builder(ApplicationProvider.getApplicationContext())
             .apply { profile?.let { setProfile(it) } }
             .apply { telemetry?.let { setTelemetry(it) } }
             .apply { policy?.let { setPolicy(it) } }
             .apply { cache?.let { setCache(it) } }
+            .setPooledEngine(pooled)
             .setEngineConfigurator { configuration ->
-                configuration.engine.setClock(clock)
-                configuration.engine.setRenderersFactory(renderersFactory { built = it })
+                // The slots rather than the engine builder, so a pool can hand the same clock and
+                // renderers to the preload manager a coordinator builds for it.
+                configuration.clock = clock
+                configuration.renderersFactory = renderersFactory { if (built == null) built = it }
                 // A real protocol stream is not described by a timeline at all: the manifest says
                 // what the content is, Media3's own parser reads it, and its own extractor demuxes
                 // the segments. So the injector — and the shaper, under a trace — goes where the
@@ -434,19 +454,48 @@ public class PlaybackHarness : ExternalResource() {
      *
      * [telemetry] is a factory rather than a collector because a collector measures one player
      * (ADR-0008), so a pool of two needs two.
+     *
+     * **Every player in the pool loads through one transport**: one origin serving [content], one
+     * fault injector, and under [network] one shaped link — the screen's network rather than one per
+     * row. That is what a feed test needs, and it is what lets a `PreloadCoordinator` attached to the
+     * pool be observed: its prefetches load through the same transport, and [networkRequests] for the
+     * pool lists them in order among the rows' own. Concurrent transfers still each see the whole
+     * link, the replay limit `docs/throughput-traces.md` states.
+     *
+     * [cache] and [policy] are `PlayerPool.Builder.setCache` and `setPolicy`: every pooled player
+     * shares the one cache, and an extension policy configures one engine for the pool.
      */
     public fun buildPool(
         maxSize: Int? = null,
         profile: PlaybackProfile? = null,
         content: TestContent = TestContent.video(),
         telemetry: () -> TelemetryCollector? = { null },
-    ): PlayerPool = PlayerPool.Builder(ApplicationProvider.getApplicationContext())
-        .apply {
-            maxSize?.let { setMaxSize(it) }
-            profile?.let { setProfile(it) }
-        }
-        .setPlayerFactory { buildPlayer(content, profile ?: PlaybackProfile.SHORT_FORM, telemetry()) }
-        .build()
+        network: ThroughputTrace? = null,
+        cache: ContentCache? = null,
+        policy: PlaybackPolicy? = null,
+    ): PlayerPool {
+        val transport = composeTransport(content, FaultScript.NONE, network)
+        val pool = PlayerPool.Builder(ApplicationProvider.getApplicationContext())
+            .apply {
+                maxSize?.let { setMaxSize(it) }
+                profile?.let { setProfile(it) }
+                policy?.let { setPolicy(it) }
+                cache?.let { setCache(it) }
+            }
+            .setPlayerFactory { pooled ->
+                buildPlayerOver(transport, content, profile ?: PlaybackProfile.SHORT_FORM, telemetry(), policy, cache, pooled)
+            }
+            .build()
+        poolInjectors[pool] = transport.injector
+        return pool
+    }
+
+    /**
+     * Every request [pool]'s players and anything attached to it have sent to the network so far,
+     * repeats included, in the order opened — [networkRequests] for the screen rather than a row.
+     */
+    public fun networkRequests(pool: PlayerPool): List<NetworkRequest> =
+        checkNotNull(poolInjectors[pool]) { "This harness did not build that pool" }.addresses.requests
 
     /**
      * Moves both clocks forward by [millis] and lets the player act on it.
@@ -475,13 +524,15 @@ public class PlaybackHarness : ExternalResource() {
         // moment until the engine has done everything it will at the new one, and are released after.
         // Every player's loads are held because every player shares the clock, but only [player] is
         // settled in between; another player's engine hears its loads at this time, as it always did.
-        waits.values.forEach { it.holdLoads() }
+        // Distinct, because a pool's players share one wait.
+        val allWaits = waits.values.distinct()
+        allWaits.forEach { it.holdLoads() }
         try {
             SystemClock.setCurrentTimeMillis(SystemClock.uptimeMillis() + millis)
             clock.advanceTime(millis)
             quiesce(player)
         } finally {
-            waits.values.forEach { it.releaseLoads() }
+            allWaits.forEach { it.releaseLoads() }
         }
         quiesce(player)
         // The transport last, once the loads have caught up with the new moment. A transfer open
@@ -540,7 +591,7 @@ public class PlaybackHarness : ExternalResource() {
 
     private var quietAt = 0
 
-    private fun activitySoFar(): Int = waits.values.sumOf { it.activitySoFar }
+    private fun activitySoFar(): Int = waits.values.distinct().sumOf { it.activitySoFar }
 
     /**
      * Lets every load in flight act on the time that has passed, before the clock moves again.
@@ -820,6 +871,7 @@ public class PlaybackHarness : ExternalResource() {
         injectors.clear()
         waits.clear()
         transportReplays.clear()
+        poolInjectors.clear()
         // After the players, which are what were drawing into them.
         outputs.forEach { (surface, texture) ->
             surface.release()

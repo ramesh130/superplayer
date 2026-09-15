@@ -147,9 +147,9 @@ import java.util.concurrent.CopyOnWriteArrayList
  * factory — so an HLS or DASH item's source is built per protocol with a stamped chain for each kind,
  * rather than by `DefaultMediaSourceFactory` over one chain.
  *
- * Preload builds its sources from the same factory, handed to it through
- * `EngineConfiguration.preloadEntry`, so a source warmed ahead of the viewport loads through this
- * chain under the same identity (ADR-0010 rule 6).
+ * Preload builds its sources from the same factory, handed to it as a pool's `SharedComponents`
+ * (`PooledEngine.kt`), so a source warmed ahead of the viewport loads through this chain under the
+ * same identity (ADR-0010 rule 6).
  *
  * ## What is assembled today
  *

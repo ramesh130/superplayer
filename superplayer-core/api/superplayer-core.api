@@ -198,15 +198,18 @@ public final class com/superplayer/core/PlaybackConditions {
 public final class com/superplayer/core/PlaybackDecision {
 	public fun <init> (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;)V
 	public fun <init> (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;)V
-	public synthetic fun <init> (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;Lcom/superplayer/core/PreloadPolicy;)V
+	public synthetic fun <init> (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;Lcom/superplayer/core/PreloadPolicy;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Lcom/superplayer/core/BufferPolicy;
 	public final fun component2 ()Lcom/superplayer/core/TrackSelectionPolicy;
 	public final fun component3 ()Lcom/superplayer/core/LiveLatencyPolicy;
-	public final fun copy (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;)Lcom/superplayer/core/PlaybackDecision;
-	public static synthetic fun copy$default (Lcom/superplayer/core/PlaybackDecision;Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;ILjava/lang/Object;)Lcom/superplayer/core/PlaybackDecision;
+	public final fun component4 ()Lcom/superplayer/core/PreloadPolicy;
+	public final fun copy (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;Lcom/superplayer/core/PreloadPolicy;)Lcom/superplayer/core/PlaybackDecision;
+	public static synthetic fun copy$default (Lcom/superplayer/core/PlaybackDecision;Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;Lcom/superplayer/core/PreloadPolicy;ILjava/lang/Object;)Lcom/superplayer/core/PlaybackDecision;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getBuffer ()Lcom/superplayer/core/BufferPolicy;
 	public final fun getLiveLatency ()Lcom/superplayer/core/LiveLatencyPolicy;
+	public final fun getPreload ()Lcom/superplayer/core/PreloadPolicy;
 	public final fun getTrackSelection ()Lcom/superplayer/core/TrackSelectionPolicy;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
@@ -286,7 +289,7 @@ public final class com/superplayer/core/PlaybackSnapshot$Companion {
 }
 
 public final class com/superplayer/core/PlayerPool {
-	public synthetic fun <init> (ILkotlin/jvm/functions/Function0;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (ILkotlin/jvm/functions/Function1;ZLkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun acquire ()Lcom/superplayer/core/SuperPlayer;
 	public final fun getInUseCount ()I
 	public final fun getMaxSize ()I
@@ -298,8 +301,55 @@ public final class com/superplayer/core/PlayerPool {
 public final class com/superplayer/core/PlayerPool$Builder {
 	public fun <init> (Landroid/content/Context;)V
 	public final fun build ()Lcom/superplayer/core/PlayerPool;
+	public final fun setCache (Lcom/superplayer/core/ContentCache;)Lcom/superplayer/core/PlayerPool$Builder;
 	public final fun setMaxSize (I)Lcom/superplayer/core/PlayerPool$Builder;
+	public final fun setPolicy (Lcom/superplayer/core/PlaybackPolicy;)Lcom/superplayer/core/PlayerPool$Builder;
 	public final fun setProfile (Lcom/superplayer/core/PlaybackProfile;)Lcom/superplayer/core/PlayerPool$Builder;
+}
+
+public abstract class com/superplayer/core/PreloadDepth {
+}
+
+public final class com/superplayer/core/PreloadDepth$Loaded : com/superplayer/core/PreloadDepth {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lcom/superplayer/core/PreloadDepth$Loaded;
+	public static synthetic fun copy$default (Lcom/superplayer/core/PreloadDepth$Loaded;IILjava/lang/Object;)Lcom/superplayer/core/PreloadDepth$Loaded;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDurationMs ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/PreloadDepth$SourcePrepared : com/superplayer/core/PreloadDepth {
+	public static final field INSTANCE Lcom/superplayer/core/PreloadDepth$SourcePrepared;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/PreloadDepth$TracksSelected : com/superplayer/core/PreloadDepth {
+	public static final field INSTANCE Lcom/superplayer/core/PreloadDepth$TracksSelected;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/PreloadPolicy {
+	public static final field Companion Lcom/superplayer/core/PreloadPolicy$Companion;
+	public static final field NONE Lcom/superplayer/core/PreloadPolicy;
+	public fun <init> (IILcom/superplayer/core/PreloadDepth;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()Lcom/superplayer/core/PreloadDepth;
+	public final fun copy (IILcom/superplayer/core/PreloadDepth;)Lcom/superplayer/core/PreloadPolicy;
+	public static synthetic fun copy$default (Lcom/superplayer/core/PreloadPolicy;IILcom/superplayer/core/PreloadDepth;ILjava/lang/Object;)Lcom/superplayer/core/PreloadPolicy;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDepth ()Lcom/superplayer/core/PreloadDepth;
+	public final fun getItemsAhead ()I
+	public final fun getItemsBehind ()I
+	public fun hashCode ()I
+	public final fun isNone ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/PreloadPolicy$Companion {
 }
 
 public final class com/superplayer/core/SelectionPace {

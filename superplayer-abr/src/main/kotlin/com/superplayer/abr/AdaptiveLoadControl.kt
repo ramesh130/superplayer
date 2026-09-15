@@ -67,9 +67,11 @@ import com.superplayer.core.toLoadControl
  * hysteresis is Media3's, not a copy of it here (ADR-0001), and the priming poll names no duration
  * of the policy's (ADR-0005).
  *
- * [onEngineReleased] runs when the engine releases this control: it is the one hook Media3 offers
- * for "this player is gone", and it is how the policy's oracle is released with the player it
- * measured for rather than leaking a connectivity callback.
+ * [onEngineReleased] runs when the last engine using this control releases it: it is the one hook
+ * Media3 offers for "this player is gone", and it is how the policy's oracle is released with the
+ * players it measured for rather than leaking a connectivity callback. *Last*, because a pool shares
+ * one control across its players (ADR-0010 rule 9): the policy counts each further engine in with
+ * [addEngine] as core builds it, and a preload manager's `PlayerId.PRELOAD` is not an engine.
  */
 internal class AdaptiveLoadControl(
     private val onEngineReleased: () -> Unit = {},
@@ -95,6 +97,16 @@ internal class AdaptiveLoadControl(
     /** The policy the next poll runs under. Any thread. */
     fun retarget(policy: BufferPolicy) {
         synchronized(lock) { pending = policy }
+    }
+
+    // Guarded by lock: the engines built on this control and not yet released. One from construction;
+    // a pool adds one per further player through [addEngine], because Media3 makes no call on a load
+    // control that every engine is guaranteed to make before its release.
+    private var engines = 1
+
+    /** Another engine is built on this control: a pooled player after the first (ADR-0010 rule 9). Any thread. */
+    fun addEngine() {
+        synchronized(lock) { engines++ }
     }
 
     override fun getAllocator(playerId: PlayerId): Allocator = allocator
@@ -125,7 +137,10 @@ internal class AdaptiveLoadControl(
         prepared -= playerId
         loading -= playerId
         current().onReleased(playerId)
-        onEngineReleased()
+        // A preload manager releases its prefetches under `PlayerId.PRELOAD`, which is not an engine.
+        if (playerId == PlayerId.PRELOAD) return
+        val lastEngineGone = synchronized(lock) { --engines == 0 }
+        if (lastEngineGone) onEngineReleased()
     }
 
     override fun getBackBufferDurationUs(playerId: PlayerId): Long = current().getBackBufferDurationUs(playerId)

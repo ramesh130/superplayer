@@ -69,6 +69,11 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
                 maxVideoBitrateBps = TrackSelectionPolicy.UNLIMITED,
                 maxVideoHeightPx = TrackSelectionPolicy.UNLIMITED,
             ),
+            // One title ahead, its manifest only. Long-form titles are chosen rather than scrolled
+            // through, so media fetched for the next tile is most often media for a title nobody
+            // picked; a parsed manifest costs kilobytes and still takes the manifest round trips out
+            // of the start of the title that is picked.
+            preload = PreloadPolicy(itemsAhead = 1, itemsBehind = 0, depth = PreloadDepth.SourcePrepared),
         )
 
         // Live linear. Buffer depth is latency here: seconds held ahead of the playhead are seconds
@@ -97,6 +102,8 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
                 maxVideoBitrateBps = TrackSelectionPolicy.UNLIMITED,
                 maxVideoHeightPx = TrackSelectionPolicy.UNLIMITED,
             ),
+            // No prefetch. A live window moves while a row waits: a playlist fetched ahead is stale
+            // by the time the row plays, and media loaded ahead is media behind the edge.
         )
 
         // Short-form feed content. Two costs dominate, and both are paid before the viewer has
@@ -114,20 +121,23 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
         // No back buffer: a feed moves forward, and the memory matters more here than anywhere else
         // because several players exist at once.
         PlaybackProfile.SHORT_FORM -> PlaybackDecision(
-            buffer = BufferPolicy(
-                minBufferMs = 2_500,
-                maxBufferMs = 15_000,
-                bufferForPlaybackMs = 1_000,
-                bufferForPlaybackAfterRebufferMs = 2_000,
-                backBufferMs = 0,
-                retainBackBufferFromKeyframe = false,
-            ),
+            buffer = SHORT_FORM_BUFFER,
             // Capped at 1080p. Not a data measure — a screen one: feed content is watched on a
             // phone, in a portrait viewport, where a 4K rendition is decoded, downscaled and thrown
             // away. The bytes and the decoder time are real; the extra pixels are not visible.
             trackSelection = TrackSelectionPolicy(
                 maxVideoBitrateBps = TrackSelectionPolicy.UNLIMITED,
                 maxVideoHeightPx = 1_080,
+            ),
+            // The profile the prefetch exists for. Two rows ahead, because a swipe moves one row and
+            // a fling passes rows whose starts are skipped anyway; one behind, because a swipe back
+            // is the next most common move. Each loaded to exactly this profile's
+            // `bufferForPlaybackMs`, the media a player needs before it may start, so a row that
+            // becomes current starts without fetching and nothing is spent past that.
+            preload = PreloadPolicy(
+                itemsAhead = 2,
+                itemsBehind = 1,
+                depth = PreloadDepth.Loaded(durationMs = SHORT_FORM_BUFFER.bufferForPlaybackMs),
             ),
         )
 
@@ -159,6 +169,24 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
                 maxVideoBitrateBps = 800_000,
                 maxVideoHeightPx = 480,
             ),
+            // No prefetch: every byte fetched for a row the viewer does not reach is the waste this
+            // profile is minimising, and a static table cannot see whether the link is metered.
+        )
+    }
+
+    private companion object {
+        /**
+         * The short-form buffer, named because the profile's prefetch depth is read from it: a row is
+         * prefetched to exactly the media its player needs before it may start. The numbers are argued
+         * at the `SHORT_FORM` row.
+         */
+        val SHORT_FORM_BUFFER = BufferPolicy(
+            minBufferMs = 2_500,
+            maxBufferMs = 15_000,
+            bufferForPlaybackMs = 1_000,
+            bufferForPlaybackAfterRebufferMs = 2_000,
+            backBufferMs = 0,
+            retainBackBufferFromKeyframe = false,
         )
     }
 }

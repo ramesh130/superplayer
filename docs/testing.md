@@ -435,6 +435,29 @@ approximate. The two eviction tests in `ContentKeyedCachePlaybackTest` then show
 a player stores, and they read the internal `keys()` and `heldBytes()` for the reason the live-stream
 test does: the network shows what was fetched, and eviction is about what was kept.
 
+`superplayer-preload` is the fourth, because a coordinator attaches to a pool through core's internal
+`PoolAttachment` and builds Media3's preload manager over the pool's internal `SharedComponents`
+(ADR-0010 rules 6 and 8). A feed test needs several players and a coordinator on one clock and one link,
+and `harness.buildPool` is where that lives rather than in a second harness: every player of a pool
+loads through **one** transport — one origin, one injector, one shaped link — so a coordinator's
+prefetches go through it too, and `harness.networkRequests(pool)` lists the screen's requests, rows and
+prefetches, in the order they were made. `buildPool` also takes the trace, the cache and the policy a
+pool's players share. The engine's clock and renderers now reach `SuperPlayer.Builder` through
+`EngineConfiguration`'s `clock` and `renderersFactory` slots rather than calls on the engine builder,
+because a pool hands both to the preload manager and `build()` can only hand on what it can read back.
+The synthetic HLS stream is audio, so a test of time to first frame plays the harness's described video,
+which under a trace loads its chunks through the same shaped link.
+
+Core's side of that seam reads past the facade, recorded here as the cache's is. `PooledEngineTest`
+drives a hand-written `PoolAttachment` against the internal `SharedComponents` — minting an id,
+building an item and a source through them — because core's half of ADR-0010 rule 7 has to hold
+before the module that uses it; and it reads `exoPlayer.playbackLooper`, because *which thread* a pooled
+player plays on is the claim of rule 9 and no public surface states it. Rule 13's count is taken where a
+consumer can observe it: a pool with nothing attached runs a playback thread per player and fetches
+nothing ahead of the row it plays, and the same pool with a coordinator shares one thread and fetches
+the rows ahead, so the counter is shown to count. Nothing counts classes loaded, because
+`superplayer-preload`'s classes are reachable only through a consumer's own call to its builder.
+
 `superplayer-testkit`'s own public API names **no Media3 type**, for the reason ADR-0001 rule 2 gives:
 a `Format` or a `Timeline` in one of its signatures would put Media3's opt-in marker on every test
 that named it. A test says what it wants — `TestContent.videoLadder()`, `harness.stallRendering(player)`

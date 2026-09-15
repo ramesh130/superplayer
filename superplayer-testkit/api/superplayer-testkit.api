@@ -104,13 +104,14 @@ public final class com/superplayer/testkit/PlaybackHarness : org/junit/rules/Ext
 	public final fun attachVideoOutput (Landroidx/media3/common/Player;)V
 	public final fun buildPlayer (Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;Lcom/superplayer/core/PlaybackPolicy;Lcom/superplayer/core/ContentCache;)Lcom/superplayer/core/SuperPlayer;
 	public static synthetic fun buildPlayer$default (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;Lcom/superplayer/core/PlaybackPolicy;Lcom/superplayer/core/ContentCache;ILjava/lang/Object;)Lcom/superplayer/core/SuperPlayer;
-	public final fun buildPool (Ljava/lang/Integer;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/testkit/TestContent;Lkotlin/jvm/functions/Function0;)Lcom/superplayer/core/PlayerPool;
-	public static synthetic fun buildPool$default (Lcom/superplayer/testkit/PlaybackHarness;Ljava/lang/Integer;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/testkit/TestContent;Lkotlin/jvm/functions/Function0;ILjava/lang/Object;)Lcom/superplayer/core/PlayerPool;
+	public final fun buildPool (Ljava/lang/Integer;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/testkit/TestContent;Lkotlin/jvm/functions/Function0;Lcom/superplayer/testkit/ThroughputTrace;Lcom/superplayer/core/ContentCache;Lcom/superplayer/core/PlaybackPolicy;)Lcom/superplayer/core/PlayerPool;
+	public static synthetic fun buildPool$default (Lcom/superplayer/testkit/PlaybackHarness;Ljava/lang/Integer;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/testkit/TestContent;Lkotlin/jvm/functions/Function0;Lcom/superplayer/testkit/ThroughputTrace;Lcom/superplayer/core/ContentCache;Lcom/superplayer/core/PlaybackPolicy;ILjava/lang/Object;)Lcom/superplayer/core/PlayerPool;
 	public final fun buildStockPlayer (Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;)Landroidx/media3/exoplayer/ExoPlayer;
 	public static synthetic fun buildStockPlayer$default (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;ILjava/lang/Object;)Landroidx/media3/exoplayer/ExoPlayer;
 	public final fun elapsedRealtimeMs ()J
 	public final fun failRendering (Landroidx/media3/common/Player;)V
 	public final fun networkRequests (Landroidx/media3/common/Player;)Ljava/util/List;
+	public final fun networkRequests (Lcom/superplayer/core/PlayerPool;)Ljava/util/List;
 	public final fun playToFailure (Landroidx/media3/common/Player;)V
 	public final fun playToReady (Landroidx/media3/common/Player;)V
 	public final fun release (Landroidx/media3/common/Player;)V

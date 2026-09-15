@@ -17,6 +17,7 @@
 package com.superplayer.core
 
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * The id one player's current measurement session is known by, in the one place both of its readers
@@ -50,6 +51,14 @@ import java.util.UUID
  * playback thread, when a media source is created. Hence `@Volatile` on the one field and an
  * immutable value inside it: the reader either sees the whole of the previous session or the whole
  * of the next one, never half of either.
+ *
+ * ## Ids minted ahead of a session
+ *
+ * A pooled player with a `PreloadCoordinator` attached shares [preminted] with the rest of its pool.
+ * The coordinator mints an id there when it adds an item, before any source for it exists, because
+ * the source's CMCD configuration is fixed when the source is created and its first segment is the
+ * request the CDN join most needs (ADR-0010 rule 7). [idFor] answers from it, and [open] claims it,
+ * so the session that item later opens reports the `sid` its prefetched requests carried.
  */
 internal class MeasurementSession(
     /**
@@ -62,6 +71,8 @@ internal class MeasurementSession(
      * nothing to hand anyone.
      */
     private val enabled: Boolean,
+    /** The pool's ids minted for prefetched items, or null on a player no coordinator serves. */
+    private val preminted: PremintedSessionIds? = null,
 ) {
 
     /** The content id and session id of the session currently open, or null when none is. */
@@ -70,13 +81,12 @@ internal class MeasurementSession(
 
     /**
      * Opens a session for [contentId] and returns its id, or null when this player has no reader for
-     * one. Replaces whatever was open, exactly as `TelemetryCollector.startSession` does.
+     * one. Replaces whatever was open, exactly as `TelemetryCollector.startSession` does. An id minted
+     * ahead for [contentId] is claimed rather than a new one minted.
      */
     fun open(contentId: String): String? {
         if (!enabled) return null
-        // spec: CTA-5004 §3.1 caps `sid` at 64 characters and asks for a GUID; a UUID's canonical
-        // 36-character form satisfies both, and Media3's CmcdConfiguration rejects anything longer.
-        val id = UUID.randomUUID().toString()
+        val id = preminted?.claim(contentId) ?: newSessionId()
         open = Open(contentId, id)
         return id
     }
@@ -87,10 +97,61 @@ internal class MeasurementSession(
     }
 
     /**
-     * The open session's id if it is the session for [contentId], and null otherwise — for content
-     * this player cannot name, for a player between sessions, and for one with no reader for an id.
+     * The id a source for [contentId] is created under: one minted ahead for it if there is one, the
+     * open session's if that is the session for [contentId], and null otherwise — for content this
+     * player cannot name, for a player between sessions, and for one with no reader for an id.
+     *
+     * The minted id first, because it names a view that has not started: a source built for it now is
+     * the prefetch of that view, whatever this player happens to be playing.
      */
-    fun idFor(contentId: String?): String? = open?.takeIf { it.contentId == contentId }?.id
+    fun idFor(contentId: String?): String? {
+        if (!enabled || contentId == null) return null
+        return preminted?.idFor(contentId) ?: open?.takeIf { it.contentId == contentId }?.id
+    }
 
     private class Open(val contentId: String, val id: String)
+
+    companion object {
+        /**
+         * A new session id.
+         *
+         * spec: CTA-5004 §3.1 caps `sid` at 64 characters and asks for a GUID; a UUID's canonical
+         * 36-character form satisfies both, and Media3's CmcdConfiguration rejects anything longer.
+         */
+        fun newSessionId(): String = UUID.randomUUID().toString()
+    }
+}
+
+/**
+ * Session ids minted for items a pool prefetches, before any session for them opens — see
+ * [MeasurementSession]'s *Ids minted ahead of a session*.
+ *
+ * One per pool, written by the coordinator on the application thread and read by the chain on a
+ * playback thread when a source is created, hence a concurrent map.
+ */
+internal class PremintedSessionIds {
+
+    private val ids = ConcurrentHashMap<String, String>()
+
+    /** Mints an id for [contentId], replacing any minted before, and returns it. */
+    fun mint(contentId: String): String = MeasurementSession.newSessionId().also { ids[contentId] = it }
+
+    /** The id minted for [contentId], or null when none is waiting. */
+    fun idFor(contentId: String): String? = ids[contentId]
+
+    /** Takes the id minted for [contentId] for a session that is opening: it names that view from now on. */
+    fun claim(contentId: String): String? = ids.remove(contentId)
+
+    /**
+     * Forgets the id minted for [contentId], for an item no longer prefetched. A CDN log may then hold
+     * a `sid` that joins to no session, which `docs/telemetry-schema.md` says where it states the join.
+     */
+    fun retire(contentId: String) {
+        ids.remove(contentId)
+    }
+
+    /** Forgets every id, when the coordinator is released. */
+    fun clear() {
+        ids.clear()
+    }
 }

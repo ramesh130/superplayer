@@ -48,11 +48,13 @@ import com.superplayer.core.deviceConstraintsOf
  * consumer, is consulted once and answers with the static profile's numbers, which is ADR-0009
  * rule 5 working as written.
  *
- * **One policy object per player.** The components it installs are a player's own — a load
- * control carries that player's prepare state, an oracle that player's transport callback — so a
- * second `build()` with the same object is refused rather than shared. The oracle is released when
- * the engine releases its load control, so a consumer who releases the player has released
- * everything.
+ * **One policy object per player, or per pool.** The components it installs are one engine's — a
+ * load control carries its players' prepare state, an oracle one transport callback — so a second
+ * `build()` of a player of its own with the same object is refused rather than shared. A
+ * `PlayerPool` built with `setPolicy` is the exception, and is one engine: the pool configures it
+ * once and every player it builds shares the components, so a decision re-applied on one row is
+ * re-applied for all (ADR-0010 rule 9). The oracle is released when the last engine releases the
+ * load control, so a consumer who releases the player, or the pool, has released everything.
  */
 public object AdaptivePolicy {
 
@@ -80,6 +82,9 @@ internal class AdaptiveEnginePolicy(
 
     private var configured = false
 
+    /** The load control this policy's engine was configured with, once it has been. */
+    private var loadControl: AdaptiveLoadControl? = null
+
     /**
      * Each pure policy owns one half; the live half travels with the buffer's. The selection half
      * is decided first because the buffer's memory ceiling is sized at the rate the selector can
@@ -96,11 +101,13 @@ internal class AdaptiveEnginePolicy(
     }
 
     override fun configureEngine(configuration: EngineConfiguration) {
-        check(!configured) { "An adaptive policy serves one player; build another with AdaptivePolicy.forProfile" }
+        check(!configured) {
+            "An adaptive policy serves one player or one PlayerPool; build another with AdaptivePolicy.forProfile"
+        }
         configured = true
 
         val oracle = BandwidthOracle.Builder(context).build()
-        val loadControl = AdaptiveLoadControl(onEngineReleased = oracle::release)
+        val loadControl = AdaptiveLoadControl(onEngineReleased = oracle::release).also { this.loadControl = it }
         // The device is read here, once, and the first ceiling and pace are the profile's own with
         // nothing observed; the first consultation's decision replaces them before anything plays.
         val selections = NetworkAwareTrackSelection.Factory(
@@ -118,5 +125,10 @@ internal class AdaptiveEnginePolicy(
             loadControl.retarget(decision.buffer)
             selections.retarget(decision.trackSelection)
         }
+    }
+
+    /** A pooled player after the first shares this engine, so the oracle waits for its release too. */
+    override fun onComponentsShared() {
+        checkNotNull(loadControl) { "Components are shared only after they were configured" }.addEngine()
     }
 }

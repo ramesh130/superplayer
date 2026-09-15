@@ -183,6 +183,16 @@ public class SuperPlayer private constructor(
      * none.
      */
     private val identifiesContent: Boolean,
+    /**
+     * The engine this player shares with the rest of its [PlayerPool], or null for a player that has
+     * none — every player not built by a pool with a coordinator attached or an extension policy set.
+     * It is where [setMediaRequest] asks for a warm source (ADR-0010 rule 7); every use is
+     * null-conditional, which is what a player without one pays.
+     *
+     * Deliberately without a default value, for the reason [builtWithTrackSelectionParameters] has
+     * none.
+     */
+    private val pooled: PooledEngine?,
 ) : Player by delegate {
 
     /**
@@ -252,6 +262,8 @@ public class SuperPlayer private constructor(
         reapplication?.onDecisionChanged = { decision, trigger ->
             val previous = playbackDecision
             playbackDecision = decision
+            // One pool, one decision: what a coordinator reads on its next invalidation.
+            pooled?.components?.decision = decision
             // The live half travels on the media item, so a changed one is laid into the item that
             // is playing — replaced in place, which Media3's own sources do without re-preparing
             // when nothing but the live configuration differs. The other halves went to the target.
@@ -291,6 +303,8 @@ public class SuperPlayer private constructor(
         reapplication: DecisionReapplication? = null,
         // False for an engine somebody else built: no chain of core's has a cache slot to key.
         identifiesContent: Boolean = false,
+        // Null for an engine somebody else built: no pool built it.
+        pooled: PooledEngine? = null,
     ) : this(
         exoPlayer,
         profile,
@@ -302,6 +316,7 @@ public class SuperPlayer private constructor(
         measurementSession,
         reapplication,
         identifiesContent,
+        pooled,
     )
 
     /**
@@ -386,10 +401,22 @@ public class SuperPlayer private constructor(
      *
      * The outgoing content's position is remembered first, so a later
      * [MediaRequest.StartPosition.ResumeFromLastKnown] for it returns here.
+     *
+     * On a player from a [PlayerPool] with a `PreloadCoordinator` attached, content the coordinator
+     * has prefetched starts from what it prefetched. Nothing else differs: the identity, the start
+     * position and the measurement session are the ones this call produces on any player (ADR-0010
+     * rule 7).
      */
     public fun setMediaRequest(request: MediaRequest) {
         val adopted = adopt(request)
-        delegate.setMediaItem(adopted.mediaItem, adopted.startPositionMs)
+        // Asked after adoption, so a warm source is played under exactly the session and start
+        // position a cold one would have been.
+        val warm = pooled?.sourceFor(this, adopted.mediaItem)
+        if (warm != null) {
+            exoPlayer.setMediaSource(warm, adopted.startPositionMs)
+        } else {
+            delegate.setMediaItem(adopted.mediaItem, adopted.startPositionMs)
+        }
     }
 
     /**
@@ -695,6 +722,7 @@ public class SuperPlayer private constructor(
         private var policy: PlaybackPolicy? = null
         private var telemetry: TelemetryCollector? = null
         private var cache: ContentCache? = null
+        private var pooledEngine: PooledEngine? = null
 
         /**
          * The CMCD mode a consumer chose, or null for "whatever the profile defaults to".
@@ -819,6 +847,12 @@ public class SuperPlayer private constructor(
         internal fun setEngineConfigurator(configurator: (EngineConfiguration) -> Unit): Builder =
             apply { engineConfigurator = configurator }
 
+        /**
+         * The engine of the [PlayerPool] this player is built for, or null for a player of its own.
+         * Set by the pool's player factory, and by a test's that stands in for it; see [PooledEngine].
+         */
+        internal fun setPooledEngine(engine: PooledEngine?): Builder = apply { pooledEngine = engine }
+
         public fun build(): SuperPlayer {
             val policy = policy ?: PlaybackPolicy.forProfile(profile)
 
@@ -826,8 +860,10 @@ public class SuperPlayer private constructor(
             // than inside the player because both ends of the join need the same object: the
             // transfer chain reads the session id from it, and the facade writes it.
             val cmcd = cmcdMode ?: StaticCmcdPolicy.defaultModeFor(profile)
+            val pooled = pooledEngine
             val measurementSession = MeasurementSession(
                 enabled = telemetry != null || cmcd != CmcdMode.DISABLED,
+                preminted = pooled?.sessionIds,
             )
 
             val engineBuilder = ExoPlayer.Builder(context)
@@ -840,8 +876,25 @@ public class SuperPlayer private constructor(
             // wins over the profile's: the clock, the renderers, a meter a test reads through. A
             // policy that is not an extension takes the path below untouched — nothing is looked
             // up and nothing is registered, which is what a consumer without abr pays.
-            (policy as? EnginePolicyExtension)?.configureEngine(configuration)
+            //
+            // A pooled player after the first takes the components the first one assembled instead,
+            // so an extension configures one engine per pool (ADR-0010 rule 9; PooledEngine.kt).
+            val shared = pooled?.components
+            if (shared == null) {
+                (policy as? EnginePolicyExtension)?.configureEngine(configuration)
+            } else {
+                (policy as? EnginePolicyExtension)?.onComponentsShared()
+                configuration.loadControl = shared.loadControl
+                configuration.bandwidthMeter = shared.bandwidthMeter
+                configuration.trackSelectionFactory = shared.trackSelectionFactory
+                configuration.decisionTarget = shared.decisionTarget
+            }
             engineConfigurator?.invoke(configuration)
+            configuration.clock?.let(engineBuilder::setClock)
+            configuration.renderersFactory?.let(engineBuilder::setRenderersFactory)
+            // One playback thread for a pool whose players share components: a shared load control
+            // pins itself to one thread, and a coordinator's preload manager prepares on it too.
+            pooled?.let { engineBuilder.setPlaybackLooper(it.playbackLooper()) }
 
             // The policy boundary, consulted at its one construction-time call site. Nothing about
             // buffering or track selection is decided below this line. With a target the loop that
@@ -860,12 +913,14 @@ public class SuperPlayer private constructor(
 
             // The buffer half becomes a `DefaultLoadControl` only when nothing retargetable was
             // installed in its place; the target already holds the decision otherwise.
-            engineBuilder.setLoadControl(configuration.loadControl ?: decision.buffer.toLoadControl())
+            val loadControl = configuration.loadControl ?: decision.buffer.toLoadControl()
+            engineBuilder.setLoadControl(loadControl)
             configuration.bandwidthMeter?.let(engineBuilder::setBandwidthMeter)
             // Under Media3's own selector, so the device-derived defaults are built upon, as they
             // are for the parameters below. A decided pace with no factory installed to own it
             // becomes Media3's own adaptive factory, fixed as the load control above is.
-            (configuration.trackSelectionFactory ?: decision.trackSelection.pace?.toTrackSelectionFactory())?.let { factory ->
+            val trackSelectionFactory = configuration.trackSelectionFactory ?: decision.trackSelection.pace?.toTrackSelectionFactory()
+            trackSelectionFactory?.let { factory ->
                 engineBuilder.setTrackSelector(DefaultTrackSelector(context, factory))
             }
             // The loading path, composed in one place rather than defaulted by Media3; TransferChain
@@ -883,9 +938,6 @@ public class SuperPlayer private constructor(
                     cache,
                 )
             engineBuilder.setMediaSourceFactory(mediaSourceFactory)
-            // The instance the engine loads through, so preload's sources are built on the same
-            // chain under the same identity. Only when preload is attached; otherwise nothing runs.
-            configuration.preloadEntry?.onLoadingPathAssembled(mediaSourceFactory)
 
             val engine = engineBuilder.build()
             // The selection half, laid into the parameters only where no target owns it. Built upon
@@ -912,7 +964,30 @@ public class SuperPlayer private constructor(
                 // Only a chain core composed around the cache reads the identity; a test that
                 // replaced the whole loading path has no slot to key.
                 identifiesContent = cache != null && configuration.mediaSourceFactory == null,
+                pooled = pooled,
             )
+
+            // The first pooled player's components become the pool's. The factory handed on is the
+            // instance this engine loads through, so a source built from it runs through this chain,
+            // cache slot included, under the identity adoption stamps (ADR-0010 rule 6).
+            if (pooled != null && shared == null) {
+                pooled.share(
+                    SharedComponents(
+                        applicationContext = context.applicationContext,
+                        mediaSourceFactory = mediaSourceFactory,
+                        loadControl = loadControl,
+                        bandwidthMeter = configuration.bandwidthMeter,
+                        trackSelectionFactory = trackSelectionFactory,
+                        decisionTarget = configuration.decisionTarget,
+                        renderersFactory = configuration.renderersFactory,
+                        clock = configuration.clock,
+                        playbackLooper = pooled.playbackLooper(),
+                        identifiesContent = cache != null && configuration.mediaSourceFactory == null,
+                        sessionIds = pooled.sessionIds,
+                        initialDecision = decision,
+                    ),
+                )
+            }
 
             // After construction rather than inside it: a collector registers against the built
             // player, and handing `this` out of a constructor to something that will call back into

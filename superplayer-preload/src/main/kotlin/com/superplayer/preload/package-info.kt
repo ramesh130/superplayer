@@ -15,10 +15,11 @@
  */
 
 /**
- * superplayer-preload — PreloadCoordinator: segment-0 prefetch and decoder warm-up
+ * superplayer-preload — PreloadCoordinator: first-segment prefetch in scroll order, on the pool's engine
  *
- * Placeholder. This module is created empty and buildable so that the module boundary and
- * dependency direction are fixed and enforceable now, rather than negotiated once code
- * arrives (phase 4). It intentionally declares no public API yet.
+ * A [PreloadCoordinator] is attached to a `PlayerPool` and builds Media3's preload manager over the
+ * components the pool's players share, so a prefetched row loads through the chain core composes and
+ * plays through `setMediaRequest` like any other (ADR-0010). Decoder warm-up, the memory guard and the
+ * data-saver rule arrive in later changes to this module.
  */
 package com.superplayer.preload

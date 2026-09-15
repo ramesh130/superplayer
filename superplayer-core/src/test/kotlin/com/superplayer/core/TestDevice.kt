@@ -24,6 +24,7 @@ import androidx.test.core.app.ApplicationProvider
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.shadows.MediaCodecInfoBuilder
 import org.robolectric.shadows.ShadowMediaCodecList
+import org.robolectric.util.ReflectionHelpers
 
 /**
  * What the device under test reports about itself, for the tests that are about [PlayerPool].
@@ -49,8 +50,8 @@ internal object TestDevice {
      * What Robolectric's `CodecCapabilities` answers for `getMaxSupportedInstances`, and the
      * platform's own documented default for a codec that declares no limit.
      *
-     * Not a number any test chooses: Robolectric offers no way to lower it, which is why the tests
-     * that care pin *which limit binds* rather than pinning a value they fed in.
+     * Robolectric's builder has no setter for it, so a test that needs a different limit passes one
+     * to [declareVideoDecoder], which writes it past the builder.
      */
     const val REPORTED_DECODER_INSTANCES = 32
 
@@ -76,8 +77,12 @@ internal object TestDevice {
         shadowOf(activityManager).setIsLowRamDevice(true)
     }
 
-    /** Puts a video decoder for [mimeType] into the device's codec list. */
-    fun declareVideoDecoder(mimeType: String) {
+    /**
+     * Puts a video decoder for [mimeType] into the device's codec list, reporting
+     * [maxSupportedInstances] concurrent instances — Robolectric's own [REPORTED_DECODER_INSTANCES]
+     * unless a test says otherwise.
+     */
+    fun declareVideoDecoder(mimeType: String, maxSupportedInstances: Int = REPORTED_DECODER_INSTANCES) {
         val capabilities = MediaCodecInfoBuilder.CodecCapabilitiesBuilder.newBuilder()
             .setMediaFormat(MediaFormat().apply { setString(MediaFormat.KEY_MIME, mimeType) })
             .setIsEncoder(false)
@@ -86,6 +91,9 @@ internal object TestDevice {
             )
             .setProfileLevels(arrayOf(MediaCodecInfo.CodecProfileLevel()))
             .build()
+        // After `build`, which writes Robolectric's 32 into the field `getMaxSupportedInstances`
+        // returns; testkit's `DeviceStatement.declareVideoDecoder` does the same, and says why.
+        ReflectionHelpers.setField(capabilities, "mMaxSupportedInstances", maxSupportedInstances)
 
         ShadowMediaCodecList.addCodec(
             MediaCodecInfoBuilder.newBuilder()

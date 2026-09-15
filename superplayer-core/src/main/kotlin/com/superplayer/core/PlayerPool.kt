@@ -52,11 +52,11 @@ import androidx.media3.common.Player
  *
  * ## The bound is derived, not chosen
  *
- * [maxSize] comes from what the *device* reports — its concurrent video decoder limits and its total
- * memory — and `DeviceCapacity.kt` is where that reading happens and why each half of it is read the
- * way it is. A constant here would be a constant that is wrong on most phones: too high on the cheap
- * device that is the reason a pool exists, and too low on the flagship where it costs a feature
- * nobody gets back. A device that reports nothing usable yields a pool of one, which still works.
+ * [maxSize] comes from what the *device* reports — its concurrent decoder limits for the codecs the
+ * feed is in ([Builder.setFeedCodecs]) and its app heap — and `DeviceCapacity.kt` is where that
+ * reading happens and why each half of it is read the way it is. A constant here would be a constant
+ * that is wrong on most phones: too high on the cheap device that is the reason a pool exists, and
+ * too low on the flagship where it costs a feature nobody gets back. A device that reports nothing usable yields a pool of one, which still works.
  *
  * [Builder.setMaxSize] lets a consumer ask for *fewer* — a two-up grid needs two — but never for
  * more. The device's answer is a ceiling rather than a suggestion.
@@ -280,6 +280,7 @@ public class PlayerPool private constructor(
 
         private var profile: PlaybackProfile = PlaybackProfile.SHORT_FORM
         private var requestedMaxSize: Int? = null
+        private var feedCodecs: Set<VideoCodec> = DEFAULT_FEED_CODECS
         private var policy: PlaybackPolicy? = null
         private var cache: ContentCache? = null
         private var playerFactory: ((PooledEngine?) -> SuperPlayer)? = null
@@ -308,6 +309,24 @@ public class PlayerPool private constructor(
         public fun setMaxSize(maxSize: Int): Builder = apply {
             require(maxSize >= 1) { "A pool needs room for at least one player, not $maxSize" }
             requestedMaxSize = maxSize
+        }
+
+        /**
+         * The video codecs this pool's content is encoded in — [VideoCodec.H264] and
+         * [VideoCodec.HEVC] unless this says otherwise.
+         *
+         * The device's decoder limit is read for these codecs and no others, and the smallest of them
+         * is the bound: an AV1 feed on a device whose AV1 decoder runs fewer instances than its HEVC
+         * one gets the AV1 limit, rather than a pool its decoder cannot honour partway down a scroll.
+         * Only the consumer knows what the feed contains; the device still says what each costs.
+         *
+         * Replaces the default rather than adding to it, so a feed that is AV1 alone names AV1 alone.
+         * A codec the device has no decoder for is left out of the bound rather than shrinking it to
+         * one — `DeviceCapacity.kt` argues the direction.
+         */
+        public fun setFeedCodecs(vararg codecs: VideoCodec): Builder = apply {
+            require(codecs.isNotEmpty()) { "A feed is encoded in at least one codec" }
+            feedCodecs = codecs.toSet()
         }
 
         /**
@@ -343,7 +362,7 @@ public class PlayerPool private constructor(
             apply { playerFactory = factory }
 
         public fun build(): PlayerPool {
-            val deviceCapacity = concurrentPlayerCapacityOf(context)
+            val deviceCapacity = concurrentPlayerCapacityOf(context, feedCodecs)
             val maxSize = requestedMaxSize?.coerceAtMost(deviceCapacity) ?: deviceCapacity
             val profile = profile
             val policy = policy

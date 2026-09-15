@@ -314,13 +314,14 @@ move as granting `WAKE_LOCK`: a Robolectric default that does not resemble a rea
 in the test, where a reader can see it.
 
 One limit is worth knowing before writing another of these. Robolectric's `CodecCapabilities`
-answers 32 for `getMaxSupportedInstances`, and its codec builder has no setter to lower it. Core's own
-`TestDevice` does not work around that, so `PlayerPoolCapacityTest` pins **which limit binds** —
-decoder or memory — rather than a number it supplied, which a derivation that ignored the platform
-could not produce by accident. `superplayer-testkit`'s `DeviceStatement.declareVideoDecoder(mimeType,
-maxSupportedInstances)` does work around it, writing the value into the built capabilities through
-Robolectric's reflection helper, so a test above core can declare a limit and see it come back as
-`PlayerPool.maxSize`; `DecoderWarmupTest` declares limits of one, two, three and six.
+answers 32 for `getMaxSupportedInstances`, and its codec builder has no setter to lower it. Both
+device statements work around it the same way, writing the value into the built capabilities
+through Robolectric's reflection helper: core's `TestDevice.declareVideoDecoder(mimeType,
+maxSupportedInstances)`, so `PlayerPoolCapacityTest` can give two codecs different limits and see
+the one its pool declared come back as `PlayerPool.maxSize`, and `superplayer-testkit`'s
+`DeviceStatement.declareVideoDecoder`, for a test above core; `DecoderWarmupTest` declares limits of
+one, two, three and six. A test that leaves the limit alone still gets Robolectric's 32, and pins
+**which limit binds** — decoder or memory — rather than a number it supplied.
 
 The track selector reads the device too — the display's largest mode and HDR types, and each video
 decoder's profile levels — once, when a player is built, and `superplayer-testkit`'s public

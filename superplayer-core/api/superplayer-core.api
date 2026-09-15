@@ -302,6 +302,7 @@ public final class com/superplayer/core/PlayerPool$Builder {
 	public fun <init> (Landroid/content/Context;)V
 	public final fun build ()Lcom/superplayer/core/PlayerPool;
 	public final fun setCache (Lcom/superplayer/core/ContentCache;)Lcom/superplayer/core/PlayerPool$Builder;
+	public final fun setFeedCodecs ([Lcom/superplayer/core/VideoCodec;)Lcom/superplayer/core/PlayerPool$Builder;
 	public final fun setMaxSize (I)Lcom/superplayer/core/PlayerPool$Builder;
 	public final fun setPolicy (Lcom/superplayer/core/PlaybackPolicy;)Lcom/superplayer/core/PlayerPool$Builder;
 	public final fun setProfile (Lcom/superplayer/core/PlaybackProfile;)Lcom/superplayer/core/PlayerPool$Builder;
@@ -968,5 +969,15 @@ public final class com/superplayer/core/TtffStartBoundary : java/lang/Enum {
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/core/TtffStartBoundary;
 	public static fun values ()[Lcom/superplayer/core/TtffStartBoundary;
+}
+
+public final class com/superplayer/core/VideoCodec : java/lang/Enum {
+	public static final field AV1 Lcom/superplayer/core/VideoCodec;
+	public static final field H264 Lcom/superplayer/core/VideoCodec;
+	public static final field HEVC Lcom/superplayer/core/VideoCodec;
+	public static final field VP9 Lcom/superplayer/core/VideoCodec;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/core/VideoCodec;
+	public static fun values ()[Lcom/superplayer/core/VideoCodec;
 }
 

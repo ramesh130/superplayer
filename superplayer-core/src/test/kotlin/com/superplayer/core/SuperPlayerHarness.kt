@@ -219,10 +219,14 @@ class SuperPlayerHarness : ExternalResource() {
      *
      * [attachment], when set, is attached before the pool builds anything, the way
      * `superplayer-preload`'s coordinator attaches (ADR-0010 rule 8).
+     *
+     * [feedCodecs], when set, is what the pool declares its feed to be encoded in; unset is the
+     * builder's own default, H.264 and HEVC.
      */
     internal fun buildPool(
         maxSize: Int? = null,
         profile: PlaybackProfile? = null,
+        feedCodecs: Set<VideoCodec>? = null,
         fakeDataSet: FakeDataSet = SyntheticHlsStream.addTo(FakeDataSet()),
         telemetry: TelemetryCollector? = null,
         cache: ContentCache? = null,
@@ -231,6 +235,7 @@ class SuperPlayerHarness : ExternalResource() {
         .apply {
             maxSize?.let { setMaxSize(it) }
             profile?.let { setProfile(it) }
+            feedCodecs?.let { setFeedCodecs(*it.toTypedArray()) }
         }
         .setPlayerFactory { pooled ->
             // A collector measures one player, so a pool given one is a pool a test sized to build

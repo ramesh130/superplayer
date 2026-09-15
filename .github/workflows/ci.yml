@@ -1,20 +1,19 @@
 # Continuous integration: build, test, lint.
 #
-# Runs on every push and every pull request, so a broken change is caught before review
-# rather than after merge.
+# Runs on demand only, from the Actions tab or `gh workflow run ci.yml --ref <branch>`, once a
+# phase is complete. Per-push runs were switched off to stay inside the GitHub Actions minutes
+# budget, so between phases `./gradlew assemble check` locally is the only gate.
 #
 # The steps are the same commands a contributor runs locally; CONTRIBUTING.md lists them and
 # is the place that explains what belongs in `check`. The narrower steps before `check` exist
 # only so a failure is attributable at a glance in the run log.
 name: CI
 
-# Both triggers, deliberately: pushes to a branch with no pull request still have to be
-# checked, and a pull request from a fork is not covered by `push`. The cost is that a
-# same-repo pull request runs twice — `refs/heads/*` and `refs/pull/N/merge` are different
-# refs, so the concurrency group below cannot collapse them.
+# To restore per-change runs, bring back `push:` and `pull_request:` beside the dispatch
+# trigger. Both were there: a push to a branch with no pull request still needs checking, and
+# a pull request from a fork is not covered by `push`.
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 
 # One in-flight run per ref. A new push makes the previous run's answer irrelevant.
 concurrency:

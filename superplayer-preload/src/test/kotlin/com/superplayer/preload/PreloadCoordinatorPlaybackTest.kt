@@ -265,9 +265,10 @@ class PreloadCoordinatorPlaybackTest {
         harness.advanceTimeInStepsMs(first, PREFETCH_MS)
         pool.recycle(first)
 
+        // The feed's order: the position moves, then the row is handed a player.
+        preload?.setScrollPosition(1)
         val second = checkNotNull(pool.acquire())
         harness.attachVideoOutput(second)
-        preload?.setScrollPosition(1)
         second.declarePlaybackIntent()
         second.setMediaRequest(rows[1])
         harness.playToReady(second)

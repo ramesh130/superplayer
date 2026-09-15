@@ -28,6 +28,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
@@ -411,12 +412,33 @@ public class SuperPlayer private constructor(
         val adopted = adopt(request)
         // Asked after adoption, so a warm source is played under exactly the session and start
         // position a cold one would have been.
-        val warm = pooled?.sourceFor(this, adopted.mediaItem)
-        if (warm != null) {
-            exoPlayer.setMediaSource(warm, adopted.startPositionMs)
-        } else {
-            delegate.setMediaItem(adopted.mediaItem, adopted.startPositionMs)
+        when (val warm = pooled?.sourceFor(this, adopted.mediaItem)) {
+            is WarmStart.Source -> exoPlayer.setMediaSource(warm.source, adopted.startPositionMs)
+
+            // Already prepared on this item with its decoders initialised: setting the source again
+            // would tear exactly that down. Only a start position other than where it was held moves it.
+            WarmStart.Prepared ->
+                if (adopted.startPositionMs != C.TIME_UNSET && adopted.startPositionMs != delegate.currentPosition) {
+                    delegate.seekTo(adopted.startPositionMs)
+                }
+
+            null -> delegate.setMediaItem(adopted.mediaItem, adopted.startPositionMs)
         }
+    }
+
+    /**
+     * Prepares [source] on this player while it is idle in its pool, without adopting anything: a
+     * decoder held warm for a row the feed has not reached (ADR-0010 rule 10's warm decoder).
+     *
+     * No request, no session, no position and no `playWhenReady`: nothing plays and nothing is measured
+     * until the feed calls [setMediaRequest] for that row on this player, which then keeps what was
+     * prepared ([WarmStart.Prepared]). That is how rule 7's "only through `setMediaRequest`" still holds
+     * for what a viewer sees and a sink receives. A pooled player is idle without a surface — the pool
+     * detached it — so a warm decoder draws nothing either.
+     */
+    internal fun holdWarm(source: MediaSource) {
+        exoPlayer.setMediaSource(source)
+        exoPlayer.prepare()
     }
 
     /**

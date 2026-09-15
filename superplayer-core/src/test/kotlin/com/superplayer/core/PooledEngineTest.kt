@@ -169,8 +169,12 @@ class PooledEngineTest {
             assembled += components
         }
 
-        override fun sourceFor(player: SuperPlayer, item: MediaItem): MediaSource? =
-            held.remove(item)?.also { handedOut += item }
+        override fun sourceFor(player: SuperPlayer, item: MediaItem): WarmStart? =
+            held.remove(item)?.also { handedOut += item }?.let { WarmStart.Source(it) }
+
+        override fun preferredIdle(idle: List<SuperPlayer>): SuperPlayer? = null
+
+        override fun onAcquired(player: SuperPlayer) = Unit
 
         override fun onRecycled(player: SuperPlayer) {
             recycledPlayers += player

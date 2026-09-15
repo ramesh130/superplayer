@@ -152,6 +152,9 @@ public class PlaybackHarness : ExternalResource() {
     /** The one fault injector each pool's players share, so [networkRequests] can answer for the pool. */
     private val poolInjectors = IdentityHashMap<PlayerPool, FaultInjectingDataSource.Factory>()
 
+    /** Every player each pool built, for [videoDecodersHeld]; the players themselves are in [renderers]. */
+    private val poolPlayers = IdentityHashMap<PlayerPool, List<SuperPlayer>>()
+
     /**
      * A player as a consumer builds one, over synthetic content and the fakes above.
      *
@@ -475,6 +478,7 @@ public class PlaybackHarness : ExternalResource() {
         policy: PlaybackPolicy? = null,
     ): PlayerPool {
         val transport = composeTransport(content, FaultScript.NONE, network)
+        val built = mutableListOf<SuperPlayer>()
         val pool = PlayerPool.Builder(ApplicationProvider.getApplicationContext())
             .apply {
                 maxSize?.let { setMaxSize(it) }
@@ -484,11 +488,26 @@ public class PlaybackHarness : ExternalResource() {
             }
             .setPlayerFactory { pooled ->
                 buildPlayerOver(transport, content, profile ?: PlaybackProfile.SHORT_FORM, telemetry(), policy, cache, pooled)
+                    .also { built += it }
             }
             .build()
         poolInjectors[pool] = transport.injector
+        poolPlayers[pool] = built
         return pool
     }
+
+    /**
+     * How many of [pool]'s players hold a video decoder right now, whether in use or idle in the pool.
+     *
+     * A decoder is held from the moment the engine enables a player's video renderer — once prepared
+     * content reaches it, playing or paused — to the moment it disables it on a stop, a reset or a
+     * release. Counted on Media3's fake renderer, which initialises no codec, so this is the engine's
+     * decision to hold one rather than a codec instance on a device; the two are the same call on a
+     * `MediaCodecVideoRenderer`. Read after the harness has let the engine act, as every wait here does.
+     */
+    public fun videoDecodersHeld(pool: PlayerPool): Int =
+        checkNotNull(poolPlayers[pool]) { "This harness did not build that pool" }
+            .count { rendererFor(it).state != Renderer.STATE_DISABLED }
 
     /**
      * Every request [pool]'s players and anything attached to it have sent to the network so far,
@@ -872,6 +891,7 @@ public class PlaybackHarness : ExternalResource() {
         waits.clear()
         transportReplays.clear()
         poolInjectors.clear()
+        poolPlayers.clear()
         // After the players, which are what were drawing into them.
         outputs.forEach { (surface, texture) ->
             surface.release()

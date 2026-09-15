@@ -127,7 +127,7 @@ class SuperPlayerProfileTest {
                 maxVideoBitrateBps = TrackSelectionPolicy.UNLIMITED,
                 maxVideoHeightPx = 1_080,
             ),
-            preload = PreloadPolicy(itemsAhead = 2, itemsBehind = 1, depth = PreloadDepth.Loaded(durationMs = 1_000)),
+            preload = PreloadPolicy(itemsAhead = 2, itemsBehind = 1, depth = PreloadDepth.DecoderWarmed(durationMs = 1_000)),
         )
     }
 

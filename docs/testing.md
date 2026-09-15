@@ -313,11 +313,14 @@ recycling is its subject and the machine it runs on should not be part of the an
 move as granting `WAKE_LOCK`: a Robolectric default that does not resemble a real device is corrected
 in the test, where a reader can see it.
 
-One limit is worth knowing before writing another of these. Robolectric's `CodecCapabilities` always
-answers 32 for `getMaxSupportedInstances` and offers no way to lower it, so a test cannot feed in a
-decoder limit and read it back. The tests therefore pin **which limit binds** — decoder or memory —
-rather than a number they supplied, which a derivation that ignored the platform could not produce by
-accident.
+One limit is worth knowing before writing another of these. Robolectric's `CodecCapabilities`
+answers 32 for `getMaxSupportedInstances`, and its codec builder has no setter to lower it. Core's own
+`TestDevice` does not work around that, so `PlayerPoolCapacityTest` pins **which limit binds** —
+decoder or memory — rather than a number it supplied, which a derivation that ignored the platform
+could not produce by accident. `superplayer-testkit`'s `DeviceStatement.declareVideoDecoder(mimeType,
+maxSupportedInstances)` does work around it, writing the value into the built capabilities through
+Robolectric's reflection helper, so a test above core can declare a limit and see it come back as
+`PlayerPool.maxSize`; `DecoderWarmupTest` declares limits of one, two, three and six.
 
 The track selector reads the device too — the display's largest mode and HDR types, and each video
 decoder's profile levels — once, when a player is built, and `superplayer-testkit`'s public

@@ -133,11 +133,14 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
             // a fling passes rows whose starts are skipped anyway; one behind, because a swipe back
             // is the next most common move. Each loaded to exactly this profile's
             // `bufferForPlaybackMs`, the media a player needs before it may start, so a row that
-            // becomes current starts without fetching and nothing is spent past that.
+            // becomes current starts without fetching and nothing is spent past that. And decoders
+            // warmed on the nearest of them, as many as the pool's idle players allow: a feed's rows
+            // are seconds long, so the decoder's start is a real share of each row's, and the
+            // players are already built and bounded by the device.
             preload = PreloadPolicy(
                 itemsAhead = 2,
                 itemsBehind = 1,
-                depth = PreloadDepth.Loaded(durationMs = SHORT_FORM_BUFFER.bufferForPlaybackMs),
+                depth = PreloadDepth.DecoderWarmed(durationMs = SHORT_FORM_BUFFER.bufferForPlaybackMs),
             ),
         )
 

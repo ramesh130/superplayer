@@ -184,6 +184,19 @@ Thirteen rules follow, and they are binding.
    promises is an equality on that string and the first segment is the request it most needs to
    hold for.
 
+   *Addendum (2026-09-15, #159).* A warm decoder is a source on a player before `setMediaRequest`,
+   and this rule is read as it binds a consumer and a sink rather than the engine. At
+   `PreloadDepth.DecoderWarmed` the coordinator prepares an *idle* pooled player on an item's
+   prefetched source — no request, no session, no position, no surface, no `playWhenReady` —
+   because Media3's preload manager has no decoder stage and a prepared player is the only thing
+   that holds one. Nothing plays and nothing is measured on it. When the feed calls
+   `setMediaRequest` for that row on that player, adoption runs exactly as above and the attachment
+   answers *already prepared*: the player keeps its source rather than being handed it again.
+   Handed out for any other row, it is reset first. So the rule's promises all stand: the consumer
+   never sees a source; identity, resume position, session and `sid` still come from
+   `setMediaRequest`; and a warm player is played only through it. Only "reaches a player" is
+   narrowed, and it is narrowed here rather than in a KDoc.
+
 ### The coordinator and the pool
 
 8. **`PlayerPool` owns the players and the decoder budget; `PreloadCoordinator` is attached to one
@@ -200,6 +213,16 @@ Thirteen rules follow, and they are binding.
    rather than wrong, and is stated so nobody removes one count believing it a mistake. One reading, in one file, as `DeviceCapacity.kt`'s KDoc already
    requires — and #143 changes that reading in one place, with the coordinator following through
    `maxSize` untouched.
+
+   *Addendum (2026-09-15, #159).* The pool still builds, bounds and releases every player, but
+   between a recycle and the next `acquire` the coordinator may *use* an idle one: it prepares it
+   warm (rule 7's addendum), resets it when the row leaves the window, and tells the pool which idle
+   player to hand out next — the one warm on the row the feed has just made current, then one holding
+   nothing. It never asks the pool to build a player, so a warm decoder is always a player the feed
+   already had out. That makes the bound on warm decoders `maxSize` less *every* player out with the
+   feed, not only the one playing, which is tighter than the sentence above and is what a grid with
+   two playing rows needs. A device table that reports no decoder is a pool of one, as the pool has
+   always read it, so warm-up beside a playing row there is none.
 
 9. **A pool with a coordinator attached builds its players on one shared load control, bandwidth
    meter, track selector and renderers factory, because Media3's preload manager requires it.**

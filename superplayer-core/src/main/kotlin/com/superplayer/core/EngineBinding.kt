@@ -154,8 +154,14 @@ internal fun SelectionPace.toTrackSelectionFactory(): ExoTrackSelection.Factory 
  */
 internal fun PreloadDepth.toPreloadStatus(): DefaultPreloadManager.PreloadStatus = when (this) {
     PreloadDepth.SourcePrepared -> DefaultPreloadManager.PreloadStatus.PRELOAD_STATUS_SOURCE_PREPARED
+
     PreloadDepth.TracksSelected -> DefaultPreloadManager.PreloadStatus.PRELOAD_STATUS_TRACKS_SELECTED
+
     is PreloadDepth.Loaded -> DefaultPreloadManager.PreloadStatus.specifiedRangeLoaded(durationMs.toLong())
+
+    // The manager's half of it: Media3's preload manager has no decoder stage, so the decoder is the
+    // coordinator's, held on an idle pooled player it prepares on the loaded source.
+    is PreloadDepth.DecoderWarmed -> DefaultPreloadManager.PreloadStatus.specifiedRangeLoaded(durationMs.toLong())
 }
 
 /**

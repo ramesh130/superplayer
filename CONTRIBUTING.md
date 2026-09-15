@@ -146,10 +146,14 @@ actually settled, rather than up front.
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on every push and every pull request: it builds every module,
+`.github/workflows/ci.yml` runs on demand, not on every push or pull request. It is started
+once a phase is complete, from the Actions tab or with `gh workflow run ci.yml --ref <branch>`,
+to stay inside the GitHub Actions minutes budget. Until then, the local commands below are the
+only check a change gets. The workflow builds every module,
 runs the unit tests, runs Android Lint, the Kotlin format and license headers, and the repo-wide
 Media3 version verification, publishes to the local Maven repository, and builds the demo against
-those published artifacts. Its result appears as a status check on the pull request.
+those published artifacts. A run started on a pull request's branch shows its result as a
+status check on that pull request.
 
 Run the same thing before pushing:
 

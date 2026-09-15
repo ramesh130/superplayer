@@ -428,6 +428,13 @@ ones no synthetic stream produces. And the live-stream test asserts on the inter
 `ContentKeyedCache.keys()` that no playlist was *stored*: network requests show a playlist was
 fetched, not that a copy was never written, and a written copy is the defect the rule exists against.
 
+Sizing and eviction read past it too. `CacheEvictionTest` writes and reads whole entries of one known
+size through the internal `SimpleCache`, because eviction order, pinned accounting and a reopening
+under another budget are claims about bytes, and a stream's segmentation would make every one of them
+approximate. The two eviction tests in `ContentKeyedCachePlaybackTest` then show the same rules on what
+a player stores, and they read the internal `keys()` and `heldBytes()` for the reason the live-stream
+test does: the network shows what was fetched, and eviction is about what was kept.
+
 `superplayer-testkit`'s own public API names **no Media3 type**, for the reason ADR-0001 rule 2 gives:
 a `Format` or a `Timeline` in one of its signatures would put Media3's opt-in marker on every test
 that named it. A test says what it wants — `TestContent.videoLadder()`, `harness.stallRendering(player)`

@@ -42,6 +42,9 @@ import java.io.File
  *   stored playlist and revalidation sees every playlist the origin sends.
  * - **A hit is not a throughput sample.** Reads answered from here report themselves as local, so the
  *   bandwidth estimate an adaptive policy selects on is untouched by a warm replay.
+ * - **Past [maxBytes], the least recently used goes first**, where playing an entry again counts as
+ *   using it, and content that is [pin]ned never goes. The order is not configurable (ADR-0010 rule
+ *   12): content that needs a different one belongs in a second cache, in a second directory.
  *
  * Released by [release], after every player using it has been released; a player still loading
  * through a released cache fails its loads.
@@ -51,8 +54,45 @@ public class ContentKeyedCache internal constructor(
     public val directory: File,
     /** The budget the consumer passed, in bytes of media. */
     public val maxBytes: Long,
-    private val storage: CacheStorage,
+    internal val storage: CacheStorage,
 ) : ContentCache(ContentKeyedCacheLayer(storage.cache)) {
+
+    /**
+     * Pins [contentId]: nothing stored under it is evicted, whatever the budget, until it is [unpin]ned.
+     *
+     * The pinned region Phase 7's downloads will live in (ADR-0010 rule 12), and its whole contract:
+     *
+     * - **A pin names content, not bytes.** It covers every rendition and segment of that
+     *   `MediaRequest.contentId` already stored and any stored later, so it may be set before anything is.
+     * - **Pinning is not fetching.** Content that was never played or stored is not downloaded by being
+     *   pinned; it is kept once it arrives.
+     * - **Pinned bytes count against [maxBytes].** Room is made by evicting unpinned entries alone, so
+     *   pinned content crowds out what streaming would otherwise keep. When pinned content by itself
+     *   exceeds the budget it is kept whole, nothing unpinned is kept beside it, and the cache holds more
+     *   than [maxBytes] by exactly that excess — rather than delete what was pinned.
+     * - **A pin lasts as long as the directory.** It is stored in the cache's own index, so it holds
+     *   across the process's death and a reopening of [directory] under any budget, and deleting the
+     *   directory deletes it with everything else.
+     * - **Only identified content can be pinned.** Content set through `setMediaItem` has no content id
+     *   to name and stays evictable.
+     *
+     * Pinning an id already pinned does nothing. A write to the cache's database, so not for the main
+     * thread; throws `IllegalStateException` once the cache is released.
+     */
+    public fun pin(contentId: String) {
+        storage.pin(contentId)
+    }
+
+    /**
+     * Removes the pin on [contentId], if there is one. Its entries are evictable again from the next
+     * eviction pass, which the next write to the cache starts; unpinning evicts nothing by itself.
+     */
+    public fun unpin(contentId: String) {
+        storage.unpin(contentId)
+    }
+
+    /** Whether [contentId] is pinned in this cache's directory, by this cache or an earlier one. */
+    public fun isPinned(contentId: String): Boolean = storage.isPinned(contentId)
 
     /** Closes the cache's files and releases its directory for another cache to open. Idempotent. */
     public fun release() {
@@ -61,4 +101,7 @@ public class ContentKeyedCache internal constructor(
 
     /** Every key the cache holds an entry under. For this module's tests. */
     internal fun keys(): Set<String> = storage.cache.keys
+
+    /** Every byte the cache holds, pinned or not. For this module's tests. */
+    internal fun heldBytes(): Long = storage.cache.cacheSpace
 }

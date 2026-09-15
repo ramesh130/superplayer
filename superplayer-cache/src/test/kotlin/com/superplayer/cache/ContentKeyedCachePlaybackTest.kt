@@ -258,8 +258,84 @@ class ContentKeyedCachePlaybackTest {
         }
     }
 
-    private fun openCache(): ContentKeyedCache =
-        CachePolicy.contentKeyed(folder.newFolder(), MAX_BYTES).also { caches += it }
+    /**
+     * Eviction on what a player stores, with a replay counting as use: in a budget two and a half plays
+     * deep, content played, other content played, and the first played again — from the cache — keeps
+     * the first whole when a third arrives, and the one not played since is what gives way.
+     */
+    @Test
+    fun fillingPastTheBudgetEvictsTheContentNotReplayed() {
+        val onePlay = storedByOnePlay()
+        val cache = openCache(maxBytes = onePlay.bytes * 5 / 2)
+
+        play(cache, "episode:one")
+        play(cache, "episode:two")
+        assertWithMessage("segments fetched replaying episode one").that(segmentsFetched(play(cache, "episode:one"))).isEqualTo(0)
+        play(cache, "episode:three")
+
+        val held = entriesByContent(cache)
+        assertWithMessage("entries by content: $held").that(held["episode:one"]).isEqualTo(onePlay.entries)
+        assertWithMessage("entries by content: $held").that(held["episode:three"]).isEqualTo(onePlay.entries)
+        assertWithMessage("entries by content: $held").that(held["episode:two"] ?: 0).isLessThan(onePlay.entries)
+        assertThat(cache.heldBytes()).isAtMost(cache.maxBytes)
+    }
+
+    /** A pin holds against what players store: pinned content still plays with no segment fetched. */
+    @Test
+    fun pinnedContentStillPlaysFromTheCacheAfterEvictionMadeRoomAroundIt() {
+        val onePlay = storedByOnePlay()
+        val cache = openCache(maxBytes = onePlay.bytes * 3 / 2)
+
+        play(cache, "download:kept")
+        cache.pin("download:kept")
+        play(cache, "episode:one")
+        play(cache, "episode:two")
+
+        assertThat(entriesByContent(cache)["download:kept"]).isEqualTo(onePlay.entries)
+        assertThat(segmentsFetched(play(cache, "download:kept"))).isEqualTo(0)
+    }
+
+    /**
+     * A budget changed between players on one directory: reopened smaller, the cache keeps the content
+     * played last and a player plays it with no segment fetched — read back from the stored bytes, so
+     * nothing kept was corrupted — while the content evicted to fit is fetched again rather than failing.
+     */
+    @Test
+    fun playersOnADirectoryReopenedUnderASmallerBudgetPlayWhatWasKept() {
+        val onePlay = storedByOnePlay()
+        val directory = folder.newFolder()
+        CachePolicy.contentKeyed(directory, onePlay.bytes * 4).apply {
+            play(this, "episode:one")
+            play(this, "episode:two")
+            release()
+        }
+
+        val smaller = CachePolicy.contentKeyed(directory, onePlay.bytes * 3 / 2).also { caches += it }
+        assertThat(entriesByContent(smaller)["episode:two"]).isEqualTo(onePlay.entries)
+        assertWithMessage("segments fetched playing kept content").that(segmentsFetched(play(smaller, "episode:two"))).isEqualTo(0)
+        assertWithMessage("segments fetched playing evicted content").that(segmentsFetched(play(smaller, "episode:one"))).isGreaterThan(0)
+    }
+
+    private fun openCache(maxBytes: Long = MAX_BYTES): ContentKeyedCache =
+        CachePolicy.contentKeyed(folder.newFolder(), maxBytes).also { caches += it }
+
+    private fun play(cache: ContentKeyedCache, contentId: String): SuperPlayer =
+        harness.buildPlayer(content = content, cache = cache).also {
+            it.setMediaRequest(request(contentId, content.sourceUri))
+            playToEnd(it)
+        }
+
+    /** What one play of [content] leaves in a cache with room for all of it. */
+    private fun storedByOnePlay(): Stored {
+        val probe = openCache()
+        play(probe, "probe")
+        return Stored(bytes = probe.heldBytes(), entries = probe.keys().size)
+    }
+
+    private data class Stored(val bytes: Long, val entries: Int)
+
+    private fun entriesByContent(cache: ContentKeyedCache): Map<String?, Int> =
+        cache.keys().groupingBy(ContentKeys::contentIdOf).eachCount()
 
     private fun adaptivePolicy() = AdaptivePolicy.forProfile(context, PlaybackProfile.VIDEO_ON_DEMAND)
 

@@ -18,7 +18,8 @@
  * superplayer-cache — a content cache keyed by `MediaRequest.contentId` rather than by URL, in storage
  * the consumer opened.
  *
- * [CachePolicy.contentKeyed] is the entry point and [ContentKeyedCache] what it returns; ADR-0010
- * rules 1 to 4 are the decisions this module implements, and its sizing and eviction are #157's.
+ * [CachePolicy.contentKeyed] is the entry point and [ContentKeyedCache] what it returns;
+ * [CachePolicy.deviceAware] suggests a budget from the device, and [ContentKeyedCache.pin] is the region
+ * eviction may not touch. ADR-0010 rules 1 to 4 and 12 are the decisions this module implements.
  */
 package com.superplayer.cache

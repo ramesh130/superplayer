@@ -18,7 +18,6 @@ package com.superplayer.cache
 
 import android.database.sqlite.SQLiteDatabase
 import androidx.media3.database.DatabaseProvider
-import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import java.io.File
 
@@ -34,13 +33,39 @@ internal class CacheStorage(directory: File, maxBytes: Long) {
 
     private val index = DirectoryDatabaseProvider(File(directory, INDEX_FILE_NAME))
 
-    /**
-     * Media3's cache. Least-recently-used eviction within [maxBytes]; the budget's derivation and a
-     * region eviction may not touch are #157's.
-     */
-    val cache: SimpleCache = SimpleCache(File(directory, MEDIA_DIRECTORY_NAME), LeastRecentlyUsedCacheEvictor(maxBytes), index)
+    private val pinned = PinnedContent(index)
+
+    /** Media3's cache, evicting the least recently used unpinned entries past [maxBytes]. */
+    val cache: SimpleCache = SimpleCache(File(directory, MEDIA_DIRECTORY_NAME), PinAwareLruEvictor(maxBytes, ::isPinnedKey), index)
 
     private var released = false
+
+    @Synchronized
+    fun pin(contentId: String) {
+        checkOpen()
+        // Under the cache's own lock, which every eviction pass holds, so no pass that began before the
+        // pin can still remove the content once `pin` has returned. The order — cache, then pins, then
+        // the database — is the evictor's own.
+        synchronized(cache) { pinned.add(contentId) }
+    }
+
+    @Synchronized
+    fun unpin(contentId: String) {
+        checkOpen()
+        pinned.remove(contentId)
+    }
+
+    @Synchronized
+    fun isPinned(contentId: String): Boolean {
+        checkOpen()
+        return contentId in pinned
+    }
+
+    // Not synchronized: the evictor asks under the cache's lock, and a pin never waits on that lock.
+    private fun isPinnedKey(key: String): Boolean = ContentKeys.contentIdOf(key)?.let { it in pinned } == true
+
+    // A released cache has closed its database, which the provider would otherwise quietly reopen.
+    private fun checkOpen() = check(!released) { "The cache has been released" }
 
     @Synchronized
     fun release() {

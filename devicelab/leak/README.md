@@ -16,7 +16,8 @@ debuggable, and profileable by the shell (#52). A run takes about 23 minutes on 
 emulator at the default settings, build included (the two clean six-pass runs below: 23.4 and
 22.5 minutes). Output
 goes to `devicelab/out/<run>/`, and the report is `report.md`, whose last section is this scenario's.
-Nightly, `.github/workflows/leak-hunt.yml` runs it against `main` and uploads the same directory.
+`.github/workflows/leak-hunt.yml` runs it against `main` and uploads the same directory. That workflow
+runs only when started by hand, once a phase is complete, to stay inside the GitHub Actions minutes budget.
 
 ## Why it sits outside the test suite
 

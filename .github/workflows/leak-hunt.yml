@@ -1,4 +1,4 @@
-# The leak hunt (#50), nightly against main: the demo driven through devicelab's `leak-hunt` scenario
+# The leak hunt (#50), run by hand against main once a phase is complete: the demo driven through devicelab's `leak-hunt` scenario
 # on an emulator, with the report, the heap dumps and the native profiles uploaded as one artifact.
 #
 # Scheduled rather than per pull request. A run takes about 23 minutes on a local headless emulator,
@@ -9,10 +9,13 @@
 # The same command line as `./gradlew huntLeaks`, through the reusable device workflow.
 name: Leak hunt
 
+# On demand only, from the Actions tab or `gh workflow run leak-hunt.yml`, once a phase is complete.
+# The nightly schedule was switched off to stay inside the GitHub Actions minutes budget. To restore
+# it, bring back:
+#   schedule:
+#     # 03:17 UTC: off the hour, when scheduled runs queue behind everyone else's.
+#     - cron: '17 3 * * *'
 on:
-  schedule:
-    # 03:17 UTC: off the hour, when scheduled runs queue behind everyone else's.
-    - cron: '17 3 * * *'
   workflow_dispatch:
 
 permissions:

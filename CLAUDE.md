@@ -149,7 +149,12 @@ database file inside the consumer's directory rather than Media3's `StandaloneDa
 *path*, never host, query or Media3's own `DataSpec` key; `setMediaItem` content keyed by URL under a
 prefix a request's key can never carry. `ContentKeyedCachePlaybackTest` proves F7 through the harness,
 whose `networkRequests(player)` counts what left the chain and `TestContent.servedFrom(host)` is the
-second CDN host; sizing, eviction and the pinned region are #157's. Two of those insert nothing into the chain and the KDoc is mostly
+second CDN host. `CachePolicy.deviceAware(context, directory)` suggests the budget — a tenth of free
+space between a floor and a ceiling, lower on `isLowRamDevice` — for the consumer to pass;
+`PinAwareLruEvictor` evicts least recently used, a read counting as use, and never a span whose content
+`ContentKeyedCache.pin` names. Pins live in a table of the cache's own index and count against the
+budget, which ADR-0010 rule 12 decides; nothing is evicted until the cache has opened, so a directory
+reopened under a smaller budget keeps what was used last. `CacheEvictionTest` drives it in exact bytes. Two of the modules the chain's KDoc places insert nothing into the chain and the KDoc is mostly
 about them: measurement is a propagated `TransferListener`, so a layer that drops the registration
 blinds ABR silently, and cache hits stay out of the estimate through Media3's `isNetwork` flag rather
 than through chain position — ADR-0002's argument arriving through a different door. CMCD attaches to

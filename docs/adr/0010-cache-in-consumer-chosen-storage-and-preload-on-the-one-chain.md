@@ -253,6 +253,11 @@ Thirteen rules follow, and they are binding.
     would be choosing storage, which rule 5 says the library does not do. Eviction order (LRU) and
     the pinned region are `superplayer-cache`'s mechanism, stated in its KDoc, and not
     configurable: a consumer who needs a different eviction opens a second cache for that content.
+    Pinned bytes count against the budget: eviction makes room from unpinned entries only, and when
+    pinned content alone exceeds the budget it is kept and the cache is over by that excess. The
+    alternative, a budget for streaming with pins outside it, would let the directory grow without a
+    number the consumer wrote down, which is rule 1's objection; the cost is that downloads crowd out
+    streaming, and a consumer who wants both sized separately opens two caches.
 
 ### The pay-nothing claim
 

@@ -16,6 +16,8 @@
 
 package com.superplayer.cache
 
+import android.app.ActivityManager
+import android.content.Context
 import java.io.File
 
 /**
@@ -23,7 +25,8 @@ import java.io.File
  * they pass.
  *
  * ```kotlin
- * val cache = CachePolicy.contentKeyed(File(context.cacheDir, "media"), maxBytes = 512L * 1024 * 1024)
+ * val directory = File(context.cacheDir, "media")
+ * val cache = CachePolicy.contentKeyed(directory, maxBytes = CachePolicy.deviceAware(context, directory))
  * val player = SuperPlayer.Builder(context).setCache(cache).build()
  * // … and when nothing plays from it any more:
  * player.release()
@@ -49,11 +52,34 @@ public object CachePolicy {
      * what stops two indexes corrupting one another. Hold the returned cache for as long as players
      * use it, share it between them, and [ContentKeyedCache.release] it after the last is released.
      *
-     * Past the budget the least recently used entries are evicted.
+     * Past the budget the least recently used entries are evicted, and pinned ones never are
+     * ([ContentKeyedCache.pin] says how pinned bytes are counted).
+     *
+     * **The budget belongs to the opened cache, not to the directory.** A directory reopened — after the
+     * cache before it was released — under a different [maxBytes] keeps its entries, its index and its
+     * pins. A smaller budget evicts the least recently used unpinned entries down to it as the cache
+     * opens, in order of use across both lifetimes, and keeps the rest readable; a larger one keeps
+     * everything. Neither is a reset, and nothing but eviction removes an entry.
      */
     @JvmStatic
     public fun contentKeyed(directory: File, maxBytes: Long): ContentKeyedCache {
         require(maxBytes > 0) { "A cache budget is a positive number of bytes, was $maxBytes" }
         return ContentKeyedCache(directory, maxBytes, CacheStorage(directory, maxBytes))
+    }
+
+    /**
+     * A budget for a cache in [directory], suggested from the device: a tenth of the space free on the
+     * directory's volume, held between a floor of 32 MiB and a ceiling of 2 GiB — 128 MiB on a device
+     * that reports `ActivityManager.isLowRamDevice`. Each number is argued where it is chosen.
+     *
+     * A suggestion, read once, for the consumer to pass to [contentKeyed] where a reviewer can see that
+     * they accepted it (ADR-0010 rule 1): it does not follow free space afterwards, and a cache opened with
+     * it is sized like any other. [directory] need not exist yet, and is not created.
+     */
+    @JvmStatic
+    public fun deviceAware(context: Context, directory: File): Long {
+        // With no activity manager to ask, the constrained answer is the safe one.
+        val isLowRamDevice = context.getSystemService(ActivityManager::class.java)?.isLowRamDevice ?: true
+        return CacheBudget.suggest(CacheBudget.availableBytesAt(directory), isLowRamDevice)
     }
 }

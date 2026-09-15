@@ -105,6 +105,20 @@ internal object ContentKeys : CacheKeyFactory {
         val path = dataSpec.uri.path?.takeIf { it.startsWith("/") }
         return "$BY_CONTENT${contentId.length}:$contentId${path ?: dataSpec.uri.toString()}"
     }
+
+    /**
+     * The content id a key of [buildCacheKey]'s was built from, read back through the length written
+     * before it, or null for a key of content set through `setMediaItem`, which has none. How a pin,
+     * which names content, finds the entries it covers.
+     */
+    fun contentIdOf(key: String): String? {
+        if (!key.startsWith(BY_CONTENT)) return null
+        val separator = key.indexOf(':', startIndex = BY_CONTENT.length)
+        if (separator < 0) return null
+        val length = key.substring(BY_CONTENT.length, separator).toIntOrNull()?.takeIf { it >= 0 } ?: return null
+        val start = separator + 1
+        return if (length <= key.length - start) key.substring(start, start + length) else null
+    }
 }
 
 /**

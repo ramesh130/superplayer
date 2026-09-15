@@ -84,6 +84,18 @@ class ContentKeysTest {
         ).isNotEqualTo(unidentified)
     }
 
+    /** How a pin finds its entries: the id is read back whole, however much of it looks like a key. */
+    @Test
+    fun aKeyNamesTheContentItWasBuiltFromAndAUrlKeyNamesNone() {
+        for (id in listOf("episode:1", "12:34", "a/b", "", "url:x")) {
+            assertThat(ContentKeys.contentIdOf(keyOf(id, "https://cdn.example/vod/720p/seg3.m4s"))).isEqualTo(id)
+        }
+        assertThat(ContentKeys.contentIdOf("url:https://cdn.example/vod/720p/seg3.m4s")).isNull()
+        assertThat(ContentKeys.contentIdOf("content:99:short")).isNull()
+        assertThat(ContentKeys.contentIdOf("content:no-length")).isNull()
+        assertThat(ContentKeys.contentIdOf("content:-3:x")).isNull()
+    }
+
     private fun keyOf(contentId: String, uri: String): String = ContentKeys.buildCacheKey(
         DataSpec.Builder().setUri(Uri.parse(uri)).setCustomData(RequestStamp(ContentIdentity(contentId), LoadKind.MEDIA)).build(),
     )

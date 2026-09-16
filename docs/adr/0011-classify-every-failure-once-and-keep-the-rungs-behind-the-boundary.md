@@ -2,6 +2,10 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-16
+- **Amended:** 2026-09-16 (#181), by addenda at rules 5, 10 and 13, recorded at the rules in this
+  document's own convention: this batch is the ADR's implementation rather than a reconsideration of
+  it, and nothing decided here is reversed. Rule 10's addendum also deviates from
+  [ADR-0003](0003-implement-player-by-delegation.md) rule 3, which carries the matching note.
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
 - **Refines:** [ADR-0005](0005-decide-playback-policy-behind-an-engine-agnostic-boundary.md)
@@ -19,8 +23,10 @@
   of `PlaybackDecision`, while jitter, token refresh, the rung order and resume-position
   preservation are correctness, on for everyone. Every rung resumes at the position playback had
   reached, and a rung that cannot is not a rung. The Media3-facing halves — a
-  `LoadErrorHandlingPolicy`, a chain layer reading HTTP status — are internal, reached through two
-  new slots in core's engine seam by `superplayer-resilience` as core's fifth Kotlin friend. A
+  `LoadErrorHandlingPolicy`, a chain layer reading HTTP status — are internal, reached through new
+  slots in core's engine seam by `superplayer-resilience` as core's fifth Kotlin friend: two the
+  engine is configured with, and — since rule 13's addendum — one core interrogates at failure time,
+  for the rungs that are operations on the player's own state. A
   player built without the module has Media3's own load-error handling, an empty header-refresh
   slot and no listener, and a test counts it.
 
@@ -183,6 +189,23 @@ Fourteen rules follow, and they are binding.
    public call: a consumer who wants the next source calls `setMediaRequest` with the request they
    have, as ADR-0010 rule 7 already requires of a warm source.
 
+   *Addendum (2026-09-16, #181).* Rung 4 is built, and it does **not** go through `adopt`. This rule
+   named that path because `adopt` is where core's request bookkeeping lives; what the rule actually
+   requires of the rung is the list that follows the path — the position playback had reached, the
+   identity, the telemetry session and the CMCD `sid` — and `adopt` is the one call that would break
+   three of them. It is the point at which a *measurement session opens*, because its whole job is
+   taking on **different** content: routing rung 4 through it would end the viewing's session and
+   start a second one under the same content id, which is exactly the "one viewing reported as
+   several" defect `MediaRequest`'s own documentation exists to prevent, and it would break the CMCD
+   `sid` join `docs/telemetry-schema.md` states as a promise. So the rule is restated as what the
+   rung must **preserve** rather than as which function it must call: rung 4 replaces the media item
+   with the next entry of `MediaRequest.sources`, at a position read off the player before anything
+   replaces the item and passed to `setMediaItem` explicitly, opening no session, minting no id, and
+   updating the remembered-position map so rule 9's `ResumeFromLastKnown` agrees at the instant of
+   the switch. A fallback that rescued a session is a fact about that session (rule 10), and
+   everything about this rung follows from that sentence. Rung 5 will have the same obligation and
+   the same reason to avoid the same call (#182).
+
 6. **What `superplayer-resilience` owns is the taxonomy, the retry and backoff, the fallback
    selection, the token refresh and the escalation between rungs; what it does not own is any
    detection core makes, any storage, any HTTP stack and any proxy.** ADR-0002 and ADR-0004 stand:
@@ -234,6 +257,31 @@ Fourteen rules follow, and they are binding.
     because a fallback that rescued a session is a fact about that session and not the start of a
     new one.
 
+    *Addendum (2026-09-16, #181).* This rule has a consequence that was not drawn when it was
+    written, and rung 4 is where it first bites: **a failure a rung repaired is withheld from the
+    consumer's listeners.** The rungs core performs are reached from the player-error path, so by
+    the time rung 4 can act, Media3 has already raised a `PlaybackException` — and a session that
+    then plays on would have reported a failure that did not happen. A consumer acting on
+    `onPlayerError` the way consumers do would put an error over a playing video, and anything
+    reading the same callback would record a failure for a session that did not fail. This rule
+    reserves the delivered error for rung 6 — what the consumer is handed once nothing below it
+    worked — so the delivery is withheld for exactly those failures a rung takes on, and for no
+    others. It is withheld in both forms Media3 delivers a failure in, `onPlayerError` and
+    `onPlayerErrorChanged`, including the null that clears it: a consumer told only that an error
+    went away would be told about the failure in the one form they cannot act on.
+
+    **This is a deviation from ADR-0003 rule 3** — the listener wrapper no longer forwards every
+    callback unconditionally — and it is recorded at that rule as well as here. It is bounded to
+    those two callbacks and to a failure this player is taking on itself; every other callback, and
+    every failure that reaches rung 6, forwards exactly as before, and Media3's own
+    forwarding-contract assertion still drives all 37 callbacks through the wrapper unchanged,
+    because the wrapper withholds nothing unless a player gives it something to ask.
+    `player.playerError` is not special-cased at all: the `prepare` the rung performs clears it, so
+    a consumer reading the property sees what their listener was told. Media3 hands one event to
+    every listener in a single pass, so the decision has to be taken before that pass begins rather
+    than by the rung that performs the remedy; core therefore memoizes it against the failure, and
+    both askers read the one answer.
+
 ### What is policy
 
 11. **Retry budgets are policy, a fourth half of `PlaybackDecision`.** How many attempts a
@@ -276,6 +324,31 @@ Fourteen rules follow, and they are binding.
     configurator, so a test's engine configuration still wins. `KotlinFriendModules.kt`'s argument
     holds unchanged: a friend path is a compiler flag and not a Gradle dependency, and the
     dependency it does not create is the one `docs/modules.md` forbids.
+
+    *Addendum (2026-09-16, #181).* The count is **three** slots, not two, and the third is a
+    different kind of thing — which is why it is a third rather than a widening of either of the
+    other two. The two above are things core *calls*: components handed over at engine construction,
+    filled once by `configureEngine` and then owned by the engine. The third,
+    `EngineConfiguration.playerStateRungs`, is a question core *puts*, at failure time, on the
+    application thread — may this failure climb to rung 4? — and the answer is the module's rung
+    deciding while core performs (rule 5). Neither existing slot could carry it. A
+    `LoadErrorHandlingPolicy` is asked about a **load**, from a loading thread, with the load in
+    hand, and it may answer only in the vocabulary Media3 asks in: a retry delay or a fallback
+    selection, neither of which can express "re-adopt the player at the position it holds". A chain
+    layer is further from the player still. Folding the question into either would mean the module
+    reaching the facade, which is the direction this ADR exists to forbid.
+
+    The asymmetry is worth stating, because it is what makes rule 14's accounting different here.
+    An empty load-error slot leaves Media3's own policy in force and an empty header-refresh slot
+    leaves the chain untouched — both are absences of *configuration*. An empty third slot is the
+    absence of a **listener**: core registers its player-error listener only where the slot is
+    filled, so a player built without the module asks nobody and performs no rung, and that is a
+    registration a test can count rather than a behaviour it has to infer.
+
+    Rung 5 (#182) arrives as a second question on the same interface rather than as a fourth slot:
+    the rung order is one order, both rungs are player-state operations, and a second slot would let
+    an implementation fill one and not the other. A rung that ever needs a slot core *calls* has
+    this addendum to answer.
 
 14. **A player, a pool or a session built without resilience registers nothing and allocates
     nothing for it, and a test counts it.** Media3's `DefaultLoadErrorHandlingPolicy` is in force

@@ -601,7 +601,9 @@ Style preferences these are not. A change violating one is not accepted, whateve
 - **[ADR-0002](docs/adr/0002-no-local-http-proxy.md)** — no local HTTP proxy.
 - **[ADR-0003](docs/adr/0003-implement-player-by-delegation.md)** — the facade implements `Player`
   by Kotlin delegation and extends no Media3 class. Every Media3 `Player` base class is
-  `@UnstableApi`; extending one puts that marker on every method a consumer calls.
+  `@UnstableApi`; extending one puts that marker on every method a consumer calls. Its rule 3 — a
+  wrapper of a Media3 interface forwards every callback — has exactly one argued exception, at that
+  rule's addendum: a failure the fallback ladder repaired (ADR-0011 rule 10).
 - **[ADR-0005](docs/adr/0005-decide-playback-policy-behind-an-engine-agnostic-boundary.md)** — all
   buffering and track-selection policy is decided behind `PlaybackPolicy`, in types that name no
   Media3 class. A policy constant at a Media3 call site, in a listener, or in a builder is a bug
@@ -649,8 +651,12 @@ Style preferences these are not. A change violating one is not accepted, whateve
   at a time, and every rung resumes at the position playback had reached; retry budgets are policy,
   a fourth half of `PlaybackDecision`, while jitter, token refresh, the rung order and position
   preservation are correctness on for everyone; the Media3-facing halves are internal and reach the
-  engine through a load-error slot and a header-refresh slot in core's seam, filled by the module
-  as core's fifth Kotlin friend; and a player built without it pays nothing, which a test counts.
+  engine through three slots in core's seam, filled by the module as core's fifth Kotlin friend —
+  a load-error slot and a header-refresh slot the engine is *configured* with, and, since rule 13's
+  addendum, one core *interrogates* at failure time for the rungs that are operations on the
+  player's own state; a failure such a rung repairs is withheld from the consumer's listeners,
+  which rule 10's addendum decides and which is the one deliberate exception to ADR-0003 rule 3;
+  and a player built without it pays nothing, which a test counts.
 - **[`docs/api-surface.md`](docs/api-surface.md)** — every published module's public API is tracked
   in `<module>/api/<module>.api` and validated by `check`. Changing it means running
   `./gradlew updateApiSurface` and committing the diff in the same change. A leaked `@UnstableApi`

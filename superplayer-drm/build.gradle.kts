@@ -34,6 +34,13 @@ dependencies {
     // public API. Phase 2 on phase 6, tests only.
     testImplementation(project(":superplayer-testkit"))
     testImplementation(project(":superplayer-testmedia"))
+
+    // Tests only, and a phase 5 module under a phase 6 one, which is the allowed direction. A licence
+    // load spends `RetryPolicy.licence` and is repaired by the one `HeaderProvider` only on a player
+    // that was also given a `PlaybackResilience` — the load-error policy and the header-refresh layer
+    // are that module's — so the claims of #205 cannot be driven through this module's public API
+    // without it. Nothing in this module's main sources knows it exists.
+    testImplementation(project(":superplayer-resilience"))
 }
 
 // The one slot this module fills — the `DrmSessionManagerProvider` every media source `TransferChain`

@@ -104,6 +104,13 @@ import java.util.concurrent.CopyOnWriteArrayList
  * session an item needs, at the line [StampingMediaSourceFactory] has always replayed and nothing
  * had ever filled (ADR-0012 rule 3).
  *
+ * Two things travel with it and are the whole of #205. Its requests are stamped [LoadKind.LICENCE],
+ * so the header-refresh layer repairs a refused entitlement as it repairs a refused segment; and the
+ * session manager is handed the player's *own* `LoadErrorHandlingPolicy` rather than being left to
+ * build one, so a failed licence load spends [RetryPolicy.licence] and nothing else. Media3 asks a
+ * session manager's policy about a licence and a media source factory's about everything else, and a
+ * budget only one of the two objects knows about is a budget no load can reach.
+ *
  * ## The load-error slot is not a layer either
  *
  * Whether a failed load is retried, after how long, and whether the engine falls back to another
@@ -243,7 +250,9 @@ internal object TransferChain {
      *
      * [drm] is the DRM slot, and [exoMediaDrm] the device a test stands in for it. Null leaves no
      * provider set on the factory at all, which is what ADR-0012 rule 13 promises a player built
-     * without `setDrm` — not a provider that answers `DRM_UNSUPPORTED`.
+     * without `setDrm` — not a provider that answers `DRM_UNSUPPORTED`. A filled slot is handed
+     * [loadErrors] as well, because Media3 asks a session manager's own policy about a licence load;
+     * one object rather than two is what makes `RetryPolicy.licence` reachable (#205).
      */
     fun mediaSourceFactory(
         context: Context,
@@ -265,7 +274,8 @@ internal object TransferChain {
         // With neither slot filled, exactly the factory Phase 3 built: nothing about a request is
         // stamped, because nothing below would read it (ADR-0010 rule 13, ADR-0011 rule 14). A DRM
         // slot is not in that count: what it fills is a provider on the factory rather than a layer
-        // in the chain, and no stamp is read on the way to a licence server.
+        // in the chain, and the licence transport it is handed carries a stamp of its own whether or
+        // not an item's requests do.
         val stamps = cache != null || headerRefresh != null
         val factory = if (stamps) StampingMediaSourceFactory(chain) else DefaultMediaSourceFactory(chain)
         return factory.apply {
@@ -275,7 +285,21 @@ internal object TransferChain {
             loadErrors?.let(::setLoadErrorHandlingPolicy)
             // Over `refreshed` rather than over `chain`: a licence travels the credential-bearing
             // part of the chain and not the content-bearing part. See [LicenceSessions].
-            drm?.let { setDrmSessionManagerProvider(it.over(refreshed, exoMediaDrm)) }
+            //
+            // Stamped whenever there is a slot to fill rather than under `stamps`: the kind is the
+            // one thing that identifies a request no item's factory opened, and it is what lets the
+            // header-refresh layer repair a refused entitlement. The identity is null because a
+            // licence belongs to no item — it is the player's, like the protection that asked for it
+            // (ADR-0012 rule 1) — and because nothing keys a cache by it: the licence transport is
+            // below the cache slot, so no licence reaches a cache to be keyed at all.
+            //
+            // `loadErrors` is the same instance the factory above was given, which is what routes a
+            // failed licence load to `RetryPolicy.licence` instead of to Media3's own defaults (#205).
+            drm?.let {
+                setDrmSessionManagerProvider(
+                    it.over(refreshed.stampedWith(identity = null, kind = LoadKind.LICENCE), exoMediaDrm, loadErrors),
+                )
+            }
         }
     }
 

@@ -36,7 +36,7 @@ import com.superplayer.core.LicenceSessions
 internal class WidevineDrm(private val config: WidevineConfig) : EngineDrmExtension {
 
     override fun configureEngine(configuration: EngineConfiguration) {
-        configuration.drm = LicenceSessions { licenceTransport, mediaDrm ->
+        configuration.drm = LicenceSessions { licenceTransport, mediaDrm, loadErrors ->
             // Media3's own callback rather than one of ours, which is ADR-0001's whole posture: it
             // POSTs the key request to the licence URL over the `DataSource.Factory` it is given, and
             // performs provisioning against the URL the device's own provision request names — the
@@ -66,6 +66,15 @@ internal class WidevineDrm(private val config: WidevineConfig) : EngineDrmExtens
                 // its own authority. A player built with `setDrm` plays what it was entitled to play
                 // or it fails saying so.
                 .setPlayClearSamplesWithoutKeys(false)
+                // The player's own, never one of this module's making. Media3 asks a session
+                // manager's `LoadErrorHandlingPolicy` about a failed licence load and a media source
+                // factory's about every other load, so a manager left to build its own would answer
+                // for the licence out of Media3's defaults while the same player answered for its
+                // segments out of `RetryPolicy` — which is exactly why `RetryPolicy.licence` was
+                // declared and unspendable until #205. Null is a player with no
+                // `PlaybackResilience`, and then Media3's default is the right answer rather than a
+                // gap: such a player keeps Media3's handling for every other load too.
+                .apply { loadErrors?.let(::setLoadErrorHandlingPolicy) }
                 .build(callback)
             // One manager for the player rather than one per item: the session graph is built once
             // per player because protection is the player's (rule 1), and `DefaultDrmSessionManager`

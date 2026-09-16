@@ -509,10 +509,18 @@ the manifest can name, and `setPlayClearSamplesWithoutKeys(false)`, because hand
 the session holds no keys for is the silent downgrade ADR-0012 rule 11 forbids. What a licence
 travels is not the whole chain: `TransferChain` hands the slot the chain *below* the cache — the
 transport with the header-refresh slot over it — because a cache has nothing true to say about an
-entitlement and a credential has everything, which is what #205 then builds on. `WidevinePlaybackTest`
-plays both protocols through a real `SuperPlayer` over the harness's licence server, and
-`SuperPlayerDrmSeamTest` counts ADR-0012 rule 13 in core: what it counts is the **set**, never the
-answer, because a provider that is set and answers `DRM_UNSUPPORTED` is not nothing.
+entitlement and a credential has everything. That is what #205 built on, and with it a licence became
+a load of the player's like any other: its requests are stamped `LoadKind.LICENCE`, so the
+header-refresh layer repairs one refused 401 or 403 inside the transfer that met the refusal, and the
+DRM slot is handed the player's **own** `LoadErrorHandlingPolicy` rather than letting the session
+manager build one — which is what makes `RetryPolicy.licence` a budget something can spend, since
+Media3 asks a session manager's policy about a licence and a media source factory's about everything
+else. Both halves need `setResilience` beside `setDrm`, because both objects are
+`superplayer-resilience`'s; every profile row now sets a licence budget with its reason.
+`WidevinePlaybackTest` plays both protocols through a real `SuperPlayer` over the harness's licence
+server, `LicenceLoadTest` forces the budget and the refresh through one, and `SuperPlayerDrmSeamTest`
+counts ADR-0012 rule 13 in core: what it counts is the **set**, never the answer, because a provider
+that is set and answers `DRM_UNSUPPORTED` is not nothing.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,

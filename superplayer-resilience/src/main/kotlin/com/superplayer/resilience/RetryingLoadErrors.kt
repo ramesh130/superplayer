@@ -41,7 +41,12 @@ internal enum class RetryBudgetKind {
     /** A segment, an initialization segment, a progressive file: media, or what decodes it. */
     SEGMENT,
 
-    /** A licence or provisioning round trip. See [RetryPolicy.licence] for why none arrives today. */
+    /**
+     * A licence or provisioning round trip, which arrives here on a player built with both this
+     * module and `superplayer-drm`: core hands the DRM slot this same object, so the session
+     * manager's question and the media source factory's are answered by one climb and one set of
+     * budgets (ADR-0012 rule 3, #205).
+     */
     LICENCE,
     ;
 

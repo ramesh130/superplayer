@@ -39,13 +39,18 @@ import kotlin.random.Random
 /**
  * The three budgets, asked the way Media3 asks.
  *
- * Everything a player can show is shown through a player, in `RetryPlaybackTest`. Two things cannot
- * be: a licence load, because Media3 routes one through a different `LoadErrorHandlingPolicy`
- * instance than the one a media source factory is given and SuperPlayer plumbs no DRM at all
- * ([RetryPolicy.licence] says so), and the fact that the budget is re-read on *every* consultation,
- * because a decision only changes on a player whose engine can honour a changed one and the retry
- * half is not one of the halves such a player's components hold. Both are properties of this object,
- * and this is where they are pinned.
+ * Everything a player can show is shown through a player, in `RetryPlaybackTest`. One thing cannot
+ * be: the budget is re-read on *every* consultation, and a decision only changes on a player whose
+ * engine can honour a changed one while the retry half is not one of the halves such a player's
+ * components hold. That is a property of this object, and this is where it is pinned.
+ *
+ * The licence budget used to be the other. Since #205 a licence load does reach this object — core
+ * hands the DRM slot the same instance the media source factory has — and `superplayer-drm`'s
+ * `LicenceLoadTest` is where a refused licence is really asked for again through a player. What stays
+ * here is the addressing, and it stays because Media3 asks about a licence in two places: the retry
+ * delay, and the minimum retry count a DRM session reads *before* it asks for a delay at all. A
+ * budget that answered one of those out of the licence row and the other out of a neighbour's would
+ * be a player that disagreed with itself about when to stop.
  *
  * Robolectric for `Uri`, which every `DataSpec` carries, and for nothing else — there is no player
  * here.
@@ -79,10 +84,10 @@ class RetryingLoadErrorsTest {
 
     @Test
     fun aLicenceLoadSpendsTheLicenceBudgetAndNeitherOfTheOthers() {
-        // The budget `RetryPolicy.licence` declares and nothing routes to yet. Asserting it here is
-        // what makes the declaration honest rather than decorative: the number is in force the day
-        // Phase 6 plumbs a `DrmSessionManager` through to this object, and this is the test that
-        // will fail if the addressing is wrong then.
+        // The addressing `RetryPolicy.licence` rests on: `C.DATA_TYPE_DRM` is the data type Media3
+        // builds the `MediaLoadData` of a failed licence load with, and it must reach the licence row
+        // and no other. A player's worth of this is `superplayer-drm`'s `LicenceLoadTest`; what is
+        // here is the one function that decides which of the three budgets a load spends.
         val policy = RetryingLoadErrors.forPlayer(
             decisionsOf(
                 RetryPolicy(
@@ -103,6 +108,29 @@ class RetryingLoadErrorsTest {
             .isEqualTo(C.TIME_UNSET)
         assertThat(policy.getRetryDelayMsFor(transferFailure(C.DATA_TYPE_MEDIA, errorCount = 1)))
             .isEqualTo(C.TIME_UNSET)
+    }
+
+    @Test
+    fun theCountADrmSessionReadsBeforeItAsksForADelayIsTheLicenceBudgetSOwn() {
+        // The other question Media3 puts about a licence, and it puts it first: `DefaultDrmSession`
+        // compares its error count against `getMinimumLoadableRetryCount(C.DATA_TYPE_DRM)` and stops
+        // there, never reaching the delay this object would have answered with. So the two answers
+        // have to come out of the same row — a count off the segment row would stop a licence load
+        // that its own budget still had asks left for, and no assertion about the delay would see it.
+        val policy = RetryingLoadErrors.forPlayer(
+            decisionsOf(
+                RetryPolicy(
+                    manifest = RetryBudget(maxRetries = 9, initialBackoffMs = 10, maxBackoffMs = 10),
+                    segment = RetryBudget(maxRetries = 7, initialBackoffMs = 10, maxBackoffMs = 10),
+                    licence = RetryBudget(maxRetries = 2, initialBackoffMs = 10, maxBackoffMs = 10),
+                ),
+            ),
+            Random(SEED),
+        )
+
+        assertThat(policy.getMinimumLoadableRetryCount(C.DATA_TYPE_DRM)).isEqualTo(2)
+        assertThat(policy.getMinimumLoadableRetryCount(C.DATA_TYPE_MEDIA)).isEqualTo(7)
+        assertThat(policy.getMinimumLoadableRetryCount(C.DATA_TYPE_MANIFEST)).isEqualTo(9)
     }
 
     @Test

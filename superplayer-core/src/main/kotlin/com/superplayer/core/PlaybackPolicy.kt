@@ -184,12 +184,16 @@ constructor(
     /**
      * What a licence or provisioning round trip gets.
      *
-     * Declared, and today unreachable: Media3 routes a licence load through the
-     * `LoadErrorHandlingPolicy` its DRM session manager holds, which is a different object from the
-     * one a media source factory is given, and SuperPlayer plumbs no DRM at all — ADR-0011 rule 6
-     * leaves that to Phase 6. It is declared anyway because the budget is policy and a policy's
-     * shape should not change when the plumbing arrives; `superplayer-resilience` already answers
-     * for a licence load, so the day one is routed here the number in force is this one.
+     * Reachable since #205, and the plumbing is the reason it needed a ticket of its own: Media3
+     * routes a licence load through the `LoadErrorHandlingPolicy` its DRM session manager holds,
+     * which is a different object from the one a media source factory is given, so a player whose
+     * session manager built its own would answer for a licence out of Media3's defaults while
+     * answering for everything else out of this. `TransferChain` hands the DRM slot the player's own
+     * policy, and that is what makes this number the one in force.
+     *
+     * It is spent by a player with **both** a `PlaybackDrm` and a `PlaybackResilience`: the first is
+     * what makes a licence load happen at all and the second is what puts a policy of SuperPlayer's
+     * in the slot to answer for it.
      */
     public val licence: RetryBudget = RetryBudget.MEDIA3_DEFAULT,
 ) {

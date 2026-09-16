@@ -65,6 +65,29 @@ public final class com/superplayer/testkit/GoldenFile$Mode : java/lang/Enum {
 	public static fun values ()[Lcom/superplayer/testkit/GoldenFile$Mode;
 }
 
+public final class com/superplayer/testkit/HostileObservation {
+	public static final field INSTANCE Lcom/superplayer/testkit/HostileObservation;
+	public static final field OBSERVATION_MS J
+	public static final field READY_WINDOW_MS J
+	public static final field STEP_MS J
+	public static final fun observe (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/testmedia/HostileStream;)Lcom/superplayer/testkit/HostileOutcome;
+	public static final fun observe (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/testmedia/HostileStream;Lcom/superplayer/core/PlaybackResilience;)Lcom/superplayer/testkit/HostileOutcome;
+	public static synthetic fun observe$default (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/testmedia/HostileStream;Lcom/superplayer/core/PlaybackResilience;ILjava/lang/Object;)Lcom/superplayer/testkit/HostileOutcome;
+}
+
+public final class com/superplayer/testkit/HostileOutcome : java/lang/Enum {
+	public static final field DEGRADES Lcom/superplayer/testkit/HostileOutcome;
+	public static final field FAILS Lcom/superplayer/testkit/HostileOutcome;
+	public static final field FAILS_TYPED Lcom/superplayer/testkit/HostileOutcome;
+	public static final field NEVER_STARTS Lcom/superplayer/testkit/HostileOutcome;
+	public static final field PLAYS_TO_END Lcom/superplayer/testkit/HostileOutcome;
+	public static final field STALLS Lcom/superplayer/testkit/HostileOutcome;
+	public static final field STILL_PLAYING Lcom/superplayer/testkit/HostileOutcome;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/testkit/HostileOutcome;
+	public static fun values ()[Lcom/superplayer/testkit/HostileOutcome;
+}
+
 public final class com/superplayer/testkit/NetworkProfile : java/lang/Enum {
 	public static final field CONGESTED_WIFI Lcom/superplayer/testkit/NetworkProfile;
 	public static final field Companion Lcom/superplayer/testkit/NetworkProfile$Companion;

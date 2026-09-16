@@ -142,7 +142,19 @@ public class AdaptiveBufferPolicy(public val profile: PlaybackProfile) : Playbac
 
         // The selection half is the static profile's: it is `AdaptiveSelectionPolicy`'s to move,
         // and `AdaptivePolicy` composes the two so that each owns one half.
-        return PlaybackDecision(targets.toBufferPolicy(), base.trackSelection, liveLatency, preloadOn(conditions.transport, base.preload))
+        //
+        // The retry half is the static profile's too, and unmoved: ADR-0011 rule 11 says an adaptive
+        // policy may vary a budget — a stall history argues for a shorter one — but says nothing
+        // about what it should become, and a number invented here would be one with no argument
+        // behind it. Carried through rather than dropped, so a player built on this policy asks for
+        // its profile's budgets rather than for Media3's.
+        return PlaybackDecision(
+            targets.toBufferPolicy(),
+            base.trackSelection,
+            liveLatency,
+            preloadOn(conditions.transport, base.preload),
+            base.retry,
+        )
     }
 
     /**

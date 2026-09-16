@@ -141,6 +141,21 @@ internal class EngineConfiguration(val engine: ExoPlayer.Builder) {
     var headerRefresh: HeaderRefreshLayer? = null
 
     /**
+     * The decision in force on this player, readable from whatever thread a load fails on.
+     *
+     * Core fills it; the extensions read it. It exists because the two halves of ADR-0011 rule 11
+     * meet at different times: the object that answers Media3 about a failed load is built here,
+     * before the policy has been consulted at all, and it has to read *the decision in force at each
+     * consultation* rather than the one that happened to be current when it was constructed — the
+     * same contract `NetworkAwareTrackSelection` has for the selection pace (ADR-0009 rule 5).
+     *
+     * Not a widening: what it hands back is [SuperPlayer.playbackDecision], which is public, on a
+     * player the reader is a part of. It is here rather than on the facade only because the facade
+     * does not exist yet when an extension is called.
+     */
+    val decisionInForce: DecisionInForce = DecisionInForce()
+
+    /**
      * The clock the engine runs on, or null for the platform's.
      *
      * A slot rather than a call on [engine] for the preload manager's sake: a pooled player's engine
@@ -157,4 +172,35 @@ internal class EngineConfiguration(val engine: ExoPlayer.Builder) {
      * was built with. A test's fake renderers go here.
      */
     var renderersFactory: RenderersFactory? = null
+}
+
+/**
+ * A window onto one player's [SuperPlayer.playbackDecision], opened before the player exists.
+ *
+ * Written once by `SuperPlayer.Builder.build()` as soon as the policy has answered, and thereafter
+ * reading straight through to whatever the decision currently is — so a player whose policy is
+ * re-consulted on triggers hands its reader the new decision on the next consultation, with nothing
+ * rebuilt (ADR-0009 rule 5, ADR-0011 rule 11).
+ *
+ * [current] is null only in the window between an extension being handed the configuration and the
+ * policy being consulted, which is over before the engine is built and so before any load can fail.
+ * A reader that finds null has nothing to honour and falls back to its own default.
+ */
+internal class DecisionInForce {
+
+    /**
+     * Volatile because it is written on the thread building the player and read on loading threads;
+     * a supplier rather than a value because the decision it reports is not this object's to track —
+     * `DecisionReapplication` already holds it, and two copies could disagree.
+     */
+    @Volatile
+    private var source: (() -> PlaybackDecision?)? = null
+
+    /** Points this window at where the decision in force actually lives. Called once, by core. */
+    fun fedBy(source: () -> PlaybackDecision?) {
+        this.source = source
+    }
+
+    /** The decision in force right now, or null before the policy has been consulted. */
+    fun current(): PlaybackDecision? = source?.invoke()
 }

@@ -84,3 +84,8 @@ public final class com/superplayer/resilience/FallbackRung : java/lang/Enum {
 	public static fun values ()[Lcom/superplayer/resilience/FallbackRung;
 }
 
+public final class com/superplayer/resilience/Resilience {
+	public static final field INSTANCE Lcom/superplayer/resilience/Resilience;
+	public static final fun standard ()Lcom/superplayer/core/PlaybackResilience;
+}
+

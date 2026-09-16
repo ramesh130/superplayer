@@ -199,17 +199,20 @@ public final class com/superplayer/core/PlaybackDecision {
 	public fun <init> (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;)V
 	public fun <init> (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;)V
 	public fun <init> (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;Lcom/superplayer/core/PreloadPolicy;)V
-	public synthetic fun <init> (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;Lcom/superplayer/core/PreloadPolicy;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;Lcom/superplayer/core/PreloadPolicy;Lcom/superplayer/core/RetryPolicy;)V
+	public synthetic fun <init> (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;Lcom/superplayer/core/PreloadPolicy;Lcom/superplayer/core/RetryPolicy;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Lcom/superplayer/core/BufferPolicy;
 	public final fun component2 ()Lcom/superplayer/core/TrackSelectionPolicy;
 	public final fun component3 ()Lcom/superplayer/core/LiveLatencyPolicy;
 	public final fun component4 ()Lcom/superplayer/core/PreloadPolicy;
-	public final fun copy (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;Lcom/superplayer/core/PreloadPolicy;)Lcom/superplayer/core/PlaybackDecision;
-	public static synthetic fun copy$default (Lcom/superplayer/core/PlaybackDecision;Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;Lcom/superplayer/core/PreloadPolicy;ILjava/lang/Object;)Lcom/superplayer/core/PlaybackDecision;
+	public final fun component5 ()Lcom/superplayer/core/RetryPolicy;
+	public final fun copy (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;Lcom/superplayer/core/PreloadPolicy;Lcom/superplayer/core/RetryPolicy;)Lcom/superplayer/core/PlaybackDecision;
+	public static synthetic fun copy$default (Lcom/superplayer/core/PlaybackDecision;Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;Lcom/superplayer/core/PreloadPolicy;Lcom/superplayer/core/RetryPolicy;ILjava/lang/Object;)Lcom/superplayer/core/PlaybackDecision;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getBuffer ()Lcom/superplayer/core/BufferPolicy;
 	public final fun getLiveLatency ()Lcom/superplayer/core/LiveLatencyPolicy;
 	public final fun getPreload ()Lcom/superplayer/core/PreloadPolicy;
+	public final fun getRetry ()Lcom/superplayer/core/RetryPolicy;
 	public final fun getTrackSelection ()Lcom/superplayer/core/TrackSelectionPolicy;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
@@ -367,6 +370,50 @@ public final class com/superplayer/core/PreloadPolicy {
 }
 
 public final class com/superplayer/core/PreloadPolicy$Companion {
+}
+
+public final class com/superplayer/core/RetryBudget {
+	public static final field Companion Lcom/superplayer/core/RetryBudget$Companion;
+	public static final field MEDIA3_DEFAULT Lcom/superplayer/core/RetryBudget;
+	public fun <init> (IJJ)V
+	public final fun component1 ()I
+	public final fun component2 ()J
+	public final fun component3 ()J
+	public final fun copy (IJJ)Lcom/superplayer/core/RetryBudget;
+	public static synthetic fun copy$default (Lcom/superplayer/core/RetryBudget;IJJILjava/lang/Object;)Lcom/superplayer/core/RetryBudget;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getInitialBackoffMs ()J
+	public final fun getMaxBackoffMs ()J
+	public final fun getMaxRetries ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/RetryBudget$Companion {
+}
+
+public final class com/superplayer/core/RetryPolicy {
+	public static final field Companion Lcom/superplayer/core/RetryPolicy$Companion;
+	public static final field MEDIA3_DEFAULT Lcom/superplayer/core/RetryPolicy;
+	public fun <init> ()V
+	public fun <init> (Lcom/superplayer/core/RetryBudget;)V
+	public fun <init> (Lcom/superplayer/core/RetryBudget;Lcom/superplayer/core/RetryBudget;)V
+	public fun <init> (Lcom/superplayer/core/RetryBudget;Lcom/superplayer/core/RetryBudget;Lcom/superplayer/core/RetryBudget;)V
+	public synthetic fun <init> (Lcom/superplayer/core/RetryBudget;Lcom/superplayer/core/RetryBudget;Lcom/superplayer/core/RetryBudget;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lcom/superplayer/core/RetryBudget;
+	public final fun component2 ()Lcom/superplayer/core/RetryBudget;
+	public final fun component3 ()Lcom/superplayer/core/RetryBudget;
+	public final fun copy (Lcom/superplayer/core/RetryBudget;Lcom/superplayer/core/RetryBudget;Lcom/superplayer/core/RetryBudget;)Lcom/superplayer/core/RetryPolicy;
+	public static synthetic fun copy$default (Lcom/superplayer/core/RetryPolicy;Lcom/superplayer/core/RetryBudget;Lcom/superplayer/core/RetryBudget;Lcom/superplayer/core/RetryBudget;ILjava/lang/Object;)Lcom/superplayer/core/RetryPolicy;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLicence ()Lcom/superplayer/core/RetryBudget;
+	public final fun getManifest ()Lcom/superplayer/core/RetryBudget;
+	public final fun getSegment ()Lcom/superplayer/core/RetryBudget;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/RetryPolicy$Companion {
 }
 
 public final class com/superplayer/core/SelectionPace {

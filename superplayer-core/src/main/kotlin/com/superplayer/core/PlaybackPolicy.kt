@@ -137,6 +137,11 @@ public enum class DecisionTrigger {
  * and by nothing else: on any other player it is decided and ignored, and [SuperPlayer.playbackDecision]
  * still says what was decided (ADR-0010 rule 10). It defaults to [PreloadPolicy.NONE], so a policy
  * written before it existed decides no prefetch.
+ *
+ * [retry] is read by `superplayer-resilience`, and by nothing else: on a player with no resilience
+ * attached it is decided and ignored, and [SuperPlayer.playbackDecision] still says what was decided
+ * (ADR-0011 rule 11) — the same contract [preload] has on a player outside a pool. It defaults to
+ * [RetryPolicy.MEDIA3_DEFAULT], so a policy written before it existed asks for Media3's own budgets.
  */
 public data class PlaybackDecision
 @JvmOverloads
@@ -145,7 +150,104 @@ constructor(
     public val trackSelection: TrackSelectionPolicy,
     public val liveLatency: LiveLatencyPolicy? = null,
     public val preload: PreloadPolicy = PreloadPolicy.NONE,
+    public val retry: RetryPolicy = RetryPolicy.MEDIA3_DEFAULT,
 )
+
+/**
+ * How many times a failed load is asked for again, and how long to wait between asks — the fourth
+ * half of a [PlaybackDecision] (ADR-0011 rule 11).
+ *
+ * Three budgets rather than one, because one exhausted budget must not spend another's: a manifest
+ * that keeps failing is a session that is over, while a single segment that keeps failing is one
+ * hole in an otherwise healthy stream, and a licence round trip is neither. `PRD.md` §3.3 requires
+ * the separation by name.
+ *
+ * What is *not* here is anything ADR-0011 rule 12 calls correctness: the jitter on each wait, the
+ * order of the fallback rungs, the token refresh before a retry and the position a rung resumes at
+ * are on for every player the module is attached to and are not a profile's to vary. A budget has
+ * different right answers per profile — a live window has moved on before a long one is spent — and
+ * that is the whole of what makes this policy.
+ *
+ * Whether a failure is retried at all is not here either: that is the [FailureClass][^1] the
+ * classifier assigns, which the budget then bounds. A class that says the same bytes cannot help is
+ * not retried however much budget this allows.
+ *
+ * [^1]: `com.superplayer.resilience.FailureClass`, which core does not depend on.
+ */
+public data class RetryPolicy
+@JvmOverloads
+constructor(
+    /** What a playlist, an MPD, a steering manifest or a time sync gets. */
+    public val manifest: RetryBudget = RetryBudget.MEDIA3_DEFAULT,
+    /** What a segment, an initialization segment or a progressive file gets. */
+    public val segment: RetryBudget = RetryBudget.MEDIA3_DEFAULT,
+    /**
+     * What a licence or provisioning round trip gets.
+     *
+     * Declared, and today unreachable: Media3 routes a licence load through the
+     * `LoadErrorHandlingPolicy` its DRM session manager holds, which is a different object from the
+     * one a media source factory is given, and SuperPlayer plumbs no DRM at all — ADR-0011 rule 6
+     * leaves that to Phase 6. It is declared anyway because the budget is policy and a policy's
+     * shape should not change when the plumbing arrives; `superplayer-resilience` already answers
+     * for a licence load, so the day one is routed here the number in force is this one.
+     */
+    public val licence: RetryBudget = RetryBudget.MEDIA3_DEFAULT,
+) {
+    public companion object {
+        /** Media3's own budgets, which is what a policy that says nothing about retries asks for. */
+        @JvmField
+        public val MEDIA3_DEFAULT: RetryPolicy = RetryPolicy()
+    }
+}
+
+/**
+ * One budget: how many times to ask again, and the window the waits between asks are drawn from.
+ *
+ * The backoff grows exponentially from [initialBackoffMs] and is capped at [maxBackoffMs]; where
+ * exactly each wait falls inside that growing window is jitter's, which is correctness and not a
+ * number here (ADR-0011 rule 12). So a budget names the shape and the ceiling, and the module
+ * draws.
+ */
+public data class RetryBudget(
+    /**
+     * How many times the same load may be asked for again after the first attempt failed. Zero
+     * means the failure escalates to the next rung immediately.
+     */
+    public val maxRetries: Int,
+    /** The wait the first retry is drawn around; each subsequent retry doubles it. */
+    public val initialBackoffMs: Long,
+    /** The longest wait any retry may be drawn around, however many have gone before. */
+    public val maxBackoffMs: Long,
+) {
+    init {
+        require(maxRetries >= 0) { "maxRetries must not be negative, was $maxRetries" }
+        require(initialBackoffMs >= 0) { "initialBackoffMs must not be negative, was $initialBackoffMs" }
+        require(maxBackoffMs >= initialBackoffMs) {
+            "maxBackoffMs ($maxBackoffMs) must not be below initialBackoffMs ($initialBackoffMs)"
+        }
+    }
+
+    public companion object {
+        /**
+         * Media3's own numbers: three retries, and a wait that grows in one-second steps to a
+         * five-second ceiling (// ref: `DefaultLoadErrorHandlingPolicy` —
+         * `DEFAULT_MIN_LOADABLE_RETRY_COUNT` is 3 and `getRetryDelayMsFor` returns
+         * `min((errorCount - 1) * 1000, 5000)`).
+         *
+         * The count and the ceiling are Media3's exactly. The *curve* is not: Media3 grows its wait
+         * linearly and adds no jitter, and this library's grows exponentially and always jitters,
+         * because rule 12 makes jitter correctness rather than a number a profile may choose. So a
+         * policy that asks for this gets Media3's budget spent on a safer schedule, not Media3's
+         * schedule.
+         */
+        @JvmField
+        public val MEDIA3_DEFAULT: RetryBudget = RetryBudget(
+            maxRetries = 3,
+            initialBackoffMs = 1_000,
+            maxBackoffMs = 5_000,
+        )
+    }
+}
 
 /**
  * How much of a feed to prefetch around the row that is playing: how many items in the direction

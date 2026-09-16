@@ -52,6 +52,7 @@ import com.superplayer.core.BufferPolicy
 import com.superplayer.core.ContentCache
 import com.superplayer.core.PlaybackPolicy
 import com.superplayer.core.PlaybackProfile
+import com.superplayer.core.PlaybackResilience
 import com.superplayer.core.PlayerPool
 import com.superplayer.core.PooledEngine
 import com.superplayer.core.SuperPlayer
@@ -177,6 +178,12 @@ public class PlaybackHarness : ExternalResource() {
      * [cache], when set, is what `SuperPlayer.Builder.setCache` takes. It sits in the chain above the
      * transport this harness installs, so a read it answers never reaches [networkRequests] — which
      * is how a test tells a cache hit from a miss. Several players may share one, as a feed's do.
+     *
+     * [resilience], when set, is what `SuperPlayer.Builder.setResilience` takes. One that is also
+     * core's extension fills the engine's load-error and header-refresh slots before this harness
+     * configures the clock and the transport, exactly as it does for a consumer — so a retry it
+     * decides on is a request that reaches the transport below, and [networkRequests] counts it.
+     * Several players may share one, as a pool's do.
      */
     public fun buildPlayer(
         content: TestContent = TestContent.video(),
@@ -186,7 +193,9 @@ public class PlaybackHarness : ExternalResource() {
         network: ThroughputTrace? = null,
         policy: PlaybackPolicy? = null,
         cache: ContentCache? = null,
-    ): SuperPlayer = buildPlayerOver(composeTransport(content, faults, network), content, profile, telemetry, policy, cache, pooled = null)
+        resilience: PlaybackResilience? = null,
+    ): SuperPlayer =
+        buildPlayerOver(composeTransport(content, faults, network), content, profile, telemetry, policy, cache, resilience, pooled = null)
 
     /**
      * [buildPlayer] over a transport already composed, which a pool's players share, and on the
@@ -199,6 +208,7 @@ public class PlaybackHarness : ExternalResource() {
         telemetry: TelemetryCollector?,
         policy: PlaybackPolicy?,
         cache: ContentCache?,
+        resilience: PlaybackResilience?,
         pooled: PooledEngine?,
     ): SuperPlayer {
         var built: ControllableVideoRenderer? = null
@@ -208,6 +218,7 @@ public class PlaybackHarness : ExternalResource() {
             .apply { telemetry?.let { setTelemetry(it) } }
             .apply { policy?.let { setPolicy(it) } }
             .apply { cache?.let { setCache(it) } }
+            .apply { resilience?.let { setResilience(it) } }
             .setPooledEngine(pooled)
             .setEngineConfigurator { configuration ->
                 // The slots rather than the engine builder, so a pool can hand the same clock and
@@ -471,6 +482,12 @@ public class PlaybackHarness : ExternalResource() {
      * `PlayerPool.Builder.setCache`, which the substituted factory would make dead. A pool's own
      * per-player calls cannot be exercised from here at all, for exactly that reason, and
      * `PlayerPoolTest` is where they are covered instead (#188).
+     *
+     * [resilience] is **not** set on the pool either, and for the same reason as [cache]: every
+     * pooled player is filled from the one object — which is what a consumer's
+     * `PlayerPool.Builder.setResilience` does too — but it reaches them through the factory below,
+     * so setting it on the builder here would be a call the substituted factory makes dead.
+     * `PlayerPoolTest` is where that builder call is covered.
      */
     public fun buildPool(
         maxSize: Int? = null,
@@ -480,6 +497,7 @@ public class PlaybackHarness : ExternalResource() {
         network: ThroughputTrace? = null,
         cache: ContentCache? = null,
         policy: PlaybackPolicy? = null,
+        resilience: PlaybackResilience? = null,
     ): PlayerPool {
         val transport = composeTransport(content, FaultScript.NONE, network)
         val built = mutableListOf<SuperPlayer>()
@@ -490,7 +508,7 @@ public class PlaybackHarness : ExternalResource() {
                 policy?.let { setPolicy(it) }
             }
             .setPlayerFactory { pooled ->
-                buildPlayerOver(transport, content, profile ?: PlaybackProfile.SHORT_FORM, telemetry(), policy, cache, pooled)
+                buildPlayerOver(transport, content, profile ?: PlaybackProfile.SHORT_FORM, telemetry(), policy, cache, resilience, pooled)
                     .also { built += it }
             }
             .build()

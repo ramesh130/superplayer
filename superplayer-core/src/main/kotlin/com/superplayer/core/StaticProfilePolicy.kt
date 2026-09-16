@@ -34,6 +34,11 @@ package com.superplayer.core
  * The defaults being departed from are `DefaultLoadControl`'s: 50s of buffer in both directions,
  * 2.5s before playback starts, 5s before it resumes after a rebuffer, and no back buffer.
  *
+ * No row sets [RetryPolicy.licence], and that is the same standard rather than an omission: no
+ * licence load reaches the object that would spend it (see that property), so a number here would be
+ * a number nobody could justify by observing anything. Phase 6 sets it when there is something to
+ * set it against.
+ *
  * ref: https://developer.android.com/reference/androidx/media3/exoplayer/DefaultLoadControl
  */
 internal class StaticProfilePolicy(private val profile: PlaybackProfile) : PlaybackPolicy {
@@ -74,6 +79,18 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
             // picked; a parsed manifest costs kilobytes and still takes the manifest round trips out
             // of the start of the title that is picked.
             preload = PreloadPolicy(itemsAhead = 1, itemsBehind = 0, depth = PreloadDepth.SourcePrepared),
+            // The one profile that can afford patience with a segment. A 30s floor means a segment
+            // can be asked for again for several seconds before the viewer sees anything at all, so
+            // this is where spending the budget is cheapest: five asks, the first after half a
+            // second because a buffer that deep makes an immediate second ask free, and an 8s
+            // ceiling because past that the cushion is draining and another rung is the better bet.
+            //
+            // The manifest keeps Media3's own: an on-demand manifest is fetched once, before there
+            // is any buffer to protect, and three asks over about seven seconds is already longer
+            // than a viewer waits on a black screen before another host is worth trying.
+            retry = RetryPolicy(
+                segment = RetryBudget(maxRetries = 5, initialBackoffMs = 500, maxBackoffMs = 8_000),
+            ),
         )
 
         // Live linear. Buffer depth is latency here: seconds held ahead of the playhead are seconds
@@ -104,6 +121,18 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
             ),
             // No prefetch. A live window moves while a row waits: a playlist fetched ahead is stale
             // by the time the row plays, and media loaded ahead is media behind the edge.
+            //
+            // The mirror image of the on-demand row: more asks for the manifest, fewer for a
+            // segment. A live playlist is reloaded once per target duration and a reload that fails
+            // has to be recovered inside one, or the player falls off the edge — so four asks, each
+            // cheap, with a 2s ceiling that keeps the whole budget inside a typical target duration.
+            // A segment is the opposite: the 10s floor *is* the latency, and media still being
+            // asked for after a second or two is media the window is about to drop, so two asks and
+            // then the rung above.
+            retry = RetryPolicy(
+                manifest = RetryBudget(maxRetries = 4, initialBackoffMs = 250, maxBackoffMs = 2_000),
+                segment = RetryBudget(maxRetries = 2, initialBackoffMs = 250, maxBackoffMs = 1_000),
+            ),
         )
 
         // Short-form feed content. Two costs dominate, and both are paid before the viewer has
@@ -142,6 +171,16 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
                 itemsBehind = 1,
                 depth = PreloadDepth.DecoderWarmed(durationMs = SHORT_FORM_BUFFER.bufferForPlaybackMs),
             ),
+            // The shortest budget of the four, and the same one for both kinds, because in a feed
+            // the thing being protected is the *start*: a row is seconds long and the viewer's
+            // thumb is already moving, so a second spent asking again is a second of the row gone
+            // and there is no cushion to hide it in. Two asks each, the first a quarter of a second
+            // later — enough to clear a momentary edge failure, short enough to reach another rung
+            // while the row is still on screen.
+            retry = RetryPolicy(
+                manifest = FEED_BUDGET,
+                segment = FEED_BUDGET,
+            ),
         )
 
         // Data saver. The viewer has asked to spend fewer bytes, so every number here is chosen
@@ -174,10 +213,32 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
             ),
             // No prefetch: every byte fetched for a row the viewer does not reach is the waste this
             // profile is minimising, and a static table cannot see whether the link is metered.
+            //
+            // A retry is a transfer paid for twice, which is exactly what this profile is spending
+            // less of — so fewer asks than anywhere else, and Media3's own unhurried waits kept
+            // rather than shortened, because waiting costs nothing and asking costs data. Two asks
+            // is still enough for the single failure a retry is actually for.
+            retry = RetryPolicy(
+                manifest = DATA_SAVER_BUDGET,
+                segment = DATA_SAVER_BUDGET,
+            ),
         )
     }
 
     private companion object {
+        /**
+         * The feed's budget, named because both of its kinds share it; the numbers are argued at
+         * the `SHORT_FORM` row.
+         */
+        val FEED_BUDGET = RetryBudget(maxRetries = 2, initialBackoffMs = 250, maxBackoffMs = 1_000)
+
+        /** As [FEED_BUDGET], for `DATA_SAVER`, and argued at that row. */
+        val DATA_SAVER_BUDGET = RetryBudget(
+            maxRetries = 2,
+            initialBackoffMs = RetryBudget.MEDIA3_DEFAULT.initialBackoffMs,
+            maxBackoffMs = RetryBudget.MEDIA3_DEFAULT.maxBackoffMs,
+        )
+
         /**
          * The short-form buffer, named because the profile's prefetch depth is read from it: a row is
          * prefetched to exactly the media its player needs before it may start. The numbers are argued

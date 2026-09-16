@@ -14,6 +14,10 @@ dependencies {
     // `ErrorClassifier` reads off a failure. Named here rather than resolved through core's
     // transitive graph, because this module names the types itself.
     implementation(libs.media3.datasource)
+    // `LoadErrorHandlingPolicy` and the `LoadErrorInfo` it is asked about: the interface
+    // `RetryingLoadErrors` implements to fill core's load-error slot. Named here for the reason
+    // above — this module names the type itself rather than borrowing core's transitive graph.
+    implementation(libs.media3.exoplayer)
 
     // Robolectric, for the two Android types the classifier's evidence is made of rather than for a
     // player: `Uri`, which every `DataSpec` carries, and `MediaCodec.CodecException`, whose
@@ -22,6 +26,12 @@ dependencies {
     // in every other module's tests.
     testImplementation(libs.media3.test.utils.robolectric)
     testImplementation(libs.robolectric)
+
+    // The deterministic playback harness, which plays real HLS through a player with this module's
+    // load-error policy in its engine and counts what reached the network — the only way a retry,
+    // a budget and an escalation can be asserted through the public API. Phase 2 on phase 5, tests
+    // only.
+    testImplementation(project(":superplayer-testkit"))
 }
 
 // The two slots this module fills — a `HeaderRefreshLayer` in the transfer chain and the

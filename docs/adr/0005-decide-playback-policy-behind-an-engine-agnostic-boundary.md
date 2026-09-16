@@ -81,6 +81,14 @@ Four rules follow, and they are binding:
    third half of `PlaybackDecision`, a `PreloadPolicy`, decided beside the other two and ignored on
    a player with no coordinator. The memory guard and the data-saver rule it is bounded by are
    ADR-0006 rule 1's kind, not this rule's.
+
+   *Addendum (2026-09-16, ADR-0011 rule 11).* Retry **budgets** — how many attempts a manifest,
+   a segment and a licence each get, and the backoff ceiling — are policy under this rule for the
+   same reason: a live window has moved on before a long budget is spent, and a stall history
+   argues for a shorter one. They are a fourth half of `PlaybackDecision`, a `RetryPolicy`,
+   defaulting to Media3's own and ignored on a player with no resilience attached. Jitter, token
+   refresh, the rung order and resume-position preservation are ADR-0006 rule 1's kind, not this
+   rule's.
 3. **The consumer names a profile, not a number.** `SuperPlayer.Builder.setProfile` takes a
    `PlaybackProfile`; the constants behind it, and the rationale for each of them, live in the
    policy's per-profile table, which is internal and free to be retuned. Every constant that departs

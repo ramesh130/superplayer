@@ -253,6 +253,13 @@ Nine rules follow, and they are binding.
    also reaches this one's rule 5: on a pool with preload attached the retargetable components are
    shared by every player on it, and a re-applied decision is honoured whole across the pool.
 
+   *Addendum (2026-09-16, ADR-0011 rule 13).* `superplayer-resilience` is the fifth friend, on the
+   same argument: one public call on the builders, a resilience object that also implements a
+   core-internal extension, and two slots it fills — a load-error slot in `EngineConfiguration`
+   and a header-refresh slot in `TransferChain`. Its retry budgets reach this ADR's rule 5 the way
+   the selection pace does: the internal load-error policy reads the half in force on every
+   consultation, so a changed budget is honoured whole on the next load error.
+
 ### What an estimate may remember, and where
 
 8. **A throughput estimate is remembered per transport, for the lifetime of the process, in memory

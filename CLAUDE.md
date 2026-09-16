@@ -549,6 +549,17 @@ Style preferences these are not. A change violating one is not accepted, whateve
   device again; prefetch depth is a third half of `PlaybackDecision`, the memory guard and the
   data-saver rule are platform rules on for everyone, and cache size is the consumer's; and a
   player built with neither module registers and allocates nothing for them, which a test counts.
+- **[ADR-0011](docs/adr/0011-classify-every-failure-once-and-keep-the-rungs-behind-the-boundary.md)** —
+  decides Phase 5's shape: a failure acquires a meaning in exactly one place,
+  `superplayer-resilience`'s `ErrorClassifier`, whose taxonomy is public, total and names no Media3
+  type, and telemetry reports that classification rather than keeping a second one; core detects
+  the transfer defects a core-only consumer is exposed to and raises typed exceptions, which the
+  classifier maps rather than re-derives; the ladder's six rungs are fixed in order and reached one
+  at a time, and every rung resumes at the position playback had reached; retry budgets are policy,
+  a fourth half of `PlaybackDecision`, while jitter, token refresh, the rung order and position
+  preservation are correctness on for everyone; the Media3-facing halves are internal and reach the
+  engine through a load-error slot and a header-refresh slot in core's seam, filled by the module
+  as core's fifth Kotlin friend; and a player built without it pays nothing, which a test counts.
 - **[`docs/api-surface.md`](docs/api-surface.md)** — every published module's public API is tracked
   in `<module>/api/<module>.api` and validated by `check`. Changing it means running
   `./gradlew updateApiSurface` and committing the diff in the same change. A leaked `@UnstableApi`

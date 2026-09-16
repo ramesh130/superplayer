@@ -401,11 +401,22 @@ clock wait; it is addressed by `ResourceKind.LICENCE`, so a `FaultScript` can de
 refuse it once and relent; and it is counted by `networkRequests`, so a test can say what was asked
 of it. Media3's `LicenseServer` is a `MediaDrmCallback` rather than anything HTTP-shaped, so
 `LicenceServerDataSource` does the translation in one place — a POST body *is* the request the
-callback would have been handed — and the entitlement decision stays Media3's rather than becoming a
-second, home-made licence server nobody has reviewed. The player's side is
+callback would have been handed — and the **entitlement** decision stays Media3's rather than becoming
+a second, home-made licence server nobody has reviewed. The player's side is
 `TransportMediaDrmCallback` for the *stock* arm, which posts both requests raw; `superplayer-drm`
 uses Media3's own `HttpMediaDrmCallback`, whose key-request half posts to the address
 `WidevineConfig` named.
+
+**One decision is the harness's own, and it is the exception to the sentence above rather than a hole
+in it** (#208). ADR-0012 rule 11's downgrade permission is not an entitlement and does not travel in a
+licence: it is a *policy* answer, stated in response headers beside the licence
+(`SecurityLevelNegotiation`), and Media3's `FakeExoMediaDrm.LicenseServer` has no lever for it at all
+— it is an allow-list over `SchemeData` byte lists, it inspects no request and it varies no response.
+So `LicenceServerDataSource` answers that one question itself, out of what a test stated with
+`FakeLicenceServer.permitSecurityLevel(...)`, and no key ever comes out of it. The statement is the
+*server's* rather than the device's, deliberately: a permission the device could state would be a
+permission the client had given itself, and the pair of tests that matters — a server that permits and
+a server that does not, over one identical device — would be unwritable.
 
 **Provisioning is where the two used to diverge, and #207 settled it in the harness rather than in
 the library.** Media3 sends a provisioning request to the URL the *device* names — on a handset, the

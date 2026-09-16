@@ -163,6 +163,24 @@ public sealed class TelemetryEvent {
          * memory pressure after the last event was queued still lands here.
          */
         public val droppedEventCount: Int = 0,
+
+        /**
+         * The `securityLevel` this session's protected content was actually delivered at — `"L1"`,
+         * `"L3"` — or null on a session that negotiated none, which is every unprotected session and
+         * every protected one on a device that could honour the level it reports.
+         *
+         * ADR-0012 rule 11: a session that opened at a *reduced* level had a different thing
+         * delivered from the one it was entitled to, and a support engineer reading a session needs
+         * to know which. Carried on this event rather than on [SessionStarted] because it is not
+         * settled when a session starts — the permission is asked of the licence server and the first
+         * session opens after the answer — and carried at all rather than left to be inferred,
+         * because nothing else in a session's stream says it.
+         *
+         * Read from [SuperPlayer.deliveredSecurityLevel], which is the one place it is decided. An
+         * addition of shape rather than of meaning, so not a [SCHEMA_VERSION] bump (ADR-0008 rule 5);
+         * `docs/telemetry-schema.md` defines it.
+         */
+        public val securityLevel: String? = null,
     ) : TelemetryEvent()
 
     /**

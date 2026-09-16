@@ -422,6 +422,20 @@ public final class com/superplayer/core/RetryPolicy {
 public final class com/superplayer/core/RetryPolicy$Companion {
 }
 
+public final class com/superplayer/core/SecurityDowngradeRefusedException : java/io/IOException {
+	public final fun getDeviceSecurityLevel ()Ljava/lang/String;
+	public final fun getPermittedLevel ()Ljava/lang/String;
+	public final fun getRefusedLevel ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/SecurityLevelNegotiation {
+	public static final field INSTANCE Lcom/superplayer/core/SecurityLevelNegotiation;
+	public static final field LEVEL_L1 Ljava/lang/String;
+	public static final field LEVEL_L3 Ljava/lang/String;
+	public static final field LEVEL_PERMITTED_HEADER Ljava/lang/String;
+	public static final field LEVEL_REQUEST_HEADER Ljava/lang/String;
+}
+
 public final class com/superplayer/core/SelectionPace {
 	public static final field Companion Lcom/superplayer/core/SelectionPace$Companion;
 	public static final field ENGINE_DEFAULT Lcom/superplayer/core/SelectionPace;
@@ -529,6 +543,7 @@ public final class com/superplayer/core/SuperPlayer : androidx/media3/common/Pla
 	public fun getCurrentTimeline ()Landroidx/media3/common/Timeline;
 	public fun getCurrentTracks ()Landroidx/media3/common/Tracks;
 	public fun getCurrentWindowIndex ()I
+	public final fun getDeliveredSecurityLevel ()Ljava/lang/String;
 	public fun getDeviceInfo ()Landroidx/media3/common/DeviceInfo;
 	public fun getDeviceVolume ()I
 	public fun getDuration ()J
@@ -869,19 +884,21 @@ public final class com/superplayer/core/TelemetryEvent$SeekRequested : com/super
 }
 
 public final class com/superplayer/core/TelemetryEvent$SessionEnded : com/superplayer/core/TelemetryEvent {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;JJI)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JJIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JJILjava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JJILjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()J
 	public final fun component4 ()J
 	public final fun component5 ()I
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;JJI)Lcom/superplayer/core/TelemetryEvent$SessionEnded;
-	public static synthetic fun copy$default (Lcom/superplayer/core/TelemetryEvent$SessionEnded;Ljava/lang/String;Ljava/lang/String;JJIILjava/lang/Object;)Lcom/superplayer/core/TelemetryEvent$SessionEnded;
+	public final fun component6 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JJILjava/lang/String;)Lcom/superplayer/core/TelemetryEvent$SessionEnded;
+	public static synthetic fun copy$default (Lcom/superplayer/core/TelemetryEvent$SessionEnded;Ljava/lang/String;Ljava/lang/String;JJILjava/lang/String;ILjava/lang/Object;)Lcom/superplayer/core/TelemetryEvent$SessionEnded;
 	public fun equals (Ljava/lang/Object;)Z
 	public fun getContentId ()Ljava/lang/String;
 	public final fun getDroppedEventCount ()I
 	public fun getMonotonicTimeMs ()J
+	public final fun getSecurityLevel ()Ljava/lang/String;
 	public fun getSessionId ()Ljava/lang/String;
 	public fun getTimestampMs ()J
 	public fun hashCode ()I

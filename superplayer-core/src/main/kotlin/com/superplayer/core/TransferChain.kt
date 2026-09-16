@@ -253,6 +253,8 @@ internal object TransferChain {
      * without `setDrm` — not a provider that answers `DRM_UNSUPPORTED`. A filled slot is handed
      * [loadErrors] as well, because Media3 asks a session manager's own policy about a licence load;
      * one object rather than two is what makes `RetryPolicy.licence` reachable (#205).
+     * [deliveredProtection] is where the slot writes down what it opened, read back through
+     * [SuperPlayer.deliveredSecurityLevel]; a player with no slot writes nothing into it.
      */
     fun mediaSourceFactory(
         context: Context,
@@ -265,6 +267,7 @@ internal object TransferChain {
         loadErrors: LoadErrorHandlingPolicy? = null,
         drm: LicenceSessions? = null,
         exoMediaDrm: ExoMediaDrm.Provider? = null,
+        deliveredProtection: DeliveredProtection = DeliveredProtection(),
     ): MediaSource.Factory {
         val bottom = transport ?: DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory())
         // Header refresh first, so it is the innermost wrapper: a request it repairs and re-opens is
@@ -297,7 +300,18 @@ internal object TransferChain {
             // failed licence load to `RetryPolicy.licence` instead of to Media3's own defaults (#205).
             drm?.let {
                 setDrmSessionManagerProvider(
-                    it.over(refreshed.stampedWith(identity = null, kind = LoadKind.LICENCE), exoMediaDrm, loadErrors),
+                    it.over(
+                        LicenceContext(
+                            transport = refreshed.stampedWith(identity = null, kind = LoadKind.LICENCE),
+                            mediaDrm = exoMediaDrm,
+                            loadErrors = loadErrors,
+                            // Read here rather than by the module, and read only where there is a slot
+                            // to read it for: a player without `setDrm` walks no codec list on this
+                            // account (ADR-0012 rules 12 and 13).
+                            device = deviceConstraintsOf(context),
+                            delivered = deliveredProtection,
+                        ),
+                    ),
                 )
             }
         }

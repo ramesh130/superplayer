@@ -23,6 +23,7 @@ import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
 import androidx.media3.exoplayer.drm.DrmSession
 import com.superplayer.core.LiveWindowTooShortException
 import com.superplayer.core.LoadKind
+import com.superplayer.core.SecurityDowngradeRefusedException
 import com.superplayer.core.StaleLivePlaylistException
 
 /**
@@ -168,6 +169,13 @@ public object ErrorClassifier {
             // A window no playhead fits inside is a manifest that cannot be acted on, however
             // well-formed it is. Core judged the depths; this reads the verdict.
             is LiveWindowTooShortException -> FailureClass.Content.ManifestInvalid
+
+            // A device that cannot honour the level it reports, and a licence server that would not
+            // permit the lower one (ADR-0012 rule 11). Read here rather than off the error code for
+            // the reason the two above are: `superplayer-drm` raised this holding the evidence — the
+            // device's level, the level asked about, what the server actually answered — and a band
+            // reading would throw all three away to arrive at a coarser answer.
+            is SecurityDowngradeRefusedException -> FailureClass.Drm.DowngradeRefused
 
             else -> null
         }

@@ -27,6 +27,8 @@ import com.superplayer.core.FailureCategory
 import com.superplayer.core.LiveWindowTooShortException
 import com.superplayer.core.LoadKind
 import com.superplayer.core.RequestStamp
+import com.superplayer.core.SecurityDowngradeRefusedException
+import com.superplayer.core.SecurityLevelNegotiation
 import com.superplayer.core.StaleLivePlaylistException
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -64,6 +66,7 @@ class ErrorClassifierTest {
         FailureClass.Drm.LicenceExpired,
         FailureClass.Drm.SystemError,
         FailureClass.Drm.Unsupported,
+        FailureClass.Drm.DowngradeRefused,
         FailureClass.Fatal.Unsupported,
     )
 
@@ -108,6 +111,43 @@ class ErrorClassifierTest {
     }
 
     @Test
+    fun aDowngradeTheLicenceServerRefusedIsItsOwnClassWithItsOwnSentence() {
+        // ADR-0012 rule 11 and #208. Read off the exception core raised rather than off any code,
+        // which is why it is asserted with no `PlaybackException` around it at all: the evidence is
+        // the exception's own fields, and a classifier that needed a band to find it would be reading
+        // the weaker of the two things it was given (ADR-0011 rule 4).
+        val refusal = refusedDowngrade()
+
+        assertThat(ErrorClassifier.classify(refusal)).isEqualTo(FailureClass.Drm.DowngradeRefused)
+        // Wrapped the way a renderer wraps it, because that is the shape a consumer catches.
+        val delivered = PlaybackException(
+            "delivered",
+            DrmSession.DrmSessionException(refusal, PlaybackException.ERROR_CODE_DRM_DISALLOWED_OPERATION),
+            PlaybackException.ERROR_CODE_DRM_DISALLOWED_OPERATION,
+        )
+        assertThat(ErrorClassifier.classify(delivered)).isEqualTo(FailureClass.Drm.DowngradeRefused)
+        // And the point of the leaf: the same code with no such cause is still `Drm.Unsupported`, so
+        // the class is the exception's doing and not the band's.
+        assertThat(classify(PlaybackException.ERROR_CODE_DRM_DISALLOWED_OPERATION))
+            .isEqualTo(FailureClass.Drm.Unsupported)
+    }
+
+    @Test
+    fun aRefusedDowngradeIsNotConfusedWithALicenceThatCouldNotBeFetched() {
+        // The issue's own requirement, as two assertions: a key of its own, and a class that does not
+        // offer a retry. An app that showed this one "check your connection and try again" would be
+        // telling a viewer to mend something that is not broken.
+        val refused = FailureClass.Drm.DowngradeRefused
+        assertThat(refused.userMessageKey).isEqualTo(FailureClass.PROTECTION_UNAVAILABLE_MESSAGE_KEY)
+        assertThat(refused.userMessageKey).isNotEqualTo(FailureClass.DRM_MESSAGE_KEY)
+        assertThat(refused.userMessageKey).isNotEqualTo(FailureClass.LICENCE_EXPIRED_MESSAGE_KEY)
+        assertThat(refused.retryable).isFalse()
+        // Rung 6 at once: every rung below is a different place to get the bytes from, and this is
+        // the same device meeting the same policy wherever they come from.
+        assertThat(refused.rungCeiling).isEqualTo(FallbackRung.TYPED_ERROR)
+    }
+
+    @Test
     fun theCategoryTableIsOneToOneAndEveryClassHasARow() {
         assertThat(everyClass.map { it.category }).containsExactly(
             FailureCategory.NETWORK,
@@ -116,9 +156,11 @@ class ErrorClassifierTest {
             FailureCategory.SOURCE,
             FailureCategory.DECODER,
             FailureCategory.DECODER,
-            // Every leaf of the DRM branch, the two #206 added included: the branch grew and the
-            // coarse bucket did not, which is why `TelemetryEvent.SCHEMA_VERSION` did not move for
-            // it (`docs/telemetry-schema.md`, *Release notes*).
+            // Every leaf of the DRM branch — the two #206 added and the one #208 added included:
+            // the branch grew and the coarse bucket did not, which is why
+            // `TelemetryEvent.SCHEMA_VERSION` did not move for either (`docs/telemetry-schema.md`,
+            // *Release notes*).
+            FailureCategory.DRM,
             FailureCategory.DRM,
             FailureCategory.DRM,
             FailureCategory.DRM,
@@ -409,6 +451,14 @@ class ErrorClassifierTest {
     /** A DRM failure as a session raises it: the code assigned, and no `PlaybackException` yet. */
     private fun drmSessionFailure(errorCode: Int): DrmSession.DrmSessionException =
         DrmSession.DrmSessionException(IllegalStateException("drm"), errorCode)
+
+    /** A refusal as `superplayer-drm` raises it: the evidence, and no `PlaybackException` yet. */
+    private fun refusedDowngrade() =
+        SecurityDowngradeRefusedException(
+            deviceSecurityLevel = SecurityLevelNegotiation.LEVEL_L1,
+            refusedLevel = SecurityLevelNegotiation.LEVEL_L3,
+            permittedLevel = null,
+        )
 
     private fun stalePlaylist(likelyCause: StaleLivePlaylistException.LikelyCause) =
         StaleLivePlaylistException(

@@ -204,7 +204,32 @@ public class SuperPlayer private constructor(
      * none.
      */
     private val playerStateRungs: PlayerStateRungs?,
+    /**
+     * What the DRM slot wrote down about the session graph it opened, and an empty holder on every
+     * player that opened none.
+     *
+     * Deliberately without a default value, for the reason [builtWithTrackSelectionParameters] has
+     * none.
+     */
+    private val deliveredProtection: DeliveredProtection,
 ) : Player by delegate {
+
+    /**
+     * The `securityLevel` this player's protected sessions were actually opened at — `"L1"`, `"L3"`,
+     * or null on a player that has opened none.
+     *
+     * ADR-0012 rule 11's last sentence, read as a property rather than reported as an event: a
+     * session that opened at a *reduced* level had a different thing delivered than the one it was
+     * entitled to, and a support engineer reading a session needs to know which. `QoeCollector` reads
+     * it onto `TelemetryEvent.SessionEnded.securityLevel`, where it is settled; an app that shows a
+     * quality badge can read it directly.
+     *
+     * Null on every player built without `SuperPlayer.Builder.setDrm`, and also on one whose device
+     * could honour the level it reports — the ordinary case, where no negotiation happens and there
+     * is nothing to say.
+     */
+    public val deliveredSecurityLevel: String?
+        get() = deliveredProtection.securityLevel
 
     /**
      * The decision currently in force: how this player is buffering and what it is selecting
@@ -318,6 +343,8 @@ public class SuperPlayer private constructor(
         pooled: PooledEngine? = null,
         // Null for an engine somebody else built: no resilience filled the slot, so nothing is asked.
         playerStateRungs: PlayerStateRungs? = null,
+        // Empty for an engine somebody else built: no slot of core's opened a session on it.
+        deliveredProtection: DeliveredProtection = DeliveredProtection(),
     ) : this(
         exoPlayer,
         profile,
@@ -331,6 +358,7 @@ public class SuperPlayer private constructor(
         identifiesContent,
         pooled,
         playerStateRungs,
+        deliveredProtection,
     )
 
     /**
@@ -1412,6 +1440,11 @@ public class SuperPlayer private constructor(
             // Installed after the seam rather than before it, so that a test's fake data source
             // stands in for the HTTP stack *under* SuperPlayer's layers instead of replacing them.
             // Only content with no transport at all replaces the whole path.
+            // Built here rather than inside the chain so that the facade can read it back: it is the
+            // one fact about a player that the DRM slot knows and core does not (ADR-0012 rule 11).
+            // A player whose loading path a test replaced wholesale fills no slot and so writes
+            // nothing into it, which is the same answer a player without `setDrm` gives.
+            val deliveredProtection = DeliveredProtection()
             val mediaSourceFactory = configuration.mediaSourceFactory
                 ?: TransferChain.mediaSourceFactory(
                     context,
@@ -1424,6 +1457,7 @@ public class SuperPlayer private constructor(
                     configuration.loadErrors,
                     configuration.drm,
                     configuration.exoMediaDrm,
+                    deliveredProtection,
                 )
             engineBuilder.setMediaSourceFactory(mediaSourceFactory)
 
@@ -1456,6 +1490,7 @@ public class SuperPlayer private constructor(
                 // Whatever the resilience put in the slot, and null on every other player — which is
                 // the whole of what a player without the module pays for rung 4 (ADR-0011 rule 14).
                 playerStateRungs = configuration.playerStateRungs,
+                deliveredProtection = deliveredProtection,
             )
 
             // The first pooled player's components become the pool's. The factory handed on is the

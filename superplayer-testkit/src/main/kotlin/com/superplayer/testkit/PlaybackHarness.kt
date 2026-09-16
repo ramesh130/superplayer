@@ -995,6 +995,9 @@ public class PlaybackHarness : ExternalResource() {
         // field of `DeviceStatement` rather than a Robolectric shadow, so nothing else resets it
         // between tests and one test's revoked device would be the next one's.
         DeviceStatement.forgetWidevine()
+        // And the server's own statement beside the device's, for the same reason: both outlive a
+        // test method, and a permission left standing would be the next test's silent downgrade.
+        FakeLicenceServer.forgetPermission()
     }
 
     /** Releases every player this harness built and still holds, newest first. */

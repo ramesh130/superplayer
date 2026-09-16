@@ -297,6 +297,35 @@ public sealed class FailureClass(
          * be protected differently, so the ceiling is rung 4 rather than the error at once.
          */
         public object Unsupported : Drm("Drm.Unsupported", retryable = false, FallbackRung.NEXT_SOURCE)
+
+        /**
+         * The device cannot honour the protection level it reports, and the licence server did not
+         * permit the lower one — so nothing was delivered rather than something weaker (ADR-0012
+         * rule 11, `PRD.md` §3.2, #208).
+         *
+         * Mapped from core's `SecurityDowngradeRefusedException` rather than from any error code,
+         * because the evidence is the exception's own fields and a code could only approximate them
+         * (ADR-0011 rule 4). The client asked, and the answer was no; both halves matter, and neither
+         * is a failure of delivery.
+         *
+         * Not retryable and capped at rung 6, for one reason that covers both: every rung below is a
+         * different *place to get the bytes from*, and this is the same device meeting the same policy
+         * wherever the bytes come from. A second source is a second container under one entitlement
+         * (ADR-0012 rule 1), so rung 4 would re-ask a question already answered — which is why the
+         * ceiling is the error and not `Unsupported`'s next source.
+         *
+         * It carries [PROTECTION_UNAVAILABLE_MESSAGE_KEY] rather than [DRM_MESSAGE_KEY] because the
+         * issue that asked for it asked for exactly that: this must not be confused with a licence
+         * that could not be fetched. Nothing is wrong with the entitlement, the network or the
+         * content — the viewer is on a device this programme may not be shown on, and an app that
+         * cannot tell the two apart offers "try again" for something no attempt will mend.
+         */
+        public object DowngradeRefused : Drm(
+            "Drm.DowngradeRefused",
+            retryable = false,
+            FallbackRung.TYPED_ERROR,
+            PROTECTION_UNAVAILABLE_MESSAGE_KEY,
+        )
     }
 
     /**
@@ -315,7 +344,7 @@ public sealed class FailureClass(
     }
 
     /**
-     * The six things there are to say to a viewer, which is fewer than there are classes and is the
+     * The seven things there are to say to a viewer, which is fewer than there are classes and is the
      * point of [userMessageKey] being its own column.
      *
      * Named for the *message* rather than for the branch that carries it — `superplayer_error_` and
@@ -339,13 +368,27 @@ public sealed class FailureClass(
 
         /**
          * The entitlement ran out rather than failed: the one protection failure with a remedy a
-         * viewer can be offered, which is why it is the sixth key rather than the fourth's second
+         * viewer can be offered, which is why it is a key of its own rather than the fourth's second
          * meaning (`PRD.md` §3.2, #206).
          *
          * An app that renews licences words this one around renewal — "this download has expired,
          * tap to renew" — and one that does not still says something truer than "playback error".
          */
         public const val LICENCE_EXPIRED_MESSAGE_KEY: String = "superplayer_error_licence_expired"
+
+        /**
+         * The content may not be shown on this device, and asking again will not change that: the
+         * device cannot protect it well enough and its licence server said so (#208).
+         *
+         * The seventh key, and argued as this class's KDoc asks a new one to be. None of the six
+         * says it: [DRM_MESSAGE_KEY] is protection failing, [LICENCE_EXPIRED_MESSAGE_KEY] is an
+         * entitlement running out, and [DEVICE_MESSAGE_KEY] is this device not being able to *play*
+         * it — which is nearly right and wrong in the way that matters, because an app wording that
+         * one around codecs and memory will tell a viewer to free up space for a policy decision.
+         * An app that offers other content, or the same content in the clear, words this one.
+         */
+        public const val PROTECTION_UNAVAILABLE_MESSAGE_KEY: String =
+            "superplayer_error_protection_unavailable"
 
         /** The engine has named the content unplayable here: the one message that offers no remedy. */
         public const val UNSUPPORTED_MESSAGE_KEY: String = "superplayer_error_unsupported"

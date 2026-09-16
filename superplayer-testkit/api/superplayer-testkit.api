@@ -149,6 +149,7 @@ public final class com/superplayer/testkit/TestContent {
 	public static final field DEFAULT_BITRATE_BPS I
 	public static final field DEFAULT_DURATION_MS J
 	public static final field DEFAULT_SEGMENT_COUNT I
+	public final fun alsoServing (Lcom/superplayer/testkit/TestContent;)Lcom/superplayer/testkit/TestContent;
 	public static final fun dash (ILjava/lang/String;)Lcom/superplayer/testkit/TestContent;
 	public final fun getSourceUri ()Ljava/lang/String;
 	public static final fun hls (IILjava/lang/String;)Lcom/superplayer/testkit/TestContent;

@@ -18,6 +18,7 @@ package com.superplayer.resilience
 
 import android.net.Uri
 import androidx.media3.common.C
+import androidx.media3.common.PlaybackException
 import androidx.media3.datasource.DataSpec
 import androidx.media3.exoplayer.source.LoadEventInfo
 import androidx.media3.exoplayer.source.MediaLoadData
@@ -39,10 +40,13 @@ import kotlin.random.Random
  * to be stated here rather than through a player because the classes it is about do not all reach a
  * player's load-error path: Media3 hands a `LoadErrorHandlingPolicy` an `IOException`, so a decoder
  * failure — which the ladder must route past rungs 2 and 3 to reach its own remedy — arrives at the
- * ladder from the player-error path that rungs 4 to 6 are being built on (#182, #183). A
- * [FailedLoad] is the value every one of those paths hands a rung, and it is what is offered here.
+ * ladder from the player-error path rung 4 already sits on and rungs 5 and 6 are being built on
+ * (#182, #183). A [FailedLoad] is the value every load path hands a rung, and it is what is offered
+ * here; rung 4 is asked about a `PlaybackException` instead, because by then the failure has stopped
+ * being a load and become a failure of the session.
  *
- * What the *player* does with the two rungs this file routes to is `FallbackPlaybackTest`.
+ * What the *player* does with the rungs this file routes to is `FallbackPlaybackTest` for rungs 2 and
+ * 3, and `NextSourcePlaybackTest` for rung 4.
  *
  * Robolectric for `Uri`, which every `DataSpec` carries, and for nothing else.
  */
@@ -135,6 +139,35 @@ class FallbackLadderTest {
         assertThat(climb(FailureClass.Transient.Network, retry = 2, options = null))
             .isEqualTo(RungOutcome.Escalate)
     }
+
+    @Test
+    fun theRungAbovePlaysAnotherSourceForEveryClassThatMayReachItAndNoOther() {
+        // Rung 4 is `NextSource`, and it is the ladder's routing on the other side of ADR-0011 rule
+        // 5's boundary: core performs the re-adoption, this decides whether it is worth one. What a
+        // player then does with the answer is `NextSourcePlaybackTest`.
+        //
+        // Offered to every class whose ceiling reaches it — a network failure, and a manifest one
+        // rung 3 could do nothing for, since a publication defect at one source can be absent from
+        // another the same way it can be absent from another host.
+        assertThat(NextSource.opensNextSource(errorOf(PlaybackException.ERROR_CODE_IO_UNSPECIFIED))).isTrue()
+        assertThat(NextSource.opensNextSource(errorOf(PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED)))
+            .isTrue()
+        // Refused where the ceiling stops below it: content this device cannot play at all is content
+        // a second manifest of the same programme would fail on too, so nothing is downloaded to find
+        // that out and the failure goes to rung 6 (`Fatal.Unsupported`).
+        assertThat(NextSource.opensNextSource(errorOf(PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED)))
+            .isFalse()
+        // And refused where the ceiling is *above* it, which is the case only a routing decision can
+        // catch: a decoder that was working and stopped has a remedy at rung 5, and a second manifest
+        // fetched on the way there costs a viewer a startup for nothing.
+        assertWithMessage("a transient decoder failure was offered another source")
+            .that(NextSource.opensNextSource(errorOf(PlaybackException.ERROR_CODE_DECODING_FAILED)))
+            .isFalse()
+    }
+
+    /** A failure as the player delivers one: a code and nothing else for the classifier to read. */
+    private fun errorOf(errorCode: Int): PlaybackException =
+        PlaybackException("Injected failure", /* cause= */ null, errorCode)
 
     private fun climb(
         failureClass: FailureClass,

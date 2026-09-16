@@ -92,7 +92,7 @@ class SuperPlayerMediaRequestTest {
     }
 
     @Test
-    fun theFirstSourceIsPlayedAndTheRestAreRetainedUnused() {
+    fun theFirstSourceIsPlayedAndACoreOnlyPlayerOpensNoOther() {
         val request =
             MediaRequest.Builder(EPISODE)
                 .addSource(SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI)
@@ -107,7 +107,10 @@ class SuperPlayerMediaRequestTest {
         assertThat(player.currentMediaItem?.localConfiguration?.uri.toString())
             .isEqualTo(SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI)
 
-        // Retained, in order, for the failover that #8 deliberately leaves to later work.
+        // Retained, in order, and reachable: falling back to the second is rung 4 of ADR-0011's
+        // ladder, which a player built with `superplayer-resilience` performs and this player — built
+        // with core alone — asks nobody about and therefore never performs (rule 14). The rung itself
+        // is forced through a player in `NextSourcePlaybackTest`, in the module that owns it.
         assertThat(request.sources.map { it.toString() })
             .containsExactly(SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI, UNSERVED_SOURCE_URI)
             .inOrder()

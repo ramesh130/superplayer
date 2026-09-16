@@ -24,6 +24,7 @@ import androidx.annotation.VisibleForTesting
 import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionParameters
@@ -194,6 +195,15 @@ public class SuperPlayer private constructor(
      * none.
      */
     private val pooled: PooledEngine?,
+    /**
+     * Who this player asks whether a surfaced failure may climb to rung 4, or null on a player built
+     * without `superplayer-resilience` — which asks nobody, registers no listener for it and opens
+     * the first source and nothing else (ADR-0011 rule 14).
+     *
+     * Deliberately without a default value, for the reason [builtWithTrackSelectionParameters] has
+     * none.
+     */
+    private val playerStateRungs: PlayerStateRungs?,
 ) : Player by delegate {
 
     /**
@@ -306,6 +316,8 @@ public class SuperPlayer private constructor(
         identifiesContent: Boolean = false,
         // Null for an engine somebody else built: no pool built it.
         pooled: PooledEngine? = null,
+        // Null for an engine somebody else built: no resilience filled the slot, so nothing is asked.
+        playerStateRungs: PlayerStateRungs? = null,
     ) : this(
         exoPlayer,
         profile,
@@ -318,6 +330,7 @@ public class SuperPlayer private constructor(
         reapplication,
         identifiesContent,
         pooled,
+        playerStateRungs,
     )
 
     /**
@@ -367,6 +380,51 @@ public class SuperPlayer private constructor(
      * loaded rather than trusting it — see there.
      */
     private var currentRequest: MediaRequest? = null
+
+    /**
+     * Which entry of [currentRequest]'s sources is open — 0 until rung 4 moves it, and back to 0
+     * whenever content is adopted, restored or reset.
+     *
+     * Held rather than derived, because the item carries a URI and a URI does not say which candidate
+     * it was: two entries of one request may differ only in a signed query string, and a session that
+     * re-derived its index would fall back to the source it had just left.
+     *
+     * Touched on the application thread only — [adopt] is reached from a [Player] call or a session
+     * callback, and [openNextSource] from a player error, which Media3 delivers on the application
+     * looper.
+     */
+    private var sourceIndex: Int = FIRST_SOURCE
+
+    /**
+     * The failure rung 4 was last asked about, and the answer, so that the question is put to
+     * [playerStateRungs] exactly once per failure.
+     *
+     * Two callers ask, in this order and in the same dispatch: the listener wrappers, because a
+     * failure core takes on is one the consumer is not told about ([withholdsFromConsumer]), and the
+     * engine listener registered below, which performs the rung. The answer has to be the same for
+     * both, and it cannot be recomputed — by the time the second asks, the rung has been performed
+     * and its preconditions are gone.
+     */
+    private var failureDecidedOn: PlaybackException? = null
+    private var failureWithheld: Boolean = false
+
+    // Where a climb out of the top of `superplayer-resilience`'s ladder reaches the player: rung 4 is
+    // performed here, on a player that has somebody to ask and on no other (ADR-0011 rules 5 and 14).
+    //
+    // On the engine rather than through `addListener`, so it is not wrapped, and registered in the
+    // constructor so that it is ahead of every consumer's: Media3 dispatches an event to its
+    // listeners in registration order, and a consumer's wrapper asks this player what to withhold.
+    init {
+        playerStateRungs?.let {
+            delegate.addListener(
+                object : Player.Listener {
+                    override fun onPlayerError(error: PlaybackException) {
+                        if (withholdsFromConsumer(error)) openNextSource()
+                    }
+                },
+            )
+        }
+    }
 
     /**
      * Says that a viewer just asked for playback — the start boundary of time to first frame.
@@ -458,6 +516,11 @@ public class SuperPlayer private constructor(
     internal fun adopt(request: MediaRequest): AdoptedRequest {
         rememberPositionOfCurrentContent()
         currentRequest = request
+        // Content taken on afresh starts at its first source, whatever the outgoing content had
+        // fallen back to. A request that is given to a player a second time gets the whole ladder
+        // again, which is the honest answer: the CDN that failed a minute ago may be well now, and
+        // nothing here remembers a failure across an adoption.
+        sourceIndex = FIRST_SOURCE
         // The one place a measurement session can begin, for the same reason this method exists at
         // all: both callers arrive here, so content resolved from a notification or a car head unit
         // opens a session exactly as content set from the app does. A collector that already has one
@@ -476,7 +539,93 @@ public class SuperPlayer private constructor(
      * cache to key by it, and not otherwise. Every path that turns a request into an item for this
      * player goes through here, so an item a controller added and an item the app set are keyed alike.
      */
-    internal fun itemOf(request: MediaRequest): MediaItem = request.toMediaItem(identified = identifiesContent)
+    internal fun itemOf(request: MediaRequest): MediaItem = itemOf(request, FIRST_SOURCE)
+
+    /** [itemOf], opening a named candidate: [FIRST_SOURCE] for everything but rung 4's re-adoption. */
+    private fun itemOf(request: MediaRequest, source: Int): MediaItem =
+        request.toMediaItem(identified = identifiesContent, source = source)
+
+    /**
+     * Rung 4 of ADR-0011's ladder: the next entry of the current request's sources, opened at the
+     * instant playback had reached, under the identity the session already has (rule 5).
+     *
+     * Called only from the failure listener, which is registered only where a resilience filled the
+     * slot, and only for a failure [withholdsFromConsumer] has already said the ladder may climb for.
+     * What is decided *here* is the half the ladder cannot see — whether there is a next source, and
+     * whether this player is still playing the content that named it.
+     *
+     * Three things this deliberately does not do:
+     *
+     * - **It does not open a measurement session.** A fallback that rescued a session is a fact about
+     *   that session (ADR-0011 rule 10), so the telemetry session and the CMCD `sid` are the ones the
+     *   session started with — which is also why this is not routed through [adopt], whose whole job
+     *   is the bookkeeping of taking on *different* content.
+     * - **It does not re-read the request's [MediaRequest.StartPosition].** Rule 9 says core carries
+     *   the held position across the operation explicitly, and a `Beginning` read again is exactly
+     *   the restart-from-zero §3.3 calls worse than the error.
+     * - **It does not seek afterwards.** The position goes into `setMediaItem`, so the new source is
+     *   prepared at it rather than prepared and then moved, and a seek on an unprepared timeline
+     *   would be a second position for the same fallback to disagree about.
+     */
+    private fun openNextSource(): Boolean {
+        val request = currentRequest ?: return false
+        if (!hasNextSource(request)) return false
+
+        // Read before anything replaces the item, which is what makes it the position playback
+        // reached rather than the position the next item happens to report.
+        val positionMs = positionOfCurrentContent()
+        sourceIndex++
+        // Updated as `ResumeFromLastKnown` would have it, which rule 9 asks for in as many words. The
+        // ordinary path would reach the same number later — [adopt] remembers the outgoing content's
+        // position whenever this player moves on — so what this line adds is that the map is right at
+        // the instant of the switch rather than only at the next adoption.
+        lastKnownPositions[request.contentId] = positionMs
+        delegate.setMediaItem(itemOf(request, sourceIndex).withLiveLatency(playbackDecision.liveLatency), positionMs)
+        delegate.prepare()
+        return true
+    }
+
+    /**
+     * Whether [request] has a candidate left after the one open, on a player still playing it.
+     *
+     * The second half is the one worth stating: a consumer who called [Player.setMediaItem] after
+     * [setMediaRequest] has moved the player on without passing through here, so [currentRequest]
+     * describes something that is no longer loaded — the same staleness [saveSnapshot] guards
+     * against, guarded the same way rather than by trusting the bookkeeping.
+     */
+    private fun hasNextSource(request: MediaRequest): Boolean =
+        sourceIndex + 1 in request.sources.indices &&
+            delegate.currentMediaItem?.mediaId == request.contentId
+
+    /**
+     * Whether [error] is one this player takes on itself at rung 4, and therefore one the consumer is
+     * never told about.
+     *
+     * A rescued session that also reported an error would be two contradictory accounts of one
+     * viewing: ADR-0011 rule 10 makes the typed error rung 6 — what a consumer is handed once nothing
+     * below it worked — so an error a rung below repairs is not an error the `Player` API delivers.
+     * The listener wrappers ask this before forwarding, which is the only place the callback can be
+     * withheld: Media3 hands one event to every listener in one pass, so a decision taken after the
+     * pass began would come too late for the listeners already visited.
+     *
+     * Memoized against the failure, and null means "the error being cleared": the `prepare` rung 4
+     * performs clears it immediately, and a consumer who never saw it must not see it go away either.
+     */
+    private fun withholdsFromConsumer(error: PlaybackException?): Boolean {
+        val rungs = playerStateRungs ?: return false
+        if (error == null) return failureWithheld
+        if (error !== failureDecidedOn) {
+            failureDecidedOn = error
+            failureWithheld = currentRequest?.let { hasNextSource(it) } == true && rungs.opensNextSource(error)
+        }
+        return failureWithheld
+    }
+
+    /** Drops the memo, so nothing of a finished session's failure is held or answered for. */
+    private fun forgetWithheldFailure() {
+        failureDecidedOn = null
+        failureWithheld = false
+    }
 
     /**
      * Opens a measurement session for [contentId] and tells the collector, if there is one.
@@ -546,6 +695,10 @@ public class SuperPlayer private constructor(
 
         snapshot.request?.let { request ->
             currentRequest = request
+            // At the first source, not at whichever one the saved player had fallen back to: a
+            // snapshot carries the request and the position and no rung, because the ladder is about
+            // what is failing *now* and a restored player is a new engine on a new network.
+            sourceIndex = FIRST_SOURCE
             // A restored player measures under a session of its own rather than continuing the saved
             // one: the player that took the snapshot ended its session when it was released, and
             // without this the whole of what a viewer watches after a rotation would go unmeasured.
@@ -600,7 +753,7 @@ public class SuperPlayer private constructor(
 
     override fun addListener(listener: Player.Listener) {
         val wrapper = synchronized(wrappedListeners) {
-            wrappedListeners.getOrPut(listener) { listener.reportingSourceAs(this) }
+            wrappedListeners.getOrPut(listener) { listener.reportingSourceAs(this, ::withholdsFromConsumer) }
         }
         delegate.addListener(wrapper)
     }
@@ -667,6 +820,10 @@ public class SuperPlayer private constructor(
 
         lastKnownPositions.clear()
         currentRequest = null
+        // With the content, because the rung belongs to the content that was failing: a recycled
+        // player handed a new row must open that row's first source.
+        sourceIndex = FIRST_SOURCE
+        forgetWithheldFailure()
         // The session ends with the item, not with the player. A pooled player that kept one session
         // open across a scroll would report one forty-minute view of nine different things, which is
         // the defect this line exists to prevent. The collector stays attached: the next
@@ -699,6 +856,10 @@ public class SuperPlayer private constructor(
         synchronized(wrappedListeners) { wrappedListeners.clear() }
         lastKnownPositions.clear()
         currentRequest = null
+        sourceIndex = FIRST_SOURCE
+        // The memo holds a `PlaybackException`, which holds its cause: dropped with everything else
+        // this player was keeping alive.
+        forgetWithheldFailure()
     }
 
     /**
@@ -1023,6 +1184,9 @@ public class SuperPlayer private constructor(
                 // replaced the whole loading path has no slot to key.
                 identifiesContent = cache != null && configuration.mediaSourceFactory == null,
                 pooled = pooled,
+                // Whatever the resilience put in the slot, and null on every other player — which is
+                // the whole of what a player without the module pays for rung 4 (ADR-0011 rule 14).
+                playerStateRungs = configuration.playerStateRungs,
             )
 
             // The first pooled player's components become the pool's. The factory handed on is the
@@ -1083,8 +1247,20 @@ public class SuperPlayer private constructor(
  * The cost is reflection on the callback path, which carries player events — UI-rate at most, not
  * per-sample or per-chunk. `SuperPlayerForwardingTest` pins the result against Media3's own
  * forwarding-contract assertion, so "the proxy forwards everything" is checked rather than asserted.
+ *
+ * ## The one callback it may swallow
+ *
+ * [withheld] is asked about a failure before it is forwarded, and about the null that clears one. It
+ * answers true only for a failure the player is taking on itself at rung 4 of ADR-0011's ladder — see
+ * `SuperPlayer.withholdsFromConsumer` for why an error a rung repairs is not an error the [Player]
+ * API delivers, and rule 10 for the one that is. It defaults to withholding nothing, which is what a
+ * player with no resilience behaves as and what the forwarding-contract harness wraps with, so that
+ * harness still drives all 37 callbacks.
  */
-internal fun Player.Listener.reportingSourceAs(source: Player): Player.Listener {
+internal fun Player.Listener.reportingSourceAs(
+    source: Player,
+    withheld: (PlaybackException?) -> Boolean = { false },
+): Player.Listener {
     val listener = this
     return Proxy.newProxyInstance(
         Player.Listener::class.java.classLoader,
@@ -1103,24 +1279,34 @@ internal fun Player.Listener.reportingSourceAs(source: Player): Player.Listener 
                 else -> "SuperPlayer listener reporting $source, forwarding to $listener"
             }
 
-            else -> {
-                val forwarded =
-                    if (method.name == ON_EVENTS && arguments.isNotEmpty()) {
-                        arrayOf(source, *arguments.copyOfRange(1, arguments.size))
-                    } else {
-                        arguments
-                    }
+            // Both halves of one failure, or neither: `onPlayerError` carries it and
+            // `onPlayerErrorChanged` announces both its arrival and its clearing, and a consumer told
+            // only that an error went away would be told about a failure in the one form they cannot
+            // act on.
+            method.name in ERROR_CALLBACKS && arguments.size == 1 ->
+                if (withheld(arguments[0] as PlaybackException?)) null else forward(listener, method, arguments)
 
-                try {
-                    method.invoke(listener, *forwarded)
-                } catch (e: InvocationTargetException) {
-                    // A listener that throws must surface its own exception, not a reflection wrapper.
-                    throw e.cause ?: e
-                }
-            }
+            else -> forward(
+                listener,
+                method,
+                if (method.name == ON_EVENTS && arguments.isNotEmpty()) {
+                    arrayOf(source, *arguments.copyOfRange(1, arguments.size))
+                } else {
+                    arguments
+                },
+            )
         }
     } as Player.Listener
 }
+
+/** Hands one callback on, with the reflection wrapper taken off whatever the listener threw. */
+private fun forward(listener: Player.Listener, method: Method, arguments: Array<out Any?>): Any? =
+    try {
+        method.invoke(listener, *arguments)
+    } catch (e: InvocationTargetException) {
+        // A listener that throws must surface its own exception, not a reflection wrapper.
+        throw e.cause ?: e
+    }
 
 private fun Method.isObjectMethod(): Boolean = when (name) {
     EQUALS -> parameterTypes.size == 1 && parameterTypes[0] == Any::class.java
@@ -1129,6 +1315,9 @@ private fun Method.isObjectMethod(): Boolean = when (name) {
 }
 
 private const val ON_EVENTS = "onEvents"
+
+/** The two callbacks that carry a failure, and the only ones a wrapper may withhold. */
+private val ERROR_CALLBACKS = setOf("onPlayerError", "onPlayerErrorChanged")
 private const val EQUALS = "equals"
 private const val HASH_CODE = "hashCode"
 private const val TO_STRING = "toString"

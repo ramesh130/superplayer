@@ -52,11 +52,19 @@ import androidx.media3.common.MediaMetadata
  *
  * ## Why more than one source
  *
- * [sources] is ordered, and **only the first is used in this version**. The rest are validated,
- * retained, and deliberately not opened: failing over to the next source is later work, and the
- * shape lands now so that adding it is not a breaking change to every call site that already
- * describes its mirrors. A request carrying three sources plays the first and behaves exactly as one
- * carrying only that source.
+ * [sources] is ordered, and playback begins at the first. The rest are what a session falls back to:
+ * when retrying, changing CDN host and excluding the failing variant have all failed, a player built
+ * with `superplayer-resilience` opens the next entry at the position playback had reached — rung 4 of
+ * ADR-0011's ladder. That is typically a change of *protocol* rather than of URL, which is why it is a
+ * list of sources and not a list of hosts: the canonical case is a DASH stream falling back to an HLS
+ * one (`PRD.md` §2.2), a new manifest and a new media source for the same content.
+ *
+ * The identity does not move with it. [contentId] is what the fallback is a fallback *for*, so the
+ * cache key, the measurement session and the CMCD `sid` are the ones the session started with, and a
+ * viewer four minutes into a programme is still four minutes in.
+ *
+ * A player built without that module opens the first source and nothing else, because nothing asks it
+ * to; so does a request carrying one source, which is most of them.
  *
  * ## Why a request carries what to display
  *
@@ -79,8 +87,9 @@ public class MediaRequest private constructor(
      */
     public val contentId: String,
     /**
-     * Candidate locations for the content, most-preferred first. Never empty; only the first entry
-     * is used in this version, for the reasons in the class documentation.
+     * Candidate locations for the content, most-preferred first. Never empty; playback starts at the
+     * first and falls back to the next only when every rung below it has failed, for the reasons in
+     * the class documentation.
      */
     public val sources: List<Uri>,
     /** Where playback of this request begins. Defaults to [StartPosition.Beginning]. */
@@ -177,7 +186,7 @@ public class MediaRequest private constructor(
         private var subtitle: String? = null
         private var artworkUri: Uri? = null
 
-        /** Appends a candidate source. Order is preference order; the first is the one used. */
+        /** Appends a candidate source. Order is preference order; the first is the one played. */
         public fun addSource(uri: Uri): Builder = apply { sources += uri }
 
         /** Appends a candidate source, parsed as a [Uri]. */
@@ -233,14 +242,26 @@ public class MediaRequest private constructor(
  * cache's key. A player with no cache passes false, so its items are exactly what they were before a
  * cache existed (ADR-0010 rule 13). No default, so that a new call site has to decide rather than
  * quietly build an item a cache cannot key: `SuperPlayer.itemOf` is the one that knows.
+ *
+ * [source] is which of [MediaRequest.sources] the item opens, which is 0 for everything but rung 4 of
+ * ADR-0011's ladder. It has no default for the reason [identified] has none: a call site that opened
+ * the first source because it never thought about the question is one that would silently undo a
+ * fallback, and the item is where a fallback becomes visible to Media3 at all.
  */
-internal fun MediaRequest.toMediaItem(identified: Boolean): MediaItem =
+internal fun MediaRequest.toMediaItem(identified: Boolean, source: Int): MediaItem =
     MediaItem.Builder()
         .setMediaId(contentId)
-        .setUri(sources.first())
+        .setUri(sources[source])
         .setMediaMetadata(toMediaMetadata())
         .apply { if (identified) setTag(ContentIdentity(contentId)) }
         .build()
+
+/**
+ * The entry of [MediaRequest.sources] playback begins at, and the only one any call site but rung 4 of
+ * ADR-0011's ladder opens — named rather than written as a zero, because "the first source" is the
+ * statement each of those sites is making.
+ */
+internal const val FIRST_SOURCE: Int = 0
 
 /**
  * The display half of a request, in the vocabulary every external surface reads.

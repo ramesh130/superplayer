@@ -15,10 +15,12 @@
  */
 
 /**
- * superplayer-drm — WidevineSessionManager, provisioning, offline licenses, fallback ladder
+ * superplayer-drm — Widevine sessions, provisioning, offline licences, and the security-level ladder
  *
- * Placeholder. This module is created empty and buildable so that the module boundary and
- * dependency direction are fixed and enforceable now, rather than negotiated once code
- * arrives (phase 6). It intentionally declares no public API yet.
+ * Phase 6 (ADR-0012). The public surface is two types — [com.superplayer.drm.Drm] and
+ * [com.superplayer.drm.WidevineConfig] — and everything else is internal, because every Media3 type
+ * DRM needs carries `@UnstableApi`. What reaches the engine is a `DrmSessionManagerProvider` in the
+ * one DRM slot on core's engine configuration, filled as core's sixth Kotlin friend; a player built
+ * without `SuperPlayer.Builder.setDrm` loads no class of this module at all.
  */
 package com.superplayer.drm

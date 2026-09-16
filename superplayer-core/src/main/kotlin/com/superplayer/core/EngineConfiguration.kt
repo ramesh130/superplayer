@@ -21,6 +21,7 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.LoadControl
 import androidx.media3.exoplayer.RenderersFactory
+import androidx.media3.exoplayer.drm.ExoMediaDrm
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.trackselection.ExoTrackSelection
 import androidx.media3.exoplayer.upstream.BandwidthMeter
@@ -29,13 +30,14 @@ import androidx.media3.exoplayer.util.ReleasableExecutor
 import com.google.common.base.Supplier
 
 /**
- * What may be changed about an engine as it is built, by the three things allowed to: a test, through
+ * What may be changed about an engine as it is built, by the four things allowed to: a test, through
  * `SuperPlayer.Builder.setEngineConfigurator` — the one internal seam `docs/testing.md` describes —
- * a policy that is also an [EnginePolicyExtension], through `SuperPlayer.Builder.setPolicy`, and a
+ * a policy that is also an [EnginePolicyExtension], through `SuperPlayer.Builder.setPolicy`, a
  * resilience that is also an [EngineResilienceExtension], through
- * `SuperPlayer.Builder.setResilience`. All three reach the same object; the extensions run first, so
- * a test's configuration still wins over theirs exactly as it wins over the profile's (ADR-0009 rule
- * 7, ADR-0011 rule 13).
+ * `SuperPlayer.Builder.setResilience`, and a protection that is also an [EngineDrmExtension], through
+ * `SuperPlayer.Builder.setDrm`. All four reach the same object; the extensions run first, so a
+ * test's configuration still wins over theirs exactly as it wins over the profile's (ADR-0009 rule
+ * 7, ADR-0011 rule 13, ADR-0012 rule 3).
  *
  * [engine] is the builder itself, for what is the engine's own — the clock, the renderers, a
  * bandwidth meter or analytics collector a test reads through. Media is supplied one of two ways,
@@ -151,6 +153,34 @@ internal class EngineConfiguration(val engine: ExoPlayer.Builder) {
      * ADR-0011 rule 14's accounting rests on here.
      */
     var playerStateRungs: PlayerStateRungs? = null
+
+    /**
+     * The DRM slot ADR-0012 rule 3 opens: the session graph `superplayer-drm` builds, as a function
+     * of the licence transport and the device, handed to the `MediaSource.Factory` `TransferChain`
+     * assembles. See [LicenceSessions] for why it is a function rather than a provider.
+     *
+     * Null is a player built without `SuperPlayer.Builder.setDrm`, and that player sets no provider
+     * on any media source factory, instantiates no `ExoMediaDrm` and loads no class of the module —
+     * which is rule 13, and is counted rather than asserted about. A provider that is *set* and
+     * answers `DRM_UNSUPPORTED` is not nothing and would not satisfy it.
+     */
+    var drm: LicenceSessions? = null
+
+    /**
+     * The Widevine implementation a test stands the device in with, and null everywhere else.
+     *
+     * A slot for [transport]'s reason and with the same bound: it substitutes the platform's
+     * `MediaDrm` and nothing else, and every layer above it — the session manager, the licence
+     * callback, the chain the request travels — is the one a consumer's player has. Robolectric ships
+     * no `ShadowMediaDrm` at all, so without this slot no protected stream could be played under
+     * `check` by any player, and `docs/testing.md`'s *A Widevine device and a licence server* is what
+     * fills it.
+     *
+     * Read by [drm] at chain-composition time rather than by the extension, because an extension runs
+     * *before* the test configurator: when `superplayer-drm` is asked to fill its slot, a test has not
+     * yet stated the device.
+     */
+    var exoMediaDrm: ExoMediaDrm.Provider? = null
 
     /**
      * The decision in force on this player, readable from whatever thread a load fails on.

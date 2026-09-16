@@ -47,6 +47,24 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
  * which its engine components — `@UnstableApi` types, every one — fill the same `EngineConfiguration`
  * the test seam fills (ADR-0009 rule 7).
  *
+ * ## The sixth, and the ceiling it makes explicit
+ *
+ * `superplayer-drm` is the sixth friend, and ADR-0012 rule 4 requires the argument to be made here
+ * rather than only in a build file. It is the same argument and it has not weakened: what the module
+ * reaches is one core-internal extension interface on the object the consumer already passes to
+ * `SuperPlayer.Builder.setDrm`, through which it fills one slot core declared, and the Gradle
+ * dependency it does not create is the one `docs/modules.md` forbids. What is specific to this one is
+ * that *every* Media3 type DRM needs carries `@UnstableApi` — `ExoMediaDrm`, `DrmSessionManager`,
+ * `DrmSessionManagerProvider`, `MediaItem.DrmConfiguration` — so there is no version of this module
+ * whose engine-facing half could have been public API instead.
+ *
+ * The count is the thing worth watching, and the sixth is where the ceiling gets written down:
+ * **a friend path is right for a later phase of this library filling a slot core declared, and for
+ * nothing else.** A module wanting friendship for any other reason — reaching a helper, avoiding an
+ * interface, testing an internal — wants a public API or a test source set instead. Six is not a
+ * budget that has run out; it is six instances of one shape, and a seventh that is not that shape
+ * needs a superseding ADR rather than a line in a build file.
+ *
  * ## Why it is not the second seam `docs/testing.md` warns about
  *
  * That warning is about *widening what is configurable*. Nothing is widened here: the same one

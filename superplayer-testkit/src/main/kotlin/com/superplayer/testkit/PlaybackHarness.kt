@@ -34,6 +34,7 @@ import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.RenderersFactory
 import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
 import androidx.media3.exoplayer.drm.DrmSessionManager
+import androidx.media3.exoplayer.drm.ExoMediaDrm
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.TrackGroupArray
@@ -53,6 +54,7 @@ import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
 import androidx.test.core.app.ApplicationProvider
 import com.superplayer.core.BufferPolicy
 import com.superplayer.core.ContentCache
+import com.superplayer.core.PlaybackDrm
 import com.superplayer.core.PlaybackPolicy
 import com.superplayer.core.PlaybackProfile
 import com.superplayer.core.PlaybackResilience
@@ -188,6 +190,13 @@ public class PlaybackHarness : ExternalResource() {
      * configures the clock and the transport, exactly as it does for a consumer — so a retry it
      * decides on is a request that reaches the transport below, and [networkRequests] counts it.
      * Several players may share one, as a pool's do.
+     *
+     * [drm], when set, is what `SuperPlayer.Builder.setDrm` takes, and protected content
+     * ([TestContent.protectedHls], [TestContent.protectedDash]) needs one. Its licence server is
+     * [FakeLicenceServer.LICENCE_URI], which this harness serves on the same transport as the media,
+     * so a licence request is a transfer like any other: addressed by [ResourceKind.LICENCE],
+     * refusable through a [FaultScript], and counted by [networkRequests]. The Widevine device those
+     * sessions open against is [DeviceStatement.declareWidevine]'s.
      */
     public fun buildPlayer(
         content: TestContent = TestContent.video(),
@@ -198,17 +207,18 @@ public class PlaybackHarness : ExternalResource() {
         policy: PlaybackPolicy? = null,
         cache: ContentCache? = null,
         resilience: PlaybackResilience? = null,
+        drm: PlaybackDrm? = null,
     ): SuperPlayer {
         // Protected content needs a `DrmSessionManagerProvider` on the media source factory, and on a
-        // SuperPlayer that factory is `TransferChain`'s: the provider reaches it through the DRM slot
-        // ADR-0012 rule 3 puts on core's engine configuration, which `superplayer-drm` fills and
-        // which does not exist yet (#204). Said outright, because the alternative is a player that
-        // silently plays a protected stream with no session at all and a test that passes for it.
-        require(!content.protected) {
-            "A SuperPlayer cannot yet play protected content: the engine's DRM slot arrives with " +
-                "`superplayer-drm` (#204). Until then, protected content plays through buildStockPlayer."
+        // SuperPlayer that provider comes from the DRM slot ADR-0012 rule 3 puts on core's engine
+        // configuration, which only a `PlaybackDrm` fills. Said outright, because the alternative is
+        // a player that plays a protected stream with no session at all and a test that passes for
+        // it.
+        require(!content.protected || drm != null) {
+            "Protected content needs a PlaybackDrm: pass `drm = Drm.widevine(...)`, whose licence " +
+                "server is FakeLicenceServer.LICENCE_URI, or play it through buildStockPlayer."
         }
-        return buildPlayerOver(composeTransport(content, faults, network), content, profile, telemetry, policy, cache, resilience, pooled = null)
+        return buildPlayerOver(composeTransport(content, faults, network), content, profile, telemetry, policy, cache, resilience, drm, pooled = null)
     }
 
     /**
@@ -223,6 +233,7 @@ public class PlaybackHarness : ExternalResource() {
         policy: PlaybackPolicy?,
         cache: ContentCache?,
         resilience: PlaybackResilience?,
+        drm: PlaybackDrm?,
         pooled: PooledEngine?,
     ): SuperPlayer {
         var built: ControllableVideoRenderer? = null
@@ -233,11 +244,17 @@ public class PlaybackHarness : ExternalResource() {
             .apply { policy?.let { setPolicy(it) } }
             .apply { cache?.let { setCache(it) } }
             .apply { resilience?.let { setResilience(it) } }
+            .apply { drm?.let { setDrm(it) } }
             .setPooledEngine(pooled)
             .setEngineConfigurator { configuration ->
                 // The slots rather than the engine builder, so a pool can hand the same clock and
                 // renderers to the preload manager a coordinator builds for it.
                 configuration.clock = clock
+                // The device a `PlaybackDrm` opens its sessions against. Robolectric ships no
+                // `ShadowMediaDrm`, so the platform's own is not merely slow here but impossible to
+                // construct; what stands in is the one `DeviceStatement` states, and it is filled on
+                // every player because the slot is read only where a DRM extension filled the other.
+                configuration.exoMediaDrm = ExoMediaDrm.Provider { DeviceStatement.widevine.exoMediaDrm() }
                 configuration.renderersFactory = renderersFactory { if (built == null) built = it }
                 // A real protocol stream is not described by a timeline at all: the manifest says
                 // what the content is, Media3's own parser reads it, and its own extractor demuxes
@@ -581,7 +598,7 @@ public class PlaybackHarness : ExternalResource() {
                 policy?.let { setPolicy(it) }
             }
             .setPlayerFactory { pooled ->
-                buildPlayerOver(transport, content, profile ?: PlaybackProfile.SHORT_FORM, telemetry(), policy, cache, resilience, pooled)
+                buildPlayerOver(transport, content, profile ?: PlaybackProfile.SHORT_FORM, telemetry(), policy, cache, resilience, drm = null, pooled)
                     .also { built += it }
             }
             .build()

@@ -27,6 +27,7 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.dash.DefaultDashChunkSource
 import androidx.media3.exoplayer.drm.DrmSessionManagerProvider
+import androidx.media3.exoplayer.drm.ExoMediaDrm
 import androidx.media3.exoplayer.hls.HlsDataSourceFactory
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -87,6 +88,21 @@ import java.util.concurrent.CopyOnWriteArrayList
  *
  * Two of the four phases are missing from that list, and their absence is the useful part of this
  * comment rather than an omission.
+ *
+ * ## A licence takes the bottom half of it, and the DRM slot is not a layer
+ *
+ * A licence request is composed by the player rather than named by a manifest, and it is answered by
+ * a server the *app* nominated rather than by the CDN. So it enters the chain at the header-refresh
+ * line and not at the top: everything above that line is about content — a cache that answers reads,
+ * a revalidation that judges a playlist, a window check that reads a manifest — and none of it has
+ * anything true to say about an entitlement. What is below the line does: a licence request carries
+ * the app's credential exactly as a segment request does, and a licence server that answers 401 is
+ * the same problem at the same layer (ADR-0012 rule 2).
+ *
+ * The session manager that composes it reaches this from the DRM slot, which is a provider on the
+ * `MediaSource.Factory` rather than a link in the chain — Media3 asks one object per item what
+ * session an item needs, at the line [StampingMediaSourceFactory] has always replayed and nothing
+ * had ever filled (ADR-0012 rule 3).
  *
  * ## The load-error slot is not a layer either
  *
@@ -224,6 +240,10 @@ internal object TransferChain {
      * [headerRefresh] and [loadErrors] are resilience's two slots — a layer closest to the transport
      * and the object Media3 asks about a failed load. Null leaves the slot empty and, for
      * [loadErrors], Media3's own policy in force (ADR-0011 rules 13 and 14).
+     *
+     * [drm] is the DRM slot, and [exoMediaDrm] the device a test stands in for it. Null leaves no
+     * provider set on the factory at all, which is what ADR-0012 rule 13 promises a player built
+     * without `setDrm` — not a provider that answers `DRM_UNSUPPORTED`.
      */
     fun mediaSourceFactory(
         context: Context,
@@ -234,10 +254,18 @@ internal object TransferChain {
         cache: ContentCache? = null,
         headerRefresh: HeaderRefreshLayer? = null,
         loadErrors: LoadErrorHandlingPolicy? = null,
+        drm: LicenceSessions? = null,
+        exoMediaDrm: ExoMediaDrm.Provider? = null,
     ): MediaSource.Factory {
-        val chain = dataSourceChain(context, transport, cache, headerRefresh)
+        val bottom = transport ?: DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory())
+        // Header refresh first, so it is the innermost wrapper: a request it repairs and re-opens is
+        // one transfer to the cache slot and to everything above it.
+        val refreshed = headerRefresh?.over(bottom) ?: bottom
+        val chain = dataSourceChain(refreshed, cache)
         // With neither slot filled, exactly the factory Phase 3 built: nothing about a request is
-        // stamped, because nothing below would read it (ADR-0010 rule 13, ADR-0011 rule 14).
+        // stamped, because nothing below would read it (ADR-0010 rule 13, ADR-0011 rule 14). A DRM
+        // slot is not in that count: what it fills is a provider on the factory rather than a layer
+        // in the chain, and no stamp is read on the way to a licence server.
         val stamps = cache != null || headerRefresh != null
         val factory = if (stamps) StampingMediaSourceFactory(chain) else DefaultMediaSourceFactory(chain)
         return factory.apply {
@@ -245,30 +273,26 @@ internal object TransferChain {
                 ?.let(::setCmcdConfigurationFactory)
             loadExecutor?.let(::setDownloadExecutor)
             loadErrors?.let(::setLoadErrorHandlingPolicy)
+            // Over `refreshed` rather than over `chain`: a licence travels the credential-bearing
+            // part of the chain and not the content-bearing part. See [LicenceSessions].
+            drm?.let { setDrmSessionManagerProvider(it.over(refreshed, exoMediaDrm)) }
         }
     }
 
     /**
-     * The chain itself — see the composition order above for what wraps what — over [transport], or
-     * over the HTTP stack when there is none, with [cache]'s layer in the cache slot and
-     * [headerRefresh] in the header-refresh slot when there is one of each. One call is one player's
-     * chain: the layers hold per-session state.
+     * The chain itself — see the composition order above for what wraps what — over [refreshed],
+     * which is the transport with the header-refresh slot already composed onto it, and with
+     * [cache]'s layer in the cache slot when there is one. One call is one player's chain: the
+     * layers hold per-session state.
      */
     private fun dataSourceChain(
-        context: Context,
-        transport: DataSource.Factory?,
+        refreshed: DataSource.Factory,
         cache: ContentCache?,
-        headerRefresh: HeaderRefreshLayer?,
-    ): DataSource.Factory {
-        val bottom = transport ?: DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory())
-        // Header refresh first, so it is the innermost wrapper: a request it repairs and re-opens is
-        // one transfer to the cache slot and to everything above it.
-        val refreshed = headerRefresh?.over(bottom) ?: bottom
-        return LiveWindowDepthCheck.over(
+    ): DataSource.Factory =
+        LiveWindowDepthCheck.over(
             LivePlaylistRevalidation(Clock.DEFAULT)
                 .over(cache?.layer?.over(refreshed) ?: refreshed),
         )
-    }
 
     /**
      * Media3's own media source factory, built per item over [chain] stamped with that item's

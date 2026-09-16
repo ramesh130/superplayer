@@ -529,7 +529,7 @@ val player = harness.buildPlayer(
 )
 ```
 
-Four things about it are load-bearing.
+Five things about it are load-bearing.
 
 **A fault is addressed by what is being fetched, never by a URL.** A `ResourceKind` — manifest,
 initialization segment, media segment — and an index within that kind is the same sentence under HLS
@@ -576,6 +576,21 @@ then on the session plays on: the origin takes the request's `Authorization` hea
 string where a signed URL carries the signature, as the credential, so a test refreshes a token by
 fetching under a changed one and the harness needs no vocabulary for how it was obtained. One
 refresh heals every resource the token signs, not the one that met the fault.
+
+**A fault can be addressed at an origin host, and that is the fourth coordinate.** It is the one
+part of the address that names something from the URL, and it is there because the thing under test
+is precisely which URL was used: the rungs above a retry move the session *somewhere else*, and
+"host A fails while host B serves" cannot be said in a kind and an index alone, because the two
+hosts carry the same resources under the same names. A test that wants one rendition to fail rather
+than one host puts that rendition on a host of its own — `TestContent.hls(secondVariantHost = …)` —
+which does not weaken the rule above so much as apply it: the two renditions of the synthetic HLS
+stream declare different bitrates and carry identical bytes, so a host is the only thing about one of
+them a script could name, and naming it is still not naming a path. The same coordinate serves rung
+2, where `TestContent.dash(mirrorHost = …)` is the same media at two `BaseURL`s (ISO/IEC 23009-1
+§5.6.4) with the MPD on the first. Indices are per resource and therefore per host: the same segment
+on two hosts is two resources with two indices, since nothing below the transfer knows the two are
+copies, so "everything this host serves" is written with a host and no index. Leaving `host` unset
+addresses every host, which is every script written before the coordinate existed.
 
 **It does not relax the no-network rule.** Every fault is synthesized: a DNS failure is an
 `UnknownHostException` handed to Media3 in the shape a real resolver failure arrives in, a TLS

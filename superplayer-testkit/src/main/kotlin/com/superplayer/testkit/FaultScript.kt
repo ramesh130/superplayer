@@ -70,6 +70,20 @@ public enum class ResourceKind {
  * are counted per resource on the addressing above, from one, so nothing about which resource a
  * fault addresses changes.
  *
+ * **A host is the fourth coordinate, and it is the one a fallback needs.** The rungs above a retry
+ * move the session somewhere else — the next CDN host, the next `BaseURL`, a rendition served
+ * elsewhere — and "host A fails while host B serves" cannot be said in a kind and an index alone,
+ * because the two hosts carry *the same* resources. Naming `host` narrows a fault to the requests
+ * that went to it; leaving it unset addresses every host, which is every fault written before this
+ * coordinate existed. It is the one part of the addressing that names something from the URL, and
+ * it is there because the thing under test is precisely which URL was used: a rendition a test
+ * wants to fail is put on a host of its own (`TestContent.hls(secondVariantHost = …)`) so that it
+ * has an address at all.
+ *
+ * **Indices are per resource and therefore per host.** The same segment on two hosts is two
+ * resources with two indices, since nothing below the transfer knows the two are copies. A fault
+ * meaning "everything this host serves" is written with a host and no index.
+ *
  * **No Media3 type appears here**, for the reason `docs/testing.md` gives about this module's public
  * API: naming an `@UnstableApi` type in a signature would put Media3's opt-in marker on every test
  * that wrote a fault plan. `DataSource` is such a type, which is why the injector this describes is
@@ -82,11 +96,12 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
     /**
      * Collects the faults, one call per fault, in any order.
      *
-     * Every method takes the same optional address: a [ResourceKind], an index within it, and how
-     * many attempts at each addressed resource the fault applies to. Leaving `kind` unset addresses
-     * *every* request, which is what a network-wide condition — latency, a throughput cap — usually
-     * means; leaving `index` unset addresses every resource of that kind; leaving `firstAttempts`
-     * unset addresses every attempt, so the fault never relents.
+     * Every method takes the same optional address: a [ResourceKind], an index within it, how many
+     * attempts at each addressed resource the fault applies to, and which host served it. Leaving
+     * `kind` unset addresses *every* request, which is what a network-wide condition — latency, a
+     * throughput cap — usually means; leaving `index` unset addresses every resource of that kind;
+     * leaving `firstAttempts` unset addresses every attempt, so the fault never relents; leaving
+     * `host` unset addresses every host.
      */
     public class Builder {
 
@@ -104,7 +119,8 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
             kind: ResourceKind? = null,
             index: Int? = null,
             firstAttempts: Int? = null,
-        ): Builder = add(kind, index, firstAttempts, Effect.Latency(millis.requireAtLeast(0, "Latency")))
+            host: String? = null,
+        ): Builder = add(kind, index, firstAttempts, host, Effect.Latency(millis.requireAtLeast(0, "Latency")))
 
         /**
          * Caps delivery at [bitsPerSecond], paced against the harness's clock.
@@ -118,10 +134,12 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
             kind: ResourceKind? = null,
             index: Int? = null,
             firstAttempts: Int? = null,
+            host: String? = null,
         ): Builder = add(
             kind,
             index,
             firstAttempts,
+            host,
             Effect.ThroughputCap(bitsPerSecond.requireAtLeast(1, "A throughput cap")),
         )
 
@@ -140,9 +158,10 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
             kind: ResourceKind? = null,
             index: Int? = null,
             firstAttempts: Int? = null,
+            host: String? = null,
         ): Builder {
             require(status in 400..599) { "An injected HTTP failure status is 4xx or 5xx, not $status" }
-            return add(kind, index, firstAttempts, Effect.HttpStatus(status))
+            return add(kind, index, firstAttempts, host, Effect.HttpStatus(status))
         }
 
         /**
@@ -158,7 +177,9 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
             kind: ResourceKind? = null,
             index: Int? = null,
             firstAttempts: Int? = null,
-        ): Builder = add(kind, index, firstAttempts, Effect.Truncate(bytes.requireAtLeast(0, "A truncation point")))
+            host: String? = null,
+        ): Builder =
+            add(kind, index, firstAttempts, host, Effect.Truncate(bytes.requireAtLeast(0, "A truncation point")))
 
         /**
          * Fails to resolve the host, before any connection is attempted.
@@ -172,7 +193,8 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
             kind: ResourceKind? = null,
             index: Int? = null,
             firstAttempts: Int? = null,
-        ): Builder = add(kind, index, firstAttempts, Effect.DnsFailure)
+            host: String? = null,
+        ): Builder = add(kind, index, firstAttempts, host, Effect.DnsFailure)
 
         /**
          * Fails the TLS handshake, after the name resolved and the socket connected.
@@ -188,7 +210,8 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
             kind: ResourceKind? = null,
             index: Int? = null,
             firstAttempts: Int? = null,
-        ): Builder = add(kind, index, firstAttempts, Effect.TlsFailure)
+            host: String? = null,
+        ): Builder = add(kind, index, firstAttempts, host, Effect.TlsFailure)
 
         /**
          * Drops the connection: a `SocketException` at open, the way a peer's RST arrives.
@@ -203,7 +226,8 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
             kind: ResourceKind? = null,
             index: Int? = null,
             firstAttempts: Int? = null,
-        ): Builder = add(kind, index, firstAttempts, Effect.ConnectionReset)
+            host: String? = null,
+        ): Builder = add(kind, index, firstAttempts, host, Effect.ConnectionReset)
 
         /**
          * Times the connection out: a `SocketTimeoutException` at open.
@@ -216,7 +240,8 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
             kind: ResourceKind? = null,
             index: Int? = null,
             firstAttempts: Int? = null,
-        ): Builder = add(kind, index, firstAttempts, Effect.ConnectionTimeout)
+            host: String? = null,
+        ): Builder = add(kind, index, firstAttempts, host, Effect.ConnectionTimeout)
 
         /**
          * Expires the session's token from media segment [index] onward: 403 from there to the end.
@@ -243,6 +268,7 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
                 ResourceKind.MEDIA_SEGMENT,
                 index..Int.MAX_VALUE,
                 EVERY_ATTEMPT,
+                host = null,
                 if (refreshable) Effect.ExpiredToken else Effect.HttpStatus(HTTP_FORBIDDEN),
             )
             return this
@@ -277,16 +303,24 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
             honoursNoCache: Boolean = true,
             kind: ResourceKind? = null,
             index: Int? = null,
+            host: String? = null,
         ): Builder = add(
             kind,
             index,
             firstAttempts = null,
+            host,
             Effect.IntermediaryCache(maxAgeSeconds.requireAtLeast(0, "A cache lifetime"), honoursNoCache),
         )
 
         public fun build(): FaultScript = FaultScript(faults.toList())
 
-        private fun add(kind: ResourceKind?, index: Int?, firstAttempts: Int?, effect: Effect): Builder {
+        private fun add(
+            kind: ResourceKind?,
+            index: Int?,
+            firstAttempts: Int?,
+            host: String?,
+            effect: Effect,
+        ): Builder {
             index?.requireAtLeast(0, "A resource index")
             firstAttempts?.requireAtLeast(1, "A count of attempts")
             // An unnamed index means every resource of the kind, and an unnamed attempt count every
@@ -295,6 +329,7 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
                 kind,
                 index?.let { it..it } ?: EVERY_INDEX,
                 firstAttempts?.let { FIRST_ATTEMPT..it } ?: EVERY_ATTEMPT,
+                host,
                 effect,
             )
             return this
@@ -344,16 +379,18 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
  * every one after it* — the one addressing shape that cannot be written as a single index, and the
  * reason this is a range at all. [attempts] is a range for the mirror-image reason: a fault that
  * relents applies to the first few attempts at a resource and not to the rest. A null [kind] is
- * every kind.
+ * every kind, and a null [host] every host.
  */
 internal class Fault(
     val kind: ResourceKind?,
     val indices: IntRange,
     val attempts: IntRange,
+    val host: String?,
     val effect: Effect,
 ) {
     fun matches(attempt: ResourceAttempt): Boolean =
         (kind == null || kind == attempt.address.kind) &&
+            (host == null || host == attempt.host) &&
             attempt.address.index in indices &&
             attempt.number in attempts
 }

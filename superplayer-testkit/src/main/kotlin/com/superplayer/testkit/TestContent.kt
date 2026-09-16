@@ -304,15 +304,24 @@ public class TestContent private constructor(
          * at media segment 2 needs a stream with a segment 2. [variantCount] is one unless the test
          * is about a *selection*: two variants are what gives the selector something to choose
          * between, and only an adaptive selection reports an estimate of its own.
+         *
+         * [secondVariantHost] puts the second variant's playlist and segments on a host of their
+         * own, which is how a [FaultScript] addresses a fault at one *rendition*: the two renditions
+         * of this stream carry identical bytes and differ only in what they declare, so without a
+         * host of its own there is nothing about the higher one a fault could name.
          */
         @JvmStatic
-        public fun hls(segmentCount: Int = DEFAULT_SEGMENT_COUNT, variantCount: Int = 1): TestContent = TestContent(
+        public fun hls(
+            segmentCount: Int = DEFAULT_SEGMENT_COUNT,
+            variantCount: Int = 1,
+            secondVariantHost: String? = null,
+        ): TestContent = TestContent(
             rungs = emptyList(),
             durationMs = SyntheticHlsStream.durationMs(segmentCount),
             live = false,
             protocol = Protocol.HLS,
             sourceUri = SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI,
-            resources = SyntheticHlsStream.resources(segmentCount, variantCount),
+            resources = SyntheticHlsStream.resources(segmentCount, variantCount, secondVariantHost),
         )
 
         /**
@@ -322,15 +331,25 @@ public class TestContent private constructor(
          * The mirror image of [hls] — same codec, same sample rate, same declared bitrate — for the
          * reason `docs/testing.md` gives: it is what lets one [FaultScript] be run against both and
          * be a comparison of the protocols.
+         *
+         * [mirrorHost] makes the MPD declare the same media at two locations — its own host and that
+         * one — and serves every segment from both. It is the shape a host failover needs and the
+         * one DASH has in its own specification, which is why the two-location form of this stream
+         * is DASH's and the two-*rendition* form is [hls]'s. Unlike [servedFrom], which moves the
+         * whole stream to a second host, this leaves the manifest where it was: what the mirror
+         * holds is an alternative for the media the manifest names.
          */
         @JvmStatic
-        public fun dash(segmentCount: Int = DEFAULT_SEGMENT_COUNT): TestContent = TestContent(
+        public fun dash(
+            segmentCount: Int = DEFAULT_SEGMENT_COUNT,
+            mirrorHost: String? = null,
+        ): TestContent = TestContent(
             rungs = emptyList(),
             durationMs = SyntheticDashStream.durationMs(segmentCount),
             live = false,
             protocol = Protocol.DASH,
             sourceUri = SyntheticDashStream.MANIFEST_URI,
-            resources = SyntheticDashStream.resources(segmentCount),
+            resources = SyntheticDashStream.resources(segmentCount, mirrorHost),
         )
 
         /**

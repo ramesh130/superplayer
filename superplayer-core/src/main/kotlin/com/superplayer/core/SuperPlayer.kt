@@ -604,6 +604,10 @@ public class SuperPlayer private constructor(
      * A rescued session that also reported an error would be two contradictory accounts of one
      * viewing: ADR-0011 rule 10 makes the typed error rung 6 — what a consumer is handed once nothing
      * below it worked — so an error a rung below repairs is not an error the `Player` API delivers.
+     * That rule's addendum carries the argument, and **this is the one deliberate exception to
+     * ADR-0003 rule 3's "a wrapper forwards every callback"**, recorded at that rule too and bounded
+     * where the wrapper reads it ([reportingSourceAs]).
+     *
      * The listener wrappers ask this before forwarding, which is the only place the callback can be
      * withheld: Media3 hands one event to every listener in one pass, so a decision taken after the
      * pass began would come too late for the listeners already visited.
@@ -1248,14 +1252,25 @@ public class SuperPlayer private constructor(
  * per-sample or per-chunk. `SuperPlayerForwardingTest` pins the result against Media3's own
  * forwarding-contract assertion, so "the proxy forwards everything" is checked rather than asserted.
  *
- * ## The one callback it may swallow
+ * ## The one callback it may swallow — the single exception to ADR-0003 rule 3
  *
- * [withheld] is asked about a failure before it is forwarded, and about the null that clears one. It
- * answers true only for a failure the player is taking on itself at rung 4 of ADR-0011's ladder — see
- * `SuperPlayer.withholdsFromConsumer` for why an error a rung repairs is not an error the [Player]
- * API delivers, and rule 10 for the one that is. It defaults to withholding nothing, which is what a
- * player with no resilience behaves as and what the forwarding-contract harness wraps with, so that
- * harness still drives all 37 callbacks.
+ * That rule says a wrapper of a Media3 interface forwards every member, and the contract test above
+ * is what proves it. There is one deliberate exception, argued in ADR-0003 rule 3's addendum and
+ * decided by ADR-0011 rule 10: a failure that a rung of the fallback ladder *repairs* is not
+ * delivered to the consumer, because rule 10 reserves the delivered error for the top of that ladder
+ * and a rescued session that also reported a failure would be two accounts of one viewing.
+ *
+ * [withheld] is asked about a failure before it is forwarded, and about the null that clears one —
+ * both forms, or the consumer would be told about the failure in the one form they cannot act on.
+ * See [SuperPlayer.withholdsFromConsumer] for when it answers true and why the answer is memoized
+ * rather than recomputed.
+ *
+ * Three bounds keep the rule above true everywhere else, and are worth checking against any
+ * temptation to add a second exception. It is these two callbacks and no others; it is a failure the
+ * player is taking on itself and never one that reaches the consumer's rung; and it defaults to
+ * withholding nothing, which is what a player with no resilience behaves as and what the
+ * forwarding-contract harness wraps with — so that harness still drives all 37 callbacks through
+ * this proxy, unchanged, and still catches the next `default` member Media3 adds.
  */
 internal fun Player.Listener.reportingSourceAs(
     source: Player,

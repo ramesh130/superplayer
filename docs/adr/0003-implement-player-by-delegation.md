@@ -2,6 +2,9 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-06
+- **Amended:** 2026-09-16 (#181), by an addendum at rule 3 recording the one callback a listener
+  wrapper may withhold, and why [ADR-0011](0011-classify-every-failure-once-and-keep-the-rungs-behind-the-boundary.md)
+  rule 10 requires it.
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
 - **Summary:** The facade implements Media3's `Player` interface by Kotlin interface delegation
@@ -68,6 +71,21 @@ Three rules follow, and they are binding:
    interface is therefore covered by Media3's own forwarding-contract assertion, which drives every
    member through the wrapper and verifies the target received it. That test, not a reviewer's
    memory, is what catches the next `default` member Media3 adds.
+
+   *Addendum (2026-09-16, #181, ADR-0011 rule 10).* There is now exactly one deliberate exception to
+   "forwards every callback", and it is named here so that the next reader of the contract test finds
+   the argument rather than a puzzle. A `SuperPlayer` built with `superplayer-resilience` performs
+   rungs of ADR-0011's fallback ladder from the player-error path, and a failure such a rung
+   *repairs* is withheld from the consumer's listeners in both the forms Media3 delivers one —
+   `onPlayerError` and `onPlayerErrorChanged`, including the null that clears it. ADR-0011 rule 10
+   reserves the delivered error for the top of that ladder, so a session that was rescued reporting a
+   failure would be two contradictory accounts of one viewing; that rule's addendum carries the whole
+   argument. The exception is bounded in three ways, each of which keeps this rule's own claim true:
+   it is those two callbacks and no others, it is a failure the player is taking on itself and never
+   one that reaches the consumer's rung, and the wrapper withholds nothing at all unless a player
+   gives it something to ask — so Media3's forwarding-contract assertion still drives all 37
+   callbacks through the wrapper and still catches the next `default` member, unchanged. A wrapper
+   that ever wants a second exception argues it here.
 
 ## Consequences
 

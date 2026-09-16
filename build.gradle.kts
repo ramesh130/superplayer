@@ -35,6 +35,18 @@ val licenseHeaderDelimiter = """(/\*\*|package |@file|import )"""
 // classes live in. Ten Kotlin files silently went unformatted and unheadered, and nothing said so.
 val gradleOutputDirectories = listOf("build/**", "*/build/**", ".gradle/**", "*/.gradle/**")
 
+// What else to leave out: the git worktrees an agent working on this repository checks out under
+// `.claude/worktrees/`. They are whole copies of the tree, so each carries its own `build/` and
+// `.gradle/` at *its* depth rather than at one of the four above, and a worktree left behind after
+// a batch of issues puts thousands of generated Kotlin files — kotlin-dsl accessors, extracted
+// plugin blocks — where `**/*.kt` reaches them. What that looks like is a local `check` failing on
+// `spotlessKotlinCheck` for files no commit contains, while CI, which builds a clean checkout, is
+// green; the cause takes longer to find than it has any right to.
+//
+// `**` across separators is what is wanted here, unlike above: nothing under this path belongs to
+// any of the three builds, so excluding the subtree whole is exactly right.
+val agentWorktrees = listOf(".claude/worktrees/**")
+
 // The ktlint settings from `.editorconfig`, handed to ktlint through the channel it actually reads.
 //
 // Spotless's ktlint step consults `.editorconfig` for the rules it only *reports*, but formats with
@@ -89,7 +101,7 @@ val ktlintSettings = readEditorConfigSettings(file(".editorconfig"), listOf("[*]
 spotless {
     kotlin {
         target("**/*.kt")
-        targetExclude(gradleOutputDirectories)
+        targetExclude(gradleOutputDirectories + agentWorktrees)
         ktlint(libs.versions.ktlint.get()).editorConfigOverride(ktlintSettings)
         licenseHeaderFile(file("config/license-header.txt"), licenseHeaderDelimiter)
 
@@ -108,7 +120,7 @@ spotless {
         // formatted here, alongside the build files. They carry no license header: a Gradle script
         // has no `package` line to anchor one to, and headers are tracked on `.kt` sources.
         target("**/*.gradle.kts")
-        targetExclude(gradleOutputDirectories)
+        targetExclude(gradleOutputDirectories + agentWorktrees)
         ktlint(libs.versions.ktlint.get()).editorConfigOverride(ktlintSettings)
     }
 }

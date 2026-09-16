@@ -373,12 +373,22 @@ re-derived, a refused *segment* is told from a refused manifest by the `LoadKind
 resilience carries, and everything else falls through to the engine's error-code band — the only
 `when` over `errorCode` the repository may contain. `Fatal.Unsupported` is reached only from a code
 that says *unsupported*, never from that fall-through.
-The first rung is built on top of it: `Resilience.standard()` is the module's whole public surface —
-what `setResilience` takes — and behind it the internal `StandardResilience` fills both of core's
-slots per player, the load-error one with `RetryingLoadErrors` and the header-refresh one with a
-pass-through #179 replaces (filled rather than left null, because a filled slot is what makes core
-stamp every request with its `LoadKind`, and that stamp is what tells a refused segment from a
-refused manifest). Rung 1 is `RetrySameUrl` inside `FallbackLadder`, which holds one hook per rung
+The first rung is built on top of it: `Resilience.standard(headers = …)` is the module's whole public
+entry point — what `setResilience` takes — and behind it the internal `StandardResilience` fills both
+of core's slots per player, the load-error one with `RetryingLoadErrors` and the header-refresh one
+with `TokenRefreshLayer` when a `HeaderProvider` was handed in and a pass-through when none was
+(filled either way rather than left null, because a filled slot is what makes core stamp every
+request with its `LoadKind`, and that stamp is what tells a refused segment from a refused manifest).
+The provider is the other public type, and the only argument the module takes: a credential is the
+app's to mint and no profile could stand in for it, while *when* it is refreshed is correctness and
+is nobody's to vary (ADR-0011 rule 12). A request a CDN answers 401 or 403 — and no other status — is
+asked once more with what the provider returns, inside the transfer that met the refusal, so the
+cache, measurement and CMCD see one transfer and rung 1's budget is never spent on a credential that
+was always going to be refused. What bounds it is progress: a provider that returns the headers just
+refused, or throws, declines, and the refusal escalates unrepaired. `TokenRefreshPlaybackTest` forces
+all of it through the harness against `FaultScript.expireTokenAtSegment(…, refreshable = true)`, with
+the retry budget set to nothing wherever a repair is expected — so a session that heals can only have
+healed before a retry. Rung 1 is `RetrySameUrl` inside `FallbackLadder`, which holds one hook per rung
 and is the *one* place ADR-0011 rule 7's order is imposed — Media3 asks a chunk source's policy for a
 fallback **before** it asks for a retry delay, which is the ladder upside down, so both answers come
 out of one climb and rungs 2 and 3 stay empty and escalating until #180 and #181. The numbers are

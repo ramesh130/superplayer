@@ -962,6 +962,10 @@ public class SuperPlayer private constructor(
                 )
             }
             val decision = reapplication?.decideInitially() ?: policy.decide(PlaybackConditions())
+            // And the window an extension was handed before any of this happened is pointed at
+            // where the answer now lives: the reapplication's current decision on a player that has
+            // one, and this one answer for the player's lifetime on every other (ADR-0011 rule 11).
+            configuration.decisionInForce.fedBy { reapplication?.decision ?: decision }
 
             // The buffer half becomes a `DefaultLoadControl` only when nothing retargetable was
             // installed in its place; the target already holds the decision otherwise.

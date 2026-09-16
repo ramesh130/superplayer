@@ -89,6 +89,9 @@ class SuperPlayerProfileTest {
                 maxVideoHeightPx = TrackSelectionPolicy.UNLIMITED,
             ),
             preload = PreloadPolicy(itemsAhead = 1, itemsBehind = 0, depth = PreloadDepth.SourcePrepared),
+            retry = RetryPolicy(
+                segment = RetryBudget(maxRetries = 5, initialBackoffMs = 500, maxBackoffMs = 8_000),
+            ),
         )
     }
 
@@ -107,6 +110,10 @@ class SuperPlayerProfileTest {
             trackSelection = TrackSelectionPolicy(
                 maxVideoBitrateBps = TrackSelectionPolicy.UNLIMITED,
                 maxVideoHeightPx = TrackSelectionPolicy.UNLIMITED,
+            ),
+            retry = RetryPolicy(
+                manifest = RetryBudget(maxRetries = 4, initialBackoffMs = 250, maxBackoffMs = 2_000),
+                segment = RetryBudget(maxRetries = 2, initialBackoffMs = 250, maxBackoffMs = 1_000),
             ),
         )
     }
@@ -128,6 +135,7 @@ class SuperPlayerProfileTest {
                 maxVideoHeightPx = 1_080,
             ),
             preload = PreloadPolicy(itemsAhead = 2, itemsBehind = 1, depth = PreloadDepth.DecoderWarmed(durationMs = 1_000)),
+            retry = RetryPolicy(manifest = FEED_BUDGET, segment = FEED_BUDGET),
         )
     }
 
@@ -147,6 +155,7 @@ class SuperPlayerProfileTest {
                 maxVideoBitrateBps = 800_000,
                 maxVideoHeightPx = 480,
             ),
+            retry = RetryPolicy(manifest = DATA_SAVER_BUDGET, segment = DATA_SAVER_BUDGET),
         )
     }
 
@@ -300,11 +309,13 @@ class SuperPlayerProfileTest {
         buffer: BufferPolicy,
         trackSelection: TrackSelectionPolicy,
         preload: PreloadPolicy = PreloadPolicy.NONE,
+        retry: RetryPolicy = RetryPolicy.MEDIA3_DEFAULT,
     ) {
         val player = harness.buildPlayer(profile)
 
         assertThat(player.profile).isEqualTo(profile)
-        assertThat(player.playbackDecision).isEqualTo(PlaybackDecision(buffer, trackSelection, preload = preload))
+        assertThat(player.playbackDecision)
+            .isEqualTo(PlaybackDecision(buffer, trackSelection, preload = preload, retry = retry))
 
         val parameters = player.trackSelectionParameters
         assertThat(parameters.maxVideoBitrate).isEqualTo(trackSelection.maxVideoBitrateBps)
@@ -327,5 +338,11 @@ class SuperPlayerProfileTest {
 
         /** [PlaybackProfile.SHORT_FORM]'s documented ceiling, asserted against above. */
         const val SHORT_FORM_MAX_BUFFER_MS = 15_000L
+
+        /** `SHORT_FORM`'s retry budget, which both of its kinds of load share. */
+        val FEED_BUDGET = RetryBudget(maxRetries = 2, initialBackoffMs = 250, maxBackoffMs = 1_000)
+
+        /** `DATA_SAVER`'s: fewer asks than anywhere else, at Media3's own unhurried waits. */
+        val DATA_SAVER_BUDGET = RetryBudget(maxRetries = 2, initialBackoffMs = 1_000, maxBackoffMs = 5_000)
     }
 }

@@ -373,6 +373,26 @@ re-derived, a refused *segment* is told from a refused manifest by the `LoadKind
 resilience carries, and everything else falls through to the engine's error-code band — the only
 `when` over `errorCode` the repository may contain. `Fatal.Unsupported` is reached only from a code
 that says *unsupported*, never from that fall-through.
+The first rung is built on top of it: `Resilience.standard()` is the module's whole public surface —
+what `setResilience` takes — and behind it the internal `StandardResilience` fills both of core's
+slots per player, the load-error one with `RetryingLoadErrors` and the header-refresh one with a
+pass-through #179 replaces (filled rather than left null, because a filled slot is what makes core
+stamp every request with its `LoadKind`, and that stamp is what tells a refused segment from a
+refused manifest). Rung 1 is `RetrySameUrl` inside `FallbackLadder`, which holds one hook per rung
+and is the *one* place ADR-0011 rule 7's order is imposed — Media3 asks a chunk source's policy for a
+fallback **before** it asks for a retry delay, which is the ladder upside down, so both answers come
+out of one climb and rungs 2 and 3 stay empty and escalating until #180 and #181. The numbers are
+`PlaybackDecision.retry`, core's public `RetryPolicy`: three `RetryBudget`s, one each for manifest,
+segment and licence, so one exhausted budget cannot spend another's, defaulting to Media3's own and
+set per profile in `StaticProfilePolicy` with a reason per row. The licence budget is declared and
+unreachable — Media3 routes a licence load through the `LoadErrorHandlingPolicy` its DRM session
+manager holds rather than the media source factory's, and Phase 6 owns DRM — which is why
+`RetryingLoadErrorsTest` is where it is asserted. The budget is re-read on *every* consultation
+through core's internal `DecisionInForce`, a window onto `player.playbackDecision` opened before the
+player exists. `Backoff` is the growth and the jitter, and the jitter is correctness rather than
+policy (rule 12): equal jitter, uniform over `[base/2, base]`, argued where it is chosen.
+`RetryPlaybackTest` forces every claim through the harness over real HLS and counts what left the
+chain, `RetryBackoffTest` asserts the spread rather than one delay.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,

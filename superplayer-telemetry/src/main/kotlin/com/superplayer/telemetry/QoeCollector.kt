@@ -414,6 +414,10 @@ public class QoeCollector internal constructor(
                 // A placeholder the delivery path replaces as this event leaves the queue: a drop
                 // caused by memory pressure after this line has run still belongs on it.
                 droppedEventCount = 0,
+                // Asked of the player as a consumer would, for `classify`'s reason: this collector is
+                // not a friend of core and keeps no second copy of what the DRM slot decided. Null on
+                // every session that negotiated nothing, which is nearly all of them.
+                securityLevel = player?.deliveredSecurityLevel,
             ),
         )
     }

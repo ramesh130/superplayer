@@ -20,6 +20,7 @@ import android.app.ActivityManager
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.hardware.display.DisplayManager
+import android.media.MediaCodecInfo
 import android.media.MediaCodecList
 import android.view.Display
 
@@ -88,6 +89,8 @@ private class DecoderTable(
     val instancesPerMimeType: Map<String, Int>,
     /** [DeviceConstraints.decodableProfileLevels], pooled by MIME type as [readDecoderTable] argues. */
     val profileLevels: Map<String, List<DeviceConstraints.ProfileLevel>>,
+    /** [DeviceConstraints.secureDecodableMimeTypes]; null when the walk found no video decoder at all. */
+    val secureMimeTypes: Set<String>?,
 ) {
     /**
      * [concurrentPlayerCapacityOf]'s decoder term for a feed in [codecs]: the smallest of their
@@ -140,11 +143,16 @@ private fun readDecoderTable(): DecoderTable {
         // file rather than anything an app can fix. A pool that crashed on such a device would be
         // strictly worse than one that ran a single player on it, and the selector reads the same
         // failure as "unknown" rather than "none".
-        return DecoderTable(instancesPerMimeType = emptyMap(), profileLevels = emptyMap())
+        return DecoderTable(instancesPerMimeType = emptyMap(), profileLevels = emptyMap(), secureMimeTypes = null)
     }
 
     val bestPerMimeType = mutableMapOf<String, Int>()
     val pooled = mutableMapOf<String, MutableList<DeviceConstraints.ProfileLevel>>()
+    // Every video MIME type a decoder was seen for, and the subset of those a *secure* decoder was
+    // seen for. The first exists only so that "no secure decoder" can be told from "no decoder table
+    // at all" below: those are the two readings [DeviceConstraints] must never confuse.
+    val videoMimeTypes = mutableSetOf<String>()
+    val secureMimeTypes = mutableSetOf<String>()
     for (codec in codecs) {
         if (codec.isEncoder) continue
         for (mimeType in codec.supportedTypes) {
@@ -163,6 +171,16 @@ private fun readDecoderTable(): DecoderTable {
                 continue
             }
 
+            videoMimeTypes += format
+            // ref: `MediaCodecInfo.CodecCapabilities.FEATURE_SecurePlayback` (`secure-playback`) is
+            // the feature a decoder able to operate on protected memory declares, and it is the only
+            // honest answer to "can this device play an L1 licence's keys" — a name ending `.secure`
+            // is a convention rather than a guarantee, so the feature is read and the name is not.
+            // https://developer.android.com/reference/android/media/MediaCodecInfo.CodecCapabilities#FEATURE_SecurePlayback
+            if (capabilities.isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_SecurePlayback)) {
+                secureMimeTypes += format
+            }
+
             val instances = capabilities.maxSupportedInstances
             if (instances > 0) bestPerMimeType[format] = maxOf(bestPerMimeType[format] ?: 0, instances)
 
@@ -177,6 +195,10 @@ private fun readDecoderTable(): DecoderTable {
     return DecoderTable(
         instancesPerMimeType = bestPerMimeType,
         profileLevels = pooled,
+        // Null rather than empty where no video decoder was declared at all: an empty set is a device
+        // that answered and has none, which is a fact a session may be refused over, and a device
+        // that answered nothing must refuse nothing (the [DeviceConstraints] KDoc's direction).
+        secureMimeTypes = if (videoMimeTypes.isEmpty()) null else secureMimeTypes,
     )
 }
 
@@ -325,6 +347,27 @@ internal class DeviceConstraints(
      * that declared no profiles, which is also unknown.
      */
     val decodableProfileLevels: Map<String, List<ProfileLevel>>,
+
+    /**
+     * The video MIME types a decoder able to operate on **protected memory** is declared for, or null
+     * where the device declared no video decoder at all.
+     *
+     * ADR-0012 rule 12's reading, and here rather than in `superplayer-drm` for the reason that rule
+     * gives: it does not change under a playing session, so it is a *constraint* and not a
+     * [PlaybackConditions] observation, and the decoder list is walked in exactly one place
+     * ([readDecoderTable]) because the platform caches it on first read.
+     *
+     * Null and empty are different answers and the difference is load-bearing here as everywhere else
+     * in this class: an empty set is a device that listed its decoders and has no secure one — which
+     * is what makes an L1 licence unusable on it — while null is a device that listed nothing, and
+     * nothing is refused over an unknown.
+     *
+     * Defaulted to null — the only field here that is — so that a caller which has nothing to say
+     * about protection says nothing rather than being made to write it down. That is exactly the
+     * reading it wants: a test about track selection states a display and a decoder table, and the
+     * absence of a secure decoder in it is not a statement that the device has none.
+     */
+    val secureDecodableMimeTypes: Set<String>? = null,
 ) {
     /** One `MediaCodecInfo.CodecProfileLevel`, as values: [profile] and [level] are its constants. */
     internal data class ProfileLevel(val profile: Int, val level: Int)
@@ -344,12 +387,23 @@ internal class DeviceConstraints(
         return declared.any { it.profile == profile && it.level >= level }
     }
 
+    /**
+     * Whether this device can decode *anything* on protected memory, or null where it said nothing.
+     *
+     * Asked of the device rather than of a MIME type, because the question it answers is asked before
+     * any content is known: a licence acquired at `L1` may only be used by a secure decoder
+     * (// ref: `MediaDrm.requiresSecureDecoderComponent`), so a device with none cannot use one at
+     * all, whatever the stream turns out to be encoded in.
+     */
+    fun hasSecureVideoDecoder(): Boolean? = secureDecodableMimeTypes?.isNotEmpty()
+
     internal companion object {
         /** A device that answered nothing: constrains nothing. */
         val UNKNOWN: DeviceConstraints = DeviceConstraints(
             displayShortEdgePx = null,
             displayHdrTypes = null,
             decodableProfileLevels = emptyMap(),
+            secureDecodableMimeTypes = null,
         )
     }
 }
@@ -376,10 +430,14 @@ internal fun deviceConstraintsOf(context: Context): DeviceConstraints {
         ?.filter { it > 0 }
         ?.maxOrNull()
     val hdrTypes = display?.let { readHdrTypes(it) }
+    // One walk for both readings, because the platform caches the codec list on first read and a
+    // second walk would be a second chance to disagree with the first.
+    val decoders = readDecoderTable()
     return DeviceConstraints(
         displayShortEdgePx = shortEdgePx,
         displayHdrTypes = hdrTypes,
-        decodableProfileLevels = readDecoderTable().profileLevels,
+        decodableProfileLevels = decoders.profileLevels,
+        secureDecodableMimeTypes = decoders.secureMimeTypes,
     )
 }
 

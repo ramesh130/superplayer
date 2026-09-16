@@ -129,6 +129,7 @@ case and says nothing about memory.
 
 [adr8]: adr/0008-measure-behind-an-engine-agnostic-sink-boundary.md
 [adr11]: adr/0011-classify-every-failure-once-and-keep-the-rungs-behind-the-boundary.md
+[adr12]: adr/0012-acquire-licences-behind-the-boundary-in-storage-the-consumer-opened.md
 
 ### Two clocks, and which is which
 
@@ -226,6 +227,28 @@ The one `isRetryable` that flips with it is `Drm.SystemError`'s, from true to fa
 for an unnamed DRM failure no longer tells an app that retrying is worth anything, because nothing
 about it was a transfer.
 
+**Version 2 stands — the security level a session was delivered at (`#208`).** `SessionEnded` gained
+a `securityLevel`, and the `Drm` branch gained a seventh leaf, `Drm.DowngradeRefused`. Neither moves
+`SCHEMA_VERSION`, and both answers are deliberate rather than an oversight:
+
+- The field is an **addition of shape**. No existing field's definition changes, no denominator
+  moves, and a pipeline that ignores it computes exactly what it computed before. That is the same
+  ruling `DecisionChanged` got, and [ADR-0008][adr8] rule 5's line between shape and meaning.
+- The leaf maps to `FailureCategory.DRM`, as every leaf of that branch does, so no `category` slice
+  moves — the same reason `#206` did not move the version.
+
+What a pipeline can do about it: `SessionEnded.securityLevel` is `null` on every session that
+negotiated nothing, which is every unprotected session and every protected one on a device that could
+honour the level it reports. It is non-null only where [ADR-0012][adr12] rule 11's negotiation ran and
+the licence server permitted a lower level — so a non-null value is precisely *this viewer had
+something weaker delivered than they were entitled to*, and it is the field a support engineer reads
+before asking anything else. Counting it per app version and per device model is how a fused-off
+secure path shows up as a fleet fact rather than as one confused ticket.
+
+| Now reported | Was reported as | What it is |
+| --- | --- | --- |
+| `Drm.DowngradeRefused` | `Drm.Unsupported` | The device cannot honour the protection level it reports and the licence server did not permit the lower one. Carries its own `userMessageKey`, `superplayer_error_protection_unavailable`: the content may not be shown on this device, which is neither a licence that failed to arrive nor a device that cannot decode |
+
 **A sink must tolerate a new event type.** `TelemetryEvent` is sealed, so a `when` over it can be
 exhaustive without an `else` — and such a `when` fails to compile when a later version adds an event.
 An `else` branch is the forward-compatible spelling; take the exhaustive one only if being told about
@@ -239,7 +262,7 @@ additions is what you want.
 | --- | --- | --- |
 | `SessionStarted` | A player takes content on | `profile`, `decision` |
 | `DecisionChanged` | The policy answered differently on a named trigger | `decision`, `trigger` |
-| `SessionEnded` | Released, recycled, or moved to other content | `droppedEventCount` |
+| `SessionEnded` | Released, recycled, or moved to other content | `droppedEventCount`, `securityLevel` |
 | `FirstFrameRendered` | The first video frame reaches the display | `timeToFirstFrameMs`, `startBoundary` |
 | `RebufferStarted` | Playback stalls for data after it started | `seekInduced` |
 | `RebufferEnded` | Playback resumes from that stall | `durationMs`, `seekInduced` |

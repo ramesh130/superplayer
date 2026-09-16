@@ -212,14 +212,10 @@ class SuperPlayerDrmSeamTest {
         private val devices = mutableListOf<ExoMediaDrm.Provider?>()
         private val policies = mutableListOf<LoadErrorHandlingPolicy?>()
 
-        override fun over(
-            licenceTransport: DataSource.Factory,
-            mediaDrm: ExoMediaDrm.Provider?,
-            loadErrors: LoadErrorHandlingPolicy?,
-        ): DrmSessionManagerProvider {
-            transports += licenceTransport
-            devices += mediaDrm
-            policies += loadErrors
+        override fun over(licence: LicenceContext): DrmSessionManagerProvider {
+            transports += licence.transport
+            devices += licence.mediaDrm
+            policies += licence.loadErrors
             return DrmSessionManagerProvider { DrmSessionManager.DRM_UNSUPPORTED }
         }
 

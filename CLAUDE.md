@@ -530,7 +530,28 @@ error") and `SystemError` (the device's protection stack, and the band's fall-th
 rung 5: a re-prepare builds a decoder again and not a new `MediaDrm`. The category table did not
 move, so `TelemetryEvent.SCHEMA_VERSION` did not either, and
 `docs/telemetry-schema.md`'s *Release notes* says so explicitly along with the three
-`classification` values a pipeline can now see. Since #207 a device that is not provisioned is
+`classification` values a pipeline can now see. Since #208 the module also carries `PRD.md` §3.2's
+**security-level ladder**, and its constraint is the whole of it: policy is the *server's*, and the
+client never downgrades on its own authority (ADR-0012 rule 11). `SecurityLevelLadder` asks at all
+only where the device has already lost — it reports `L1` and core's `DeviceConstraints` says it
+declares no secure decoder, the one of `PRD.md` §3.2's three cases a player can see before spending a
+licence — and what it asks is a `GET` at the licence URI naming the level it can honour, answered (or
+not) in a response header. The wire format is core's public `SecurityLevelNegotiation`, SuperPlayer's
+own rather than any standard's, and **silence is a refusal**: a server that never heard of the
+exchange refuses every downgrade by doing nothing, which is what makes failing-hard the default and
+downgrading-silently unreachable. A permission sets `securityLevel` on the device
+(`LoweredSecurityLevel`) before any key request is composed; a refusal fills the slot with core's
+`refusedSessions`, which opens nothing, asks for no licence, and carries the public
+`SecurityDowngradeRefusedException` that `ErrorClassifier` maps to the seventh `FailureClass.Drm`
+leaf, `DowngradeRefused`, and to the taxonomy's **seventh** message key — the content may not be
+shown on this device, which is neither a licence that failed to arrive nor a device that cannot
+decode. It is a mechanism beside `FallbackLadder` and **not a seventh rung**; the builder flag
+ADR-0012 rejected stays rejected. What was delivered is `player.deliveredSecurityLevel`, which
+`QoeCollector` reads onto `TelemetryEvent.SessionEnded.securityLevel` — an addition of shape, so
+`SCHEMA_VERSION` stays 2, which the release notes say in as many words. `SecurityLevelTest` states
+one device and two servers, one permitting and one silent. The two cases it cannot force — a failed
+L1 provisioning, and a secure surface that will not allocate — are named in its KDoc rather than
+implied. Since #207 a device that is not provisioned is
 **provisioned rather than refused**, and almost none of that is new machinery: Media3 posts a
 provisioning request through the same `LoadErrorHandlingPolicy` as every other DRM load, so it spends
 `RetryPolicy.licence` with `Backoff`'s jitter, and a service that never relents ends on

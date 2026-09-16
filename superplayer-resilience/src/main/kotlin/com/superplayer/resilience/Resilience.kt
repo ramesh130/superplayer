@@ -40,24 +40,31 @@ import kotlin.random.Random
  * chain layer reach the engine without either appearing in a signature a consumer can see (ADR-0011
  * rule 13, ADR-0001 rule 2).
  *
- * There is nothing to configure here and deliberately so. Everything ADR-0011 rule 12 calls
- * correctness — the jitter, the rung order, the token refresh, the position a rung resumes at — is
- * on for every player this is attached to and is not a caller's to vary; everything rule 11 calls
+ * There is one argument and deliberately only one. Everything ADR-0011 rule 12 calls correctness —
+ * the jitter, the rung order, *when* a token is refreshed, the position a rung resumes at — is on
+ * for every player this is attached to and is not a caller's to vary; everything rule 11 calls
  * policy — the retry budgets — is decided behind `PlaybackPolicy` as
  * [com.superplayer.core.PlaybackDecision.retry] and read from the decision in force, so it arrives
- * from the profile or the policy rather than from an argument here.
+ * from the profile or the policy rather than from an argument here. What the [HeaderProvider]
+ * argument carries is neither: it is the credential itself, which only the app can mint, and no
+ * profile, policy or library default could stand in for it.
  */
 public object Resilience {
 
     /**
      * The resilience this module ships: ADR-0011's ladder, as far as it is built.
      *
+     * [headers] is where a refused request's next credential comes from. With none, a 401 or 403 is
+     * a load error like any other and the ladder is all there is to meet it; with one, the refusal
+     * is repaired before a retry is spent on it ([HeaderProvider], [TokenRefreshLayer]).
+     *
      * One object may be handed to many players — a pool fills every player's slots from the one it
      * was given — so nothing returned here holds a player's state; what is per player is built per
      * player, in [StandardResilience.configureEngine].
      */
     @JvmStatic
-    public fun standard(): PlaybackResilience = StandardResilience()
+    @JvmOverloads
+    public fun standard(headers: HeaderProvider? = null): PlaybackResilience = StandardResilience(headers)
 }
 
 /**
@@ -71,7 +78,7 @@ public object Resilience {
  * a lifetime is built inside [configureEngine], which runs once per player, and belongs to that
  * player alone.
  */
-internal class StandardResilience : EngineResilienceExtension {
+internal class StandardResilience(private val headers: HeaderProvider?) : EngineResilienceExtension {
 
     override fun configureEngine(configuration: EngineConfiguration) {
         // A source of jitter per player rather than one for the process, so that two players that
@@ -80,18 +87,18 @@ internal class StandardResilience : EngineResilienceExtension {
         // instance is here so a test can substitute a seeded one at this seam later without the
         // players of one pool sharing a sequence.
         configuration.loadErrors = RetryingLoadErrors.forPlayer(configuration.decisionInForce, Random.Default)
-        // Filled, and today a pass-through. Two reasons it is filled rather than left null: a player
-        // with either slot filled is the player whose requests core stamps with their `LoadKind`,
-        // and that stamp is what lets `ErrorClassifier` tell a refused segment from a refused
-        // manifest (`Transient.CdnEdge` exists only for the former); and #179 replaces the body
-        // below without having to reach back into this file.
-        configuration.headerRefresh = PassThroughHeaderRefresh
+        // One layer per player, because the credential it refreshes is the session's, and the
+        // pass-through where there is no provider to refresh one with. Filled either way rather than
+        // left null, because a player with either slot filled is the player whose requests core
+        // stamps with their `LoadKind`, and that stamp is what lets `ErrorClassifier` tell a refused
+        // segment from a refused manifest (`Transient.CdnEdge` exists only for the former).
+        configuration.headerRefresh = headers?.let { TokenRefreshLayer(it) } ?: PassThroughHeaderRefresh
     }
 }
 
 /**
- * The header-refresh slot, occupied and doing nothing — #179 is where a request acquires a repaired
- * credential and is asked again.
+ * The header-refresh slot, occupied and doing nothing: what fills it for a player built with no
+ * [HeaderProvider], since there is then no credential to repair a refused request with.
  *
  * It returns the upstream factory unchanged rather than wrapping it, which is what makes "occupied
  * and doing nothing" exactly true: no data source is allocated, no transfer is intercepted, and

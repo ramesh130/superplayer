@@ -1,3 +1,10 @@
+public final class com/superplayer/resilience/CredentialRefusal {
+	public final fun getSentHeaders ()Ljava/util/Map;
+	public final fun getStatus ()I
+	public final fun getUri ()Landroid/net/Uri;
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/superplayer/resilience/ErrorClassifier {
 	public static final field INSTANCE Lcom/superplayer/resilience/ErrorClassifier;
 	public final fun classify (Ljava/lang/Throwable;)Lcom/superplayer/resilience/FailureClass;
@@ -84,8 +91,14 @@ public final class com/superplayer/resilience/FallbackRung : java/lang/Enum {
 	public static fun values ()[Lcom/superplayer/resilience/FallbackRung;
 }
 
+public abstract interface class com/superplayer/resilience/HeaderProvider {
+	public abstract fun refreshedHeaders (Lcom/superplayer/resilience/CredentialRefusal;)Ljava/util/Map;
+}
+
 public final class com/superplayer/resilience/Resilience {
 	public static final field INSTANCE Lcom/superplayer/resilience/Resilience;
 	public static final fun standard ()Lcom/superplayer/core/PlaybackResilience;
+	public static final fun standard (Lcom/superplayer/resilience/HeaderProvider;)Lcom/superplayer/core/PlaybackResilience;
+	public static synthetic fun standard$default (Lcom/superplayer/resilience/HeaderProvider;ILjava/lang/Object;)Lcom/superplayer/core/PlaybackResilience;
 }
 

@@ -16,20 +16,18 @@
 
 package com.superplayer.testkit
 
-import androidx.media3.common.Player
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
-import com.superplayer.core.LiveWindowTooShortException
 import com.superplayer.core.MediaRequest
 import com.superplayer.core.StaleLivePlaylistException
 import com.superplayer.testmedia.HostileManifests
 import com.superplayer.testmedia.HostileStream
 import com.superplayer.testmedia.HostileStream.Severity
-import com.superplayer.testmedia.SyntheticHlsStream
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import com.superplayer.testkit.HostileOutcome as Outcome
 
 /**
  * What SuperPlayer does with [HostileManifests] today — recorded, not asserted as correct.
@@ -56,54 +54,6 @@ class HostileManifestCorpusTest {
 
     @get:Rule
     val harness: PlaybackHarness = PlaybackHarness()
-
-    /**
-     * How far a session gets. Ordered worst to best, and deliberately coarse.
-     *
-     * Coarse because the corpus is a baseline and not a specification: what a later phase has to be
-     * able to show is that an entry moved from [FAILS] to [PLAYS_TO_END], and a finer vocabulary
-     * would make this table churn on Media3 upgrades without anything having changed.
-     */
-    private enum class Outcome {
-        /** The session raised a `PlaybackException` that nothing classified. */
-        FAILS,
-
-        /**
-         * The session raised a `PlaybackException` whose cause is one of SuperPlayer's own typed
-         * failures: not recovered, but named, with a likely cause a user-facing message can be
-         * written from. `PRD.md` Part 4's Phase 5 exit criterion asks this of every fault that does
-         * not recover, which is why it is its own row and better than [FAILS].
-         */
-        FAILS_TYPED,
-
-        /** No error, and never ready: the player never had anything to render. */
-        NEVER_STARTS,
-
-        /**
-         * Ready at some point, and not ready again for the last [READY_WINDOW_MS] of the budget.
-         *
-         * Read over a window rather than at the budget's last instant: a session that is playing is
-         * momentarily buffering at plenty of instants, and which one the budget ends on is the host's
-         * answer rather than the pathology's (issue #91).
-         */
-        STALLS,
-
-        /**
-         * Started without an error, but reported a position outside the media it was served: before
-         * its start, or more than a segment past its end. Observed, not judged — a position the
-         * stream cannot contain is a fact about the session whatever state it ended in.
-         */
-        DEGRADES,
-
-        /**
-         * Ready within the last [READY_WINDOW_MS] of the budget — which for live content, which never
-         * ends, is what playing correctly looks like. See [STALLS] for why it is a window.
-         */
-        STILL_PLAYING,
-
-        /** Reached `STATE_ENDED` — the pathology cost the session nothing observable here. */
-        PLAYS_TO_END,
-    }
 
     @Test
     fun everyPathologyIsPlayedAndItsBehaviourRecorded() {
@@ -263,107 +213,21 @@ class HostileManifestCorpusTest {
      * Plays [stream] as far as it gets within a bounded budget of playback time, and says how far
      * that was.
      *
-     * Bounded rather than played to a state, because much of this corpus never reaches one: a
-     * manifest whose segments are not available yet leaves a player buffering forever, which is the
-     * behaviour being recorded rather than a hang to wait out.
+     * The loop itself is [HostileObservation.observe]'s, shared with `superplayer-resilience`'s
+     * ladder record so that the two tables differ only in the player they were taken on. What is
+     * fixed here is that player: a profile and nothing else, which is the core-only consumer this
+     * table has always described (ADR-0011 rule 14).
      */
-    private fun observe(stream: HostileStream): Outcome {
-        val content = TestContent.hostile(stream)
-        val player = harness.buildPlayer(content = content)
-
-        // Sampled from a listener rather than from the loop below: a session that is ready between
-        // two advances is a session that started, and a loop reading the state every 500 ms would
-        // miss it and record the wrong row.
-        var everReady = false
-        player.addListener(
-            object : Player.Listener {
-                override fun onPlaybackStateChanged(playbackState: Int) {
-                    if (playbackState == Player.STATE_READY) everReady = true
-                }
-            },
-        )
-
-        player.setMediaRequest(MediaRequest.Builder(stream.id).addSource(content.sourceUri).build())
-        player.prepare()
-        player.play()
-
-        // The same budget for every entry, rather than one derived from its length: on-demand
-        // entries end well inside it, and live ones never end at all, so what distinguishes them is
-        // the state they are in when it runs out.
-        var advanced = 0L
-        var positionOutsideMedia = false
-        // When the player was last seen ready, so that "still playing" is not whichever single instant
-        // the budget happened to end on. Deliberately not the position: a live session's position is
-        // measured inside a window that slides forward as fast as playback does, so it stands still
-        // while the stream plays perfectly — which is most of this corpus.
-        var lastReadyAtMs: Long? = null
-        while (advanced < OBSERVATION_MS && player.playerError == null &&
-            player.playbackState != Player.STATE_ENDED
-        ) {
-            // In load-sized steps, for `advanceTimeInStepsMs`'s reason: a single long advance gives
-            // the engine one pass and never reaches the segment the pathology is about.
-            harness.advanceTimeInStepsMs(player, STEP_MS)
-            advanced += STEP_MS
-            if (player.playbackState == Player.STATE_READY) lastReadyAtMs = advanced
-            positionOutsideMedia = positionOutsideMedia || isOutsideMedia(player.currentPosition, stream)
-        }
-        positionOutsideMedia = positionOutsideMedia || isOutsideMedia(player.currentPosition, stream)
-
-        val error = player.playerError
-        val readyAtMs = lastReadyAtMs
-        return when {
-            error != null && isTyped(error.cause) -> Outcome.FAILS_TYPED
-            error != null -> Outcome.FAILS
-            !everReady -> Outcome.NEVER_STARTS
-            positionOutsideMedia -> Outcome.DEGRADES
-            player.playbackState == Player.STATE_ENDED -> Outcome.PLAYS_TO_END
-            readyAtMs != null && advanced - readyAtMs <= READY_WINDOW_MS -> Outcome.STILL_PLAYING
-            else -> Outcome.STALLS
-        }
-    }
-
-    /** Whether [cause] is one of the failures SuperPlayer names, rather than the engine's own. */
-    private fun isTyped(cause: Throwable?): Boolean =
-        cause is StaleLivePlaylistException || cause is LiveWindowTooShortException
-
-    /**
-     * Whether [positionMs] is somewhere [stream] has no media: before zero, or more than a segment
-     * past the media it carries. A segment of slack, because a player reports its position at the
-     * granularity of its own loop and an on-demand session ends a fraction past its last sample.
-     */
-    private fun isOutsideMedia(positionMs: Long, stream: HostileStream): Boolean =
-        positionMs < 0 || positionMs > stream.durationMs + SyntheticHlsStream.SEGMENT_DURATION_MS
+    private fun observe(stream: HostileStream): Outcome = HostileObservation.observe(harness, stream)
 
     private companion object {
 
         /**
-         * How much playback time each entry is watched for. Two bounds decide it, and both are about
-         * an entry running out of *time* or *stream* for a reason unrelated to its pathology:
-         *
-         * - At least twice the longest on-demand entry — today the 17.5 s ragged-durations one —
-         *   because how much playback time a session spends starting depends on the host: the
-         *   engine's clock is fake, but loads complete on real threads. At 20 s this left 1.5 s of
-         *   margin, and a slower CI runner recorded that entry as still playing.
-         *   [theObservationBudgetFitsEveryFiniteEntryTwice] holds the bound.
-         * - Well short of the ~120 s a live entry publishes, so a live session is never watched past
-         *   the end of its own window.
+         * The observation's own budget, named here because the bound
+         * [theObservationBudgetFitsEveryFiniteEntryTwice] holds is a fact about this corpus rather
+         * than about the loop that plays it.
          */
-        const val OBSERVATION_MS = 40_000L
-
-        /** One turn of the loop above: a few loads, so a whole session is tens of turns. */
-        const val STEP_MS = 500L
-
-        /**
-         * How recently a session must have been ready to count as still playing rather than stalled:
-         * a segment's worth of playback time, which is four turns of the loop above.
-         *
-         * The point is to stop reading one instant. A session that is playing is ready at nearly every
-         * turn and momentarily buffering at some of them, so which state the last turn caught was the
-         * host's answer rather than the pathology's (issue #91); one that has stopped is never ready
-         * again, so any window shorter than the budget separates the two. A segment is the unit a
-         * player waits for when it hiccups, which makes it the honest width.
-         */
-        const val READY_WINDOW_MS = SyntheticHlsStream.SEGMENT_DURATION_MS
+        const val OBSERVATION_MS = HostileObservation.OBSERVATION_MS
 
         /**
          * What each entry does today, as of the change that added it. Every id in
@@ -400,9 +264,9 @@ class HostileManifestCorpusTest {
             // layer reading a response and the engine processing it, by the whole target duration of
             // margin. `HarnessClockWait.transfersHaveCaughtUp` and `PlaybackHarness.quiesce` say why
             // it never does: a reload due at the new moment is work on the playback thread, which the
-            // idle probe runs and the load counts then hold. It also relies on [STEP_MS]: a clock that
-            // jumped more than three target durations past a reload would find the layer's history
-            // expired and Media3's not. This row once read `FAILS` on loaded runners, on a harness that
+            // idle probe runs and the load counts then hold. It also relies on the observation step
+            // (`HostileObservation.STEP_MS`): a clock that jumped more than three target durations
+            // past a reload would find the layer's history expired and Media3's not. This row once read `FAILS` on loaded runners, on a harness that
             // counted open transfers only (issue #105).
             "hls-cached-live-playlist" to Outcome.FAILS_TYPED,
             "dash-ladder-gap" to Outcome.PLAYS_TO_END,

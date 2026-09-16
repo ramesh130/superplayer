@@ -699,6 +699,21 @@ Style preferences these are not. A change violating one is not accepted, whateve
   a rung repairs is withheld from the consumer's listeners,
   which rule 10's addendum decides and which is the one deliberate exception to ADR-0003 rule 3;
   and a player built without it pays nothing, which a test counts.
+- **[ADR-0012](docs/adr/0012-acquire-licences-behind-the-boundary-in-storage-the-consumer-opened.md)** —
+  decides Phase 6's shape: protection is declared once per player on the builder and fixed for its
+  lifetime, so `MediaRequest.sources` stays a list of locations for one piece of content and
+  `FailureClass.Drm.Unsupported`'s rung-4 reason is rewritten to the narrower fact that survives — a
+  second source is a second container and scheme mapping, not a second entitlement; the credential
+  is the app's through the one `HeaderProvider`, which moves to core so neither optional module
+  depends on the other; the Media3-facing half is internal to `superplayer-drm` and reaches the
+  engine through one DRM slot in core's seam, as core's sixth Kotlin friend; the module classifies
+  nothing and instead raises a public core exception carrying the evidence, which `ErrorClassifier`
+  maps, so no `ERROR_CODE_DRM_UNSPECIFIED` reaches a consumer alone; an offline licence lives in a
+  directory the consumer named, with the playback-versus-licence expiry split readable before
+  playback and renewal the consumer's to schedule; a lower security level is requested only where
+  the licence server permitted it, which is a mechanism beside the fallback ladder and not a seventh
+  rung; and a player built without `setDrm` allocates nothing — a provider set and answering
+  `DRM_UNSUPPORTED` is not nothing — which a test counts.
 - **[`docs/api-surface.md`](docs/api-surface.md)** — every published module's public API is tracked
   in `<module>/api/<module>.api` and validated by `check`. Changing it means running
   `./gradlew updateApiSurface` and committing the diff in the same change. A leaked `@UnstableApi`

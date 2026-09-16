@@ -425,6 +425,17 @@ they are fetched from different paths, so each gets an index in the order the se
 and a fault naming the kind and no index addresses both — which is what "the licence server is down"
 means.
 
+**A licence is otherwise a load like any other, and a test of that needs two modules.** Since #205 a
+refused licence spends `RetryPolicy.licence` and a licence refused 401 or 403 is repaired by the one
+`HeaderProvider`, but both of those belong to `superplayer-resilience`: the budget is answered by the
+`LoadErrorHandlingPolicy` it fills core's slot with, which core then hands the DRM slot as well, and
+the repair happens in the header-refresh layer the licence transport is composed over. So a test of
+either builds its player with `setResilience` beside `setDrm` — `superplayer-drm`'s `LicenceLoadTest`
+is the worked example — and a player with only one of the two keeps Media3's own handling for a
+licence exactly as it keeps it for a segment. The forcing form of each claim is a budget the test
+sets to a number Media3 would not have chosen: a licence played out of five asks where Media3's own
+patience is three, or a session repaired while the budget was zero.
+
 `ProtectedPlaybackTest` is the worked example, and it drives a **stock** `ExoPlayer`: no SuperPlayer
 DRM code exists until #204, so everything it asserts is a claim about this harness rather than about
 the library. `PlaybackHarness.buildPlayer` refuses protected content outright and says why, because

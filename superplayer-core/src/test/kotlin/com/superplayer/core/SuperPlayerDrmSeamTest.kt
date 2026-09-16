@@ -16,12 +16,17 @@
 
 package com.superplayer.core
 
+import android.net.Uri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.TransferListener
 import androidx.media3.exoplayer.drm.DrmSessionManager
 import androidx.media3.exoplayer.drm.DrmSessionManagerProvider
 import androidx.media3.exoplayer.drm.ExoMediaDrm
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import androidx.media3.test.utils.robolectric.ShadowMediaCodecConfig
 import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -116,6 +121,71 @@ class SuperPlayerDrmSeamTest {
         assertThat(sessions.statedDevices()).containsExactly(STATED_DEVICE)
     }
 
+    /**
+     * What a licence request is, to the two slots beneath it: [LoadKind.LICENCE] and never the kind
+     * an item's factory would have stamped (#205).
+     *
+     * The kind is the only thing that identifies a request no media source composed, and the
+     * header-refresh layer reads it to tell a refused entitlement from a refused segment. Asserted by
+     * opening a request through the transport the slot was handed and reading what arrived at the
+     * bottom of the chain, because a stamp is a property of the request rather than of the factory.
+     */
+    @Test
+    fun everyRequestTheLicenceTransportOpensIsStampedALicence() {
+        val stamped = mutableListOf<LoadKind>()
+        val sessions = RecordingSessions()
+        val player = harness.buildPlayer(
+            drm = TestDrm(sessions),
+            alsoConfigure = { configuration ->
+                configuration.exoMediaDrm = STATED_DEVICE
+                val transport = checkNotNull(configuration.transport)
+                configuration.transport = DataSource.Factory { KindWatching(transport.createDataSource(), stamped) }
+            },
+        )
+        playUntilReady(player)
+
+        // The content's own requests travelled the same transport and are stamped by kind too; what
+        // this asks for is the one the licence transport opens.
+        stamped.clear()
+        val licences = sessions.licenceTransports().single()
+        // The address is never served — nothing here answers a licence — and the stamp is read at
+        // `open`, before the refusal.
+        runCatching { licences.createDataSource().open(DataSpec(Uri.parse(LICENCE_URI))) }
+
+        assertThat(stamped).containsExactly(LoadKind.LICENCE)
+    }
+
+    /**
+     * The slot is handed the player's *own* `LoadErrorHandlingPolicy`, which is what makes
+     * `RetryPolicy.licence` a number something can spend (#205).
+     *
+     * Media3 asks a DRM session manager's policy about a licence load and a media source factory's
+     * about every other load. One object for both is the whole mechanism, and this is where the
+     * identity is asserted; that the budget then separates is `RetryingLoadErrorsTest`'s, and that a
+     * refused licence is really asked for again is `superplayer-drm`'s `LicenceLoadTest`.
+     */
+    @Test
+    fun theLoadErrorPolicyTheSlotIsHandedIsTheOneTheRestOfThePlayerAnswersWith() {
+        val policy = DefaultLoadErrorHandlingPolicy()
+        val filled = RecordingSessions()
+        playUntilReady(
+            harness.buildPlayer(
+                drm = TestDrm(filled),
+                alsoConfigure = { it.loadErrors = policy },
+            ),
+        )
+
+        assertThat(filled.statedLoadErrors()).containsExactly(policy)
+
+        // And a player with no resilience fills neither slot, so the session manager is handed
+        // nothing and keeps Media3's own handling — for a licence exactly as for a segment
+        // (ADR-0011 rule 14).
+        val empty = RecordingSessions()
+        playUntilReady(harness.buildPlayer(drm = TestDrm(empty)))
+
+        assertThat(empty.statedLoadErrors()).containsExactly(null)
+    }
+
     private fun playUntilReady(player: SuperPlayer) {
         player.setMediaItem(MediaItem.fromUri(SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI))
         player.prepare()
@@ -140,22 +210,56 @@ class SuperPlayerDrmSeamTest {
     private class RecordingSessions : LicenceSessions {
         private val transports = mutableListOf<DataSource.Factory>()
         private val devices = mutableListOf<ExoMediaDrm.Provider?>()
+        private val policies = mutableListOf<LoadErrorHandlingPolicy?>()
 
         override fun over(
             licenceTransport: DataSource.Factory,
             mediaDrm: ExoMediaDrm.Provider?,
+            loadErrors: LoadErrorHandlingPolicy?,
         ): DrmSessionManagerProvider {
             transports += licenceTransport
             devices += mediaDrm
+            policies += loadErrors
             return DrmSessionManagerProvider { DrmSessionManager.DRM_UNSUPPORTED }
         }
 
         fun licenceTransports(): List<DataSource.Factory> = transports.toList()
 
         fun statedDevices(): List<ExoMediaDrm.Provider?> = devices.toList()
+
+        fun statedLoadErrors(): List<LoadErrorHandlingPolicy?> = policies.toList()
+    }
+
+    /** Reads the kind off each request opened through it and forwards everything else unchanged. */
+    private class KindWatching(
+        private val upstream: DataSource,
+        private val seen: MutableList<LoadKind>,
+    ) : DataSource {
+
+        override fun addTransferListener(transferListener: TransferListener) {
+            upstream.addTransferListener(transferListener)
+        }
+
+        override fun open(dataSpec: DataSpec): Long {
+            seen += LoadKind.of(dataSpec)
+            return upstream.open(dataSpec)
+        }
+
+        override fun read(buffer: ByteArray, offset: Int, length: Int): Int = upstream.read(buffer, offset, length)
+
+        override fun getUri(): Uri? = upstream.uri
+
+        override fun getResponseHeaders(): Map<String, List<String>> = upstream.responseHeaders
+
+        override fun close() {
+            upstream.close()
+        }
     }
 
     private companion object {
+
+        /** A licence server nothing here answers for; only the stamp on the way to it is read. */
+        const val LICENCE_URI = "https://licence.superplayer.test/widevine"
 
         /**
          * A device that is never opened against: what is asserted is that this exact object reached

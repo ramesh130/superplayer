@@ -91,6 +91,7 @@ class SuperPlayerProfileTest {
             preload = PreloadPolicy(itemsAhead = 1, itemsBehind = 0, depth = PreloadDepth.SourcePrepared),
             retry = RetryPolicy(
                 segment = RetryBudget(maxRetries = 5, initialBackoffMs = 500, maxBackoffMs = 8_000),
+                licence = BEFORE_THE_FIRST_FRAME,
             ),
         )
     }
@@ -114,6 +115,7 @@ class SuperPlayerProfileTest {
             retry = RetryPolicy(
                 manifest = RetryBudget(maxRetries = 4, initialBackoffMs = 250, maxBackoffMs = 2_000),
                 segment = RetryBudget(maxRetries = 2, initialBackoffMs = 250, maxBackoffMs = 1_000),
+                licence = BEFORE_THE_FIRST_FRAME,
             ),
         )
     }
@@ -135,7 +137,7 @@ class SuperPlayerProfileTest {
                 maxVideoHeightPx = 1_080,
             ),
             preload = PreloadPolicy(itemsAhead = 2, itemsBehind = 1, depth = PreloadDepth.DecoderWarmed(durationMs = 1_000)),
-            retry = RetryPolicy(manifest = FEED_BUDGET, segment = FEED_BUDGET),
+            retry = RetryPolicy(manifest = FEED_BUDGET, segment = FEED_BUDGET, licence = FEED_BUDGET),
         )
     }
 
@@ -155,7 +157,11 @@ class SuperPlayerProfileTest {
                 maxVideoBitrateBps = 800_000,
                 maxVideoHeightPx = 480,
             ),
-            retry = RetryPolicy(manifest = DATA_SAVER_BUDGET, segment = DATA_SAVER_BUDGET),
+            retry = RetryPolicy(
+                manifest = DATA_SAVER_BUDGET,
+                segment = DATA_SAVER_BUDGET,
+                licence = BEFORE_THE_FIRST_FRAME,
+            ),
         )
     }
 
@@ -344,5 +350,12 @@ class SuperPlayerProfileTest {
 
         /** `DATA_SAVER`'s: fewer asks than anywhere else, at Media3's own unhurried waits. */
         val DATA_SAVER_BUDGET = RetryBudget(maxRetries = 2, initialBackoffMs = 1_000, maxBackoffMs = 5_000)
+
+        /**
+         * The licence budget three of the four profiles share, and they share the numbers rather
+         * than the argument: each row of `StaticProfilePolicy` reaches them for a reason of its own,
+         * and `SHORT_FORM` — the one profile a licence is not worth waiting for — does not.
+         */
+        val BEFORE_THE_FIRST_FRAME = RetryBudget(maxRetries = 4, initialBackoffMs = 250, maxBackoffMs = 2_000)
     }
 }

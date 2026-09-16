@@ -120,7 +120,25 @@ internal enum class LoadKind {
     /** A description of where media is: an HLS playlist, a DASH MPD, a steering manifest, a time sync. */
     MANIFEST,
 
-    /** Anything else — an encryption key, a packaging the chain does not build by kind, an unstamped request. */
+    /**
+     * An entitlement: the round trip a DRM session makes to the licence server the app named, and the
+     * provisioning round trip beneath it.
+     *
+     * The one kind no media source ever stamps, because no media source composes one. A licence
+     * request is the player's own, addressed at a server a manifest did not name, and `TransferChain`
+     * stamps it onto the transport it hands the DRM slot rather than onto an item's factory.
+     *
+     * It is a kind of its own rather than [UNCLASSIFIED] because the two slots that read the stamp
+     * want opposite things of it: a cache must never store a device-bound credential under a content
+     * key, and the header-refresh layer must repair one, since a licence request carries the app's
+     * credential exactly as a segment request does (ADR-0012 rule 2, #205).
+     */
+    LICENCE,
+
+    /**
+     * Anything else — a full-segment AES key an `EXT-X-KEY` named, a packaging the chain does not
+     * build by kind, an unstamped request.
+     */
     UNCLASSIFIED,
     ;
 

@@ -40,7 +40,7 @@ than to wave the dependency through.
 | `superplayer-preload` | 4 | PreloadCoordinator, attached to a PlayerPool: Media3's preload manager over the chain core assembles, first-segment prefetch in scroll order, decoder warm-up bounded by the pool, the memory guard and the data-saver rule (ADR-0010) | core; testkit and telemetry (tests only) |
 | `superplayer-cache` | 4 | ContentCache opened by the consumer in a directory they name: content-keyed CacheDataSource, LRU eviction within their budget, a pinned region for offline (ADR-0010) | core; testkit, abr and telemetry (tests only) |
 | `superplayer-resilience` | 5 | ErrorClassifier, RetryPolicy, FallbackLadder | core |
-| `superplayer-drm` | 6 | WidevineSessionManager, provisioning, offline licenses, fallback ladder | core |
+| `superplayer-drm` | 6 | WidevineSessionManager, provisioning, offline licenses, fallback ladder | core; testkit and resilience (tests only) |
 | `superplayer-offline` | 7 | DownloadManager wrapper, WorkManager constraints, battery policy | core |
 | `superplayer-tv` | 8 | CTV: display capability, Leanback and Compose-for-TV surfaces | core |
 | `superplayer-diagnostics` | 9 | MediaSourceDoctor, session trace bundle, on-device debug HUD | core |

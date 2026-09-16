@@ -34,10 +34,12 @@ package com.superplayer.core
  * The defaults being departed from are `DefaultLoadControl`'s: 50s of buffer in both directions,
  * 2.5s before playback starts, 5s before it resumes after a rebuffer, and no back buffer.
  *
- * No row sets [RetryPolicy.licence], and that is the same standard rather than an omission: no
- * licence load reaches the object that would spend it (see that property), so a number here would be
- * a number nobody could justify by observing anything. Phase 6 sets it when there is something to
- * set it against.
+ * Every row sets [RetryPolicy.licence] since #205, and one fact shapes all four numbers: a licence is
+ * acquired before the first frame, over a round trip of kilobytes, and there is no rung above it
+ * worth much — a second source is a second container of the same entitlement (ADR-0012 rule 1), so
+ * asking the licence server again is very nearly the only remedy there is. That makes patience cheap
+ * in bytes and expensive in the one thing each profile guards differently: the time a viewer spends
+ * looking at nothing.
  *
  * ref: https://developer.android.com/reference/androidx/media3/exoplayer/DefaultLoadControl
  */
@@ -88,8 +90,14 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
             // The manifest keeps Media3's own: an on-demand manifest is fetched once, before there
             // is any buffer to protect, and three asks over about seven seconds is already longer
             // than a viewer waits on a black screen before another host is worth trying.
+            //
+            // The licence gets four asks and the shortest waits of this row: the viewer is committed
+            // but is looking at a black screen until it arrives, so this is the one budget here that
+            // is spent entirely before playback. A quarter of a second to the first ask and a 2s
+            // ceiling keeps the whole of it inside the few seconds a committed viewer gives a title.
             retry = RetryPolicy(
                 segment = RetryBudget(maxRetries = 5, initialBackoffMs = 500, maxBackoffMs = 8_000),
+                licence = RetryBudget(maxRetries = 4, initialBackoffMs = 250, maxBackoffMs = 2_000),
             ),
         )
 
@@ -129,9 +137,14 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
             // A segment is the opposite: the 10s floor *is* the latency, and media still being
             // asked for after a second or two is media the window is about to drop, so two asks and
             // then the rung above.
+            //
+            // The licence is the same shape as the manifest here and gets the same budget: a live
+            // join that spends seconds on an entitlement joins that far behind the edge and stays
+            // there, which is the cost this whole profile is written against.
             retry = RetryPolicy(
                 manifest = RetryBudget(maxRetries = 4, initialBackoffMs = 250, maxBackoffMs = 2_000),
                 segment = RetryBudget(maxRetries = 2, initialBackoffMs = 250, maxBackoffMs = 1_000),
+                licence = RetryBudget(maxRetries = 4, initialBackoffMs = 250, maxBackoffMs = 2_000),
             ),
         )
 
@@ -177,9 +190,15 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
             // and there is no cushion to hide it in. Two asks each, the first a quarter of a second
             // later — enough to clear a momentary edge failure, short enough to reach another rung
             // while the row is still on screen.
+            //
+            // And the licence on the same budget as the other two, which is the one profile where
+            // that is right: the row is seconds long, so an entitlement still being asked for is a
+            // row the thumb has already moved past, and the next row's licence is the one worth
+            // spending on.
             retry = RetryPolicy(
                 manifest = FEED_BUDGET,
                 segment = FEED_BUDGET,
+                licence = FEED_BUDGET,
             ),
         )
 
@@ -218,9 +237,16 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
             // less of — so fewer asks than anywhere else, and Media3's own unhurried waits kept
             // rather than shortened, because waiting costs nothing and asking costs data. Two asks
             // is still enough for the single failure a retry is actually for.
+            //
+            // The one row where the licence is *more* patient than its neighbours, and for this
+            // profile's own reason: a retried licence costs a round trip of kilobytes, while a
+            // session that fails for want of one has spent a manifest and a segment or two on
+            // nothing. Saving data by refusing to ask again for the cheapest request of the session
+            // is the one way this profile could spend more of it.
             retry = RetryPolicy(
                 manifest = DATA_SAVER_BUDGET,
                 segment = DATA_SAVER_BUDGET,
+                licence = RetryBudget(maxRetries = 4, initialBackoffMs = 250, maxBackoffMs = 2_000),
             ),
         )
     }

@@ -30,15 +30,28 @@ package com.superplayer.drm
  * may mean a second container and a second protection-scheme mapping — DASH `cenc` against HLS
  * SAMPLE-AES — but never a second entitlement.
  *
- * ## The credential is not here yet, and where it will be
+ * ## The credential is not here, and where it is instead
  *
  * A licence server normally wants to know who is asking, and the answer is an entitlement token only
  * the app can mint. ADR-0012 rule 2 decides that it arrives through the **one** `HeaderProvider` the
- * library has rather than through a second one declared here, and #205 is the ticket that carries it:
- * a licence request travels the same chain a segment request does, entering it at the header-refresh
- * line (`TransferChain`), so the provider a consumer already hands `setResilience` repairs a licence
- * refused 401 or 403 exactly as it repairs a refused segment. Until then this type carries the server
- * and nothing else, which is stated rather than left for a reader to discover in an empty parameter.
+ * library has rather than through a second one declared here, and since #205 it does: a licence
+ * request travels the same chain a segment request does, entering it at the header-refresh line
+ * (`TransferChain`), so the provider a consumer hands `Resilience.standard(headers = …)` repairs a
+ * licence refused 401 or 403 inside the transfer that met the refusal, exactly as it repairs a
+ * refused segment.
+ *
+ * So the credential is a property of the *player* rather than of this object, and a player that needs
+ * one is built with both calls:
+ *
+ * ```kotlin
+ * SuperPlayer.Builder(context)
+ *     .setResilience(Resilience.standard(headers = myTokenProvider))
+ *     .setDrm(Drm.widevine(WidevineConfig(licenceUri)))
+ *     .build()
+ * ```
+ *
+ * This type carries the server and nothing else, which is stated rather than left for a reader to
+ * discover in an empty parameter.
  */
 public class WidevineConfig(
 

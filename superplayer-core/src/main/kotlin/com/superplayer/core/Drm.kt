@@ -19,6 +19,7 @@ package com.superplayer.core
 import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.drm.DrmSessionManagerProvider
 import androidx.media3.exoplayer.drm.ExoMediaDrm
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 
 /**
  * How a player acquires the licences its content is protected by: what `superplayer-drm` does on its
@@ -75,12 +76,23 @@ internal interface EngineDrmExtension : PlaybackDrm {
  * chain: it is what sits *below* the cache slot — the transport with the header-refresh slot over it
  * — because a licence is not media. Caching one would store a device-bound credential under a
  * content key, and revalidating one is meaningless; carrying the app's credential on it is not, which
- * is why the header-refresh slot is inside rather than outside (ADR-0012 rule 2, #205).
+ * is why the header-refresh slot is inside rather than outside (ADR-0012 rule 2). Every request it
+ * opens is stamped [LoadKind.LICENCE], which is how that layer knows a refused entitlement from a
+ * refused segment.
  *
  * [mediaDrm] is the device, and is null everywhere but a test. Robolectric ships no `ShadowMediaDrm`,
  * so a real `MediaDrm` cannot be constructed under `check` at all and the harness stands one in
  * through [EngineConfiguration.exoMediaDrm]. Null means the platform's own
  * `FrameworkMediaDrm.DEFAULT_PROVIDER`, which is what every player on a device gets.
+ *
+ * [loadErrors] is [EngineConfiguration.loadErrors] — **the same instance** the media source factory
+ * is given, which is the whole of #205. Media3 asks a DRM session manager's own
+ * `LoadErrorHandlingPolicy` about a failed licence load, and a session manager left to build its own
+ * would answer out of Media3's defaults while every other load of the player answered out of
+ * [PlaybackDecision.retry]: a licence budget nothing could reach, which is what
+ * [RetryPolicy.licence] said of itself until this argument was passed. Null is a player built with no
+ * `PlaybackResilience`, and such a player keeps Media3's own handling for a licence exactly as it
+ * keeps it for a segment (ADR-0011 rule 14).
  *
  * What comes back is given to the `MediaSource.Factory` `TransferChain` assembles, at the one line
  * its stamping factory has always replayed and nothing has ever filled.
@@ -88,5 +100,9 @@ internal interface EngineDrmExtension : PlaybackDrm {
 internal fun interface LicenceSessions {
 
     /** The provider Media3 asks for a session, for a player loading licences through [licenceTransport]. */
-    fun over(licenceTransport: DataSource.Factory, mediaDrm: ExoMediaDrm.Provider?): DrmSessionManagerProvider
+    fun over(
+        licenceTransport: DataSource.Factory,
+        mediaDrm: ExoMediaDrm.Provider?,
+        loadErrors: LoadErrorHandlingPolicy?,
+    ): DrmSessionManagerProvider
 }

@@ -137,8 +137,14 @@ internal class ResourceAddressBook {
          *
          * The heuristic lives here rather than in a test's fixture on purpose: a test names a kind
          * and an index, and nothing above this line knows that a URL was involved at all.
+         *
+         * A licence request is the one kind recognised by its *host* rather than by its name, and
+         * that is what the kind means: a request is a licence request because it went to the licence
+         * server, which is a server the app nominated and not one the manifest named. See
+         * [FakeLicenceServer].
          */
         fun kindOf(uri: Uri): ResourceKind {
+            if (FakeLicenceServer.serves(uri)) return ResourceKind.LICENCE
             val name = (uri.lastPathSegment ?: uri.toString()).lowercase()
             return when {
                 name.endsWith(".m3u8") || name.endsWith(".mpd") -> ResourceKind.MANIFEST

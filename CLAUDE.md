@@ -278,6 +278,19 @@ thing wrong, a `// spec:` citation and a field cause — whose current behaviour
 `docs/testing.md` says what a new entry must carry. A pathology with a magnitude is generated at three
 `HostileStream.Severity` levels, each value argued where it is chosen: `graded()` returns them all, and
 `all()` is its `SEVERE` half. The `BENIGN` level exists so a doctor is scored on false positives too.
+It also holds `WidevineProtection`, the one `pssh` box (ISO/IEC 23001-7 §8.1) that
+`SyntheticHlsStream.protectedResources` declares in an `EXT-X-KEY` and `SyntheticDashStream`'s in a
+`ContentProtection` descriptor — the same media, the same initialization data, two vocabularies.
+**Robolectric ships no `ShadowMediaDrm`**, so what stands in for a Widevine device is Media3's
+`FakeExoMediaDrm`, stated through `DeviceStatement.declareWidevine` (a level, a session limit) and
+`declareWidevineProvisioningFailure`, and what stands in for a licence server is `FakeLicenceServer`
+— an origin at a host of its own, so a licence is a *transfer*: addressed by `ResourceKind.LICENCE`,
+refusable and relenting through `FaultScript`, counted by `networkRequests`, and reported to no
+bandwidth meter, because a licence is not media. The samples are not encrypted and cannot be — there
+is no `MediaCrypto` here — which is why the harness sets `setPlayClearSamplesWithoutKeys(false)`, and
+`docs/testing.md`'s *A Widevine device and a licence server* is the argument. `ProtectedPlaybackTest`
+drives it through a **stock** `ExoPlayer`; `buildPlayer` refuses protected content until
+`superplayer-drm` fills core's DRM slot (#204).
 Both harnesses put their fakes in the engine configurator's *transport* slot, under the chain
 `SuperPlayer.Builder` composes, so a test of real HLS or DASH sees every layer a consumer's player has; `TestContent.liveHls()`
 is a live origin that keeps publishing and `FaultScript.Builder.serveThroughCache` a CDN cache in front

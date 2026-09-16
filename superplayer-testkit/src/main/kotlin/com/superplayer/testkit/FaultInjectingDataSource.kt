@@ -25,8 +25,12 @@ import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.TransferListener
 import java.io.ByteArrayOutputStream
+import java.io.IOException
+import java.net.SocketException
+import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.util.concurrent.atomic.AtomicInteger
+import javax.net.ssl.SSLHandshakeException
 import kotlin.math.min
 
 /**
@@ -36,6 +40,18 @@ import kotlin.math.min
  */
 internal class ResourceAddress(val kind: ResourceKind, val index: Int) {
     override fun toString(): String = "$kind#$index"
+}
+
+/**
+ * One fetch of one resource: its address, and which attempt at that address this fetch is.
+ *
+ * [number] counts from one and counts *per address*, on exactly the addressing [ResourceAddress]
+ * describes — so a retry of a segment under a refreshed signature is the second attempt at that
+ * segment rather than the first attempt at a new one. It is the coordinate a fault that relents is
+ * bounded on, and it is the only thing issue #175 adds to how a fault is addressed.
+ */
+internal class ResourceAttempt(val address: ResourceAddress, val number: Int) {
+    override fun toString(): String = "$address try $number"
 }
 
 /**
@@ -61,6 +77,9 @@ internal class ResourceAddressBook {
     private val assigned = LinkedHashMap<String, ResourceAddress>()
     private val nextIndex = mutableMapOf<ResourceKind, Int>()
 
+    /** How many times each assigned address has been fetched, keyed as [assigned] is. */
+    private val attempts = mutableMapOf<String, Int>()
+
     private val opened = mutableListOf<NetworkRequest>()
 
     /** Every address handed out, in the order it was first requested. What a test asserts on. */
@@ -71,14 +90,21 @@ internal class ResourceAddressBook {
     val requests: List<NetworkRequest>
         @Synchronized get() = opened.toList()
 
-    /** [dataSpec]'s address, with the request recorded as having reached the network. */
+    /**
+     * [dataSpec]'s address and attempt number, with the request recorded as having reached the
+     * network. Counting here rather than in the injector is what keeps the two coordinates on one
+     * key: an attempt is an attempt at an *address*, and the address book is what assigns those.
+     */
     @Synchronized
-    fun record(dataSpec: DataSpec): ResourceAddress = addressOf(dataSpec).also { address ->
+    fun record(dataSpec: DataSpec): ResourceAttempt {
+        val address = addressOf(dataSpec)
         opened += NetworkRequest(dataSpec.uri.toString(), address.kind, dataSpec.httpRequestHeaders.toMap())
+        val number = attempts.getOrDefault(key(dataSpec), 0) + 1
+        attempts[key(dataSpec)] = number
+        return ResourceAttempt(address, number)
     }
 
-    @Synchronized
-    fun addressOf(dataSpec: DataSpec): ResourceAddress = assigned.getOrPut(key(dataSpec)) {
+    private fun addressOf(dataSpec: DataSpec): ResourceAddress = assigned.getOrPut(key(dataSpec)) {
         val kind = kindOf(dataSpec.uri)
         val index = nextIndex.getOrDefault(kind, 0)
         nextIndex[kind] = index + 1
@@ -144,6 +170,7 @@ internal class FaultInjectingDataSource(
     private val addresses: ResourceAddressBook,
     private val wait: HarnessClockWait,
     private val intermediary: IntermediaryCache,
+    private val token: TokenLifetime,
     private val cacheBypassingRequests: AtomicInteger,
     private val countsTransfers: Boolean,
 ) : DataSource {
@@ -174,32 +201,32 @@ internal class FaultInjectingDataSource(
 
     override fun open(dataSpec: DataSpec): Long {
         transfer.opened()
-        val address = addresses.record(dataSpec)
+        val attempt = addresses.record(dataSpec)
+        val address = attempt.address
         if (IntermediaryCache.asksCachesToStepAside(dataSpec)) cacheBypassingRequests.incrementAndGet()
-        val effects = script.faults.filter { it.matches(address) }.map { it.effect }
+        val effects = script.faults.filter { it.matches(attempt) }.map { it.effect }
 
-        // Order is the order a real request fails in, and it is load-bearing: a name that does not
-        // resolve never reaches a socket, so a DNS failure pre-empts everything, and a status code
-        // arrives only after the round trip the latency describes.
-        effects.filterIsInstance<Effect.DnsFailure>().firstOrNull()?.let {
+        // Below the response first, in the order a real request meets them — which is data rather
+        // than prose, because it is load-bearing: a name that does not resolve never reaches a
+        // socket, a socket that never connects never negotiates TLS, and a status code arrives only
+        // after the round trip the latency describes.
+        BELOW_THE_RESPONSE.firstOrNull { failure -> effects.any { it === failure.effect } }?.let { failure ->
             throw HttpDataSource.HttpDataSourceException(
-                UnknownHostException("Injected DNS failure for ${dataSpec.uri.host} ($address)"),
+                failure.cause(dataSpec, attempt),
                 dataSpec,
-                PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+                failure.errorCode,
                 HttpDataSource.HttpDataSourceException.TYPE_OPEN,
             )
         }
         val latencyMs = effects.filterIsInstance<Effect.Latency>().sumOf { it.millis }
         if (latencyMs > 0) wait.until(clock.elapsedRealtime() + latencyMs, "latency for $address")
         effects.filterIsInstance<Effect.HttpStatus>().firstOrNull()?.let { status ->
-            throw HttpDataSource.InvalidResponseCodeException(
-                status.code,
-                "Injected ${status.code} for $address",
-                /* cause= */ null,
-                /* headerFields= */ emptyMap(),
-                dataSpec,
-                /* responseBody= */ ByteArray(0),
-            )
+            throw invalidResponse(status.code, dataSpec, attempt)
+        }
+        // Last of the failures, because it is the only one that reads the request: the credential it
+        // compares is in the headers and the query the layers above have finished writing by now.
+        if (effects.any { it is Effect.ExpiredToken } && token.rejects(dataSpec)) {
+            throw invalidResponse(FaultScript.HTTP_FORBIDDEN, dataSpec, attempt)
         }
 
         bytesDelivered = 0
@@ -265,6 +292,16 @@ internal class FaultInjectingDataSource(
         }
     }
 
+    private fun invalidResponse(status: Int, dataSpec: DataSpec, attempt: ResourceAttempt) =
+        HttpDataSource.InvalidResponseCodeException(
+            status,
+            "Injected $status for $attempt",
+            /* cause= */ null,
+            /* headerFields= */ emptyMap(),
+            dataSpec,
+            /* responseBody= */ ByteArray(0),
+        )
+
     private fun readCached(response: IntermediaryCache.Response, buffer: ByteArray, offset: Int, length: Int): Int {
         val remaining = response.body.size - cachedReadPosition
         if (remaining == 0) return C.RESULT_END_OF_INPUT
@@ -323,6 +360,9 @@ internal class FaultInjectingDataSource(
         /** The one cache between this player and its origin, shared for the same reason. */
         private val intermediary = IntermediaryCache(clock)
 
+        /** The one token this player's session signs its requests with, shared for the same reason. */
+        private val token = TokenLifetime()
+
         private val bypasses = AtomicInteger()
 
         /**
@@ -346,13 +386,98 @@ internal class FaultInjectingDataSource(
 
         /** For the one caller that already holds a source: Media3's `FakeChunkSource` builds its own. */
         fun wrap(source: DataSource): DataSource =
-            FaultInjectingDataSource(source, script, clock, addresses, wait, intermediary, bypasses, countsTransfers)
+            FaultInjectingDataSource(
+                source,
+                script,
+                clock,
+                addresses,
+                wait,
+                intermediary,
+                token,
+                bypasses,
+                countsTransfers,
+            )
     }
+
+    /**
+     * A failure below the HTTP response: the exception a real stack raises, and the Media3 error
+     * code it arrives under — which is the band `superplayer-resilience`'s classifier reads it in,
+     * and therefore the whole reason these are four faults rather than one.
+     */
+    private class BelowTheResponse(
+        val effect: Effect,
+        val errorCode: Int,
+        val cause: (DataSpec, ResourceAttempt) -> IOException,
+    )
 
     private companion object {
         const val FETCH_CHUNK_BYTES = 16 * 1024
         const val BITS_PER_BYTE = 8L
         const val MILLIS_PER_SECOND = 1_000L
+
+        /** The connection-level faults, in the order a real request would meet them. */
+        val BELOW_THE_RESPONSE = listOf(
+            BelowTheResponse(Effect.DnsFailure, PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED) { spec, at ->
+                UnknownHostException("Injected DNS failure for ${spec.uri.host} ($at)")
+            },
+            BelowTheResponse(
+                Effect.ConnectionReset,
+                PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+            ) { _, at -> SocketException("Injected connection reset for $at") },
+            BelowTheResponse(
+                Effect.ConnectionTimeout,
+                PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+            ) { _, at -> SocketTimeoutException("Injected connection timeout for $at") },
+            BelowTheResponse(
+                Effect.TlsFailure,
+                PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+            ) { _, at -> SSLHandshakeException("Injected TLS handshake failure for $at") },
+        )
+    }
+}
+
+/**
+ * The origin's side of a refreshable token: which credential has expired, and whether a newer one
+ * has been presented since.
+ *
+ * One per player rather than one per fault, because a token is the *session's* and a refresh heals
+ * every resource it signs at once — a session that healed one segment and went on 403ing the next
+ * would be reproducing nothing any CDN does. It is held here rather than in the [FaultScript] for
+ * the reason the script's own KDoc gives: a script is data, declared up front, and a script that
+ * remembered what it had already answered could not be run twice.
+ *
+ * The credential is the request's `Authorization` header where it has one and its query string
+ * otherwise, which is where a signed URL carries its signature — so a test refreshes a token by
+ * fetching under a changed one and needs no vocabulary from this class at all.
+ *
+ * spec: RFC 9110 §11.6.2 — a request's credentials travel in `Authorization`, and §11.6.1 says a
+ * server answers credentials it will not honour with 403 where re-authenticating will not help. A
+ * signed URL is the other deployment and has no RFC: it is the CDN convention of carrying the
+ * signature in the query, which is why the query string stands in for the credential when no header
+ * is present.
+ */
+internal class TokenLifetime {
+
+    private var expired: String? = null
+    private var refreshed = false
+
+    /** Whether [dataSpec] should be answered 403, and the latch opened if it carries a newer token. */
+    @Synchronized
+    fun rejects(dataSpec: DataSpec): Boolean {
+        if (refreshed) return false
+        val credential = credentialOf(dataSpec)
+        val expired = expired ?: credential.also { this.expired = it }
+        if (credential == expired) return true
+        refreshed = true
+        return false
+    }
+
+    private fun credentialOf(dataSpec: DataSpec): String =
+        dataSpec.httpRequestHeaders.entries.firstOrNull { it.key.equals(AUTHORIZATION, ignoreCase = true) }?.value
+            ?: dataSpec.uri.query.orEmpty()
+
+    private companion object {
+        const val AUTHORIZATION = "Authorization"
     }
 }
 

@@ -17,6 +17,7 @@
 package com.superplayer.testkit
 
 import android.net.Uri
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.util.UriUtil
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSourceUtil
@@ -37,9 +38,12 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.ByteArrayInputStream
+import java.net.SocketException
+import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
+import javax.net.ssl.SSLHandshakeException
 
 /**
  * The fault injector, driven directly rather than through a player.
@@ -169,6 +173,116 @@ class FaultInjectionTest {
         // segment the script named.
         assertThat(statusOf(factory, "$segment?token=refreshed")).isEqualTo(403)
         assertThat(factory.addresses.requested).hasSize(2)
+    }
+
+    @Test
+    fun aFaultBoundedByAttemptsStopsApplyingAfterThem() {
+        val script = FaultScript.Builder()
+            .failWithHttpStatus(FaultScript.HTTP_SERVER_ERROR, ResourceKind.MEDIA_SEGMENT, index = 0, firstAttempts = 2)
+            .build()
+        val factory = factoryOver(script)
+
+        // The sentence the injector could not write before this: the resource fails twice and then
+        // succeeds. Without it, every retry meets the same fault again by construction, so no rung
+        // above "it failed" has a test that forces it — which is what `PRD.md` Part 5 asks for.
+        val attempts = (1..3).map { statusOf(factory, HLS_SEGMENTS[0]) }
+
+        assertThat(attempts).containsExactly(500, 500, DELIVERED).inOrder()
+        // And it is still one resource: relenting is a third coordinate on the existing addressing,
+        // not a second address.
+        assertThat(factory.addresses.requested).hasSize(1)
+    }
+
+    @Test
+    fun attemptsAreCountedPerResourceRatherThanPerSession() {
+        val script = FaultScript.Builder()
+            .failWithHttpStatus(FaultScript.HTTP_SERVER_ERROR, ResourceKind.MEDIA_SEGMENT, firstAttempts = 1)
+            .build()
+        val factory = factoryOver(script)
+
+        // Every media segment fails its own first attempt, however many segments were fetched
+        // before it. A count kept per session rather than per resource would have spent itself on
+        // the first segment and left the rest untouched, which is a different fault wearing this
+        // one's name.
+        assertThat(HLS_SEGMENTS.map { statusOf(factory, it) }).containsExactly(500, 500, 500, 500)
+        assertThat(HLS_SEGMENTS.map { statusOf(factory, it) })
+            .containsExactly(DELIVERED, DELIVERED, DELIVERED, DELIVERED)
+    }
+
+    @Test
+    fun aRetryUnderARefreshedTokenSucceedsAndHealsTheWholeSession() {
+        val factory = factoryOver(FaultScript.Builder().expireTokenAtSegment(1, refreshable = true).build())
+
+        // The segment before the expiry is served, whatever it is signed with.
+        assertThat(statusOf(factory, "${HLS_SEGMENTS[0]}?token=old")).isEqualTo(DELIVERED)
+        // Then the token expires, and stays expired for as long as it is the token being presented:
+        // a ladder that only retried the request would still be stuck, which is the case
+        // `expireTokenAtSegment` has always reproduced.
+        assertThat(statusOf(factory, "${HLS_SEGMENTS[1]}?token=old")).isEqualTo(403)
+        assertThat(statusOf(factory, "${HLS_SEGMENTS[1]}?token=old")).isEqualTo(403)
+        // A request bearing a newer credential is what a refresh looks like from the origin's side,
+        // and it is served. Nothing here says how the app obtained it.
+        assertThat(statusOf(factory, "${HLS_SEGMENTS[1]}?token=fresh")).isEqualTo(DELIVERED)
+        // And the refresh heals the session rather than the one segment: a token signs every
+        // request, so a CDN that went on refusing the next segment would be reproducing nothing.
+        assertThat(statusOf(factory, "${HLS_SEGMENTS[2]}?token=fresh")).isEqualTo(DELIVERED)
+    }
+
+    @Test
+    fun aTokenThatWasNotDeclaredRefreshableStaysExpiredUnderAFreshOne() {
+        val factory = factoryOver(FaultScript.Builder().expireTokenAtSegment(0).build())
+
+        // The default, unchanged and deliberately so: some sessions cannot be saved, and a test
+        // that wants to watch the ladder run out of rungs needs a fault that never relents.
+        assertThat(statusOf(factory, "${HLS_SEGMENTS[0]}?token=old")).isEqualTo(403)
+        assertThat(statusOf(factory, "${HLS_SEGMENTS[0]}?token=fresh")).isEqualTo(403)
+    }
+
+    @Test
+    fun aRefreshedTokenIsRecognisedInTheAuthorizationHeaderToo() {
+        val factory = factoryOver(FaultScript.Builder().expireTokenAtSegment(0, refreshable = true).build())
+        val segment = Uri.parse(HLS_SEGMENTS[0])
+
+        assertThat(statusOf(factory, segment, bearer = "old")).isEqualTo(403)
+        // A signed URL is not the only way a token travels; a `Authorization` header is the other,
+        // and a harness that only understood one would fail to reproduce half the deployments.
+        assertThat(statusOf(factory, segment, bearer = "fresh")).isEqualTo(DELIVERED)
+    }
+
+    @Test
+    fun aTlsFailureArrivesAsAHandshakeFailureRatherThanAStatus() {
+        val script = FaultScript.Builder().failTlsHandshake(ResourceKind.MANIFEST).build()
+
+        val failure = assertThrows(HttpDataSource.HttpDataSourceException::class.java) {
+            readFully(sourceOver(script), HLS_MANIFESTS[0])
+        }
+
+        // A certificate that does not verify is not a slow network and not a status code: there is
+        // no response to classify at all. Its own effect, because it is the transport failure a
+        // different host usually does not fix and a different base URL often does.
+        assertThat(failure).hasCauseThat().isInstanceOf(SSLHandshakeException::class.java)
+        assertThat(failure.reason).isEqualTo(PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED)
+    }
+
+    @Test
+    fun aConnectionResetAndATimeoutAreDistinctFromEachOtherAndFromLatency() {
+        val reset = assertThrows(HttpDataSource.HttpDataSourceException::class.java) {
+            readFully(sourceOver(FaultScript.Builder().resetConnection().build()), HLS_SEGMENTS[0])
+        }
+        val timeout = assertThrows(HttpDataSource.HttpDataSourceException::class.java) {
+            readFully(sourceOver(FaultScript.Builder().timeOutConnection().build()), HLS_SEGMENTS[0])
+        }
+
+        // Both are failures of the connection rather than of the response, and Media3 bands them
+        // differently — which is what `superplayer-resilience`'s classifier will read them in, and
+        // therefore what makes injecting them separately worth anything.
+        assertThat(reset).hasCauseThat().isInstanceOf(SocketException::class.java)
+        assertThat(reset.reason).isEqualTo(PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED)
+        assertThat(timeout).hasCauseThat().isInstanceOf(SocketTimeoutException::class.java)
+        assertThat(timeout.reason).isEqualTo(PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT)
+        // And they are two exceptions rather than one with two messages, which is what lets a layer
+        // above tell "the peer hung up" from "the stack gave up waiting".
+        assertThat(timeout).hasCauseThat().isNotInstanceOf(SocketException::class.java)
     }
 
     @Test
@@ -341,13 +455,29 @@ class FaultInjectionTest {
     }
 
     /** [DELIVERED] if the resource was served, or the HTTP status the injector answered with. */
-    private fun statusOf(factory: FaultInjectingDataSource.Factory, url: String): Int {
+    private fun statusOf(factory: FaultInjectingDataSource.Factory, url: String): Int =
+        statusOf(factory, DataSpec(Uri.parse(url)))
+
+    /** The same, for the requests that carry their credential in a header rather than in the URL. */
+    private fun statusOf(factory: FaultInjectingDataSource.Factory, uri: Uri, bearer: String): Int =
+        statusOf(
+            factory,
+            DataSpec.Builder()
+                .setUri(uri)
+                .setHttpRequestHeaders(mapOf("Authorization" to "Bearer $bearer"))
+                .build(),
+        )
+
+    private fun statusOf(factory: FaultInjectingDataSource.Factory, dataSpec: DataSpec): Int {
         val source = factory.createDataSource()
         return try {
-            readFully(source, url)
+            source.open(dataSpec)
+            DataSourceUtil.readToEnd(source)
             DELIVERED
         } catch (e: HttpDataSource.InvalidResponseCodeException) {
             e.responseCode
+        } finally {
+            source.close()
         }
     }
 

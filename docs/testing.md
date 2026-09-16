@@ -503,8 +503,9 @@ are still a stub, and wait on the throughput replay `#40` brings.
 
 `PRD.md` Part 5 requires that every fallback rung has a test that forces exactly that rung, and a
 rung with no way to force it is a rung nobody knows is broken. `FaultScript` is how a test says which
-one: latency, a throughput cap, an HTTP 403, 404 or 500, a truncated body, a DNS failure, or a token
-that expires at a chosen segment and stays expired.
+one: latency, a throughput cap, an HTTP 403, 404 or 500, a truncated body, a DNS failure, a TLS
+handshake that does not verify, a connection reset, a connection timeout, or a token that expires at
+a chosen segment.
 
 ```kotlin
 val player = harness.buildPlayer(
@@ -513,7 +514,7 @@ val player = harness.buildPlayer(
 )
 ```
 
-Three things about it are load-bearing.
+Four things about it are load-bearing.
 
 **A fault is addressed by what is being fetched, never by a URL.** A `ResourceKind` — manifest,
 initialization segment, media segment — and an index within that kind is the same sentence under HLS
@@ -544,10 +545,30 @@ first requested*, keyed on the URL without its query and on the byte offset aske
 under a refreshed signature is still the same segment, and a stream packaged as byte ranges of one
 URL is still a stream of segments.
 
+**A fault can relent, and that is the third coordinate of the address.** A fault applies to every
+attempt at the resources it addresses by default, so a retry meets it again — which is what makes it
+the right fault for a session that cannot be saved, and the wrong one for every rung above "it
+failed". `firstAttempts` bounds it: the resource fails that many times and is then served, which is
+how "and the retry recovered" is written down. Attempts are counted **per resource**, on the
+addressing above and from one, so a segment fails its own first attempt however many segments were
+fetched before it, and nothing about which resource a fault addresses changes.
+
+A token has the same two halves and its own call for them, because a token is the session's rather
+than one resource's. `expireTokenAtSegment(n)` is a 403 from that segment to the end of the session,
+whatever is retried — the fault `superplayer-resilience` exists for. `expireTokenAtSegment(n,
+refreshable = true)` is the same until a request arrives bearing a different credential, and from
+then on the session plays on: the origin takes the request's `Authorization` header, or its query
+string where a signed URL carries the signature, as the credential, so a test refreshes a token by
+fetching under a changed one and the harness needs no vocabulary for how it was obtained. One
+refresh heals every resource the token signs, not the one that met the fault.
+
 **It does not relax the no-network rule.** Every fault is synthesized: a DNS failure is an
-`UnknownHostException` handed to Media3 in the shape a real resolver failure arrives in, and no
-socket, no resolver and no device is involved. An injector that needed a real network to inject a
-network failure would have missed the point of this document.
+`UnknownHostException` handed to Media3 in the shape a real resolver failure arrives in, a TLS
+failure an `SSLHandshakeException` and a reset or a timeout the `SocketException` and
+`SocketTimeoutException` a real stack raises — each inside the `HttpDataSourceException` and under
+the Media3 error code the classifier will read it in — and no socket, no resolver, no certificate and
+no device is involved. An injector that needed a real network to inject a network failure would have
+missed the point of this document.
 
 **It is transparent when nothing is armed, including to the bandwidth meter.** The wrapper composes
 over whatever `DataSource.Factory` the harness installed rather than replacing the mechanism, and it

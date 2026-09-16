@@ -63,6 +63,13 @@ public enum class ResourceKind {
  * after a failure — keeps the index it was given, so "the third segment" stays the third segment
  * however many times the player asks for it.
  *
+ * **Attempts are the third coordinate, and they are what lets a fault relent.** A fault addressed at
+ * a kind and an index applies to every attempt at that resource by default, which is why a retry
+ * meets the same fault a second time. Naming `firstAttempts` bounds it: the resource fails that many
+ * times and then succeeds, which is the only way to write down "and the retry recovered". Attempts
+ * are counted per resource on the addressing above, from one, so nothing about which resource a
+ * fault addresses changes.
+ *
  * **No Media3 type appears here**, for the reason `docs/testing.md` gives about this module's public
  * API: naming an `@UnstableApi` type in a signature would put Media3's opt-in marker on every test
  * that wrote a fault plan. `DataSource` is such a type, which is why the injector this describes is
@@ -75,9 +82,11 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
     /**
      * Collects the faults, one call per fault, in any order.
      *
-     * Every method takes the same optional address: a [ResourceKind] and an index within it. Leaving
-     * [kind] unset addresses *every* request, which is what a network-wide condition — latency, a
-     * throughput cap — usually means; leaving [index] unset addresses every resource of that kind.
+     * Every method takes the same optional address: a [ResourceKind], an index within it, and how
+     * many attempts at each addressed resource the fault applies to. Leaving `kind` unset addresses
+     * *every* request, which is what a network-wide condition — latency, a throughput cap — usually
+     * means; leaving `index` unset addresses every resource of that kind; leaving `firstAttempts`
+     * unset addresses every attempt, so the fault never relents.
      */
     public class Builder {
 
@@ -94,7 +103,8 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
             millis: Long,
             kind: ResourceKind? = null,
             index: Int? = null,
-        ): Builder = add(kind, index, Effect.Latency(millis.requireAtLeast(0, "Latency")))
+            firstAttempts: Int? = null,
+        ): Builder = add(kind, index, firstAttempts, Effect.Latency(millis.requireAtLeast(0, "Latency")))
 
         /**
          * Caps delivery at [bitsPerSecond], paced against the harness's clock.
@@ -107,7 +117,13 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
             bitsPerSecond: Long,
             kind: ResourceKind? = null,
             index: Int? = null,
-        ): Builder = add(kind, index, Effect.ThroughputCap(bitsPerSecond.requireAtLeast(1, "A throughput cap")))
+            firstAttempts: Int? = null,
+        ): Builder = add(
+            kind,
+            index,
+            firstAttempts,
+            Effect.ThroughputCap(bitsPerSecond.requireAtLeast(1, "A throughput cap")),
+        )
 
         /**
          * Answers with HTTP [status] instead of the resource.
@@ -115,14 +131,18 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
          * The response is a real `HttpDataSource.InvalidResponseCodeException`, which is what a real
          * HTTP stack throws — so the load error handling policy above it classifies the failure the
          * way it would in production rather than seeing an exception type only tests produce.
+         *
+         * `firstAttempts` is how "a 500 that the retry recovers from" is written: the resource
+         * answers that status that many times and is then served.
          */
         public fun failWithHttpStatus(
             status: Int,
             kind: ResourceKind? = null,
             index: Int? = null,
+            firstAttempts: Int? = null,
         ): Builder {
             require(status in 400..599) { "An injected HTTP failure status is 4xx or 5xx, not $status" }
-            return add(kind, index, Effect.HttpStatus(status))
+            return add(kind, index, firstAttempts, Effect.HttpStatus(status))
         }
 
         /**
@@ -137,7 +157,8 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
             bytes: Long,
             kind: ResourceKind? = null,
             index: Int? = null,
-        ): Builder = add(kind, index, Effect.Truncate(bytes.requireAtLeast(0, "A truncation point")))
+            firstAttempts: Int? = null,
+        ): Builder = add(kind, index, firstAttempts, Effect.Truncate(bytes.requireAtLeast(0, "A truncation point")))
 
         /**
          * Fails to resolve the host, before any connection is attempted.
@@ -150,7 +171,52 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
         public fun failDnsResolution(
             kind: ResourceKind? = null,
             index: Int? = null,
-        ): Builder = add(kind, index, Effect.DnsFailure)
+            firstAttempts: Int? = null,
+        ): Builder = add(kind, index, firstAttempts, Effect.DnsFailure)
+
+        /**
+         * Fails the TLS handshake, after the name resolved and the socket connected.
+         *
+         * An `SSLHandshakeException` inside an `HttpDataSourceException`, which is the shape a real
+         * certificate that does not verify — an expired one, a hostname that does not match, a CDN
+         * edge misconfigured — reaches Media3 in. Worth injecting apart from [failDnsResolution] and
+         * [resetConnection] because it is the one transport failure a different *host* usually does
+         * not fix and a different *base URL* often does, so it is the rung the ladder takes next
+         * that differs.
+         */
+        public fun failTlsHandshake(
+            kind: ResourceKind? = null,
+            index: Int? = null,
+            firstAttempts: Int? = null,
+        ): Builder = add(kind, index, firstAttempts, Effect.TlsFailure)
+
+        /**
+         * Drops the connection: a `SocketException` at open, the way a peer's RST arrives.
+         *
+         * Distinct from [addLatencyMs] and from [failWithHttpStatus] alike, and that is the point of
+         * having it: nothing was answered, so there is no status to classify, and nothing is slow,
+         * so no amount of waiting helps. It is the commonest transient network failure a phone sees
+         * and the one a retry most often does recover from — which is why it and `firstAttempts`
+         * arrive in the same change.
+         */
+        public fun resetConnection(
+            kind: ResourceKind? = null,
+            index: Int? = null,
+            firstAttempts: Int? = null,
+        ): Builder = add(kind, index, firstAttempts, Effect.ConnectionReset)
+
+        /**
+         * Times the connection out: a `SocketTimeoutException` at open.
+         *
+         * The failure, not the wait. An injected latency models how long a request takes; this
+         * models the stack giving up on one, which is a different thing to classify — Media3 gives
+         * it its own error code — and a test that wants both writes both, since they compose.
+         */
+        public fun timeOutConnection(
+            kind: ResourceKind? = null,
+            index: Int? = null,
+            firstAttempts: Int? = null,
+        ): Builder = add(kind, index, firstAttempts, Effect.ConnectionTimeout)
 
         /**
          * Expires the session's token from media segment [index] onward: 403 from there to the end.
@@ -160,13 +226,24 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
          * has expired stays expired, so every later segment fails too, and a ladder that retried the
          * one segment would still be stuck. That "and every one after it" is why this is its own
          * call rather than a [failWithHttpStatus] a test could write by hand and get subtly wrong.
+         *
+         * [refreshable] is the other half of that story, and the half a rung above "it failed" needs:
+         * a token that has expired can be *replaced*, and a session that replaces it plays on. Set
+         * it, and the 403s stop the moment a request arrives bearing a different credential from the
+         * one that first met the fault — its `Authorization` header if it has one, otherwise its
+         * query string, which is where a signed URL carries its signature. Nothing here says how the
+         * credential was obtained: whatever refreshed it, the CDN's answer is that the new one works
+         * and the old one does not, and that is all this reproduces. Left unset, the token cannot be
+         * refreshed at all, which is today's behaviour and still the right fault for "the ladder
+         * cannot save this session".
          */
-        public fun expireTokenAtSegment(index: Int): Builder {
+        public fun expireTokenAtSegment(index: Int, refreshable: Boolean = false): Builder {
             index.requireAtLeast(0, "A segment index")
             faults += Fault(
                 ResourceKind.MEDIA_SEGMENT,
                 index..Int.MAX_VALUE,
-                Effect.HttpStatus(HTTP_FORBIDDEN),
+                EVERY_ATTEMPT,
+                if (refreshable) Effect.ExpiredToken else Effect.HttpStatus(HTTP_FORBIDDEN),
             )
             return this
         }
@@ -203,15 +280,23 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
         ): Builder = add(
             kind,
             index,
+            firstAttempts = null,
             Effect.IntermediaryCache(maxAgeSeconds.requireAtLeast(0, "A cache lifetime"), honoursNoCache),
         )
 
         public fun build(): FaultScript = FaultScript(faults.toList())
 
-        private fun add(kind: ResourceKind?, index: Int?, effect: Effect): Builder {
+        private fun add(kind: ResourceKind?, index: Int?, firstAttempts: Int?, effect: Effect): Builder {
             index?.requireAtLeast(0, "A resource index")
-            // An unnamed index means every resource of the kind, which is a range and reads as one.
-            faults += Fault(kind, index?.let { it..it } ?: EVERY_INDEX, effect)
+            firstAttempts?.requireAtLeast(1, "A count of attempts")
+            // An unnamed index means every resource of the kind, and an unnamed attempt count every
+            // attempt at it. Both are ranges, and both read as one.
+            faults += Fault(
+                kind,
+                index?.let { it..it } ?: EVERY_INDEX,
+                firstAttempts?.let { FIRST_ATTEMPT..it } ?: EVERY_ATTEMPT,
+                effect,
+            )
             return this
         }
 
@@ -243,6 +328,12 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
 
         /** What an unnamed index addresses: every resource of the kind. */
         private val EVERY_INDEX = 0..Int.MAX_VALUE
+
+        /** Attempts are counted from one: the first fetch of a resource is its first attempt. */
+        internal const val FIRST_ATTEMPT = 1
+
+        /** What an unnamed attempt count addresses: every attempt, so the fault never relents. */
+        internal val EVERY_ATTEMPT = FIRST_ATTEMPT..Int.MAX_VALUE
     }
 }
 
@@ -251,15 +342,20 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
  *
  * [indices] is a range rather than a single index because a token expiry addresses a segment *and
  * every one after it* — the one addressing shape that cannot be written as a single index, and the
- * reason this is a range at all. A null [kind] is every kind.
+ * reason this is a range at all. [attempts] is a range for the mirror-image reason: a fault that
+ * relents applies to the first few attempts at a resource and not to the rest. A null [kind] is
+ * every kind.
  */
 internal class Fault(
     val kind: ResourceKind?,
     val indices: IntRange,
+    val attempts: IntRange,
     val effect: Effect,
 ) {
-    fun matches(address: ResourceAddress): Boolean =
-        (kind == null || kind == address.kind) && address.index in indices
+    fun matches(attempt: ResourceAttempt): Boolean =
+        (kind == null || kind == attempt.address.kind) &&
+            attempt.address.index in indices &&
+            attempt.number in attempts
 }
 
 /** What a matched [Fault] does to the transfer. */
@@ -269,5 +365,11 @@ internal sealed interface Effect {
     class HttpStatus(val code: Int) : Effect
     class Truncate(val afterBytes: Long) : Effect
     object DnsFailure : Effect
+    object TlsFailure : Effect
+    object ConnectionReset : Effect
+    object ConnectionTimeout : Effect
+
+    /** A 403 that lasts until the request's credential changes — see `expireTokenAtSegment`. */
+    object ExpiredToken : Effect
     class IntermediaryCache(val maxAgeSeconds: Long, val honoursNoCache: Boolean) : Effect
 }

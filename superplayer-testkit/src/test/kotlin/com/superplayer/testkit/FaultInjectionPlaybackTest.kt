@@ -99,6 +99,36 @@ class FaultInjectionPlaybackTest {
     }
 
     @Test
+    fun aFaultThatRelentsLetsTheRetryRecoverAndPlaybackGoOn() {
+        val script = FaultScript.Builder()
+            .failWithHttpStatus(
+                FaultScript.HTTP_SERVER_ERROR,
+                ResourceKind.MEDIA_SEGMENT,
+                FAULTED_SEGMENT,
+                firstAttempts = 1,
+            )
+            .build()
+        val player = play(script)
+        harness.playToReady(player)
+        val positionAtStartMs = player.currentPosition
+        harness.advanceTimeInStepsMs(player, PLAYED_MS)
+
+        // The other half of every fault in this file, and the half nothing could express before:
+        // the segment failed, Media3 asked for it again, and the second answer was the bytes. A
+        // rung of the ladder that recovers has no test at all unless a fault can stop applying —
+        // which is `PRD.md` Part 5's requirement read in the direction that is easy to miss.
+        assertThat(player.playerError).isNull()
+        assertThat(player.currentPosition).isGreaterThan(positionAtStartMs)
+        // And the fault fired rather than missing: playback reached segments past the faulted one,
+        // and the session opened more requests than it had distinct resources to fetch — which is
+        // one resource fetched twice, and there was only one fault to cause that.
+        val resources = harness.requestedResources(player)
+        val segments = resources.filter { it.kind == ResourceKind.MEDIA_SEGMENT }.map { it.index }
+        assertThat(segments.max()).isGreaterThan(FAULTED_SEGMENT)
+        assertThat(harness.networkRequests(player)).hasSize(resources.size + 1)
+    }
+
+    @Test
     fun theSameScriptFailsTheSameSegmentUnderHlsAndUnderDash() {
         // One script, two protocols, and not a URL in either: `ResourceKind.MEDIA_SEGMENT` plus an
         // index is the same sentence under an HLS media playlist and under an MPD's `SegmentList`,

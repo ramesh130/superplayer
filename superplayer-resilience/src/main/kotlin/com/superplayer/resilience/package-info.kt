@@ -17,8 +17,9 @@
 /**
  * superplayer-resilience — ErrorClassifier, RetryPolicy, FallbackLadder (CDN/variant/protocol)
  *
- * Placeholder. This module is created empty and buildable so that the module boundary and
- * dependency direction are fixed and enforceable now, rather than negotiated once code
- * arrives (phase 5). It intentionally declares no public API yet.
+ * Phase 5, decided in full by ADR-0011 before any of it landed. What is here so far is the taxonomy:
+ * `FailureClass`, the vocabulary a failure is named in and the only one in the library, and
+ * `ErrorClassifier`, the single place it is assigned. The retry policy, the ladder and the token
+ * refresh that read it are the issues after #177.
  */
 package com.superplayer.resilience

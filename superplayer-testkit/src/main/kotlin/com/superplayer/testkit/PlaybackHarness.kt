@@ -465,8 +465,12 @@ public class PlaybackHarness : ExternalResource() {
      * pool lists them in order among the rows' own. Concurrent transfers still each see the whole
      * link, the replay limit `docs/throughput-traces.md` states.
      *
-     * [cache] and [policy] are `PlayerPool.Builder.setCache` and `setPolicy`: every pooled player
-     * shares the one cache, and an extension policy configures one engine for the pool.
+     * [policy] is `PlayerPool.Builder.setPolicy`, and is set on the pool itself, because an extension
+     * policy configures one engine for the pool. [cache] is **not** set on the pool: every pooled
+     * player shares the one cache, but it reaches them through the factory below rather than through
+     * `PlayerPool.Builder.setCache`, which the substituted factory would make dead. A pool's own
+     * per-player calls cannot be exercised from here at all, for exactly that reason, and
+     * `PlayerPoolTest` is where they are covered instead (#188).
      */
     public fun buildPool(
         maxSize: Int? = null,
@@ -484,7 +488,6 @@ public class PlaybackHarness : ExternalResource() {
                 maxSize?.let { setMaxSize(it) }
                 profile?.let { setProfile(it) }
                 policy?.let { setPolicy(it) }
-                cache?.let { setCache(it) }
             }
             .setPlayerFactory { pooled ->
                 buildPlayerOver(transport, content, profile ?: PlaybackProfile.SHORT_FORM, telemetry(), policy, cache, pooled)

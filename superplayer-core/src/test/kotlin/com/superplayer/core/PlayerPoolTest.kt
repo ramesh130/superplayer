@@ -24,6 +24,7 @@ import androidx.media3.common.C
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.util.Size
+import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import androidx.media3.test.utils.robolectric.ShadowMediaCodecConfig
@@ -183,6 +184,69 @@ class PlayerPoolTest {
             assertThat(filled).hasSize(2)
         } finally {
             pool.release()
+        }
+    }
+
+    /**
+     * ADR-0010 rules 1 and 13 for a pool: the cache a consumer opened and handed the pool is composed
+     * into every player it builds, and a pool handed none gives its players none.
+     *
+     * Through the real factory, for the reason
+     * [aPoolWithTelemetryGivesEveryPlayerItBuildsACollectorOfItsOwn] gives — and here the harness is
+     * worse than absent: `PlaybackHarness.buildPool` *calls* `setCache` and then substitutes the
+     * factory, so that call reads as covered while doing nothing (#188). This is the only place
+     * `PlayerPool.Builder.setCache` reaches `SuperPlayer.Builder`.
+     *
+     * No playback: the real factory has the real transport, so there is no synthetic stream to play.
+     * Both halves are visible without one. The chain is composed at construction, so the cache's slot
+     * being filled is counted there; and keying by content is a property of the *item* a player
+     * adopts, which `setMediaRequest` lays on without preparing anything.
+     */
+    @Test
+    fun aPoolWithACacheComposesItIntoEveryPlayerItBuildsAndOneWithoutComposesNone() {
+        val cache = RecordingContentCache()
+        val pool = PlayerPool.Builder(ApplicationProvider.getApplicationContext())
+            .setMaxSize(2)
+            .setCache(cache)
+            .build()
+        try {
+            val first = checkNotNull(pool.acquire())
+            val second = checkNotNull(pool.acquire())
+
+            // Two players, two chains filled from the one cache — distinct chains, because a chain is
+            // built per player even where an engine's components are shared (ADR-0010 rule 9).
+            assertThat(cache.filledChains()).hasSize(2)
+            assertThat(cache.filledChains()[0]).isNotSameInstanceAs(cache.filledChains()[1])
+
+            // And the other half of having a cache: each player keys the item it adopts by content
+            // rather than by URL, which is the stamp the slot above reads (ADR-0010 rule 4).
+            first.setMediaRequest(requestFor(FIRST_ITEM))
+            second.setMediaRequest(requestFor(SECOND_ITEM))
+            assertThat(ContentIdentity.of(checkNotNull(first.currentMediaItem)))
+                .isEqualTo(ContentIdentity(FIRST_ITEM))
+            assertThat(ContentIdentity.of(checkNotNull(second.currentMediaItem)))
+                .isEqualTo(ContentIdentity(SECOND_ITEM))
+
+            // A recycled player keeps the chain it was built with rather than being composed again:
+            // recycling ends an item, and the chain below it is the player's for its whole life.
+            pool.recycle(first)
+            checkNotNull(pool.acquire())
+            assertThat(cache.filledChains()).hasSize(2)
+        } finally {
+            pool.release()
+        }
+
+        // The counter shown seeing nothing, so that the count above is known to be counting: a pool
+        // told about no cache builds players that key no item, which is what such a player pays.
+        val uncachedPool = PlayerPool.Builder(ApplicationProvider.getApplicationContext())
+            .setMaxSize(1)
+            .build()
+        try {
+            val player = checkNotNull(uncachedPool.acquire())
+            player.setMediaRequest(requestFor(FIRST_ITEM))
+            assertThat(ContentIdentity.of(checkNotNull(player.currentMediaItem))).isNull()
+        } finally {
+            uncachedPool.release()
         }
     }
 
@@ -527,6 +591,28 @@ class PlayerPoolTest {
             configuration.headerRefresh = refresh
             configuration.loadErrors = loadErrors
             filled += configuration
+        }
+    }
+
+    /**
+     * A cache that caches nothing: it fills the slot, answers no read, and records the chain it was
+     * composed over — one per player, which is what a pool's use of it is measured in.
+     *
+     * The layer is the cache's own and is handed to every player, the way a feed's one cache is: the
+     * count below is of chains it filled, not of caches, because there is only ever the one.
+     */
+    private class RecordingContentCache : ContentCache(RecordingCacheLayer()) {
+
+        fun filledChains(): List<DataSource.Factory> = (layer as RecordingCacheLayer).filled.toList()
+    }
+
+    private class RecordingCacheLayer : CacheLayer {
+
+        val filled = mutableListOf<DataSource.Factory>()
+
+        override fun over(upstream: DataSource.Factory): DataSource.Factory {
+            filled += upstream
+            return upstream
         }
     }
 

@@ -468,7 +468,19 @@ fallback that happens is the ladder's and not Media3's, which the same file's st
 counts. A fault reaches one rendition or one CDN by being addressed at its *host*
 (`FaultScript`'s fourth coordinate): `TestContent.dash(mirrorHost = …)` is the same media at two
 `BaseURL`s and `TestContent.hls(secondVariantHost = …)` puts the higher rendition somewhere a fault
-can name it.
+can name it. The phase's exit criterion is three tests of its own (#184). `FaultSweepTest` plays
+**every** `FaultScript` fault kind — enumerated off the builder by reflection, so a kind added later
+is visibly missing — under both protocols and records in `SWEPT` how each ended: `PRD.md` Part 4 asks
+that each recover or end in a named class, and each does, with `truncateAfterBytes` the one kind the
+two protocols answer differently. `HostileManifestLadderTest` is the hostile corpus on a player with
+the ladder, beside `HostileManifestCorpusTest`'s core-only tables and taken by the same observer
+(`HostileObservation`, in testkit's main sources, because a phase 2 module may not depend on a phase 5
+one) — **no row moves**, since every entry there serves its media perfectly and a ladder climbs only
+when a load fails, and the one entry that neither recovers nor ends named,
+`dash-availability-start-time-skew`, is recorded in `CANNOT_RECOVER` with the reason rather than left
+out. `FallbackRungCoverageTest` is the register: per `FallbackRung`, the test that forces it and the
+test that counts rule 14 for it, checked against the source tree so a rename or a seventh rung fails
+rather than going unnoticed.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,

@@ -179,6 +179,17 @@ outside the media it was served, before its start or past its end. Most are not,
 recording them means a later phase's fix is a visible diff in one table rather than an unreviewed
 change. That table must name every entry, so a pathology cannot be added and left unplayed.
 
+The corpus is recorded **twice, on two players**. `HostileManifestCorpusTest`'s tables are a player
+built with a profile and nothing else, which is the core-only consumer; `superplayer-resilience`'s
+`HostileManifestLadderTest.WITH_LADDER` is the same corpus on a player built with
+`Resilience.standard()`. It lives in that module because a phase 2 module may not depend on a phase 5
+one (`docs/modules.md`), and both tables are taken by one observer — `HostileObservation.observe`, in
+`superplayer-testkit`'s main sources — so the only difference between them is the resilience. A row
+that differs is a row the ladder moved; a row that agrees is one more count of ADR-0011 rule 14. The
+ladder table also carries `CANNOT_RECOVER`, the entries that neither recover nor end named, each with
+the reason it is beyond a ladder — `PRD.md` Part 4's criterion is stated *with* its exceptions rather
+than around them.
+
 **Severity** is what makes the corpus grade a doctor's thresholds rather than only its detection.
 `HostileManifests.all()` carries each pathology once, at a value chosen to be unmistakable — a ladder
 gap of 48×, an hour of clock skew — and against that alone a doctor that flags every manifest passes.
@@ -228,7 +239,10 @@ corpus, and the test checks that it plays on, which is what makes a failing live
    instead carries a `Single severity:` paragraph in its comment saying why nothing milder exists.
    Its id goes in the pinned list in `aPathologyWithAMagnitudeIsGradedAtEveryLevelAndABinaryOneAtOne`.
 6. The entry in `graded()` (`all()` follows from it), and its observed rows in
-   `HostileManifestCorpusTest.RECORDED` and `GRADED`. Add a comment wherever a row is surprising.
+   `HostileManifestCorpusTest.RECORDED` and `GRADED`, and in
+   `HostileManifestLadderTest.WITH_LADDER` — three tables, because an entry recorded on one player
+   and not the other is an entry whose ladder behaviour nobody looked at. Add a comment wherever a
+   row is surprising.
 
 A defect that lives outside the manifest cannot be applied by `FakeDataSet`, which serves bytes and
 reports no response headers. That covers the `Cache-Control` mismatch. Such an entry carries the
@@ -617,6 +631,20 @@ addresses it assigned. That is not an exception to "assertions stop at the facad
 applied one level down — the subject there *is* the harness, and a test-support tool that is wrong is
 worse than none, because every failure it causes is read as a failure of the code under test.
 Everything that uses the injector to test the library still goes through the public API.
+
+Which rung each forcing test forces is written down in one place: `superplayer-resilience`'s
+`FallbackRungCoverageTest`. It names, per `FallbackRung`, the test that forces that rung and the test
+that counts what a player built without resilience pays for it, and it checks those names against the
+source tree — so a renamed or un-`@Test`ed method fails there rather than leaving a rung silently
+unforced, and a seventh rung added with no entry fails the day it is added. The names cannot be
+collected as code because the rungs are forced across two modules: rungs 4 and 5 are performed by
+core, and a module's test classes are not on another module's test classpath.
+
+Beside it, `FaultSweepTest` plays **every** `FaultScript` fault kind under both protocols and records
+how each session ended, which is `PRD.md` Part 4's Phase 5 criterion — every injected fault recovers
+or ends in a named class, and no session ends on a failure nothing classified. The kinds it sweeps are
+read off `FaultScript.Builder` by reflection, so a fault kind added later is visibly missing from the
+table rather than silently unswept.
 
 ### Replaying a network
 

@@ -43,15 +43,22 @@ internal class ResourceAddress(val kind: ResourceKind, val index: Int) {
 }
 
 /**
- * One fetch of one resource: its address, and which attempt at that address this fetch is.
+ * One fetch of one resource: its address, which attempt at that address this fetch is, and the host
+ * it went to.
  *
  * [number] counts from one and counts *per address*, on exactly the addressing [ResourceAddress]
  * describes — so a retry of a segment under a refreshed signature is the second attempt at that
  * segment rather than the first attempt at a new one. It is the coordinate a fault that relents is
  * bounded on, and it is the only thing issue #175 adds to how a fault is addressed.
+ *
+ * [host] is a property of the *fetch* rather than of the resource, which is why it is here and not
+ * on [ResourceAddress]: the same rendition mirrored on two CDNs is two resources with two addresses
+ * as far as anything below the transfer can tell, and what a fallback test needs to say is which
+ * end of the wire a request arrived at. Null for a URI that names no host, which the `file:` stream
+ * one core test loads is.
  */
-internal class ResourceAttempt(val address: ResourceAddress, val number: Int) {
-    override fun toString(): String = "$address try $number"
+internal class ResourceAttempt(val address: ResourceAddress, val number: Int, val host: String?) {
+    override fun toString(): String = "$address try $number" + (host?.let { " at $it" } ?: "")
 }
 
 /**
@@ -101,7 +108,7 @@ internal class ResourceAddressBook {
         opened += NetworkRequest(dataSpec.uri.toString(), address.kind, dataSpec.httpRequestHeaders.toMap())
         val number = attempts.getOrDefault(key(dataSpec), 0) + 1
         attempts[key(dataSpec)] = number
-        return ResourceAttempt(address, number)
+        return ResourceAttempt(address, number, dataSpec.uri.host)
     }
 
     private fun addressOf(dataSpec: DataSpec): ResourceAddress = assigned.getOrPut(key(dataSpec)) {

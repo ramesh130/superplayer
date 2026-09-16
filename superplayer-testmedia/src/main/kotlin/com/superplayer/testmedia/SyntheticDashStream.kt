@@ -44,13 +44,23 @@ import java.util.Locale
  */
 public object SyntheticDashStream {
 
+    /**
+     * The host every URI of this stream is served from.
+     *
+     * Named rather than buried in [BASE_URI] because a fault can be addressed at a host, and a test
+     * that wants "this one fails and the mirror serves" has to be able to say which one is which.
+     */
+    public const val HOST: String = "superplayer.test"
+
     /** Any scheme works: a test serving these from a fake data source keys purely on the URI. */
-    private const val BASE_URI = "fake://superplayer.test/dash/"
+    private const val BASE_URI = "fake://$HOST/dash/"
+
+    /** Where this stream's resources sit when served from [host] instead of [HOST]. */
+    public fun baseUriOn(host: String): String = "fake://$host/dash/"
 
     /** `.mpd` is load-bearing: Media3 infers the content type from the URI's extension. */
     public const val MANIFEST_URI: String = BASE_URI + "manifest.mpd"
     internal const val INITIALIZATION_NAME = "init.mp4"
-    private const val INITIALIZATION_URI = BASE_URI + INITIALIZATION_NAME
 
     internal fun segmentName(index: Int) = "segment$index.m4s"
 
@@ -112,13 +122,24 @@ public object SyntheticDashStream {
      * *later* segment needs — a fault at media segment 1 has to have a segment 1 to land on — and
      * every extra segment differs from the first only in its fragment sequence number and its
      * decode time, which is what makes them play back to back rather than all at zero.
+     *
+     * [mirrorHost] is null by default, which is the stream this file has always emitted — one host,
+     * no `BaseURL` element at all, byte-identical bytes. Naming one makes the MPD declare *two*
+     * locations for the same media and serves every segment from both, which is the only shape in
+     * which a player can be shown moving from a host that fails to a host that serves. The manifest
+     * itself stays on [HOST]: a document that named its own alternatives from a location that could
+     * not be fetched would describe nothing.
      */
-    public fun resources(segmentCount: Int = 1): Map<String, ByteArray> {
+    public fun resources(segmentCount: Int = 1, mirrorHost: String? = null): Map<String, ByteArray> {
         require(segmentCount >= 1) { "A stream needs at least one segment, was $segmentCount" }
+        require(mirrorHost != HOST) { "A mirror is a second host, not $HOST over again" }
+        val bases = listOfNotNull(BASE_URI, mirrorHost?.let(::baseUriOn))
         return buildMap {
-            put(MANIFEST_URI, manifest(segmentCount).toByteArray())
-            put(INITIALIZATION_URI, initializationSegment())
-            repeat(segmentCount) { index -> put(BASE_URI + segmentName(index), mediaSegment(index)) }
+            put(MANIFEST_URI, manifest(segmentCount, mirrorHost).toByteArray())
+            bases.forEach { base ->
+                put(base + INITIALIZATION_NAME, initializationSegment())
+                repeat(segmentCount) { index -> put(base + segmentName(index), mediaSegment(index)) }
+            }
         }
     }
 
@@ -133,12 +154,29 @@ public object SyntheticDashStream {
      *
      * `SegmentList` rather than `SegmentTemplate` because the segments are listed one by one anyway:
      * a template would add a substitution grammar to read for no gain here.
+     *
+     * spec: ISO/IEC 23009-1 §5.6.4 — more than one `BaseURL` at the same level declares the same
+     * content at alternative locations, and a client may use any of them. Which one, and in what
+     * order, is not in that part: the priority and weight attributes come from
+     * // spec: ETSI TS 103 285 §10.8.2.1 (DVB-DASH), `dvb:priority` ascending with the lowest tried
+     * first and `dvb:weight` breaking a tie inside one priority. They are written out rather than
+     * left to the DVB profile's defaults because a `BaseURL` with no priority at all carries
+     * `PRIORITY_UNSET`, and two of those are one location rather than two — a manifest that would
+     * offer a player nothing to fail over to. [mirrorHost] null emits no `BaseURL` element and no
+     * namespace declaration, so the single-host document is exactly what it always was.
      */
-    private fun manifest(segmentCount: Int): String {
+    private fun manifest(segmentCount: Int, mirrorHost: String?): String {
         val durationSeconds = SEGMENT_DURATION_IN_TIMESCALE.toDouble() * segmentCount / TIMESCALE
         val segmentUrls = (0 until segmentCount).map { index ->
             "          <SegmentURL media=\"${segmentName(index)}\"/>"
         }
+        val dvbNamespace = mirrorHost?.let { listOf("     xmlns:dvb=\"$DVB_EXTENSIONS_NAMESPACE\"") }.orEmpty()
+        val baseUrls = mirrorHost?.let {
+            listOf(
+                "  <BaseURL dvb:priority=\"1\" dvb:weight=\"1\" serviceLocation=\"origin\">$BASE_URI</BaseURL>",
+                "  <BaseURL dvb:priority=\"2\" dvb:weight=\"1\" serviceLocation=\"mirror\">${baseUriOn(it)}</BaseURL>",
+            )
+        }.orEmpty()
 
         // Joined lines rather than an indented raw string, for the reason `SyntheticHlsStream`'s
         // media playlist gives and one more this document cannot survive: a `trimIndent` block whose
@@ -149,10 +187,12 @@ public object SyntheticDashStream {
             listOf(
                 "<?xml version=\"1.0\" encoding=\"utf-8\"?>",
                 "<MPD xmlns=\"urn:mpeg:dash:schema:mpd:2011\"",
+            ) + dvbNamespace + listOf(
                 "     profiles=\"urn:mpeg:dash:profile:isoff-main:2011\"",
                 "     type=\"static\"",
                 "     mediaPresentationDuration=\"${xsDuration(durationSeconds)}\"",
                 "     minBufferTime=\"PT1S\">",
+            ) + baseUrls + listOf(
                 "  <Period id=\"0\">",
                 "    <AdaptationSet mimeType=\"audio/mp4\" segmentAlignment=\"true\">",
                 "      <Representation id=\"0\"",
@@ -510,6 +550,9 @@ public object SyntheticDashStream {
 
     /** spec: ISO/IEC 14496-12 §4.2 — a 32-bit size followed by a four-character type. */
     private const val BOX_HEADER_BYTES = 8
+
+    /** spec: ETSI TS 103 285 §10.8.2.1 — where `dvb:priority` and `dvb:weight` are defined. */
+    private const val DVB_EXTENSIONS_NAMESPACE = "urn:dvb:dash:dash-extensions:2014-1"
 }
 
 private fun bytes(build: ByteArrayOutputStream.() -> Unit): ByteArray =

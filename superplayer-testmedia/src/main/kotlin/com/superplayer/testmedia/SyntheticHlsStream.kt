@@ -37,8 +37,19 @@ import kotlin.math.ceil
  */
 public object SyntheticHlsStream {
 
+    /**
+     * The host every URI of this stream is served from.
+     *
+     * Named rather than buried in [BASE_URI] because a fault can be addressed at a host, and a test
+     * that wants one rendition to fail while another serves has to be able to say which is which.
+     */
+    public const val HOST: String = "superplayer.test"
+
     /** Any scheme works: a test serving these from a fake data source keys purely on the URI. */
-    private const val BASE_URI = "fake://superplayer.test/"
+    private const val BASE_URI = "fake://$HOST/"
+
+    /** Where this stream's resources sit when served from [host] instead of [HOST]. */
+    public fun baseUriOn(host: String): String = "fake://$host/"
 
     private const val MULTIVARIANT_PLAYLIST_NAME = "master.m3u8"
     internal const val MEDIA_PLAYLIST_NAME = "media.m3u8"
@@ -142,9 +153,37 @@ public object SyntheticHlsStream {
      * subject is a *selection* — which rendition was chosen, or what the selection reports about
      * its own estimate — and a stream with one variant is selected by a fixed selection that
      * reports nothing.
+     *
+     * [secondVariantHost] is null by default, and naming one is the one way this stream can say
+     * "*that* rendition, and not the other" to something addressing resources rather than URLs: the
+     * multivariant playlist then names the second variant's media playlist absolutely on that host,
+     * and every segment of that variant is served from it. The two variants carry identical bytes
+     * either way — what a rendition declares is all that ever differs here — so the host is the
+     * whole of the difference, which is exactly what makes it usable as an address.
      */
-    public fun resources(segmentCount: Int = 1, variantCount: Int = 1): Map<String, ByteArray> =
-        files(segmentCount, variantCount).mapKeys { (name, _) -> BASE_URI + name }
+    public fun resources(
+        segmentCount: Int = 1,
+        variantCount: Int = 1,
+        secondVariantHost: String? = null,
+    ): Map<String, ByteArray> {
+        if (secondVariantHost == null) {
+            return files(segmentCount, variantCount).mapKeys { (name, _) -> BASE_URI + name }
+        }
+        require(variantCount == 2) { "Only a second variant can be served from a second host" }
+        require(secondVariantHost != HOST) { "A second host is not $HOST over again" }
+        require(segmentCount >= 1) { "A stream needs at least one segment, was $segmentCount" }
+        val secondBase = baseUriOn(secondVariantHost)
+        val secondPlaylistUri = secondBase + SECOND_MEDIA_PLAYLIST_NAME
+        return buildMap {
+            put(MULTIVARIANT_PLAYLIST_URI, multivariantPlaylist(variantCount = 2, secondPlaylistUri).toByteArray())
+            put(BASE_URI + MEDIA_PLAYLIST_NAME, mediaPlaylist(segmentCount).toByteArray())
+            put(secondPlaylistUri, mediaPlaylist(segmentCount).toByteArray())
+            repeat(segmentCount) { index ->
+                put(BASE_URI + segmentName(index), adtsSegment(index))
+                put(secondBase + segmentName(index), adtsSegment(index))
+            }
+        }
+    }
 
     /**
      * The same stream on disk, returning the multivariant playlist's `file:` URI.
@@ -187,11 +226,16 @@ public object SyntheticHlsStream {
         }
     }
 
-    // spec: RFC 8216 §4.3.4.2 — EXT-X-STREAM-INF, with the required BANDWIDTH attribute.
-    private fun multivariantPlaylist(variantCount: Int): String {
+    // spec: RFC 8216 §4.3.4.2 — EXT-X-STREAM-INF, with the required BANDWIDTH attribute. The URI
+    // line that follows a tag is a URI reference (§4.3.4.2), so it may be relative — which is what
+    // every form of this stream but the second-host one uses — or absolute.
+    private fun multivariantPlaylist(
+        variantCount: Int,
+        secondVariantPlaylist: String = SECOND_MEDIA_PLAYLIST_NAME,
+    ): String {
         val variants = listOf(
             DECLARED_BITRATE_BPS to MEDIA_PLAYLIST_NAME,
-            HIGHER_DECLARED_BITRATE_BPS to SECOND_MEDIA_PLAYLIST_NAME,
+            HIGHER_DECLARED_BITRATE_BPS to secondVariantPlaylist,
         ).take(variantCount)
 
         return (

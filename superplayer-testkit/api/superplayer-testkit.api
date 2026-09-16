@@ -22,27 +22,27 @@ public final class com/superplayer/testkit/FaultScript {
 
 public final class com/superplayer/testkit/FaultScript$Builder {
 	public fun <init> ()V
-	public final fun addLatencyMs (JLcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;)Lcom/superplayer/testkit/FaultScript$Builder;
-	public static synthetic fun addLatencyMs$default (Lcom/superplayer/testkit/FaultScript$Builder;JLcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public final fun addLatencyMs (JLcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public static synthetic fun addLatencyMs$default (Lcom/superplayer/testkit/FaultScript$Builder;JLcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
 	public final fun build ()Lcom/superplayer/testkit/FaultScript;
-	public final fun capThroughputBps (JLcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;)Lcom/superplayer/testkit/FaultScript$Builder;
-	public static synthetic fun capThroughputBps$default (Lcom/superplayer/testkit/FaultScript$Builder;JLcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public final fun capThroughputBps (JLcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public static synthetic fun capThroughputBps$default (Lcom/superplayer/testkit/FaultScript$Builder;JLcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
 	public final fun expireTokenAtSegment (IZ)Lcom/superplayer/testkit/FaultScript$Builder;
 	public static synthetic fun expireTokenAtSegment$default (Lcom/superplayer/testkit/FaultScript$Builder;IZILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
-	public final fun failDnsResolution (Lcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;)Lcom/superplayer/testkit/FaultScript$Builder;
-	public static synthetic fun failDnsResolution$default (Lcom/superplayer/testkit/FaultScript$Builder;Lcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
-	public final fun failTlsHandshake (Lcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;)Lcom/superplayer/testkit/FaultScript$Builder;
-	public static synthetic fun failTlsHandshake$default (Lcom/superplayer/testkit/FaultScript$Builder;Lcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
-	public final fun failWithHttpStatus (ILcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;)Lcom/superplayer/testkit/FaultScript$Builder;
-	public static synthetic fun failWithHttpStatus$default (Lcom/superplayer/testkit/FaultScript$Builder;ILcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
-	public final fun resetConnection (Lcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;)Lcom/superplayer/testkit/FaultScript$Builder;
-	public static synthetic fun resetConnection$default (Lcom/superplayer/testkit/FaultScript$Builder;Lcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
-	public final fun serveThroughCache (JZLcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;)Lcom/superplayer/testkit/FaultScript$Builder;
-	public static synthetic fun serveThroughCache$default (Lcom/superplayer/testkit/FaultScript$Builder;JZLcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
-	public final fun timeOutConnection (Lcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;)Lcom/superplayer/testkit/FaultScript$Builder;
-	public static synthetic fun timeOutConnection$default (Lcom/superplayer/testkit/FaultScript$Builder;Lcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
-	public final fun truncateAfterBytes (JLcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;)Lcom/superplayer/testkit/FaultScript$Builder;
-	public static synthetic fun truncateAfterBytes$default (Lcom/superplayer/testkit/FaultScript$Builder;JLcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public final fun failDnsResolution (Lcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public static synthetic fun failDnsResolution$default (Lcom/superplayer/testkit/FaultScript$Builder;Lcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public final fun failTlsHandshake (Lcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public static synthetic fun failTlsHandshake$default (Lcom/superplayer/testkit/FaultScript$Builder;Lcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public final fun failWithHttpStatus (ILcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public static synthetic fun failWithHttpStatus$default (Lcom/superplayer/testkit/FaultScript$Builder;ILcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public final fun resetConnection (Lcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public static synthetic fun resetConnection$default (Lcom/superplayer/testkit/FaultScript$Builder;Lcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public final fun serveThroughCache (JZLcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/String;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public static synthetic fun serveThroughCache$default (Lcom/superplayer/testkit/FaultScript$Builder;JZLcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/String;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public final fun timeOutConnection (Lcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public static synthetic fun timeOutConnection$default (Lcom/superplayer/testkit/FaultScript$Builder;Lcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public final fun truncateAfterBytes (JLcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public static synthetic fun truncateAfterBytes$default (Lcom/superplayer/testkit/FaultScript$Builder;JLcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
 }
 
 public final class com/superplayer/testkit/FaultScript$Companion {
@@ -149,9 +149,9 @@ public final class com/superplayer/testkit/TestContent {
 	public static final field DEFAULT_BITRATE_BPS I
 	public static final field DEFAULT_DURATION_MS J
 	public static final field DEFAULT_SEGMENT_COUNT I
-	public static final fun dash (I)Lcom/superplayer/testkit/TestContent;
+	public static final fun dash (ILjava/lang/String;)Lcom/superplayer/testkit/TestContent;
 	public final fun getSourceUri ()Ljava/lang/String;
-	public static final fun hls (II)Lcom/superplayer/testkit/TestContent;
+	public static final fun hls (IILjava/lang/String;)Lcom/superplayer/testkit/TestContent;
 	public static final fun hostile (Lcom/superplayer/testmedia/HostileStream;)Lcom/superplayer/testkit/TestContent;
 	public static final fun ladder (Ljava/util/List;J)Lcom/superplayer/testkit/TestContent;
 	public static final fun liveHls ()Lcom/superplayer/testkit/TestContent;
@@ -164,10 +164,10 @@ public final class com/superplayer/testkit/TestContent {
 }
 
 public final class com/superplayer/testkit/TestContent$Companion {
-	public final fun dash (I)Lcom/superplayer/testkit/TestContent;
-	public static synthetic fun dash$default (Lcom/superplayer/testkit/TestContent$Companion;IILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
-	public final fun hls (II)Lcom/superplayer/testkit/TestContent;
-	public static synthetic fun hls$default (Lcom/superplayer/testkit/TestContent$Companion;IIILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
+	public final fun dash (ILjava/lang/String;)Lcom/superplayer/testkit/TestContent;
+	public static synthetic fun dash$default (Lcom/superplayer/testkit/TestContent$Companion;ILjava/lang/String;ILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
+	public final fun hls (IILjava/lang/String;)Lcom/superplayer/testkit/TestContent;
+	public static synthetic fun hls$default (Lcom/superplayer/testkit/TestContent$Companion;IILjava/lang/String;ILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
 	public final fun hostile (Lcom/superplayer/testmedia/HostileStream;)Lcom/superplayer/testkit/TestContent;
 	public final fun ladder (Ljava/util/List;J)Lcom/superplayer/testkit/TestContent;
 	public static synthetic fun ladder$default (Lcom/superplayer/testkit/TestContent$Companion;Ljava/util/List;JILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;

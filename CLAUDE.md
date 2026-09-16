@@ -361,9 +361,22 @@ its top; and the harness declares a television-sized display by default for the 
 ignores the viewport, with `DeviceStatement` the way a test narrows it or declares a decoder —
 before its first player is built, since the platform caches the codec list on first read.
 
+`superplayer-resilience` has the first of Phase 5, and it is the vocabulary rather than any
+behaviour: `FailureClass`, the sealed taxonomy `PRD.md` §3.3 names, and `ErrorClassifier`, the single
+place a failure acquires a meaning (ADR-0011 rules 1–4). Each class answers the three questions
+acting on it needs — whether retrying the same bytes can help, the highest `FallbackRung` the ladder
+may climb for it, and the stable name a log line and a warehouse row share — and carries the one-to-one
+row that derives telemetry's coarse `FailureCategory` from it, so nothing keeps a second taxonomy.
+The classifier is total and has no unknown class: core's `StaleLivePlaylistException` and
+`LiveWindowTooShortException` are *mapped* by reading the fields core filled in rather than
+re-derived, a refused *segment* is told from a refused manifest by the `LoadKind` stamp a player with
+resilience carries, and everything else falls through to the engine's error-code band — the only
+`when` over `errorCode` the repository may contain. `Fatal.Unsupported` is reached only from a code
+that says *unsupported*, never from that fall-through.
+
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,
-`superplayer-abr`, `superplayer-cache`, `superplayer-preload` and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
+`superplayer-abr`, `superplayer-cache`, `superplayer-preload`, `superplayer-resilience` and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
 requirements, and the phase table are what the issues are cut from.
 
 `benchmark/` is the fourth build and the phases' exit criteria: `PRD.md` §6's fixed matrix — six

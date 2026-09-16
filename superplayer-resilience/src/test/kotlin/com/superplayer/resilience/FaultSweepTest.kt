@@ -206,7 +206,7 @@ class FaultSweepTest {
      * The exception is the last, whose subject is not a failed request at all.
      */
     private fun faultKinds(): Map<String, FaultScript> = mapOf(
-        // A delay, not a failure: four segment durations of it, which is long enough that the engine
+        // A delay, not a failure: ten segment durations of it, which is long enough that the engine
         // rebuffers and short enough that the session finishes inside the budget.
         "addLatencyMs" to script { addLatencyMs(LATENCY_MS, SEGMENT, FAULTED_SEGMENT) },
         // Half the stream's declared bitrate, so the link is genuinely too slow for the rendition and
@@ -243,13 +243,13 @@ class FaultSweepTest {
         /** The kind nine of the ten faults are addressed at, named for the table's sake. */
         val SEGMENT = ResourceKind.MEDIA_SEGMENT
 
-        /** Enough segments that there are several past [FAULTED_SEGMENT] to get to. */
+        /** Enough segments that there are several past [FAULTED_SEGMENT] to get to — 12 s of media. */
         const val SEGMENTS = 6
 
         /** Late enough that segments play before the fault, and well inside [SEGMENTS]. */
         const val FAULTED_SEGMENT = 2
 
-        /** Four segment durations: a rebuffer rather than a hiccup, and well inside [BUDGET_MS]. */
+        /** Ten segment durations: a rebuffer rather than a hiccup, and well inside [BUDGET_MS]. */
         const val LATENCY_MS = 20_000L
 
         /** A header's worth of a segment and no more: enough to open, not enough to decode. */

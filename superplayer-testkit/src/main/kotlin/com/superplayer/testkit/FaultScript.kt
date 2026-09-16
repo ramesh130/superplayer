@@ -172,16 +172,28 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
          *
          * `firstAttempts` is how "a 500 that the retry recovers from" is written: the resource
          * answers that status that many times and is then served.
+         *
+         * `afterAttempts` is its mirror and the only place either is offered, because it is the only
+         * place the shape is needed: the resource is served that many times and refuses from then on.
+         * What needs it is a *second* exchange at an address whose first exchange must succeed — a
+         * DRM key renewal, whose whole distinction from a failed acquisition is that a licence had
+         * already been issued (#209). The two are mutually exclusive: naming both would be asking for
+         * a resource that fails early and late and is served in between, which no failure this
+         * harness models looks like.
          */
         public fun failWithHttpStatus(
             status: Int,
             kind: ResourceKind? = null,
             index: Int? = null,
             firstAttempts: Int? = null,
+            afterAttempts: Int? = null,
             host: String? = null,
         ): Builder {
             require(status in 400..599) { "An injected HTTP failure status is 4xx or 5xx, not $status" }
-            return add(kind, index, firstAttempts, host, Effect.HttpStatus(status))
+            require(firstAttempts == null || afterAttempts == null) {
+                "A fault relents after the first attempts or begins after them, not both"
+            }
+            return add(kind, index, firstAttempts, host, Effect.HttpStatus(status), afterAttempts)
         }
 
         /**
@@ -340,15 +352,23 @@ public class FaultScript private constructor(internal val faults: List<Fault>) {
             firstAttempts: Int?,
             host: String?,
             effect: Effect,
+            afterAttempts: Int? = null,
         ): Builder {
             index?.requireAtLeast(0, "A resource index")
             firstAttempts?.requireAtLeast(1, "A count of attempts")
+            afterAttempts?.requireAtLeast(1, "A count of attempts served")
             // An unnamed index means every resource of the kind, and an unnamed attempt count every
-            // attempt at it. Both are ranges, and both read as one.
+            // attempt at it. Both are ranges, and both read as one — including the late window, which
+            // is every attempt past the ones that were served.
+            val attempts = when {
+                firstAttempts != null -> FIRST_ATTEMPT..firstAttempts
+                afterAttempts != null -> (afterAttempts + 1)..Int.MAX_VALUE
+                else -> EVERY_ATTEMPT
+            }
             faults += Fault(
                 kind,
                 index?.let { it..it } ?: EVERY_INDEX,
-                firstAttempts?.let { FIRST_ATTEMPT..it } ?: EVERY_ATTEMPT,
+                attempts,
                 host,
                 effect,
             )

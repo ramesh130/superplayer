@@ -72,6 +72,16 @@ public object SyntheticHlsStream {
     public const val PROTECTED_MULTIVARIANT_PLAYLIST_URI: String = PROTECTED_BASE_URI + MULTIVARIANT_PLAYLIST_NAME
 
     /**
+     * Where the protected form of [liveResources] lives: again its own directory, so a data set can
+     * hold the plain live stream and the protected one at once.
+     */
+    private const val PROTECTED_LIVE_BASE_URI = BASE_URI + "live-protected/"
+
+    /** What a player is pointed at to play [liveResources] in its protected form. */
+    public const val PROTECTED_LIVE_MULTIVARIANT_PLAYLIST_URI: String =
+        PROTECTED_LIVE_BASE_URI + MULTIVARIANT_PLAYLIST_NAME
+
+    /**
      * How many segments a live playlist from [liveResources] lists at once: twelve seconds.
      *
      * spec: RFC 8216 §6.2.2 — a server must not remove a segment while the playlist would then last
@@ -357,20 +367,31 @@ public object SyntheticHlsStream {
      * before it can measure its live offset and hold it. Whoever serves this decides what "wall
      * clock" means, because this module names no clock; without it the window carries no date and
      * a player reports no live offset, as it does for many real origins.
+     *
+     * [protected] declares Widevine over the window, exactly as [protectedResources] declares it over
+     * the on-demand playlist — the same `EXT-X-KEY`, the same `pssh`, at an address of its own. A
+     * live stream is where a licence outlives more than one segment and where a real origin rotates
+     * its keys, so the two facts a session has to survive — a window that slides and a key that
+     * changes — can only be put to a player over this form.
      */
     @JvmOverloads
-    public fun liveResources(publishedSegmentCount: Int, firstSegmentDateTimeMs: Long? = null): Map<String, ByteArray> {
+    public fun liveResources(
+        publishedSegmentCount: Int,
+        firstSegmentDateTimeMs: Long? = null,
+        protected: Boolean = false,
+    ): Map<String, ByteArray> {
         require(publishedSegmentCount >= LIVE_WINDOW_SEGMENT_COUNT) {
             "A live window of $LIVE_WINDOW_SEGMENT_COUNT segments needs that many published, " +
                 "not $publishedSegmentCount"
         }
         val window = (publishedSegmentCount - LIVE_WINDOW_SEGMENT_COUNT) until publishedSegmentCount
         val windowDateTimeMs = firstSegmentDateTimeMs?.let { it + window.first * SEGMENT_DURATION_MS }
+        val base = if (protected) PROTECTED_LIVE_BASE_URI else LIVE_BASE_URI
         return buildMap {
             put(MULTIVARIANT_PLAYLIST_NAME, multivariantPlaylist(variantCount = 1).toByteArray())
-            put(MEDIA_PLAYLIST_NAME, mediaPlaylist(window, live = true, windowDateTimeMs).toByteArray())
+            put(MEDIA_PLAYLIST_NAME, mediaPlaylist(window, live = true, windowDateTimeMs, protected).toByteArray())
             window.forEach { index -> put(segmentName(index), adtsSegment(index)) }
-        }.mapKeys { (name, _) -> LIVE_BASE_URI + name }
+        }.mapKeys { (name, _) -> base + name }
     }
 
     /**

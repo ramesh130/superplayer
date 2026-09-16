@@ -19,7 +19,7 @@ package com.superplayer.testmedia
 import java.io.ByteArrayOutputStream
 
 /**
- * The protection data a Widevine stream declares: one key id, and the `pssh` box that carries it.
+ * The protection data a Widevine stream declares: a key id, and the `pssh` box that carries it.
  *
  * ## What is protected here, and what is not
  *
@@ -53,20 +53,49 @@ public object WidevineProtection {
     public const val SYSTEM_ID_URN: String = "urn:uuid:$SYSTEM_ID"
 
     /**
-     * The one key this content is declared to be encrypted under.
+     * Which key a stream is declared to be encrypted under.
+     *
+     * Two rather than one, and the second exists for exactly one question: **do two items a licence
+     * server issued separate licences for share a session?** A DRM session is identified by the
+     * initialization data the content declared, so two streams under [PRIMARY] are one policy to
+     * every client and two streams under different keys are two — and a test that means "content the
+     * server licensed separately" has to be able to say so in the stream rather than in a comment.
+     *
+     * Not a general key ladder: a second value is what makes the distinction expressible, and a third
+     * would be a third stream nobody has a question about.
+     */
+    public enum class ContentKey {
+
+        /** What every protected stream declared before a second key existed, and still the default. */
+        PRIMARY,
+
+        /** A different asset, licensed separately: the same everything else, a different `KID`. */
+        SECOND,
+    }
+
+    /**
+     * The key [key]'s content is declared to be encrypted under.
      *
      * Sixteen bytes, because a Common Encryption `KID` is a UUID (// spec: ISO/IEC 23001-7 §8.2).
-     * The value is arbitrary: nothing decrypts anything, so what matters is that every stream names
-     * the same one, which is what makes one licence server serve both protocols.
+     * The values are arbitrary: nothing decrypts anything, so what matters is that two streams naming
+     * the same key are one policy and two naming different keys are two — which is the whole of what
+     * a `KID` has to do here.
      *
      * Private, and a function rather than a field, because a public `ByteArray` is a mutable object
      * every caller shares: one test that wrote into it would change what every other stream declares.
      * What leaves this object is [pssh], which builds a new array each time.
      */
-    private fun keyId(): ByteArray = ByteArray(KEY_ID_BYTES) { index -> (index + 1).toByte() }
+    private fun keyId(key: ContentKey): ByteArray {
+        val seed = when (key) {
+            ContentKey.PRIMARY -> 1
+            ContentKey.SECOND -> 0x80
+        }
+        return ByteArray(KEY_ID_BYTES) { index -> (seed + index).toByte() }
+    }
 
     /**
-     * The `pssh` box both protocols carry, version 1, naming [KEY_ID] and carrying no system data.
+     * The `pssh` box both protocols carry, version 1, naming [key]'s key id and carrying no system
+     * data.
      *
      * spec: ISO/IEC 23001-7 §8.1 — `ProtectionSystemSpecificHeaderBox`: a `FullBox('pssh')` whose
      * body is the 16-byte `SystemID`, then, at version 1, a `KID_count` and that many 16-byte `KID`s,
@@ -79,11 +108,12 @@ public object WidevineProtection {
      * permits, and the key id is where a reader — and Media3's own `PsshAtomUtil` — finds it.
      */
     @JvmStatic
-    public fun pssh(): ByteArray {
+    @JvmOverloads
+    public fun pssh(key: ContentKey = ContentKey.PRIMARY): ByteArray {
         val body = ByteArrayOutputStream()
         body.write(systemIdBytes())
         body.writeInt32(1) // KID_count
-        body.write(keyId())
+        body.write(keyId(key))
         body.writeInt32(0) // DataSize
         val payload = body.toByteArray()
 
@@ -110,8 +140,9 @@ public object WidevineProtection {
      * spec: RFC 4648 §4 — the standard alphabet, padded with `=` to a multiple of four characters.
      */
     @JvmStatic
-    public fun psshBase64(): String {
-        val bytes = pssh()
+    @JvmOverloads
+    public fun psshBase64(key: ContentKey = ContentKey.PRIMARY): String {
+        val bytes = pssh(key)
         val out = StringBuilder()
         var index = 0
         while (index < bytes.size) {

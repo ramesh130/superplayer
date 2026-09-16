@@ -82,8 +82,11 @@ public final class com/superplayer/testmedia/SyntheticDashStream {
 	public static final field PROTECTED_MANIFEST_URI Ljava/lang/String;
 	public final fun baseUriOn (Ljava/lang/String;)Ljava/lang/String;
 	public final fun durationMs (I)J
+	public static final fun protectedManifestUri (Lcom/superplayer/testmedia/WidevineProtection$ContentKey;)Ljava/lang/String;
+	public final fun protectedResources ()Ljava/util/Map;
 	public final fun protectedResources (I)Ljava/util/Map;
-	public static synthetic fun protectedResources$default (Lcom/superplayer/testmedia/SyntheticDashStream;IILjava/lang/Object;)Ljava/util/Map;
+	public final fun protectedResources (ILcom/superplayer/testmedia/WidevineProtection$ContentKey;)Ljava/util/Map;
+	public static synthetic fun protectedResources$default (Lcom/superplayer/testmedia/SyntheticDashStream;ILcom/superplayer/testmedia/WidevineProtection$ContentKey;ILjava/lang/Object;)Ljava/util/Map;
 	public final fun resources (ILjava/lang/String;)Ljava/util/Map;
 	public static synthetic fun resources$default (Lcom/superplayer/testmedia/SyntheticDashStream;ILjava/lang/String;ILjava/lang/Object;)Ljava/util/Map;
 }
@@ -98,6 +101,7 @@ public final class com/superplayer/testmedia/SyntheticHlsStream {
 	public static final field LIVE_MULTIVARIANT_PLAYLIST_URI Ljava/lang/String;
 	public static final field LIVE_WINDOW_SEGMENT_COUNT I
 	public static final field MULTIVARIANT_PLAYLIST_URI Ljava/lang/String;
+	public static final field PROTECTED_LIVE_MULTIVARIANT_PLAYLIST_URI Ljava/lang/String;
 	public static final field PROTECTED_MULTIVARIANT_PLAYLIST_URI Ljava/lang/String;
 	public static final field SEGMENT_DURATION_MS J
 	public static final field SEGMENT_SUFFIX Ljava/lang/String;
@@ -105,7 +109,8 @@ public final class com/superplayer/testmedia/SyntheticHlsStream {
 	public final fun durationMs (I)J
 	public final fun liveResources (I)Ljava/util/Map;
 	public final fun liveResources (ILjava/lang/Long;)Ljava/util/Map;
-	public static synthetic fun liveResources$default (Lcom/superplayer/testmedia/SyntheticHlsStream;ILjava/lang/Long;ILjava/lang/Object;)Ljava/util/Map;
+	public final fun liveResources (ILjava/lang/Long;Z)Ljava/util/Map;
+	public static synthetic fun liveResources$default (Lcom/superplayer/testmedia/SyntheticHlsStream;ILjava/lang/Long;ZILjava/lang/Object;)Ljava/util/Map;
 	public final fun protectedResources (I)Ljava/util/Map;
 	public static synthetic fun protectedResources$default (Lcom/superplayer/testmedia/SyntheticHlsStream;IILjava/lang/Object;)Ljava/util/Map;
 	public final fun resources (IILjava/lang/String;)Ljava/util/Map;
@@ -119,6 +124,18 @@ public final class com/superplayer/testmedia/WidevineProtection {
 	public static final field SYSTEM_ID Ljava/lang/String;
 	public static final field SYSTEM_ID_URN Ljava/lang/String;
 	public static final fun pssh ()[B
+	public static final fun pssh (Lcom/superplayer/testmedia/WidevineProtection$ContentKey;)[B
+	public static synthetic fun pssh$default (Lcom/superplayer/testmedia/WidevineProtection$ContentKey;ILjava/lang/Object;)[B
 	public static final fun psshBase64 ()Ljava/lang/String;
+	public static final fun psshBase64 (Lcom/superplayer/testmedia/WidevineProtection$ContentKey;)Ljava/lang/String;
+	public static synthetic fun psshBase64$default (Lcom/superplayer/testmedia/WidevineProtection$ContentKey;ILjava/lang/Object;)Ljava/lang/String;
+}
+
+public final class com/superplayer/testmedia/WidevineProtection$ContentKey : java/lang/Enum {
+	public static final field PRIMARY Lcom/superplayer/testmedia/WidevineProtection$ContentKey;
+	public static final field SECOND Lcom/superplayer/testmedia/WidevineProtection$ContentKey;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/testmedia/WidevineProtection$ContentKey;
+	public static fun values ()[Lcom/superplayer/testmedia/WidevineProtection$ContentKey;
 }
 

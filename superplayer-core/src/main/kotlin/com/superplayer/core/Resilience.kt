@@ -32,6 +32,14 @@ import androidx.media3.datasource.DataSource
  * takes a collector and [SuperPlayer.Builder.setCache] takes a [ContentCache]: the wrong call must
  * not compile. A number or a flag passed here would type-check and survive nothing.
  *
+ * **One object may serve many players, concurrently.** [PlayerPool.Builder.setResilience] takes a
+ * single instance and fills every pooled player's slots from it, so in a feed the layer it installs is
+ * opened from several players' loading threads at once. That is the right shape for what Phase 5 puts
+ * here — one refresh of an expiring token should serve every player loading from that CDN rather than
+ * each rediscovering the 401 — but it makes thread safety the implementation's obligation rather than
+ * an accident of how a consumer builds. `PlayerPoolTest.aPoolWithResilienceFillsTheSlotsOfEveryPlayerItBuildsFromTheOneObject`
+ * is where that sharing is pinned; #179 is where it first matters.
+ *
  * Implementations come from `superplayer-resilience`, and reach the engine as [EngineResilienceExtension];
  * a `PlaybackResilience` that is not one fills no slot, registers nothing and changes no transfer,
  * which is the same contract a [PlaybackPolicy] that is not an [EnginePolicyExtension] has.

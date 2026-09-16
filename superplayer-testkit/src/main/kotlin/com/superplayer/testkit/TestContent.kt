@@ -130,6 +130,39 @@ public class TestContent private constructor(
         )
     }
 
+    /**
+     * This content, with [other]'s resources served from the same transport as well — one origin
+     * holding two streams, each still reached by its own [sourceUri].
+     *
+     * What it is for is a fallback *between* streams: `MediaRequest.sources` lists candidates for one
+     * piece of content, and the case ADR-0011 rule 5 is about is a DASH source falling back to an HLS
+     * one, which needs both to be fetchable by one player. [servedFrom] is the other shape and not
+     * this one — that is the same stream at a second host, which is what a rung 2 location failover
+     * moves between.
+     *
+     * This content stays the subject: its [sourceUri] is what a player is pointed at, and its
+     * duration and protocol are what the harness reads. Only for real protocol streams with fixed
+     * resources, for [servedFrom]'s reason; the two must not serve different bytes at one address,
+     * which the synthetic streams cannot do since each names its own paths.
+     */
+    public fun alsoServing(other: TestContent): TestContent {
+        require(protocol != Protocol.DESCRIBED && publication == null) {
+            "Only a real protocol stream with fixed resources can serve a second stream"
+        }
+        require(other.protocol != Protocol.DESCRIBED && other.publication == null) {
+            "Only a real protocol stream with fixed resources can be served alongside another"
+        }
+        return TestContent(
+            rungs = rungs,
+            durationMs = durationMs,
+            live = live,
+            protocol = protocol,
+            sourceUri = sourceUri,
+            resources = other.resources + resources,
+            responseHeaders = other.responseHeaders + responseHeaders,
+        )
+    }
+
     private fun onHost(uri: String, host: String): String {
         val parsed = java.net.URI(uri)
         return java.net.URI(parsed.scheme, parsed.userInfo, host, parsed.port, parsed.path, parsed.query, parsed.fragment)

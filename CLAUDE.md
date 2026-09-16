@@ -30,7 +30,8 @@ which is the point. `player.exoPlayer` is public, and ADR-0001 rule 2 explains w
 
 The second public type is `MediaRequest`: what to play, as content rather than as a URL. It carries a
 stable `contentId` (not a URL — that is the point, and the `MediaRequest` KDoc says which defects it
-closes), an ordered `sources` list of which **only the first is used** until failover arrives, a
+closes), an ordered `sources` list whose first entry is played and whose rest are what rung 4 of
+ADR-0011's ladder falls back to, a
 `StartPosition` of `Beginning`, `At(ms)` or `ResumeFromLastKnown`, and the `title`, `subtitle` and
 `artworkUri` that everything outside the app displays. `player.setMediaRequest(request)`
 is the counterpart of `setMediaItem`, and the identity travels as the `MediaItem`'s `mediaId`.
@@ -394,7 +395,22 @@ source's policy for a fallback **before** it asks for a retry delay, which is th
 so both answers come out of one climb. Three are built: `RetrySameUrl`, `NextHost` and
 `ExcludeVariant`, answering a backoff, a `FALLBACK_TYPE_LOCATION` selection and a
 `FALLBACK_TYPE_TRACK` one; rungs 4 to 6 are not a load's to perform and begin where a climb escalates
-out of the top (#182, #183). A ceiling caps the climb and does **not** route it: which rungs below a
+out of the top. **Rung 4 is built and is split across the boundary ADR-0011 rule 5 draws**: `NextSource`
+decides — the class's ceiling, and a `Device.DecoderTransient` refused so it reaches rung 5 without
+downloading a second manifest — and core *performs*, because opening the next entry of
+`MediaRequest.sources` is a re-adoption and only the facade can make one. It reaches core through a
+third slot, `EngineConfiguration.playerStateRungs`, the one that faces the other way: core asks it when
+Media3 surfaces a failure to the player, which is itself the proof that rungs 1 to 3 declined or were
+spent. The re-adoption is deliberately *not* `adopt` — the identity, the measurement session and the
+CMCD `sid` are the ones the viewing started with, so a fallback stays one session and one cache key —
+and the held position is carried into `setMediaItem` explicitly rather than read back off the request's
+`StartPosition` (rule 9), with the remembered-position map updated as `ResumeFromLastKnown` would have
+it. A failure a rung repairs is also withheld from the consumer's listeners, because rule 10 makes the
+delivered error rung 6's; that is the one callback the reflective listener wrapper may swallow. A
+second source is typically a second *protocol* — `PRD.md` §2.2's DASH falling back to HLS — which is
+what `NextSourcePlaybackTest` forces over one transport serving both streams
+(`TestContent.alsoServing`), and a player built without the module opens the first source and nothing
+else. Rungs 5 and 6 are #182 and #183. A ceiling caps the climb and does **not** route it: which rungs below a
 class's `rungCeiling` are worth offering is the ladder's, which is how a `Device.DecoderTransient`
 reaches rung 5 without trying a host and why a `Fatal.Unsupported` is offered nothing at all, and
 `FallbackLadderTest` is that routing written down. Two things to know about the two upper rungs.

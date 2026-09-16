@@ -16,6 +16,7 @@
 
 package com.superplayer.core
 
+import androidx.media3.common.PlaybackException
 import androidx.media3.datasource.DataSource
 
 /**
@@ -97,4 +98,42 @@ internal fun interface HeaderRefreshLayer {
 
     /** [upstream], with each request repaired and retried where this layer's provider can repair it. */
     fun over(upstream: DataSource.Factory): DataSource.Factory
+}
+
+/**
+ * The third slot, and the one that faces the other way: what core *asks* once every rung a load
+ * error could answer has declined (ADR-0011 rule 5).
+ *
+ * Rungs 1 to 3 are answers `superplayer-resilience` gives Media3 about a load, from a loading thread,
+ * with the load in hand. Rung 4 is not one of those: opening the next entry of [MediaRequest.sources]
+ * is a re-adoption, an operation on the player's own state, and the only object that can perform it
+ * is the facade. So the module's ladder stops where a climb escalates out of the top of it, and the
+ * failure arrives here instead — at the player, on the application thread, where the position
+ * playback reached is still readable and a media item may be replaced.
+ *
+ * **Which direction "only when the ladder asks" runs.** Core does not decide that a failure has
+ * earned rung 4 and it reads no error code — that would be the second taxonomy ADR-0011 rule 1 forbids.
+ * It asks this, and the answer is the ladder's own decision about the rung core is about to perform;
+ * what core contributes is the half the module cannot see, which is whether there is a next source at
+ * all. A player built with no resilience has nothing to ask and therefore performs no rung, which is
+ * rule 14's accounting for this slot: it registers no listener either.
+ *
+ * Asked on the application thread, once per surfaced failure, and expected to be pure — the decision
+ * is memoized against the failure it was made for, so an implementation that answered differently the
+ * second time would not be asked twice anyway.
+ *
+ * Rung 5, the recreated decoder, is the other half of rule 5 and is not here yet: it arrives as a
+ * second question on this interface (#182), because the rung order is one order and both rungs are
+ * asked of the same object.
+ */
+internal interface PlayerStateRungs {
+
+    /**
+     * Whether [error] may climb to rung 4 — the next source — at all, which is the class's ceiling
+     * and nothing else.
+     *
+     * "May", not "should": whether there *is* a next source to open is core's half of the question
+     * and is not visible from here.
+     */
+    fun opensNextSource(error: PlaybackException): Boolean
 }

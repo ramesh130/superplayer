@@ -177,7 +177,7 @@ internal class SharedComponents(
      * decision in force; a player whose decision has moved since builds a different item and loads cold.
      */
     fun itemOf(request: MediaRequest): MediaItem =
-        request.toMediaItem(identified = identifiesContent).withLiveLatency(decision.liveLatency)
+        request.toMediaItem(identified = identifiesContent, source = FIRST_SOURCE).withLiveLatency(decision.liveLatency)
 
     /**
      * How a preload manager builds the track selector it selects with: Media3's own selector over this

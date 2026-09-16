@@ -141,6 +141,18 @@ internal class EngineConfiguration(val engine: ExoPlayer.Builder) {
     var headerRefresh: HeaderRefreshLayer? = null
 
     /**
+     * Who core asks whether a failure that got past every rung a load could answer may climb to rung
+     * 4 — the next entry of [MediaRequest.sources], re-adopted at the position reached.
+     *
+     * The one slot that faces the other way: the two above are things core *calls*, and this is a
+     * question core *puts* (see [PlayerStateRungs]). Null is a player that asks nobody and therefore
+     * performs no rung, which is every player built without `superplayer-resilience` — and unlike
+     * the slots above, filling it registers a listener on the engine, so its emptiness is what
+     * ADR-0011 rule 14's accounting rests on here.
+     */
+    var playerStateRungs: PlayerStateRungs? = null
+
+    /**
      * The decision in force on this player, readable from whatever thread a load fails on.
      *
      * Core fills it; the extensions read it. It exists because the two halves of ADR-0011 rule 11

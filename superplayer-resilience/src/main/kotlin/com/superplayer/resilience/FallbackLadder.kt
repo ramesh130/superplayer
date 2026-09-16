@@ -16,7 +16,9 @@
 
 package com.superplayer.resilience
 
+import androidx.media3.common.PlaybackException
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
+import com.superplayer.core.PlayerStateRungs
 import com.superplayer.core.RetryBudget
 import kotlin.random.Random
 
@@ -75,6 +77,19 @@ internal sealed interface RungOutcome {
     data object Escalate : RungOutcome
 }
 
+/**
+ * Whether [rung] is one the ladder may attempt for this class — [FailureClass.rungCeiling] read, in
+ * the one place any rung reads it.
+ *
+ * A ceiling of rung 6 is the one that is not a permission to climb: rung 6 is not a remedy the ladder
+ * performs but the point at which it has stopped, so a class whose ceiling is the typed error is
+ * offered no rung at all — "goes to rung 6 at once" (ADR-0011 rule 7, and [FailureClass.rungCeiling],
+ * which says the same in the other direction). A comparison against the ceiling alone reads that
+ * case exactly backwards, which is why this is a function and not an operator at two call sites.
+ */
+internal fun FailureClass.mayClimb(rung: FallbackRung): Boolean =
+    rungCeiling != FallbackRung.TYPED_ERROR && rung <= rungCeiling
+
 /** What one rung of ADR-0011 rule 7's ladder does about a failure. */
 internal fun interface LadderRung {
 
@@ -104,8 +119,9 @@ internal fun interface LadderRung {
  * both operations on the player's own state that cannot be performed from a loading thread with a
  * load in hand, and the typed error is what the consumer is handed once nothing below it worked
  * (rule 7 assigns them to rules 5 and 10). [RungOutcome.Escalate] out of the top of this object is
- * therefore where they begin, and today it is where the failure surfaces exactly as it would with
- * no resilience attached — which is what #182 and #183 replace.
+ * therefore where they begin: a failure that gets past it stops being a load and becomes a failure of
+ * the *session*, which Media3 surfaces to the player and core asks [NextSource] about there. Rung 5
+ * joins it at the same seam (#182) and rung 6 is what is left when nothing answered (#183).
  *
  * ## The trap
  *
@@ -121,13 +137,8 @@ internal class FallbackLadder(private val rungs: Map<FallbackRung, LadderRung>) 
 
     /** The outcome of offering [load] to each rung in turn, up to its class's ceiling. */
     fun climb(load: FailedLoad): RungOutcome {
-        // A ceiling of rung 6 is the one that is not a permission to climb: rung 6 is not a remedy
-        // the ladder performs but the point at which it has stopped, so a class whose ceiling is the
-        // typed error is offered no rung at all — "goes to rung 6 at once" (ADR-0011 rule 7, and
-        // `FailureClass.rungCeiling`, which says the same in the other direction).
-        if (load.failureClass.rungCeiling == FallbackRung.TYPED_ERROR) return RungOutcome.Escalate
         for (rung in FallbackRung.entries) {
-            if (rung > load.failureClass.rungCeiling) break
+            if (!load.failureClass.mayClimb(rung)) break
             val outcome = rungs[rung]?.attempt(load) ?: RungOutcome.Escalate
             if (outcome != RungOutcome.Escalate) return outcome
         }
@@ -313,4 +324,41 @@ internal object ExcludeVariant : LadderRung {
      * kept for the reason [NextHost.LOCATION_EXCLUSION_MS] is kept.
      */
     const val TRACK_EXCLUSION_MS: Long = 60 * 1_000L
+}
+
+/**
+ * Rung 4: the next entry of `MediaRequest.sources`, at the position playback had reached.
+ *
+ * The first rung that is not an answer about a load. Opening another source is a new manifest and a
+ * new media source for the same content — `PRD.md` §2.2's canonical case is a DASH stream falling
+ * back to an HLS one — and that is a re-adoption, which only the player can perform. So this rung is
+ * split across the boundary ADR-0011 rule 5 draws: what the rung *decides* is here, on the class the
+ * one classifier assigned, and what it *does* is core's, where the position and the media item are
+ * (`PlayerStateRungs`). The failure reaches it once Media3 has given up on the load, which is the
+ * proof that rungs 1 to 3 declined or were spent — the order is imposed by the escalation itself
+ * rather than by a second climb.
+ *
+ * ## Two refusals
+ *
+ * 1. **A ceiling below this rung.** [FailureClass.rungCeiling] is the whole of what a class says
+ *    about how far the ladder may climb (rule 1), and a `Fatal.Unsupported` — content this device
+ *    cannot play at all — reaches rung 6 without a second source being fetched to fail the same way.
+ * 2. **[FailureClass.Device.DecoderTransient].** Its ceiling is *above* this rung, and that is
+ *    exactly why the refusal has to be written: a ceiling caps the climb and does not route it. A
+ *    decoder that was working and stopped is not a property of the source, and its remedy is rung 5;
+ *    downloading a second manifest first would cost a viewer the whole of a startup for nothing.
+ *    [FallbackLadder]'s [NextHost] and [ExcludeVariant] refuse it in the same words for the same
+ *    reason, which is what makes "reaches rung 5 without trying a host" true of the whole ladder.
+ *
+ * There is no budget and no backoff here, and that is rule 11 rather than an omission: a budget is
+ * how many times the *same* thing is asked for, and each source is asked for once. What bounds the
+ * climb is the list — a request with two sources falls back once — and core is what knows its length.
+ */
+internal object NextSource : PlayerStateRungs {
+
+    override fun opensNextSource(error: PlaybackException): Boolean {
+        val failureClass = ErrorClassifier.classify(error)
+        if (failureClass is FailureClass.Device.DecoderTransient) return false
+        return failureClass.mayClimb(FallbackRung.NEXT_SOURCE)
+    }
 }

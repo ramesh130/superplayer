@@ -249,6 +249,9 @@ public final class com/superplayer/core/PlaybackProfile : java/lang/Enum {
 	public static fun values ()[Lcom/superplayer/core/PlaybackProfile;
 }
 
+public abstract interface class com/superplayer/core/PlaybackResilience {
+}
+
 public abstract class com/superplayer/core/PlaybackService : androidx/media3/session/MediaSessionService {
 	public fun <init> ()V
 	protected final fun getPlaybackSession ()Lcom/superplayer/core/PlaybackSession;
@@ -306,6 +309,7 @@ public final class com/superplayer/core/PlayerPool$Builder {
 	public final fun setMaxSize (I)Lcom/superplayer/core/PlayerPool$Builder;
 	public final fun setPolicy (Lcom/superplayer/core/PlaybackPolicy;)Lcom/superplayer/core/PlayerPool$Builder;
 	public final fun setProfile (Lcom/superplayer/core/PlaybackProfile;)Lcom/superplayer/core/PlayerPool$Builder;
+	public final fun setResilience (Lcom/superplayer/core/PlaybackResilience;)Lcom/superplayer/core/PlayerPool$Builder;
 	public final fun setTelemetry (Lkotlin/jvm/functions/Function0;)Lcom/superplayer/core/PlayerPool$Builder;
 }
 
@@ -574,6 +578,7 @@ public final class com/superplayer/core/SuperPlayer$Builder {
 	public final fun setCmcdMode (Lcom/superplayer/core/CmcdMode;)Lcom/superplayer/core/SuperPlayer$Builder;
 	public final fun setPolicy (Lcom/superplayer/core/PlaybackPolicy;)Lcom/superplayer/core/SuperPlayer$Builder;
 	public final fun setProfile (Lcom/superplayer/core/PlaybackProfile;)Lcom/superplayer/core/SuperPlayer$Builder;
+	public final fun setResilience (Lcom/superplayer/core/PlaybackResilience;)Lcom/superplayer/core/SuperPlayer$Builder;
 	public final fun setTelemetry (Lcom/superplayer/core/TelemetryCollector;)Lcom/superplayer/core/SuperPlayer$Builder;
 }
 

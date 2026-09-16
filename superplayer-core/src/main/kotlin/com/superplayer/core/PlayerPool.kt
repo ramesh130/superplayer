@@ -283,6 +283,7 @@ public class PlayerPool private constructor(
         private var feedCodecs: Set<VideoCodec> = DEFAULT_FEED_CODECS
         private var policy: PlaybackPolicy? = null
         private var cache: ContentCache? = null
+        private var resilience: PlaybackResilience? = null
         private var telemetry: (() -> TelemetryCollector)? = null
         private var playerFactory: ((PooledEngine?) -> SuperPlayer)? = null
 
@@ -349,6 +350,19 @@ public class PlayerPool private constructor(
         public fun setCache(cache: ContentCache): Builder = apply { this.cache = cache }
 
         /**
+         * The resilience every player in this pool survives a failure with — what
+         * [SuperPlayer.Builder.setResilience] takes, for each of them. ADR-0011 rule 13 puts the
+         * call on both builders, and this is the only way a pooled player can have one: the pool
+         * owns its players' construction.
+         *
+         * One object serves the whole pool, as the policy does. What it fills is per player, though:
+         * the header-refresh slot is a layer of a chain, and a chain is built per player even where
+         * the engine's components are shared (ADR-0010 rule 9).
+         */
+        public fun setResilience(resilience: PlaybackResilience): Builder =
+            apply { this.resilience = resilience }
+
+        /**
          * Measures every player this pool builds, each with the collector [collectorFactory] returns
          * for it — what [SuperPlayer.Builder.setTelemetry] takes, once per player.
          *
@@ -382,12 +396,14 @@ public class PlayerPool private constructor(
             val profile = profile
             val policy = policy
             val cache = cache
+            val resilience = resilience
             val telemetry = telemetry
             val factory = playerFactory ?: { pooled ->
                 SuperPlayer.Builder(context)
                     .setProfile(profile)
                     .apply { policy?.let { setPolicy(it) } }
                     .apply { cache?.let { setCache(it) } }
+                    .apply { resilience?.let { setResilience(it) } }
                     .apply { telemetry?.let { setTelemetry(it()) } }
                     .setPooledEngine(pooled)
                     .build()

@@ -462,6 +462,21 @@ nothing ahead of the row it plays, and the same pool with a coordinator shares o
 the rows ahead, so the counter is shown to count. Nothing counts classes loaded, because
 `superplayer-preload`'s classes are reachable only through a consumer's own call to its builder.
 
+`superplayer-resilience` is the fifth, because the two slots it fills — the `HeaderRefreshLayer` in the
+transfer chain and the `LoadErrorHandlingPolicy` the media source factory is handed — are Media3
+`@UnstableApi` vocabulary behind core's `EngineResilienceExtension` (ADR-0011 rule 13). The module has no
+code yet; core's side of the seam does, and `SuperPlayerResilienceSeamTest` is where it is held, with a
+resilience hand-written in core's own tests rather than the module's.
+
+That test reads past the facade, recorded here as the cache's and preload's are. It asserts on the
+`EngineConfiguration` the builder filled, because "the slot is empty" is a claim about construction that
+no playback can show; and it reads the internal `RequestStamp`, `LoadKind` and `ContentIdentity` off the
+requests the slot saw, because what ADR-0011 rule 13 promises a classifier is exactly those fields.
+Rule 14's count is taken on what a consumer can observe alongside it — a player built without resilience
+stamps no request at all, and the same player with it stamps every one, so the counter is shown to count
+— and the rule's other half, that a core-only session is unchanged, is held by the golden traces in
+`superplayer-telemetry`, which this change leaves byte-identical.
+
 `superplayer-testkit`'s own public API names **no Media3 type**, for the reason ADR-0001 rule 2 gives:
 a `Format` or a `Timeline` in one of its signatures would put Media3's opt-in marker on every test
 that named it. A test says what it wants — `TestContent.videoLadder()`, `harness.stallRendering(player)`

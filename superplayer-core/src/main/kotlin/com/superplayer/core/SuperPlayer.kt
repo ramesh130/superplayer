@@ -744,6 +744,7 @@ public class SuperPlayer private constructor(
         private var policy: PlaybackPolicy? = null
         private var telemetry: TelemetryCollector? = null
         private var cache: ContentCache? = null
+        private var resilience: PlaybackResilience? = null
         private var pooledEngine: PooledEngine? = null
 
         /**
@@ -855,6 +856,30 @@ public class SuperPlayer private constructor(
         public fun setCache(cache: ContentCache): Builder = apply { this.cache = cache }
 
         /**
+         * Gives this player [resilience]: the retry, the fallback ladder and the token refresh it
+         * survives a failure with.
+         *
+         * The object is `superplayer-resilience`'s, and this call is the only thing that turns any
+         * of it on. Leave it unset and the player keeps Media3's own load-error handling, an empty
+         * header-refresh slot in its transfer chain and no class of the module loaded — which is
+         * ADR-0011 rule 14, and is counted rather than asserted about.
+         *
+         * ```kotlin
+         * val player = SuperPlayer.Builder(context)
+         *     .setResilience(myResilience)
+         *     .build()
+         * ```
+         *
+         * What it decides is behind the type: which rungs a failure may reach, how long to back off
+         * and with what jitter, when a credential is refreshed. What it does *not* decide is the
+         * retry budgets, which are policy and arrive through [setPolicy] with the rest of the
+         * decision (ADR-0011 rule 11). Fixed for the player's lifetime, like the cache: both slots
+         * are filled as the engine is built.
+         */
+        public fun setResilience(resilience: PlaybackResilience): Builder =
+            apply { this.resilience = resilience }
+
+        /**
          * The single seam through which tests reach the engine's construction.
          *
          * A test that must run without a device or a network has to substitute Media3's fake clock
@@ -911,6 +936,11 @@ public class SuperPlayer private constructor(
                 configuration.trackSelectionFactory = shared.trackSelectionFactory
                 configuration.decisionTarget = shared.decisionTarget
             }
+            // Resilience fills its two slots on every engine rather than once per pool: what it
+            // installs is a chain layer and a load-error policy, and a chain is built per player
+            // (ADR-0011 rule 13). A resilience that is not an extension fills nothing, and one never
+            // set looks the same from here — which is what a consumer without the module pays.
+            (resilience as? EngineResilienceExtension)?.configureEngine(configuration)
             engineConfigurator?.invoke(configuration)
             configuration.clock?.let(engineBuilder::setClock)
             configuration.renderersFactory?.let(engineBuilder::setRenderersFactory)
@@ -958,6 +988,8 @@ public class SuperPlayer private constructor(
                     configuration.transport,
                     configuration.loadExecutor,
                     cache,
+                    configuration.headerRefresh,
+                    configuration.loadErrors,
                 )
             engineBuilder.setMediaSourceFactory(mediaSourceFactory)
 

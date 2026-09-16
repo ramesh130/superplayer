@@ -146,7 +146,17 @@ stamp carries a `LoadKind` on every item such a player plays — media, manifest
 that is why a cached player builds HLS and DASH sources per protocol rather than through
 `DefaultMediaSourceFactory`: only the source knows which request is a playlist, and a cache answers
 media alone. A player
-with no cache has an empty slot and the Phase 3 factory, and `SuperPlayerContentCacheTest` counts it;
+with no cache has an empty slot and the Phase 3 factory, and `SuperPlayerContentCacheTest` counts it.
+Resilience's two slots are built and empty the same way (ADR-0011 rule 13, issue #176):
+`SuperPlayer.Builder.setResilience` and `PlayerPool.Builder.setResilience` take a public
+`PlaybackResilience`, and one that is also core's internal `EngineResilienceExtension` fills
+`EngineConfiguration.headerRefresh` — a `HeaderRefreshLayer` composed closest to the transport, so a
+token refresh and its retry are one transfer to everything above — and `EngineConfiguration.loadErrors`,
+the `LoadErrorHandlingPolicy` handed to the media source factory, which is Media3's own when the slot is
+empty. A player with either slot filled stamps every request with its `LoadKind`, cache or no cache, so
+the layer can tell a 403 on a segment from a failure of the manifest; the `ContentIdentity` stamp stays
+a cache's. `SuperPlayerResilienceSeamTest` fills both from a hand-written extension and counts what a
+player without one pays, which is nothing.
 `superplayer-preload` fills the other end of ADR-0010: `PreloadCoordinator.Builder(pool).build()` attaches
 to a `PlayerPool` before its first player, through core's internal `PoolAttachment`, and from then on the
 pool builds every player on one `PooledEngine` — the first player's load control, meter, selection

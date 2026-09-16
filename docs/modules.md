@@ -46,9 +46,10 @@ than to wave the dependency through.
 | `superplayer-diagnostics` | 9 | MediaSourceDoctor, session trace bundle, on-device debug HUD | core |
 | `superplayer-ui` | — † | Optional Compose player surface | core |
 
-`superplayer-testkit`, `superplayer-abr`, `superplayer-cache` and `superplayer-preload` also
+`superplayer-testkit`, `superplayer-abr`, `superplayer-cache`, `superplayer-preload`,
+`superplayer-resilience` and `superplayer-drm` also
 compile as Kotlin *friends* of core (`docs/testing.md`'s *Reaching that seam from another module*,
-ADR-0009 rule 7, ADR-0010 rules 3 and 6). A friend path is a compiler flag rather than a Gradle
+ADR-0009 rule 7, ADR-0010 rules 3 and 6, ADR-0011 rule 13, ADR-0012 rule 4). A friend path is a compiler flag rather than a Gradle
 dependency, which is why it does not appear in the column above and why it is not what the rule
 measures.
 

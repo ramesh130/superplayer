@@ -1,3 +1,5 @@
+import com.superplayer.build.declareKotlinFriendModule
+
 plugins {
     id("superplayer.android.library")
 }
@@ -8,4 +10,35 @@ plugins {
 // modules from its own or an earlier phase only — never on a later one.
 dependencies {
     api(project(":superplayer-core"))
+
+    // `DefaultDrmSessionManager`, `HttpMediaDrmCallback`, `ExoMediaDrm` and the
+    // `DrmSessionManagerProvider` core's slot is filled with: every Media3 type this module deals in
+    // and every one of them `@UnstableApi`, which is why none appears in a signature a consumer can
+    // see. Named here rather than resolved through core's transitive graph, as every other module
+    // that names a Media3 type itself does.
+    implementation(libs.media3.exoplayer)
+
+    // `DataSource.Factory`: the licence transport core hands the slot, and what
+    // `HttpMediaDrmCallback` carries a licence request over.
+    implementation(libs.media3.datasource)
+
+    // Robolectric and Media3's own fakes: `FakeExoMediaDrm` stands in for a Widevine device, since
+    // Robolectric ships no `ShadowMediaDrm` and a real `MediaDrm` cannot be constructed under
+    // `check` at all (`docs/testing.md`, *A Widevine device and a licence server*).
+    testImplementation(libs.media3.test.utils.robolectric)
+    testImplementation(libs.robolectric)
+
+    // The deterministic playback harness, which plays a protected synthetic stream through a real
+    // `SuperPlayer` with this module's session manager in its engine, over a licence server the test
+    // can address, refuse and count — the only way licence acquisition can be asserted through the
+    // public API. Phase 2 on phase 6, tests only.
+    testImplementation(project(":superplayer-testkit"))
+    testImplementation(project(":superplayer-testmedia"))
 }
+
+// The one slot this module fills — the `DrmSessionManagerProvider` every media source `TransferChain`
+// builds is given — is core's `EngineDrmExtension` and Media3 `@UnstableApi` vocabulary, so a consumer
+// names a `PlaybackDrm` and no Media3 type. This module is core's sixth Kotlin friend (ADR-0012 rule
+// 4), and `KotlinFriendModules.kt` says why a friend path is a compiler flag rather than a Gradle
+// dependency — and what the sixth makes the ceiling.
+declareKotlinFriendModule(":superplayer-core")

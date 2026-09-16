@@ -1,0 +1,11 @@
+public final class com/superplayer/drm/Drm {
+	public static final field INSTANCE Lcom/superplayer/drm/Drm;
+	public static final fun widevine (Lcom/superplayer/drm/WidevineConfig;)Lcom/superplayer/core/PlaybackDrm;
+}
+
+public final class com/superplayer/drm/WidevineConfig {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun getLicenceUri ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+

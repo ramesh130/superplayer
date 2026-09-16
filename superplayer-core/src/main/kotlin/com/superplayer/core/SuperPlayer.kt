@@ -1144,6 +1144,7 @@ public class SuperPlayer private constructor(
         private var telemetry: TelemetryCollector? = null
         private var cache: ContentCache? = null
         private var resilience: PlaybackResilience? = null
+        private var drm: PlaybackDrm? = null
         private var pooledEngine: PooledEngine? = null
 
         /**
@@ -1279,6 +1280,29 @@ public class SuperPlayer private constructor(
             apply { this.resilience = resilience }
 
         /**
+         * Plays content protected by [drm]: the licence server, the key system and everything
+         * `superplayer-drm` does to open a session against them.
+         *
+         * ```kotlin
+         * val player = SuperPlayer.Builder(context)
+         *     .setDrm(Drm.widevine(WidevineConfig(licenceUri = "https://licence.example/widevine")))
+         *     .build()
+         * ```
+         *
+         * **Declared once, and fixed for the player's lifetime** (ADR-0012 rule 1). Protection is not
+         * a property of a [MediaRequest] or of one of its sources — a request's sources are one piece
+         * of content in more than one place, and a licence server that varied between them would put
+         * a security decision in whatever code assembled the list. A player that plays protected and
+         * unprotected content in turn asks for a licence only for the items that declare protection;
+         * a player that must change licence server is a second player.
+         *
+         * Leave it unset and nothing of DRM exists on this player: no provider on the media source
+         * factory, no `ExoMediaDrm` instantiated, no class of the module loaded — which is ADR-0012
+         * rule 13, and is counted rather than asserted about.
+         */
+        public fun setDrm(drm: PlaybackDrm): Builder = apply { this.drm = drm }
+
+        /**
          * The single seam through which tests reach the engine's construction.
          *
          * A test that must run without a device or a network has to substitute Media3's fake clock
@@ -1340,6 +1364,11 @@ public class SuperPlayer private constructor(
             // (ADR-0011 rule 13). A resilience that is not an extension fills nothing, and one never
             // set looks the same from here — which is what a consumer without the module pays.
             (resilience as? EngineResilienceExtension)?.configureEngine(configuration)
+            // And protection, on the same terms and for the same reason: what it fills is a provider
+            // on the media source factory, and a factory is built per player (ADR-0012 rule 3). A
+            // `PlaybackDrm` that is not an extension fills nothing, and one never set looks the same
+            // from here — which is the whole of what a consumer without the module pays.
+            (drm as? EngineDrmExtension)?.configureEngine(configuration)
             engineConfigurator?.invoke(configuration)
             configuration.clock?.let(engineBuilder::setClock)
             configuration.renderersFactory?.let(engineBuilder::setRenderersFactory)
@@ -1393,6 +1422,8 @@ public class SuperPlayer private constructor(
                     cache,
                     configuration.headerRefresh,
                     configuration.loadErrors,
+                    configuration.drm,
+                    configuration.exoMediaDrm,
                 )
             engineBuilder.setMediaSourceFactory(mediaSourceFactory)
 

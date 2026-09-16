@@ -289,8 +289,8 @@ refusable and relenting through `FaultScript`, counted by `networkRequests`, and
 bandwidth meter, because a licence is not media. The samples are not encrypted and cannot be — there
 is no `MediaCrypto` here — which is why the harness sets `setPlayClearSamplesWithoutKeys(false)`, and
 `docs/testing.md`'s *A Widevine device and a licence server* is the argument. `ProtectedPlaybackTest`
-drives it through a **stock** `ExoPlayer`; `buildPlayer` refuses protected content until
-`superplayer-drm` fills core's DRM slot (#204).
+drives it through a **stock** `ExoPlayer`, and `buildPlayer(content = …, drm = …)` through a real
+`SuperPlayer`; protected content with no `drm` is refused rather than played.
 Both harnesses put their fakes in the engine configurator's *transport* slot, under the chain
 `SuperPlayer.Builder` composes, so a test of real HLS or DASH sees every layer a consumer's player has; `TestContent.liveHls()`
 is a live origin that keeps publishing and `FaultScript.Builder.serveThroughCache` a CDN cache in front
@@ -495,9 +495,29 @@ out. `FallbackRungCoverageTest` is the register: per `FallbackRung`, the test th
 test that counts rule 14 for it, checked against the source tree so a rename or a seventh rung fails
 rather than going unnoticed.
 
+`superplayer-drm` has the first of Phase 6, and it is the tracer bullet rather than any of the
+survival machinery: a protected stream plays, with the licence acquired from the server the app
+named. Its whole public surface is two types — `Drm.widevine(WidevineConfig(licenceUri))`, which is
+what `SuperPlayer.Builder.setDrm` takes — because **every** Media3 type DRM needs carries
+`@UnstableApi`, so there is no version of its engine-facing half that could have been public. What
+reaches the engine is a `DrmSessionManagerProvider` in the one DRM slot ADR-0012 rule 3 puts on
+`EngineConfiguration`, filled by the internal `WidevineDrm` as core's **sixth** Kotlin friend, and
+`KotlinFriendModules.kt` is where the sixth is argued and the ceiling on the count written down. Two
+things about it are decisions rather than plumbing, and both are in `WidevineDrm`'s comments:
+`forceDefaultLicenseUri = true`, because a licence server a *manifest* can name is one whoever served
+the manifest can name, and `setPlayClearSamplesWithoutKeys(false)`, because handing a renderer samples
+the session holds no keys for is the silent downgrade ADR-0012 rule 11 forbids. What a licence
+travels is not the whole chain: `TransferChain` hands the slot the chain *below* the cache — the
+transport with the header-refresh slot over it — because a cache has nothing true to say about an
+entitlement and a credential has everything, which is what #205 then builds on. `WidevinePlaybackTest`
+plays both protocols through a real `SuperPlayer` over the harness's licence server, and
+`SuperPlayerDrmSeamTest` counts ADR-0012 rule 13 in core: what it counts is the **set**, never the
+answer, because a provider that is set and answers `DRM_UNSUPPORTED` is not nothing.
+
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,
-`superplayer-abr`, `superplayer-cache`, `superplayer-preload`, `superplayer-resilience` and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
+`superplayer-abr`, `superplayer-cache`, `superplayer-preload`, `superplayer-resilience`,
+`superplayer-drm` and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
 requirements, and the phase table are what the issues are cut from.
 
 `benchmark/` is the fourth build and the phases' exit criteria: `PRD.md` §6's fixed matrix — six

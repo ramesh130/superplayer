@@ -377,7 +377,11 @@ stream that exercises the licence round trip into one that cannot play at all. O
 be paid for explicitly: Media3 plays a *clear* sample without waiting for keys by default, so the
 harness builds its session manager with `setPlayClearSamplesWithoutKeys(false)`. Without that line a
 session whose licence was refused plays the whole stream and ends normally, and every test of a DRM
-failure would pass by proving the opposite of what it says.
+failure would pass by proving the opposite of what it says. `superplayer-drm` sets the same flag on
+its own session manager, and the reason there is not this one: a consumer who declared protection has
+said this player plays protected content, and handing a renderer samples the session holds no keys
+for is the silent downgrade ADR-0012 rule 11 forbids. The two lines agree, and only one of them is
+a compensation for a synthetic stream.
 
 **The device is stated, like the display and the decoders.** `DeviceStatement.declareWidevine(level,
 maxConcurrentSessions, provisioningRequired)` is an ordinary working implementation at `L1` or `L3`,
@@ -401,7 +405,17 @@ callback would have been handed — and the entitlement decision stays Media3's 
 second, home-made licence server nobody has reviewed. The player's side is
 `TransportMediaDrmCallback`, and it is deliberately not Media3's own `HttpMediaDrmCallback`: that
 class's provisioning half appends the request to the URL as `&signedRequest=<request as text>`, and
-`FakeExoMediaDrm`'s provision request is three control bytes, which is not text.
+`FakeExoMediaDrm`'s provision request is three control bytes, which is not text. That is the *stock*
+arm's callback only; `superplayer-drm` uses Media3's own `HttpMediaDrmCallback`, whose key-request
+half posts to the address `WidevineConfig` named and which therefore reaches the same server.
+Provisioning is where the two diverge, and #207 is where that is settled.
+
+**Both players play protected content.** `buildStockPlayer` builds the session manager itself, which
+is arm (a) and the only thing available before Phase 6 had code; `buildPlayer(content =
+TestContent.protectedDash(), drm = Drm.widevine(WidevineConfig(FakeLicenceServer.LICENCE_URI)))` is a
+real `SuperPlayer` with the module's session manager reaching its engine through core's DRM slot, and
+is what a Phase 6 test uses. Protected content with no `drm` is refused rather than played, because a
+player that opened no session at all would play these streams perfectly and prove nothing.
 
 Two things follow that a test writer should know. A licence load **reports no bytes to a transfer
 listener**, because a licence is not media and a few hundred bytes of key exchange counted as a
@@ -557,6 +571,21 @@ Rule 14's count is taken on what a consumer can observe alongside it — a playe
 stamps no request at all, and the same player with it stamps every one, so the counter is shown to count
 — and the rule's other half, that a core-only session is unchanged, is held by the golden traces in
 `superplayer-telemetry`, which this change leaves byte-identical.
+
+`superplayer-drm` is the sixth and, by ADR-0012 rule 4, the last of this shape: the one slot it fills
+is a `DrmSessionManagerProvider` for every source `TransferChain` builds, and *every* Media3 type DRM
+needs carries `@UnstableApi`, so there is no version of its engine-facing half that could have been
+public API instead. Its `WidevinePlaybackTest` plays both protected protocols through a real
+`SuperPlayer` over the harness's licence server; `SuperPlayerDrmSeamTest` holds core's side, with a
+protection hand-written in core's own tests, as the resilience seam's test does.
+
+That test reads past the facade for the same reason and in the same way: it asserts on the
+`EngineConfiguration` the builder filled, because ADR-0012 rule 13's claim is that a slot is *empty*,
+and no playback can show that. The distinction it exists to keep is the rule's own — a provider that
+is set and answers `DRM_UNSUPPORTED` is not nothing — so what is counted is the set, never the answer.
+It also pins the ordering the whole Robolectric DRM story rests on: the device a test states reaches
+the slot at chain-composition time rather than through the extension, because an extension runs
+*before* the test configurator and so before a test has said what device this is.
 
 `superplayer-testkit`'s own public API names **no Media3 type**, for the reason ADR-0001 rule 2 gives:
 a `Format` or a `Timeline` in one of its signatures would put Media3's opt-in marker on every test

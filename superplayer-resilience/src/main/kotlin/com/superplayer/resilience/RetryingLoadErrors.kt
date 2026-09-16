@@ -176,8 +176,15 @@ internal class RetryingLoadErrors(
 
     companion object {
 
-        /** One for a player, with its own source of jitter. */
-        fun forPlayer(decisions: DecisionInForce, random: Random): RetryingLoadErrors =
-            RetryingLoadErrors(decisions, FallbackLadder.standard(random))
+        /**
+         * One for a player, with its own source of jitter and writing into that player's own
+         * [ClimbRecord] — which is what rung 6 reports as the rungs tried.
+         */
+        fun forPlayer(
+            decisions: DecisionInForce,
+            random: Random,
+            record: ClimbRecord = ClimbRecord(),
+        ): RetryingLoadErrors =
+            RetryingLoadErrors(decisions, FallbackLadder.standard(random, record))
     }
 }

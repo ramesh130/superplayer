@@ -98,6 +98,18 @@ public object ErrorClassifier {
     }
 
     /**
+     * Which party core's own detection pointed at, where it pointed at one, and null everywhere else.
+     *
+     * Read here rather than by rung 6, because this is the file that walks a cause chain and reads
+     * what core concluded (ADR-0011 rule 4), and a second walk elsewhere would be a second reading of
+     * the same evidence. It is *not* a classification and does not narrow one: the class of a frozen
+     * playlist is already decided in [namedByCore], and this is the detail rule 10 carries out
+     * alongside it so a bug report says which of the intermediary and the origin to go and look at.
+     */
+    internal fun likelyPartyIn(error: Throwable): StaleLivePlaylistException.LikelyCause? =
+        causeChain(error).filterIsInstance<StaleLivePlaylistException>().firstOrNull()?.likelyCause
+
+    /**
      * [error] and its causes, nearest first, bounded.
      *
      * Bounded because a cause chain is built by whoever threw: a chain that loops, or one deep

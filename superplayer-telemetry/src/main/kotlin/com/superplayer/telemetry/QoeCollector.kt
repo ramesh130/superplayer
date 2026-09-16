@@ -29,6 +29,7 @@ import com.superplayer.core.FailureCategory
 import com.superplayer.core.PlaybackDecision
 import com.superplayer.core.PlaybackFailure
 import com.superplayer.core.SuperPlayer
+import com.superplayer.core.SuperPlayerError
 import com.superplayer.core.TelemetryCollector
 import com.superplayer.core.TelemetryEvent
 import com.superplayer.core.TelemetrySink
@@ -232,7 +233,11 @@ public class QoeCollector internal constructor(
         override fun onPlayerError(eventTime: AnalyticsListener.EventTime, error: PlaybackException) {
             val session = openSession ?: return
             val now = now()
-            val failure = error.toPlaybackFailure()
+            // Asked of the player rather than derived here, which is ADR-0011 rule 3 in one line:
+            // the classifier is `superplayer-resilience`'s and telemetry reports what it said. A
+            // player built without that module answers null, and everything below reads exactly as it
+            // read before Phase 5.
+            val failure = error.toPlaybackFailure(player?.classify(error))
             // The split CTA-2066 draws, and the one a viewer experiences: nothing played, versus
             // something played and then stopped. `firstFrameRenderedAtMs` is the boundary, and it is
             // also what makes exit-before-video-start derivable — a session that ends with neither a
@@ -708,23 +713,34 @@ private fun Format.declaredPeakBitrateBps(): Int? = when {
 /**
  * What failed, in SuperPlayer's own vocabulary rather than the engine's.
  *
- * ref: Media3 1.11.0's `PlaybackException.ERROR_CODE_*` ranges, which are what this buckets. The
- * mapping is deliberately coarse (see [PlaybackFailure]): a taxonomy fine enough to act on
- * automatically is `superplayer-resilience`'s, and a partial second copy here would give a data team
- * two answers to one question.
+ * ref: Media3 1.11.0's `PlaybackException.ERROR_CODE_*` ranges, which are what this buckets when
+ * nothing better is available. The bucketing is deliberately coarse (see [PlaybackFailure]): a
+ * taxonomy fine enough to act on automatically is `superplayer-resilience`'s, and a partial second
+ * copy here would give a data team two answers to one question.
  *
- * [PlaybackFailure.code] is `errorCodeName` — a string rather than the integer — because it must
- * survive an engine that renumbers, and because it is a grouping key in a pipeline rather than
- * something to branch on.
+ * [classified] is that module's answer where the player had one to give, and it settles both of the
+ * fields a classification touches (ADR-0011 rule 3): [PlaybackFailure.classification] is its stable
+ * name, and [PlaybackFailure.category] is *its* row in the one-to-one table the classifier owns,
+ * rather than the band's reading of the same failure. Nothing here interprets it — no branch on the
+ * name, no table of its own — which is the whole of what "reads the classifier and keeps no second
+ * copy" means for this function.
+ *
+ * With no classification the two fall back to exactly what this reported before Phase 5: the band,
+ * and no classification at all.
+ *
+ * [PlaybackFailure.code] is `errorCodeName` either way — a string rather than the integer — because
+ * it must survive an engine that renumbers, because it is a grouping key in a pipeline rather than
+ * something to branch on, and because what the *engine* said is a different fact from what the
+ * classifier made of it.
  */
-private fun PlaybackException.toPlaybackFailure(): PlaybackFailure = PlaybackFailure(
+private fun PlaybackException.toPlaybackFailure(classified: SuperPlayerError?): PlaybackFailure = PlaybackFailure(
     // ref: Media3 1.11.0 `PlaybackException` allocates its error codes in documented thousands —
     // 1xxx miscellaneous, 2xxx input/output, 3xxx content parsing, 4xxx decoding, 5xxx audio
     // renderer, 6xxx DRM, 7xxx video frame processing. Bucketing on the band rather than on a list
     // of individual codes is what makes a code Media3 adds land in the right category instead of in
     // UNKNOWN, which is the failure mode a hand-maintained list has and nobody notices until a
     // dashboard's "unknown" slice grows after an engine upgrade.
-    category = when (errorCode / ERROR_CODE_BAND) {
+    category = classified?.category ?: when (errorCode / ERROR_CODE_BAND) {
         2 -> FailureCategory.NETWORK
         3 -> FailureCategory.SOURCE
         4 -> FailureCategory.DECODER
@@ -734,6 +750,7 @@ private fun PlaybackException.toPlaybackFailure(): PlaybackFailure = PlaybackFai
     },
     code = errorCodeName,
     message = message,
+    classification = classified?.causeClass,
 )
 
 /** The width of one of Media3's documented error-code bands; see [toPlaybackFailure]. */

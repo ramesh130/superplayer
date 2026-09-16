@@ -27,6 +27,7 @@ import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.LoadEventInfo
 import androidx.media3.exoplayer.source.MediaLoadData
+import com.superplayer.core.PlaybackFailure
 import com.superplayer.core.SuperPlayer
 import com.superplayer.core.TelemetryEvent
 import com.superplayer.core.TelemetrySink
@@ -284,10 +285,13 @@ public class SessionTraceRecorder : TelemetrySink {
         is TelemetryEvent.RebufferEnded -> "durationMs=${event.durationMs} seekInduced=${event.seekInduced}"
 
         // Rule 3: category and code, never the message.
-        is TelemetryEvent.StartupFailed -> "category=${event.failure.category} code=${event.failure.code}"
+        is TelemetryEvent.StartupFailed ->
+            "category=${event.failure.category} code=${event.failure.code}" +
+                classificationOf(event.failure)
 
         is TelemetryEvent.MidStreamFailed ->
-            "category=${event.failure.category} code=${event.failure.code} positionMs=${event.positionMs}"
+            "category=${event.failure.category} code=${event.failure.code}" +
+                classificationOf(event.failure) + " positionMs=${event.positionMs}"
 
         is TelemetryEvent.TrackSwitched ->
             "fromBitrateBps=${event.fromBitrateBps} toBitrateBps=${event.toBitrateBps} direction=${event.direction}"
@@ -307,6 +311,18 @@ public class SessionTraceRecorder : TelemetrySink {
             "droppedFrames=${event.droppedFrames} repeatedFrames=${event.repeatedFrames} " +
                 "elapsedPlayingMs=${event.elapsedPlayingMs}"
     }
+
+    /**
+     * ` classification=…`, or nothing at all where the failure carries none.
+     *
+     * Omitted rather than printed as a null so that a trace of a session on a player built without
+     * `superplayer-resilience` is byte for byte the trace it was before Phase 5, which ADR-0011
+     * rule 14 requires of a golden trace whatever the diff says. It is redaction-safe by rule 2 of
+     * this class's six: a `FailureClass.stableName` is SuperPlayer's own vocabulary and carries
+     * nothing of the content, the URL or the viewer.
+     */
+    private fun classificationOf(failure: PlaybackFailure): String =
+        failure.classification?.let { " classification=$it" }.orEmpty()
 
     /** The kinds in the order they rank within one millisecond; [token] is the column printed. */
     private enum class Kind(val token: String) {

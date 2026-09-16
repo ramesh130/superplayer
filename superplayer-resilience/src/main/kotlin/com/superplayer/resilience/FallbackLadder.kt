@@ -20,6 +20,8 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import com.superplayer.core.PlayerStateRungs
 import com.superplayer.core.RetryBudget
+import com.superplayer.core.SuperPlayerError
+import java.util.EnumSet
 import kotlin.random.Random
 
 /**
@@ -121,8 +123,8 @@ internal fun interface LadderRung {
  * (rule 7 assigns them to rules 5 and 10). [RungOutcome.Escalate] out of the top of this object is
  * therefore where they begin: a failure that gets past it stops being a load and becomes a failure of
  * the *session*, which Media3 surfaces to the player and core asks [PlayerStateLadder] about there —
- * rungs 4 and 5, [NextSource] and [RecreateDecoder], in that order. Rung 6 is what is left when
- * nothing answered (#183).
+ * rungs 4 and 5, [NextSource] and [RecreateDecoder], in that order. Rung 6, [TypedError], is what is
+ * left when nothing answered: not a remedy but what the viewer and the data team are told instead.
  *
  * ## The trap
  *
@@ -134,14 +136,23 @@ internal fun interface LadderRung {
  * both of `RetryingLoadErrors`' answers come from one climb of this ladder, so a rung above is only
  * ever offered a failure the rungs below have already declined.
  */
-internal class FallbackLadder(private val rungs: Map<FallbackRung, LadderRung>) {
+internal class FallbackLadder(
+    private val rungs: Map<FallbackRung, LadderRung>,
+    private val record: ClimbRecord = ClimbRecord(),
+) {
 
     /** The outcome of offering [load] to each rung in turn, up to its class's ceiling. */
     fun climb(load: FailedLoad): RungOutcome {
         for (rung in FallbackRung.entries) {
             if (!load.failureClass.mayClimb(rung)) break
             val outcome = rungs[rung]?.attempt(load) ?: RungOutcome.Escalate
-            if (outcome != RungOutcome.Escalate) return outcome
+            if (outcome != RungOutcome.Escalate) {
+                // Recorded where the rung took the failure on rather than where it was offered one:
+                // what rung 6 reports is what was *tried* on the viewer's behalf, and a rung that
+                // declined tried nothing (`SuperPlayerError.rungsTried`).
+                record.attempted(rung)
+                return outcome
+            }
         }
         return RungOutcome.Escalate
     }
@@ -159,12 +170,13 @@ internal class FallbackLadder(private val rungs: Map<FallbackRung, LadderRung>) 
          * [random] is where every backoff draws its jitter; one source per player, so two players
          * retrying the same edge do not draw the same sequence.
          */
-        fun standard(random: Random): FallbackLadder = FallbackLadder(
+        fun standard(random: Random, record: ClimbRecord = ClimbRecord()): FallbackLadder = FallbackLadder(
             mapOf(
                 FallbackRung.RETRY_SAME_URL to RetrySameUrl(random),
                 FallbackRung.NEXT_HOST to NextHost,
                 FallbackRung.EXCLUDE_VARIANT to ExcludeVariant,
             ),
+            record,
         )
     }
 }
@@ -407,20 +419,98 @@ internal object RecreateDecoder {
 }
 
 /**
- * The two rungs core performs, as the one object core asks (ADR-0011 rule 13's addendum).
+ * Rung 6: the typed, actionable error a session ends on when nothing below it worked (ADR-0011
+ * rule 10, `PRD.md` §3.3's sixth rung and §3.2's shape).
+ *
+ * Not a remedy and therefore not a [LadderRung]: every other rung answers "what do we try next", and
+ * this one answers "what do we tell them". What it builds is core's public [SuperPlayerError] — core's
+ * because it travels out through core's `Player` API and through core's `PlaybackFailure`, and because
+ * a consumer with resilience in their build still names one SuperPlayer type rather than two.
+ *
+ * Everything on it is read from the one classification and nothing is re-derived (rule 1): the class's
+ * own stable name, its message key, its [FailureClass.retryable], its [FailureClass.category] row, and
+ * the likely party core's own detection named where it named one. The position is core's half, and the
+ * rungs are [ClimbRecord]'s.
+ */
+internal object TypedError {
+
+    fun of(error: PlaybackException, positionMs: Long, rungsTried: List<String>): SuperPlayerError {
+        val failureClass = ErrorClassifier.classify(error)
+        return SuperPlayerError(
+            causeClass = failureClass.stableName,
+            userMessageKey = failureClass.userMessageKey,
+            isRetryable = failureClass.retryable,
+            category = failureClass.category,
+            rungsTried = rungsTried,
+            positionMs = positionMs,
+            likelyCause = ErrorClassifier.likelyPartyIn(error),
+            // Underneath rather than discarded: the engine's error code, message and stack are what a
+            // bug report needs after the class has said which conversation to have.
+            cause = error,
+        )
+    }
+}
+
+/**
+ * The rungs of one player's climb that actually took a failure on, in ladder order.
+ *
+ * One per player, because a climb is a fact about a player: the ladder itself holds nothing, and
+ * `PlaybackResilience`'s KDoc makes one object serving many players the ordinary case. Written from
+ * the loading threads Media3 fails loads on and read on the application thread where a failure
+ * surfaces, so every access is synchronized — a `java.util.EnumSet` is not, and the cost here is a
+ * lock taken once per failed load.
+ *
+ * Cleared when core says the content changed ([PlayerStateRungs.forgetClimb]), because a new
+ * programme gets the whole ladder again and a failure reported with the previous one's history would
+ * send someone to look at the wrong CDN.
+ */
+internal class ClimbRecord {
+
+    private val climbed = EnumSet.noneOf(FallbackRung::class.java)
+
+    @Synchronized
+    fun attempted(rung: FallbackRung) {
+        climbed += rung
+    }
+
+    /** The rungs tried, in ladder order — which `EnumSet` iterates in, being ordinal-ordered. */
+    @Synchronized
+    fun rungsTried(): List<String> = climbed.map { it.name }
+
+    @Synchronized
+    fun forget() {
+        climbed.clear()
+    }
+}
+
+/**
+ * The rungs core performs and the error it delivers, as the one object core asks (ADR-0011 rule 13's
+ * addendum).
  *
  * One interface rather than a slot each, because the rung order is one order and an implementation
  * that filled one and not the other would be a ladder with a hole in it. Which rung answers a failure
- * is still each rung's own decision, taken by the object that documents it; what is here is the pair,
+ * is still each rung's own decision, taken by the object that documents it; what is here is the set,
  * and core asks them in the order rule 7 fixes.
  *
- * Stateless and shared by every player a `Resilience` is handed to, for [NextSource]'s reason: the
- * request, the position and the decoders in hand are the player's, and none of them is copied to this
- * side.
+ * One per player rather than shared, which is a change from the rung-4 and rung-5 shape and is owed
+ * entirely to rung 6: [ClimbRecord] is a player's own history, and a record shared across a feed would
+ * report one row's retries on another row's error. Nothing else here holds state — the request, the
+ * position and the decoders in hand are still the player's, and none of them is copied to this side.
  */
-internal object PlayerStateLadder : PlayerStateRungs {
+internal class PlayerStateLadder(private val record: ClimbRecord) : PlayerStateRungs {
 
-    override fun opensNextSource(error: PlaybackException): Boolean = NextSource.takesOn(error)
+    override fun opensNextSource(error: PlaybackException): Boolean =
+        NextSource.takesOn(error).also { if (it) record.attempted(FallbackRung.NEXT_SOURCE) }
 
-    override fun recreatesDecoder(error: PlaybackException): Boolean = RecreateDecoder.takesOn(error)
+    override fun recreatesDecoder(error: PlaybackException): Boolean =
+        RecreateDecoder.takesOn(error).also { if (it) record.attempted(FallbackRung.RECREATE_DECODER) }
+
+    // Recorded on `true` and not on being asked, for [FallbackLadder.climb]'s reason: core performs
+    // exactly the rung it is told may be performed — it asks only once its own half already holds —
+    // so a `true` here is a rung tried and a `false` is a rung declined.
+
+    override fun typedErrorFor(error: PlaybackException, positionMs: Long): SuperPlayerError =
+        TypedError.of(error, positionMs, record.rungsTried())
+
+    override fun forgetClimb(): Unit = record.forget()
 }

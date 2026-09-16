@@ -153,4 +153,36 @@ internal interface PlayerStateRungs {
      * stuck at is core's half, because a rung that is free to repeat is a loop rather than a remedy.
      */
     fun recreatesDecoder(error: PlaybackException): Boolean
+
+    /**
+     * What [error] is, at [positionMs] — the classification core hands on, and rung 6's typed error
+     * where no rung below took the failure on (ADR-0011 rules 3 and 10).
+     *
+     * Asked for **every** surfaced failure and not only for the ones that reach rung 6, because what
+     * a failure *is* does not depend on whether something rescued it: telemetry reports the class of
+     * a failure a rung repaired just as it reports the class of one nothing did (rule 3). What rung 6
+     * adds is the *delivery* — core makes this the `cause` of the `PlaybackException` a consumer's
+     * listener receives, and only when no rung took the failure on.
+     *
+     * [positionMs] is core's half, read before any rung runs, so it is where the viewer had got to
+     * rather than where a re-prepared player reports. Everything else on the returned error is the
+     * ladder's, which is why core builds none of it.
+     *
+     * Asked once per surfaced failure, on the application thread, and memoized against the failure —
+     * so this runs before any rung is performed, and an implementation is never asked twice about one
+     * error.
+     */
+    fun typedErrorFor(error: PlaybackException, positionMs: Long): SuperPlayerError
+
+    /**
+     * The content this player was playing is no longer the content it is playing: the rungs climbed
+     * for what came before are not this content's.
+     *
+     * The one member of this interface that is not a question, and it is here rather than in a slot
+     * of its own for the reason rung 5 is ([SuperPlayerError.rungsTried] is the ladder's record and
+     * nothing else needs it): which rungs have been climbed is state only the ladder keeps, and when
+     * it stops being true is a fact only core has — an adoption, a restore, a recycle. Core calls it
+     * exactly where it forgets its own half of the same bookkeeping.
+     */
+    fun forgetClimb()
 }

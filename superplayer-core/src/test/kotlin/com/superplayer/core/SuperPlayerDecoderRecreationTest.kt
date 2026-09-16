@@ -167,7 +167,14 @@ class SuperPlayerDecoderRecreationTest {
         player.play()
         TestPlayerRunHelper.advance(player).untilState(Player.STATE_ENDED)
 
-        assertThat(ladder.questions).containsExactly(NEXT_SOURCE_QUESTION, RECREATE_QUESTION).inOrder()
+        // The whole of what core asks about one failure, in order. `forgetClimb` is the adoption
+        // above — a player given content forgets what was climbed for the last — and the
+        // classification is taken *before* either rung is routed, which is not decoration: the
+        // position it carries is where the viewer had got to, and a rung performed first would have
+        // moved it (ADR-0011 rule 10).
+        assertThat(ladder.questions)
+            .containsExactly(FORGET_QUESTION, TYPED_ERROR_QUESTION, NEXT_SOURCE_QUESTION, RECREATE_QUESTION)
+            .inOrder()
     }
 
     @Test
@@ -320,6 +327,31 @@ class SuperPlayerDecoderRecreationTest {
         override fun recreatesDecoder(error: PlaybackException): Boolean {
             synchronized(asked) { asked += RECREATE_QUESTION }
             return recreates
+        }
+
+        /**
+         * Rung 6, as far as core can see one: a classification with nothing in it but the shape.
+         *
+         * What a real one says is the classifier's and is asserted where the classifier is
+         * (`TypedErrorPlaybackTest`); what these tests need from it is that core asks before it
+         * performs a rung, which the position below is the evidence for.
+         */
+        override fun typedErrorFor(error: PlaybackException, positionMs: Long): SuperPlayerError {
+            synchronized(asked) { asked += TYPED_ERROR_QUESTION }
+            return SuperPlayerError(
+                causeClass = "Test.Failure",
+                userMessageKey = "test_error",
+                isRetryable = false,
+                category = FailureCategory.UNKNOWN,
+                rungsTried = emptyList(),
+                positionMs = positionMs,
+                likelyCause = null,
+                cause = error,
+            )
+        }
+
+        override fun forgetClimb() {
+            synchronized(asked) { asked += FORGET_QUESTION }
         }
     }
 
@@ -499,5 +531,7 @@ class SuperPlayerDecoderRecreationTest {
 
         const val NEXT_SOURCE_QUESTION = "opensNextSource"
         const val RECREATE_QUESTION = "recreatesDecoder"
+        const val TYPED_ERROR_QUESTION = "typedErrorFor"
+        const val FORGET_QUESTION = "forgetClimb"
     }
 }

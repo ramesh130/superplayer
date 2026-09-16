@@ -169,6 +169,26 @@ Fourteen rules follow, and they are binding.
    `SCHEMA_VERSION` bump with a release note — rather than a silent correction. An added field is
    not.
 
+   *Addendum (2026-09-16, #183).* Both halves are built, and the bump was owed: the disagreement this
+   rule anticipated is not one case but five, and they are written out as a table in
+   `docs/telemetry-schema.md`'s *Release notes* rather than here. The rule's own example turned out to
+   be **half** right — a frozen playlist an *intermediary* is holding is a `Transient.CdnEdge`, whose
+   row is `NETWORK`, which is what the band said too; it is the *origin* variant,
+   `Content.SegmentGap`, that the band calls `NETWORK` and the class calls `SOURCE`. The other four
+   are a read past the end of a segment (band `NETWORK`, class `SOURCE`), an unsupported format (band
+   `DECODER`, class `SOURCE`), the audio-renderer and frame-processor bands (band `RENDERER`, class
+   `DECODER`, so that bucket goes empty on a player with resilience), and every code the band did not
+   recognise (band `UNKNOWN`, class `NETWORK`, because rule 2 leaves nothing unclassified).
+   `SCHEMA_VERSION` is therefore 2.
+
+   One thing this rule settles that #183's own text read the other way round, and it is settled the
+   rule's way: the classification arrives as `classification` and **`code` keeps its meaning**,
+   `errorCodeName`. The issue expected the class to arrive *as* `code`. It should not, and this rule's
+   own sentence about two answers to one question points the other way here: which code the engine
+   raised and what SuperPlayer made of it are two facts, a pipeline needs the first to find the
+   failure in a logcat, and collapsing them would delete the engine's answer rather than add
+   SuperPlayer's.
+
 ### What is core's, and what is not
 
 4. **Core detects; resilience classifies.** A defect in the transfer that a consumer with only
@@ -318,6 +338,36 @@ Fourteen rules follow, and they are binding.
     every listener in a single pass, so the decision has to be taken before that pass begins rather
     than by the rung that performs the remedy; core therefore memoizes it against the failure, and
     both askers read the one answer.
+
+    *Addendum (2026-09-16, #183).* Rung 6 is built, and three things about the delivery are worth
+    writing down, because this rule fixed the destination without fixing the mechanics.
+
+    **The engine's exception cannot carry the typed error, so the delivered one is core's.** A cause
+    is fixed when an exception is constructed and the engine constructs the one it raises, so what a
+    consumer's listener receives is a `PlaybackException` core builds with the engine's own code and
+    message, `SuperPlayerError` as its cause, and the engine's exception under *that*. Nothing is lost
+    — a consumer switching on `errorCode` goes on working, and the stack is one link further down —
+    and nothing is invented. `player.playerError` returns the same object, which narrows the paragraph
+    above rather than contradicting it: that paragraph says the property is not special-cased for
+    *withholding*, and the reason it gives — a consumer reading the property sees what their listener
+    was told — is exactly why it must be substituted here.
+
+    **The classification is asked for every surfaced failure, not only for those that reach rung 6.**
+    What a failure *is* does not depend on whether something rescued it, and rule 3 has telemetry
+    report the class of a repaired failure too. So core asks the slot once per failure, before either
+    rung is routed — the position on the answer is where the viewer had got to, and a rung performed
+    first would have moved it — and rung 6 is the *delivery* of an answer core already has.
+
+    **Telemetry reads it through the facade.** A collector watches Media3's analytics rather than the
+    facade, so the exception it is handed is the engine's, with none of this on it;
+    `SuperPlayer.classify(error)` is the door, public for the reason `exoPlayer` is public —
+    `superplayer-telemetry` is not a friend of core and reaches it as a consumer does (ADR-0008). It
+    is not a new callback and it adds no listener, which is what this rule forbids.
+
+    The slot rule 13's addendum describes grows accordingly: rung 6's question, and one member that is
+    not a question — `forgetClimb`, core telling the ladder that the content changed, because the
+    rungs tried are the ladder's record and when they stop being this content's is core's fact. It
+    needs no slot core *calls*, so that addendum's test is answered rather than avoided.
 
 ### What is policy
 

@@ -399,14 +399,23 @@ public class SuperPlayer private constructor(
      * The failure the rungs core performs were last asked about, and the answer, so that the question
      * is put to [playerStateRungs] exactly once per failure.
      *
-     * Two callers ask, in this order and in the same dispatch: the listener wrappers, because a
-     * failure core takes on is one the consumer is not told about ([withholdsFromConsumer]), and the
-     * engine listener registered below, which performs the rung. The answer has to be the same for
-     * both, and it cannot be recomputed — by the time the second asks, the rung has been performed
+     * Three callers ask, in this order and in the same dispatch: a collector, because telemetry
+     * reports what the classifier said ([classify]); the listener wrappers, because a failure core
+     * takes on is one the consumer is not told about ([withholdsFromConsumer]); and the engine
+     * listener registered below, which performs the rung. The answer has to be the same for all of
+     * them, and it cannot be recomputed — by the time the second asks, the rung has been performed
      * and its preconditions are gone.
+     *
+     * [failureTypedError] is decided in the same breath and for the same reason, and it is the reason
+     * the decision is taken eagerly rather than on first need: it carries the position playback had
+     * reached, which a rung 4 or a rung 5 performed in the meantime would have moved (ADR-0011
+     * rule 10). [failureDelivered] is what a consumer's listener is handed for a failure that reached
+     * rung 6 — built once, so the listener and [getPlayerError] hand over one object.
      */
     private var failureDecidedOn: PlaybackException? = null
     private var failureRepair: FailureRepair = FailureRepair.NONE
+    private var failureTypedError: SuperPlayerError? = null
+    private var failureDelivered: PlaybackException? = null
 
     /**
      * How many decoders this player has recreated (rung 5) without playback getting any further, and
@@ -543,7 +552,7 @@ public class SuperPlayer private constructor(
         sourceIndex = FIRST_SOURCE
         // The same answer for rung 5's bound, and for the same reason: what it counts is decoders
         // recreated for content this player is no longer playing.
-        forgetDecoderRecreations()
+        forgetRungsClimbed()
         // The one place a measurement session can begin, for the same reason this method exists at
         // all: both callers arrive here, so content resolved from a notification or a car head unit
         // opens a session exactly as content set from the app does. A collector that already has one
@@ -678,10 +687,20 @@ public class SuperPlayer private constructor(
         return decoderRecreations < MAX_DECODER_RECREATIONS
     }
 
-    /** Drops what [mayRecreateDecoder] counts, for content that is no longer the content that failed. */
-    private fun forgetDecoderRecreations() {
+    /**
+     * Drops what has been climbed for content that is no longer the content that failed: what
+     * [mayRecreateDecoder] counts, and the ladder's own record of the rungs it tried
+     * ([SuperPlayerError.rungsTried]).
+     *
+     * Both halves in one place because they are one fact told twice — a player given different
+     * content gets the whole ladder again, since the CDN that failed a minute ago may be well now —
+     * and a caller that remembered one half and forgot the other would report a new failure with an
+     * old history.
+     */
+    private fun forgetRungsClimbed() {
         decoderRecreations = 0
         recreatedAtPositionMs = C.TIME_UNSET
+        playerStateRungs?.forgetClimb()
     }
 
     /**
@@ -704,6 +723,10 @@ public class SuperPlayer private constructor(
         if (error == null) return failureRepair
         if (error !== failureDecidedOn) {
             failureDecidedOn = error
+            failureDelivered = null
+            // Before any rung is routed, let alone performed: the position on it is where the viewer
+            // had got to, and a rung that re-prepares or replaces the item moves it.
+            failureTypedError = rungs.typedErrorFor(error, positionOfCurrentContent())
             failureRepair = when {
                 currentRequest?.let { hasNextSource(it) } == true && rungs.opensNextSource(error) ->
                     FailureRepair.NEXT_SOURCE
@@ -738,10 +761,58 @@ public class SuperPlayer private constructor(
     private fun withholdsFromConsumer(error: PlaybackException?): Boolean =
         repairFor(error) != FailureRepair.NONE
 
+    /**
+     * What [error] is, in SuperPlayer's own vocabulary, or null on a player built without resilience
+     * — which has nobody to ask and therefore classifies nothing (ADR-0011 rule 14).
+     *
+     * The same object a consumer is handed as the `cause` of a failure nothing rescued, answered for
+     * any failure this player has surfaced rather than only for those: what a failure *is* does not
+     * depend on whether a rung repaired it, and a collector reporting one that was repaired reports
+     * the same class (ADR-0011 rule 3).
+     *
+     * This is the door `superplayer-telemetry` reads the classification through. A collector watches
+     * Media3's analytics rather than the facade — that is what a collector is for — so the exception
+     * it is handed is the engine's, with none of this on it; asking the player is what makes
+     * `PlaybackFailure.classification` and the consumer's typed error one answer rather than two. It
+     * is public for the same reason `exoPlayer` is: `superplayer-telemetry` is not a friend of core
+     * and reaches it as a consumer does (ADR-0008), and an app that keeps its own error reporting has
+     * exactly the same question to ask.
+     *
+     * Call it on the application thread, as every `Player` method is called.
+     */
+    public fun classify(error: PlaybackException): SuperPlayerError? {
+        repairFor(error)
+        return failureTypedError
+    }
+
+    /**
+     * What a consumer's listener is handed for [error], which for a failure that reached rung 6 is a
+     * `PlaybackException` carrying the typed error as its `cause` (ADR-0011 rule 10).
+     *
+     * The engine's own exception cannot carry it — a cause is fixed when an exception is built, and
+     * the engine builds this one — so the delivery is a `PlaybackException` of core's with the
+     * engine's code and message, the typed error as its cause, and the engine's exception under
+     * *that*. Nothing is lost and nothing is invented: a consumer switching on `errorCode` goes on
+     * working, and one walking the chain still reaches Media3's own exception and its stack.
+     *
+     * Only for a failure that reached rung 6, because only then is there a typed error to deliver: a
+     * failure a rung repaired is withheld entirely ([withholdsFromConsumer]), and one on a player
+     * with no resilience is Media3's unchanged.
+     */
+    private fun deliveredToConsumer(error: PlaybackException?): PlaybackException? {
+        if (error == null) return null
+        if (repairFor(error) != FailureRepair.NONE) return error
+        val typed = failureTypedError ?: return error
+        return failureDelivered
+            ?: PlaybackException(error.message, typed, error.errorCode).also { failureDelivered = it }
+    }
+
     /** Drops the memo, so nothing of a finished session's failure is held or answered for. */
     private fun forgetWithheldFailure() {
         failureDecidedOn = null
         failureRepair = FailureRepair.NONE
+        failureTypedError = null
+        failureDelivered = null
     }
 
     /**
@@ -817,7 +888,7 @@ public class SuperPlayer private constructor(
             // what is failing *now* and a restored player is a new engine on a new network.
             sourceIndex = FIRST_SOURCE
             // And on new decoders: nothing of what the saved player recreated is this player's.
-            forgetDecoderRecreations()
+            forgetRungsClimbed()
             // A restored player measures under a session of its own rather than continuing the saved
             // one: the player that took the snapshot ended its session when it was released, and
             // without this the whole of what a viewer watches after a rotation would go unmeasured.
@@ -872,7 +943,9 @@ public class SuperPlayer private constructor(
 
     override fun addListener(listener: Player.Listener) {
         val wrapper = synchronized(wrappedListeners) {
-            wrappedListeners.getOrPut(listener) { listener.reportingSourceAs(this, ::withholdsFromConsumer) }
+            wrappedListeners.getOrPut(listener) {
+                listener.reportingSourceAs(this, ::withholdsFromConsumer, ::deliveredToConsumer)
+            }
         }
         delegate.addListener(wrapper)
     }
@@ -943,7 +1016,7 @@ public class SuperPlayer private constructor(
         // player handed a new row must open that row's first source.
         sourceIndex = FIRST_SOURCE
         forgetWithheldFailure()
-        forgetDecoderRecreations()
+        forgetRungsClimbed()
         // The session ends with the item, not with the player. A pooled player that kept one session
         // open across a scroll would report one forty-minute view of nine different things, which is
         // the defect this line exists to prevent. The collector stays attached: the next
@@ -980,7 +1053,7 @@ public class SuperPlayer private constructor(
         // The memo holds a `PlaybackException`, which holds its cause: dropped with everything else
         // this player was keeping alive.
         forgetWithheldFailure()
-        forgetDecoderRecreations()
+        forgetRungsClimbed()
     }
 
     /**
@@ -1002,6 +1075,19 @@ public class SuperPlayer private constructor(
      * engine received it, so a newly-defaulted method fails there on the next catalog bump.
      */
     override fun getAudioSessionId(): Int = delegate.audioSessionId
+
+    /**
+     * The engine's error, as rung 6 delivers it: the same object this player's listeners were handed
+     * (ADR-0011 rule 10).
+     *
+     * Overridden for consistency and for nothing else. ADR-0011 rule 10's addendum says this property
+     * is not special-cased for *withholding* — the `prepare` a rung performs clears it, so a consumer
+     * reading it sees what their listener was told — and the same sentence is why the substitution
+     * does belong here: a consumer who reads the property instead of registering a listener must not
+     * get a different account of one failure. There is no substitution to make on a player built
+     * without resilience, which is every player before Phase 5.
+     */
+    override fun getPlayerError(): PlaybackException? = deliveredToConsumer(delegate.playerError)
 
     /**
      * Builds a [SuperPlayer]. Media3's own construction idiom (ADR-0001, CONTRIBUTING rule 3), so
@@ -1413,6 +1499,16 @@ public class SuperPlayer private constructor(
  * See [SuperPlayer.withholdsFromConsumer] for when it answers true and why the answer is memoized
  * rather than recomputed.
  *
+ * ## The one callback it may substitute — which is not an exception to anything
+ *
+ * [delivered] maps a failure that *is* forwarded to the exception the consumer should receive, which
+ * for a failure that reached rung 6 is one carrying the typed error as its cause (ADR-0011 rule 10,
+ * [SuperPlayer.deliveredToConsumer]). It changes what is delivered and never whether: every callback
+ * the rule above forwards is still forwarded, with the same arity and in the same order, which is why
+ * this is not a second deviation from ADR-0003 rule 3 to argue. It defaults to the identity, so a
+ * player with no resilience — and the forwarding-contract harness — hands over exactly what Media3
+ * raised.
+ *
  * Three bounds keep the rule above true everywhere else, and are worth checking against any
  * temptation to add a second exception. It is these two callbacks and no others; it is a failure the
  * player is taking on itself and never one that reaches the consumer's rung; and it defaults to
@@ -1423,6 +1519,7 @@ public class SuperPlayer private constructor(
 internal fun Player.Listener.reportingSourceAs(
     source: Player,
     withheld: (PlaybackException?) -> Boolean = { false },
+    delivered: (PlaybackException?) -> PlaybackException? = { it },
 ): Player.Listener {
     val listener = this
     return Proxy.newProxyInstance(
@@ -1446,8 +1543,10 @@ internal fun Player.Listener.reportingSourceAs(
             // `onPlayerErrorChanged` announces both its arrival and its clearing, and a consumer told
             // only that an error went away would be told about a failure in the one form they cannot
             // act on.
-            method.name in ERROR_CALLBACKS && arguments.size == 1 ->
-                if (withheld(arguments[0] as PlaybackException?)) null else forward(listener, method, arguments)
+            method.name in ERROR_CALLBACKS && arguments.size == 1 -> {
+                val failure = arguments[0] as PlaybackException?
+                if (withheld(failure)) null else forward(listener, method, arrayOf(delivered(failure)))
+            }
 
             else -> forward(
                 listener,

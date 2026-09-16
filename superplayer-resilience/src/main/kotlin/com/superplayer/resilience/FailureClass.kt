@@ -78,6 +78,12 @@ public enum class FallbackRung {
  * absences are deliberate — `RENDERER`, because the renderer band's failures are failures of the
  * device's output pipeline whose remedies are the decoder rungs, and `UNKNOWN`, because rule 2
  * leaves nothing unclassified to put in it.
+ *
+ * [userMessageKey] is the other derived column, and it is `PRD.md` §3.2's rather than rule 3's: what
+ * a viewer is told. It is here for the reason [category] is — a mapping from a class kept anywhere
+ * else is the second table rule 1 forbids — and it is deliberately coarser than [stableName],
+ * because the right sentence to put on a screen is the same for several of these classes and there
+ * are fewer useful things to say to a viewer than there are failures.
  */
 public sealed class FailureClass(
     /** The name this class is known by outside the process. */
@@ -88,6 +94,15 @@ public sealed class FailureClass(
     public val rungCeiling: FallbackRung,
     /** The coarse bucket telemetry reports, derived here and nowhere else (ADR-0011 rule 3). */
     public val category: FailureCategory,
+    /**
+     * The key an app looks a viewer-facing string up by, carried out on
+     * [com.superplayer.core.SuperPlayerError] (`PRD.md` §3.2).
+     *
+     * A key and never a message: the library has no locale and no tone of voice, and a string it
+     * invented would be the one thing an app cannot translate. Named for what a viewer is being told
+     * rather than for the class, because that is what an app switches on.
+     */
+    public val userMessageKey: String,
 ) {
 
     final override fun toString(): String = stableName
@@ -102,7 +117,7 @@ public sealed class FailureClass(
     public sealed class Transient(
         stableName: String,
         rungCeiling: FallbackRung,
-    ) : FailureClass(stableName, retryable = true, rungCeiling, FailureCategory.NETWORK) {
+    ) : FailureClass(stableName, retryable = true, rungCeiling, FailureCategory.NETWORK, NETWORK_MESSAGE_KEY) {
 
         /** A connection, a timeout, a DNS failure, a status with nothing more specific behind it. */
         public object Network : Transient("Transient.Network", FallbackRung.NEXT_SOURCE)
@@ -128,7 +143,7 @@ public sealed class FailureClass(
      */
     public sealed class Content(
         stableName: String,
-    ) : FailureClass(stableName, retryable = false, FallbackRung.NEXT_SOURCE, FailureCategory.SOURCE) {
+    ) : FailureClass(stableName, retryable = false, FallbackRung.NEXT_SOURCE, FailureCategory.SOURCE, CONTENT_MESSAGE_KEY) {
 
         /**
          * The manifest or playlist cannot be acted on: malformed, or well-formed and describing
@@ -155,7 +170,7 @@ public sealed class FailureClass(
     public sealed class Device(
         stableName: String,
         rungCeiling: FallbackRung,
-    ) : FailureClass(stableName, retryable = false, rungCeiling, FailureCategory.DECODER) {
+    ) : FailureClass(stableName, retryable = false, rungCeiling, FailureCategory.DECODER, DEVICE_MESSAGE_KEY) {
 
         /**
          * No decoder or output could be initialised for this rung: none exists, none could be
@@ -186,7 +201,7 @@ public sealed class FailureClass(
         stableName: String,
         retryable: Boolean,
         rungCeiling: FallbackRung,
-    ) : FailureClass(stableName, retryable, rungCeiling, FailureCategory.DRM) {
+    ) : FailureClass(stableName, retryable, rungCeiling, FailureCategory.DRM, DRM_MESSAGE_KEY) {
 
         /**
          * The device could not be provisioned. A server-side operation between the device and the
@@ -216,9 +231,36 @@ public sealed class FailureClass(
      */
     public sealed class Fatal(
         stableName: String,
-    ) : FailureClass(stableName, retryable = false, FallbackRung.TYPED_ERROR, FailureCategory.SOURCE) {
+    ) : FailureClass(stableName, retryable = false, FallbackRung.TYPED_ERROR, FailureCategory.SOURCE, UNSUPPORTED_MESSAGE_KEY) {
 
         /** A container, a manifest or a format the engine says it does not support. */
         public object Unsupported : Fatal("Fatal.Unsupported")
+    }
+
+    /**
+     * The five things there are to say to a viewer, which is fewer than there are classes and is the
+     * point of [userMessageKey] being its own column.
+     *
+     * Named for the *message* rather than for the branch that carries it — `superplayer_error_` and
+     * then what the viewer is being told — because an app writing its strings file reads these names
+     * and nothing else of this taxonomy. A class added later takes an existing key unless it deserves
+     * a sentence none of these says, which is a decision to argue in the change that adds it.
+     */
+    public companion object {
+
+        /** The bytes did not arrive: something to try again, and possibly the viewer's own link. */
+        public const val NETWORK_MESSAGE_KEY: String = "superplayer_error_network"
+
+        /** The bytes arrived and are wrong: this programme is broken, and retrying will not mend it. */
+        public const val CONTENT_MESSAGE_KEY: String = "superplayer_error_content_unavailable"
+
+        /** This device could not play it, which is a different sentence from the content being bad. */
+        public const val DEVICE_MESSAGE_KEY: String = "superplayer_error_device"
+
+        /** Protection, not delivery: the sentence an app words around its own entitlements. */
+        public const val DRM_MESSAGE_KEY: String = "superplayer_error_protected_content"
+
+        /** The engine has named the content unplayable here: the one message that offers no remedy. */
+        public const val UNSUPPORTED_MESSAGE_KEY: String = "superplayer_error_unsupported"
     }
 }

@@ -24,6 +24,8 @@ import androidx.media3.common.C
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.util.Size
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import androidx.media3.test.utils.robolectric.ShadowMediaCodecConfig
 import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
 import androidx.test.core.app.ApplicationProvider
@@ -140,6 +142,45 @@ class PlayerPoolTest {
             checkNotNull(pool.acquire())
             assertThat(collectors).hasSize(2)
             assertThat(collectors.map { it.detachCount }).containsExactly(0, 0)
+        } finally {
+            pool.release()
+        }
+    }
+
+    /**
+     * ADR-0011 rule 13's other half: the call on `PlayerPool.Builder` is the only way a pooled player
+     * can have resilience, because the pool owns its players' construction. What a feed hands the pool
+     * is one object, and every player it builds gets its slots filled from that one.
+     *
+     * Through the real factory, for the reason
+     * [aPoolWithTelemetryGivesEveryPlayerItBuildsACollectorOfItsOwn] gives: the harness substitutes its
+     * own, so this is the only place `setResilience` reaches `SuperPlayer.Builder`. No playback and no
+     * synthetic stream — a slot is filled at construction, so construction is the whole of the subject.
+     */
+    @Test
+    fun aPoolWithResilienceFillsTheSlotsOfEveryPlayerItBuildsFromTheOneObject() {
+        val filled = mutableListOf<EngineConfiguration>()
+        val resilience = RecordingResilience(filled)
+        val pool = PlayerPool.Builder(ApplicationProvider.getApplicationContext())
+            .setMaxSize(2)
+            .setResilience(resilience)
+            .build()
+        try {
+            val first = checkNotNull(pool.acquire())
+            checkNotNull(pool.acquire())
+
+            // Two players, two filled configurations — distinct ones, because a chain is built per
+            // player even where an engine's components are shared (ADR-0010 rule 9).
+            assertThat(filled).hasSize(2)
+            assertThat(filled[0]).isNotSameInstanceAs(filled[1])
+            assertThat(filled.map { it.headerRefresh }).containsExactly(resilience.refresh, resilience.refresh)
+            assertThat(filled.map { it.loadErrors }).containsExactly(resilience.loadErrors, resilience.loadErrors)
+
+            // A recycled player keeps the slots it was built with rather than being filled again:
+            // recycling ends an item, and the chain below it is the player's for its whole life.
+            pool.recycle(first)
+            checkNotNull(pool.acquire())
+            assertThat(filled).hasSize(2)
         } finally {
             pool.release()
         }
@@ -467,6 +508,26 @@ class PlayerPoolTest {
         val surface = Surface(texture)
         surfaces += surface to texture
         return surface
+    }
+
+    /**
+     * A resilience that fills both slots with the same two objects every time, and records the
+     * configurations it filled.
+     *
+     * Deliberately the same objects rather than one pair per player: that is what a real one will do
+     * with a token refresh, and it is what makes the shared-instance requirement in
+     * [PlaybackResilience]'s KDoc visible here rather than only stated there.
+     */
+    private class RecordingResilience(private val filled: MutableList<EngineConfiguration>) : EngineResilienceExtension {
+
+        val refresh: HeaderRefreshLayer = HeaderRefreshLayer { upstream -> upstream }
+        val loadErrors: LoadErrorHandlingPolicy = DefaultLoadErrorHandlingPolicy()
+
+        override fun configureEngine(configuration: EngineConfiguration) {
+            configuration.headerRefresh = refresh
+            configuration.loadErrors = loadErrors
+            filled += configuration
+        }
     }
 
     private companion object {

@@ -6,8 +6,10 @@
 - **Supersedes:** None
 - **Refines:** [ADR-0005](0005-decide-playback-policy-behind-an-engine-agnostic-boundary.md)
   rule 2 and [ADR-0009](0009-observe-conditions-re-apply-decisions-and-remember-per-transport.md)
-  rule 7, each extended by an addendum recorded at the rule; [ADR-0008](0008-measure-behind-an-engine-agnostic-sink-boundary.md)
-  rule 5's vocabulary, which gains a field and no new meaning.
+  rule 7, each extended by an addendum recorded at the rule. [ADR-0008](0008-measure-behind-an-engine-agnostic-sink-boundary.md)
+  rule 5 is applied rather than changed: the added field is an addition of shape, and the first
+  time a classification and the error-code band disagree about a category, that is a change of
+  meaning and moves the schema version.
 - **Summary:** Decides Phase 5's shape before any of its code lands (#173). A failure acquires a
   meaning in exactly one place, `superplayer-resilience`'s `ErrorClassifier`, whose taxonomy is
   public, total and free of Media3 types; telemetry reports that classification rather than keeping

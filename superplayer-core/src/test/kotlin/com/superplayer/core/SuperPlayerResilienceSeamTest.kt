@@ -17,6 +17,7 @@
 package com.superplayer.core
 
 import android.net.Uri
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
@@ -34,14 +35,17 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * The two slots ADR-0011 rule 13 adds to core's engine seam, driven by a resilience that is
- * hand-written here rather than `superplayer-resilience`'s.
+ * The slots ADR-0011 rule 13 adds to core's engine seam, driven by a resilience that is hand-written
+ * here rather than `superplayer-resilience`'s.
  *
- * No rung of the ladder is built yet and none is asserted here. What is asserted is the seam itself,
- * which is the whole of issue #176: that a layer put in the header-refresh slot sees every request
- * with what it needs to tell one load from another, that the object put in the load-error slot is the
- * one Media3 asks about a failed load, that the two together are enough to turn a failure into a
- * successful retry — and that a player built without either is the Phase 4 player byte for byte.
+ * No rung is performed here and none is asserted. What is asserted is the seam itself, which was the
+ * whole of issue #176: that a layer put in the header-refresh slot sees every request with what it
+ * needs to tell one load from another, that the object put in the load-error slot is the one Media3
+ * asks about a failed load, that the two together are enough to turn a failure into a successful
+ * retry — and that a player built without any of them is the Phase 4 player byte for byte. The third
+ * slot (#181) joins that last count rather than the others: it is the one core *interrogates*, and
+ * the rungs reached through it are `SuperPlayerDecoderRecreationTest`'s and
+ * `SuperPlayerMediaRequestTest`'s.
  *
  * The test resilience below refreshes nothing. It sits in the slots, fails one segment with a 403
  * and lets the retry through, which is exactly the traffic a real token refresh will carry.
@@ -58,23 +62,29 @@ class SuperPlayerResilienceSeamTest {
     val harness: SuperPlayerHarness = SuperPlayerHarness()
 
     /**
-     * ADR-0011 rule 14, counted: a player built without resilience leaves both slots empty, keeps
-     * Media3's own load-error handling, and stamps no request — so its chain and its media source
-     * factory are the ones Phase 4 built. The same counts on a player *with* resilience are
+     * ADR-0011 rule 14, counted: a player built without resilience leaves **all three** slots empty,
+     * keeps Media3's own load-error handling, and stamps no request — so its chain and its media
+     * source factory are the ones Phase 4 built. The same counts on a player *with* resilience are
      * non-empty, so the counter is shown to see what it counts.
      *
-     * Nothing counts a registration, because there is nothing yet to register: the rungs are reached
-     * from inside a load and from core's own seam, and no listener of resilience's exists to attach
-     * to a player (ADR-0011 rules 5 and 7). What a stamp counts is the thing that *would* change
-     * silently — the media source factory, which is Media3's own on a player with neither slot filled
-     * and a stamping one on a player with either.
+     * The third slot is the one that counts a *registration*, and it arrived with rung 4 (#181,
+     * rule 13's addendum). The other two are absences of configuration — Media3's own policy stays in
+     * force, the chain is untouched — but core registers its player-error listener only where
+     * `playerStateRungs` is filled, so an empty third slot is a listener that does not exist. That it
+     * is empty is counted here; what a player with no listener *does* with a failure is counted as
+     * behaviour, in `SuperPlayerDecoderRecreationTest.aPlayerWithoutResilienceRePreparesNothing` and
+     * `SuperPlayerMediaRequestTest`, and the whole set is named in
+     * `superplayer-resilience`'s `FallbackRungCoverageTest`.
+     *
+     * What a stamp counts is the thing that *would* change silently — the media source factory, which
+     * is Media3's own on a player with no slot filled and a stamping one on a player with any.
      *
      * The rule's other half — that a core-only session is unchanged byte for byte — is held by the
-     * golden traces in `superplayer-telemetry`, which are core-only sessions and which this change
-     * leaves identical, exactly as ADR-0010 rule 13's half is held for the cache.
+     * golden traces in `superplayer-telemetry`, which are core-only sessions and which Phase 5 leaves
+     * identical, exactly as ADR-0010 rule 13's half is held for the cache.
      */
     @Test
-    fun aPlayerBuiltWithoutResilienceFillsNeitherSlotAndStampsNothing() {
+    fun aPlayerBuiltWithoutResilienceFillsNoSlotAndStampsNothing() {
         var withoutSlots: EngineConfiguration? = null
         val withoutMeter = RecordingBandwidthMeter()
         val without = harness.buildPlayer(
@@ -85,13 +95,14 @@ class SuperPlayerResilienceSeamTest {
 
         assertThat(withoutSlots?.headerRefresh).isNull()
         assertThat(withoutSlots?.loadErrors).isNull()
+        assertThat(withoutSlots?.playerStateRungs).isNull()
         assertThat(withoutMeter.openedRequests()).isNotEmpty()
         assertThat(withoutMeter.openedRequests().mapNotNull { RequestStamp.of(it) }).isEmpty()
 
         var withSlots: EngineConfiguration? = null
         val withMeter = RecordingBandwidthMeter()
         val with = harness.buildPlayer(
-            resilience = TestResilience(RecordingHeaderRefresh(), RecordingLoadErrors()),
+            resilience = TestResilience(RecordingHeaderRefresh(), RecordingLoadErrors(), SilentRungs()),
             alsoConfigure = { withSlots = it },
             alsoConfigureEngine = { it.setBandwidthMeter(withMeter) },
         )
@@ -99,6 +110,7 @@ class SuperPlayerResilienceSeamTest {
 
         assertThat(withSlots?.headerRefresh).isNotNull()
         assertThat(withSlots?.loadErrors).isNotNull()
+        assertThat(withSlots?.playerStateRungs).isNotNull()
         assertThat(withMeter.openedRequests().mapNotNull { RequestStamp.of(it) }).isNotEmpty()
     }
 
@@ -189,16 +201,46 @@ class SuperPlayerResilienceSeamTest {
         TestPlayerRunHelper.advance(player).untilState(Player.STATE_READY)
     }
 
-    /** A resilience that survives nothing: it fills the two slots and is otherwise empty. */
+    /** A resilience that survives nothing: it fills the slots it is given and is otherwise empty. */
     private class TestResilience(
         private val refresh: HeaderRefreshLayer,
         private val loadErrors: LoadErrorHandlingPolicy,
+        private val rungs: PlayerStateRungs? = null,
     ) : EngineResilienceExtension {
 
         override fun configureEngine(configuration: EngineConfiguration) {
             configuration.headerRefresh = refresh
             configuration.loadErrors = loadErrors
+            rungs?.let { configuration.playerStateRungs = it }
         }
+    }
+
+    /**
+     * The third slot, occupied and declining everything: enough to show that a filled slot is
+     * distinguishable from an empty one, which is all rule 14's count needs from this side.
+     *
+     * What a real one answers, and what core does with the answer, is
+     * `SuperPlayerDecoderRecreationTest`'s and `SuperPlayerMediaRequestTest`'s — the rungs themselves
+     * are not this file's subject.
+     */
+    private class SilentRungs : PlayerStateRungs {
+
+        override fun opensNextSource(error: PlaybackException): Boolean = false
+
+        override fun recreatesDecoder(error: PlaybackException): Boolean = false
+
+        override fun typedErrorFor(error: PlaybackException, positionMs: Long): SuperPlayerError = SuperPlayerError(
+            causeClass = "Test.Failure",
+            userMessageKey = "test_error",
+            isRetryable = false,
+            category = FailureCategory.UNKNOWN,
+            rungsTried = emptyList(),
+            positionMs = positionMs,
+            likelyCause = null,
+            cause = error,
+        )
+
+        override fun forgetClimb() = Unit
     }
 
     /** One request as the header-refresh slot saw it. */

@@ -64,6 +64,16 @@ public object SyntheticDashStream {
      */
     private const val PROTECTED_BASE_URI = "fake://$HOST/dash-protected/"
 
+    /**
+     * Where the [WidevineProtection.ContentKey.SECOND] form of [protectedResources] lives.
+     *
+     * A directory of its own for the same reason [PROTECTED_BASE_URI] is: the two are different
+     * assets and a player must be able to hold both in one data set. It matters more here than
+     * anywhere else, because the question the second key exists for — does a player open one session
+     * or two — can only be asked of two streams fetched by one player.
+     */
+    private const val SECOND_KEY_PROTECTED_BASE_URI = "fake://$HOST/dash-protected-second-key/"
+
     /** `.mpd` is load-bearing: Media3 infers the content type from the URI's extension. */
     public const val MANIFEST_URI: String = BASE_URI + "manifest.mpd"
 
@@ -154,19 +164,39 @@ public object SyntheticDashStream {
 
     /**
      * The Widevine-protected form of this stream: the same media, under an MPD that declares Common
-     * Encryption and carries [WidevineProtection]'s `pssh` box.
+     * Encryption and carries [WidevineProtection]'s `pssh` box for [key].
      *
      * The segments are byte-identical to [resources]'s, and [WidevineProtection]'s KDoc says why that
      * is the right stream rather than a shortcut: what a protected stream has to do here is make a
      * player acquire a licence before it reads a sample, and the manifest is where that is decided.
+     *
+     * [key] chooses which key the MPD declares, and the two forms live at different addresses so one
+     * player can fetch both. Everything else about them is identical — the same media, the same
+     * system id, the same descriptors — so a player that treats them differently is treating the
+     * *key* differently, which is the only fact a test of session reuse is entitled to read out of it.
      */
-    public fun protectedResources(segmentCount: Int = 1): Map<String, ByteArray> {
+    @JvmOverloads
+    public fun protectedResources(
+        segmentCount: Int = 1,
+        key: WidevineProtection.ContentKey = WidevineProtection.ContentKey.PRIMARY,
+    ): Map<String, ByteArray> {
         require(segmentCount >= 1) { "A stream needs at least one segment, was $segmentCount" }
+        val base = protectedBaseUri(key)
         return buildMap {
-            put(PROTECTED_MANIFEST_URI, manifest(segmentCount, mirrorHost = null, protected = true).toByteArray())
-            put(PROTECTED_BASE_URI + INITIALIZATION_NAME, initializationSegment())
-            repeat(segmentCount) { index -> put(PROTECTED_BASE_URI + segmentName(index), mediaSegment(index)) }
+            put(base + "manifest.mpd", manifest(segmentCount, mirrorHost = null, protectedUnder = key).toByteArray())
+            put(base + INITIALIZATION_NAME, initializationSegment())
+            repeat(segmentCount) { index -> put(base + segmentName(index), mediaSegment(index)) }
         }
+    }
+
+    /** What a player is pointed at to play [protectedResources] under [key]. */
+    @JvmStatic
+    public fun protectedManifestUri(key: WidevineProtection.ContentKey): String =
+        protectedBaseUri(key) + "manifest.mpd"
+
+    private fun protectedBaseUri(key: WidevineProtection.ContentKey): String = when (key) {
+        WidevineProtection.ContentKey.PRIMARY -> PROTECTED_BASE_URI
+        WidevineProtection.ContentKey.SECOND -> SECOND_KEY_PROTECTED_BASE_URI
     }
 
     /**
@@ -191,13 +221,17 @@ public object SyntheticDashStream {
      * offer a player nothing to fail over to. [mirrorHost] null emits no `BaseURL` element and no
      * namespace declaration, so the single-host document is exactly what it always was.
      */
-    private fun manifest(segmentCount: Int, mirrorHost: String?, protected: Boolean = false): String {
+    private fun manifest(
+        segmentCount: Int,
+        mirrorHost: String?,
+        protectedUnder: WidevineProtection.ContentKey? = null,
+    ): String {
         val durationSeconds = SEGMENT_DURATION_IN_TIMESCALE.toDouble() * segmentCount / TIMESCALE
         val segmentUrls = (0 until segmentCount).map { index ->
             "          <SegmentURL media=\"${segmentName(index)}\"/>"
         }
         val dvbNamespace = mirrorHost?.let { listOf("     xmlns:dvb=\"$DVB_EXTENSIONS_NAMESPACE\"") }.orEmpty()
-        val cencNamespace = if (protected) listOf("     xmlns:cenc=\"$CENC_NAMESPACE\"") else emptyList()
+        val cencNamespace = if (protectedUnder != null) listOf("     xmlns:cenc=\"$CENC_NAMESPACE\"") else emptyList()
         val baseUrls = mirrorHost?.let {
             listOf(
                 "  <BaseURL dvb:priority=\"1\" dvb:weight=\"1\" serviceLocation=\"origin\">$BASE_URI</BaseURL>",
@@ -222,7 +256,7 @@ public object SyntheticDashStream {
             ) + baseUrls + listOf(
                 "  <Period id=\"0\">",
                 "    <AdaptationSet mimeType=\"audio/mp4\" segmentAlignment=\"true\">",
-            ) + contentProtection(protected) + listOf(
+            ) + contentProtection(protectedUnder) + listOf(
                 "      <Representation id=\"0\"",
                 "                      bandwidth=\"$DECLARED_BITRATE_BPS\"",
                 "                      codecs=\"$DECLARED_CODECS\"",
@@ -262,13 +296,13 @@ public object SyntheticDashStream {
      * expectation and the parser's output to agree about, bought for nothing this stream needs. The
      * key id is in the `pssh` box, where [WidevineProtection] puts it.
      */
-    private fun contentProtection(protected: Boolean): List<String> = if (!protected) {
+    private fun contentProtection(key: WidevineProtection.ContentKey?): List<String> = if (key == null) {
         emptyList()
     } else {
         listOf(
             "      <ContentProtection schemeIdUri=\"$MP4_PROTECTION_SCHEME_ID_URI\" value=\"$PROTECTION_SCHEME\"/>",
             "      <ContentProtection schemeIdUri=\"${WidevineProtection.SYSTEM_ID_URN}\">",
-            "        <cenc:pssh>${WidevineProtection.psshBase64()}</cenc:pssh>",
+            "        <cenc:pssh>${WidevineProtection.psshBase64(key)}</cenc:pssh>",
             "      </ContentProtection>",
         )
     }

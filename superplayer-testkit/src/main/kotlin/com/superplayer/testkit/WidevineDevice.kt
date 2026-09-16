@@ -61,13 +61,55 @@ internal class WidevineStatement(
     val provisioningFails: Boolean,
 ) {
 
+    /**
+     * Every implementation this statement has handed out, so that a test can make the *device* do
+     * something to a session that is already open.
+     *
+     * Held here and nowhere else because there is nowhere else: a real provider hands out a new
+     * implementation per acquisition and keeps no register of them, and neither does
+     * [PlaybackHarness] — the slot it fills is a provider, and what the provider returns goes
+     * straight into a session manager. Everything a device does *before* a session exists is stated
+     * as a field of this class; a key rotation is the one thing it does *after*, so a handle is the
+     * only way to say it. Cleared with the statement itself ([DeviceStatement.forgetWidevine]), so
+     * one test's device is not the next one's here either.
+     */
+    private val handedOut = mutableListOf<FakeExoMediaDrm>()
+
     /** The device as an `ExoMediaDrm`, built fresh per session as a real provider's would be. */
     fun exoMediaDrm(): ExoMediaDrm {
         val fake = FakeExoMediaDrm.Builder()
             .setMaxConcurrentSessions(maxConcurrentSessions)
             .setProvisionsRequired(if (provisioningRequired || provisioningFails) 1 else 0)
             .build()
+        handedOut += fake
         return StatedExoMediaDrm(fake, this)
+    }
+
+    /**
+     * The device telling every session it holds open that its keys must be renewed.
+     *
+     * ref: `MediaDrm.EVENT_KEY_REQUIRED` is the event a Widevine implementation raises when the
+     * keys a session holds need replacing — which on a live stream is a key rotation, since the
+     * packager changes the key under a running session rather than ending it:
+     * https://developer.android.com/reference/android/media/MediaDrm#EVENT_KEY_REQUIRED
+     *
+     * The *device* raises it and not the licence server, which is why it is stated here rather than
+     * on [FakeLicenceServer]: the server changes the key it will issue, the device notices that the
+     * keys in force no longer decrypt, and what a player sees is this event. A harness that made a
+     * rotation a property of the server would be describing the half no client can observe.
+     *
+     * `EVENT_KEY_EXPIRED` is deliberately not offered beside it. Media3 routes only
+     * `EVENT_KEY_REQUIRED` to a session at all (`DefaultDrmSession.onMediaDrmEvent`), so a lever for
+     * the other would be a lever for nothing, and a test using it would be asserting that Media3
+     * ignores an event rather than that SuperPlayer renews a licence.
+     */
+    fun signalKeyRotation() {
+        handedOut.forEach { device ->
+            // Every open session of every implementation: the predicate is the *device's* way of
+            // addressing a rotation at one session id, and a test here has no session id to name —
+            // it knows the content it asked for and not the bytes a session was opened under.
+            device.triggerEvent({ true }, ExoMediaDrm.EVENT_KEY_REQUIRED, /* extra= */ 0, /* data= */ ByteArray(0))
+        }
     }
 }
 

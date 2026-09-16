@@ -95,6 +95,51 @@ internal class WidevineDrm(private val config: WidevineConfig) : EngineDrmExtens
                 // its own authority. A player built with `setDrm` plays what it was entitled to play
                 // or it fails saying so.
                 .setPlayClearSamplesWithoutKeys(false)
+                // #209, and the third decision here rather than plumbing. Media3's default is
+                // `false`, and what `false` means is not "one session per distinct key" — it is
+                // `DefaultDrmSessionManager` keeping a single `noMultiSessionDrmSession` and handing
+                // it to *every* format whatever its `DrmInitData`; the open sessions are searched for
+                // one whose scheme datas are equal only when this flag is true. On a player whose
+                // protection is declared once and spans a whole playlist (ADR-0012 rule 1), that is
+                // one session across content a licence server issued separate licences for, which is
+                // a correctness bug and not a saving.
+                //
+                // True, so reuse is decided by what the content declared. That is Media3's own rule
+                // and the conservative one: equal initialization data means the same key ids, which
+                // means one licence to whichever server issued either, while different key ids were
+                // licensed apart and share nothing a session may carry across. A finer line than the
+                // key — a server that licenses per asset behind identical key ids — is invisible to
+                // every client, so a player that drew it would be guessing rather than being careful.
+                //
+                // The security level #208 negotiates is not part of that identity, and the reason is
+                // structural: it is asked once, here, while this player's chain is composed, and it
+                // is set on the device for the player's lifetime — so every session of this manager
+                // is delivered at one level and the level can separate nothing. If a level ever
+                // became a per-item answer it would have to join the key, because two items delivered
+                // at different levels are not one policy; `SessionReuseTest` says so too.
+                //
+                // Media3's own `DefaultDrmSessionManagerProvider` reads this flag off
+                // `MediaItem.DrmConfiguration`, which is how a stock player answers per item. A
+                // SuperPlayer has no per-item place to put it and needs none: the answer here is
+                // right for every playlist, and the wrong one was only ever right for a playlist of
+                // one.
+                //
+                // `setSessionKeepaliveMs` is deliberately **not** set beside it, which is a decision
+                // now that this flag has made it reachable. Media3's own
+                // `DEFAULT_SESSION_KEEPALIVE_MS` — five minutes — is what carries a session across
+                // the gap between one item releasing its last renderer reference and the next item
+                // acquiring one, so it is the half of "one licence for a playlist" the flag alone
+                // does not buy; the number stays Media3's because nothing here has measured a better
+                // one, and a constant this repository invented would be a constant it could not
+                // argue. What it costs is bounded: a kept-alive session counts against the device's
+                // concurrent limit, and only a player working through many *differently keyed* items
+                // inside five minutes piles them up — which a playlist does not do, and a feed does
+                // not either, since a feed gives each row its own player and so its own manager
+                // (ADR-0010).
+                //
+                // ref: `DefaultDrmSessionManager.Builder.setSessionKeepaliveMs`; `C.TIME_UNSET`
+                // disables it, and that is the value this must never quietly become.
+                .setMultiSession(true)
                 // The player's own, never one of this module's making. Media3 asks a session
                 // manager's `LoadErrorHandlingPolicy` about a failed licence load and a media source
                 // factory's about every other load, so a manager left to build its own would answer
@@ -106,8 +151,11 @@ internal class WidevineDrm(private val config: WidevineConfig) : EngineDrmExtens
                 .apply { loadErrors?.let(::setLoadErrorHandlingPolicy) }
                 .build(callback)
             // One manager for the player rather than one per item: the session graph is built once
-            // per player because protection is the player's (rule 1), and `DefaultDrmSessionManager`
-            // already keeps one session per distinct `DrmInitData` beneath that.
+            // per player because protection is the player's (rule 1), and — since #209 turned
+            // `multiSession` on above — `DefaultDrmSessionManager` keeps one session per distinct
+            // `DrmInitData` beneath that. That sentence stood here before the flag did and was false
+            // while it did: at Media3's default the manager keeps one session for everything, and the
+            // comment described the behaviour the line above now actually produces.
             when {
                 // Nothing was negotiated, so there is nothing to say: the session opened at whatever
                 // the device does, which is the ordinary case and not a support engineer's question.

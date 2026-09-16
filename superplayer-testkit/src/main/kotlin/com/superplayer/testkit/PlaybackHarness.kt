@@ -484,11 +484,23 @@ public class PlaybackHarness : ExternalResource() {
      * `DrmInitData` the stream's manifest produces — and both protocols produce the same one from the
      * same `pssh` box, Widevine's uuid under the `video/mp4` MIME type, which is the reason
      * `protectedHls` and `protectedDash` can share a server at all.
+     *
+     * Every [WidevineProtection.ContentKey] is allowed, which is the right server for the question
+     * the second key exists to ask. That question is whether a *player* opens one session or two for
+     * two separately-licensed items, and it can only be asked of a viewer entitled to both: a server
+     * that refused the second key would answer it with a licence failure and say nothing about
+     * sessions at all. An entitlement a test wants withheld is withheld at the transport, with a
+     * [FaultScript] at [ResourceKind.LICENCE], where every other refusal in this harness lives.
      */
     private fun licenceServerFor(content: TestContent): FakeExoMediaDrm.LicenseServer {
         check(content.protected) { "Only protected content has a licence server" }
-        val schemeData = DrmInitData.SchemeData(C.WIDEVINE_UUID, MimeTypes.VIDEO_MP4, WidevineProtection.pssh())
-        return FakeExoMediaDrm.LicenseServer.allowingSchemeDatas(listOf(schemeData))
+        val entitlements = WidevineProtection.ContentKey.entries.map { key ->
+            DrmInitData.SchemeData(C.WIDEVINE_UUID, MimeTypes.VIDEO_MP4, WidevineProtection.pssh(key))
+        }
+        // One allowance per key rather than one allowance of all of them: Media3's server compares a
+        // key request's scheme datas against each allowed *list* whole, so a single list naming both
+        // keys would be an entitlement to content declaring both and to neither stream on its own.
+        return FakeExoMediaDrm.LicenseServer.allowingSchemeDatas(*entitlements.map { listOf(it) }.toTypedArray())
     }
 
     /**

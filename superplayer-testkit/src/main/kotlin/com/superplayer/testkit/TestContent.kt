@@ -20,6 +20,7 @@ import com.superplayer.testmedia.HostileManifests
 import com.superplayer.testmedia.HostileStream
 import com.superplayer.testmedia.SyntheticDashStream
 import com.superplayer.testmedia.SyntheticHlsStream
+import com.superplayer.testmedia.WidevineProtection
 
 /**
  * What a [PlaybackHarness] should play: how long, how many renditions, and whether it is live — or,
@@ -481,13 +482,45 @@ public class TestContent private constructor(
          * and hand the session the same initialization data, which is the fact worth pinning.
          */
         @JvmStatic
-        public fun protectedDash(segmentCount: Int = DEFAULT_SEGMENT_COUNT): TestContent = TestContent(
+        @JvmOverloads
+        public fun protectedDash(
+            segmentCount: Int = DEFAULT_SEGMENT_COUNT,
+            key: WidevineProtection.ContentKey = WidevineProtection.ContentKey.PRIMARY,
+        ): TestContent = TestContent(
             rungs = emptyList(),
             durationMs = SyntheticDashStream.durationMs(segmentCount),
             live = false,
             protocol = Protocol.DASH,
-            sourceUri = SyntheticDashStream.PROTECTED_MANIFEST_URI,
-            resources = SyntheticDashStream.protectedResources(segmentCount),
+            sourceUri = SyntheticDashStream.protectedManifestUri(key),
+            resources = SyntheticDashStream.protectedResources(segmentCount, key),
+            protected = true,
+        )
+
+        /**
+         * [liveHls], Widevine-protected: a live window that keeps publishing, under an `EXT-X-KEY`.
+         *
+         * The stream a key *rotation* can be put to a player over, which no on-demand stream is: a
+         * session that outlives a sliding window is the one a real origin re-keys under, and
+         * `DeviceStatement.signalKeyRotation` is the device end of that. It carries no
+         * `EXT-X-PROGRAM-DATE-TIME` for [liveHls]'s reason and that reason alone — the harness's
+         * clock and the wall clock a dated window is measured against do not run together — and
+         * nothing about a licence needs one.
+         */
+        @JvmStatic
+        public fun protectedLiveHls(): TestContent = TestContent(
+            rungs = emptyList(),
+            durationMs = SyntheticHlsStream.durationMs(SyntheticHlsStream.LIVE_WINDOW_SEGMENT_COUNT),
+            live = true,
+            protocol = Protocol.HLS,
+            sourceUri = SyntheticHlsStream.PROTECTED_LIVE_MULTIVARIANT_PLAYLIST_URI,
+            publication = { elapsedMs ->
+                SyntheticHlsStream.liveResources(
+                    SyntheticHlsStream.LIVE_WINDOW_SEGMENT_COUNT +
+                        (elapsedMs / SyntheticHlsStream.SEGMENT_DURATION_MS).toInt(),
+                    firstSegmentDateTimeMs = null,
+                    protected = true,
+                )
+            },
             protected = true,
         )
 

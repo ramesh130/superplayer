@@ -269,6 +269,23 @@ public object DeviceStatement {
     }
 
     /**
+     * This device telling every DRM session it currently holds open that its keys must be renewed.
+     *
+     * The one declaration here that is not a statement about the device *before* a player is built,
+     * and it could not be: a rotation is something that happens to a session in flight, which is the
+     * whole of what makes it worth testing. Call it after a player has reached playback, then let the
+     * harness's clock run — the renewal is a licence request like any other, and
+     * `PlaybackHarness.networkRequests` counts it.
+     *
+     * ref: `MediaDrm.EVENT_KEY_REQUIRED`, and `WidevineStatement.signalKeyRotation` carries the
+     * argument for why the *device* raises this rather than the licence server.
+     */
+    @JvmStatic
+    public fun signalKeyRotation() {
+        widevine.signalKeyRotation()
+    }
+
+    /**
      * As [declareVideoDecoder], and declaring the decoder able to operate on protected memory — the
      * kind a licence acquired at [SecurityLevel.L1] may only be used with.
      *

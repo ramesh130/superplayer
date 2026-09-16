@@ -278,9 +278,11 @@ thing wrong, a `// spec:` citation and a field cause — whose current behaviour
 `docs/testing.md` says what a new entry must carry. A pathology with a magnitude is generated at three
 `HostileStream.Severity` levels, each value argued where it is chosen: `graded()` returns them all, and
 `all()` is its `SEVERE` half. The `BENIGN` level exists so a doctor is scored on false positives too.
-It also holds `WidevineProtection`, the one `pssh` box (ISO/IEC 23001-7 §8.1) that
+It also holds `WidevineProtection`, the `pssh` box (ISO/IEC 23001-7 §8.1) that
 `SyntheticHlsStream.protectedResources` declares in an `EXT-X-KEY` and `SyntheticDashStream`'s in a
-`ContentProtection` descriptor — the same media, the same initialization data, two vocabularies.
+`ContentProtection` descriptor — the same media, the same initialization data, two vocabularies —
+and, since #209, a `ContentKey.SECOND` naming a different key id, which is the only way to say
+"content the server licensed separately" in a stream rather than in a comment.
 **Robolectric ships no `ShadowMediaDrm`**, so what stands in for a Widevine device is Media3's
 `FakeExoMediaDrm`, stated through `DeviceStatement.declareWidevine` (a level, a session limit) and
 `declareWidevineProvisioningFailure`, and what stands in for a licence server is `FakeLicenceServer`
@@ -551,7 +553,23 @@ ADR-0012 rejected stays rejected. What was delivered is `player.deliveredSecurit
 `SCHEMA_VERSION` stays 2, which the release notes say in as many words. `SecurityLevelTest` states
 one device and two servers, one permitting and one silent. The two cases it cannot force — a failed
 L1 provisioning, and a secure surface that will not allocate — are named in its KDoc rather than
-implied. Since #207 a device that is not provisioned is
+implied. Since #209 the manager is built `setMultiSession(true)`, and that is a **defect repaired**
+rather than a saving added: Media3's default keeps one `noMultiSessionDrmSession` for *every* format
+whatever its `DrmInitData`, so a player whose protection is declared once per item-spanning manager
+(rule 1) held one session across content a licence server licensed separately. Reuse is now decided
+by what the content declared — equal initialization data, Media3's own rule and the conservative one,
+with the security level deliberately outside the identity because it is one per player and can
+separate nothing. The keepalive stays Media3's own five minutes, argued where it is chosen.
+`SessionReuseTest` counts the pair that matters, one licence for a shared policy and two for separate
+ones, and records the boundary: a *playlist* (`setMediaItems`) shares a session, while successive
+`setMediaRequest` calls are a replacement that takes the manager's prepare count to zero and pays
+again — closing that would mean deferring a `MediaDrm`'s release with nothing to bound it.
+`KeyRotationTest` drives `PRD.md` §3.2's other half over `TestContent.protectedLiveHls()` and
+`DeviceStatement.signalKeyRotation()`: a rotation renews inside the open session at the cost of one
+licence request, and a renewal that *fails* leaves playback on the keys in force, because
+`DefaultDrmSession.onError` errors a session only where it is not already keyed — so no
+classification is added and #206's leaves are where they were. Since #207 a device that is not
+provisioned is
 **provisioned rather than refused**, and almost none of that is new machinery: Media3 posts a
 provisioning request through the same `LoadErrorHandlingPolicy` as every other DRM load, so it spends
 `RetryPolicy.licence` with `Backoff`'s jitter, and a service that never relents ends on

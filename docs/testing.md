@@ -446,6 +446,36 @@ real `SuperPlayer` with the module's session manager reaching its engine through
 is what a Phase 6 test uses. Protected content with no `drm` is refused rather than played, because a
 player that opened no session at all would play these streams perfectly and prove nothing.
 
+**The two do not track each other, and a session-graph change has to be made in both or in neither**
+(#209). `buildStockPlayer`'s manager is built in `PlaybackHarness` out of what a *stock* arm would
+configure, so a decision `superplayer-drm` takes about its own manager — `setMultiSession`,
+`setSessionKeepaliveMs`, the `LoadErrorHandlingPolicy` it is handed — changes nothing about the stock
+arm and no test of the stock arm will notice. That is deliberate: arm (a) is what an app gets from
+Media3's defaults, and a stock arm that silently inherited SuperPlayer's decisions would make the
+benchmark's comparison meaningless. What it costs is that `ProtectedPlaybackTest` is **not** a
+regression test for anything `superplayer-drm` decides, so a claim about the library's session graph
+belongs in `superplayer-drm`'s own tests, over a real `SuperPlayer`. `SessionReuseTest` is the example.
+
+**Two protected streams can differ in the one way a DRM session cares about.**
+`WidevineProtection.ContentKey` names two key ids and `TestContent.protectedDash(key = …)` serves the
+same media under either, at an address of its own. It exists for one question — whether a player opens
+one session or two for content a licence server licensed separately — and the harness's licence server
+allows **both** keys, because that question can only be put to a viewer entitled to both: a server that
+refused the second key would answer with a licence failure and say nothing about sessions. An
+entitlement a test wants withheld is withheld at the transport, where every other refusal here lives.
+
+**A key rotation is the device's to signal, not the server's.** `TestContent.protectedLiveHls()` is a
+live window under an `EXT-X-KEY`, and `DeviceStatement.signalKeyRotation()` raises
+`MediaDrm.EVENT_KEY_REQUIRED` on every session the stated device holds open — which is what a real
+implementation does when the packager re-keys under a running session. It is stated on the device
+because that is where a client learns of it: a server that changed the key it would issue is invisible
+until the device complains. Call it after a player is playing; the renewal is a licence request like
+any other and `networkRequests` counts it. What such a test cannot reach is a rotation the session
+*needed*: the samples are in the clear, so keys that stopped working stop nothing, and Media3 keeps a
+session that fails to renew on the keys it already holds (`DefaultDrmSession.onError` moves a session
+to `STATE_ERROR` only when it is not already `STATE_OPENED_WITH_KEYS`). `KeyRotationTest` records that
+rule rather than asserting around it.
+
 Two things follow that a test writer should know. A licence load **reports no bytes to a transfer
 listener**, because a licence is not media and a few hundred bytes of key exchange counted as a
 throughput sample would move an estimate that is supposed to describe how fast segments arrive.

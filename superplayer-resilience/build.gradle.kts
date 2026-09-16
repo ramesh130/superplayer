@@ -32,6 +32,14 @@ dependencies {
     // a budget and an escalation can be asserted through the public API. Phase 2 on phase 5, tests
     // only.
     testImplementation(project(":superplayer-testkit"))
+
+    // The content-keyed cache, for one assertion and one only: a rung 2 failover moves the *host* a
+    // segment is fetched from, and `ContentKeys` keys on the content id and the URI path and never
+    // on the host — so the entries the second location filled are the ones the first location's
+    // URLs read back. It is asserted here rather than in `superplayer-cache` because the ladder is
+    // this module's and a phase 4 module may not depend on a phase 5 one. Phase 5 on phase 4,
+    // tests only.
+    testImplementation(project(":superplayer-cache"))
 }
 
 // The two slots this module fills — a `HeaderRefreshLayer` in the transfer chain and the

@@ -47,6 +47,19 @@ internal class FailedLoad(
     val retry: Int,
     /** Media3's own account of the load, for a rung that must name a location or a track back. */
     val info: LoadErrorHandlingPolicy.LoadErrorInfo,
+    /**
+     * What Media3 says is left to fall back to — how many locations and how many tracks this load
+     * had, and how many of each it has already excluded — or null when Media3 asked the question
+     * that carries none.
+     *
+     * Null is not "nothing is available": it is "not asked". Media3 hands these only to
+     * `getFallbackSelectionFor`, and `getRetryDelayMsFor` is asked with the load alone, so a climb
+     * begun from the second question can answer for rung 1 and for nothing above it. That costs
+     * nothing, because Media3 asks the *first* question first wherever a fallback is possible at all
+     * (see this file's KDoc), so a rung above 1 is never skipped by the absence of these — only a
+     * rung that had nowhere to go is spared being asked.
+     */
+    val fallbackOptions: LoadErrorHandlingPolicy.FallbackOptions? = null,
 )
 
 /** What a rung decided to do about a [FailedLoad]. */
@@ -67,11 +80,6 @@ internal fun interface LadderRung {
 
     /** What this rung does about [load], or [RungOutcome.Escalate] to hand it to the rung above. */
     fun attempt(load: FailedLoad): RungOutcome
-
-    companion object {
-        /** A rung that is not built yet: every failure passes straight through it. */
-        val ESCALATING: LadderRung = LadderRung { RungOutcome.Escalate }
-    }
 }
 
 /**
@@ -82,6 +90,11 @@ internal fun interface LadderRung {
  * and is not a profile's to vary — no content wants its variant excluded before its host is tried —
  * and the ceiling is the failure's own ([FailureClass.rungCeiling], rule 1), so a class that says
  * rung 1 is pointless does not spend a budget there on its way up.
+ *
+ * **A ceiling caps the climb; it does not route it.** Which of the rungs below its ceiling a class is
+ * worth offering is this object's decision, which rule 7 puts here in as many words — it is how a
+ * `Device.DecoderTransient` reaches rung 5 without trying a host, and each rung's KDoc argues its own
+ * refusals. `FallbackLadderTest` is that routing written down.
  *
  * ## Which rungs are here, and which are not
  *
@@ -108,6 +121,11 @@ internal class FallbackLadder(private val rungs: Map<FallbackRung, LadderRung>) 
 
     /** The outcome of offering [load] to each rung in turn, up to its class's ceiling. */
     fun climb(load: FailedLoad): RungOutcome {
+        // A ceiling of rung 6 is the one that is not a permission to climb: rung 6 is not a remedy
+        // the ladder performs but the point at which it has stopped, so a class whose ceiling is the
+        // typed error is offered no rung at all — "goes to rung 6 at once" (ADR-0011 rule 7, and
+        // `FailureClass.rungCeiling`, which says the same in the other direction).
+        if (load.failureClass.rungCeiling == FallbackRung.TYPED_ERROR) return RungOutcome.Escalate
         for (rung in FallbackRung.entries) {
             if (rung > load.failureClass.rungCeiling) break
             val outcome = rungs[rung]?.attempt(load) ?: RungOutcome.Escalate
@@ -119,12 +137,12 @@ internal class FallbackLadder(private val rungs: Map<FallbackRung, LadderRung>) 
     companion object {
 
         /**
-         * The ladder as it stands: rung 1 built, rungs 2 and 3 present and passing everything
-         * through until the tickets that own them land.
+         * The ladder as it stands: rungs 1 to 3, every rung a load error can reach from inside a
+         * load. Rungs 4 to 6 are not registered here at all — see this class's KDoc.
          *
          * Named here rather than assembled at each call site so that a later rung is one entry in
          * this map and no edit to `Resilience` or to `RetryingLoadErrors` — which is the whole
-         * point of the rungs being separate objects while only one of them does anything.
+         * point of the rungs being separate objects.
          *
          * [random] is where every backoff draws its jitter; one source per player, so two players
          * retrying the same edge do not draw the same sequence.
@@ -132,12 +150,8 @@ internal class FallbackLadder(private val rungs: Map<FallbackRung, LadderRung>) 
         fun standard(random: Random): FallbackLadder = FallbackLadder(
             mapOf(
                 FallbackRung.RETRY_SAME_URL to RetrySameUrl(random),
-                // Another CDN host or DASH `BaseURL`, answered as a `FALLBACK_TYPE_LOCATION`
-                // selection. #180.
-                FallbackRung.NEXT_HOST to LadderRung.ESCALATING,
-                // The failing variant excluded, answered as a `FALLBACK_TYPE_TRACK` selection and
-                // still under the ceiling the decision in force allows (rule 8). #181.
-                FallbackRung.EXCLUDE_VARIANT to LadderRung.ESCALATING,
+                FallbackRung.NEXT_HOST to NextHost,
+                FallbackRung.EXCLUDE_VARIANT to ExcludeVariant,
             ),
         )
     }
@@ -166,4 +180,137 @@ internal class RetrySameUrl(private val random: Random) : LadderRung {
         if (load.retry > load.budget.maxRetries) return RungOutcome.Escalate
         return RungOutcome.RetryAfter(Backoff.delayMsFor(load.budget, load.retry, random))
     }
+}
+
+/**
+ * Rung 2: ask a different location for the same content — the next CDN host, or the next DASH
+ * `BaseURL`.
+ *
+ * spec: ISO/IEC 23009-1 §5.6.4 — a DASH manifest that carries more than one `BaseURL` at one level
+ * declares the same content at alternative locations, and a client may use any of them; ETSI TS
+ * 103 285 §10.8.2.1 (DVB-DASH) adds the `dvb:priority` and `dvb:weight` attributes that order them.
+ * Which location is chosen, and how long an excluded one stays out, is Media3's own
+ * `BaseUrlExclusionList`; what is decided here is *whether* to move, which is the part ADR-0011 rule
+ * 7 puts on the ladder and which Media3 would otherwise decide from its own error-code table.
+ *
+ * **The content is the same content, so nothing about its identity changes.** A key in
+ * `superplayer-cache` is the content id and the URI *path* and never the host, so a session that
+ * failed over reads and writes the same cache entries it would have; that is `ContentKeys`' rule
+ * rather than this rung's, and it is why this rung has nothing to say about the cache.
+ *
+ * Rule 9 needs no code here either: a location fallback is performed by Media3 inside the load, and
+ * the rule is that SuperPlayer adds no re-seek around it.
+ *
+ * ## Two refusals
+ *
+ * 1. **A class no host has anything to do with.** `Device` failures are failures of *this* device's
+ *    decoding, and [FailureClass.Device.DecoderTransient]'s own documentation says the ladder
+ *    reaches rung 5 for it without trying a host. Rung 2 is where that skip is performed, because a
+ *    ceiling caps the climb and does not route it (`FailureClass.rungCeiling`).
+ * 2. **Nowhere to go.** Media3 counts the locations and the exclusions, and a content with one
+ *    location has no second one; HLS reports one always, since Media3 gives an HLS chunk source no
+ *    location dimension at all. So an HLS session escalates through this rung to rung 3, which is
+ *    the correct order rather than a gap: ADR-0011 rule 13 reserves the header-refresh slot for a
+ *    host substitution should one be wanted, and nothing there is needed for a protocol whose
+ *    renditions already carry their own URLs.
+ */
+internal object NextHost : LadderRung {
+
+    override fun attempt(load: FailedLoad): RungOutcome {
+        if (load.failureClass is FailureClass.Device) return RungOutcome.Escalate
+        val options = load.fallbackOptions ?: return RungOutcome.Escalate
+        if (!options.isFallbackAvailable(LoadErrorHandlingPolicy.FALLBACK_TYPE_LOCATION)) return RungOutcome.Escalate
+        return RungOutcome.FallBackTo(
+            LoadErrorHandlingPolicy.FallbackSelection(
+                LoadErrorHandlingPolicy.FALLBACK_TYPE_LOCATION,
+                LOCATION_EXCLUSION_MS,
+            ),
+        )
+    }
+
+    /**
+     * How long a location that failed stays out: five minutes.
+     *
+     * An edge that refused or dropped a request is usually still refusing a minute later — a bad
+     * node, a bad configuration, a region cut off — so a short exclusion buys a return to the host
+     * that just failed and a second spend of the same budget. Five minutes is long enough that a
+     * session of ordinary length does not go back, and short enough that a player left running past
+     * an outage finds its nearer edge again. It is also Media3's own figure for the same decision
+     * (`DefaultLoadErrorHandlingPolicy.DEFAULT_LOCATION_EXCLUSION_MS`), which is the tie-breaker:
+     * this rung is about *which* failures move location, and moving Media3's duration as well would
+     * be two changes argued as one.
+     */
+    const val LOCATION_EXCLUSION_MS: Long = 5 * 60 * 1_000L
+}
+
+/**
+ * Rung 3: take the failing rendition out of the ladder and carry on at another bitrate.
+ *
+ * Media3's own track exclusion, handed back as a `FALLBACK_TYPE_TRACK` selection, which is the only
+ * mechanism there is for this from inside a load — what is SuperPlayer's is *when* it is asked for.
+ * Media3 asks for a fallback on a fixed table of statuses and on nothing else — 403, 404, 410, 416,
+ * 500 and 503 (// ref: `DefaultLoadErrorHandlingPolicy.isEligibleForFallback`) — so a 502 or a
+ * dropped connection ends a session it could have moved, and a 403 moves one whose token a refresh
+ * would have fixed. This rung asks on the classification instead, which is ADR-0011 rule 1's point
+ * of having a classifier at all and rule 7's "driven by the class rather than by Media3's defaults".
+ *
+ * ## Rule 8, and why it needs no code here
+ *
+ * "Excluding a variant hands Media3 a narrower ladder, and the rung it continues at is still chosen
+ * under the selection ceiling and pace `PlaybackPolicy` decided." That holds by construction, in
+ * both engines a decision can be in force on: with `superplayer-abr` the ceiling is a *refusal* in
+ * `NetworkAwareTrackSelection.canSelectFormat`, re-checked on every evaluation; without it the
+ * ceiling is `TrackSelectionParameters.maxVideoBitrate`, a constraint `DefaultTrackSelector` applies
+ * before a selection is built. An exclusion only ever removes a rung from what is available, and
+ * neither mechanism consults it, so no exclusion can widen what the policy allows. When the
+ * exclusion leaves nothing under the ceiling the selection has nothing to continue on and the
+ * failure escalates out of this rung — which is rule 8's "it moves to rung 4" arriving by the route
+ * the rule names, rather than by this rung second-guessing a ceiling it cannot see the rungs of.
+ *
+ * ## Two refusals
+ *
+ * 1. **[FailureClass.Device.DecoderTransient].** A decoder that was working and stopped, or one that
+ *    could not be had for a moment, is not a property of the rendition, and its own documentation
+ *    puts its remedy at rung 5. Its sibling [FailureClass.Device.DecoderInit] is *not* refused, and
+ *    the asymmetry is that class's own: "another variant or another source may be within reach" is
+ *    exactly what this rung offers a rung the device could not build a decoder for.
+ * 2. **[FailureClass.Content.ManifestInvalid].** A description that cannot be acted on is not one
+ *    rendition's doing, and the same description is still there with a rendition taken out of it.
+ *    Rung 2 does *not* refuse it, and that asymmetry is the class's own too: a publication defect at
+ *    one host can be absent from another, while no rendition of one manifest escapes that manifest.
+ */
+internal object ExcludeVariant : LadderRung {
+
+    override fun attempt(load: FailedLoad): RungOutcome {
+        if (load.failureClass is FailureClass.Device.DecoderTransient) return RungOutcome.Escalate
+        if (load.failureClass is FailureClass.Content.ManifestInvalid) return RungOutcome.Escalate
+        val options = load.fallbackOptions ?: return RungOutcome.Escalate
+        if (!options.isFallbackAvailable(LoadErrorHandlingPolicy.FALLBACK_TYPE_TRACK)) return RungOutcome.Escalate
+        return RungOutcome.FallBackTo(
+            LoadErrorHandlingPolicy.FallbackSelection(
+                LoadErrorHandlingPolicy.FALLBACK_TYPE_TRACK,
+                TRACK_EXCLUSION_MS,
+            ),
+        )
+    }
+
+    /**
+     * How long an excluded rendition stays out: one minute.
+     *
+     * The mechanism is time-bounded and there is no untimed one — Media3's `excludeTrack` takes a
+     * duration — so "does not reappear on the next evaluation" is met by the duration being long
+     * against an evaluation rather than by construction. A minute is tens of evaluations, since a
+     * selection is evaluated about once per chunk; a rendition still broken when it lapses fails
+     * once more and is excluded again, which is the self-correcting end of the trade, and one that
+     * has recovered is back in the ladder without the session having to end to find out.
+     *
+     * The other exclusion in this library is deliberately the opposite:
+     * `NetworkAwareTrackSelection.CEILING_EXCLUSION_MS` is one millisecond, because there the
+     * *refusal* keeps the rung out for as long as the ceiling stands and the exclusion only has to
+     * unseat the rung that is playing. Nothing refuses a rendition that failed to load, so here the
+     * duration is the whole of the mechanism. Media3's own figure for this decision
+     * (`DefaultLoadErrorHandlingPolicy.DEFAULT_TRACK_EXCLUSION_MS`) is the same minute, and it is
+     * kept for the reason [NextHost.LOCATION_EXCLUSION_MS] is kept.
+     */
+    const val TRACK_EXCLUSION_MS: Long = 60 * 1_000L
 }

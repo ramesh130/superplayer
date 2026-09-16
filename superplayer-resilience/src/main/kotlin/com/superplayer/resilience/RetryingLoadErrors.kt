@@ -118,7 +118,7 @@ internal class RetryingLoadErrors(
         fallbackOptions: LoadErrorHandlingPolicy.FallbackOptions,
         loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo,
     ): LoadErrorHandlingPolicy.FallbackSelection? =
-        (climb(loadErrorInfo) as? RungOutcome.FallBackTo)?.selection
+        (climb(loadErrorInfo, fallbackOptions) as? RungOutcome.FallBackTo)?.selection
 
     /**
      * The backoff rung 1 decided, or `C.TIME_UNSET` — Media3's "do not retry" — when the budget is
@@ -128,11 +128,11 @@ internal class RetryingLoadErrors(
      * everything above rung 3 begins, which today means the failure surfaces to the consumer exactly
      * as it does on a player with no resilience at all (ADR-0011 rule 7, and see [FallbackLadder]).
      *
-     * A climb that ends in [RungOutcome.FallBackTo] here is a rung above 1 answering the question
-     * Media3 asks only of the sources that never ask the other one — a manifest loader. Refusing the
-     * retry is the right answer for it either way: the rung that took the failure on will act, and
-     * asking for the same bytes again as well would spend a budget on a load something else is
-     * already handling.
+     * The climb behind this answer carries no [LoadErrorHandlingPolicy.FallbackOptions], because
+     * Media3 hands none to this question, so rungs 2 and 3 decline it and only rung 1 can answer.
+     * That is the right shape rather than a gap: every source that has a location or a track to fall
+     * back to asks the *other* question first and acts on what it is told there, so the only loads
+     * that reach here alone are the ones with nowhere above rung 1 to go.
      */
     override fun getRetryDelayMsFor(loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo): Long =
         when (val outcome = climb(loadErrorInfo)) {
@@ -151,7 +151,10 @@ internal class RetryingLoadErrors(
     override fun getMinimumLoadableRetryCount(dataType: Int): Int =
         RetryBudgetKind.ofDataType(dataType).budgetIn(retryPolicy()).maxRetries
 
-    private fun climb(info: LoadErrorHandlingPolicy.LoadErrorInfo): RungOutcome {
+    private fun climb(
+        info: LoadErrorHandlingPolicy.LoadErrorInfo,
+        options: LoadErrorHandlingPolicy.FallbackOptions? = null,
+    ): RungOutcome {
         val kind = RetryBudgetKind.ofDataType(info.mediaLoadData.dataType)
         return ladder.climb(
             FailedLoad(
@@ -159,6 +162,7 @@ internal class RetryingLoadErrors(
                 budget = kind.budgetIn(retryPolicy()),
                 retry = info.errorCount,
                 info = info,
+                fallbackOptions = options,
             ),
         )
     }

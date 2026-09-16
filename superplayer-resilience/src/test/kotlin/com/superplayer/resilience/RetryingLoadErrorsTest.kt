@@ -152,21 +152,87 @@ class RetryingLoadErrorsTest {
         // Media3 asks a chunk source's policy for a fallback *before* it asks for a retry delay,
         // which is ADR-0011 rule 7's ladder upside down. The answer here is null for as long as rung
         // 1 has anything left, which is what stops a rung above being reached before the one beneath
-        // it has failed — and it stays null afterwards too, because rungs 2 and 3 are not built.
-        val policy = RetryingLoadErrors.forPlayer(
-            decisionsOf(RetryPolicy(segment = RetryBudget(maxRetries = 1, initialBackoffMs = 10, maxBackoffMs = 10))),
-            Random(SEED),
-        )
-        val options = LoadErrorHandlingPolicy.FallbackOptions(
+        // it has failed. Delete this and rungs 2 and 3 would be reached on the first failure of every
+        // load, silently, and every budget below them would go unspent.
+        val policy = policyWithOneRetry()
+
+        assertThat(policy.getFallbackSelectionFor(everywhereToGo(), transferFailure(C.DATA_TYPE_MEDIA, errorCount = 1)))
+            .isNull()
+    }
+
+    @Test
+    fun rungTwoIsReachedOnceRungOneSBudgetIsSpent() {
+        // The other half of the order: the ask after the last the budget allowed is the one rung 2
+        // takes on, and what it answers is a *location* — the next CDN host or `BaseURL` — rather
+        // than the track exclusion that sits above it (ADR-0011 rule 7).
+        val policy = policyWithOneRetry()
+
+        val selection = policy.getFallbackSelectionFor(everywhereToGo(), transferFailure(C.DATA_TYPE_MEDIA, errorCount = 2))
+
+        assertThat(selection).isNotNull()
+        assertThat(checkNotNull(selection).type).isEqualTo(LoadErrorHandlingPolicy.FALLBACK_TYPE_LOCATION)
+        assertThat(selection.exclusionDurationMs).isEqualTo(NextHost.LOCATION_EXCLUSION_MS)
+    }
+
+    @Test
+    fun rungThreeIsReachedOnlyOnceThereIsNoLocationLeft() {
+        // A rung is reached when the one below it has failed, and "failed" for rung 2 includes
+        // having nowhere to go: every location already excluded is a rung 2 that cannot act, and
+        // only then is the failing rendition taken out of the ladder.
+        val policy = policyWithOneRetry()
+        val noLocationLeft = LoadErrorHandlingPolicy.FallbackOptions(
             /* numberOfLocations= */ 2,
-            /* numberOfExcludedLocations= */ 0,
+            /* numberOfExcludedLocations= */ 2,
             /* numberOfTracks= */ 2,
             /* numberOfExcludedTracks= */ 0,
         )
 
-        assertThat(policy.getFallbackSelectionFor(options, transferFailure(C.DATA_TYPE_MEDIA, errorCount = 1))).isNull()
-        assertThat(policy.getFallbackSelectionFor(options, transferFailure(C.DATA_TYPE_MEDIA, errorCount = 2))).isNull()
+        val selection = policy.getFallbackSelectionFor(noLocationLeft, transferFailure(C.DATA_TYPE_MEDIA, errorCount = 2))
+
+        assertThat(checkNotNull(selection).type).isEqualTo(LoadErrorHandlingPolicy.FALLBACK_TYPE_TRACK)
+        assertThat(selection.exclusionDurationMs).isEqualTo(ExcludeVariant.TRACK_EXCLUSION_MS)
     }
+
+    @Test
+    fun aClassTheLadderWillNotExcludeAVariantForLeavesTheLadderIntact() {
+        // Which rungs a class is offered is [FallbackLadder]'s, and `FallbackLadderTest` is where
+        // every routing is stated; what is pinned here is that the routing survives the trip through
+        // Media3's own question. A live window no playhead fits inside is core's detection, mapped
+        // to `Content.ManifestInvalid`: another host may hold a sound manifest, so rung 2 takes it,
+        // and no rendition of an unusable description is usable, so rung 3 does not.
+        val policy = policyWithOneRetry()
+        val tooShort = LiveWindowTooShortException(
+            manifestUri = MANIFEST_URI,
+            timeShiftBufferDepthMs = 2_000,
+            segmentDurationMs = 4_000,
+            availabilityTimeOffsetMs = 0,
+        )
+        val noLocationLeft = LoadErrorHandlingPolicy.FallbackOptions(
+            /* numberOfLocations= */ 2,
+            /* numberOfExcludedLocations= */ 2,
+            /* numberOfTracks= */ 2,
+            /* numberOfExcludedTracks= */ 0,
+        )
+
+        assertThat(policy.getFallbackSelectionFor(everywhereToGo(), loadError(C.DATA_TYPE_MANIFEST, tooShort, errorCount = 1)))
+            .isNotNull()
+        assertThat(policy.getFallbackSelectionFor(noLocationLeft, loadError(C.DATA_TYPE_MANIFEST, tooShort, errorCount = 1)))
+            .isNull()
+    }
+
+    /** One retry allowed, so `errorCount` 1 is inside rung 1 and 2 is the first ask above it. */
+    private fun policyWithOneRetry(): RetryingLoadErrors = RetryingLoadErrors.forPlayer(
+        decisionsOf(RetryPolicy(segment = RetryBudget(maxRetries = 1, initialBackoffMs = 10, maxBackoffMs = 10))),
+        Random(SEED),
+    )
+
+    /** A load with a second location and a second rendition both still available. */
+    private fun everywhereToGo() = LoadErrorHandlingPolicy.FallbackOptions(
+        /* numberOfLocations= */ 2,
+        /* numberOfExcludedLocations= */ 0,
+        /* numberOfTracks= */ 2,
+        /* numberOfExcludedTracks= */ 0,
+    )
 
     private fun decisionsOf(retry: RetryPolicy): DecisionInForce = DecisionInForce().apply {
         val decision = decisionWith(retry)

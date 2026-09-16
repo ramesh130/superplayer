@@ -388,10 +388,26 @@ was always going to be refused. What bounds it is progress: a provider that retu
 refused, or throws, declines, and the refusal escalates unrepaired. `TokenRefreshPlaybackTest` forces
 all of it through the harness against `FaultScript.expireTokenAtSegment(…, refreshable = true)`, with
 the retry budget set to nothing wherever a repair is expected — so a session that heals can only have
-healed before a retry. Rung 1 is `RetrySameUrl` inside `FallbackLadder`, which holds one hook per rung
-and is the *one* place ADR-0011 rule 7's order is imposed — Media3 asks a chunk source's policy for a
-fallback **before** it asks for a retry delay, which is the ladder upside down, so both answers come
-out of one climb and rungs 2 and 3 stay empty and escalating until #180 and #181. The numbers are
+healed before a retry. Every rung a *load error* can reach is inside `FallbackLadder`, which holds
+one hook per rung and is the *one* place ADR-0011 rule 7's order is imposed — Media3 asks a chunk
+source's policy for a fallback **before** it asks for a retry delay, which is the ladder upside down,
+so both answers come out of one climb. Three are built: `RetrySameUrl`, `NextHost` and
+`ExcludeVariant`, answering a backoff, a `FALLBACK_TYPE_LOCATION` selection and a
+`FALLBACK_TYPE_TRACK` one; rungs 4 to 6 are not a load's to perform and begin where a climb escalates
+out of the top (#182, #183). A ceiling caps the climb and does **not** route it: which rungs below a
+class's `rungCeiling` are worth offering is the ladder's, which is how a `Device.DecoderTransient`
+reaches rung 5 without trying a host and why a `Fatal.Unsupported` is offered nothing at all, and
+`FallbackLadderTest` is that routing written down. Two things to know about the two upper rungs.
+Media3 gives an *HLS* chunk source no location dimension, so rung 2 is DASH `BaseURL` failover
+(ISO/IEC 23009-1 §5.6.4, ordered by DVB-DASH's `dvb:priority`) and an HLS failure escalates through
+it to rung 3 — which is the order rather than a gap, and why `FallbackPlaybackTest` forces rung 2
+through DASH and rung 3 through HLS. And rung 3 keeps ADR-0011 rule 8 by construction rather than by
+arithmetic: an exclusion only narrows what is available, while the policy's ceiling is a `canSelectFormat`
+refusal under `superplayer-abr` and `TrackSelectionParameters.maxVideoBitrate` without it, so no
+exclusion can widen what the policy allows, and an exclusion that leaves nothing under the ceiling
+escalates to rung 4 on its own. The exclusions are *time-bounded*, which is Media3's only mechanism
+here and the opposite of `NetworkAwareTrackSelection.CEILING_EXCLUSION_MS`'s one millisecond: nothing
+refuses a rendition that failed to load, so the duration is the whole of the mechanism. The numbers are
 `PlaybackDecision.retry`, core's public `RetryPolicy`: three `RetryBudget`s, one each for manifest,
 segment and licence, so one exhausted budget cannot spend another's, defaulting to Media3's own and
 set per profile in `StaticProfilePolicy` with a reason per row. The licence budget is declared and
@@ -402,7 +418,13 @@ through core's internal `DecisionInForce`, a window onto `player.playbackDecisio
 player exists. `Backoff` is the growth and the jitter, and the jitter is correctness rather than
 policy (rule 12): equal jitter, uniform over `[base/2, base]`, argued where it is chosen.
 `RetryPlaybackTest` forces every claim through the harness over real HLS and counts what left the
-chain, `RetryBackoffTest` asserts the spread rather than one delay.
+chain, `RetryBackoffTest` asserts the spread rather than one delay, and `FallbackPlaybackTest` forces
+the two upper rungs with a **502** — a status Media3's own fallback table does not list, so a
+fallback that happens is the ladder's and not Media3's, which the same file's stock-player test
+counts. A fault reaches one rendition or one CDN by being addressed at its *host*
+(`FaultScript`'s fourth coordinate): `TestContent.dash(mirrorHost = …)` is the same media at two
+`BaseURL`s and `TestContent.hls(secondVariantHost = …)` puts the higher rendition somewhere a fault
+can name it.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,

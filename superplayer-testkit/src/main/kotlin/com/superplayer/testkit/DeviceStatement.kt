@@ -140,7 +140,12 @@ public object DeviceStatement {
     }
 
     @RequiresApi(Build.VERSION_CODES.Q)
-    private fun addVideoDecoder(mimeType: String, maxSupportedInstances: Int?, profileLevels: Array<out Pair<Int, Int>>) {
+    private fun addVideoDecoder(
+        mimeType: String,
+        maxSupportedInstances: Int?,
+        profileLevels: Array<out Pair<Int, Int>>,
+        secure: Boolean = false,
+    ) {
         val declared = profileLevels.map { (profile, level) ->
             MediaCodecInfo.CodecProfileLevel().also {
                 it.profile = profile
@@ -148,7 +153,12 @@ public object DeviceStatement {
             }
         }
         val capabilities = MediaCodecInfoBuilder.CodecCapabilitiesBuilder.newBuilder()
-            .setMediaFormat(MediaFormat().apply { setString(MediaFormat.KEY_MIME, mimeType) })
+            .setMediaFormat(
+                MediaFormat().apply {
+                    setString(MediaFormat.KEY_MIME, mimeType)
+                    if (secure) setInteger(SECURE_PLAYBACK_FEATURE_KEY, 1)
+                },
+            )
             .setIsEncoder(false)
             .setColorFormats(intArrayOf(MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible))
             .setProfileLevels(declared.toTypedArray())
@@ -158,9 +168,10 @@ public object DeviceStatement {
         // ref: https://developer.android.com/reference/android/media/MediaCodecInfo.CodecCapabilities#getMaxSupportedInstances()
         // ref: https://cs.android.com/android/platform/superproject/+/android-15.0.0_r1:frameworks/base/media/java/android/media/MediaCodecInfo.java
         maxSupportedInstances?.let { ReflectionHelpers.setField(capabilities, "mMaxSupportedInstances", it) }
+        val secureSuffix = if (secure) ".secure" else ""
         ShadowMediaCodecList.addCodec(
             MediaCodecInfoBuilder.newBuilder()
-                .setName("test.decoder.${mimeType.substringAfterLast('/')}.${declaredDecoders++}")
+                .setName("test.decoder.${mimeType.substringAfterLast('/')}.${declaredDecoders++}$secureSuffix")
                 .setIsEncoder(false)
                 .setCapabilities(capabilities)
                 .build(),
@@ -203,6 +214,117 @@ public object DeviceStatement {
         shadowOf(connectivityManager).setRestrictBackgroundStatus(ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED)
     }
 
+    /**
+     * A device with a working Widevine implementation at [securityLevel], running at most
+     * [maxConcurrentSessions] DRM sessions at once.
+     *
+     * Stated rather than shadowed, and [WidevineStatement]'s KDoc says why there is no choice:
+     * Robolectric 4.16 ships no `ShadowMediaDrm`, so what stands in for the device is the
+     * `ExoMediaDrm` a session manager talks to. A test states it here anyway, beside its display and
+     * its decoders, so that a reader finds the whole device in one place.
+     *
+     * [maxConcurrentSessions] is the limit a real implementation enforces and the reason a feed of
+     * protected content cannot simply open a session per row. One is not the interesting number and
+     * the default is deliberately more than one, so that a test which is not about the limit does not
+     * meet it by accident.
+     *
+     * Declare before the test's first player is built, as every other declaration here is: the
+     * statement is read when a player's DRM session manager is constructed.
+     */
+    @JvmStatic
+    @JvmOverloads
+    public fun declareWidevine(
+        securityLevel: SecurityLevel = SecurityLevel.L1,
+        maxConcurrentSessions: Int = DEFAULT_MAX_CONCURRENT_DRM_SESSIONS,
+        provisioningRequired: Boolean = false,
+    ) {
+        require(maxConcurrentSessions > 0) { "A device runs at least one DRM session, not $maxConcurrentSessions" }
+        widevine = WidevineStatement(
+            securityLevel,
+            maxConcurrentSessions,
+            provisioningRequired,
+            provisioningFails = false,
+        )
+    }
+
+    /**
+     * A device whose Widevine implementation cannot be provisioned: the provisioning service refuses
+     * it, so no licence at [securityLevel] can ever be acquired.
+     *
+     * The commonest reason a handset that reports L1 cannot play at L1 — a revoked or untrusted
+     * implementation — and the case ADR-0012 rule 11's downgrade exists for. It is a *device*
+     * refusal rather than a failed transfer: the provisioning request reaches the service and is
+     * turned down, which is a different failure from one a [FaultScript] at [ResourceKind.LICENCE]
+     * injects, and a test that means one should not write the other.
+     */
+    @JvmStatic
+    @JvmOverloads
+    public fun declareWidevineProvisioningFailure(securityLevel: SecurityLevel = SecurityLevel.L1) {
+        widevine = WidevineStatement(
+            securityLevel,
+            DEFAULT_MAX_CONCURRENT_DRM_SESSIONS,
+            provisioningRequired = true,
+            provisioningFails = true,
+        )
+    }
+
+    /**
+     * As [declareVideoDecoder], and declaring the decoder able to operate on protected memory — the
+     * kind a licence acquired at [SecurityLevel.L1] may only be used with.
+     *
+     * ref: `MediaCodecInfo.CodecCapabilities.FEATURE_SecurePlayback` is the feature name
+     * (`secure-playback`), and a capability is declared by the key `feature-` plus that name:
+     * https://developer.android.com/reference/android/media/MediaCodecInfo.CodecCapabilities#FEATURE_SecurePlayback
+     * A device's secure decoder is also conventionally the plain decoder's name with `.secure`
+     * appended, which is how Media3 finds one when a codec list is read by name, so the declaration
+     * carries both.
+     *
+     * [maxSupportedInstances] is stated separately from the plain decoder's for the reason the
+     * distinction exists at all: a device commonly runs several ordinary video decoders and exactly
+     * one secure one, so a feed of protected content has a different bound from the same feed in the
+     * clear.
+     */
+    @JvmStatic
+    @RequiresApi(Build.VERSION_CODES.Q)
+    public fun declareSecureVideoDecoder(
+        mimeType: String,
+        maxSupportedInstances: Int,
+        vararg profileLevels: Pair<Int, Int>,
+    ) {
+        require(maxSupportedInstances > 0) { "A decoder runs at least one instance, not $maxSupportedInstances" }
+        addVideoDecoder(mimeType, maxSupportedInstances, profileLevels, secure = true)
+    }
+
+    /**
+     * This device's Widevine implementation: what a test last declared, or [ordinaryWidevineDevice].
+     *
+     * Never absent, for the reason the default display is never absent — a player built over
+     * protected content needs *some* device, and a harness that made every such test declare one
+     * would be charging every test for the case only a few are about.
+     */
+    internal var widevine: WidevineStatement = ordinaryWidevineDevice()
+        private set
+
+    /**
+     * Forgets the DRM statement, so one test's device is not the next one's.
+     *
+     * Every other declaration here writes into a Robolectric shadow, and Robolectric resets those
+     * between tests. This one is a field of this object, which outlives a test method, so the reset
+     * has to be written down — [PlaybackHarness] calls it before each test, where it also states the
+     * default display.
+     */
+    internal fun forgetWidevine() {
+        widevine = ordinaryWidevineDevice()
+    }
+
+    /** An unremarkable modern handset: hardware-backed Widevine, already provisioned. */
+    private fun ordinaryWidevineDevice() = WidevineStatement(
+        SecurityLevel.L1,
+        DEFAULT_MAX_CONCURRENT_DRM_SESSIONS,
+        provisioningRequired = false,
+        provisioningFails = false,
+    )
+
     private var declaredDecoders = 0
 
     private val context: Context
@@ -226,4 +348,16 @@ public object DeviceStatement {
     /** A mode id nothing else on the simulated device uses, and the refresh rate every display has. */
     private const val DECLARED_MODE_ID = 1
     private const val DECLARED_REFRESH_RATE_HZ = 60f
+
+    /**
+     * More than one, so a test that is not about the session limit never meets it, and few enough
+     * that a test which *is* about it can reach it without opening a hundred sessions.
+     */
+    private const val DEFAULT_MAX_CONCURRENT_DRM_SESSIONS = 4
+
+    /**
+     * ref: a codec capability is declared in the format under `feature-` plus the feature's name, and
+     * `MediaCodecInfo.CodecCapabilities.FEATURE_SecurePlayback` is `secure-playback`.
+     */
+    private const val SECURE_PLAYBACK_FEATURE_KEY = "feature-secure-playback"
 }

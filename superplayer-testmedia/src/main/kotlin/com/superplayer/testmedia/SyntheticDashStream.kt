@@ -58,8 +58,17 @@ public object SyntheticDashStream {
     /** Where this stream's resources sit when served from [host] instead of [HOST]. */
     public fun baseUriOn(host: String): String = "fake://$host/dash/"
 
+    /**
+     * Where [protectedResources] lives: a directory of its own, so it and [resources] can sit in one
+     * data set and a test can play both in one session.
+     */
+    private const val PROTECTED_BASE_URI = "fake://$HOST/dash-protected/"
+
     /** `.mpd` is load-bearing: Media3 infers the content type from the URI's extension. */
     public const val MANIFEST_URI: String = BASE_URI + "manifest.mpd"
+
+    /** What a player is pointed at to play [protectedResources]. */
+    public const val PROTECTED_MANIFEST_URI: String = PROTECTED_BASE_URI + "manifest.mpd"
     internal const val INITIALIZATION_NAME = "init.mp4"
 
     internal fun segmentName(index: Int) = "segment$index.m4s"
@@ -144,6 +153,23 @@ public object SyntheticDashStream {
     }
 
     /**
+     * The Widevine-protected form of this stream: the same media, under an MPD that declares Common
+     * Encryption and carries [WidevineProtection]'s `pssh` box.
+     *
+     * The segments are byte-identical to [resources]'s, and [WidevineProtection]'s KDoc says why that
+     * is the right stream rather than a shortcut: what a protected stream has to do here is make a
+     * player acquire a licence before it reads a sample, and the manifest is where that is decided.
+     */
+    public fun protectedResources(segmentCount: Int = 1): Map<String, ByteArray> {
+        require(segmentCount >= 1) { "A stream needs at least one segment, was $segmentCount" }
+        return buildMap {
+            put(PROTECTED_MANIFEST_URI, manifest(segmentCount, mirrorHost = null, protected = true).toByteArray())
+            put(PROTECTED_BASE_URI + INITIALIZATION_NAME, initializationSegment())
+            repeat(segmentCount) { index -> put(PROTECTED_BASE_URI + segmentName(index), mediaSegment(index)) }
+        }
+    }
+
+    /**
      * spec: ISO/IEC 23009-1 §5.3 — a static, single-period, single-representation MPD.
      *
      * spec: ISO/IEC 23009-1 §8.5 — it declares the ISOBMFF *main* profile, which admits a static MPD
@@ -165,12 +191,13 @@ public object SyntheticDashStream {
      * offer a player nothing to fail over to. [mirrorHost] null emits no `BaseURL` element and no
      * namespace declaration, so the single-host document is exactly what it always was.
      */
-    private fun manifest(segmentCount: Int, mirrorHost: String?): String {
+    private fun manifest(segmentCount: Int, mirrorHost: String?, protected: Boolean = false): String {
         val durationSeconds = SEGMENT_DURATION_IN_TIMESCALE.toDouble() * segmentCount / TIMESCALE
         val segmentUrls = (0 until segmentCount).map { index ->
             "          <SegmentURL media=\"${segmentName(index)}\"/>"
         }
         val dvbNamespace = mirrorHost?.let { listOf("     xmlns:dvb=\"$DVB_EXTENSIONS_NAMESPACE\"") }.orEmpty()
+        val cencNamespace = if (protected) listOf("     xmlns:cenc=\"$CENC_NAMESPACE\"") else emptyList()
         val baseUrls = mirrorHost?.let {
             listOf(
                 "  <BaseURL dvb:priority=\"1\" dvb:weight=\"1\" serviceLocation=\"origin\">$BASE_URI</BaseURL>",
@@ -187,7 +214,7 @@ public object SyntheticDashStream {
             listOf(
                 "<?xml version=\"1.0\" encoding=\"utf-8\"?>",
                 "<MPD xmlns=\"urn:mpeg:dash:schema:mpd:2011\"",
-            ) + dvbNamespace + listOf(
+            ) + dvbNamespace + cencNamespace + listOf(
                 "     profiles=\"urn:mpeg:dash:profile:isoff-main:2011\"",
                 "     type=\"static\"",
                 "     mediaPresentationDuration=\"${xsDuration(durationSeconds)}\"",
@@ -195,6 +222,7 @@ public object SyntheticDashStream {
             ) + baseUrls + listOf(
                 "  <Period id=\"0\">",
                 "    <AdaptationSet mimeType=\"audio/mp4\" segmentAlignment=\"true\">",
+            ) + contentProtection(protected) + listOf(
                 "      <Representation id=\"0\"",
                 "                      bandwidth=\"$DECLARED_BITRATE_BPS\"",
                 "                      codecs=\"$DECLARED_CODECS\"",
@@ -213,6 +241,36 @@ public object SyntheticDashStream {
                 "</MPD>",
             )
             ).joinToString(separator = "\n")
+    }
+
+    /**
+     * The `ContentProtection` descriptors a protected adaptation set carries, or nothing at all.
+     *
+     * Two of them, which is what a Common Encryption stream declares and what the two say is
+     * different in kind:
+     *
+     * - spec: ISO/IEC 23001-7 §11.2 — the `urn:mpeg:dash:mp4protection:2011` descriptor whose `value`
+     *   is the **protection scheme**, `cenc` here (AES-128 in counter mode, §10.1). It says how the
+     *   samples are encrypted and names no DRM system, so every system's client reads it.
+     * - spec: ISO/IEC 23009-1 §5.8.4.1 and ISO/IEC 23001-7 §11.2 — a descriptor per DRM system,
+     *   identified by `urn:uuid:<system id>` and carrying that system's `pssh` box in a `cenc:pssh`
+     *   element. This one is Widevine's, and it is the element a session's `DrmInitData` comes from.
+     *
+     * No `cenc:default_KID` attribute, deliberately: Media3 turns that attribute into a second,
+     * system-neutral scheme data alongside Widevine's, and a licence server told which requests to
+     * allow is told in exactly those terms — so the extra entry would be one more thing for a test's
+     * expectation and the parser's output to agree about, bought for nothing this stream needs. The
+     * key id is in the `pssh` box, where [WidevineProtection] puts it.
+     */
+    private fun contentProtection(protected: Boolean): List<String> = if (!protected) {
+        emptyList()
+    } else {
+        listOf(
+            "      <ContentProtection schemeIdUri=\"$MP4_PROTECTION_SCHEME_ID_URI\" value=\"$PROTECTION_SCHEME\"/>",
+            "      <ContentProtection schemeIdUri=\"${WidevineProtection.SYSTEM_ID_URN}\">",
+            "        <cenc:pssh>${WidevineProtection.psshBase64()}</cenc:pssh>",
+            "      </ContentProtection>",
+        )
     }
 
     /** spec: ISO 8601 durations, as required by ISO/IEC 23009-1 §5.3.1.2 for `xs:duration`. */
@@ -553,6 +611,19 @@ public object SyntheticDashStream {
 
     /** spec: ETSI TS 103 285 §10.8.2.1 — where `dvb:priority` and `dvb:weight` are defined. */
     private const val DVB_EXTENSIONS_NAMESPACE = "urn:dvb:dash:dash-extensions:2014-1"
+
+    /** spec: ISO/IEC 23001-7 §11.2 — the namespace the `cenc:pssh` element is defined in. */
+    private const val CENC_NAMESPACE = "urn:mpeg:cenc:2013"
+
+    /** spec: ISO/IEC 23001-7 §11.2 — the scheme-neutral `ContentProtection` descriptor's identifier. */
+    private const val MP4_PROTECTION_SCHEME_ID_URI = "urn:mpeg:dash:mp4protection:2011"
+
+    /**
+     * spec: ISO/IEC 23001-7 §10.1 — `cenc`, AES-128 in counter mode: the Common Encryption scheme
+     * this stream declares. Its sibling `cbcs` (§10.4) is the other, and the distinction is the one
+     * ADR-0012 rule 7 turns on — which is why the scheme is declared here rather than left implicit.
+     */
+    private const val PROTECTION_SCHEME = "cenc"
 }
 
 private fun bytes(build: ByteArrayOutputStream.() -> Unit): ByteArray =

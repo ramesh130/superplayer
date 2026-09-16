@@ -350,6 +350,73 @@ list on first read, so `NetworkAwareTrackSelectionPlaybackTest` keeps its ungate
 separate test rather than playing it first. `Display.Mode` has no public constructor, which is why
 `declareDisplay` builds the mode through Robolectric's reflection helper, in that one place.
 
+## A Widevine device and a licence server
+
+Protected playback is the one part of the platform this seam cannot reach at all: **Robolectric 4.16
+ships no `ShadowMediaDrm`**, so `MediaDrm` cannot be constructed under `check` and nothing in the
+suite can stand in front of it. What can be reached is the object a `DrmSessionManager` actually
+talks to — Media3's own `FakeExoMediaDrm`, its nested `LicenseServer` and `FakeCryptoConfig` — and
+the whole of the DRM half of this harness is built on the fact that the interface, rather than the
+platform class, is where the seam is.
+
+Three pieces, each in the place the equivalent unprotected piece already lives.
+
+**The content declares the protection**, because that is where a real stream declares it.
+`TestContent.protectedHls()` and `TestContent.protectedDash()` are the protected twins of `hls()` and
+`dash()`: the same media, under a playlist carrying an `EXT-X-KEY` that names Widevine (RFC 8216
+§4.3.2.4) and under an MPD carrying a `ContentProtection` descriptor and a `cenc:pssh` box (ISO/IEC
+23009-1 §5.8.4.1, ISO/IEC 23001-7 §11.2). The two vocabularies are completely different and produce
+the same `DrmInitData`, which is the fact worth having both for. `superplayer-testmedia`'s
+`WidevineProtection` is the one `pssh` box both carry.
+
+**The samples are not encrypted, and that is deliberate.** What a protected stream has to do here is
+make the player acquire a licence before it reads a sample, and that follows entirely from the
+manifest. Encrypting the samples would add a decryption step nothing in a Robolectric test can
+perform — there is no `MediaCrypto`, and the fake renderers decode nothing — so it would turn a
+stream that exercises the licence round trip into one that cannot play at all. One consequence has to
+be paid for explicitly: Media3 plays a *clear* sample without waiting for keys by default, so the
+harness builds its session manager with `setPlayClearSamplesWithoutKeys(false)`. Without that line a
+session whose licence was refused plays the whole stream and ends normally, and every test of a DRM
+failure would pass by proving the opposite of what it says.
+
+**The device is stated, like the display and the decoders.** `DeviceStatement.declareWidevine(level,
+maxConcurrentSessions, provisioningRequired)` is an ordinary working implementation at `L1` or `L3`,
+and `declareWidevineProvisioningFailure(level)` is the one whose provisioning the service refuses —
+the commonest reason a handset that reports L1 cannot play at L1, and the case ADR-0012 rule 11's
+security-level downgrade exists for. A test that states nothing plays on an ordinary provisioned L1
+handset, for the reason the default television-sized display exists. `declareSecureVideoDecoder`
+declares a decoder able to operate on protected memory, with an instance limit of its own, because a
+device commonly runs several ordinary video decoders and exactly one secure one. The statement is a
+field rather than a Robolectric shadow, so nothing resets it between tests but the harness, which
+does so in `before()`.
+
+**The licence server is an origin at a host of its own**, `FakeLicenceServer.HOST`, answering
+`LICENCE_URI` and `PROVISION_URI`. That is what makes a licence exchange visible to everything this
+module already has: it is a transfer, so it passes through the shaper, the fault injector and the
+clock wait; it is addressed by `ResourceKind.LICENCE`, so a `FaultScript` can delay it, refuse it, or
+refuse it once and relent; and it is counted by `networkRequests`, so a test can say what was asked
+of it. Media3's `LicenseServer` is a `MediaDrmCallback` rather than anything HTTP-shaped, so
+`LicenceServerDataSource` does the translation in one place — a POST body *is* the request the
+callback would have been handed — and the entitlement decision stays Media3's rather than becoming a
+second, home-made licence server nobody has reviewed. The player's side is
+`TransportMediaDrmCallback`, and it is deliberately not Media3's own `HttpMediaDrmCallback`: that
+class's provisioning half appends the request to the URL as `&signedRequest=<request as text>`, and
+`FakeExoMediaDrm`'s provision request is three control bytes, which is not text.
+
+Two things follow that a test writer should know. A licence load **reports no bytes to a transfer
+listener**, because a licence is not media and a few hundred bytes of key exchange counted as a
+throughput sample would move an estimate that is supposed to describe how fast segments arrive.
+And a **provisioning request and a licence request are two resources of one kind, not two kinds**:
+they are fetched from different paths, so each gets an index in the order the session asks for them,
+and a fault naming the kind and no index addresses both — which is what "the licence server is down"
+means.
+
+`ProtectedPlaybackTest` is the worked example, and it drives a **stock** `ExoPlayer`: no SuperPlayer
+DRM code exists until #204, so everything it asserts is a claim about this harness rather than about
+the library. `PlaybackHarness.buildPlayer` refuses protected content outright and says why, because
+the alternative is a player that silently plays a protected stream with no session at all and a test
+that passes for it.
+
 ## Proving a player was released
 
 There is no `isReleased` on `Player`, and a released Media3 player answers most questions the way a
@@ -546,8 +613,8 @@ val player = harness.buildPlayer(
 Five things about it are load-bearing.
 
 **A fault is addressed by what is being fetched, never by a URL.** A `ResourceKind` — manifest,
-initialization segment, media segment — and an index within that kind is the same sentence under HLS
-and under DASH, so one script runs against either and means the same thing. A test that named a path
+initialization segment, media segment, licence — and an index within that kind is the same sentence
+under HLS and under DASH, so one script runs against either and means the same thing. A test that named a path
 would be a test that had to be rewritten for the other protocol. `FaultInjectionTest` is where that
 equivalence is pinned, and it pins it against sequences it did not invent: the URLs come out of
 Media3's own HLS playlist parser and DASH manifest parser, handed a playlist and an MPD, so what is
@@ -555,7 +622,9 @@ compared is what the protocols actually fetch.
 
 The kind itself is recognised from the naming every packager uses — `.m3u8` and `.mpd` for a
 manifest, a name containing `init` for an initialization segment, anything else a media segment —
-and that is a **heuristic, not a protocol guarantee**: neither RFC 8216 nor ISO/IEC 23009-1 reserves
+with one exception that is not a naming convention at all: a request is a **licence** request because
+it went to the licence server's host, which is a server the app nominated rather than one the
+manifest named. The rest is a **heuristic, not a protocol guarantee**: neither RFC 8216 nor ISO/IEC 23009-1 reserves
 a name for an initialization segment. It is right for what this repository generates and for the
 conventions in both specs' examples; a stream that named its media segments `init-0001.m4s` would be
 classified wrongly, and the place to fix that is `ResourceAddressBook.kindOf`, which is the one

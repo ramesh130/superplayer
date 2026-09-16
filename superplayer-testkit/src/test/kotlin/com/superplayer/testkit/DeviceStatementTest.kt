@@ -18,6 +18,7 @@ package com.superplayer.testkit
 
 import android.content.Context
 import android.hardware.display.DisplayManager
+import android.media.MediaCodecInfo
 import android.media.MediaCodecInfo.CodecProfileLevel
 import android.media.MediaCodecList
 import android.media.MediaFormat
@@ -79,6 +80,42 @@ class DeviceStatementTest {
         val levels = decoders.flatMap { it.getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_AVC).profileLevels.toList() }
         assertThat(levels.map { it.profile to it.level })
             .containsExactly(CodecProfileLevel.AVCProfileMain to CodecProfileLevel.AVCLevel41)
+    }
+
+    @Test
+    fun aDeclaredSecureDecoderIsReportedSecureAndWithItsOwnInstanceLimit() {
+        // A device commonly runs several ordinary video decoders and exactly one secure one, so the
+        // two limits are stated apart and have to *stay* apart: a declaration that quietly produced
+        // one decoder answering for both would make a protected feed's bound the clear feed's.
+        DeviceStatement.declareVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC, maxSupportedInstances = 4)
+        DeviceStatement.declareSecureVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC, maxSupportedInstances = 1)
+
+        val decoders = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
+            .filter { !it.isEncoder && MediaFormat.MIMETYPE_VIDEO_AVC in it.supportedTypes }
+            .map { it.getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_AVC) }
+        val secure = decoders.filter {
+            it.isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_SecurePlayback)
+        }
+        assertThat(secure.map { it.maxSupportedInstances }).containsExactly(1)
+        assertThat(decoders.map { it.maxSupportedInstances }).containsExactly(4, 1)
+    }
+
+    @Test
+    fun aDeclaredSecurityLevelIsWhatTheImplementationAnswers() {
+        // The property a Widevine implementation answers `L1` or `L3` to. Nothing in the library
+        // reads it yet — #208 and #211 are where it starts to matter — so it is asserted here, on
+        // the statement itself, rather than through a player that would not yet notice.
+        listOf(SecurityLevel.L1, SecurityLevel.L3).forEach { level ->
+            DeviceStatement.declareWidevine(level)
+
+            val drm = DeviceStatement.widevine.exoMediaDrm()
+            assertThat(drm.getPropertyString("securityLevel")).isEqualTo(level.name)
+            // And the half of the distinction that is not a string: only L1 keys demand a decoder
+            // operating on protected memory.
+            assertThat(drm.requiresSecureDecoder(drm.openSession(), MediaFormat.MIMETYPE_VIDEO_AVC))
+                .isEqualTo(level == SecurityLevel.L1)
+            drm.release()
+        }
     }
 
     private fun defaultDisplay(): Display? =

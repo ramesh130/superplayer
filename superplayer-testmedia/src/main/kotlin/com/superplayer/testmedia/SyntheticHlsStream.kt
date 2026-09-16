@@ -65,6 +65,12 @@ public object SyntheticHlsStream {
     /** What a player is pointed at to play [liveResources]. */
     public const val LIVE_MULTIVARIANT_PLAYLIST_URI: String = LIVE_BASE_URI + MULTIVARIANT_PLAYLIST_NAME
 
+    /** Where [protectedResources] lives: its own directory, so it shares a data set with [resources]. */
+    private const val PROTECTED_BASE_URI = BASE_URI + "protected/"
+
+    /** What a player is pointed at to play [protectedResources]. */
+    public const val PROTECTED_MULTIVARIANT_PLAYLIST_URI: String = PROTECTED_BASE_URI + MULTIVARIANT_PLAYLIST_NAME
+
     /**
      * How many segments a live playlist from [liveResources] lists at once: twelve seconds.
      *
@@ -253,15 +259,40 @@ public object SyntheticHlsStream {
     // lines are indented is not a playlist any parser will accept.
     private fun mediaPlaylist(segmentCount: Int): String = mediaPlaylist(0 until segmentCount, live = false)
 
+    /**
+     * The Widevine-protected form of this stream: the same segments, under a media playlist carrying
+     * the `EXT-X-KEY` tag that names Widevine and [WidevineProtection]'s `pssh` box.
+     *
+     * The segments are byte-identical to [resources]'s and are not encrypted, which
+     * [WidevineProtection]'s KDoc argues at length: the tag is what makes a player acquire a licence
+     * before it reads a sample, and sample-level encryption is a step nothing in a test with no
+     * `MediaCrypto` could undo.
+     */
+    public fun protectedResources(segmentCount: Int = 1): Map<String, ByteArray> {
+        require(segmentCount >= 1) { "A stream needs at least one segment, was $segmentCount" }
+        return buildMap {
+            put(MULTIVARIANT_PLAYLIST_NAME, multivariantPlaylist(variantCount = 1).toByteArray())
+            put(MEDIA_PLAYLIST_NAME, mediaPlaylist(0 until segmentCount, live = false, protected = true).toByteArray())
+            repeat(segmentCount) { index -> put(segmentName(index), adtsSegment(index)) }
+        }.mapKeys { (name, _) -> PROTECTED_BASE_URI + name }
+    }
+
     // spec: RFC 8216 §4.3.3.2 — EXT-X-MEDIA-SEQUENCE is the sequence number of the first segment
     // listed, which is what lets a live playlist slide its window and still name every segment once.
-    private fun mediaPlaylist(indices: IntRange, live: Boolean, firstSegmentDateTimeMs: Long? = null): String {
+    private fun mediaPlaylist(
+        indices: IntRange,
+        live: Boolean,
+        firstSegmentDateTimeMs: Long? = null,
+        protected: Boolean = false,
+    ): String {
         val header = listOf(
             "#EXTM3U",
-            "#EXT-X-VERSION:3",
+            // spec: RFC 8216 §7 — SAMPLE-AES needs a playlist at version 5 or above, so a protected
+            // stream declares 5 where the plain one declares 3. Nothing else about the two differs.
+            "#EXT-X-VERSION:${if (protected) 5 else 3}",
             "#EXT-X-TARGETDURATION:${ceil(SEGMENT_DURATION_SECONDS).toInt()}",
             "#EXT-X-MEDIA-SEQUENCE:${indices.first}",
-        )
+        ) + encryptionKeyTag(protected)
         // spec: RFC 8216 §4.3.2.6 — EXT-X-PROGRAM-DATE-TIME dates the first sample of the segment
         // that follows it, and one tag is enough: the date of every later segment follows from the
         // EXTINF durations between. It is what lets a player measure its distance from the live
@@ -274,6 +305,36 @@ public object SyntheticHlsStream {
         val tail = if (live) emptyList() else listOf("#EXT-X-ENDLIST")
 
         return (header + segments + tail).joinToString(separator = "\n")
+    }
+
+    /**
+     * The `EXT-X-KEY` tag a protected media playlist carries before its first segment, or nothing.
+     *
+     * spec: RFC 8216 §4.3.2.4 — `EXT-X-KEY` applies to every segment that follows it until the next
+     * one, which is why a single tag in the header protects the whole playlist. `METHOD=SAMPLE-AES`
+     * is the sample-level scheme, the one whose keys a DRM system holds; `KEYFORMAT` identifies that
+     * system, and a `KEYFORMAT` other than the default `identity` means the `URI` is not a key file
+     * to fetch but the system's own initialization data. `KEYFORMATVERSIONS` is that system's
+     * versioning of the format, and Widevine's is `1`.
+     *
+     * The `URI` is a `data:` URL (// spec: RFC 2397) carrying the base64 of [WidevineProtection]'s
+     * `pssh` box, which is the form Media3's HLS parser reads a Widevine `EXT-X-KEY` in and the form
+     * every Widevine packager writes.
+     *
+     * SAMPLE-AES rather than `AES-128`: §4.3.2.4 makes `AES-128` whole-segment encryption the client
+     * itself performs with a key it fetches, which would mean really encrypting these segments and
+     * would say nothing about a licence server. SAMPLE-AES leaves the decryption to the platform,
+     * which is what a DRM stream does and what makes the licence the thing under test.
+     */
+    private fun encryptionKeyTag(protected: Boolean): List<String> = if (!protected) {
+        emptyList()
+    } else {
+        listOf(
+            "#EXT-X-KEY:METHOD=SAMPLE-AES," +
+                "URI=\"data:text/plain;base64,${WidevineProtection.psshBase64()}\"," +
+                "KEYFORMAT=\"${WidevineProtection.SYSTEM_ID_URN}\"," +
+                "KEYFORMATVERSIONS=\"1\"",
+        )
     }
 
     /**

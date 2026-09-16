@@ -92,6 +92,17 @@ public class TestContent private constructor(
      * [resources]. See `LiveOriginDataSource` for why a live HLS stream cannot be the other kind.
      */
     internal val publication: ((elapsedMs: Long) -> Map<String, ByteArray>)? = null,
+
+    /**
+     * Whether this stream declares Widevine protection, and therefore whether a player of it acquires
+     * a licence from [FakeLicenceServer] before it reads a sample.
+     *
+     * A property of the *content* rather than an argument to the harness, because it is a property of
+     * the content: what makes a session ask for a licence is the manifest, and a test that pointed a
+     * protected player at an unprotected stream would be describing nothing. The device that answers
+     * is the other half and is stated separately, in [DeviceStatement.declareWidevine].
+     */
+    internal val protected: Boolean = false,
 ) {
 
     /**
@@ -127,6 +138,7 @@ public class TestContent private constructor(
             sourceUri = onHost(sourceUri, host),
             resources = resources + resources.mapKeys { (uri, _) -> onHost(uri, host) },
             responseHeaders = responseHeaders + responseHeaders.mapKeys { (uri, _) -> onHost(uri, host) },
+            protected = protected,
         )
     }
 
@@ -160,6 +172,7 @@ public class TestContent private constructor(
             sourceUri = sourceUri,
             resources = other.resources + resources,
             responseHeaders = other.responseHeaders + responseHeaders,
+            protected = protected || other.protected,
         )
     }
 
@@ -432,6 +445,51 @@ public class TestContent private constructor(
                 },
             )
         }
+
+        /**
+         * [hls], Widevine-protected: the same media, under a playlist whose `EXT-X-KEY` names
+         * Widevine and carries its initialization data.
+         *
+         * A player of this acquires a licence from [FakeLicenceServer] before it reads a sample, so a
+         * test of it is a test of the whole exchange — the session opened, the key request composed,
+         * the request carried over the harness's own transport, the response fed back. The device
+         * that answers is [DeviceStatement.declareWidevine]'s, and a test that states nothing plays on
+         * an ordinary provisioned L1 handset.
+         *
+         * The segments are not encrypted, and `WidevineProtection`'s KDoc argues at length why that
+         * is the right stream rather than a shortcut.
+         */
+        @JvmStatic
+        public fun protectedHls(segmentCount: Int = DEFAULT_SEGMENT_COUNT): TestContent = TestContent(
+            rungs = emptyList(),
+            durationMs = SyntheticHlsStream.durationMs(segmentCount),
+            live = false,
+            protocol = Protocol.HLS,
+            sourceUri = SyntheticHlsStream.PROTECTED_MULTIVARIANT_PLAYLIST_URI,
+            resources = SyntheticHlsStream.protectedResources(segmentCount),
+            protected = true,
+        )
+
+        /**
+         * [dash], Widevine-protected: the same media, under an MPD declaring Common Encryption and
+         * carrying Widevine's `pssh` box.
+         *
+         * The mirror image of [protectedHls], as [dash] is of [hls] — the same media, the same
+         * licence server, the same device — so a test run against both is comparing what the two
+         * protocols do with the *same* protection rather than two unrelated arrangements. The two
+         * declare it very differently (a `ContentProtection` descriptor against an `EXT-X-KEY` tag)
+         * and hand the session the same initialization data, which is the fact worth pinning.
+         */
+        @JvmStatic
+        public fun protectedDash(segmentCount: Int = DEFAULT_SEGMENT_COUNT): TestContent = TestContent(
+            rungs = emptyList(),
+            durationMs = SyntheticDashStream.durationMs(segmentCount),
+            live = false,
+            protocol = Protocol.DASH,
+            sourceUri = SyntheticDashStream.PROTECTED_MANIFEST_URI,
+            resources = SyntheticDashStream.protectedResources(segmentCount),
+            protected = true,
+        )
 
         /**
          * One entry of [HostileManifests]: a known-good stream of its protocol with one thing wrong.

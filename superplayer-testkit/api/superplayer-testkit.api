@@ -7,8 +7,24 @@ public final class com/superplayer/testkit/DeviceStatement {
 	public static final fun declareDisplay (II)V
 	public static final fun declareDisplayHdrTypes ([I)V
 	public static final fun declareLowRamDevice ()V
+	public static final fun declareSecureVideoDecoder (Ljava/lang/String;I[Lkotlin/Pair;)V
 	public static final fun declareVideoDecoder (Ljava/lang/String;I[Lkotlin/Pair;)V
 	public static final fun declareVideoDecoder (Ljava/lang/String;[Lkotlin/Pair;)V
+	public static final fun declareWidevine ()V
+	public static final fun declareWidevine (Lcom/superplayer/testkit/SecurityLevel;)V
+	public static final fun declareWidevine (Lcom/superplayer/testkit/SecurityLevel;I)V
+	public static final fun declareWidevine (Lcom/superplayer/testkit/SecurityLevel;IZ)V
+	public static synthetic fun declareWidevine$default (Lcom/superplayer/testkit/SecurityLevel;IZILjava/lang/Object;)V
+	public static final fun declareWidevineProvisioningFailure ()V
+	public static final fun declareWidevineProvisioningFailure (Lcom/superplayer/testkit/SecurityLevel;)V
+	public static synthetic fun declareWidevineProvisioningFailure$default (Lcom/superplayer/testkit/SecurityLevel;ILjava/lang/Object;)V
+}
+
+public final class com/superplayer/testkit/FakeLicenceServer {
+	public static final field HOST Ljava/lang/String;
+	public static final field INSTANCE Lcom/superplayer/testkit/FakeLicenceServer;
+	public static final field LICENCE_URI Ljava/lang/String;
+	public static final field PROVISION_URI Ljava/lang/String;
 }
 
 public final class com/superplayer/testkit/FaultScript {
@@ -160,11 +176,20 @@ public final class com/superplayer/testkit/PlaybackHarness$Companion {
 
 public final class com/superplayer/testkit/ResourceKind : java/lang/Enum {
 	public static final field INITIALIZATION Lcom/superplayer/testkit/ResourceKind;
+	public static final field LICENCE Lcom/superplayer/testkit/ResourceKind;
 	public static final field MANIFEST Lcom/superplayer/testkit/ResourceKind;
 	public static final field MEDIA_SEGMENT Lcom/superplayer/testkit/ResourceKind;
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/testkit/ResourceKind;
 	public static fun values ()[Lcom/superplayer/testkit/ResourceKind;
+}
+
+public final class com/superplayer/testkit/SecurityLevel : java/lang/Enum {
+	public static final field L1 Lcom/superplayer/testkit/SecurityLevel;
+	public static final field L3 Lcom/superplayer/testkit/SecurityLevel;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/testkit/SecurityLevel;
+	public static fun values ()[Lcom/superplayer/testkit/SecurityLevel;
 }
 
 public final class com/superplayer/testkit/TestContent {
@@ -182,6 +207,8 @@ public final class com/superplayer/testkit/TestContent {
 	public static final fun liveHls (Z)Lcom/superplayer/testkit/TestContent;
 	public static final fun liveVideo (IJ)Lcom/superplayer/testkit/TestContent;
 	public static final fun liveVideoLadder (Ljava/util/List;J)Lcom/superplayer/testkit/TestContent;
+	public static final fun protectedDash (I)Lcom/superplayer/testkit/TestContent;
+	public static final fun protectedHls (I)Lcom/superplayer/testkit/TestContent;
 	public final fun servedFrom (Ljava/lang/String;)Lcom/superplayer/testkit/TestContent;
 	public static final fun video (IJ)Lcom/superplayer/testkit/TestContent;
 	public static final fun videoLadder (Ljava/util/List;J)Lcom/superplayer/testkit/TestContent;
@@ -202,6 +229,10 @@ public final class com/superplayer/testkit/TestContent$Companion {
 	public static synthetic fun liveVideo$default (Lcom/superplayer/testkit/TestContent$Companion;IJILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
 	public final fun liveVideoLadder (Ljava/util/List;J)Lcom/superplayer/testkit/TestContent;
 	public static synthetic fun liveVideoLadder$default (Lcom/superplayer/testkit/TestContent$Companion;Ljava/util/List;JILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
+	public final fun protectedDash (I)Lcom/superplayer/testkit/TestContent;
+	public static synthetic fun protectedDash$default (Lcom/superplayer/testkit/TestContent$Companion;IILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
+	public final fun protectedHls (I)Lcom/superplayer/testkit/TestContent;
+	public static synthetic fun protectedHls$default (Lcom/superplayer/testkit/TestContent$Companion;IILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
 	public final fun video (IJ)Lcom/superplayer/testkit/TestContent;
 	public static synthetic fun video$default (Lcom/superplayer/testkit/TestContent$Companion;IJILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
 	public final fun videoLadder (Ljava/util/List;J)Lcom/superplayer/testkit/TestContent;

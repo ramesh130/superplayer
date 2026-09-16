@@ -22,6 +22,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.view.Surface
 import androidx.media3.common.C
+import androidx.media3.common.DrmInitData
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
@@ -31,6 +32,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.LoadControl
 import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.RenderersFactory
+import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
 import androidx.media3.exoplayer.drm.DrmSessionManager
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
@@ -42,6 +44,7 @@ import androidx.media3.test.utils.FakeChunkSource
 import androidx.media3.test.utils.FakeClock
 import androidx.media3.test.utils.FakeDataSet
 import androidx.media3.test.utils.FakeDataSource
+import androidx.media3.test.utils.FakeExoMediaDrm
 import androidx.media3.test.utils.FakeMediaPeriod
 import androidx.media3.test.utils.FakeMediaSource
 import androidx.media3.test.utils.FakeTimeline
@@ -57,6 +60,7 @@ import com.superplayer.core.PlayerPool
 import com.superplayer.core.PooledEngine
 import com.superplayer.core.SuperPlayer
 import com.superplayer.core.TelemetryCollector
+import com.superplayer.testmedia.WidevineProtection
 import org.junit.rules.ExternalResource
 import java.util.IdentityHashMap
 import java.util.Random
@@ -194,8 +198,18 @@ public class PlaybackHarness : ExternalResource() {
         policy: PlaybackPolicy? = null,
         cache: ContentCache? = null,
         resilience: PlaybackResilience? = null,
-    ): SuperPlayer =
-        buildPlayerOver(composeTransport(content, faults, network), content, profile, telemetry, policy, cache, resilience, pooled = null)
+    ): SuperPlayer {
+        // Protected content needs a `DrmSessionManagerProvider` on the media source factory, and on a
+        // SuperPlayer that factory is `TransferChain`'s: the provider reaches it through the DRM slot
+        // ADR-0012 rule 3 puts on core's engine configuration, which `superplayer-drm` fills and
+        // which does not exist yet (#204). Said outright, because the alternative is a player that
+        // silently plays a protected stream with no session at all and a test that passes for it.
+        require(!content.protected) {
+            "A SuperPlayer cannot yet play protected content: the engine's DRM slot arrives with " +
+                "`superplayer-drm` (#204). Until then, protected content plays through buildStockPlayer."
+        }
+        return buildPlayerOver(composeTransport(content, faults, network), content, profile, telemetry, policy, cache, resilience, pooled = null)
+    }
 
     /**
      * [buildPlayer] over a transport already composed, which a pool's players share, and on the
@@ -298,6 +312,14 @@ public class PlaybackHarness : ExternalResource() {
                     DefaultMediaSourceFactory(context)
                         .setDataSourceFactory(transport.transfers.factory)
                         .setDownloadExecutor(transport.loadThreads)
+                        .apply {
+                            // One manager for every item this player plays, which is what a single
+                            // protected stream needs and all this arm is for. A provider that
+                            // answered per item is `superplayer-drm`'s problem, not the harness's.
+                            drmSessionManagerFor(transport)?.let { manager ->
+                                setDrmSessionManagerProvider { manager }
+                            }
+                        }
                 },
             )
             .build()
@@ -403,8 +425,13 @@ public class PlaybackHarness : ExternalResource() {
         // stream that declares its response headers has them served on top of its bytes.
         val origin = content.publication?.let { LiveOriginDataSource.Factory(it, clock) }
             ?: networkOrigin().setFakeDataSet(fakeDataSetFor(content))
+        // The licence server is one more origin on the same transport, and it goes *below* the
+        // injector like every other: a fault addressed at `ResourceKind.LICENCE` has to meet a
+        // licence request on its way out, not on its way back.
+        val licenceServer = if (content.protected) licenceServerFor(content) else null
+        val origins = licenceServer?.let { LicenceServerDataSource.Factory(origin, it) } ?: origin
         val injector = FaultInjectingDataSource.Factory(
-            if (content.responseHeaders.isEmpty()) origin else HeaderServingDataSource.Factory(origin, content.responseHeaders),
+            if (content.responseHeaders.isEmpty()) origins else HeaderServingDataSource.Factory(origins, content.responseHeaders),
             faults,
             clock,
             wait,
@@ -427,7 +454,53 @@ public class PlaybackHarness : ExternalResource() {
             wait = wait,
             loadThreads = HarnessLoadThreads(wait),
             transportReplay = transportReplay,
+            licenceServer = licenceServer,
         )
+    }
+
+    /**
+     * The licence server for [content]: Media3's own, told which requests it may allow.
+     *
+     * The allowance is an *entitlement*, and stating it in the stream's own terms is what makes the
+     * fake server realistic rather than a rubber stamp. Media3's server compares the scheme datas a
+     * key request was composed from against the ones it was told to allow, so what goes in is the
+     * `DrmInitData` the stream's manifest produces — and both protocols produce the same one from the
+     * same `pssh` box, Widevine's uuid under the `video/mp4` MIME type, which is the reason
+     * `protectedHls` and `protectedDash` can share a server at all.
+     */
+    private fun licenceServerFor(content: TestContent): FakeExoMediaDrm.LicenseServer {
+        check(content.protected) { "Only protected content has a licence server" }
+        val schemeData = DrmInitData.SchemeData(C.WIDEVINE_UUID, MimeTypes.VIDEO_MP4, WidevineProtection.pssh())
+        return FakeExoMediaDrm.LicenseServer.allowingSchemeDatas(listOf(schemeData))
+    }
+
+    /**
+     * The DRM session manager a player over [transport] is built with, or null for content that
+     * declares no protection.
+     *
+     * Media3's own `DefaultDrmSessionManager`, which is the point: what this module supplies is the
+     * *device* ([DeviceStatement.declareWidevine], through [WidevineStatement]) and the *wire*
+     * ([TransportMediaDrmCallback]), and the session lifecycle in between is the engine's real one.
+     * A new `ExoMediaDrm` per acquisition, as a real `FrameworkMediaDrm.DEFAULT_PROVIDER` hands out,
+     * so a test that releases a player releases the implementation with it.
+     */
+    private fun drmSessionManagerFor(transport: Transport): DrmSessionManager? {
+        if (transport.licenceServer == null) return null
+        val statement = DeviceStatement.widevine
+        return DefaultDrmSessionManager.Builder()
+            .setUuidAndExoMediaDrmProvider(C.WIDEVINE_UUID) { statement.exoMediaDrm() }
+            // The one setting here that compensates for the synthetic stream rather than describing a
+            // device, and it is the difference between a harness that can test a licence failure and
+            // one that cannot. Media3 plays a *clear* sample without waiting for keys by default,
+            // which is right in the field — a clear lead-in before an encrypted body starts sooner —
+            // and wrong here, because `WidevineProtection` leaves every sample in the clear: nothing
+            // in a Robolectric test can decrypt one. Left at its default, a session whose licence was
+            // refused plays the whole stream and ends normally, and every test of a DRM failure would
+            // pass by proving the opposite of what it says. Set to false, a format that declares
+            // protection is one no sample is read from until keys are held, which is what really
+            // encrypted samples would have made true by themselves.
+            .setPlayClearSamplesWithoutKeys(false)
+            .build(TransportMediaDrmCallback(transport.transfers.factory))
     }
 
     /**
@@ -901,6 +974,10 @@ public class PlaybackHarness : ExternalResource() {
      */
     override fun before() {
         DeviceStatement.declareDisplay(DeviceStatement.DEFAULT_DISPLAY_WIDTH_PX, DeviceStatement.DEFAULT_DISPLAY_HEIGHT_PX)
+        // And an ordinary Widevine handset, for the same reason and one more: the statement is a
+        // field of `DeviceStatement` rather than a Robolectric shadow, so nothing else resets it
+        // between tests and one test's revoked device would be the next one's.
+        DeviceStatement.forgetWidevine()
     }
 
     /** Releases every player this harness built and still holds, newest first. */
@@ -1083,6 +1160,8 @@ public class PlaybackHarness : ExternalResource() {
         val loadThreads: HarnessLoadThreads,
         /** The trace's transport, replayed into the platform; null when no trace is replayed. */
         val transportReplay: TransportReplay?,
+        /** The licence server this transport serves, for protected content; null for the rest. */
+        val licenceServer: FakeExoMediaDrm.LicenseServer? = null,
     )
 
     /**

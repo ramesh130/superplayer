@@ -26,10 +26,11 @@ package com.superplayer.testkit
  * index within that kind is the same sentence under HLS and under DASH, which is what lets one
  * script mean one thing across both.
  *
- * The three kinds are the three that every adaptive protocol has and that every layer above the
+ * The first three kinds are the three that every adaptive protocol has and that every layer above the
  * transfer treats differently: a manifest failure is a session that never starts, an initialization
  * failure is a rendition that can never be decoded, and a media segment failure is a hole in
- * playback.
+ * playback. [LICENCE] is the fourth and is not a resource of the *stream* at all, which is the whole
+ * reason it is its own kind rather than a segment with an unusual name.
  */
 public enum class ResourceKind {
 
@@ -41,6 +42,25 @@ public enum class ResourceKind {
 
     /** A segment carrying media samples — the kind a token expiry is measured in. */
     MEDIA_SEGMENT,
+
+    /**
+     * A request to the DRM licence server: a licence acquisition, or the device provisioning that has
+     * to happen before one can be asked for.
+     *
+     * A kind of its own because nothing else about a session behaves like it. It is the one request
+     * that is not for media and not described by the manifest, it goes to a server the *app*
+     * nominated rather than to the CDN the content came from, and a failure of it stops playback
+     * while every byte of the content is arriving perfectly — which is precisely the case
+     * `FailureClass.Drm` exists to name and the one nothing here could address before.
+     *
+     * **Provisioning and licence acquisition are two resources of this kind, not two kinds.** They
+     * are addressed apart because they are fetched from different paths on the licence server, so
+     * each gets an index of its own in the order the session asks for them: on a device that has to
+     * be provisioned first, provisioning is `LICENCE#0` and the licence itself `LICENCE#1`; on one
+     * that is already provisioned the licence is `LICENCE#0` and there is no other. A fault naming
+     * the kind and no index addresses both, which is what "the licence server is down" means.
+     */
+    LICENCE,
 }
 
 /**

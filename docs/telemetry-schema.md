@@ -204,6 +204,28 @@ the module: the band decides, exactly as it did at version 1, and `classificatio
 classification is a separate field because the two are separate facts — which code the engine raised,
 and what SuperPlayer made of it — and a pipeline needs the first to find the failure in a logcat.
 
+**Version 2 stands — the DRM classification split (`#206`).** The `Drm` branch of the taxonomy grew
+two leaves, `Drm.LicenceExpired` and `Drm.SystemError`, and `Drm.LicenceAcquisition` narrowed to the
+failure it is named after. `SCHEMA_VERSION` did **not** move for it, and that is the deliberate
+answer rather than an oversight: every leaf of that branch maps to `FailureCategory.DRM` as it did
+before, so no `category` slice moves and no denominator changes. What changed is the `classification`
+string, which is a *finer* value in a field whose meaning — the stable name of the class the one
+classifier assigned — is unchanged, and the version tracks meaning rather than cardinality.
+
+A pipeline still has something to do about it. Three values that never appeared before can appear
+now, and a dashboard that enumerates `classification` by hand rather than grouping by it will show
+them as gaps:
+
+| Now reported | Was reported as | What it is |
+| --- | --- | --- |
+| `Drm.LicenceExpired` | `Drm.LicenceAcquisition` | Keys that were issued and have run out — the dead offline licence. Carries its own `userMessageKey`, `superplayer_error_licence_expired`, which is the one protection failure a viewer can be offered a remedy for |
+| `Drm.SystemError` | `Drm.LicenceAcquisition` | The device's protection stack failing with no entitlement implicated, and the DRM band's fall-through — `ERROR_CODE_DRM_UNSPECIFIED` and `ERROR_CODE_DRM_SYSTEM_ERROR` included |
+| `Drm.LicenceAcquisition` (narrowed) | the whole unclaimed DRM band | Exactly `ERROR_CODE_DRM_LICENSE_ACQUISITION_FAILED`, plus a refused licence load caught before the engine wrapped it |
+
+The one `isRetryable` that flips with it is `Drm.SystemError`'s, from true to false: a `SuperPlayerError`
+for an unnamed DRM failure no longer tells an app that retrying is worth anything, because nothing
+about it was a transfer.
+
 **A sink must tolerate a new event type.** `TelemetryEvent` is sealed, so a `when` over it can be
 exhaustive without an `else` — and such a `when` fails to compile when a later version adds an event.
 An `else` branch is the forward-compatible spelling; take the exhaustive one only if being told about

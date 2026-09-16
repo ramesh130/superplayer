@@ -18,7 +18,9 @@ package com.superplayer.resilience
 
 import android.media.MediaCodec
 import androidx.media3.common.PlaybackException
+import androidx.media3.datasource.HttpDataSource.HttpDataSourceException
 import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
+import androidx.media3.exoplayer.drm.DrmSession
 import com.superplayer.core.LiveWindowTooShortException
 import com.superplayer.core.LoadKind
 import com.superplayer.core.StaleLivePlaylistException
@@ -50,10 +52,13 @@ import com.superplayer.core.StaleLivePlaylistException
  *    transfer failure (`PRD.md` §3.3). An unstamped request — a player with neither cache nor
  *    resilience, or a source that set `customData` itself — says nothing, and says it by falling
  *    through to the band.
- * 3. **The engine's own band.** `PlaybackException.errorCode` in the ranges Media3 documents, with
- *    a `MediaCodec.CodecException` consulted where the device is the subject. This is the
- *    *last* resort and the total one, and it is the only `when` over an error code in the
- *    repository — a second one anywhere is a bug against rule 1.
+ * 3. **The engine's own band.** `PlaybackException.errorCode` in the ranges Media3 documents — or,
+ *    where a failure is caught before a renderer has wrapped it, the same code off a
+ *    `DrmSession.DrmSessionException` ([bandIn]) — with a `MediaCodec.CodecException` consulted
+ *    where the device is the subject. This is the *last* resort and the total one, and it is the
+ *    only `when` over an error code in the repository — a second one anywhere is a bug against
+ *    rule 1. Its last branch is the one case where there is no band to read at all, and what decides
+ *    it there is the kind of load that failed ([aLicenceWasRefused]).
  *
  * `Fatal.Unsupported` is reached only from a code that says *unsupported*, never from the fall
  * through: an unrecognised code is far likelier to be a transfer that can be retried than content
@@ -94,8 +99,26 @@ public object ErrorClassifier {
         val causes = causeChain(error)
         return namedByCore(causes)
             ?: namedByTheFailedLoad(causes)
-            ?: fromBand(causes.firstNotNullOfOrNull { (it as? PlaybackException)?.errorCode }, causes)
+            ?: fromBand(bandIn(causes), causes)
     }
+
+    /**
+     * The engine's own code for this failure, wherever in the chain it was assigned, or null.
+     *
+     * Two shapes carry one enumeration. A `PlaybackException` is the code as a consumer sees it, and
+     * a `DrmSession.DrmSessionException` is the same code before a renderer has wrapped it —
+     * Media3 assigns it in `DrmUtil.getErrorCodeForMediaDrmException` and the renderer then copies it
+     * onto the `PlaybackException` verbatim (// ref: `MediaCodecRenderer` reads
+     * `DrmSessionException.errorCode`). Reading both is what makes a DRM failure classifiable
+     * wherever it is caught — the load-error path meets one long before any renderer does — and it is
+     * still one reading of one enumeration rather than a second taxonomy (ADR-0011 rule 1).
+     *
+     * The `PlaybackException` is preferred where a chain carries both, because it is the later and
+     * therefore the more informed of the two.
+     */
+    private fun bandIn(causes: List<Throwable>): Int? =
+        causes.firstNotNullOfOrNull { (it as? PlaybackException)?.errorCode }
+            ?: causes.firstNotNullOfOrNull { (it as? DrmSession.DrmSessionException)?.errorCode }
 
     /**
      * Which party core's own detection pointed at, where it pointed at one, and null everywhere else.
@@ -239,15 +262,54 @@ public object ErrorClassifier {
         PlaybackException.ERROR_CODE_DRM_DEVICE_REVOKED,
         -> FailureClass.Drm.Unsupported
 
-        in 6000..6999 -> FailureClass.Drm.LicenceAcquisition
+        // The round trip to the licence server did not produce a licence, which is the one DRM
+        // failure a retry is worth anything against — and since #205 the retry is real and bounded by
+        // `RetryPolicy.licence`.
+        PlaybackException.ERROR_CODE_DRM_LICENSE_ACQUISITION_FAILED -> FailureClass.Drm.LicenceAcquisition
+
+        // Keys that were issued and have run out. Media3 raises this for `KeysExpiredException`
+        // (// ref: `DrmUtil.getErrorCodeForMediaDrmException`), which is what a downloaded asset
+        // whose entitlement lapsed arrives as, and it is the one DRM failure with its own sentence.
+        PlaybackException.ERROR_CODE_DRM_LICENSE_EXPIRED -> FailureClass.Drm.LicenceExpired
+
+        // The band's own fall-through, and the whole of what #206 closes: `ERROR_CODE_DRM_UNSPECIFIED`
+        // itself, `ERROR_CODE_DRM_SYSTEM_ERROR` — a `MediaDrm` that reset, a platform key operation
+        // that failed — and any code a later Media3 adds here. Protection failed and nothing narrower
+        // is known, which is what `Drm.SystemError` says; it is not a licence acquisition, and
+        // calling it one spent a licence budget on a round trip that may never have happened.
+        in 6000..6999 -> FailureClass.Drm.SystemError
+
+        // No band at all: the load-error path (#178), where `RetryingLoadErrors` asks about a failure
+        // Media3 has not yet wrapped in anything. A load core stamped `LoadKind.LICENCE` is the
+        // entitlement round trip and nothing else, so it is named as one rather than as the transfer
+        // it also is — which is what keeps a refused licence out of the network bucket and on its own
+        // budget's story (#205, #206).
+        NO_BAND ->
+            if (aLicenceWasRefused(causes)) FailureClass.Drm.LicenceAcquisition else FailureClass.Transient.Network
 
         // Everything left: the miscellaneous band, the session codes Media3 numbers below zero, a
-        // custom code an app assigned, a code a later Media3 invented, and no band at all — which is
-        // what the load-error path (#178) holds, an `IOException` with no `PlaybackException` around
-        // it yet. Retryable is the honest default here; see this object's KDoc for why it is not
-        // `Fatal.Unsupported`.
+        // custom code an app assigned, a code a later Media3 invented. Retryable is the honest
+        // default here; see this object's KDoc for why it is not `Fatal.Unsupported`.
         else -> FailureClass.Transient.Network
     }
+
+    /**
+     * Whether the transfer that failed was a licence request, read off the stamp core puts on it.
+     *
+     * The same evidence [namedByTheFailedLoad] reads and from the same place, and read here rather
+     * than there because it answers a different question: there the status narrows *which* kind of
+     * media failure it was, and here the kind alone settles the class whatever the status said. A
+     * player with no `PlaybackResilience` stamps nothing and reaches no licence load either, since
+     * `RetryingLoadErrors` is the only thing that asks without a band.
+     *
+     * Both the licence round trip and the provisioning round trip beneath it carry this stamp and
+     * neither is distinguishable from the other at the transport. They are told apart one layer up,
+     * where Media3 knows which of the two it dispatched and says so in the band —
+     * `ERROR_CODE_DRM_PROVISIONING_FAILED` against `ERROR_CODE_DRM_LICENSE_ACQUISITION_FAILED` — so
+     * the naming here is the one the retrying half acts on and the band's is the one a consumer sees.
+     */
+    private fun aLicenceWasRefused(causes: List<Throwable>): Boolean =
+        causes.filterIsInstance<HttpDataSourceException>().any { LoadKind.of(it.dataSpec) == LoadKind.LICENCE }
 
     /**
      * Whether the codec said the failure was one a recreated decoder survives.

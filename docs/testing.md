@@ -436,6 +436,16 @@ licence exactly as it keeps it for a segment. The forcing form of each claim is 
 sets to a number Media3 would not have chosen: a licence played out of five asks where Media3's own
 patience is three, or a session repaired while the budget was zero.
 
+`DrmFailureTest` is the third file of that pairing and the one to read before adding to it, because
+its own KDoc says what it does **not** force. A protection failure the harness can raise carries a DRM
+code Media3 had already narrowed, so it classified the same way before #206 as after; what that file
+guards is the path — a named class, a message key and an `isRetryable` reaching a consumer as the
+`cause` of the `PlaybackException` they already receive — while the codes #206 actually re-routed
+(`ERROR_CODE_DRM_UNSPECIFIED`, `ERROR_CODE_DRM_SYSTEM_ERROR`, an expired licence) are ones no fake
+device here can raise and are asserted in `ErrorClassifierTest` against the code Media3 assigns each.
+Writing the weaker test and calling it the forcing one is the failure mode; saying which is which in
+the file is the habit.
+
 `ProtectedPlaybackTest` is the worked example, and it drives a **stock** `ExoPlayer`: no SuperPlayer
 DRM code exists until #204, so everything it asserts is a claim about this harness rather than about
 the library. `PlaybackHarness.buildPlayer` refuses protected content outright and says why, because

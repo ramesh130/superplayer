@@ -520,7 +520,17 @@ else. Both halves need `setResilience` beside `setDrm`, because both objects are
 `WidevinePlaybackTest` plays both protocols through a real `SuperPlayer` over the harness's licence
 server, `LicenceLoadTest` forces the budget and the refresh through one, and `SuperPlayerDrmSeamTest`
 counts ADR-0012 rule 13 in core: what it counts is the **set**, never the answer, because a provider
-that is set and answers `DRM_UNSUPPORTED` is not nothing.
+that is set and answers `DRM_UNSUPPORTED` is not nothing. The module still **classifies nothing**
+(ADR-0012 rule 5) — `DrmFailureTest` checks that against its own source tree — and since #206 it does
+not need to: every code of Media3's DRM band has a leaf of `FailureClass.Drm`, which grew
+`LicenceExpired` (keys that were issued and ran out, the one protection failure with a
+`userMessageKey` of its own, because `PRD.md` §3.2 asks that a dead download not say "playback
+error") and `SystemError` (the device's protection stack, and the band's fall-through, so
+`ERROR_CODE_DRM_UNSPECIFIED` no longer arrives calling itself a licence acquisition). No leaf reaches
+rung 5: a re-prepare builds a decoder again and not a new `MediaDrm`. The category table did not
+move, so `TelemetryEvent.SCHEMA_VERSION` did not either, and
+`docs/telemetry-schema.md`'s *Release notes* says so explicitly along with the three
+`classification` values a pipeline can now see.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,

@@ -120,8 +120,9 @@ internal fun interface LadderRung {
  * load in hand, and the typed error is what the consumer is handed once nothing below it worked
  * (rule 7 assigns them to rules 5 and 10). [RungOutcome.Escalate] out of the top of this object is
  * therefore where they begin: a failure that gets past it stops being a load and becomes a failure of
- * the *session*, which Media3 surfaces to the player and core asks [NextSource] about there. Rung 5
- * joins it at the same seam (#182) and rung 6 is what is left when nothing answered (#183).
+ * the *session*, which Media3 surfaces to the player and core asks [PlayerStateLadder] about there —
+ * rungs 4 and 5, [NextSource] and [RecreateDecoder], in that order. Rung 6 is what is left when
+ * nothing answered (#183).
  *
  * ## The trap
  *
@@ -354,11 +355,72 @@ internal object ExcludeVariant : LadderRung {
  * how many times the *same* thing is asked for, and each source is asked for once. What bounds the
  * climb is the list — a request with two sources falls back once — and core is what knows its length.
  */
-internal object NextSource : PlayerStateRungs {
+internal object NextSource {
 
-    override fun opensNextSource(error: PlaybackException): Boolean {
+    fun takesOn(error: PlaybackException): Boolean {
         val failureClass = ErrorClassifier.classify(error)
         if (failureClass is FailureClass.Device.DecoderTransient) return false
         return failureClass.mayClimb(FallbackRung.NEXT_SOURCE)
     }
+}
+
+/**
+ * Rung 5: the decoder recreated, which is core re-preparing the player where it stands.
+ *
+ * The last remedy before the ladder gives up, and the one no amount of retrying a URL reaches,
+ * because the bytes were never the problem (`PRD.md` §3.3). What decides it is one class and nothing
+ * else: [FailureClass.Device.DecoderTransient] is the classifier's name for a decoder or an output
+ * that was working and stopped, or one that could not be had for a moment — a surface replaced, an
+ * HDMI event, every instance on the device held — and a decoder built again is exactly the remedy for
+ * that and for nothing else.
+ *
+ * spec: `MediaCodec.CodecException.isTransient()` is the platform saying the resource was momentarily
+ * unavailable and `isRecoverable()` that the codec can be reset and used again; both are read once, in
+ * [ErrorClassifier], and what arrives here is the conclusion (ADR-0011 rule 1).
+ *
+ * ## Two refusals
+ *
+ * 1. **[FailureClass.Device.DecoderInit].** Its sibling, and the whole reason the taxonomy splits the
+ *    two: no decoder was there to lose. Recreating one that could never be initialised for this
+ *    content asks the device the same question again and gets the same answer, so the class's ceiling
+ *    is rung 4 and this rung is not offered it — the ladder having already tried another variant and
+ *    another source by the time it got here.
+ * 2. **Everything else.** A refused segment, a frozen playlist, a malformed manifest: none of them is
+ *    a fault of this device's decoding, and a player re-prepared against the same broken source is a
+ *    loop with a startup in it. They reach rung 6 from here, which is what rung 5 declining means.
+ *
+ * The ceiling is read as well as the class, in the one function every rung reads it through
+ * ([mayClimb]), so that the ladder cannot climb past a ceiling whatever a rung's own routing says.
+ *
+ * There is no budget and no backoff here either, and for a reason of the same shape as [NextSource]'s:
+ * how many recreations are worth attempting is a count of what *this player* has already tried at the
+ * position it is stuck at, which is core's half of the rung and not visible from a classification
+ * (`PlayerStateRungs.recreatesDecoder`, `SuperPlayer.MAX_DECODER_RECREATIONS`).
+ */
+internal object RecreateDecoder {
+
+    fun takesOn(error: PlaybackException): Boolean {
+        val failureClass = ErrorClassifier.classify(error)
+        if (failureClass !is FailureClass.Device.DecoderTransient) return false
+        return failureClass.mayClimb(FallbackRung.RECREATE_DECODER)
+    }
+}
+
+/**
+ * The two rungs core performs, as the one object core asks (ADR-0011 rule 13's addendum).
+ *
+ * One interface rather than a slot each, because the rung order is one order and an implementation
+ * that filled one and not the other would be a ladder with a hole in it. Which rung answers a failure
+ * is still each rung's own decision, taken by the object that documents it; what is here is the pair,
+ * and core asks them in the order rule 7 fixes.
+ *
+ * Stateless and shared by every player a `Resilience` is handed to, for [NextSource]'s reason: the
+ * request, the position and the decoders in hand are the player's, and none of them is copied to this
+ * side.
+ */
+internal object PlayerStateLadder : PlayerStateRungs {
+
+    override fun opensNextSource(error: PlaybackException): Boolean = NextSource.takesOn(error)
+
+    override fun recreatesDecoder(error: PlaybackException): Boolean = RecreateDecoder.takesOn(error)
 }

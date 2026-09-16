@@ -93,11 +93,11 @@ internal class StandardResilience(private val headers: HeaderProvider?) : Engine
         // stamps with their `LoadKind`, and that stamp is what lets `ErrorClassifier` tell a refused
         // segment from a refused manifest (`Transient.CdnEdge` exists only for the former).
         configuration.headerRefresh = headers?.let { TokenRefreshLayer(it) } ?: PassThroughHeaderRefresh
-        // The rung above everything a load error can answer, and the one slot that faces the other
+        // The rungs above everything a load error can answer, and the one slot that faces the other
         // way: core asks it once a failure has got past the ladder above (ADR-0011 rule 5). A shared
-        // object rather than one per player, because [NextSource] holds nothing — the request, the
-        // position and the source in hand are the player's, and are never copied to this side.
-        configuration.playerStateRungs = NextSource
+        // object rather than one per player, because [PlayerStateLadder] holds nothing — the request,
+        // the position and the decoders in hand are the player's, and are never copied to this side.
+        configuration.playerStateRungs = PlayerStateLadder
     }
 }
 

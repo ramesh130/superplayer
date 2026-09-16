@@ -2,10 +2,13 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-16
-- **Amended:** 2026-09-16 (#181), by addenda at rules 5, 10 and 13, recorded at the rules in this
-  document's own convention: this batch is the ADR's implementation rather than a reconsideration of
-  it, and nothing decided here is reversed. Rule 10's addendum also deviates from
-  [ADR-0003](0003-implement-player-by-delegation.md) rule 3, which carries the matching note.
+- **Amended:** 2026-09-16 (#181), by addenda at rules 5, 10 and 13, and 2026-09-16 (#182), by a
+  second addendum at rule 5 restating what rung 5 must preserve and adding the bound that rung's
+  remedy needs. Both are recorded at the rules in this document's own convention: this batch is the
+  ADR's implementation rather than a reconsideration of it, and nothing decided here is reversed.
+  Rule 10's addendum also deviates from
+  [ADR-0003](0003-implement-player-by-delegation.md) rule 3, which carries the matching note and
+  which #182 needed no widening of.
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
 - **Refines:** [ADR-0005](0005-decide-playback-policy-behind-an-engine-agnostic-boundary.md)
@@ -205,6 +208,40 @@ Fourteen rules follow, and they are binding.
    the switch. A fallback that rescued a session is a fact about that session (rule 10), and
    everything about this rung follows from that sentence. Rung 5 will have the same obligation and
    the same reason to avoid the same call (#182).
+
+   *Addendum (2026-09-16, #182).* Rung 5 is built, and the restatement the paragraph above promised
+   is this: it must preserve the position playback had reached, the content identity, the measurement
+   session and the CMCD `sid` — the same four — and the call that would break three of them is the
+   same call, `adopt`, with `setMediaRequest` and `setMediaItem` beside it. What is different is how
+   little code that takes. Rung 5 replaces *nothing*: a Media3 player that has failed holds its
+   playlist and its position in `STATE_IDLE` and `prepare()` retries from exactly there, so core's
+   whole performance of the rung is that one call. The identity and the session are preserved by
+   construction, because the item is the item that was already playing; the position is preserved by
+   nothing touching it, which is how rungs 1 to 3 preserve it, and the rule for this rung is
+   therefore that **SuperPlayer adds no seek around the re-prepare** — a seek would be a second
+   position for the operation to disagree about, and on a live window it would be the wrong one.
+   Rule 9's other half is written out as it is for rung 4: the position is recorded in the
+   remembered-position map before the re-prepare, so `ResumeFromLastKnown` agrees at that instant
+   rather than only at the next adoption.
+
+   The rung needs one thing rung 4 did not, and it is core's rather than the ladder's: a **bound**.
+   Rung 4 is bounded by the list it walks — a request with two sources falls back once — while a
+   re-prepare can be repeated for ever, and a decoder that will not come back meets the same failure
+   at the same position indefinitely. So core counts recreations that bought nothing and stops at
+   `SuperPlayer.MAX_DECODER_RECREATIONS`, the count starting over wherever playback advanced; past
+   the bound the rung is not offered the failure and rule 10 has it. The bound is correctness under
+   rule 12 rather than policy under rule 11 — every profile wants a decoder back and none wants a
+   player re-preparing itself behind a spinner — and it is core's half of the rung for the reason
+   "is there a next source" is core's half of rung 4: it is a fact about this player's own history,
+   and no classification can see it.
+
+   Nothing else in this ADR moves. The order between the two rungs is imposed in the one place both
+   are decided, core asking rung 4 first and rung 5 only where it declined, which costs a
+   `Device.DecoderTransient` nothing because the ladder refuses that class the next source. Rule 10's
+   addendum needs no extension either: it withholds a failure "a rung" repaired, and rung 5's repairs
+   are withheld on exactly that sentence — which is also why
+   [ADR-0003](0003-implement-player-by-delegation.md) rule 3's addendum, written in the same terms,
+   covers this rung with no second exception to argue.
 
 6. **What `superplayer-resilience` owns is the taxonomy, the retry and backoff, the fallback
    selection, the token refresh and the escalation between rungs; what it does not own is any

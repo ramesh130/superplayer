@@ -396,8 +396,8 @@ public class SuperPlayer private constructor(
     private var sourceIndex: Int = FIRST_SOURCE
 
     /**
-     * The failure rung 4 was last asked about, and the answer, so that the question is put to
-     * [playerStateRungs] exactly once per failure.
+     * The failure the rungs core performs were last asked about, and the answer, so that the question
+     * is put to [playerStateRungs] exactly once per failure.
      *
      * Two callers ask, in this order and in the same dispatch: the listener wrappers, because a
      * failure core takes on is one the consumer is not told about ([withholdsFromConsumer]), and the
@@ -406,10 +406,26 @@ public class SuperPlayer private constructor(
      * and its preconditions are gone.
      */
     private var failureDecidedOn: PlaybackException? = null
-    private var failureWithheld: Boolean = false
+    private var failureRepair: FailureRepair = FailureRepair.NONE
 
-    // Where a climb out of the top of `superplayer-resilience`'s ladder reaches the player: rung 4 is
-    // performed here, on a player that has somebody to ask and on no other (ADR-0011 rules 5 and 14).
+    /**
+     * How many decoders this player has recreated (rung 5) without playback getting any further, and
+     * the position the last recreation was performed at — the bound that keeps a rung from becoming
+     * a loop, and the memory that lets it start over when the rung worked.
+     *
+     * Counted against the *position* rather than against the player: a device that loses its decoder
+     * at an HDMI event twice in one long viewing has had two remedies work, while a decoder that will
+     * not come back fails again where it failed before, having played nothing in between
+     * ([mayRecreateDecoder]).
+     *
+     * Touched on the application thread only, like [sourceIndex] and for the same reason.
+     */
+    private var decoderRecreations: Int = 0
+    private var recreatedAtPositionMs: Long = C.TIME_UNSET
+
+    // Where a climb out of the top of `superplayer-resilience`'s ladder reaches the player: rungs 4
+    // and 5 are performed here, on a player that has somebody to ask and on no other (ADR-0011
+    // rules 5 and 14).
     //
     // On the engine rather than through `addListener`, so it is not wrapped, and registered in the
     // constructor so that it is ahead of every consumer's: Media3 dispatches an event to its
@@ -419,7 +435,11 @@ public class SuperPlayer private constructor(
             delegate.addListener(
                 object : Player.Listener {
                     override fun onPlayerError(error: PlaybackException) {
-                        if (withholdsFromConsumer(error)) openNextSource()
+                        when (repairFor(error)) {
+                            FailureRepair.NEXT_SOURCE -> openNextSource()
+                            FailureRepair.RECREATE_DECODER -> recreateDecoder()
+                            FailureRepair.NONE -> Unit
+                        }
                     }
                 },
             )
@@ -521,6 +541,9 @@ public class SuperPlayer private constructor(
         // again, which is the honest answer: the CDN that failed a minute ago may be well now, and
         // nothing here remembers a failure across an adoption.
         sourceIndex = FIRST_SOURCE
+        // The same answer for rung 5's bound, and for the same reason: what it counts is decoders
+        // recreated for content this player is no longer playing.
+        forgetDecoderRecreations()
         // The one place a measurement session can begin, for the same reason this method exists at
         // all: both callers arrive here, so content resolved from a notification or a car head unit
         // opens a session exactly as content set from the app does. A collector that already has one
@@ -550,7 +573,7 @@ public class SuperPlayer private constructor(
      * instant playback had reached, under the identity the session already has (rule 5).
      *
      * Called only from the failure listener, which is registered only where a resilience filled the
-     * slot, and only for a failure [withholdsFromConsumer] has already said the ladder may climb for.
+     * slot, and only for a failure [repairFor] has already routed to this rung.
      * What is decided *here* is the half the ladder cannot see — whether there is a next source, and
      * whether this player is still playing the content that named it.
      *
@@ -598,8 +621,104 @@ public class SuperPlayer private constructor(
             delegate.currentMediaItem?.mediaId == request.contentId
 
     /**
-     * Whether [error] is one this player takes on itself at rung 4, and therefore one the consumer is
-     * never told about.
+     * Rung 5 of ADR-0011's ladder: the decoder recreated, which in Media3 is this player prepared
+     * again where it stands (rule 5).
+     *
+     * Called only from the failure listener, and only for a failure [repairFor] has already routed
+     * here — which is a failure rung 4 declined, so the order rule 7 fixes is imposed by the one
+     * place both rungs are decided rather than by either rung.
+     *
+     * **Nothing is replaced and nothing is re-adopted, and that is the whole of rule 9 here.** Media3
+     * keeps the playlist and the position of a player that failed — it goes to `STATE_IDLE` holding
+     * both — and `prepare()` retries from exactly there (// ref: `Player.prepare()`, "if the player
+     * has failed, calling this method will retry the playback"). So the position is carried by not
+     * being touched, the way it is for the rungs Media3 performs inside a load, and a seek added
+     * around this would be SuperPlayer inventing a second position for the operation to disagree
+     * about. What the position *is* still goes into the remembered-position map before the
+     * re-prepare, so `ResumeFromLastKnown` agrees at the instant of the recreation rather than only
+     * at the next adoption — which is the half of rule 9 that rung 4 performs in the same words.
+     *
+     * The identity, the measurement session and the CMCD `sid` are untouched for the reason rung 4
+     * leaves them untouched (ADR-0011 rule 10): one viewing rescued is one session. Here that needs
+     * no code at all, because the item is the item that was already playing.
+     */
+    private fun recreateDecoder(): Boolean {
+        if (delegate.currentMediaItem == null) return false
+
+        // Read and recorded before the re-prepare, so both are the position playback had reached
+        // rather than whatever the prepared player first reports.
+        recreatedAtPositionMs = positionOfCurrentContent()
+        decoderRecreations++
+        rememberPositionOfCurrentContent()
+        delegate.prepare()
+        return true
+    }
+
+    /**
+     * Core's half of rung 5: whether recreating a decoder on this player could be a remedy rather
+     * than the start of a loop.
+     *
+     * The bound is here rather than in the ladder because what it counts is the player's own history
+     * — how many decoders this player has already recreated without playback advancing — and none of
+     * that is visible from a classification. It is correctness rather than policy (ADR-0011 rule 12):
+     * every profile wants a decoder back and none wants a player re-preparing itself for ever.
+     *
+     * The counter starts over wherever the viewer got further, which is what makes the bound a bound
+     * on *futile* recreations: a long viewing that loses its decoder to a surface change, recovers,
+     * plays for an hour and loses it again has had a remedy work twice, while a decoder that will not
+     * come back fails again at the position it failed at, having played nothing in between.
+     */
+    private fun mayRecreateDecoder(): Boolean {
+        // Nothing prepared is nothing to re-prepare: a failure before there was an item is not a
+        // decoder that stopped working.
+        if (delegate.currentMediaItem == null) return false
+        if (recreatedAtPositionMs != C.TIME_UNSET && positionOfCurrentContent() > recreatedAtPositionMs) {
+            decoderRecreations = 0
+        }
+        return decoderRecreations < MAX_DECODER_RECREATIONS
+    }
+
+    /** Drops what [mayRecreateDecoder] counts, for content that is no longer the content that failed. */
+    private fun forgetDecoderRecreations() {
+        decoderRecreations = 0
+        recreatedAtPositionMs = C.TIME_UNSET
+    }
+
+    /**
+     * Which rung, if any, this player performs for [error] — the one place rungs 4 and 5 are routed,
+     * and therefore the one place ADR-0011 rule 7's order between them is imposed.
+     *
+     * Rung 4 is offered the failure first and rung 5 only where it declined, which is the order and
+     * not a preference. It costs a `Device.DecoderTransient` nothing, because the ladder refuses that
+     * class the next source in as many words — a decoder that stopped is not a property of the source,
+     * and a second manifest fetched before the decoder is recreated is a startup a viewer waits
+     * through for nothing.
+     *
+     * Each rung is a pair of halves: the ladder's, which is what the class permits, and core's, which
+     * is whether this player can perform it at all — a next source to open, a decoder recreation that
+     * is not the third at one position. Both are asked here, so the memo below is an answer to "which
+     * rung will be performed" rather than to "which rung would be allowed".
+     */
+    private fun repairFor(error: PlaybackException?): FailureRepair {
+        val rungs = playerStateRungs ?: return FailureRepair.NONE
+        if (error == null) return failureRepair
+        if (error !== failureDecidedOn) {
+            failureDecidedOn = error
+            failureRepair = when {
+                currentRequest?.let { hasNextSource(it) } == true && rungs.opensNextSource(error) ->
+                    FailureRepair.NEXT_SOURCE
+
+                mayRecreateDecoder() && rungs.recreatesDecoder(error) -> FailureRepair.RECREATE_DECODER
+
+                else -> FailureRepair.NONE
+            }
+        }
+        return failureRepair
+    }
+
+    /**
+     * Whether [error] is one this player takes on itself at rung 4 or rung 5, and therefore one the
+     * consumer is never told about.
      *
      * A rescued session that also reported an error would be two contradictory accounts of one
      * viewing: ADR-0011 rule 10 makes the typed error rung 6 — what a consumer is handed once nothing
@@ -612,23 +731,17 @@ public class SuperPlayer private constructor(
      * withheld: Media3 hands one event to every listener in one pass, so a decision taken after the
      * pass began would come too late for the listeners already visited.
      *
-     * Memoized against the failure, and null means "the error being cleared": the `prepare` rung 4
-     * performs clears it immediately, and a consumer who never saw it must not see it go away either.
+     * Memoized against the failure, and null means "the error being cleared": the `prepare` either
+     * rung performs clears it immediately, and a consumer who never saw it must not see it go away
+     * either.
      */
-    private fun withholdsFromConsumer(error: PlaybackException?): Boolean {
-        val rungs = playerStateRungs ?: return false
-        if (error == null) return failureWithheld
-        if (error !== failureDecidedOn) {
-            failureDecidedOn = error
-            failureWithheld = currentRequest?.let { hasNextSource(it) } == true && rungs.opensNextSource(error)
-        }
-        return failureWithheld
-    }
+    private fun withholdsFromConsumer(error: PlaybackException?): Boolean =
+        repairFor(error) != FailureRepair.NONE
 
     /** Drops the memo, so nothing of a finished session's failure is held or answered for. */
     private fun forgetWithheldFailure() {
         failureDecidedOn = null
-        failureWithheld = false
+        failureRepair = FailureRepair.NONE
     }
 
     /**
@@ -703,6 +816,8 @@ public class SuperPlayer private constructor(
             // snapshot carries the request and the position and no rung, because the ladder is about
             // what is failing *now* and a restored player is a new engine on a new network.
             sourceIndex = FIRST_SOURCE
+            // And on new decoders: nothing of what the saved player recreated is this player's.
+            forgetDecoderRecreations()
             // A restored player measures under a session of its own rather than continuing the saved
             // one: the player that took the snapshot ended its session when it was released, and
             // without this the whole of what a viewer watches after a rotation would go unmeasured.
@@ -828,6 +943,7 @@ public class SuperPlayer private constructor(
         // player handed a new row must open that row's first source.
         sourceIndex = FIRST_SOURCE
         forgetWithheldFailure()
+        forgetDecoderRecreations()
         // The session ends with the item, not with the player. A pooled player that kept one session
         // open across a scroll would report one forty-minute view of nine different things, which is
         // the defect this line exists to prevent. The collector stays attached: the next
@@ -864,6 +980,7 @@ public class SuperPlayer private constructor(
         // The memo holds a `PlaybackException`, which holds its cause: dropped with everything else
         // this player was keeping alive.
         forgetWithheldFailure()
+        forgetDecoderRecreations()
     }
 
     /**
@@ -900,7 +1017,38 @@ public class SuperPlayer private constructor(
          * guess it.
          */
         public const val MAX_REMEMBERED_POSITIONS: Int = 128
+
+        /**
+         * How many decoders rung 5 recreates at one position before the ladder gives up on it: two.
+         *
+         * The bound ADR-0011 rule 7 implies and the issue asks for in as many words — a decoder that
+         * fails to come back must not loop — and it is a count of *futile* attempts, since
+         * [mayRecreateDecoder] starts over wherever playback advanced.
+         *
+         * Two rather than one, because the second attempt has a different cause to answer: the first
+         * covers the ordinary case this rung exists for, a decoder lost to a surface change or an
+         * HDMI event and available again immediately (// ref: `MediaCodec.CodecException.isTransient`
+         * — the platform saying the resource was momentarily unavailable), while the second covers a
+         * device where that moment had not passed when the first re-prepare asked — a feed holding
+         * every instance the device has is the case a `PlayerPool` makes ordinary. Two rather than
+         * more, because a third failure at a position that has played nothing in between is a decoder
+         * that is not coming back, and a viewer is better served by rung 6's typed error than by a
+         * player re-preparing itself behind a spinner. Internal rather than public: unlike
+         * [MAX_REMEMBERED_POSITIONS] it bounds no promise a consumer writes code against, and a
+         * consumer who hits it sees the error rather than the count.
+         */
+        internal const val MAX_DECODER_RECREATIONS: Int = 2
     }
+
+    /**
+     * Which of the two rungs core performs (ADR-0011 rule 5) a surfaced failure was routed to, if
+     * either.
+     *
+     * A named answer rather than a boolean because two callers read it for different purposes in one
+     * dispatch — the listener wrappers ask only whether the failure is withheld, while the engine
+     * listener has to perform the right remedy — and a pair of booleans would let the two disagree.
+     */
+    private enum class FailureRepair { NONE, NEXT_SOURCE, RECREATE_DECODER }
 
     public class Builder(private val context: Context) {
 

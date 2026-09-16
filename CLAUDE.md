@@ -410,7 +410,21 @@ delivered error rung 6's; that is the one callback the reflective listener wrapp
 second source is typically a second *protocol* — `PRD.md` §2.2's DASH falling back to HLS — which is
 what `NextSourcePlaybackTest` forces over one transport serving both streams
 (`TestContent.alsoServing`), and a player built without the module opens the first source and nothing
-else. Rungs 5 and 6 are #182 and #183. A ceiling caps the climb and does **not** route it: which rungs below a
+else. **Rung 5 is a second question on that same slot rather than a fourth one** (ADR-0011 rule 13's
+addendum): `RecreateDecoder` decides — one class, `Device.DecoderTransient`, its sibling
+`DecoderInit` refused because no decoder was there to lose — and `PlayerStateLadder` is the pair of
+rung decisions core is handed. Core performs it by *re-preparing* the player and doing nothing else:
+a failed Media3 player keeps its playlist and position in `STATE_IDLE` and `prepare()` retries from
+there, so the identity, the session and the position are preserved by nothing touching them, and
+SuperPlayer adds no seek around it. Core asks rung 4 first and rung 5 only where it declined, which
+is the order and costs a transient decoder failure nothing. What is core's alone is the **bound**,
+`SuperPlayer.MAX_DECODER_RECREATIONS` — two recreations at one position, the count starting over
+wherever playback advanced — because a decoder that will not come back must reach rung 6 rather than
+loop. `SuperPlayerDecoderRecreationTest` forces that through core's own harness with a hand-written
+ladder, and its KDoc states the limit plainly: **nothing here can fail a decoder**, so the
+classification's half of the rung is asserted in `FallbackLadderTest` over real error codes and the
+player's half against an ordinary transfer failure standing in for the decoder's. Rung 6 is #183.
+A ceiling caps the climb and does **not** route it: which rungs below a
 class's `rungCeiling` are worth offering is the ladder's, which is how a `Device.DecoderTransient`
 reaches rung 5 without trying a host and why a `Fatal.Unsupported` is offered nothing at all, and
 `FallbackLadderTest` is that routing written down. Two things to know about the two upper rungs.
@@ -653,8 +667,10 @@ Style preferences these are not. A change violating one is not accepted, whateve
   preservation are correctness on for everyone; the Media3-facing halves are internal and reach the
   engine through three slots in core's seam, filled by the module as core's fifth Kotlin friend —
   a load-error slot and a header-refresh slot the engine is *configured* with, and, since rule 13's
-  addendum, one core *interrogates* at failure time for the rungs that are operations on the
-  player's own state; a failure such a rung repairs is withheld from the consumer's listeners,
+  addendum, one core *interrogates* at failure time for both of the rungs that are operations on the
+  player's own state — the next source and the recreated decoder, the second of them bounded by core
+  because a re-prepare is the one rung nothing else bounds (rule 5's second addendum); a failure such
+  a rung repairs is withheld from the consumer's listeners,
   which rule 10's addendum decides and which is the one deliberate exception to ADR-0003 rule 3;
   and a player built without it pays nothing, which a test counts.
 - **[`docs/api-surface.md`](docs/api-surface.md)** — every published module's public API is tracked

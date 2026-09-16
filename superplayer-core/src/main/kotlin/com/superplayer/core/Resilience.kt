@@ -105,26 +105,30 @@ internal fun interface HeaderRefreshLayer {
  * error could answer has declined (ADR-0011 rule 5).
  *
  * Rungs 1 to 3 are answers `superplayer-resilience` gives Media3 about a load, from a loading thread,
- * with the load in hand. Rung 4 is not one of those: opening the next entry of [MediaRequest.sources]
- * is a re-adoption, an operation on the player's own state, and the only object that can perform it
- * is the facade. So the module's ladder stops where a climb escalates out of the top of it, and the
- * failure arrives here instead — at the player, on the application thread, where the position
- * playback reached is still readable and a media item may be replaced.
+ * with the load in hand. Rungs 4 and 5 are not those: opening the next entry of [MediaRequest.sources]
+ * is a re-adoption and recreating a decoder is a re-prepare, both operations on the player's own
+ * state, and the only object that can perform either is the facade. So the module's ladder stops
+ * where a climb escalates out of the top of it, and the failure arrives here instead — at the player,
+ * on the application thread, where the position playback reached is still readable and a media item
+ * may be replaced.
  *
  * **Which direction "only when the ladder asks" runs.** Core does not decide that a failure has
- * earned rung 4 and it reads no error code — that would be the second taxonomy ADR-0011 rule 1 forbids.
+ * earned a rung and it reads no error code — that would be the second taxonomy ADR-0011 rule 1 forbids.
  * It asks this, and the answer is the ladder's own decision about the rung core is about to perform;
  * what core contributes is the half the module cannot see, which is whether there is a next source at
- * all. A player built with no resilience has nothing to ask and therefore performs no rung, which is
- * rule 14's accounting for this slot: it registers no listener either.
+ * all and whether a decoder has already been recreated for this position without result. A player
+ * built with no resilience has nothing to ask and therefore performs no rung, which is rule 14's
+ * accounting for this slot: it registers no listener either.
  *
  * Asked on the application thread, once per surfaced failure, and expected to be pure — the decision
  * is memoized against the failure it was made for, so an implementation that answered differently the
  * second time would not be asked twice anyway.
  *
- * Rung 5, the recreated decoder, is the other half of rule 5 and is not here yet: it arrives as a
- * second question on this interface (#182), because the rung order is one order and both rungs are
- * asked of the same object.
+ * **Both rungs are questions on this one interface, and rule 13's addendum says why**: the rung order
+ * is one order, and a second slot would let an implementation fill one and not the other, which is a
+ * ladder with a hole in it. Core asks them in that order — rung 4 first, rung 5 only where rung 4
+ * declined — so which rung a class is worth offering stays the ladder's decision rather than becoming
+ * core's (`FallbackLadder`'s "a ceiling caps the climb and does not route it").
  */
 internal interface PlayerStateRungs {
 
@@ -136,4 +140,17 @@ internal interface PlayerStateRungs {
      * and is not visible from here.
      */
     fun opensNextSource(error: PlaybackException): Boolean
+
+    /**
+     * Whether [error] is one rung 5 — the decoder recreated, the player re-prepared where it stood —
+     * is the remedy for.
+     *
+     * The class is the whole of the answer here too: a decoder that was working and stopped is worth
+     * recreating, and one that could never be initialised for this content is not, which is the
+     * distinction the classifier already draws and which nothing in core re-derives.
+     *
+     * "May", again: how many times this player has already recreated a decoder at the position it is
+     * stuck at is core's half, because a rung that is free to repeat is a loop rather than a remedy.
+     */
+    fun recreatesDecoder(error: PlaybackException): Boolean
 }

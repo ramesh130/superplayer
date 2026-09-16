@@ -96,14 +96,25 @@ class DrmFailureTest {
     }
 
     @Test
-    fun aDeviceTheProvisioningServiceRefusesIsNamedAsThatAndNotAsALicenceFailure() {
-        // Never a transfer: the device asks to be provisioned and is turned down, so nothing the
-        // licence transport can see happened. Media3 says which round trip it dispatched and the
-        // classification reads that, which is why the two shapes come out differently here.
+    fun aDeviceTheProvisioningServiceRefusesIsNamedAsRevokedAndNotAsALicenceFailure() {
+        // The *device's* refusal rather than the transfer's: the provisioning round trip reaches the
+        // service and completes, and the implementation itself rejects the certificate it was handed.
+        // Media3 raises `DeniedByServerException` for that, which is error code 6007 — a revoked or
+        // untrusted Widevine implementation — and #206 named 6007 `Drm.Unsupported`: not retryable,
+        // because a device the service has revoked is not one a later ask certifies.
+        //
+        // It said `Drm.Provisioning` until #207, and the reason is worth keeping: the provisioning
+        // request was being sent to `bar.test`, an address nothing in the harness answered, so the
+        // session failed on the *transfer* long before the device was ever asked to accept a
+        // response. The old expectation was right about a path this test never took. `ProvisioningTest`
+        // is where a refused transfer to the provisioning service is asserted, and it is
+        // `Drm.Provisioning` there.
         DeviceStatement.declareWidevineProvisioningFailure()
         val player = playUntilItFails()
 
-        assertThat(typedErrorOf(player).causeClass).isEqualTo(FailureClass.Drm.Provisioning.stableName)
+        val typed = typedErrorOf(player)
+        assertThat(typed.causeClass).isEqualTo(FailureClass.Drm.Unsupported.stableName)
+        assertThat(typed.isRetryable).isFalse()
     }
 
     @Test

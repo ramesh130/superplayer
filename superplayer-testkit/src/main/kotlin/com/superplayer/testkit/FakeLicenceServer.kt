@@ -142,7 +142,8 @@ internal class LicenceServerDataSource(
         val requestBody = dataSpec.httpBody ?: ByteArray(0)
         return try {
             if (dataSpec.uri.toString().startsWith(FakeLicenceServer.PROVISION_URI)) {
-                server.executeProvisionRequest(C.WIDEVINE_UUID, ExoMediaDrm.ProvisionRequest(requestBody, "")).data
+                val request = provisionRequestIn(requestBody)
+                server.executeProvisionRequest(C.WIDEVINE_UUID, ExoMediaDrm.ProvisionRequest(request, "")).data
             } else {
                 server.executeKeyRequest(C.WIDEVINE_UUID, ExoMediaDrm.KeyRequest(requestBody, "")).data
             }
@@ -158,11 +159,45 @@ internal class LicenceServerDataSource(
         }
     }
 
+    /**
+     * The device's provisioning request, out of whichever of its two envelopes [body] arrived in.
+     *
+     * ref: Google's device provisioning service is POSTed a JSON object whose one member carries the
+     * request — `{"signedRequest":<request>}` — and Media3's `HttpMediaDrmCallback` composes exactly
+     * that, by concatenating the opaque request bytes between two literals rather than by encoding
+     * them, and sends it with `Content-Type: application/json`. That is the shape `superplayer-drm`
+     * sends, because the library uses Media3's own callback (ADR-0001) and a provisioning service is
+     * not the app's to redesign. Unwrapping it here is what a real one does first.
+     *
+     * Unwrapped by the same byte concatenation in reverse, and deliberately not by a JSON parser: the
+     * request is **not text** — `FakeExoMediaDrm`'s is three control bytes and a real one is a
+     * certificate request — so a parser that decoded the member as a JSON string would corrupt it
+     * exactly where a real service would not.
+     *
+     * A body in neither envelope is the request itself, which is what [TransportMediaDrmCallback] —
+     * the stock arm's callback — posts, and the reason this reads the shape rather than the sender.
+     */
+    private fun provisionRequestIn(body: ByteArray): ByteArray {
+        val envelope = PROVISION_ENVELOPE_PREFIX.toByteArray(Charsets.UTF_8)
+        val close = PROVISION_ENVELOPE_SUFFIX.toByteArray(Charsets.UTF_8)
+        val wrapped = body.size >= envelope.size + close.size &&
+            body.copyOfRange(0, envelope.size).contentEquals(envelope) &&
+            body.copyOfRange(body.size - close.size, body.size).contentEquals(close)
+        return if (wrapped) body.copyOfRange(envelope.size, body.size - close.size) else body
+    }
+
     class Factory(
         private val upstream: DataSource.Factory,
         private val server: FakeExoMediaDrm.LicenseServer,
     ) : DataSource.Factory {
         override fun createDataSource(): DataSource = LicenceServerDataSource(upstream.createDataSource(), server)
+    }
+
+    private companion object {
+
+        /** ref: the two literals `HttpMediaDrmCallback` concatenates a provisioning request between. */
+        const val PROVISION_ENVELOPE_PREFIX = "{\"signedRequest\":\""
+        const val PROVISION_ENVELOPE_SUFFIX = "\"}"
     }
 }
 
@@ -177,12 +212,15 @@ internal class LicenceServerDataSource(
  * exists to replace.
  *
  * Media3's own `HttpMediaDrmCallback` is the class this resembles and deliberately not the class
- * used. Its key-request half would do: it POSTs the request data to a URL through a
- * `DataSource.Factory`, which is exactly the shape below. Its *provisioning* half will not, because
- * it follows Google's provisioning convention of appending the request to the URL as
- * `&signedRequest=<request as text>` — and `FakeExoMediaDrm`'s provision request is three control
- * bytes, which is not text and does not survive a query string. Both halves are therefore one POST
- * here, which also means a test reads one mechanism rather than two.
+ * used — for the stock arm, which has no `WidevineConfig` to take a licence address from and would
+ * otherwise need one invented for it. Both halves are one bare POST here, which also means a test of
+ * the stock arm reads one mechanism rather than two.
+ *
+ * `superplayer-drm` does use `HttpMediaDrmCallback`, and since #207 both of its halves reach this
+ * same server: the licence at the address `WidevineConfig` named, and the provisioning at the one the
+ * stated device names ([WidevineStatement]). The provisioning request arrives inside Google's JSON
+ * envelope there rather than bare, which [LicenceServerDataSource] unwraps — so the two arms differ
+ * in the envelope and in nothing else.
  */
 internal class TransportMediaDrmCallback(private val transport: DataSource.Factory) : MediaDrmCallback {
 

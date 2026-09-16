@@ -530,7 +530,19 @@ error") and `SystemError` (the device's protection stack, and the band's fall-th
 rung 5: a re-prepare builds a decoder again and not a new `MediaDrm`. The category table did not
 move, so `TelemetryEvent.SCHEMA_VERSION` did not either, and
 `docs/telemetry-schema.md`'s *Release notes* says so explicitly along with the three
-`classification` values a pipeline can now see.
+`classification` values a pipeline can now see. Since #207 a device that is not provisioned is
+**provisioned rather than refused**, and almost none of that is new machinery: Media3 posts a
+provisioning request through the same `LoadErrorHandlingPolicy` as every other DRM load, so it spends
+`RetryPolicy.licence` with `Backoff`'s jitter, and a service that never relents ends on
+`Drm.Provisioning` at rung 6. Each round trip gets the budget whole — a budget here bounds a
+*request* and never a session, so being provisioned on the third ask does not shorten the licence
+request it was for. What #207 actually built is in `superplayer-testkit`: the stated device names
+`FakeLicenceServer.PROVISION_URI` as its provisioning service where `FakeExoMediaDrm` named an
+unanswerable placeholder, so a provisioning round trip through a real `SuperPlayer` is a transfer the
+harness can count, delay and refuse at last — and `ProvisioningTest` is what that made writable.
+One expectation moved with it: a device whose provisioning the service *refuses* now reaches
+`provideProvisionResponse` and is `Drm.Unsupported` (6007, revoked), where it read `Drm.Provisioning`
+only because the session used to fail on the address first.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,

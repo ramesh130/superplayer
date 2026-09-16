@@ -77,8 +77,9 @@ internal class WidevineStatement(
  *
  * Delegation rather than a fork of `FakeExoMediaDrm`: the session handling, the key-request encoding
  * and the provisioning bookkeeping are Media3's and are what make the exchange realistic, and the
- * three overrides below are the three things `FakeExoMediaDrm` has no opinion about because Media3's
- * own tests never needed one.
+ * four overrides below are the four things `FakeExoMediaDrm` has no opinion about because Media3's
+ * own tests never needed one — its provisioning address included, which Media3 leaves a placeholder
+ * because its own tests answer the callback in memory rather than over a transport.
  */
 private class StatedExoMediaDrm(
     private val delegate: FakeExoMediaDrm,
@@ -103,6 +104,30 @@ private class StatedExoMediaDrm(
      */
     override fun requiresSecureDecoder(sessionId: ByteArray, mimeType: String): Boolean =
         statement.securityLevel == SecurityLevel.L1
+
+    /**
+     * The provisioning round trip this device would make, addressed at [FakeLicenceServer].
+     *
+     * ref: `MediaDrm.getProvisionRequest` returns opaque request data **and the URL of the
+     * provisioning service the device implementation trusts** — on a Widevine handset, Google's
+     * certificate provisioning endpoint, which the device names and the app never does:
+     * https://developer.android.com/reference/android/media/MediaDrm.ProvisionRequest#getDefaultUrl()
+     * `FakeExoMediaDrm` names `bar.test`, a placeholder Media3's own tests never dial, and the whole
+     * of what is changed here is the address.
+     *
+     * That one substitution is what lets `superplayer-drm` be tested through its **own** callback
+     * rather than a stand-in (#207). Media3's `HttpMediaDrmCallback` — the production one — sends a
+     * provisioning request to the URL this method names, and until the fake device named an address
+     * the harness answers at, a provisioning round trip through a real `SuperPlayer` left the harness
+     * entirely and could neither be counted, delayed nor refused. Bending the library's callback to
+     * the harness instead would have been the wrong repair: the shape under test would then have been
+     * the test's rather than the field's.
+     *
+     * The request *data* is the delegate's, unaltered, because that is what the licence server
+     * recognises and what makes the exchange Media3's rather than this file's.
+     */
+    override fun getProvisionRequest(): ExoMediaDrm.ProvisionRequest =
+        ExoMediaDrm.ProvisionRequest(delegate.provisionRequest.data, FakeLicenceServer.PROVISION_URI)
 
     /**
      * A device whose provisioning the service will not complete.

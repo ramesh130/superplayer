@@ -403,12 +403,30 @@ of it. Media3's `LicenseServer` is a `MediaDrmCallback` rather than anything HTT
 `LicenceServerDataSource` does the translation in one place — a POST body *is* the request the
 callback would have been handed — and the entitlement decision stays Media3's rather than becoming a
 second, home-made licence server nobody has reviewed. The player's side is
-`TransportMediaDrmCallback`, and it is deliberately not Media3's own `HttpMediaDrmCallback`: that
-class's provisioning half appends the request to the URL as `&signedRequest=<request as text>`, and
-`FakeExoMediaDrm`'s provision request is three control bytes, which is not text. That is the *stock*
-arm's callback only; `superplayer-drm` uses Media3's own `HttpMediaDrmCallback`, whose key-request
-half posts to the address `WidevineConfig` named and which therefore reaches the same server.
-Provisioning is where the two diverge, and #207 is where that is settled.
+`TransportMediaDrmCallback` for the *stock* arm, which posts both requests raw; `superplayer-drm`
+uses Media3's own `HttpMediaDrmCallback`, whose key-request half posts to the address
+`WidevineConfig` named.
+
+**Provisioning is where the two used to diverge, and #207 settled it in the harness rather than in
+the library.** Media3 sends a provisioning request to the URL the *device* names — on a handset, the
+service its implementation trusts, which the app never chooses — and `FakeExoMediaDrm` names
+`bar.test`, an address nothing here answers. So a provisioning round trip through a real
+`SuperPlayer` left the harness entirely: it could be neither counted, delayed nor refused, and a test
+that meant to refuse one was really refusing a DNS lookup. The fix is one line of `WidevineDevice`:
+the stated device names `FakeLicenceServer.PROVISION_URI` as its provisioning service, exactly as a
+real device names Google's. Bending the library's callback to the harness would have been the wrong
+repair — the shape under test would then have been the test's rather than the field's. The other
+half is `FakeLicenceServer` unwrapping the envelope Media3 sends: `{"signedRequest":<request>}`,
+whose member is concatenated raw rather than encoded, so the server unwraps it by the same byte
+concatenation in reverse and never through a JSON parser, because a provisioning request is not text.
+
+That change made one existing expectation visibly wrong, which is worth knowing before writing
+another: `DeviceStatement.declareWidevineProvisioningFailure()` is a device that *rejects the
+certificate it is handed*, and now that the round trip completes, Media3 raises
+`DeniedByServerException` for it — error code 6007, classified `Drm.Unsupported` and not retryable,
+which is the honest name for a revoked implementation. It read `Drm.Provisioning` before only because
+the session had failed on the unanswerable address first. A refused *transfer* to the provisioning
+service is the one that is `Drm.Provisioning`, and `ProvisioningTest` is where that is asserted.
 
 **Both players play protected content.** `buildStockPlayer` builds the session manager itself, which
 is arm (a) and the only thing available before Phase 6 had code; `buildPlayer(content =

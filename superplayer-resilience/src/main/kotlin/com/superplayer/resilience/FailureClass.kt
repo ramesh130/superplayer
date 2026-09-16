@@ -192,16 +192,47 @@ public sealed class FailureClass(
     /**
      * Protection, not delivery.
      *
-     * The branch exists so Phase 6 has somewhere to land (ADR-0011 rule 6) and no DRM is plumbed
-     * here. Its leaves are not placeholders, though: Media3's DRM band is delivered to players today
-     * and rule 2 leaves nothing unclassified, so each leaf is a code the engine can already raise.
-     * Phase 6 adds a leaf in a change that says why, rather than stretching one of these.
+     * The branch was opened in Phase 5 so Phase 6 had somewhere to land (ADR-0011 rule 6), with three
+     * leaves and the instruction that Phase 6 add one **in a change that says why** rather than
+     * stretch one of them. #206 is that change, and it adds two.
+     *
+     * ## Why two, and which two
+     *
+     * What was wrong was not the three leaves but the fall-through under them: the whole 6000–6999
+     * band that no leaf claimed landed in [LicenceAcquisition], so a licence that expired, a
+     * protection subsystem that faulted and a code the engine could not name were one event to
+     * everyone acting on them. They are not one event to anybody:
+     *
+     * - **[LicenceExpired]** is the split `PRD.md` §3.2 calls out by name — a downloaded asset whose
+     *   licence has run out has to say so, and "playback error" is the one thing it must not say. It
+     *   is the only leaf here that earns a [userMessageKey] of its own, because it is the only one a
+     *   viewer can act on: renewing an entitlement is something an app can offer, and a retry is not.
+     * - **[SystemError]** is the device's protection stack failing rather than any entitlement: a
+     *   `MediaDrm` reset, a key rotation that could not be applied, a code Media3 assigns to the DRM
+     *   band and nothing narrower. Naming it is what keeps it out of [LicenceAcquisition], whose
+     *   retryability was being spent on failures no licence request was ever part of.
+     *
+     * Everything else stays put. [Provisioning] and [Unsupported] already named what they name, and
+     * [LicenceAcquisition] is now exactly the failure it is named after rather than the band's bucket.
+     *
+     * ## What no leaf here reaches
+     *
+     * Rung 4 is [Unsupported]'s alone, and that is ADR-0012 rule 1: a second entry of
+     * `MediaRequest.sources` is the same content in another container, never a second entitlement, so
+     * a second source is worth opening only where what failed was the *mapping* of the protection and
+     * not the licence. Rung 5 is reached by none of them, including [SystemError], where it looks
+     * closest to a remedy: rung 5 re-prepares the player, which builds a decoder again and does **not**
+     * build a new `MediaDrm` — the session manager holds that for as long as a renderer holds a
+     * reference to it. So there is no rung in this ladder that rebuilds a faulted protection stack,
+     * and the honest ceiling for one is rung 6 rather than a re-prepare that costs a startup and
+     * changes nothing.
      */
     public sealed class Drm(
         stableName: String,
         retryable: Boolean,
         rungCeiling: FallbackRung,
-    ) : FailureClass(stableName, retryable, rungCeiling, FailureCategory.DRM, DRM_MESSAGE_KEY) {
+        userMessageKey: String = DRM_MESSAGE_KEY,
+    ) : FailureClass(stableName, retryable, rungCeiling, FailureCategory.DRM, userMessageKey) {
 
         /**
          * The device could not be provisioned. A server-side operation between the device and the
@@ -210,9 +241,55 @@ public sealed class FailureClass(
          */
         public object Provisioning : Drm("Drm.Provisioning", retryable = true, FallbackRung.RETRY_SAME_URL)
 
-        /** A licence could not be acquired or has expired; re-acquiring is the remedy, and the only one. */
+        /**
+         * A licence could not be acquired: the round trip to the licence server did not produce one.
+         *
+         * Asking again is the remedy and the only one — another host serves the same media and not
+         * the entitlement, and another source is another container under the same entitlement — so
+         * rung 1 is the ceiling. Since #205 a licence load is a load of the player's like any other,
+         * which is what makes that retry real: it is bounded by `RetryPolicy.licence` and by nothing
+         * of Media3's own.
+         *
+         * Distinct from [LicenceExpired] in the thing an app does about it: a licence that never
+         * arrived may arrive on the next ask, and one that arrived and has run out will not.
+         */
         public object LicenceAcquisition :
             Drm("Drm.LicenceAcquisition", retryable = true, FallbackRung.RETRY_SAME_URL)
+
+        /**
+         * A licence that was issued has run out: the keys this session holds are expired, and no rung
+         * of this ladder mints new ones.
+         *
+         * Not retryable, and that is the whole point of the leaf. The same request produces the same
+         * expired keys; what produces a working session is a *renewal*, which is the app's to
+         * schedule against its own entitlements (ADR-0012's offline half) and is not a remedy the
+         * player can perform on a viewer's behalf. So the ceiling is rung 6 and the answer is a
+         * sentence rather than an attempt.
+         *
+         * It carries [LICENCE_EXPIRED_MESSAGE_KEY] rather than [DRM_MESSAGE_KEY] because `PRD.md`
+         * §3.2 asks for exactly that: a downloaded asset with a dead licence must produce a specific
+         * message, and an app that cannot tell this failure from a protection failure it can do
+         * nothing about will write the wrong one.
+         */
+        public object LicenceExpired : Drm(
+            "Drm.LicenceExpired",
+            retryable = false,
+            FallbackRung.TYPED_ERROR,
+            LICENCE_EXPIRED_MESSAGE_KEY,
+        )
+
+        /**
+         * The device's protection stack failed, with no entitlement implicated: a `MediaDrm` that
+         * reset under the player, a key operation the platform refused for a reason of its own, a key
+         * rotation that could not be applied.
+         *
+         * Also the DRM band's own fall-through, which is a decision rather than a leftover. A DRM
+         * failure the engine declined to name is a failure of *protection* and that is all that is
+         * known about it; calling it a licence acquisition would claim a round trip that may never
+         * have happened, and would spend `RetryPolicy.licence` on it. Not retryable for the same
+         * reason: nothing here is a transfer, so there are no bytes to ask for again.
+         */
+        public object SystemError : Drm("Drm.SystemError", retryable = false, FallbackRung.TYPED_ERROR)
 
         /**
          * The scheme, the device or the operation is refused: an unsupported key system, a revoked
@@ -238,7 +315,7 @@ public sealed class FailureClass(
     }
 
     /**
-     * The five things there are to say to a viewer, which is fewer than there are classes and is the
+     * The six things there are to say to a viewer, which is fewer than there are classes and is the
      * point of [userMessageKey] being its own column.
      *
      * Named for the *message* rather than for the branch that carries it — `superplayer_error_` and
@@ -259,6 +336,16 @@ public sealed class FailureClass(
 
         /** Protection, not delivery: the sentence an app words around its own entitlements. */
         public const val DRM_MESSAGE_KEY: String = "superplayer_error_protected_content"
+
+        /**
+         * The entitlement ran out rather than failed: the one protection failure with a remedy a
+         * viewer can be offered, which is why it is the sixth key rather than the fourth's second
+         * meaning (`PRD.md` §3.2, #206).
+         *
+         * An app that renews licences words this one around renewal — "this download has expired,
+         * tap to renew" — and one that does not still says something truer than "playback error".
+         */
+        public const val LICENCE_EXPIRED_MESSAGE_KEY: String = "superplayer_error_licence_expired"
 
         /** The engine has named the content unplayable here: the one message that offers no remedy. */
         public const val UNSUPPORTED_MESSAGE_KEY: String = "superplayer_error_unsupported"

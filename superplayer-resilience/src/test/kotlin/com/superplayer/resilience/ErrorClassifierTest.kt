@@ -20,6 +20,7 @@ import android.media.MediaCodec
 import androidx.media3.common.PlaybackException
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
+import androidx.media3.exoplayer.drm.DrmSession
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
 import com.superplayer.core.FailureCategory
@@ -60,6 +61,8 @@ class ErrorClassifierTest {
         FailureClass.Device.DecoderTransient,
         FailureClass.Drm.Provisioning,
         FailureClass.Drm.LicenceAcquisition,
+        FailureClass.Drm.LicenceExpired,
+        FailureClass.Drm.SystemError,
         FailureClass.Drm.Unsupported,
         FailureClass.Fatal.Unsupported,
     )
@@ -113,6 +116,11 @@ class ErrorClassifierTest {
             FailureCategory.SOURCE,
             FailureCategory.DECODER,
             FailureCategory.DECODER,
+            // Every leaf of the DRM branch, the two #206 added included: the branch grew and the
+            // coarse bucket did not, which is why `TelemetryEvent.SCHEMA_VERSION` did not move for
+            // it (`docs/telemetry-schema.md`, *Release notes*).
+            FailureCategory.DRM,
+            FailureCategory.DRM,
             FailureCategory.DRM,
             FailureCategory.DRM,
             FailureCategory.DRM,
@@ -173,17 +181,107 @@ class ErrorClassifierTest {
     }
 
     @Test
-    fun theDrmBandSplitsIntoTheLeavesPhase6WillGrowInto() {
+    fun everyCodeMedia3AssignsInTheDrmBandHasALeafOfItsOwn() {
+        // The whole of Media3 1.11's DRM band, code by code, because the acceptance of #206 is that
+        // none of them shares a leaf with a failure someone would act on differently.
         assertThat(classify(PlaybackException.ERROR_CODE_DRM_PROVISIONING_FAILED))
             .isEqualTo(FailureClass.Drm.Provisioning)
         assertThat(classify(PlaybackException.ERROR_CODE_DRM_LICENSE_ACQUISITION_FAILED))
             .isEqualTo(FailureClass.Drm.LicenceAcquisition)
         assertThat(classify(PlaybackException.ERROR_CODE_DRM_LICENSE_EXPIRED))
-            .isEqualTo(FailureClass.Drm.LicenceAcquisition)
-        assertThat(classify(PlaybackException.ERROR_CODE_DRM_SCHEME_UNSUPPORTED))
+            .isEqualTo(FailureClass.Drm.LicenceExpired)
+        assertThat(classify(PlaybackException.ERROR_CODE_DRM_SYSTEM_ERROR))
+            .isEqualTo(FailureClass.Drm.SystemError)
+        for (refusal in listOf(
+            PlaybackException.ERROR_CODE_DRM_SCHEME_UNSUPPORTED,
+            PlaybackException.ERROR_CODE_DRM_CONTENT_ERROR,
+            PlaybackException.ERROR_CODE_DRM_DISALLOWED_OPERATION,
+            PlaybackException.ERROR_CODE_DRM_DEVICE_REVOKED,
+        )) {
+            assertWithMessage("code $refusal").that(classify(refusal)).isEqualTo(FailureClass.Drm.Unsupported)
+        }
+    }
+
+    @Test
+    fun theTitularUnspecifiedCodeIsNamedRatherThanCalledALicenceFailure() {
+        // The issue's own title: nothing may reach a consumer as `ERROR_CODE_DRM_UNSPECIFIED` and
+        // nothing else. It is protection that failed and that is the whole of what is known, which
+        // is what `Drm.SystemError` says — and what it deliberately does not say is that a licence
+        // was ever asked for, which the band's old fall-through did.
+        assertThat(classify(PlaybackException.ERROR_CODE_DRM_UNSPECIFIED))
+            .isEqualTo(FailureClass.Drm.SystemError)
+        // And the same for a code the band does not yet have, which a later Media3 may add.
+        assertThat(classify(6_999)).isEqualTo(FailureClass.Drm.SystemError)
+    }
+
+    @Test
+    fun aDeadLicenceIsToldFromAProtectionFailureByTheSentenceItCarries() {
+        // `PRD.md` §3.2's named split: a downloaded asset with a dead licence must not say "playback
+        // error", which means its message key cannot be the one every other protection failure
+        // carries. Asserted on the keys rather than on the classes, because the key is the thing an
+        // app actually switches on.
+        assertThat(FailureClass.Drm.LicenceExpired.userMessageKey)
+            .isEqualTo(FailureClass.LICENCE_EXPIRED_MESSAGE_KEY)
+        for (other in listOf(
+            FailureClass.Drm.Provisioning,
+            FailureClass.Drm.LicenceAcquisition,
+            FailureClass.Drm.SystemError,
+            FailureClass.Drm.Unsupported,
+        )) {
+            assertWithMessage("$other").that(other.userMessageKey).isEqualTo(FailureClass.DRM_MESSAGE_KEY)
+        }
+        // Not retryable, and no rung below the typed error: the same request produces the same
+        // expired keys, and renewing an entitlement is the app's and not the ladder's.
+        assertThat(FailureClass.Drm.LicenceExpired.retryable).isFalse()
+        assertThat(FailureClass.Drm.LicenceExpired.rungCeiling).isEqualTo(FallbackRung.TYPED_ERROR)
+        // The one DRM leaf that reaches rung 4, for ADR-0012 rule 1's reason: another source is
+        // another container and another scheme mapping, never another entitlement.
+        assertThat(FailureClass.Drm.Unsupported.rungCeiling).isEqualTo(FallbackRung.NEXT_SOURCE)
+        assertThat(FailureClass.Drm.LicenceAcquisition.rungCeiling).isEqualTo(FallbackRung.RETRY_SAME_URL)
+    }
+
+    @Test
+    fun aDrmSessionExceptionCarriesTheBandBeforeAnyRendererHasWrappedIt() {
+        // What the load-error path and a consumer's own `catch` both meet: Media3 assigns the code in
+        // `DrmUtil.getErrorCodeForMediaDrmException` and only a renderer copies it onto a
+        // `PlaybackException`, so a classifier that read the wrapper alone would call a session
+        // failure caught early a transient network failure.
+        assertThat(ErrorClassifier.classify(drmSessionFailure(PlaybackException.ERROR_CODE_DRM_LICENSE_EXPIRED)))
+            .isEqualTo(FailureClass.Drm.LicenceExpired)
+        assertThat(ErrorClassifier.classify(drmSessionFailure(PlaybackException.ERROR_CODE_DRM_DEVICE_REVOKED)))
             .isEqualTo(FailureClass.Drm.Unsupported)
-        assertThat(classify(PlaybackException.ERROR_CODE_DRM_DEVICE_REVOKED))
-            .isEqualTo(FailureClass.Drm.Unsupported)
+        // Wrapped as a renderer delivers it, the two agree — the wrapper is preferred and says the
+        // same thing, which is the property that makes reading both safe.
+        val delivered = PlaybackException(
+            "drm",
+            drmSessionFailure(PlaybackException.ERROR_CODE_DRM_SYSTEM_ERROR),
+            PlaybackException.ERROR_CODE_DRM_SYSTEM_ERROR,
+        )
+        assertThat(ErrorClassifier.classify(delivered)).isEqualTo(FailureClass.Drm.SystemError)
+    }
+
+    @Test
+    fun aRefusedLicenceLoadIsNamedByItsStampWhenThereIsNoBandToRead() {
+        // The failure `RetryingLoadErrors` is asked about: an `IOException` off the licence
+        // transport, before Media3 has wrapped it in anything. The stamp core puts on the request
+        // (#205) is the only evidence there is, and it settles the class whatever the status was —
+        // which is what keeps a refused entitlement out of the network bucket.
+        for (status in listOf(403, 500, 503)) {
+            assertWithMessage("$status on a licence")
+                .that(ErrorClassifier.classify(httpFailure(status, LoadKind.LICENCE)))
+                .isEqualTo(FailureClass.Drm.LicenceAcquisition)
+        }
+        // Retryable and bounded by rung 1, which is what makes #205's licence budget the thing that
+        // stops the asking.
+        assertThat(FailureClass.Drm.LicenceAcquisition.retryable).isTrue()
+        // A band, where there is one, is the better evidence and wins: Media3 knows which of the two
+        // entitlement round trips it dispatched and the transport does not.
+        val provisioning = PlaybackException(
+            "drm",
+            httpFailure(500, LoadKind.LICENCE),
+            PlaybackException.ERROR_CODE_DRM_PROVISIONING_FAILED,
+        )
+        assertThat(ErrorClassifier.classify(provisioning)).isEqualTo(FailureClass.Drm.Provisioning)
     }
 
     @Test
@@ -307,6 +405,10 @@ class ErrorClassifierTest {
                 .build(),
             /* responseBody= */ ByteArray(0),
         )
+
+    /** A DRM failure as a session raises it: the code assigned, and no `PlaybackException` yet. */
+    private fun drmSessionFailure(errorCode: Int): DrmSession.DrmSessionException =
+        DrmSession.DrmSessionException(IllegalStateException("drm"), errorCode)
 
     private fun stalePlaylist(likelyCause: StaleLivePlaylistException.LikelyCause) =
         StaleLivePlaylistException(

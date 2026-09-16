@@ -75,9 +75,10 @@ import java.util.concurrent.CopyOnWriteArrayList
  *                    layer below it running at all — which is the point of a cache, and also what
  *                    makes its position the one that must not drift. superplayer-offline shares this
  *                    layer and its key policy (PRD.md §3.5).
- *   header refresh   superplayer-resilience: the HeaderProvider re-invoked on 401/403, closest to
- *                    the transport so that a token refresh and the retry it triggers are a single
- *                    transfer to everything above.
+ *   header refresh   built, and empty unless the player was given a PlaybackResilience that fills it:
+ *                    then that resilience's HeaderRefreshLayer — the HeaderProvider re-invoked on
+ *                    401/403 — closest to the transport, so that a token refresh and the retry it
+ *                    triggers are a single transfer to everything above (ADR-0011 rule 13).
  *   transport        DefaultDataSource over DefaultHttpDataSource — file:, asset:, content:,
  *                    rawresource: and data: locally, HTTP and HTTPS remotely. Which HTTP stack
  *                    sits here is a public question ADR-0004 leaves open; it plugs in at this
@@ -86,6 +87,17 @@ import java.util.concurrent.CopyOnWriteArrayList
  *
  * Two of the four phases are missing from that list, and their absence is the useful part of this
  * comment rather than an omission.
+ *
+ * ## The load-error slot is not a layer either
+ *
+ * Whether a failed load is retried, after how long, and whether the engine falls back to another
+ * location or another track are questions Media3 asks one object per load error — a
+ * `LoadErrorHandlingPolicy` on the `MediaSource.Factory`, not a link in the chain, because the
+ * questions are about a load rather than about a transfer. So the slot is here for the reason CMCD's
+ * is: [mediaSourceFactory] owns the factory as well as the chain, and `superplayer-resilience` fills
+ * it through the engine seam rather than by reaching `ExoPlayer.Builder`. Empty, Media3's own
+ * `DefaultLoadErrorHandlingPolicy` is in force, which is what ADR-0011 rule 14 promises a player
+ * built without the module.
  *
  * ## Measurement is not a layer
  *
@@ -140,12 +152,19 @@ import java.util.concurrent.CopyOnWriteArrayList
  * and its requests reach the slot with none. [ContentIdentity] says why it travels with the request
  * rather than in a holder beside the chain.
  *
- * The same stamp says what kind of load a request is ([LoadKind]), on every item a cached player
- * plays, identified or not: a cache answers media and never a manifest, because a stored live
- * playlist is exactly the stale copy revalidation exists to get past. Only the media source knows the
- * kind — HLS asks for a data source per data type, DASH takes a manifest factory beside its chunk
- * factory — so an HLS or DASH item's source is built per protocol with a stamped chain for each kind,
- * rather than by `DefaultMediaSourceFactory` over one chain.
+ * The same stamp says what kind of load a request is ([LoadKind]), on every item a player with either
+ * slot filled plays, identified or not: a cache answers media and never a manifest, because a stored
+ * live playlist is exactly the stale copy revalidation exists to get past, and the header-refresh
+ * slot below it has to tell a 403 on a segment from a failure of the manifest before it repairs
+ * anything (ADR-0011 rule 13). Only the media source knows the kind — HLS asks for a data source per
+ * data type, DASH takes a manifest factory beside its chunk factory — so an HLS or DASH item's source
+ * is built per protocol with a stamped chain for each kind, rather than by `DefaultMediaSourceFactory`
+ * over one chain.
+ *
+ * The two stamps are not one decision. A *kind* is stamped for whichever slot is filled; an
+ * *identity* is a cache's key and is laid onto the item by adoption only on a player that has one, so
+ * a request reaching the header-refresh slot on a player built with resilience alone carries its kind
+ * and no identity.
  *
  * Preload builds its sources from the same factory, handed to it as a pool's `SharedComponents`
  * (`PooledEngine.kt`), so a source warmed ahead of the viewport loads through this chain under the
@@ -201,6 +220,10 @@ internal object TransferChain {
      * harness has to own that thread.
      *
      * [cache] fills the cache slot and turns on content identity; null leaves both off.
+     *
+     * [headerRefresh] and [loadErrors] are resilience's two slots — a layer closest to the transport
+     * and the object Media3 asks about a failed load. Null leaves the slot empty and, for
+     * [loadErrors], Media3's own policy in force (ADR-0011 rules 13 and 14).
      */
     fun mediaSourceFactory(
         context: Context,
@@ -209,38 +232,48 @@ internal object TransferChain {
         transport: DataSource.Factory? = null,
         loadExecutor: Supplier<ReleasableExecutor>? = null,
         cache: ContentCache? = null,
+        headerRefresh: HeaderRefreshLayer? = null,
+        loadErrors: LoadErrorHandlingPolicy? = null,
     ): MediaSource.Factory {
-        val chain = dataSourceChain(context, transport, cache)
-        // Without a cache, exactly the factory Phase 3 built: nothing about a request is stamped,
-        // because nothing below would read it (ADR-0010 rule 13).
-        val factory = if (cache == null) DefaultMediaSourceFactory(chain) else ContentKeyedMediaSourceFactory(chain)
+        val chain = dataSourceChain(context, transport, cache, headerRefresh)
+        // With neither slot filled, exactly the factory Phase 3 built: nothing about a request is
+        // stamped, because nothing below would read it (ADR-0010 rule 13, ADR-0011 rule 14).
+        val stamps = cache != null || headerRefresh != null
+        val factory = if (stamps) StampingMediaSourceFactory(chain) else DefaultMediaSourceFactory(chain)
         return factory.apply {
             cmcdMode.toCmcdConfigurationFactory(measurementSession)
                 ?.let(::setCmcdConfigurationFactory)
             loadExecutor?.let(::setDownloadExecutor)
+            loadErrors?.let(::setLoadErrorHandlingPolicy)
         }
     }
 
     /**
      * The chain itself — see the composition order above for what wraps what — over [transport], or
-     * over the HTTP stack when there is none, with [cache]'s layer in the cache slot when there is
-     * one. One call is one player's chain: the layers hold per-session state.
+     * over the HTTP stack when there is none, with [cache]'s layer in the cache slot and
+     * [headerRefresh] in the header-refresh slot when there is one of each. One call is one player's
+     * chain: the layers hold per-session state.
      */
     private fun dataSourceChain(
         context: Context,
         transport: DataSource.Factory?,
         cache: ContentCache?,
+        headerRefresh: HeaderRefreshLayer?,
     ): DataSource.Factory {
         val bottom = transport ?: DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory())
+        // Header refresh first, so it is the innermost wrapper: a request it repairs and re-opens is
+        // one transfer to the cache slot and to everything above it.
+        val refreshed = headerRefresh?.over(bottom) ?: bottom
         return LiveWindowDepthCheck.over(
             LivePlaylistRevalidation(Clock.DEFAULT)
-                .over(cache?.layer?.over(bottom) ?: bottom),
+                .over(cache?.layer?.over(refreshed) ?: refreshed),
         )
     }
 
     /**
      * Media3's own media source factory, built per item over [chain] stamped with that item's
-     * [ContentIdentity] — the way content identity reaches the cache slot's key.
+     * [ContentIdentity] and with each request's [LoadKind] — the way content identity reaches the
+     * cache slot's key, and the way both slots below learn what a request is for.
      *
      * Per item because `DefaultMediaSourceFactory` takes its data source factory once, and the HLS and
      * DASH sources it builds open requests with no word of which item they are for. One factory per
@@ -249,11 +282,12 @@ internal object TransferChain {
      * state is shared exactly as before. Every setting the engine or a caller makes on this factory is
      * recorded and replayed onto each per-item one, in order.
      *
-     * Every item's requests are stamped with their [LoadKind], so the slot can keep manifests out of a
-     * cache; an item with no identity — one set through `setMediaItem` — is stamped with the kind and
-     * no identity, and a cache keys it by its URL.
+     * Every item's requests are stamped with their [LoadKind], so a cache can keep manifests out of
+     * itself and a header-refresh layer can tell which load a failed credential belonged to; an item
+     * with no identity — one set through `setMediaItem`, or any item on a player with resilience and
+     * no cache — is stamped with the kind and no identity, and a cache keys it by its URL.
      */
-    private class ContentKeyedMediaSourceFactory(private val chain: DataSource.Factory) : MediaSource.Factory {
+    private class StampingMediaSourceFactory(private val chain: DataSource.Factory) : MediaSource.Factory {
 
         /** Settings replayed onto each per-item factory; written as the engine is built, read on loads. */
         private val settings = CopyOnWriteArrayList<(MediaSource.Factory) -> Unit>()

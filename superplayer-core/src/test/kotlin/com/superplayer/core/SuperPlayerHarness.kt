@@ -80,8 +80,10 @@ class SuperPlayerHarness : ExternalResource() {
      * test asserting on the *library's* default is asserting on the library's rather than on this
      * file's.
      *
-     * [cache] goes through the public `setCache`, as a consumer's would. [alsoConfigure] is for a test
-     * about one of [EngineConfiguration]'s own slots, and runs after the transport is in place.
+     * [cache] and [resilience] go through the public `setCache` and `setResilience`, as a consumer's
+     * would. [alsoConfigure] is for a test about one of [EngineConfiguration]'s own slots, and runs
+     * after the transport is in place — and so after a resilience extension has filled its two, which
+     * is what lets a test read what one of them left behind.
      */
     internal fun buildPlayer(
         profile: PlaybackProfile? = null,
@@ -89,6 +91,7 @@ class SuperPlayerHarness : ExternalResource() {
         telemetry: TelemetryCollector? = null,
         policy: PlaybackPolicy? = null,
         cache: ContentCache? = null,
+        resilience: PlaybackResilience? = null,
         alsoConfigure: (EngineConfiguration) -> Unit = {},
         alsoConfigureEngine: (ExoPlayer.Builder) -> Unit = {},
         pooled: PooledEngine? = null,
@@ -105,6 +108,7 @@ class SuperPlayerHarness : ExternalResource() {
                 .apply { telemetry?.let { setTelemetry(it) } }
                 .apply { policy?.let { setPolicy(it) } }
                 .apply { cache?.let { setCache(it) } }
+                .apply { resilience?.let { setResilience(it) } }
                 .setPooledEngine(pooled)
                 .setEngineConfigurator { configuration ->
                     configuration.engine.useHarnessClock(clock)

@@ -24,15 +24,18 @@ import androidx.media3.exoplayer.RenderersFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.trackselection.ExoTrackSelection
 import androidx.media3.exoplayer.upstream.BandwidthMeter
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import androidx.media3.exoplayer.util.ReleasableExecutor
 import com.google.common.base.Supplier
 
 /**
- * What may be changed about an engine as it is built, by the two things allowed to: a test, through
+ * What may be changed about an engine as it is built, by the three things allowed to: a test, through
  * `SuperPlayer.Builder.setEngineConfigurator` — the one internal seam `docs/testing.md` describes —
- * and a policy that is also an [EnginePolicyExtension], through `SuperPlayer.Builder.setPolicy`.
- * Both reach the same object; the extension runs first, so a test's configuration still wins over
- * the policy's exactly as it wins over the profile's (ADR-0009 rule 7).
+ * a policy that is also an [EnginePolicyExtension], through `SuperPlayer.Builder.setPolicy`, and a
+ * resilience that is also an [EngineResilienceExtension], through
+ * `SuperPlayer.Builder.setResilience`. All three reach the same object; the extensions run first, so
+ * a test's configuration still wins over theirs exactly as it wins over the profile's (ADR-0009 rule
+ * 7, ADR-0011 rule 13).
  *
  * [engine] is the builder itself, for what is the engine's own — the clock, the renderers, a
  * bandwidth meter or analytics collector a test reads through. Media is supplied one of two ways,
@@ -116,6 +119,26 @@ internal class EngineConfiguration(val engine: ExoPlayer.Builder) {
      * decision whole, and is what turns re-consultation on — see the class KDoc.
      */
     var decisionTarget: DecisionTarget? = null
+
+    /**
+     * What Media3 asks whether to retry a failed load, when, and whether to fall back to another
+     * location or another track — rungs 1 to 3 of ADR-0011's ladder. Handed to the
+     * `MediaSource.Factory` `TransferChain` assembles, and so to every protocol's source. Null
+     * leaves Media3's own `DefaultLoadErrorHandlingPolicy` in force, which is what a player without
+     * `superplayer-resilience` has (ADR-0011 rule 14).
+     */
+    var loadErrors: LoadErrorHandlingPolicy? = null
+
+    /**
+     * The chain's header-refresh slot: a layer closest to the transport that repairs and retries a
+     * request whose credential has expired. See [HeaderRefreshLayer] and `TransferChain`'s
+     * composition order. Null leaves the slot empty and the chain exactly what Phase 4 built.
+     *
+     * A slot rather than a call on [engine] because the chain is not the engine builder's to
+     * compose: `TransferChain` owns the order, and a layer that reached `ExoPlayer.Builder` directly
+     * would be one whose position was an accident of when it was installed.
+     */
+    var headerRefresh: HeaderRefreshLayer? = null
 
     /**
      * The clock the engine runs on, or null for the platform's.

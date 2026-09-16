@@ -128,6 +128,7 @@ deliberately ignored: it says the app went to the background, which is the ordin
 case and says nothing about memory.
 
 [adr8]: adr/0008-measure-behind-an-engine-agnostic-sink-boundary.md
+[adr11]: adr/0011-classify-every-failure-once-and-keep-the-rungs-behind-the-boundary.md
 
 ### Two clocks, and which is which
 
@@ -155,7 +156,7 @@ one from `sessionId` and the timestamps.
 
 ## Versioning
 
-Every event carries `schemaVersion`. The current version is **1**.
+Every event carries `schemaVersion`. The current version is **2**.
 
 **The version tracks meaning, not shape** ([ADR-0008][adr8] rule 5). That distinction is F8's: a
 dashboard breaks on a changed *definition*, not on a new field it ignores.
@@ -176,6 +177,32 @@ dashboard breaks on a changed *definition*, not on a new field it ignores.
 Because the event types are `superplayer-core` public API, every one of these changes also appears as
 a reviewed diff in `superplayer-core/api/superplayer-core.api` (`docs/api-surface.md`). A definition
 cannot change quietly.
+
+### Release notes
+
+**Version 2 — the failure classification (`#183`, `#86`).**
+
+`PlaybackFailure` gained a `classification`, and on its own that would have been an addition of shape
+and no bump at all. What moved the version is the field beside it: on a player built with
+`superplayer-resilience`, **`PlaybackFailure.category` is now derived from the classification rather
+than from Media3's error-code band**, and the two disagree for real failures ([ADR-0011][adr11]
+rule 3). The class is the right answer where they differ, and the bucket changes to match:
+
+| Failure | Band said | The class says | Why the class is right |
+| --- | --- | --- | --- |
+| A live playlist frozen at the origin (`StaleLivePlaylistException`, `likelyCause = ORIGIN`) | `NETWORK`, because it is an `IOException` | `SOURCE` (`Content.SegmentGap`) | The transfer worked; the segments the playlist promised were never published |
+| A read past the end of a segment (`ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE`) | `NETWORK`, on the 2xxx band | `SOURCE` (`Content.SegmentGap`) | The object is shorter than the manifest described it |
+| A format the device does not support (`ERROR_CODE_DECODING_FORMAT_UNSUPPORTED`) | `DECODER`, on the 4xxx band | `SOURCE` (`Fatal.Unsupported`) | Nothing is wrong with this device's decoding; the content will not play here or anywhere with this ladder |
+| An audio-track or frame-processor failure (5xxx, 7xxx) | `RENDERER` | `DECODER` (`Device.*`) | The remedies are the decoder rungs, which is the distinction a failure rate is read for |
+| A miscellaneous or unrecognised code (1xxx, a later Media3's, a session code) | `UNKNOWN` | `NETWORK` (`Transient.Network`) | The classifier is total and has no unknown class: an unrecognised code is far likelier to be a transfer that can be retried |
+
+So a failure-rate dashboard split by `category` will see slices move on players with resilience
+attached, and `RENDERER` and `UNKNOWN` go empty on those players. Nothing changes on a player without
+the module: the band decides, exactly as it did at version 1, and `classification` is null.
+
+`code` did **not** change meaning: it is `errorCodeName` at version 2 as it was at version 1. The
+classification is a separate field because the two are separate facts — which code the engine raised,
+and what SuperPlayer made of it — and a pipeline needs the first to find the failure in a logcat.
 
 **A sink must tolerate a new event type.** `TelemetryEvent` is sealed, so a `when` over it can be
 exhaustive without an `else` — and such a `when` fails to compile when a later version adds an event.
@@ -328,10 +355,29 @@ failure **after** it. The split is the standard's, and it is the split a viewer 
 played, versus something played and then stopped.
 
 Both carry a `PlaybackFailure`: a coarse `category` (`NETWORK`, `SOURCE`, `DECODER`, `DRM`,
-`RENDERER`, `UNKNOWN`), an optional stable `code` for grouping, and an optional `message` for a human
-reading a log. The taxonomy is deliberately coarse — a classification fine enough to act on
-automatically is `superplayer-resilience`'s (`PRD.md` §3.3), and a partial second copy of it here
-would give a data team two answers to one question.
+`RENDERER`, `UNKNOWN`), the engine's own `code`, an optional `message` for a human reading a log, and
+an optional `classification`.
+
+**`classification` is the field to group and alert on.** It is the stable name
+`superplayer-resilience`'s `ErrorClassifier` gave the failure — `Transient.CdnEdge`,
+`Content.ManifestInvalid`, `Device.DecoderTransient` and the rest (`PRD.md` §3.3) — and it is the
+same string the consumer was handed on the typed error that ended the session, so a warehouse row, a
+log line and a bug report say one word for one failure. Telemetry **reads** that classification and
+keeps no taxonomy of its own ([ADR-0011][adr11] rule 3): there is no second table here, in either
+direction. It is **null on a player built without `superplayer-resilience`**, and null means
+*unclassified* in the honest sense — nothing was there to classify it.
+
+**`code` is the engine's word and stays that way.** It is `PlaybackException.errorCodeName`, which is
+what to grep a logcat for, and it is a different fact from the classification: the engine assigns
+error codes, and a typed cause SuperPlayer raised does not change the code that was assigned around
+it. That is exactly the defect `#86` recorded — a live stream frozen behind a CDN cache still arrives
+as `ERROR_CODE_IO_UNSPECIFIED` — and it is resolved by `classification` naming it
+`Transient.CdnEdge`, not by rewriting `code`.
+
+**`category` stays coarse and is not extended.** Six values are the right number for a dashboard
+slice. Where a classification is present the bucket is derived from it rather than from the
+error-code band, which is the change of meaning behind schema version 2 — see *Release notes* above
+for the failures where the two disagree.
 
 The rates are computed by the pipeline, per the standard's shape: start failures over sessions that
 attempted playback; mid-stream failures over sessions that started playing.

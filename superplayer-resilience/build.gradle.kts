@@ -40,6 +40,12 @@ dependencies {
     // this module's and a phase 4 module may not depend on a phase 5 one. Phase 5 on phase 4,
     // tests only.
     testImplementation(project(":superplayer-cache"))
+
+    // `QoeCollector`, for the other half of rung 6: what a data team receives for a failure nothing
+    // rescued. It is asserted here rather than in `superplayer-telemetry` because the classification
+    // is this module's and a phase 2 module may not depend on a phase 5 one — the same direction, and
+    // the same reason, as the cache dependency above. Phase 5 on phase 2, tests only.
+    testImplementation(project(":superplayer-telemetry"))
 }
 
 // The two slots this module fills — a `HeaderRefreshLayer` in the transfer chain and the

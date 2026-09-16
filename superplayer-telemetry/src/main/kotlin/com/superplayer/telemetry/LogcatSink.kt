@@ -163,12 +163,21 @@ public object LogcatSink : TelemetrySink {
     private fun warn(text: String): Line = Line(Log.WARN, text)
 
     /**
-     * A failure as fields. [PlaybackFailure.category] is an enum and needs no quoting; the other two
-     * are engine-supplied strings and both get it — a code is no more this sink's to trust than a
-     * message is, and an engine that puts a space in one splits a field silently.
+     * A failure as fields. [PlaybackFailure.category] is an enum and needs no quoting; the engine's
+     * code and message are engine-supplied strings and both get it — a code is no more this sink's to
+     * trust than a message is, and an engine that puts a space in one splits a field silently.
+     *
+     * [PlaybackFailure.classification] is appended only where there is one, which is a player built
+     * with `superplayer-resilience`. Appended rather than inserted, and omitted rather than printed
+     * as a null, so that a line from a player without that module is byte for byte the line it always
+     * was — the same accounting ADR-0011 rule 14 asks of a golden trace. It needs no quoting: the
+     * value is a `FailureClass.stableName`, which is SuperPlayer's own vocabulary and has no spaces
+     * in it.
      */
-    private fun failure(failure: PlaybackFailure): String =
-        "category=${failure.category} code=${quote(failure.code)} message=${quote(failure.message)}"
+    private fun failure(failure: PlaybackFailure): String = buildString {
+        append("category=${failure.category} code=${quote(failure.code)} message=${quote(failure.message)}")
+        failure.classification?.let { append(" classification=$it") }
+    }
 
     /**
      * Quotes a value that a person supplied and this sink therefore cannot assume anything about.

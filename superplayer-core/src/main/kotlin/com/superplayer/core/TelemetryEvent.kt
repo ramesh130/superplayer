@@ -355,7 +355,7 @@ public sealed class TelemetryEvent {
          * The current meaning-version of this vocabulary. See the class KDoc for what moves it, and
          * `docs/telemetry-schema.md` for the list of changes that do and do not.
          */
-        public const val SCHEMA_VERSION: Int = 1
+        public const val SCHEMA_VERSION: Int = 2
     }
 }
 
@@ -404,24 +404,56 @@ public enum class TrackSwitchDirection {
 /**
  * What failed, in SuperPlayer's own vocabulary.
  *
- * Deliberately coarse. A failure taxonomy fine enough to act on automatically is
- * `superplayer-resilience`'s `ErrorClassifier` (`PRD.md` §3.3), and duplicating a partial version of
- * it here would give a data team a second answer to the same question. What a QoE schema needs is
- * enough to bucket a failure rate by cause and enough detail to find the failure in a log, which is
- * [category] and [code] plus [message].
+ * Three fields and three questions, and they stay three: which bucket a failure rate is grouped by,
+ * which failure it was in the engine's own words, and what a human reading a log sees.
+ *
+ * [classification] is the fourth and is the one answer that is not core's own: it is the name
+ * `superplayer-resilience`'s `ErrorClassifier` gave the failure, carried rather than derived
+ * (ADR-0011 rule 3). A player built without that module has nobody to ask and reports null, which is
+ * every player before Phase 5 and the reason the field is nullable rather than defaulted to a word
+ * that would be a guess.
  */
 public data class PlaybackFailure(
-    /** The bucket a failure rate is grouped by. */
+    /**
+     * The bucket a failure rate is grouped by.
+     *
+     * Six values and no more, which ADR-0011 rule 3 fixes: a dashboard wants a handful of slices, and
+     * the taxonomy fine enough to act on automatically is [classification]'s. Where a classifier is
+     * attached this is *derived from the class* by the one-to-one table that classifier owns, and
+     * where none is it is derived from Media3's error-code band as it always was — so the same
+     * failure can land in a different bucket on a player with resilience than on one without, and the
+     * class is the one that is right. `docs/telemetry-schema.md` carries that as a release note
+     * against `TelemetryEvent.SCHEMA_VERSION` 2.
+     */
     public val category: FailureCategory,
     /**
-     * A stable identifier for the specific failure, or null when the engine offered none.
+     * A stable identifier for the specific failure *the engine* reported, or null when it offered
+     * none — `errorCodeName`, unchanged by Phase 5.
      *
      * A string rather than an integer because it must survive an engine that renumbers, and because
-     * it is a grouping key in a pipeline rather than something to branch on.
+     * it is a grouping key in a pipeline rather than something to branch on. It stays the engine's
+     * word rather than becoming the classifier's: the two are different facts, one says which code
+     * Media3 raised and the other what SuperPlayer made of it, and a pipeline that has to find a
+     * failure in a logcat needs the first.
      */
     public val code: String?,
     /** Whatever the engine said, for a human reading a log. Never parsed, never a grouping key. */
     public val message: String?,
+    /**
+     * What `superplayer-resilience` classified the failure as — its `FailureClass.stableName`, the
+     * same string the typed error a consumer was handed carries — or null on a player built without
+     * that module (ADR-0011 rules 3 and 14).
+     *
+     * This is the field to group and alert on: `"Transient.CdnEdge"` is a conversation with a CDN and
+     * `"Device.DecoderTransient"` is a conversation with a device fleet, where [code] would report
+     * both of those as whatever code the engine happened to assign. Null means *unclassified*, and it
+     * means it in the honest way: nothing was there to classify it.
+     *
+     * A string rather than an enum for [code]'s reason and one more: the taxonomy belongs to a module
+     * core does not depend on (ADR-0011 rule 1), and a copy of it here would be the second answer to
+     * one question that rule exists to prevent.
+     */
+    public val classification: String? = null,
 )
 
 /** The buckets [PlaybackFailure] sorts a failure into. */

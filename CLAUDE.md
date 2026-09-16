@@ -423,7 +423,21 @@ wherever playback advanced — because a decoder that will not come back must re
 loop. `SuperPlayerDecoderRecreationTest` forces that through core's own harness with a hand-written
 ladder, and its KDoc states the limit plainly: **nothing here can fail a decoder**, so the
 classification's half of the rung is asserted in `FallbackLadderTest` over real error codes and the
-player's half against an ordinary transfer failure standing in for the decoder's. Rung 6 is #183.
+player's half against an ordinary transfer failure standing in for the decoder's. **Rung 6 is the top
+and is two halves of one fact** (ADR-0011 rules 3 and 10, issues #183 and #86). A failure nothing
+rescued ends the session on core's public `SuperPlayerError` — `PRD.md` §3.2's shape, a cause class, a
+`userMessageKey` and `isRetryable`, plus the rungs tried, the position reached and the likely party a
+`StaleLivePlaylistException` named — delivered where errors already arrive, as the `cause` of the
+`PlaybackException` `onPlayerError` and `player.playerError` carry, with the engine's own exception
+under it so nothing Media3 said is lost. No new listener and no callback. The other half is
+`PlaybackFailure.classification`, the same stable name, which `QoeCollector` gets by asking
+`player.classify(error)` rather than by keeping a taxonomy: telemetry is not a friend of core and
+reaches it as a consumer does. `category` stays six values and is derived from the class where there
+is one — which is what moved `TelemetryEvent.SCHEMA_VERSION` to **2**, because the class and the
+error-code band disagree for five kinds of failure and `docs/telemetry-schema.md`'s release note is
+the table of them. `code` is still `errorCodeName`, deliberately: what the engine raised and what
+SuperPlayer made of it are two facts. A player with no resilience classifies nothing, reports null,
+and buckets off the band exactly as before, which `TypedErrorPlaybackTest` counts on both halves.
 A ceiling caps the climb and does **not** route it: which rungs below a
 class's `rungCeiling` are worth offering is the ladder's, which is how a `Device.DecoderTransient`
 reaches rung 5 without trying a host and why a `Fatal.Unsupported` is offered nothing at all, and

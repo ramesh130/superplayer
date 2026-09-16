@@ -86,7 +86,12 @@ internal class StandardResilience(private val headers: HeaderProvider?) : Engine
         // draw different waits. `Random.Default` is shared and would still do that; a per-player
         // instance is here so a test can substitute a seeded one at this seam later without the
         // players of one pool sharing a sequence.
-        configuration.loadErrors = RetryingLoadErrors.forPlayer(configuration.decisionInForce, Random.Default)
+        // One record of what this player's climb has tried, written by every rung and read by rung 6
+        // (`SuperPlayerError.rungsTried`). Per player rather than shared for the reason the jitter is:
+        // in a feed, one row's retries are not another row's history.
+        val climb = ClimbRecord()
+        configuration.loadErrors =
+            RetryingLoadErrors.forPlayer(configuration.decisionInForce, Random.Default, climb)
         // One layer per player, because the credential it refreshes is the session's, and the
         // pass-through where there is no provider to refresh one with. Filled either way rather than
         // left null, because a player with either slot filled is the player whose requests core
@@ -94,10 +99,11 @@ internal class StandardResilience(private val headers: HeaderProvider?) : Engine
         // segment from a refused manifest (`Transient.CdnEdge` exists only for the former).
         configuration.headerRefresh = headers?.let { TokenRefreshLayer(it) } ?: PassThroughHeaderRefresh
         // The rungs above everything a load error can answer, and the one slot that faces the other
-        // way: core asks it once a failure has got past the ladder above (ADR-0011 rule 5). A shared
-        // object rather than one per player, because [PlayerStateLadder] holds nothing — the request,
-        // the position and the decoders in hand are the player's, and are never copied to this side.
-        configuration.playerStateRungs = PlayerStateLadder
+        // way: core asks it once a failure has got past the ladder above (ADR-0011 rules 5 and 10).
+        // One per player, and only because rung 6 reports the climb: the request, the position and
+        // the decoders in hand are still the player's and are never copied to this side, but what
+        // this player has already tried is a fact about this player.
+        configuration.playerStateRungs = PlayerStateLadder(climb)
     }
 }
 

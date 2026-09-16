@@ -149,19 +149,19 @@ class FallbackLadderTest {
         // Offered to every class whose ceiling reaches it — a network failure, and a manifest one
         // rung 3 could do nothing for, since a publication defect at one source can be absent from
         // another the same way it can be absent from another host.
-        assertThat(PlayerStateLadder.opensNextSource(errorOf(PlaybackException.ERROR_CODE_IO_UNSPECIFIED))).isTrue()
-        assertThat(PlayerStateLadder.opensNextSource(errorOf(PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED)))
+        assertThat(playerStateLadder.opensNextSource(errorOf(PlaybackException.ERROR_CODE_IO_UNSPECIFIED))).isTrue()
+        assertThat(playerStateLadder.opensNextSource(errorOf(PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED)))
             .isTrue()
         // Refused where the ceiling stops below it: content this device cannot play at all is content
         // a second manifest of the same programme would fail on too, so nothing is downloaded to find
         // that out and the failure goes to rung 6 (`Fatal.Unsupported`).
-        assertThat(PlayerStateLadder.opensNextSource(errorOf(PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED)))
+        assertThat(playerStateLadder.opensNextSource(errorOf(PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED)))
             .isFalse()
         // And refused where the ceiling is *above* it, which is the case only a routing decision can
         // catch: a decoder that was working and stopped has a remedy at rung 5, and a second manifest
         // fetched on the way there costs a viewer a startup for nothing.
         assertWithMessage("a transient decoder failure was offered another source")
-            .that(PlayerStateLadder.opensNextSource(errorOf(PlaybackException.ERROR_CODE_DECODING_FAILED)))
+            .that(playerStateLadder.opensNextSource(errorOf(PlaybackException.ERROR_CODE_DECODING_FAILED)))
             .isFalse()
     }
 
@@ -173,25 +173,34 @@ class FallbackLadderTest {
         // can show.
         //
         // The one class it is offered: a decoder or an output that was working and stopped.
-        assertThat(PlayerStateLadder.recreatesDecoder(errorOf(PlaybackException.ERROR_CODE_DECODING_FAILED)))
+        assertThat(playerStateLadder.recreatesDecoder(errorOf(PlaybackException.ERROR_CODE_DECODING_FAILED)))
             .isTrue()
-        assertThat(PlayerStateLadder.recreatesDecoder(errorOf(PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED)))
+        assertThat(playerStateLadder.recreatesDecoder(errorOf(PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED)))
             .isTrue()
         // And its sibling refused, which is the distinction the taxonomy exists to draw: no decoder
         // was there to lose, so recreating one asks the device the same question again. It reached
         // rung 4 on the way here (above), and what is left for it is rung 6.
         assertWithMessage("a decoder that could never be initialised was recreated anyway")
-            .that(PlayerStateLadder.recreatesDecoder(errorOf(PlaybackException.ERROR_CODE_DECODER_INIT_FAILED)))
+            .that(playerStateLadder.recreatesDecoder(errorOf(PlaybackException.ERROR_CODE_DECODER_INIT_FAILED)))
             .isFalse()
         // Nothing that is not this device's decoding: a re-prepare against the same broken source or
         // the same refused segment is a loop with a startup in it.
-        assertThat(PlayerStateLadder.recreatesDecoder(errorOf(PlaybackException.ERROR_CODE_IO_UNSPECIFIED)))
+        assertThat(playerStateLadder.recreatesDecoder(errorOf(PlaybackException.ERROR_CODE_IO_UNSPECIFIED)))
             .isFalse()
-        assertThat(PlayerStateLadder.recreatesDecoder(errorOf(PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED)))
+        assertThat(playerStateLadder.recreatesDecoder(errorOf(PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED)))
             .isFalse()
-        assertThat(PlayerStateLadder.recreatesDecoder(errorOf(PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED)))
+        assertThat(playerStateLadder.recreatesDecoder(errorOf(PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED)))
             .isFalse()
     }
+
+    /**
+     * The pair of rung decisions core is handed, on a climb record of its own.
+     *
+     * One per test class rather than per test, because what these tests assert is the routing, which
+     * is a pure function of the class; the record it writes into is rung 6's and is asserted through
+     * a player, in `TypedErrorPlaybackTest`.
+     */
+    private val playerStateLadder = PlayerStateLadder(ClimbRecord())
 
     /** A failure as the player delivers one: a code and nothing else for the classifier to read. */
     private fun errorOf(errorCode: Int): PlaybackException =

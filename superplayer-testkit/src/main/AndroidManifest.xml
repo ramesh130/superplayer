@@ -24,4 +24,11 @@
     -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!--
+      Install-time as well. DownloadConditions states a low battery and low storage the way a device
+      announces them, as sticky broadcasts, and lint checks that call against this manifest for the same
+      reason. Test support only, never in a shipped app.
+    -->
+    <uses-permission android:name="android.permission.BROADCAST_STICKY" />
+
 </manifest>

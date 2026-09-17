@@ -215,6 +215,47 @@ public object DeviceStatement {
     }
 
     /**
+     * The device's network is metered — a mobile connection — or, with [metered] false, an unmetered
+     * WiFi one. Connected and validated either way. The first of the three conditions a download is
+     * scheduled under (ADR-0013 rule 10), and unlike every declaration above it may be restated
+     * mid-test: a lapsed condition is what a download has to stop on and resume after.
+     *
+     * Robolectric's own device is a *metered* mobile network, so a test of a download that is not about
+     * the network states it unmetered first.
+     *
+     * ref: https://developer.android.com/reference/android/net/NetworkCapabilities#NET_CAPABILITY_NOT_METERED
+     */
+    @JvmStatic
+    public fun declareNetworkMetered(metered: Boolean) {
+        DownloadConditions.stateNetwork(metered)
+    }
+
+    /**
+     * The battery is low — unplugged at 5% — or, with [low] false, unplugged at 80%. The second
+     * condition (ADR-0013 rule 10), restatable mid-test, and announced with `ACTION_BATTERY_LOW` or
+     * `ACTION_BATTERY_OKAY` as a device announces it. Robolectric's device reports no battery at all,
+     * which `WorkManager` reads as the battery-not-low constraint *unmet*, so a test states one.
+     *
+     * ref: https://developer.android.com/reference/android/content/Intent#ACTION_BATTERY_LOW
+     */
+    @JvmStatic
+    public fun declareBatteryLow(low: Boolean) {
+        DownloadConditions.stateBattery(low)
+    }
+
+    /**
+     * Storage is low — the platform's sticky `ACTION_DEVICE_STORAGE_LOW` — or, with [low] false, it has
+     * recovered. The third condition (ADR-0013 rule 10), restatable mid-test. Not the same thing as a
+     * full disk, which is a write failing rather than a condition announced (#244).
+     *
+     * ref: https://developer.android.com/reference/android/content/Intent#ACTION_DEVICE_STORAGE_LOW
+     */
+    @JvmStatic
+    public fun declareStorageLow(low: Boolean) {
+        DownloadConditions.stateStorage(low)
+    }
+
+    /**
      * A device with a working Widevine implementation at [securityLevel], running at most
      * [maxConcurrentSessions] DRM sessions at once.
      *

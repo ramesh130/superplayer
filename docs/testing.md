@@ -563,6 +563,66 @@ the library. `PlaybackHarness.buildPlayer` refuses protected content outright an
 the alternative is a player that silently plays a protected stream with no session at all and a test
 that passes for it.
 
+## Downloads
+
+`superplayer-offline` downloads on Media3's `DownloadManager`, which loads on threads of its own, through
+a data source it is handed, into a directory that has to outlive the process — and schedules through
+`WorkManager` under conditions the platform reports. None of that is a player, so none of it reached
+the seam above until #239. What stands in for each piece, and what each stand-in cannot show:
+
+- **The network is the player's.** `PlaybackHarness.downloadEnvironment(content, faults, network)`
+  returns a `DownloadEnvironment` — core's public type with an internal constructor, `ContentCache`'s
+  shape, because the harness is phase 2 and the offline module phase 7 and neither can name the other's
+  types. It carries the transport a `buildPlayer` player of the same content would load through (the
+  origin, the fault injector, the shaper), and a download store's builder takes it through a setter
+  internal to `superplayer-offline` once #240 builds the store, so only that module's tests will be
+  able to hand one over. Beneath a download, core's `TransferChain.downloadChain` puts it where the HTTP stack goes (ADR-0013 rule 6), so
+  `FaultScript` addresses a download's requests and `networkRequests(environment)` counts them exactly
+  as for a player. This is the player seam's twin rather than a second seam: nothing new is
+  configurable, and a consumer's store never has one.
+- **The loading thread is the harness's.** Segment loads run on one thread the environment owns,
+  counted into the same wait a player's loads are, so segments are fetched in manifest order on every
+  run and `advanceUntil(environment, …)` knows when a load has finished. One thread is a determinism
+  choice: it cannot show what parallel segment fetching does, which is a throughput question for Phase
+  10. `DownloadManager`'s own task thread and its main-thread callbacks are Media3's; the harness runs
+  the main looper between passes and moves its clock only while a load waits on it.
+- **Process death is a copy of the directory.** `processDeath(environment, directory)` stops the
+  environment's thread taking work, waits until no load is in flight, copies the directory, and returns
+  the copy for the test to open a store over. A process that died released nothing — no cache lock, no
+  database handle, no thread — so a store in the same test process cannot reopen the directory itself;
+  what survives a real death is what was on disk, which is what the copy holds, including an index the
+  store had not flushed. What it cannot show: a death *during* a write, since the copy waits for the
+  load to finish, and a kill that lands between a span file and the index entry naming it. Media3's
+  cache recovers from both on open, and nothing here proves it. One writer is not held either: the
+  download manager's own progress update, on a timer of Media3's, which can land in the copy's window;
+  if that ever shows as a torn index in a test, it is this stand-in and not the library.
+- **The three conditions are stated into the platform.** `DeviceStatement.declareNetworkMetered`,
+  `declareBatteryLow` and `declareStorageLow` write every reading a reader looks at — the active
+  `NetworkInfo` and capabilities, the sticky `ACTION_BATTERY_CHANGED`, the sticky
+  `ACTION_DEVICE_STORAGE_LOW` — and send the transition broadcast a device sends, and unlike the device
+  statements above they may be restated mid-test, because a lapsed condition is the case. Robolectric
+  does not shadow `removeStickyBroadcast`, so a storage recovery removes the sticky intent from its map
+  by reflection, in `DownloadConditions` and nowhere else. Robolectric's own device is a *metered*,
+  unvalidated network, which Media3's default requirement already refuses, so a download test that is
+  not about the network states it unmetered first.
+- **`WorkManager`'s constraints are evaluated by the harness, not by `WorkManager`.** Its test driver
+  runs constrained work only when told every constraint is met, so `runScheduledWork()` reads each
+  enqueued request's `Constraints`, checks them against the statements above, and tells the driver only
+  where all hold, each read as WorkManager 2.11's own tracker reads it (no battery reading at all is the
+  battery-not-low constraint *unmet*, and being plugged in is not consulted); a constraint the harness
+  cannot state — charging, idle — fails the call rather than
+  passing silently. What it cannot show is that WorkManager's own trackers agree with those readings on
+  a device, which #247 checks there. `useScheduledWork()` installs the test driver; WorkManager is a
+  compile-only dependency of the testkit, so a module whose tests schedule work declares
+  `work-runtime` and `work-testing` itself.
+- **A reboot is not stated.** WorkManager's test implementation keeps its work in an in-memory
+  database, so nothing persisted survives a simulated restart and there is no faithful stand-in under
+  `check`. #243 owns what reboot survival is asserted against, and #247 checks it on a device.
+
+`DownloadHarnessTest` is the worked example. There is no store yet, so what downloads is Media3's own
+`DownloadManager` over a `SimpleCache` in a temporary directory, and everything it asserts is a claim
+about this harness rather than about the library — as `ProtectedPlaybackTest` was before #204.
+
 ## Proving a player was released
 
 There is no `isReleased` on `Player`, and a released Media3 player answers most questions the way a
@@ -1114,6 +1174,10 @@ the demo on an emulator or a phone and returns a Perfetto trace. A run fails onl
 measure, for example when playback never started or the APK was stale. It never fails because of what
 it measured. So it sits outside `check` rather than breaking this document's no-device rule, and
 its README says so. Its device-free self-test is the exception, and it is in `check`.
+
+**A reboot is not covered here.** Under `check` a download's scheduled work lives in WorkManager's
+in-memory test database, which no simulated restart survives; *Downloads* above says what that leaves
+to #243 and to a device (#247).
 
 **And a claim `devicelab` cannot carry either, named because #226 had to answer where it goes.** Two
 reasons, and the first settles it on its own: `devicelab` measures and never asserts, so a scenario

@@ -20,18 +20,12 @@ import android.media.MediaFormat
 import androidx.media3.common.Player
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
-import com.superplayer.core.MediaRequest
-import com.superplayer.core.SuperPlayer
-import com.superplayer.core.SuperPlayerError
 import com.superplayer.core.TelemetryEvent
 import com.superplayer.resilience.FailureClass
-import com.superplayer.resilience.Resilience
 import com.superplayer.telemetry.QoeCollector
 import com.superplayer.testkit.DeviceStatement
-import com.superplayer.testkit.FakeLicenceServer
 import com.superplayer.testkit.PlaybackHarness
 import com.superplayer.testkit.SecurityLevel
-import com.superplayer.testkit.TestContent
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -102,7 +96,7 @@ class SecureSurfaceDowngradeTest {
     fun aSecureSurfaceThatWillNotAllocateFallsToTheLevelTheOperatorPermitted() {
         aCapableL1Device()
 
-        val player = play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
+        val player = harness.play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
         harness.playToReady(player)
 
         // The session was protected, so the decoder selected for it was a secure one, and the
@@ -128,7 +122,7 @@ class SecureSurfaceDowngradeTest {
         aCapableL1Device()
 
         val events = Collections.synchronizedList(mutableListOf<TelemetryEvent>())
-        val player = play(
+        val player = harness.play(
             permits = setOf(WidevineConfig.SECURITY_LEVEL_L3),
             telemetry = QoeCollector { events += it },
         )
@@ -150,7 +144,7 @@ class SecureSurfaceDowngradeTest {
         // hard is what that has to mean. The identical device and the identical failure.
         aCapableL1Device()
 
-        val player = play()
+        val player = harness.play()
         harness.playToReady(player)
         harness.failDecoderInitialization(player, secureDecoderRequired = true)
         harness.advanceUntil(player, "an error") { it.playerError != null }
@@ -172,7 +166,7 @@ class SecureSurfaceDowngradeTest {
         // class — and the renderer saying the path that failed was not the protected one.
         aCapableL1Device()
 
-        val player = play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
+        val player = harness.play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
         harness.playToReady(player)
         harness.failDecoderInitialization(player, secureDecoderRequired = false)
         harness.advanceUntil(player, "an error") { it.playerError != null }
@@ -190,7 +184,7 @@ class SecureSurfaceDowngradeTest {
         DeviceStatement.declareSecureVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC, maxSupportedInstances = 1)
         DeviceStatement.declareWidevine(SecurityLevel.L3)
 
-        val player = play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
+        val player = harness.play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
         harness.playToReady(player)
         harness.failDecoderInitialization(player, secureDecoderRequired = true)
         harness.advanceUntil(player, "an error") { it.playerError != null }
@@ -211,49 +205,5 @@ class SecureSurfaceDowngradeTest {
     private fun aCapableL1Device() {
         DeviceStatement.declareSecureVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC, maxSupportedInstances = 1)
         DeviceStatement.declareWidevine(SecurityLevel.L1)
-    }
-
-    /** What a consumer writes: protection, and the resilience both halves of ADR-0012 rule 2 need. */
-    private fun play(
-        permits: Set<String> = emptySet(),
-        telemetry: QoeCollector? = null,
-    ): SuperPlayer {
-        val content = TestContent.protectedDash()
-        val player = harness.buildPlayer(
-            content = content,
-            telemetry = telemetry,
-            drm = Drm.widevine(WidevineConfig(FakeLicenceServer.LICENCE_URI, permittedSecurityLevels = permits)),
-            resilience = Resilience.standard(),
-        )
-        player.setMediaRequest(MediaRequest.Builder(CONTENT_ID).addSource(content.sourceUri).build())
-        return player
-    }
-
-    /** The typed error rung 6 delivered, where a consumer already looks for a cause. */
-    private fun typedErrorOf(player: SuperPlayer): SuperPlayerError {
-        val error = player.playerError
-        assertThat(error).isNotNull()
-        assertThat(error?.cause).isInstanceOf(SuperPlayerError::class.java)
-        return error?.cause as SuperPlayerError
-    }
-
-    /**
-     * The session's `SessionEnded`, waited for rather than read: delivery is a bounded queue on a
-     * thread of its own (ADR-0008 rules 3 and 4), so the event a test wants is the last to arrive.
-     */
-    private fun endedEventOf(events: List<TelemetryEvent>): TelemetryEvent.SessionEnded {
-        val deadline = System.currentTimeMillis() + DELIVERY_TIMEOUT_MS
-        while (System.currentTimeMillis() < deadline) {
-            val delivered = synchronized(events) { events.toList() }
-            delivered.filterIsInstance<TelemetryEvent.SessionEnded>().firstOrNull()?.let { return it }
-            Thread.sleep(DELIVERY_POLL_MS)
-        }
-        throw AssertionError("the session's events did not arrive within $DELIVERY_TIMEOUT_MS ms")
-    }
-
-    private companion object {
-        const val CONTENT_ID = "film/the-lady-vanishes"
-        const val DELIVERY_TIMEOUT_MS = 5_000L
-        const val DELIVERY_POLL_MS = 10L
     }
 }

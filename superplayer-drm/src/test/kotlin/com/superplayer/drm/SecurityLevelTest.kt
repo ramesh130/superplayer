@@ -20,18 +20,14 @@ import android.media.MediaFormat
 import androidx.media3.common.Player
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
-import com.superplayer.core.MediaRequest
 import com.superplayer.core.SecurityDowngradeRefusedException
-import com.superplayer.core.SuperPlayer
 import com.superplayer.resilience.ErrorClassifier
 import com.superplayer.resilience.FailureClass
-import com.superplayer.resilience.Resilience
 import com.superplayer.testkit.DeviceStatement
 import com.superplayer.testkit.FakeLicenceServer
 import com.superplayer.testkit.PlaybackHarness
 import com.superplayer.testkit.ResourceKind
 import com.superplayer.testkit.SecurityLevel
-import com.superplayer.testkit.TestContent
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -83,7 +79,8 @@ class SecurityLevelTest {
     fun aServerThatPermitsTheDowngradeGetsASessionAtTheLowerLevel() {
         declareADeviceThatCannotHonourL1()
 
-        val player = play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
+        val player = harness.play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
+        harness.playToReady(player)
 
         // It played, and it played at the level the *server's operator* named — not at the one the device
         // reports, which it cannot honour, and not at one the client picked.
@@ -96,7 +93,8 @@ class SecurityLevelTest {
     fun aPermittedDowngradeCostsNoExtraRoundTrip() {
         declareADeviceThatCannotHonourL1()
 
-        val player = play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
+        val player = harness.play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
+        harness.playToReady(player)
 
         // Exactly one request at the licence server: the key request. A permission that is
         // configuration costs nothing on the wire, which is the plainest statement of what #223
@@ -115,7 +113,8 @@ class SecurityLevelTest {
         // lower level configures — that is to say, most apps. Empty is a refusal; see
         // `WidevineConfig.permittedSecurityLevels`.
 
-        val player = playToFailure()
+        val player = harness.play()
+        harness.playToFailure(player)
 
         val error = player.playerError
         assertThat(error).isNotNull()
@@ -133,7 +132,8 @@ class SecurityLevelTest {
     fun aRefusalIsClassifiedAsItsOwnFailureWithItsOwnMessageKey() {
         declareADeviceThatCannotHonourL1()
 
-        val player = playToFailure()
+        val player = harness.play()
+        harness.playToFailure(player)
 
         // The issue's own words: it must not be confused with a licence that could not be fetched.
         // `ErrorClassifier` is where that distinction is made once, and the message key is what an
@@ -150,7 +150,8 @@ class SecurityLevelTest {
     fun aRefusedSessionAsksForNothingAtAll() {
         declareADeviceThatCannotHonourL1()
 
-        val player = playToFailure()
+        val player = harness.play()
+        harness.playToFailure(player)
 
         // The answer was known before the player was built, so nothing reaches the licence server:
         // no key request, and since #223 no permission question either. A refusal that spent a
@@ -167,7 +168,8 @@ class SecurityLevelTest {
         DeviceStatement.declareSecureVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC, maxSupportedInstances = 1)
         DeviceStatement.declareWidevine(SecurityLevel.L1)
 
-        val player = play()
+        val player = harness.play()
+        harness.playToReady(player)
 
         assertThat(player.playerError).isNull()
         assertThat(player.playbackState).isEqualTo(Player.STATE_READY)
@@ -186,7 +188,8 @@ class SecurityLevelTest {
         DeviceStatement.declareSecureVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC, maxSupportedInstances = 1)
         DeviceStatement.declareWidevine(SecurityLevel.L1)
 
-        val player = play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
+        val player = harness.play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
+        harness.playToReady(player)
 
         assertThat(player.playbackState).isEqualTo(Player.STATE_READY)
         assertThat(player.deliveredSecurityLevel).isNull()
@@ -200,7 +203,8 @@ class SecurityLevelTest {
         // downgrading on its own authority — the exact failure ADR-0012 rule 11 forbids.
         declareADeviceThatCannotHonourL1()
 
-        val player = playToFailure(permits = setOf(WidevineConfig.SECURITY_LEVEL_L1))
+        val player = harness.play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L1))
+        harness.playToFailure(player)
 
         val refusal = causeChainOf(player.playerError!!)
             .filterIsInstance<SecurityDowngradeRefusedException>()
@@ -235,24 +239,6 @@ class SecurityLevelTest {
         DeviceStatement.declareWidevine(SecurityLevel.L1)
     }
 
-    private fun play(permits: Set<String> = emptySet()): SuperPlayer =
-        build(permits).also { harness.playToReady(it) }
-
-    private fun playToFailure(permits: Set<String> = emptySet()): SuperPlayer =
-        build(permits).also { harness.playToFailure(it) }
-
-    /** What a consumer writes: protection, and the resilience both halves of ADR-0012 rule 2 need. */
-    private fun build(permits: Set<String> = emptySet()): SuperPlayer {
-        val content = TestContent.protectedDash()
-        val player = harness.buildPlayer(
-            content = content,
-            drm = Drm.widevine(WidevineConfig(FakeLicenceServer.LICENCE_URI, permittedSecurityLevels = permits)),
-            resilience = Resilience.standard(),
-        )
-        player.setMediaRequest(MediaRequest.Builder(CONTENT_ID).addSource(content.sourceUri).build())
-        return player
-    }
-
     /** [error] and its causes, nearest first — the walk `ErrorClassifier` does, done here by hand. */
     private fun causeChainOf(error: Throwable): List<Throwable> {
         val chain = mutableListOf<Throwable>()
@@ -265,7 +251,6 @@ class SecurityLevelTest {
     }
 
     private companion object {
-        const val CONTENT_ID = "film/the-third-man"
         const val MAX_CAUSE_DEPTH = 32
     }
 }

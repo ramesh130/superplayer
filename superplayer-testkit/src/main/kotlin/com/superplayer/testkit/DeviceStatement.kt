@@ -520,7 +520,7 @@ public object DeviceStatement {
     private val connectivityManager: ConnectivityManager
         get() = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
-    /** The refresh rate every display offers, and so the one a display stated by its size alone has. */
+    /** 60 Hz, the rate Robolectric's own default mode reports, and so the one a display stated by its size alone has. */
     private const val DECLARED_REFRESH_RATE_HZ = 60f
 
     /**

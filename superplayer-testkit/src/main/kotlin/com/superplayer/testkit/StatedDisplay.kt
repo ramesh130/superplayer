@@ -16,6 +16,7 @@
 
 package com.superplayer.testkit
 
+import android.annotation.SuppressLint
 import android.os.Build
 import android.view.Display
 import org.robolectric.shadow.api.Shadow
@@ -54,7 +55,7 @@ internal object StatedDisplay {
 
     /**
      * What the display reported when [disconnect] removed it, so that it comes back reporting the same
-     * HDR types unless a test restates them — an unplugged cable changes the sink, not what the sink is.
+     * HDR types unless a test restates them: reconnecting is one statement, and a different sink is a second.
      */
     private var lastDisconnected: Any? = null
 
@@ -174,10 +175,13 @@ internal object StatedDisplay {
         ClassParameter.from(Int::class.javaPrimitiveType, Display.DEFAULT_DISPLAY),
     )?.let { ReflectionHelpers.callConstructor(displayInfoClass, ClassParameter.from(displayInfoClass, it)) }
 
+    // Hidden platform classes, reached by reflection on purpose: the class KDoc names each and says why.
+    @SuppressLint("PrivateApi")
     private fun displayManagerGlobal(): Any =
         ReflectionHelpers.callStaticMethod(Class.forName("android.hardware.display.DisplayManagerGlobal"), "getInstance")
 
     private val displayInfoClass: Class<*>
+        @SuppressLint("PrivateApi")
         get() = Class.forName("android.view.DisplayInfo")
 
     private const val FIRST_MODE_ID = 1

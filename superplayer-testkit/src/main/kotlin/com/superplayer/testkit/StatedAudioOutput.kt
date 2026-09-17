@@ -22,6 +22,7 @@ import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.test.core.app.ApplicationProvider
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.shadows.AudioDeviceInfoBuilder
@@ -88,12 +89,14 @@ internal object StatedAudioOutput {
      * between removal and addition and an output stating no encodings read the same — and each passthrough
      * encoding at stereo and 5.1.
      */
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     private fun profilesFor(encodings: IntArray) =
         listOf(profile(AudioFormat.ENCODING_PCM_16BIT, AudioFormat.CHANNEL_OUT_STEREO)) +
             encodings.filter { it != AudioFormat.ENCODING_PCM_16BIT }.distinct().map {
                 profile(it, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.CHANNEL_OUT_5POINT1)
             }
 
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     private fun profile(encoding: Int, vararg channelMasks: Int) = AudioProfileBuilder.newBuilder()
         .setFormat(encoding)
         .setSamplingRates(intArrayOf(SAMPLE_RATE_HZ))

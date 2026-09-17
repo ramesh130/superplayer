@@ -899,6 +899,22 @@ Style preferences these are not. A change violating one is not accepted, whateve
   the licence server permitted it, which is a mechanism beside the fallback ladder and not a seventh
   rung; and a player built without `setDrm` allocates nothing — a provider set and answering
   `DRM_UNSUPPORTED` is not nothing — which a test counts.
+- **[ADR-0013](docs/adr/0013-download-into-the-cache-the-consumer-opened-on-the-one-chain.md)** —
+  decides Phase 7's shape: `superplayer-offline` depends on core alone and takes the cache, the
+  protection, a core `LicenceStore` and the resilience as core types, so a clear-only app carries no
+  DRM module; a download writes into the `ContentCache` the consumer opened under the keys a player
+  reads, pinned from enqueue until removal, with its index in that cache's database, and travels the
+  chain `TransferChain` assembles (no CMCD, no meter); the cache layer serves a manifest from disk for
+  pinned content only, and live content is refused at enqueue; the public surface names no Media3
+  type and the consumer's service extends `android.app.Service`, its manifest entry and permissions
+  the app's; the module is core's seventh Kotlin friend, built from core's seam and filling no slot; resuming,
+  stopping on a lapsed constraint, failing one item on a full disk, battery-not-low and
+  storage-not-low are correctness, while the network requirement is unmetered by default and the
+  viewer's to relax store-wide, Data Saver still honoured; scheduling is a `WorkManager` scheduler of
+  the module's own, because Media3's requirements cannot state battery-not-low; the rendition is a
+  fifth half of `PlaybackDecision` and the languages the consumer's argument; a protected download
+  acquires its licence before its first media byte and releases it as part of its removal; and
+  nothing that opens no download store pays for one, which a test counts.
 - **[`docs/api-surface.md`](docs/api-surface.md)** — every published module's public API is tracked
   in `<module>/api/<module>.api` and validated by `check`. Changing it means running
   `./gradlew updateApiSurface` and committing the diff in the same change. A leaked `@UnstableApi`

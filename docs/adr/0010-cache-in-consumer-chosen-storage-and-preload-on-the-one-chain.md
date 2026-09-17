@@ -8,6 +8,10 @@
   wording is kept and whose scope is stated below; [ADR-0005](0005-decide-playback-policy-behind-an-engine-agnostic-boundary.md)
   rule 2, and [ADR-0009](0009-observe-conditions-re-apply-decisions-and-remember-per-transport.md)
   rules 5 and 7 — each extended by an addendum recorded at ADR-0005 rule 2 and ADR-0009 rule 7.
+- **Refined by:**
+  [ADR-0013](0013-download-into-the-cache-the-consumer-opened-on-the-one-chain.md),
+  which discharges the standing obligation below and takes rule 12's answer for downloads,
+  recorded at that rule.
 - **Summary:** Decides Phase 4's shape before any of its code lands (#153). A disk cache is storage
   the consumer opened — they name the directory and the budget, SuperPlayer writes only inside it
   and never creates one it was not handed — which refines ADR-0006 rule 2 rather than contradicting
@@ -282,6 +286,12 @@ Thirteen rules follow, and they are binding.
     number the consumer wrote down, which is rule 1's objection; the cost is that downloads crowd out
     streaming, and a consumer who wants both sized separately opens two caches.
 
+    *Refined by
+    [ADR-0013](0013-download-into-the-cache-the-consumer-opened-on-the-one-chain.md)
+    rules 7 and 8: a download is pinned from enqueue until its removal and is not refused by the
+    budget — the disk bounds it — and the cache layer answers a manifest request from disk for pinned
+    content that a download stored, and for nothing else.*
+
 ### The pay-nothing claim
 
 13. **A player, a pool or a session built without `setCache` and without a coordinator attached
@@ -340,6 +350,9 @@ belongs.
 downloads have somewhere eviction cannot reach, and `superplayer-offline` shares this cache and this
 key policy (`PRD.md` §2.4, §3.5) rather than opening a second one: a download stack with its own
 directory would be a second storage decision, and a second key policy would reopen F7.
+*Discharged by
+[ADR-0013](0013-download-into-the-cache-the-consumer-opened-on-the-one-chain.md)
+rules 5 to 8.*
 
 ## Alternatives considered
 

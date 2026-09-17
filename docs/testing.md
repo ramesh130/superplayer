@@ -704,7 +704,8 @@ stamps no request at all, and the same player with it stamps every one, so the c
 — and the rule's other half, that a core-only session is unchanged, is held by the golden traces in
 `superplayer-telemetry`, which this change leaves byte-identical.
 
-`superplayer-drm` is the sixth and, by ADR-0012 rule 4, the last of this shape: the one slot it fills
+`superplayer-drm` is the sixth and, by ADR-0012 rule 4, the last to *fill* a slot (ADR-0013 rule 4 adds a
+seventh, `superplayer-offline`, which is built from core's seam and fills no slot): the one slot it fills
 is a `DrmSessionManagerProvider` for every source `TransferChain` builds, and *every* Media3 type DRM
 needs carries `@UnstableApi`, so there is no version of its engine-facing half that could have been
 public API instead. Its `WidevinePlaybackTest` plays both protected protocols through a real

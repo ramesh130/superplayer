@@ -14,6 +14,11 @@
   sentence in `FailureClass.Drm.Unsupported` that rule 1 here makes false.
   [ADR-0009](0009-observe-conditions-re-apply-decisions-and-remember-per-transport.md) rule 2's
   deferral table names the secure-decoder limit as this phase's, and rule 11 collects it.
+- **Refined by:**
+  [ADR-0013](0013-download-into-the-cache-the-consumer-opened-on-the-one-chain.md)
+  rule 4, which adds a second friend shape beside this ADR's rule 4, and rule 13, which runs a
+  download's licence exchange over a store's chain rather than a player's and makes releasing its
+  licence part of its removal (rule 9's addendum and rule 10); each recorded at the rule it refines.
 - **Summary:** Decides Phase 6's shape before any of its code lands (#201). Protection is declared
   once per player, on the builder, and is fixed for the player's lifetime; the credential a licence
   request carries is the app's, through the one `HeaderProvider` the library has. Every Media3 type
@@ -176,6 +181,11 @@ Thirteen rules follow, and they are binding.
    it: a friend path is right for a later *phase of this library*, filling a slot core declared, and
    for nothing else. A module that wants friendship for any other reason wants a public API instead.
 
+   *Refined by
+   [ADR-0013](0013-download-into-the-cache-the-consumer-opened-on-the-one-chain.md)
+   rule 4: a seventh friend, `superplayer-offline`, is built from core's seam and from what other
+   friends filled into it, filling no slot. The ceiling now admits exactly those two shapes.*
+
 ### One taxonomy, still
 
 5. **`superplayer-drm` classifies nothing.** ADR-0011 rule 1 stands unchanged: a failure acquires a
@@ -263,6 +273,12 @@ Thirteen rules follow, and they are binding.
    directory with no player, no device and no network, which is what makes the paragraph above usable
    from a list screen rather than only from a player.
 
+   *Refined by
+   [ADR-0013](0013-download-into-the-cache-the-consumer-opened-on-the-one-chain.md)
+   rule 13, for downloads only: a download store's exchange runs over the chain `TransferChain`
+   assembles for it, which carries the credential, the licence budget and the stamp this addendum
+   requires, so it is the same chain reached without a player rather than a second HTTP stack.*
+
    A stored licence that has *already* expired is refused at session composition rather than silently
    re-acquired. Media3's own answer to a restored licence at or near expiry is a licence request to
    the server, which on a player a consumer deliberately built to play offline is a round trip that
@@ -279,6 +295,12 @@ Thirteen rules follow, and they are binding.
     Release on delete is the counterpart and the same shape: a consumer deleting a download releases
     its keys through one call, and a store that leaked them would hold a device-bound credential for
     content the user has removed.
+
+    *Refined by
+    [ADR-0013](0013-download-into-the-cache-the-consumer-opened-on-the-one-chain.md)
+    rule 13, for downloads only: renewal stays the consumer's, and so
+    does releasing a licence acquired directly; releasing the licence of an item a download store
+    holds is part of that item's removal, because the consumer's call was the removal.*
 
 ### The security-level ladder is not a rung
 
@@ -414,6 +436,9 @@ that the client may decide, which is a harder argument than it looks.
 opening a second one, and its resilience reads ADR-0011's taxonomy with rule 7's leaves in it.
 Phase 8's TV work owns the display-capability change rule 12 names as correctness — an HDMI hotplug
 under a playing secure session is a condition in ADR-0009 rule 2's sense, and it arrives there.
+*The Phase 7 half is discharged by
+[ADR-0013](0013-download-into-the-cache-the-consumer-opened-on-the-one-chain.md)
+rules 1, 9 and 13.*
 
 ## Alternatives considered
 

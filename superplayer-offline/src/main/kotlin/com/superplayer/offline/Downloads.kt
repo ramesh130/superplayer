@@ -362,9 +362,9 @@ public class Downloads internal constructor(
         val selection = DownloadSelection(decision.download, enqueued.audioLanguages, enqueued.subtitleLanguages)
         val sessions = try {
             licences?.sessions()
-        } catch (refusal: SecurityDowngradeRefusedException) {
+        } catch (downgradeRefused: SecurityDowngradeRefusedException) {
             // The device cannot be given this content at any level the server permits: nothing to download.
-            failBeforeTheManager(contentId, refusal)
+            failBeforeTheManager(contentId, downgradeRefused)
             return
         }
         val helper = DownloadHelper.Factory()

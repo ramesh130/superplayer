@@ -96,7 +96,7 @@ class SecureSurfaceDowngradeTest {
     fun aSecureSurfaceThatWillNotAllocateFallsToTheLevelTheOperatorPermitted() {
         aCapableL1Device()
 
-        val player = harness.play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
+        val player = harness.buildDowngradePlayer(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
         harness.playToReady(player)
 
         // The session was protected, so the decoder selected for it was a secure one, and the
@@ -122,7 +122,7 @@ class SecureSurfaceDowngradeTest {
         aCapableL1Device()
 
         val events = Collections.synchronizedList(mutableListOf<TelemetryEvent>())
-        val player = harness.play(
+        val player = harness.buildDowngradePlayer(
             permits = setOf(WidevineConfig.SECURITY_LEVEL_L3),
             telemetry = QoeCollector { events += it },
         )
@@ -144,7 +144,7 @@ class SecureSurfaceDowngradeTest {
         // hard is what that has to mean. The identical device and the identical failure.
         aCapableL1Device()
 
-        val player = harness.play()
+        val player = harness.buildDowngradePlayer()
         harness.playToReady(player)
         harness.failDecoderInitialization(player, secureDecoderRequired = true)
         harness.advanceUntil(player, "an error") { it.playerError != null }
@@ -166,7 +166,7 @@ class SecureSurfaceDowngradeTest {
         // class — and the renderer saying the path that failed was not the protected one.
         aCapableL1Device()
 
-        val player = harness.play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
+        val player = harness.buildDowngradePlayer(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
         harness.playToReady(player)
         harness.failDecoderInitialization(player, secureDecoderRequired = false)
         harness.advanceUntil(player, "an error") { it.playerError != null }
@@ -184,7 +184,7 @@ class SecureSurfaceDowngradeTest {
         DeviceStatement.declareSecureVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC, maxSupportedInstances = 1)
         DeviceStatement.declareWidevine(SecurityLevel.L3)
 
-        val player = harness.play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
+        val player = harness.buildDowngradePlayer(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
         harness.playToReady(player)
         harness.failDecoderInitialization(player, secureDecoderRequired = true)
         harness.advanceUntil(player, "an error") { it.playerError != null }

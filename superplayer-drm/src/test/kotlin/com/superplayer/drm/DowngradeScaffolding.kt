@@ -35,10 +35,11 @@ import com.superplayer.testkit.TestContent
  * subject.
  *
  * It lives in `superplayer-drm`'s test sources rather than in `superplayer-testkit` because the one
- * helper worth sharing names `Drm.widevine` and `WidevineConfig`, and testkit is a phase 2 module
- * that a phase 6 one may not be reached from (`docs/modules.md`). The other two name only core types
- * and could move, but every copy of either is in this module's tests, and a helper in testkit is
- * public API of a published module (`docs/api-surface.md`) that nothing else would call.
+ * helper worth sharing names `Drm.widevine` and `WidevineConfig`, and testkit, a phase 2 module, may
+ * not depend on a phase 6 one (`docs/modules.md`). The other two name only core types and could move,
+ * but a helper in testkit is public API of a published module (`docs/api-surface.md`), and no module
+ * outside this one keeps a copy of either. The other DRM tests keep their own builders, because each
+ * plays different content under a different configuration.
  */
 
 /**
@@ -47,7 +48,7 @@ import com.superplayer.testkit.TestContent
  * rule 11) — and the resilience both halves of ADR-0012 rule 2 need. Nothing is prepared; the test
  * says how far it plays.
  */
-internal fun PlaybackHarness.play(
+internal fun PlaybackHarness.buildDowngradePlayer(
     permits: Set<String> = emptySet(),
     telemetry: QoeCollector? = null,
     faults: FaultScript = FaultScript.NONE,

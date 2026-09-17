@@ -23,8 +23,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * The half of ADR-0013 rule 12 `DownloadSelectionTest` cannot force: that a profile's video ceiling, and
- * the display's, reach the selector a download's tracks are chosen by. The synthetic streams have no video
+ * The half of ADR-0013 rule 12 `DownloadSelectionTest` cannot force: that a policy's video ceiling reaches
+ * the selector a download's tracks are chosen by. The synthetic streams have no video
  * ladder to cut, so this reads the parameters handed to Media3 rather than a download — the one place in
  * this module that looks past the store, and only at what the store hands on.
  */
@@ -33,7 +33,7 @@ class DownloadSelectionParametersTest {
 
     @Test
     fun theProfilesCeilingIsTheSelectorsCeiling() {
-        val parameters = selection(DownloadSelectionPolicy(maxVideoBitrateBps = 800_000, maxVideoHeightPx = 480), displayShortEdgePx = null).parameters
+        val parameters = selection(DownloadSelectionPolicy(maxVideoBitrateBps = 800_000, maxVideoHeightPx = 480)).parameters
 
         assertThat(parameters.maxVideoBitrate).isEqualTo(800_000)
         assertThat(parameters.maxVideoHeight).isEqualTo(480)
@@ -41,21 +41,6 @@ class DownloadSelectionParametersTest {
         assertThat(parameters.forceHighestSupportedBitrate).isTrue()
     }
 
-    @Test
-    fun aDisplayShorterThanTheCeilingNarrowsIt() {
-        val parameters = selection(DownloadSelectionPolicy(maxVideoBitrateBps = Int.MAX_VALUE, maxVideoHeightPx = 1_080), displayShortEdgePx = 720).parameters
-
-        assertThat(parameters.maxVideoHeight).isEqualTo(720)
-    }
-
-    /** The control for the display: a policy may narrow below what the device allows, and the device never widens past the policy. */
-    @Test
-    fun aDisplayTallerThanTheCeilingLeavesIt() {
-        val parameters = selection(DownloadSelectionPolicy(maxVideoBitrateBps = Int.MAX_VALUE, maxVideoHeightPx = 480), displayShortEdgePx = 2_160).parameters
-
-        assertThat(parameters.maxVideoHeight).isEqualTo(480)
-    }
-
-    private fun selection(policy: DownloadSelectionPolicy, displayShortEdgePx: Int?) =
-        DownloadSelection(policy, displayShortEdgePx, audioLanguages = emptyList(), subtitleLanguages = emptyList())
+    private fun selection(policy: DownloadSelectionPolicy) =
+        DownloadSelection(policy, audioLanguages = emptyList(), subtitleLanguages = emptyList())
 }

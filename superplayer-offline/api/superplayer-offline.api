@@ -36,6 +36,7 @@ public final class com/superplayer/offline/Downloads {
 public final class com/superplayer/offline/Downloads$Builder {
 	public fun <init> (Landroid/content/Context;Lcom/superplayer/core/ContentCache;)V
 	public final fun build ()Lcom/superplayer/offline/Downloads;
+	public final fun setPolicy (Lcom/superplayer/core/PlaybackPolicy;)Lcom/superplayer/offline/Downloads$Builder;
 	public final fun setProfile (Lcom/superplayer/core/PlaybackProfile;)Lcom/superplayer/offline/Downloads$Builder;
 }
 

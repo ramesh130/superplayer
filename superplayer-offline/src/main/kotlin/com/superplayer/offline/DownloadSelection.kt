@@ -24,8 +24,7 @@ import com.superplayer.core.DownloadSelectionPolicy
 import com.superplayer.core.TrackSelectionPolicy
 
 /**
- * What one download takes out of its manifest: one video rendition under [policy]'s ceiling and the
- * device's, the audio in [audioLanguages], and the subtitles in [subtitleLanguages] (ADR-0013 rule 12).
+ * What one download takes out of its manifest: one video rendition under [policy]'s ceiling, the audio in [audioLanguages], and the subtitles in [subtitleLanguages] (ADR-0013 rule 12).
  *
  * The choosing itself is Media3's `DownloadHelper` over Media3's own track selector, told only what this
  * says, so what a download selects is what the engine would select under the same constraints: the
@@ -34,8 +33,6 @@ import com.superplayer.core.TrackSelectionPolicy
  */
 internal class DownloadSelection(
     private val policy: DownloadSelectionPolicy,
-    /** The display's shorter edge, or null where the device has not said: ADR-0009 rule 2's reading, never observed. */
-    private val displayShortEdgePx: Int?,
     private val audioLanguages: List<String>,
     private val subtitleLanguages: List<String>,
 ) {
@@ -45,13 +42,15 @@ internal class DownloadSelection(
      * allows rather than an adaptive set, so one rendition rather than every one under the ceiling — with
      * the ceiling applied.
      *
-     * The display is a ceiling on height, which is the shorter edge of the landscape content a ladder
-     * is encoded as: a rendition taller than the screen's shorter edge is one the device can never show
-     * at its own size, and a policy may narrow below what the device allows and never widen past it.
+     * The display is deliberately not a second ceiling here. What the device can show is a limit on a
+     * rendition's *shorter* edge, and Media3's parameters can cap only width and height. Capping height at
+     * the display's shorter edge would put every rung of a vertical clip over the cap, and Media3 would
+     * then fall back to the lowest rung, the opposite of a sensible rendition. The device's decoders
+     * still refuse, through the renderer capabilities the selector reads.
      */
     val parameters: TrackSelectionParameters = DownloadHelper.DEFAULT_TRACK_SELECTOR_PARAMETERS_WITHOUT_CONTEXT.buildUpon()
         .setMaxVideoBitrate(policy.maxVideoBitrateBps)
-        .setMaxVideoSize(TrackSelectionPolicy.UNLIMITED, minOf(policy.maxVideoHeightPx, displayShortEdgePx ?: TrackSelectionPolicy.UNLIMITED))
+        .setMaxVideoSize(TrackSelectionPolicy.UNLIMITED, policy.maxVideoHeightPx)
         .build()
 
     /** Replaces whatever [helper] selected by default with this selection, in every period. Once prepared. */

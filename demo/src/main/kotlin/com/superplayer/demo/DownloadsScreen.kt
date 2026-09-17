@@ -228,11 +228,7 @@ private fun heldText(item: DownloadItem?): String? {
 }
 
 /** The request a download is enqueued as and played as: one value, so the content id cannot differ between them. */
-private fun requestFor(context: Context, stream: DemoStream): MediaRequest = MediaRequest.Builder(stream.contentId)
-    .addSource(stream.uri)
-    .setTitle(context.getString(stream.titleRes))
-    .setSubtitle(context.getString(stream.subtitleRes))
-    .build()
+private fun requestFor(context: Context, stream: DemoStream): MediaRequest = stream.request(context)
 
 /**
  * The process's download store and the cache under it, opened once and never released.

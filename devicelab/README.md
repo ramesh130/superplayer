@@ -301,7 +301,9 @@ step is still running in the next, and that boot fits in the job's timeout on a 
   selection is in the self-test, but no run has booted it yet. A physical device takes the
   adoption path: it is never booted or restarted. The emulator-specific parts, such as the AVD name
   and `ro.boot.qemu`, then simply read empty.
-- One device per run. When several are attached, the run fails and asks for `--serial` rather than
+- One device per run. Devices of the other kind are passed over, as is one that answers but never
+  reports its features, or one that stopped answering and is not the harness's AVD. When several of
+  the kind asked for are attached, the run fails and asks for `--serial` rather than
   guessing.
 - It is written for bash 3.2, because that is what macOS ships, and needs `perl`, `unzip`,
   `shasum` or `sha256sum`, and `git`.

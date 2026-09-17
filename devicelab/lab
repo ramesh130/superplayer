@@ -282,8 +282,9 @@ cmd_config() {
     perfetto_config "${TRACE_MS:-300000}" "$DEMO_PACKAGE" "$DATA_SOURCES"
 }
 
-# Installs the system image device.properties names for the kind of device asked for, for this host's
-# ABI, and creates the AVD from it. The one description of the device, used by a laptop and by CI's android-emulator action alike.
+# Installs the system image device.properties names for the kind of device asked for, for this
+# host's ABI, and creates the AVD from it. The one description of the device, used by a laptop and by
+# CI's android-emulator action alike.
 cmd_create_avd() {
     local tools image
     tools="$(sdk_root)/cmdline-tools/latest/bin"
@@ -382,7 +383,7 @@ Scenario **$RUN_SCENARIO** on $DEVICE_MANUFACTURER $DEVICE_MODEL (API $DEVICE_SD
 against SuperPlayer \`$SP_COMMIT\`$([ "$SP_TREE_DIRTY" = 1 ] && printf ' **plus uncommitted changes**') and Media3 $MEDIA3_VERSION,
 in the demo's \`$DEMO_BUILD_TYPE\` build (debuggable: $(json_bool "$DEMO_DEBUGGABLE"), profileable: $(json_bool "$DEMO_PROFILEABLE")).
 
-- On a $DEVICELAB_DEVICE device, as asked (\`--device\`).
+- On a $DEVICELAB_DEVICE device (\`--device\`, a phone by default).
 - Playback confirmed advancing at ${RUN_PLAYBACK_POSITION_MS} ms.
 - Trace from **$RUN_TRACE_FROM**, data sources: ${RUN_DATA_SOURCES:-base config only}.$([ "$RUN_TRACE_ENDED_BY_BOUND" = 1 ] && printf ' **The trace hit its %s ms bound before the scenario ended.**' "$RUN_TRACE_MS")
 - The installed APK was verified as the one just built, against the SuperPlayer just published.

@@ -16,6 +16,9 @@
 
 package com.superplayer.demo
 
+import android.content.Context
+import com.superplayer.core.MediaRequest
+
 /**
  * The public test streams the demo offers, and the only place a streaming protocol is named.
  *
@@ -77,3 +80,20 @@ internal enum class DemoStream(
         uri = "https://storage.googleapis.com/wvmedia/clear/h264/tears/tears.mpd",
     ),
 }
+
+/**
+ * The request for this stream, with everything an external surface needs to describe it.
+ *
+ * One function for every screen and the service, because two descriptions of the same stream — one for the app,
+ * one for the notification — is exactly the drift that makes a notification say something the screen disagrees
+ * with. Only where playback starts differs between them, so that is the argument.
+ */
+internal fun DemoStream.request(
+    context: Context,
+    startPosition: MediaRequest.StartPosition = MediaRequest.StartPosition.Beginning,
+): MediaRequest = MediaRequest.Builder(contentId)
+    .addSource(uri)
+    .setStartPosition(startPosition)
+    .setTitle(context.getString(titleRes))
+    .setSubtitle(context.getString(subtitleRes))
+    .build()

@@ -153,8 +153,9 @@ assert_eq "the television's AVD is described beside it" \
 assert_eq "and boots a TV system image" \
     "system-images;android-36;android-tv;arm64-v8a" "$(DEVICELAB_DEVICE=tv avd_system_image arm64-v8a)"
 assert_eq "on a TV device profile" tv_1080p "$(DEVICELAB_DEVICE=tv device_property device_profile)"
-assert_eq "while the phone's image is unchanged" \
-    "system-images;android-36.1;google_apis;x86_64" "$(DEVICELAB_DEVICE=phone avd_system_image x86_64)"
+assert_eq "while the phone's image is still read from its bare keys" \
+    "system-images;$(sed -n 's/^system_image_api=//p' "$lab/device.properties");$(sed -n 's/^system_image_tag=//p' "$lab/device.properties");x86_64" \
+    "$(DEVICELAB_DEVICE=phone avd_system_image x86_64)"
 if unknown_kind="$( (DEVICELAB_DEVICE=watch device_property avd) 2>&1)"; then
     fail "a kind of device the harness does not describe fails rather than reading the phone's"
 else
@@ -184,6 +185,7 @@ chooses() { # kind listing
         }
         device_answers() { :; }
         device_kind() {
+            if [ -n "${SILENT:-}" ] && [ "$1" = "$SILENT" ]; then return 0; fi
             case "$1" in
                 emulator-5554) echo phone ;;
                 emulator-5556 | emulator-5557) echo tv ;;
@@ -216,6 +218,15 @@ assert_contains "and uses what it booted" "$chosen" "chose: emulator-5558"
 chosen="$(chooses phone 'emulator-5556\tdevice\n')"
 assert_contains "with only a television attached, a phone run boots the phone's AVD, not the television" \
     "$chosen" "boot_avd superplayer_verify_36"
+
+chosen="$(SILENT=emulator-5556 chooses tv 'emulator-5556\tdevice\n')"
+assert_not_contains "a device that never reports its features is not adopted as the kind asked for" \
+    "$chosen" "chose: emulator-5556"
+assert_contains "and the kind's AVD is booted instead" "$chosen" "boot_avd superplayer_tv_36"
+
+chosen="$(SILENT=emulator-5558 chooses tv '')"
+assert_contains "a booted emulator that never reports its features fails the run, rather than booting again" \
+    "$chosen" "did not report its features"
 
 chosen="$(chooses tv 'emulator-5556\tdevice\nemulator-5557\tdevice\n')"
 assert_contains "two televisions attached is a choice the run will not make" "$chosen" "several tv devices"

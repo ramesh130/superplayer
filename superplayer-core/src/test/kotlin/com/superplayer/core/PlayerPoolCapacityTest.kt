@@ -129,6 +129,47 @@ class PlayerPoolCapacityTest {
         assertThat(harness.buildPool(feedCodecs = setOf(VideoCodec.H264, VideoCodec.VP9)).maxSize).isEqualTo(12)
     }
 
+    /**
+     * #211: a pool of protected players is bounded by the *secure* decoder's limit, which is the
+     * number such a feed runs out of — a device commonly ships several ordinary video decoders and
+     * exactly one secure one, and the two share a MIME type, so the merged reading is the plain
+     * decoder's and wrong (ADR-0012 rule 12).
+     *
+     * Both directions in one test, because the same device answers both: what changes is only whether
+     * the pool was built with `setDrm`.
+     */
+    @Test
+    fun aPoolOfProtectedPlayersIsBoundedByTheSecureDecoderLimit() {
+        TestDevice.declareVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC, maxSupportedInstances = 12)
+        TestDevice.declareVideoDecoder(MediaFormat.MIMETYPE_VIDEO_HEVC, maxSupportedInstances = 12)
+        TestDevice.declareSecureVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC, maxSupportedInstances = 2)
+        TestDevice.declareSecureVideoDecoder(MediaFormat.MIMETYPE_VIDEO_HEVC, maxSupportedInstances = 2)
+        TestDevice.declareAppHeap(megabytes = 2048)
+
+        // The control: the same device, and a pool of clear players gets the plain limit. Twelve
+        // players of protected content on it would find the third secure decoder missing.
+        assertThat(harness.buildPool().maxSize).isEqualTo(12)
+        assertThat(harness.buildPool(drm = PROTECTED).maxSize).isEqualTo(2)
+    }
+
+    /**
+     * And the unknown reading is the same one everything else here takes: a device that declared
+     * decoders but no secure one has said nothing about protected playback, and nothing is not
+     * "none" — the ordinary limit stands rather than collapsing to the floor.
+     *
+     * The device this is really about is Widevine **L3**, which plays protected content on ordinary
+     * decoders and declares no `FEATURE_SecurePlayback` anywhere. A pool that read a missing secure
+     * entry as a limit of one would give a whole class of common devices a feed of one player.
+     */
+    @Test
+    fun aProtectedPoolOnADeviceThatDeclaredNoSecureDecoderKeepsTheOrdinaryBound() {
+        TestDevice.declareVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC, maxSupportedInstances = 12)
+        TestDevice.declareVideoDecoder(MediaFormat.MIMETYPE_VIDEO_HEVC, maxSupportedInstances = 12)
+        TestDevice.declareAppHeap(megabytes = 2048)
+
+        assertThat(harness.buildPool(drm = PROTECTED).maxSize).isEqualTo(12)
+    }
+
     @Test
     fun aConsumerMayAskForFewerPlayersButNotForMore() {
         TestDevice.declareVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC)
@@ -139,5 +180,15 @@ class PlayerPoolCapacityTest {
         // videos it can afford is a guess made on somebody's desk; this one was made on the phone.
         assertThat(harness.buildPool(maxSize = TestDevice.REPORTED_DECODER_INSTANCES * 4).maxSize)
             .isEqualTo(TestDevice.REPORTED_DECODER_INSTANCES)
+    }
+
+    private companion object {
+        /**
+         * What makes a pool's players protected as far as the bound is concerned: the builder was told
+         * `setDrm`. A bare [PlaybackDrm] rather than `superplayer-drm`'s, because core may not depend
+         * on a later phase's module and because an implementation that is not an `EngineDrmExtension`
+         * fills no slot — which is exactly the player a pool of clear content would otherwise build.
+         */
+        val PROTECTED: PlaybackDrm = object : PlaybackDrm {}
     }
 }

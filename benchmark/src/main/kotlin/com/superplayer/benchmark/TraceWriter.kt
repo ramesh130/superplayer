@@ -130,6 +130,7 @@ internal object TraceWriter {
         is TelemetryEvent.SeekCompleted -> "seek_completed"
         is TelemetryEvent.LiveLatencySampled -> "live_latency"
         is TelemetryEvent.PlaybackStateSampled -> "state_sample"
+        is TelemetryEvent.LicenceAcquisitionEnded -> "licence_acquisition"
         is TelemetryEvent.VideoFramesDropped -> "video_frames"
     }
 
@@ -188,6 +189,14 @@ internal object TraceWriter {
                 "\"videoBitrateBps\":${event.videoBitrateBps ?: "null"}," +
                 "\"bufferedMs\":${event.bufferedDurationMs}," +
                 "\"playing\":${event.playing}"
+
+        // The matrix plays no protected content, so this branch is unreachable in every run this
+        // build makes. It is written out rather than thrown on, because a trace file whose schema
+        // silently omits an event of the vocabulary is worse than one that carries it.
+        is TelemetryEvent.LicenceAcquisitionEnded ->
+            "\"durationMs\":${event.durationMs}," +
+                "\"outcome\":${string(event.outcome.name)}," +
+                "\"securityLevel\":${event.securityLevel?.let { string(it) } ?: "null"}"
 
         is TelemetryEvent.VideoFramesDropped ->
             "\"dropped\":${event.droppedFrames}," +

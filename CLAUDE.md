@@ -74,6 +74,19 @@ its start boundary is *user intent*, which the library cannot see, so a consumer
 `player.declarePlaybackIntent()` and a session that gets none is measured from content adoption and
 labelled as such rather than silently mixed in.
 
+Since #212 it also carries protected playback's own start-up cost: `LicenceAcquisitionEnded`, one
+span per licence a session fetched, with a `LicenceOutcome` of `ACQUIRED_FROM_SERVER`, `REFUSED`, or
+`SERVED_FROM_OFFLINE_STORE` — the last declared and **unreachable** until #210 opens an offline
+store, so that #210 is a behaviour change rather than a second change of the schema. It is
+SuperPlayer's own metric, since CTA-2066 has none, and it is `QoeCollector`'s from Media3's DRM
+analytics callbacks rather than `superplayer-drm`'s, because that module classifies nothing (ADR-0012
+rule 5). A new event type is shape and not meaning, so `SCHEMA_VERSION` stays **2** for the fourth
+release running, which the release notes say in as many words. A reused DRM session and a key
+rotation each emit nothing, which is the difference between counting acquisitions and counting
+sessions. `superplayer-drm`'s `LicenceTelemetryTest` drives it — a phase 6 test of a phase 2 metric,
+because only there is there a licence server to acquire from — and asserts rule 6's redaction against
+a trace of a session that really acquired one.
+
 The whole vocabulary is emitted. Core signals the session edges from `adopt`, `restoreSnapshot`,
 `resetForReuse` and `release`, because only core knows which item change carried a `MediaRequest` and
 which was a recycle; everything else `QoeCollector` derives from Media3's `AnalyticsListener`, and
@@ -116,7 +129,11 @@ device reports — `DeviceCapacity.kt` is the only place that reading happens, a
 platform's concurrent-decoder limit over the codecs the feed declares (`setFeedCodecs(VideoCodec…)`,
 H.264 and HEVC by default; a declared codec the device has no decoder for is left out rather than
 collapsing the bound) and a per-player budget against the *app's* heap
-(`ActivityManager.memoryClass`, since Media3 buffers on the Java heap), never below one. `acquire()` returns null rather than growing past the bound, `recycle(player)` hands
+(`ActivityManager.memoryClass`, since Media3 buffers on the Java heap), never below one. A pool built
+with `setDrm` is bounded by the *secure* decoder's limit wherever the device declared one, because a
+phone that ships several ordinary video decoders commonly ships exactly one secure one and that is
+the number a protected feed runs out of (#211, ADR-0012 rule 12); a device that declared none is
+bounded exactly as a clear feed is, because Widevine L3 plays protected content on ordinary decoders. `acquire()` returns null rather than growing past the bound, `recycle(player)` hands
 one back, and `SuperPlayer.resetForReuse` is what makes a reused player carry nothing of the last
 item: surface detached first (a stale frame in a recycled view is the tell of a hand-rolled pool),
 then content, playback state, listeners, audio attributes and the remembered-position map. Audio
@@ -359,7 +376,11 @@ SuperPlayer's own factory (Media3 1.11's is final where it builds), overriding t
 consults per rung per evaluation. Three refusals in order — the device (a rung the display's
 shorter edge cannot show, an HDR transfer it does not list, or a codec profile and level no declared
 decoder reaches, read *once* from core's `DeviceConstraints` as ADR-0009 rule 2 says and never
-observed), the policy's ceiling (retargeted through the same `DecisionTarget` as the load control,
+observed — and on a player built with `setDrm` the decoder asked is the **secure** one, a second
+table `readDecoderTable` keeps on the walk it already made, because a `.secure` decoder shares its
+plain sibling's MIME type and the merged answer is the plain one's; the protection signal is the
+builder's call and not `Format.drmInitData`, which is what keeps it a constraint, #211), the policy's
+ceiling (retargeted through the same `DecisionTarget` as the load control,
 which is how a hold is honoured and why it lapses on a trigger), and the estimate discounted by its
 spread on the oracle's own stable line. Startup needs no code: Media3's first choice reads the
 meter, which is the per-transport memory or its cold default. The climb and descent thresholds are

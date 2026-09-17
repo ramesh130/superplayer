@@ -42,11 +42,13 @@ dependencies {
     // without it. Nothing in this module's main sources knows it exists.
     testImplementation(project(":superplayer-resilience"))
 
-    // `QoeCollector`, for the half of ADR-0012 rule 11 that is a report rather than a behaviour: a
-    // session that fell to a lower level mid-flight says so on `SessionEnded`. It is asserted here
-    // because the fall is this module's, and a phase 2 module may not depend on a phase 6 one —
-    // the same direction, and the same reason, as the resilience dependency above. Phase 6 on phase
-    // 2, tests only.
+    // Tests only, and a phase 2 module under a phase 6 one, which is the allowed direction. Licence
+    // acquisition is measured by `QoeCollector` from Media3's DRM analytics callbacks (#212) —
+    // `superplayer-telemetry`'s, because ADR-0012 rule 5 leaves this module with no vocabulary of
+    // its own — and a real licence round trip needs the protected stream, the stated device and the
+    // licence server that only this module's tests have. The same collector reports the other half
+    // of ADR-0012 rule 11 (#225): a session that fell to a lower level mid-flight says so on
+    // `SessionEnded`. Nothing in this module's main sources knows it exists.
     testImplementation(project(":superplayer-telemetry"))
 }
 

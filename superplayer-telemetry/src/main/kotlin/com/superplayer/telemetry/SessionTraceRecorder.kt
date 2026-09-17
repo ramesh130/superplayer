@@ -307,6 +307,14 @@ public class SessionTraceRecorder : TelemetrySink {
             "samplingIntervalMs=${event.samplingIntervalMs} videoBitrateBps=${event.videoBitrateBps} " +
                 "bufferedDurationMs=${event.bufferedDurationMs} playing=${event.playing}"
 
+        // Rule 6 holds here as it does over the load: a duration, an outcome and a security level
+        // are facts about the exchange and carry none of its material — no licence URI, no key id,
+        // no key request or response, and nothing about the device beyond the level it ran at,
+        // which is one of two words.
+        is TelemetryEvent.LicenceAcquisitionEnded ->
+            "durationMs=${event.durationMs} outcome=${event.outcome}" +
+                event.securityLevel?.let { " securityLevel=$it" }.orEmpty()
+
         is TelemetryEvent.VideoFramesDropped ->
             "droppedFrames=${event.droppedFrames} repeatedFrames=${event.repeatedFrames} " +
                 "elapsedPlayingMs=${event.elapsedPlayingMs}"

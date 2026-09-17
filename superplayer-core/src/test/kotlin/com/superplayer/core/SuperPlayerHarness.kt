@@ -228,11 +228,17 @@ class SuperPlayerHarness : ExternalResource() {
      *
      * [feedCodecs], when set, is what the pool declares its feed to be encoded in; unset is the
      * builder's own default, H.264 and HEVC.
+     *
+     * [drm], when set, is what `PlayerPool.Builder.setDrm` takes, and a pool given one is bounded by
+     * the *secure* decoder's limit. The players still come from the factory below, which is the point
+     * of the parameter: what it is here for is the bound, which the builder derives before it builds
+     * anything.
      */
     internal fun buildPool(
         maxSize: Int? = null,
         profile: PlaybackProfile? = null,
         feedCodecs: Set<VideoCodec>? = null,
+        drm: PlaybackDrm? = null,
         fakeDataSet: FakeDataSet = SyntheticHlsStream.addTo(FakeDataSet()),
         telemetry: TelemetryCollector? = null,
         cache: ContentCache? = null,
@@ -242,6 +248,7 @@ class SuperPlayerHarness : ExternalResource() {
             maxSize?.let { setMaxSize(it) }
             profile?.let { setProfile(it) }
             feedCodecs?.let { setFeedCodecs(*it.toTypedArray()) }
+            drm?.let { setDrm(it) }
         }
         .setPlayerFactory { pooled ->
             // A collector measures one player, so a pool given one is a pool a test sized to build

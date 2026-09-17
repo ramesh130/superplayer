@@ -21,6 +21,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import com.superplayer.core.BufferPolicy
 import com.superplayer.core.FailureCategory
+import com.superplayer.core.LicenceOutcome
 import com.superplayer.core.PlaybackDecision
 import com.superplayer.core.PlaybackFailure
 import com.superplayer.core.PlaybackProfile
@@ -221,6 +222,15 @@ class LogcatSinkTest {
             videoBitrateBps = 3_000_000,
             bufferedDurationMs = 24_000,
             playing = true,
+        ),
+        TelemetryEvent.LicenceAcquisitionEnded(
+            SESSION,
+            CONTENT,
+            WALL_MS,
+            MONO_MS,
+            durationMs = 240,
+            outcome = LicenceOutcome.ACQUIRED_FROM_SERVER,
+            securityLevel = null,
         ),
         TelemetryEvent.VideoFramesDropped(
             SESSION,

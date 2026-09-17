@@ -27,6 +27,12 @@ dependencies {
     // `@RequiresApi` on the one declaration Robolectric offers only from API 29, so lint holds
     // this module to the same minimum as core and the caller says which level it runs at.
     implementation(libs.androidx.annotation)
+    // WorkManager and its test driver, which the harness runs scheduled work under once the constraints
+    // `DeviceStatement` states hold (`docs/testing.md`, *Downloads*). Compile-only, so a module whose
+    // tests never schedule work does not get WorkManager — and its App Startup initializer — on its test
+    // classpath through this one; a module that does schedule declares both itself.
+    compileOnly(libs.androidx.work.runtime)
+    compileOnly(libs.androidx.work.testing)
     // The protocols' own parsers and media sources. `DefaultMediaSourceFactory` finds them by
     // reflection, so a harness that plays synthetic HLS or DASH needs them on its *runtime*
     // classpath rather than only on a test's — and `FaultInjectionTest` reads its URL sequences out
@@ -46,4 +52,7 @@ dependencies {
     // is added here — the same pin `superplayer-core` uses, for the reason `CLAUDE.md` gives about
     // Robolectric runtimes and JDK versions.
     testImplementation(libs.robolectric)
+    // The harness's own download tests schedule work, so they bring what `compileOnly` above leaves out.
+    testImplementation(libs.androidx.work.runtime)
+    testImplementation(libs.androidx.work.testing)
 }

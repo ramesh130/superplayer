@@ -316,6 +316,18 @@ is no `MediaCrypto` here — which is why the harness sets `setPlayClearSamplesW
 `docs/testing.md`'s *A Widevine device and a licence server* is the argument. `ProtectedPlaybackTest`
 drives it through a **stock** `ExoPlayer`, and `buildPlayer(content = …, drm = …)` through a real
 `SuperPlayer`; protected content with no `drm` is refused rather than played.
+The harness drives a *download* too (#239), for Phase 7: `harness.downloadEnvironment(content, faults,
+network)` returns core's `DownloadEnvironment` — public, internal constructor, `ContentCache`'s shape,
+because testkit (phase 2) and `superplayer-offline` (phase 7) cannot name each other's types — carrying
+the same transport a player of that content loads through and a loading thread the harness owns, which
+core's `TransferChain.downloadChain` puts under a download (ADR-0013 rule 6). `networkRequests(environment)`,
+`advanceUntil(environment, …)`, `processDeath(environment, directory)` (a copy of the directory taken
+with no load in flight — what a dead process leaves), `DeviceStatement.declareNetworkMetered`,
+`declareBatteryLow` and `declareStorageLow`, and `useScheduledWork()` / `runScheduledWork()` — which
+evaluates WorkManager constraints against those statements, because WorkManager's test driver does not —
+are the rest. Two traps: a Media3 `DownloadManager` is built *paused*, and Robolectric's own network is
+metered and unvalidated, so a download that is not about the network states it unmetered first.
+`docs/testing.md`'s *Downloads* says what each stand-in cannot show, a reboot among them.
 Both harnesses put their fakes in the engine configurator's *transport* slot, under the chain
 `SuperPlayer.Builder` composes, so a test of real HLS or DASH sees every layer a consumer's player has; `TestContent.liveHls()`
 is a live origin that keeps publishing and `FaultScript.Builder.serveThroughCache` a CDN cache in front

@@ -32,6 +32,10 @@ junit = "4.13.2"
 # version Media3 resolves, so the two declarations cannot pull in two Robolectrics.
 robolectric = "4.16"
 
+# WorkManager: the scheduler `superplayer-offline` persists downloads through (ADR-0013 rule 11), and
+# its test driver, which `superplayer-testkit` runs scheduled work under. Stable line, not an alpha.
+androidxWork = "2.11.2"
+
 # --- Demo app only: Jetpack Compose. The library modules have no Compose dependency. ---
 # The BOM pins every `androidx.compose.*` artifact, so the individual Compose libraries below
 # carry no version of their own and cannot drift apart from each other.
@@ -73,6 +77,8 @@ media3-test-utils = { module = "androidx.media3:media3-test-utils", version.ref 
 media3-test-utils-robolectric = { module = "androidx.media3:media3-test-utils-robolectric", version.ref = "media3" }
 
 androidx-annotation = { module = "androidx.annotation:annotation", version.ref = "androidxAnnotation" }
+androidx-work-runtime = { module = "androidx.work:work-runtime", version.ref = "androidxWork" }
+androidx-work-testing = { module = "androidx.work:work-testing", version.ref = "androidxWork" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 
 junit = { module = "junit:junit", version.ref = "junit" }

@@ -54,6 +54,7 @@ import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
 import androidx.test.core.app.ApplicationProvider
 import com.superplayer.core.BufferPolicy
 import com.superplayer.core.ContentCache
+import com.superplayer.core.DownloadEnvironment
 import com.superplayer.core.PlaybackDrm
 import com.superplayer.core.PlaybackPolicy
 import com.superplayer.core.PlaybackProfile
@@ -64,6 +65,8 @@ import com.superplayer.core.SuperPlayer
 import com.superplayer.core.TelemetryCollector
 import com.superplayer.testmedia.WidevineProtection
 import org.junit.rules.ExternalResource
+import org.robolectric.Shadows.shadowOf
+import java.io.File
 import java.util.IdentityHashMap
 import java.util.Random
 import java.util.concurrent.CompletableFuture
@@ -178,6 +181,12 @@ public class PlaybackHarness : ExternalResource() {
 
     /** Every player each pool built, for [videoDecodersHeld]; the players themselves are in [renderers]. */
     private val poolPlayers = IdentityHashMap<PlayerPool, List<SuperPlayer>>()
+
+    /** Every download environment handed out, so [networkRequests] can answer for one and [after] stop its thread. */
+    private val downloads = IdentityHashMap<DownloadEnvironment, HarnessDownloadEnvironment>()
+
+    /** How many directories [processDeath] has copied, so each reopened one has a name of its own. */
+    private var deaths = 0
 
     /**
      * A player as a consumer builds one, over synthetic content and the fakes above.
@@ -579,6 +588,145 @@ public class PlaybackHarness : ExternalResource() {
     /** The fault injector under [player], which is where everything it fetched is recorded. */
     private fun injectorFor(player: Player): FaultInjectingDataSource.Factory =
         checkNotNull(injectors[player]) { "This harness did not build that player" }
+
+    /**
+     * Where a download of [content] loads, for a download store's builder to take: the transport a
+     * [buildPlayer] player of the same content would load through — one origin, [faults] injected into
+     * it, [network] shaping it — on a loading thread this harness owns.
+     *
+     * The same origin is the point. A test downloads through one environment and plays through a player
+     * built over the same [content], and what [networkRequests] reports for each is what left each: a
+     * download that stored everything is a player that asks for nothing. Each call is its own origin and
+     * its own count, so a second environment over the same content is the same process restarted, or a
+     * second process, rather than a view of the first. `docs/testing.md`'s *Downloads* is what it stands
+     * in for and what it cannot show.
+     *
+     * Described content has no transport to download over and is refused.
+     */
+    public fun downloadEnvironment(
+        content: TestContent = TestContent.hls(),
+        faults: FaultScript = FaultScript.NONE,
+        network: ThroughputTrace? = null,
+    ): DownloadEnvironment {
+        require(content.protocol != TestContent.Protocol.DESCRIBED) {
+            "Described content is a timeline rather than a stream, so there is nothing to download: use TestContent.hls() or dash()"
+        }
+        val transport = composeTransport(content, faults, network)
+        val environment = HarnessDownloadEnvironment(
+            transport = transport.transfers.factory,
+            injector = transport.injector,
+            wait = transport.wait,
+            loadExecutor = HarnessDownloadLoads(transport.wait),
+        )
+        downloads[environment] = environment
+        return environment
+    }
+
+    /**
+     * Every request a download through [environment] has sent so far, repeats included, in the order
+     * opened — counted under every layer, as [networkRequests] counts a player's.
+     */
+    public fun networkRequests(environment: DownloadEnvironment): List<NetworkRequest> =
+        downloadFor(environment).injector.addresses.requests
+
+    /**
+     * Lets downloads through [environment] run until [condition] holds, failing with [wanted] if it does
+     * not within [boundMs] of harness time.
+     *
+     * A download reports on the main thread, so each pass runs what it has posted there; and a load held
+     * by an injected delay or a shaped link waits on this harness's clock, so a pass in which one is
+     * waiting moves the clock a step. A pass in which nothing waits on the clock moves nothing, which is
+     * why a download with no faults and no trace completes in zero harness time.
+     */
+    public fun advanceUntil(
+        environment: DownloadEnvironment,
+        wanted: String,
+        boundMs: Long = MAX_WAIT_MS,
+        condition: () -> Boolean,
+    ) {
+        val download = downloadFor(environment)
+        val mainLooper = shadowOf(Looper.getMainLooper())
+        val startedAtMs = System.currentTimeMillis()
+        var waited = 0L
+        while (true) {
+            mainLooper.idle()
+            if (condition()) return
+            check(waited < boundMs) { "Download did not reach \"$wanted\" within $boundMs ms of harness time" }
+            check(System.currentTimeMillis() - startedAtMs < DOWNLOAD_WALL_CLOCK_MS) {
+                "Download did not reach \"$wanted\" within $DOWNLOAD_WALL_CLOCK_MS ms of real time"
+            }
+            if (download.wait.isWaiting && download.wait.transfersHaveCaughtUp) {
+                clock.advanceTime(WAIT_STEP_MS)
+                waited += WAIT_STEP_MS
+            } else {
+                // Work the download's own threads are doing, which takes real time and no harness time.
+                Thread.sleep(1)
+            }
+        }
+    }
+
+    /**
+     * The process a download through [environment] was running in dies, and [directory] is what the next
+     * process finds: a copy of it, taken at a moment when no load is in flight, returned for the test to
+     * open a store over.
+     *
+     * **A copy rather than the directory itself**, because a process that died released nothing — no
+     * cache lock, no database handle, no thread — and a store in the same test process cannot be opened
+     * over a directory the dead one still holds. What survives a real process death is exactly what was
+     * on disk, and a copy is that. The loading thread takes no further work from the moment this is
+     * called, the copy waits for the load it was running to finish, and the dead download's own thread is
+     * refused its next load once the copy exists, so no *segment* is written into [directory] while it
+     * is read. Nothing is released cleanly: an index the store had not written yet is not in the copy,
+     * which is the case resumption has to survive. One writer is not held: Media3's download manager
+     * writes progress into its index on a timer of its own, which nothing here can pause, so a copy can
+     * in principle meet that write — `docs/testing.md`, *Downloads*, names it.
+     */
+    public fun processDeath(environment: DownloadEnvironment, directory: File): File {
+        val download = downloadFor(environment)
+        download.loadExecutor.freeze()
+        awaitQuiet(download)
+        val reopened = File(directory.parentFile, "${directory.name}-after-death-${++deaths}")
+        check(!reopened.exists()) { "$reopened already exists" }
+        directory.copyRecursively(reopened)
+        download.loadExecutor.shutDown()
+        return reopened
+    }
+
+    /**
+     * Puts `WorkManager` under its own test implementation, so a download store scheduled work can be
+     * run by [runScheduledWork]. Call before anything schedules work. Needs `androidx.work:work-testing`
+     * on the calling module's test classpath, which this module compiles against and does not carry.
+     */
+    public fun useScheduledWork() {
+        ScheduledWork.install()
+    }
+
+    /**
+     * Runs every piece of enqueued `WorkManager` work whose constraints hold on the device as
+     * [DeviceStatement] states it — network, battery and storage — and answers how many ran. Work
+     * waiting on a condition that does not hold stays enqueued, and runs on a later call once a statement
+     * makes it hold.
+     */
+    public fun runScheduledWork(): Int = ScheduledWork.runWhereConstraintsHold()
+
+    private fun downloadFor(environment: DownloadEnvironment): HarnessDownloadEnvironment =
+        checkNotNull(downloads[environment]) { "This harness did not make that download environment" }
+
+    /** Until no transfer is open and no load task active, and that has held across a second look. */
+    private fun awaitQuiet(download: HarnessDownloadEnvironment) {
+        val startedAtMs = System.currentTimeMillis()
+        var seen = -1
+        while (true) {
+            val quiet = !download.wait.isWaiting && download.wait.transfersHaveCaughtUp
+            val activity = download.wait.activitySoFar
+            if (quiet && activity == seen) return
+            seen = if (quiet) activity else -1
+            check(System.currentTimeMillis() - startedAtMs < CATCH_UP_WALL_CLOCK_MS) {
+                "A download's load did not finish within $CATCH_UP_WALL_CLOCK_MS ms of real time"
+            }
+            Thread.sleep(QUIET_LOOK_MS)
+        }
+    }
 
     /**
      * A [PlayerPool] whose players are this harness's, so a pooled player is a player like any
@@ -1062,6 +1210,8 @@ public class PlaybackHarness : ExternalResource() {
         transportReplays.clear()
         poolInjectors.clear()
         poolPlayers.clear()
+        downloads.values.forEach { it.loadExecutor.shutDown() }
+        downloads.clear()
         // After the players, which are what were drawing into them.
         outputs.forEach { (surface, texture) ->
             surface.release()
@@ -1295,6 +1445,18 @@ public class PlaybackHarness : ExternalResource() {
 
         /** Playback time, not wall-clock: generous, and only ever reached when something is wrong. */
         private const val MAX_WAIT_MS = 30_000L
+
+        /**
+         * Real milliseconds a download is given to reach what [advanceUntil] waits for. A download of a
+         * synthetic stream is a few dozen small transfers, so this is reached only when something is stuck.
+         */
+        private const val DOWNLOAD_WALL_CLOCK_MS = 30_000L
+
+        /**
+         * Real milliseconds between two looks at a download's loads while [processDeath] waits for them
+         * to stop: long enough that a thread between two transfers has started the second.
+         */
+        private const val QUIET_LOOK_MS = 20L
 
         /** Real milliseconds [awaitLoads] gives loads to catch up with one advance. */
         private const val CATCH_UP_WALL_CLOCK_MS = 10_000L

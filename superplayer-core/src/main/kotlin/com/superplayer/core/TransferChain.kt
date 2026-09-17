@@ -318,6 +318,23 @@ internal object TransferChain {
     }
 
     /**
+     * The chain a download loads through: the transport — [environment]'s under a test, the platform's
+     * HTTP stack otherwise.
+     *
+     * ADR-0013 rule 6: a download travels the one chain, less what is a *playback's*. No CMCD, because
+     * a download is not a playback session and has no `sid` to join; no bandwidth meter, because nothing
+     * here registers one; and neither live layer, because a live stream is refused at enqueue (rule 8).
+     * The cache is not composed here either: Media3's downloader writes through a `CacheDataSource`
+     * it is handed per content id, over this chain as its upstream (rule 5). The header-refresh slot and
+     * the load-error policy rule 6 also names arrive with the store that has a resilience to fill them
+     * from (#240, #242); nothing calls this with one yet.
+     */
+    fun downloadChain(
+        context: Context,
+        environment: DownloadEnvironment? = null,
+    ): DataSource.Factory = environment?.transport ?: DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory())
+
+    /**
      * The chain itself — see the composition order above for what wraps what — over [refreshed],
      * which is the transport with the header-refresh slot already composed onto it, and with
      * [cache]'s layer in the cache slot when there is one. One call is one player's chain: the

@@ -698,7 +698,9 @@ what a viewer will watch rather than the whole ladder (ADR-0013 rule 12 and its 
 audioLanguages, subtitleLanguages)` first reads the manifest through Media3's `DownloadHelper`, over the one
 chain. It then takes one video rendition, the highest under `PlaybackDecision.download` (a
 `DownloadSelectionPolicy`, the fifth half, set per profile in `StaticProfilePolicy` and chosen with
-`Downloads.Builder.setProfile`) and under the display's shorter edge. It takes each declared language the
+`Downloads.Builder.setProfile`, or decided by the policy `setPolicy` hands it) that the device's
+decoders can play. The display is deliberately not a ceiling, because a height cap would cut every rung of
+a vertical clip. It takes each declared language the
 content carries (`DownloadSelection`). A declared language the content lacks is skipped, and with no
 declared audio carried the audio a player would choose is taken instead. The item is `QUEUED` while the
 manifest is read, and `FAILED` if it cannot be. A player of the download is narrowed to the same tracks:

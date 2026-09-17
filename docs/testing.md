@@ -587,6 +587,9 @@ the seam above until #239. What stands in for each piece, and what each stand-in
   download selects what a harness player could play. That has two limits. Nothing here shows a device's
   decoders refusing a rendition. And the synthetic streams are audio-only, so no video ladder is cut by a
   ceiling: `DownloadSelectionParametersTest` reads the ceiling handed to Media3 instead of counting a cut.
+  **That test reads past the facade.** It reads the internal `DownloadSelection`'s parameters, and this
+  is where that is recorded, as the cache's and preload's tests are below. A synthetic video ladder is
+  what would let it be a count instead.
   Media3's download helper also polls for a failed manifest on its own thread's system clock, which
   Robolectric moves only when a test tells it to.
 - **The loading thread is the harness's.** Segment loads run on one thread the environment owns,

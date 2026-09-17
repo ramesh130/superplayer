@@ -256,10 +256,15 @@ Fifteen rules follow, and they are binding.
 
     *Addendum (2026-09-17, #241).* Four things this rule left unsaid, decided where it was built:
 
-    - **One rendition, the highest under both ceilings.** A ceiling on its own would download every
-      rung beneath it; a download takes only the top one, because bytes written cannot adapt later and
-      each further rung is storage spent on pictures nobody sees. The device's display is a ceiling on
-      height, and the device's decoders are the renderer capabilities Media3's selector already reads.
+    - **One rendition, the highest under the ceiling the device's decoders can play.** A ceiling on its
+      own would download every rung beneath it. A download takes only the top one, because bytes written
+      cannot adapt later and each further rung is storage spent on pictures nobody sees. The decoders
+      are the renderer capabilities Media3's selector already reads. The display is **not** a ceiling
+      here. What a screen can show limits a rendition's shorter edge, and Media3 can cap only width and
+      height. Capping height at the display's shorter edge would put every rung of a vertical clip over
+      the cap, and Media3 would fall back to the lowest one. The display refusal is left open, not
+      approximated wrongly. The ceiling is the `PlaybackPolicy` the store was given
+      (`Downloads.Builder.setPolicy`), or its profile's static one.
     - **A declared language the content does not carry is skipped, never refused.** Refusing would fail
       a whole item over one of several preferences. Media3's selector treats a language as a preference
       and would select a different track in its place, so languages are filtered against what the

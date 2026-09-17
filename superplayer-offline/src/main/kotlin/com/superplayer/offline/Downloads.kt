@@ -37,11 +37,11 @@ import com.superplayer.core.ContentCache
 import com.superplayer.core.DownloadEnvironment
 import com.superplayer.core.MediaRequest
 import com.superplayer.core.PlaybackConditions
+import com.superplayer.core.PlaybackPolicy
 import com.superplayer.core.PlaybackProfile
 import com.superplayer.core.StaticProfilePolicy
 import com.superplayer.core.TransferChain
 import com.superplayer.core.currentNetworkTransportOf
-import com.superplayer.core.deviceConstraintsOf
 import java.io.IOException
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executor
@@ -67,7 +67,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * - **Everything happens on the thread the store was built on**, which must have a `Looper` — the main
  *   thread, normally. Listeners are called there too.
  * - **A download is what the viewer will watch, not the whole ladder.** One video rendition, the highest
- *   under the profile's `DownloadSelectionPolicy` and the device's display that its decoders can play; the
+ *   under the policy's `DownloadSelectionPolicy` that the device's decoders can play; the
  *   audio languages and subtitles [enqueue] was told; and nothing else the manifest lists (rule 12). A
  *   player of the download is narrowed to the same tracks, so it plays what is on disk.
  *
@@ -83,8 +83,8 @@ import java.util.concurrent.atomic.AtomicInteger
 public class Downloads internal constructor(
     private val context: Context,
     private val cache: CacheDownloads,
-    environment: DownloadEnvironment?,
-    private val profile: PlaybackProfile,
+    private val environment: DownloadEnvironment?,
+    private val policy: PlaybackPolicy,
 ) {
 
     /**
@@ -97,11 +97,20 @@ public class Downloads internal constructor(
 
         private var profile: PlaybackProfile = PlaybackProfile.VIDEO_ON_DEMAND
 
+        private var policy: PlaybackPolicy? = null
+
         /**
          * The kind of playback the downloads are for, which decides the rendition each one takes: its
          * `PlaybackDecision.download` ceiling. [PlaybackProfile.VIDEO_ON_DEMAND] unless set.
          */
         public fun setProfile(profile: PlaybackProfile): Builder = apply { this.profile = profile }
+
+        /**
+         * The policy that decides the rendition each download takes, in place of [setProfile]'s static one:
+         * its `PlaybackDecision.download`, consulted once per item as it is enqueued (ADR-0013 rule 12). The
+         * same policy a player of this content is built with, normally.
+         */
+        public fun setPolicy(policy: PlaybackPolicy): Builder = apply { this.policy = policy }
 
         /**
          * Loads over [environment] rather than the device's network: `superplayer-testkit`'s transport and
@@ -114,7 +123,7 @@ public class Downloads internal constructor(
             val downloads = requireNotNull(cache.downloads) {
                 "This cache cannot be downloaded into: open one with superplayer-cache's CachePolicy.contentKeyed"
             }
-            return Downloads(context.applicationContext, downloads, environment, profile)
+            return Downloads(context.applicationContext, downloads, environment, policy ?: StaticProfilePolicy(profile))
         }
     }
 
@@ -172,23 +181,23 @@ public class Downloads internal constructor(
         selecting.remove(contentId)?.release()
         unselectable -= contentId
         // Consulted once, now, with what is observed now: bytes written at one rendition are not chosen again.
-        val decision = StaticProfilePolicy(profile).decide(PlaybackConditions(transport = currentNetworkTransportOf(context)))
-        val selection = DownloadSelection(
-            decision.download,
-            deviceConstraintsOf(context).displayShortEdgePx,
-            audioLanguages.toList(),
-            subtitleLanguages.toList(),
-        )
+        val decision = policy.decide(PlaybackConditions(transport = currentNetworkTransportOf(context)))
+        val selection = DownloadSelection(decision.download, audioLanguages.toList(), subtitleLanguages.toList())
         val helper = DownloadHelper.Factory()
             // The manifest is read over the one chain, as the download itself is (rule 6).
             .setDataSourceFactory(upstream)
             // The device's own renderers, whose decoders are the device's refusal (ADR-0009 rule 2).
             .setRenderersFactory(renderers)
             .setTrackSelectionParameters(selection.parameters)
-            .setLoadExecutor { ReleasableExecutor.from(loadExecutor) {} }
+            // Media3's own loading thread, which a release can cancel, except under a harness that owns it.
+            .apply { environment?.let { owned -> setLoadExecutor { ReleasableExecutor.from(owned.loadExecutor) {} } } }
             .create(MediaItem.fromUri(request.sources.first()))
         selecting[contentId] = helper
-        report(DownloadItem(contentId, DownloadState.QUEUED, bytesDownloaded = 0, percentDownloaded = null))
+        // Content the manager already holds keeps reporting what it holds, so a download enqueued again is
+        // never seen to go backwards; what is new is queued while its manifest is read.
+        if (manager.currentDownloads.none { it.request.id == contentId } && manager.downloadIndex.getDownload(contentId) == null) {
+            report(queued(contentId))
+        }
         helper.prepare(
             object : DownloadHelper.Callback {
                 override fun onPrepared(helper: DownloadHelper, tracksInfoAvailable: Boolean) {
@@ -284,7 +293,9 @@ public class Downloads internal constructor(
 
     /** A download the manager does not hold yet, or never will: its tracks being chosen, or failing to be. */
     private fun beforeTheManager(contentId: String): DownloadItem? = unselectable[contentId]
-        ?: if (contentId in selecting) DownloadItem(contentId, DownloadState.QUEUED, bytesDownloaded = 0, percentDownloaded = null) else null
+        ?: if (contentId in selecting) queued(contentId) else null
+
+    private fun queued(contentId: String) = DownloadItem(contentId, DownloadState.QUEUED, bytesDownloaded = 0, percentDownloaded = null)
 
     private fun report(item: DownloadItem) {
         if (released || reported[item.contentId] == item) return

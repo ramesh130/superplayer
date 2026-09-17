@@ -141,15 +141,33 @@ class DownloadSelectionTest {
         assertPlaysWithNoNetwork(content, cache)
     }
 
-    /** The control: content with one rendition and nothing to choose downloads it whole. */
+    /**
+     * Some declared languages carried and some not: the carried ones are downloaded, the others skipped,
+     * and the fallback to a player's audio does not apply, so no undeclared language comes along.
+     */
+    @Test
+    fun onlyTheCarriedOnesOfSeveralDeclaredLanguagesAreDownloaded() {
+        val content = TestContent.dashWithChoice(listOf("en", "fr"), listOf("en", "fr"), SEGMENTS)
+        val (environment, cache) = download(content, audioLanguages = listOf("fr", "ja"), subtitleLanguages = listOf("ja", "fr"))
+
+        val requests = harness.networkRequests(environment)
+        assertThat(renditionsFetched(requests)).containsExactly(SyntheticDashChoice.audioRenditionPath("fr", SyntheticDashChoice.HIGHER_BITRATE_BPS))
+        assertThat(subtitlesFetched(requests)).containsExactly(SyntheticDashChoice.subtitleUri("fr"))
+
+        assertPlaysWithNoNetwork(content, cache)
+    }
+
+    /** The control: content with one rendition and nothing to choose downloads it whole, and plays from it. */
     @Test
     fun contentWithASingleRenditionDownloadsItWhole() {
         val content = TestContent.dash(SEGMENTS)
-        val (environment, _) = download(content, audioLanguages = listOf("en"))
+        val (environment, cache) = download(content)
 
         val segments = harness.networkRequests(environment).filter { it.kind == ResourceKind.MEDIA_SEGMENT }.map { it.uri }.toSet()
         assertThat(segments).hasSize(SEGMENTS)
         assertThat(segments.all { it.startsWith("fake://${SyntheticDashStream.HOST}/dash/") }).isTrue()
+
+        assertPlaysWithNoNetwork(content, cache)
     }
 
     /** A manifest that cannot be parsed leaves nothing to choose from: the item fails, nothing is pinned, and removing it forgets it. */

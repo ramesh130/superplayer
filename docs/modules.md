@@ -41,15 +41,15 @@ than to wave the dependency through.
 | `superplayer-cache` | 4 | ContentCache opened by the consumer in a directory they name: content-keyed CacheDataSource, LRU eviction within their budget, a pinned region for offline (ADR-0010) | core; testkit, abr and telemetry (tests only) |
 | `superplayer-resilience` | 5 | ErrorClassifier, RetryPolicy, FallbackLadder | core |
 | `superplayer-drm` | 6 | WidevineSessionManager, provisioning, offline licenses, fallback ladder | core; testkit, resilience and telemetry (tests only) |
-| `superplayer-offline` | 7 | DownloadManager wrapper, WorkManager constraints, battery policy | core |
+| `superplayer-offline` | 7 | Downloads into the ContentCache the consumer opened, on the one chain: a store over Media3's download stack, WorkManager scheduling under unmetered, battery-not-low and storage-not-low, download track selection, and the licence bound to the download (ADR-0013) | core; testkit, testmedia, cache, drm and resilience (tests only) |
 | `superplayer-tv` | 8 | CTV: display capability, Leanback and Compose-for-TV surfaces | core |
 | `superplayer-diagnostics` | 9 | MediaSourceDoctor, session trace bundle, on-device debug HUD | core |
 | `superplayer-ui` | — † | Optional Compose player surface | core |
 
 `superplayer-testkit`, `superplayer-abr`, `superplayer-cache`, `superplayer-preload`,
-`superplayer-resilience` and `superplayer-drm` also
+`superplayer-resilience`, `superplayer-drm` and, from #240, `superplayer-offline` also
 compile as Kotlin *friends* of core (`docs/testing.md`'s *Reaching that seam from another module*,
-ADR-0009 rule 7, ADR-0010 rules 3 and 6, ADR-0011 rule 13, ADR-0012 rule 4). A friend path is a compiler flag rather than a Gradle
+ADR-0009 rule 7, ADR-0010 rules 3 and 6, ADR-0011 rule 13, ADR-0012 rule 4, ADR-0013 rule 4). A friend path is a compiler flag rather than a Gradle
 dependency, which is why it does not appear in the column above and why it is not what the rule
 measures.
 

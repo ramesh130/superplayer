@@ -6,6 +6,9 @@
 - **Supersedes:** None
 - **Extended by:** [ADR-0009](0009-observe-conditions-re-apply-decisions-and-remember-per-transport.md),
   which rewords rules 3 and 4 without superseding this document.
+- **Refined by:**
+  [ADR-0013](0013-download-into-the-cache-the-consumer-opened-on-the-one-chain.md),
+  which adds a fifth half of `PlaybackDecision`, recorded as an addendum at rule 2.
 - **Summary:** All buffering and track-selection policy is decided behind one engine-agnostic
   `PlaybackPolicy` interface that maps observed conditions to a decision — no Media3 type crosses
   it. Phase 1 ships a static per-profile lookup, deliberately non-adaptive; the consumer names a
@@ -89,6 +92,14 @@ Four rules follow, and they are binding:
    defaulting to Media3's own and ignored on a player with no resilience attached. Jitter, token
    refresh, the rung order and resume-position preservation are ADR-0006 rule 1's kind, not this
    rule's.
+
+   *Addendum (#238, ADR-0013 rule 12).* The **rendition a download is fetched at** is policy
+   under this rule for the same reason: a phone and a television, a data-saver profile and a
+   video-on-demand one, have different right answers. It is a fifth half of `PlaybackDecision`, a
+   `DownloadSelectionPolicy`, consulted once at enqueue and ignored everywhere but a download store.
+   The audio languages and subtitles are the consumer's argument rather than this rule's, because no
+   observation changes which language a viewer asked for; the device refusals it is bounded by are
+   ADR-0009 rule 2's constraints.
 3. **The consumer names a profile, not a number.** `SuperPlayer.Builder.setProfile` takes a
    `PlaybackProfile`; the constants behind it, and the rationale for each of them, live in the
    policy's per-profile table, which is internal and free to be retuned. Every constant that departs

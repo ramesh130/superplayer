@@ -73,6 +73,16 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
  * budget that has run out; it is six instances of one shape, and a seventh that is not that shape
  * needs a superseding ADR rather than a line in a build file.
  *
+ * ## The seventh, and the one shape added
+ *
+ * ADR-0013 rule 4 is that decision, for `superplayer-offline`, and it refines ADR-0012 rule 4 rather
+ * than superseding it. The shape it adds is a later phase *built from* core's seam, filling no slot:
+ * it composes a download's chain through `TransferChain`, the one place a chain is assembled, and reads
+ * what other friends filled into core's slots — the download half `superplayer-cache` puts behind
+ * `ContentCache`, and the licence exchange `superplayer-drm` puts behind `PlaybackDrm`. The ADR argues
+ * why that is the seam rather than a helper beside it. An eighth of neither shape needs an ADR of its
+ * own.
+ *
  * ## Why it is not the second seam `docs/testing.md` warns about
  *
  * That warning is about *widening what is configurable*. Nothing is widened here: the same one

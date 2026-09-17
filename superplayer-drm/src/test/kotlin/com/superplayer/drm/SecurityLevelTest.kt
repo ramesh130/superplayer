@@ -79,7 +79,7 @@ class SecurityLevelTest {
     fun aServerThatPermitsTheDowngradeGetsASessionAtTheLowerLevel() {
         declareADeviceThatCannotHonourL1()
 
-        val player = harness.play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
+        val player = harness.buildDowngradePlayer(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
         harness.playToReady(player)
 
         // It played, and it played at the level the *server's operator* named — not at the one the device
@@ -93,7 +93,7 @@ class SecurityLevelTest {
     fun aPermittedDowngradeCostsNoExtraRoundTrip() {
         declareADeviceThatCannotHonourL1()
 
-        val player = harness.play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
+        val player = harness.buildDowngradePlayer(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
         harness.playToReady(player)
 
         // Exactly one request at the licence server: the key request. A permission that is
@@ -113,7 +113,7 @@ class SecurityLevelTest {
         // lower level configures — that is to say, most apps. Empty is a refusal; see
         // `WidevineConfig.permittedSecurityLevels`.
 
-        val player = harness.play()
+        val player = harness.buildDowngradePlayer()
         harness.playToFailure(player)
 
         val error = player.playerError
@@ -132,7 +132,7 @@ class SecurityLevelTest {
     fun aRefusalIsClassifiedAsItsOwnFailureWithItsOwnMessageKey() {
         declareADeviceThatCannotHonourL1()
 
-        val player = harness.play()
+        val player = harness.buildDowngradePlayer()
         harness.playToFailure(player)
 
         // The issue's own words: it must not be confused with a licence that could not be fetched.
@@ -150,7 +150,7 @@ class SecurityLevelTest {
     fun aRefusedSessionAsksForNothingAtAll() {
         declareADeviceThatCannotHonourL1()
 
-        val player = harness.play()
+        val player = harness.buildDowngradePlayer()
         harness.playToFailure(player)
 
         // The answer was known before the player was built, so nothing reaches the licence server:
@@ -168,7 +168,7 @@ class SecurityLevelTest {
         DeviceStatement.declareSecureVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC, maxSupportedInstances = 1)
         DeviceStatement.declareWidevine(SecurityLevel.L1)
 
-        val player = harness.play()
+        val player = harness.buildDowngradePlayer()
         harness.playToReady(player)
 
         assertThat(player.playerError).isNull()
@@ -188,7 +188,7 @@ class SecurityLevelTest {
         DeviceStatement.declareSecureVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC, maxSupportedInstances = 1)
         DeviceStatement.declareWidevine(SecurityLevel.L1)
 
-        val player = harness.play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
+        val player = harness.buildDowngradePlayer(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
         harness.playToReady(player)
 
         assertThat(player.playbackState).isEqualTo(Player.STATE_READY)
@@ -203,7 +203,7 @@ class SecurityLevelTest {
         // downgrading on its own authority — the exact failure ADR-0012 rule 11 forbids.
         declareADeviceThatCannotHonourL1()
 
-        val player = harness.play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L1))
+        val player = harness.buildDowngradePlayer(permits = setOf(WidevineConfig.SECURITY_LEVEL_L1))
         harness.playToFailure(player)
 
         val refusal = causeChainOf(player.playerError!!)

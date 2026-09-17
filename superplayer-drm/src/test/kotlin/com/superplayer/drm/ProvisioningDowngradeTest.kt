@@ -74,7 +74,7 @@ class ProvisioningDowngradeTest {
     fun aDeviceRefusedAtL1PlaysAtTheLevelTheOperatorPermitted() {
         aDeviceRefusedByTheProvisioningService()
 
-        val player = harness.play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
+        val player = harness.buildDowngradePlayer(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
         harness.playToReady(player)
 
         // It played, and the failure that got it there is the consumer's business no more than a
@@ -90,7 +90,7 @@ class ProvisioningDowngradeTest {
         aDeviceRefusedByTheProvisioningService()
 
         val events = Collections.synchronizedList(mutableListOf<TelemetryEvent>())
-        val player = harness.play(
+        val player = harness.buildDowngradePlayer(
             permits = setOf(WidevineConfig.SECURITY_LEVEL_L3),
             telemetry = QoeCollector { events += it },
         )
@@ -112,7 +112,7 @@ class ProvisioningDowngradeTest {
         // moves.
         aDeviceRefusedByTheProvisioningService()
 
-        val player = harness.play()
+        val player = harness.buildDowngradePlayer()
         harness.playToFailure(player)
 
         val typed = typedErrorOf(player)
@@ -130,7 +130,7 @@ class ProvisioningDowngradeTest {
         DeviceStatement.declareSecureVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC, maxSupportedInstances = 1)
         DeviceStatement.declareWidevine(SecurityLevel.L1, provisioningRequired = true)
 
-        val player = harness.play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
+        val player = harness.buildDowngradePlayer(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
         harness.playToReady(player)
 
         assertThat(player.playerError).isNull()
@@ -152,7 +152,7 @@ class ProvisioningDowngradeTest {
         DeviceStatement.declareSecureVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC, maxSupportedInstances = 1)
         DeviceStatement.declareWidevine(SecurityLevel.L1)
 
-        val player = harness.play(
+        val player = harness.buildDowngradePlayer(
             permits = setOf(WidevineConfig.SECURITY_LEVEL_L3),
             faults = FaultScript.Builder()
                 .failWithHttpStatus(FaultScript.HTTP_SERVER_ERROR, kind = ResourceKind.LICENCE)
@@ -174,7 +174,7 @@ class ProvisioningDowngradeTest {
         DeviceStatement.declareSecureVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC, maxSupportedInstances = 1)
         DeviceStatement.declareWidevine(SecurityLevel.L1, provisioningRequired = true)
 
-        val player = harness.play(
+        val player = harness.buildDowngradePlayer(
             permits = setOf(WidevineConfig.SECURITY_LEVEL_L3),
             faults = FaultScript.Builder()
                 .failWithHttpStatus(FaultScript.HTTP_SERVER_ERROR, kind = ResourceKind.LICENCE, index = 0)

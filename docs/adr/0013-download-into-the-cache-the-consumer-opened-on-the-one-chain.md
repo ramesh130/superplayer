@@ -275,10 +275,16 @@ Fifteen rules follow, and they are binding.
       stream-key merge cannot later narrow.
     - **One piece of unique work per process, not per store or per item.** It waits under an unmetered
       network, or any network where every pending store accepts one. When it runs it asks each open store to
-      read its conditions again and asks to be retried while anything is pending, so it stays persisted with
-      `WorkManager`'s own backoff. In a process with no store open it can resume nothing until #246's service
-      opens one, and it ends; the next store to open with a download pending schedules it again. It is
-      cancelled once nothing is pending, and never on a store's release, since what was pending still is.
+      read its conditions again and asks to be retried, so it stays persisted under `WorkManager`'s own
+      backoff, until a store finds nothing pending and cancels it; never on a store's release, since what was
+      pending still is. In a process with no store open, after a reboot, it can resume nothing until #246's
+      service opens one, and it retries rather than ending so the schedule survives until then. Nothing
+      caches what `WorkManager` holds: a store enqueues the work again whenever what it wants changes. The
+      backoff grows while a long download runs in a live process; a store that newly has something pending
+      enqueues afresh, which starts it over.
+    - **Rule 15's receiver lives while a download is *pending*, not only while one runs.** This amends rule
+      15's wording: a download held by a low battery is not running, and it is the receiver that hears the
+      battery recover. A store with nothing enqueued still registers nothing, which is what the rule counts.
     - **The battery is read as `WorkManager` reads it, with one departure.** Low is a level at or under 15%
       of the scale, and an unknown status is not low. No reading at all is not low here, where `WorkManager`
       holds work on it: a device always has a sticky battery broadcast, so none is a platform that says

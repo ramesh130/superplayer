@@ -98,7 +98,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * **Live content is not yet refused** at enqueue, as ADR-0013 rule 8 requires (#251). Not yet
  * here either, each with its ticket: a full disk (#244); protected content (#245); and the service a
  * download outlives its screen in (#246), which is also what the scheduled work will start in a process
- * with no store open — until then that work finds nothing to resume there. Nor rule 14's retry budgets and
+ * with no store open — until then that work waits there, retrying, until the app opens a store. Nor rule 14's retry budgets and
  * token refresh for a download (#254). An item enqueued while a condition holds it keeps its request in
  * memory until its manifest can be read, so a process that dies first loses that enqueue.
  *
@@ -397,7 +397,7 @@ public class Downloads internal constructor(
         waiting.clear()
         conditions.unwatch()
         // What is pending stays pending on disk, and so stays scheduled.
-        DownloadSchedule.forget(this)
+        DownloadSchedule.forget(context, this)
         manager.release()
     }
 

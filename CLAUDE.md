@@ -725,7 +725,10 @@ after a `Backoff` wait posted on the store's thread, never a sleep, and the item
 manager's `minRetryCount` is zero on such a store and Media3's default without one. A manifest spends the
 manifest budget and anything else the segment budget. The resilience's `HeaderProvider` repairs a refused 401
 or 403 through a layer `TransferChain.downloadChain` composes. `DownloadRetryBudgetTest` moves the store's
-clock to let a retry happen. A licence exchange still spends no budget and gets no refresh. Since #243 a download runs only on an unmetered network, a battery not low and storage not low
+clock to let a retry happen. Since #260 a licence exchange gets both too: `DownloadResilienceExtension.downloadLicenceErrors`
+is a player's licence policy over the store's decision, handed to the session manager in `LicenceContext.loadErrors`,
+and `TransferChain.downloadLicenceChain` composes the store's one header-refresh layer. Media3 waits between licence
+asks on the session's request thread, so `DownloadLicenceBudgetTest` moves `SystemClock` too. Since #243 a download runs only on an unmetered network, a battery not low and storage not low
 (rules 10 and 11 and their addendum). A condition that does not hold is a `STOPPED` item naming it on
 `DownloadStopReason`, and nothing is fetched, the manifest included: an item enqueued while held waits in
 memory to be selected. The network and storage are the manager's Media3 `Requirements`; the battery and Data

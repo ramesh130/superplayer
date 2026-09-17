@@ -350,20 +350,25 @@ internal object TransferChain {
     }
 
     /**
-     * The chain a download's licence exchange travels: [downloadChain]'s transport, every request stamped
-     * [LoadKind.LICENCE] as a player's licence requests are (ADR-0013 rule 13).
+     * The chain a download's licence exchange travels: [downloadChain]'s transport with [headerRefresh] over it
+     * where the store's resilience has one, every request stamped [LoadKind.LICENCE] as a player's licence
+     * requests are (ADR-0013 rules 13 and 14).
      *
      * Beside [downloadChain] rather than through it, because that chain reads a request's kind off Media3's
-     * segment downloader, which composes no licence request. The header-refresh layer is not composed here:
-     * #254 built it for a download's own requests, and a licence exchange's credential, like its
-     * `RetryPolicy.licence` budget, is not yet a download's.
+     * segment downloader, which composes no licence request. [headerRefresh] is the same layer the store's
+     * [downloadChain] is composed with, as a player's licence and media travel one layer: the credential it
+     * repairs is the store's, and a repair met on a licence serves the segments after it (#260). It sits under
+     * the stamp, so it tells a refused entitlement from a refused segment as a player's layer does. The
+     * `RetryPolicy.licence` budget is not the chain's: Media3 asks the session manager's own policy
+     * ([DownloadResilienceExtension.downloadLicenceErrors]).
      */
     fun downloadLicenceChain(
         context: Context,
         environment: DownloadEnvironment? = null,
+        headerRefresh: HeaderRefreshLayer? = null,
     ): DataSource.Factory {
         val transport = environment?.transport ?: DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory())
-        return transport.stampedWith(identity = null, kind = LoadKind.LICENCE)
+        return (headerRefresh?.over(transport) ?: transport).stampedWith(identity = null, kind = LoadKind.LICENCE)
     }
 
     /**

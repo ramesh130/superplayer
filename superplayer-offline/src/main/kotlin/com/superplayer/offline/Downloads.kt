@@ -39,9 +39,11 @@ import androidx.media3.exoplayer.util.ReleasableExecutor
 import androidx.work.NetworkType
 import com.superplayer.core.CacheDownloads
 import com.superplayer.core.ContentCache
+import com.superplayer.core.DecisionInForce
 import com.superplayer.core.DownloadDrmExtension
 import com.superplayer.core.DownloadEnvironment
 import com.superplayer.core.DownloadResilienceExtension
+import com.superplayer.core.HeaderRefreshLayer
 import com.superplayer.core.LicenceStore
 import com.superplayer.core.MediaRequest
 import com.superplayer.core.OfflineLicenceExpiredException
@@ -51,7 +53,6 @@ import com.superplayer.core.PlaybackDrm
 import com.superplayer.core.PlaybackPolicy
 import com.superplayer.core.PlaybackProfile
 import com.superplayer.core.PlaybackResilience
-import com.superplayer.core.RetryPolicy
 import com.superplayer.core.SecurityDowngradeRefusedException
 import com.superplayer.core.StaticProfilePolicy
 import com.superplayer.core.StorageFullException
@@ -122,7 +123,8 @@ import java.util.concurrent.atomic.AtomicLong
  * - **Protected content carries its licence**, where the store was built with [Builder.setDrm]. A download
  *   whose content declares protection acquires an offline licence into the licence store after its manifest
  *   is read and before its first media byte, and fails typed, having written and pinned nothing, where the
- *   licence is refused. A player built with that licence plays the download with no network at all; what the
+ *   licence is refused — on a store with a resilience, once the policy's licence budget is spent and a refused
+ *   credential has had its repair, as for a player's licence. A player built with that licence plays the download with no network at all; what the
  *   licence allows is on [DownloadItem.licence] before any player is built, and nothing renews it. [remove]
  *   deletes the bytes at once and releases the licence at the server once the store's network requirement
  *   holds: until then the licence store reports it awaiting release and gives it to no player (ADR-0013 rule
@@ -151,7 +153,8 @@ public class Downloads internal constructor(
     private val environment: DownloadEnvironment?,
     private val policy: PlaybackPolicy,
     private val resilience: DownloadResilienceExtension?,
-    private val licences: DownloadLicences?,
+    drm: DownloadDrmExtension?,
+    licenceStore: LicenceStore?,
     private val service: Class<out DownloadsService>?,
 ) {
 
@@ -192,8 +195,8 @@ public class Downloads internal constructor(
 
         /**
          * What tells a download whose network went away from one that failed, how long a stopped one waits
-         * before trying again, how often a failed request is asked for again under the policy's budgets, and
-         * what repairs a refused credential: `superplayer-resilience`'s `Resilience.standard(headers)`,
+         * before trying again, how often a failed request — a licence request included — is asked for again under
+         * the policy's budgets, and what repairs a refused credential, a licence server's included: `superplayer-resilience`'s `Resilience.standard(headers)`,
          * normally the one this content's players are built with (ADR-0013 rule 14). Without one, a download
          * that meets any failure retries as Media3's download manager does and then fails, unnamed.
          */
@@ -241,9 +244,8 @@ public class Downloads internal constructor(
                 // A resilience that is not the module's asks nothing, as it fills no slot on a player.
                 resilience as? DownloadResilienceExtension,
                 // A protection that is not the module's acquires nothing, as it fills no slot on a player.
-                (drm as? DownloadDrmExtension)?.let { drm ->
-                    DownloadLicences(context.applicationContext, drm, checkNotNull(licenceStore), environment)
-                },
+                drm as? DownloadDrmExtension,
+                licenceStore,
                 service,
             )
         }
@@ -256,9 +258,12 @@ public class Downloads internal constructor(
     /** The last item listeners were told about per content id, so no equal item is reported twice. */
     private val reported = HashMap<String, DownloadItem>()
 
-    // Built once: every download's writer is over the one chain (ADR-0013 rule 6), with the store's one
-    // header-refresh layer innermost (rule 14).
-    private val upstream: DataSource.Factory = TransferChain.downloadChain(context, environment, resilience?.downloadHeaderRefresh())
+    // The store's one header-refresh layer, under its downloads and its licence exchanges alike (rule 14): the
+    // credential it repairs is the store's, as a player's one layer serves its licence and its media.
+    private val headerRefresh: HeaderRefreshLayer? = resilience?.downloadHeaderRefresh()
+
+    // Built once: every download's writer is over the one chain (ADR-0013 rule 6), with that layer innermost.
+    private val upstream: DataSource.Factory = TransferChain.downloadChain(context, environment, headerRefresh)
 
     private val renderers: RenderersFactory = environment?.renderersFactory ?: DefaultRenderersFactory(context)
 
@@ -269,14 +274,33 @@ public class Downloads internal constructor(
     private val conditions = DownloadConditions(context) { handler.post(::onConditionsChanged) }
 
     /**
-     * The retry half of the policy's decision, as the store's thread last consulted it: when the store opened,
+     * The policy's decision, for its retry half, as the store's thread last consulted it: when the store opened,
      * and again as each item is enqueued. Read by a downloader on Media3's download thread, which is why it is
      * held rather than decided there: `PlaybackPolicy.decide` is called on the thread that drives it. Store-wide
      * rather than per item, because a store has one policy as a player does (ADR-0013 rule 14); what differs
      * between consultations is only what was observed. Before the manager, whose downloaders read it.
      */
     @Volatile
-    private var retryPolicy: RetryPolicy = decideNow().retry
+    private var decided: PlaybackDecision = decideNow()
+
+    /**
+     * The store's licence exchanges, where it was built with a protection of the module's own. Their failed
+     * requests spend the same retry half the downloaders read, through a window onto it that Media3's session
+     * manager consults on its own request thread (ADR-0013 rule 14, #260); without a resilience, Media3's own
+     * licence handling answers.
+     */
+    private val licences: DownloadLicences? = drm?.let { protection ->
+        // Read through rather than decided there: `PlaybackPolicy.decide` is called on the store's thread.
+        val decisions = DecisionInForce().apply { fedBy { decided } }
+        DownloadLicences(
+            context,
+            protection,
+            checkNotNull(licenceStore),
+            environment,
+            headerRefresh,
+            resilience?.downloadLicenceErrors(decisions),
+        )
+    }
 
     /** Downloaders waiting on the store's clock to ask for a failed request again; before the manager, whose downloaders count. */
     private val waitingToRetry = AtomicInteger()
@@ -414,7 +438,7 @@ public class Downloads internal constructor(
         val contentId = enqueued.request.contentId
         // Consulted once, now, with what is observed now: bytes written at one rendition are not chosen again.
         val decision = decideNow()
-        retryPolicy = decision.retry
+        decided = decision
         val selection = DownloadSelection(decision.download, enqueued.audioLanguages, enqueued.subtitleLanguages)
         val sessions = try {
             licences?.sessions()
@@ -917,7 +941,7 @@ public class Downloads internal constructor(
                         retry = 0
                     }
                     // Thrown as it is, and final: the manager asks nothing again on a store with a resilience.
-                    val waitMs = resilience.waitBeforeRetryingMs(e, ++retry, retryPolicy) ?: throw e
+                    val waitMs = resilience.waitBeforeRetryingMs(e, ++retry, decided.retry) ?: throw e
                     if (!awaitRetry(waitMs)) return
                 }
             }

@@ -22,9 +22,11 @@ import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
 import androidx.media3.exoplayer.drm.DrmSessionEventListener
 import androidx.media3.exoplayer.drm.OfflineLicenseHelper
 import androidx.media3.exoplayer.offline.DownloadHelper
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import com.superplayer.core.DeliveredProtection
 import com.superplayer.core.DownloadDrmExtension
 import com.superplayer.core.DownloadEnvironment
+import com.superplayer.core.HeaderRefreshLayer
 import com.superplayer.core.LicenceContext
 import com.superplayer.core.LicenceStanding
 import com.superplayer.core.LicenceStore
@@ -47,12 +49,15 @@ internal class DownloadLicences(
     private val drm: DownloadDrmExtension,
     store: LicenceStore,
     private val environment: DownloadEnvironment?,
+    private val headerRefresh: HeaderRefreshLayer?,
+    private val loadErrors: LoadErrorHandlingPolicy?,
 ) {
 
     private val store = store.licences
 
-    // One chain for every exchange, as a download has one chain for its bytes (rule 6), composed when first asked.
-    private val transport by lazy { TransferChain.downloadLicenceChain(context, environment) }
+    // One chain for every exchange, as a download has one chain for its bytes (rule 6), composed when first asked,
+    // with the store's header-refresh layer under the stamp where its resilience has a provider (rule 14).
+    private val transport by lazy { TransferChain.downloadLicenceChain(context, environment, headerRefresh) }
 
     // Read once, when first asked: a store that downloads nothing protected walks no codec list.
     private val device by lazy { deviceConstraintsOf(context) }
@@ -68,9 +73,9 @@ internal class DownloadLicences(
         LicenceContext(
             transport = transport,
             mediaDrm = environment?.mediaDrm,
-            // Media3's own handling for a licence load: #254 spent the manifest and segment budgets on a download's own
-            // requests, and a licence exchange spends no `RetryPolicy.licence` yet.
-            loadErrors = null,
+            // The store's `RetryPolicy.licence` where it has a resilience, as a player's DRM slot is handed the player's
+            // own policy (#205, #260); Media3's own handling for a licence load where it has none.
+            loadErrors = loadErrors,
             device = device,
             delivered = DeliveredProtection(),
         ),

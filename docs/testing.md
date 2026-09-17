@@ -648,8 +648,10 @@ the seam above until #239. What stands in for each piece, and what each stand-in
   carries the Widevine device `DeviceStatement.declareWidevine` states and the licence server a player of
   that content is served, so `networkRequests(environment)` counts a download's acquisition and release as
   `ResourceKind.LICENCE` and a later player restores the licence from the same device (#245). Media3 retries
-  a failed licence exchange on the exchange's own thread, whose clock Robolectric moves only when a test
-  tells it to, so `DownloadLicenceTest` moves `SystemClock` while a refusal is retried. What it cannot show:
+  a failed licence exchange on the session's own request thread, whose clock Robolectric moves only when a
+  test tells it to, so `DownloadLicenceTest` moves `SystemClock` while a refusal is retried. On a store with a
+  resilience the wait is the licence budget's (#260), and `DownloadLicenceBudgetTest` reads that clock at each
+  ask to tell the budget's jittered wait from Media3's immediate first retry. What it cannot show:
   a key-set id a device forgot, and protection an HLS stream declares only in its media playlists, which the
   synthetic stream does and `DownloadLicenceTest` records as downloading with no licence.
 - **Live content is the player's live content.** `TestContent.liveHls()` is the origin that keeps

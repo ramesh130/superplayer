@@ -185,8 +185,8 @@ class DownloadResumptionTest {
 
     /**
      * The control for the stop: a segment the origin answers 404 for is not a lost network, and the item
-     * ends failed, named, rather than stopped and tried for ever. Media3's own retries run first, a few
-     * seconds of real time apart, which is why this test is slower than the rest.
+     * ends failed, named, rather than stopped and tried for ever. The profile's segment budget is spent first,
+     * on the store's clock (#254, `DownloadRetryBudgetTest`).
      */
     @Test
     fun aSegmentTheOriginHasLostFailsTheDownloadNamedRatherThanStoppingIt() {
@@ -199,7 +199,10 @@ class DownloadResumptionTest {
         val reports = record(downloads)
         downloads.enqueue(request(content))
 
-        harness.advanceUntil(environment, "the download failed") { downloads.download(CONTENT_ID)?.state == DownloadState.FAILED }
+        harness.advanceUntil(environment, "the download failed") {
+            advanceStoreClock()
+            downloads.download(CONTENT_ID)?.state == DownloadState.FAILED
+        }
 
         val failed = downloads.download(CONTENT_ID)!!
         assertThat(failed.failure?.causeClass).isEqualTo("Transient.CdnEdge")

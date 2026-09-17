@@ -189,14 +189,17 @@ internal interface PlayerStateRungs {
 
 /**
  * What `superplayer-offline` asks of a [PlaybackResilience] a download store was built with (ADR-0013 rule
- * 14): what a failed download is, and how long one stopped for a lost network waits before it tries again.
+ * 14): what a failed download is, how long one stopped for a lost network waits before it tries again, how
+ * long one that failed otherwise waits before it is asked for again and whether it is, and the layer that
+ * repairs a refused credential inside a download's transfer.
  *
  * Beside [EngineResilienceExtension] rather than a member of it, because a store builds no engine and
  * fills no slot — it is built *from* core's seam (rule 4). The two questions are the module's reason to
  * take a resilience at all: the classification is `ErrorClassifier`'s alone (ADR-0011 rule 1), so a store
- * that tells a lost network from a missing segment has to ask, and the wait carries rule 12's jitter,
- * which is correctness and lives with the backoff every other retry draws. A store built without one asks
- * nothing and retries as Media3's download manager does.
+ * that tells a lost network from a missing segment has to ask, and every wait carries rule 12's jitter,
+ * which is correctness and lives with the backoff every other retry draws. The header-refresh layer is the
+ * one a player's slot is filled with, so `superplayer-offline` composes it into its chain while depending on
+ * core alone (rule 1). A store built without one asks nothing and retries as Media3's download manager does.
  *
  * Pure, and asked on whichever thread met the failure: the store's, or Media3's download thread.
  */
@@ -216,4 +219,19 @@ internal interface DownloadResilienceExtension : PlaybackResilience {
 
     /** How long a download stopped for a lost network waits before its [attempt]th resumption, from 1. */
     fun waitBeforeResumingMs(attempt: Int): Long
+
+    /**
+     * How long a download that failed with [error] — not a lost network — waits before its [retry]th ask for
+     * the same bytes, from 1, or null where it is not asked for again: a class retrying cannot help, or the
+     * budget [policy] names for the failed request's kind spent. `LoadKind.MANIFEST` spends
+     * [RetryPolicy.manifest] and every other request [RetryPolicy.segment] (ADR-0013 rule 14).
+     */
+    fun waitBeforeRetryingMs(error: Throwable, retry: Int, policy: RetryPolicy): Long?
+
+    /**
+     * The layer a store composes closest to its transport, built once per store because the credential it
+     * refreshes is the store's: the app's `HeaderProvider` repairing a refused 401 or 403 inside the transfer
+     * that met it, as on a player. Null where there is no provider to repair one with.
+     */
+    fun downloadHeaderRefresh(): HeaderRefreshLayer?
 }

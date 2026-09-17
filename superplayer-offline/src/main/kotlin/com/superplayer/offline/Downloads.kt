@@ -44,10 +44,12 @@ import com.superplayer.core.LicenceStore
 import com.superplayer.core.MediaRequest
 import com.superplayer.core.OfflineLicenceExpiredException
 import com.superplayer.core.PlaybackConditions
+import com.superplayer.core.PlaybackDecision
 import com.superplayer.core.PlaybackDrm
 import com.superplayer.core.PlaybackPolicy
 import com.superplayer.core.PlaybackProfile
 import com.superplayer.core.PlaybackResilience
+import com.superplayer.core.RetryPolicy
 import com.superplayer.core.SecurityDowngradeRefusedException
 import com.superplayer.core.StaticProfilePolicy
 import com.superplayer.core.StorageFullException
@@ -60,6 +62,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * A download store: content fetched ahead of time into the `ContentCache` the consumer opened, so that a
@@ -89,8 +92,14 @@ import java.util.concurrent.atomic.AtomicInteger
  *   hold, with their progress continuing from those bytes (ADR-0013 rule 9).
  * - **A lost network stops a download rather than failing it**, where the store was built with a resilience
  *   ([Builder.setResilience]): the item is [DownloadState.STOPPED] for [DownloadStopReason.NETWORK_LOST],
- *   keeps its progress, and resumes on its own. A failure a later attempt cannot help — a segment the origin
- *   has lost — still fails, named on [DownloadItem.failure].
+ *   keeps its progress, and resumes on its own. A network is lost where no server answered at all.
+ * - **Any other failure spends the policy's retry budget, and then fails**, where the store was built with a
+ *   resilience (ADR-0013 rule 14): the same request is asked for again after a jittered wait on the store's
+ *   thread, as many times as the policy's `RetryPolicy` allows — the manifest budget for a manifest and the
+ *   segment budget for everything else, counted afresh wherever the download has got further — while the item
+ *   stays [DownloadState.DOWNLOADING] and its progress never goes back. A failure retrying cannot help, or one
+ *   that outlasts its budget, fails named on [DownloadItem.failure]; a refused 401 or 403 is first repaired by
+ *   the resilience's `HeaderProvider` inside the transfer, spending nothing.
  * - **A download runs only while the network is unmetered, the battery is not low and storage is not low**
  *   (rules 10 and 11). While one does not hold, nothing is fetched, the manifest included, and every pending
  *   item is [DownloadState.STOPPED] naming it on [DownloadItem.stopReason]; a download it lapses under stops
@@ -125,8 +134,7 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * Not yet here, each with its ticket: the service a
  * download outlives its screen in (#246), which is also what the scheduled work will start in a process
- * with no store open — until then that work waits there, retrying, until the app opens a store. Nor rule 14's retry budgets and
- * token refresh for a download (#254). An item enqueued while a condition holds it keeps its request in
+ * with no store open — until then that work waits there, retrying, until the app opens a store. An item enqueued while a condition holds it keeps its request in
  * memory until its manifest can be read, so a process that dies first loses that enqueue.
  *
  * Released by [release], before the cache it writes into.
@@ -159,25 +167,26 @@ public class Downloads internal constructor(
         private var licenceStore: LicenceStore? = null
 
         /**
-         * The kind of playback the downloads are for, which decides the rendition each one takes: its
-         * `PlaybackDecision.download` ceiling. [PlaybackProfile.VIDEO_ON_DEMAND] unless set.
+         * The kind of playback the downloads are for, which decides the rendition each one takes — its
+         * `PlaybackDecision.download` ceiling — and, on a store with a resilience, how often a failed request
+         * is asked for again: its `PlaybackDecision.retry`. [PlaybackProfile.VIDEO_ON_DEMAND] unless set.
          */
         public fun setProfile(profile: PlaybackProfile): Builder = apply { this.profile = profile }
 
         /**
          * The policy that decides the rendition each download takes, in place of [setProfile]'s static one:
-         * its `PlaybackDecision.download`, consulted once per item as it is enqueued (ADR-0013 rule 12). The
-         * same policy a player of this content is built with, normally.
+         * its `PlaybackDecision.download`, consulted once per item as it is enqueued (ADR-0013 rule 12), and
+         * the budgets a failed request spends, its `PlaybackDecision.retry`, as the store last consulted it
+         * (rule 14). The same policy a player of this content is built with, normally.
          */
         public fun setPolicy(policy: PlaybackPolicy): Builder = apply { this.policy = policy }
 
         /**
-         * What tells a download whose network went away from one that failed, and how long a stopped one waits
-         * before trying again: `superplayer-resilience`'s `Resilience.standard()`, normally the one this
-         * content's players are built with (ADR-0013 rule 14). Without one, a download that meets any failure
-         * retries as Media3's download manager does and then fails, unnamed. Not yet spent on a download: its
-         * `RetryPolicy` budgets, and its `HeaderProvider`'s repair of a refused 401 or 403 — a failure that is
-         * not a lost network retries as Media3's manager does, with or without one.
+         * What tells a download whose network went away from one that failed, how long a stopped one waits
+         * before trying again, how often a failed request is asked for again under the policy's budgets, and
+         * what repairs a refused credential: `superplayer-resilience`'s `Resilience.standard(headers)`,
+         * normally the one this content's players are built with (ADR-0013 rule 14). Without one, a download
+         * that meets any failure retries as Media3's download manager does and then fails, unnamed.
          */
         public fun setResilience(resilience: PlaybackResilience): Builder = apply { this.resilience = resilience }
 
@@ -228,8 +237,9 @@ public class Downloads internal constructor(
     /** The last item listeners were told about per content id, so no equal item is reported twice. */
     private val reported = HashMap<String, DownloadItem>()
 
-    // Built once: every download's writer is over the one chain (ADR-0013 rule 6).
-    private val upstream: DataSource.Factory = TransferChain.downloadChain(context, environment)
+    // Built once: every download's writer is over the one chain (ADR-0013 rule 6), with the store's one
+    // header-refresh layer innermost (rule 14).
+    private val upstream: DataSource.Factory = TransferChain.downloadChain(context, environment, resilience?.downloadHeaderRefresh())
 
     private val renderers: RenderersFactory = environment?.renderersFactory ?: DefaultRenderersFactory(context)
 
@@ -245,6 +255,11 @@ public class Downloads internal constructor(
         // Built paused, for Media3's `DownloadService` to resume; this store has no service yet (#246), so it
         // resumes its own once it has read the battery (`onConditionsChanged`).
         requirements = requirementsFor(meteredNetworksAllowed = false)
+        // A store with a resilience spends the policy's budgets inside its downloader (`PinningDownloader`), so
+        // a failure it gives up on is final. Left at Media3's own count, the manager would ask again, sleeping a
+        // thread nothing can advance, and spend a budget nobody decided. Without one, the manager's retries are
+        // the only ones, as Media3 ships them.
+        if (resilience != null) minRetryCount = 0
         addListener(ManagerEvents())
     }
 
@@ -265,6 +280,14 @@ public class Downloads internal constructor(
             manager.requirements = requirementsFor(allowed)
             onConditionsChanged()
         }
+
+    /**
+     * The retry half of the policy's decision, as the store's thread last consulted it: when the store opened,
+     * and again as each item is enqueued. Read by a downloader on Media3's download thread, which is why it is
+     * held rather than decided there: `PlaybackPolicy.decide` is called on the thread that drives it.
+     */
+    @Volatile
+    private var retryPolicy: RetryPolicy = decideNow().retry
 
     /** What each failed download failed with, while this store is open, by content id. */
     private val failures = HashMap<String, SuperPlayerError>()
@@ -358,7 +381,8 @@ public class Downloads internal constructor(
     private fun select(enqueued: Enqueued) {
         val contentId = enqueued.request.contentId
         // Consulted once, now, with what is observed now: bytes written at one rendition are not chosen again.
-        val decision = policy.decide(PlaybackConditions(transport = currentNetworkTransportOf(context)))
+        val decision = decideNow()
+        retryPolicy = decision.retry
         val selection = DownloadSelection(decision.download, enqueued.audioLanguages, enqueued.subtitleLanguages)
         val sessions = try {
             licences?.sessions()
@@ -669,6 +693,9 @@ public class Downloads internal constructor(
         DownloadSchedule.want(context, this, network.takeIf { pending })
     }
 
+    /** The policy's decision under what is observed now. On the store's thread. */
+    private fun decideNow(): PlaybackDecision = policy.decide(PlaybackConditions(transport = currentNetworkTransportOf(context)))
+
     /** Whether a pass releasing owed licences is running now: for this module's own tests to wait on. */
     internal fun isReleasingLicences(): Boolean = releasingLicences
 
@@ -783,31 +810,83 @@ public class Downloads internal constructor(
         /** Released once Media3 cancels this download, which a stop for a lost network waits for. */
         private val canceled = CountDownLatch(1)
 
+        /** Released by a cancellation too, while a retry's wait is under way. */
+        @Volatile
+        private var retryDue: CountDownLatch? = null
+
+        /** The bytes the delegate last reported, which tell a failure further on from the same one met again. */
+        private val bytesReported = AtomicLong(C.LENGTH_UNSET.toLong())
+
         override fun download(progressListener: Downloader.ProgressListener?) {
             cache.pin(contentId)
-            try {
-                downloadReporting(progressListener)
-            } catch (e: IOException) {
-                // A full disk fails this item now, on every store (ADR-0013 rule 9): thrown as an I/O failure,
-                // Media3 would ask for the segment again on a disk that is still full, and a resilience would
-                // read it as a lost network and wait. Anything else Media3 fails at once. This decides only
-                // *when* the item fails, off the exception core raised as evidence; what it failed with is still
-                // the classifier's, which finds core's exception beneath this one.
-                if (generateSequence<Throwable>(e) { it.cause }.take(CAUSE_DEPTH).any { it is StorageFullException }) throw NotRetried(e)
-                if (resilience?.isNetworkLoss(e) != true || canceled.count == 0L) throw e
-                // Held here until the stop cancels this download, rather than thrown: a thrown failure is one
-                // Media3 counts toward failing the item, and the stop is what keeps it from failing. Returning
-                // once canceled is a task Media3 forgets rather than finishes. Released by a removal or the
-                // store's release as well, since both cancel. Media3 interrupts a thread it cancels, which ends
-                // this wait by throwing, and a cancelled task's exception is one Media3 ignores.
-                handler.post { stopForLostNetwork(contentId) }
-                canceled.await()
+            // Where the last failure was met, and how many times the request there has been asked for again.
+            var failedAt: Long? = null
+            var retry = 0
+            while (true) {
+                try {
+                    downloadReporting(progressListener)
+                    return
+                } catch (e: IOException) {
+                    // A full disk fails this item now, on every store (ADR-0013 rule 9): thrown as an I/O failure,
+                    // Media3 would ask for the segment again on a disk that is still full, and a resilience would
+                    // read it as a lost network and wait. This decides only *when* the item fails, off the
+                    // exception core raised as evidence; what it failed with is still the classifier's, which
+                    // finds core's exception beneath this one.
+                    if (generateSequence<Throwable>(e) { it.cause }.take(CAUSE_DEPTH).any { it is StorageFullException }) throw NotRetried(e)
+                    // Without a resilience, the manager's own retries are all there are.
+                    val resilience = resilience ?: throw e
+                    if (canceled.count == 0L) throw e
+                    if (resilience.isNetworkLoss(e)) {
+                        // Held here until the stop cancels this download, rather than thrown: a thrown failure is
+                        // final on this store, and the stop is what keeps it from failing. Returning once
+                        // canceled is a task Media3 forgets rather than finishes. Released by a removal or the
+                        // store's release as well, since both cancel. Media3 interrupts a thread it cancels, which
+                        // ends this wait by throwing, and a cancelled task's exception is one Media3 ignores.
+                        handler.post { stopForLostNetwork(contentId) }
+                        canceled.await()
+                        return
+                    }
+                    // A budget bounds one request, as on a player, so a failure where the download has got further
+                    // starts it afresh; Media3's manager counts its own retries the same way. A downloader asked
+                    // again counts what the cache holds before it fetches, so an unchanged count is the same place.
+                    val at = bytesReported.get()
+                    if (at != failedAt) {
+                        failedAt = at
+                        retry = 0
+                    }
+                    // Thrown as it is, and final: the manager asks nothing again on a store with a resilience.
+                    val waitMs = resilience.waitBeforeRetryingMs(e, ++retry, retryPolicy) ?: throw e
+                    if (!awaitRetry(waitMs)) return
+                }
             }
+        }
+
+        /**
+         * Waits [waitMs] on the store's thread's clock before a failed request is asked for again, and answers
+         * whether to ask: false once Media3 has cancelled this download meanwhile.
+         *
+         * A delayed post rather than a sleep, so the wait is on a clock a looper moves — the harness's included
+         * — and ends the moment a stop, a removal or the store's release cancels the download. A cancellation
+         * before the wait began is read here, and one after it releases the wait itself.
+         */
+        private fun awaitRetry(waitMs: Long): Boolean {
+            val due = CountDownLatch(1)
+            retryDue = due
+            val wake = Runnable { due.countDown() }
+            handler.postDelayed(wake, waitMs)
+            try {
+                if (canceled.count != 0L) due.await()
+            } finally {
+                handler.removeCallbacks(wake)
+                retryDue = null
+            }
+            return canceled.count != 0L
         }
 
         private fun downloadReporting(progressListener: Downloader.ProgressListener?) {
             val lastWholePercent = AtomicInteger(Int.MIN_VALUE)
             delegate.download { contentLength, bytesDownloaded, percentDownloaded ->
+                bytesReported.set(bytesDownloaded)
                 progressListener?.onProgress(contentLength, bytesDownloaded, percentDownloaded)
                 // A report per whole percent rather than per read, which Media3 calls this on: at most a
                 // hundred and one per download, and every one of them a visible step on a progress bar.
@@ -821,6 +900,7 @@ public class Downloads internal constructor(
 
         override fun cancel() {
             canceled.countDown()
+            retryDue?.countDown()
             delegate.cancel()
         }
 

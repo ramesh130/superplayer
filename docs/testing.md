@@ -608,7 +608,8 @@ the seam above until #239. What stands in for each piece, and what each stand-in
   own task thread and its main-thread callbacks are Media3's; the harness runs the main looper between
   passes and moves its clock only while a load waits on it.
 - **Process death is a copy of the directory.** `processDeath(environment, directory)` stops the
-  environment's loads being taken, waits until no load is in flight, copies the directory, and returns
+  environment's loads being taken, waits until no load is in flight — moving the harness clock for a load
+  held on it, so a death can land on a held segment — copies the directory, and returns
   the copy for the test to open a store over. A process that died released nothing — no cache lock, no
   database handle, no thread — so a store in the same test process cannot reopen the directory itself;
   what survives a real death is what was on disk, which is what the copy holds, including an index the

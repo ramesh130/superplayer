@@ -71,7 +71,7 @@ internal object SelectionPaces {
         // A television keeps 50 to 120 s, deeper than the buffer the defaults were sized for, and
         // the defaults are kept anyway. Their climb at 10 s and descent under 25 s sit well inside
         // it, so every threshold is met sooner than on-demand meets it: a climb is no slower, and a
-        // descent begins with more than half the floor still in hand, which is the margin a stall on
+        // descent begins with up to half the floor still in hand, which is the margin a stall on
         // the room's screen is worth. Nothing is gained by retaining more before a switch, because a
         // wired link refills what a switch discards faster than it plays.
         PlaybackProfile.TV_LEANBACK -> SelectionPace.ENGINE_DEFAULT

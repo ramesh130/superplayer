@@ -31,8 +31,9 @@ package com.superplayer.core
  * constant nobody can explain is a constant nobody can safely change, which is exactly the state
  * these profiles exist to get consumers out of.
  *
- * The defaults being departed from are `DefaultLoadControl`'s: 50s of buffer in both directions,
- * 2.5s before playback starts, 5s before it resumes after a rebuffer, and no back buffer.
+ * The defaults being departed from are `DefaultLoadControl`'s as of Media3 1.11: 50s of buffer in both
+ * directions, 1s before playback starts, 2s before it resumes after a rebuffer, and no back buffer.
+ * Earlier releases started at 2.5s and 5s, which is where the rows below that keep 2.5s/5s come from.
  *
  * Every row sets [RetryPolicy.licence] since #205, and one fact shapes all four numbers: a licence is
  * acquired before the first frame, over a round trip of kilobytes, and there is no rung above it
@@ -55,7 +56,7 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
         // reached down to. The 60s ceiling is where a stream keeps buffering into an unbounded
         // amount of RAM otherwise.
         //
-        // Start floors are Media3's own: 2.5s is enough content to survive a first-segment hiccup
+        // Start floors are 2.5s/5s, Media3's own until its defaults dropped to 1s/2s: 2.5s is enough content to survive a first-segment hiccup
         // without making the start noticeably slower, and doubling it after a rebuffer is the
         // standard defence against a stall that immediately repeats.
         //
@@ -232,14 +233,17 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
         // A 120s ceiling, the room above the floor being what rides out a household's broadband
         // blip — another device saturating the shared line, a router's restart — without a stall.
         // Bounded by what Media3 already bounds the buffer by in bytes: its default video target is
-        // 125 MiB (`DEFAULT_VIDEO_BUFFER_SIZE`), which the top 1080p tier Apple recommends, 7.8
-        // Mbit/s, takes about 134s to fill. So 120s is the deepest a 1080p ladder reaches in time
-        // before the byte target stops it, a 4K ladder stops on bytes first, and no media is held
-        // that Media3's own defaults would not have allowed. The adaptive policy's heap branch caps
-        // it further on a television with a small heap, which is most of them.
+        // 125 MiB (`DefaultLoadControl.DEFAULT_VIDEO_BUFFER_SIZE`), which the top 1080p tier Apple
+        // recommends, 7.8 Mbit/s on average, takes about 134s to fill. So 120s is the deepest a 1080p
+        // ladder reaches in time before the byte target stops it, a 4K ladder stops on bytes first,
+        // and no media is held that Media3's own defaults would not have allowed. The adaptive
+        // policy's heap branch caps it further on a television whose heap is small.
+        // ref: https://developer.android.com/reference/androidx/media3/exoplayer/DefaultLoadControl#DEFAULT_VIDEO_BUFFER_SIZE()
+        // ref: https://developer.apple.com/documentation/http-live-streaming/hls-authoring-specification-for-apple-devices
         //
-        // Start floors stay on-demand's 2.5s/5s: a lean-back viewer has chosen the title and sat
-        // down, and a start that is a second faster buys nothing against a stall later.
+        // Start floors stay on-demand's 2.5s/5s rather than Media3's 1s/2s: a lean-back viewer has
+        // chosen the title and sat down, so the second and a half a lower floor saves at the start
+        // buys nothing against the stall a thin first buffer risks in front of the room.
         //
         // A 30s back buffer, as on-demand, and for a remote's reason too: the replay button on a
         // television remote skips back a fixed step, and that step should land in memory.
@@ -273,7 +277,8 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
             ),
             // 2160p for a download, with no bitrate ceiling. A download a television fetched is
             // watched on that television, and 2160p is the resolution its panel is sold at; the 4320p
-            // rung above it costs about four times the storage for a picture no such panel resolves.
+            // rung above it costs about four times the storage for a picture no such panel resolves
+            // (derivation, CONTRIBUTING.md rule 4: four times the pixels at a like encode).
             // A television's storage is small, and running out of it is what the download store's
             // storage conditions answer, not a lower rung chosen for every title in advance.
             download = DownloadSelectionPolicy(maxVideoBitrateBps = TrackSelectionPolicy.UNLIMITED, maxVideoHeightPx = 2_160),

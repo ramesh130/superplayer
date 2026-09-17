@@ -41,8 +41,8 @@ public class DownloadItem internal constructor(
     /**
      * What a [DownloadState.FAILED] item failed with, as `ErrorClassifier` names it, and null in every other
      * state. Null on a failed item too where the store was built without a resilience, which has nobody to
-     * ask (ADR-0013 rule 14), where the manifest could not be read, on a [refusal], and where the failure happened in an
-     * earlier process, whose exception did not survive it.
+     * ask (ADR-0013 rule 14), where the manifest could not be read, where the item was refused ([refusal]),
+     * and where the failure happened in an earlier process, whose exception did not survive it.
      */
     public val failure: SuperPlayerError? = null,
     /**

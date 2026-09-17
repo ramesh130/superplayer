@@ -122,6 +122,7 @@ class DownloadLiveRefusalTest {
 
         val failed = downloads.download(CONTENT_ID)!!
         assertThat(failed.refusal).isNull()
+        assertThat(failed.bytesDownloaded).isEqualTo(0L)
         assertThat(harness.networkRequests(environment).map { it.kind }.toSet()).containsExactly(ResourceKind.MANIFEST)
         assertThat(cache.isPinned(CONTENT_ID)).isFalse()
     }
@@ -179,7 +180,7 @@ class DownloadLiveRefusalTest {
     }
 
     private companion object {
-        const val CONTENT_ID = "live/the-shipping-forecast"
+        const val CONTENT_ID = "radio/the-shipping-forecast"
 
         // How often Media3's download helper looks for a failed preparation, on the system clock.
         const val HELPER_FAILURE_POLL_MS = 100L

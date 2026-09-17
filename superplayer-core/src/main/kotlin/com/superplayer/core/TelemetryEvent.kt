@@ -583,6 +583,8 @@ public enum class FailureCategory {
      * The device's storage could not hold what was being written (#244). Added after the other six and
      * reached by no playback session today: only a download's writes are measured against the disk, and a
      * download emits no telemetry. It is here so a full disk has a bucket that describes it when one does.
+     * A `when` over this enum written without an `else` stops compiling at a value added like this one, which
+     * is what `docs/telemetry-schema.md` asks a pipeline to allow for.
      */
     STORAGE,
 }

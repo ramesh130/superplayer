@@ -33,7 +33,10 @@ import java.io.IOException
  */
 public class StorageFullException internal constructor(
 
-    /** The bytes the download was about to write. */
+    /**
+     * The bytes the download was about to write. Zero where the disk refused bytes already handed over, as it
+     * does when a buffered write is flushed on closing a span.
+     */
     public val bytesToWrite: Long,
 
     /** The bytes the platform said this app could still write to the volume, when it was asked. */

@@ -267,6 +267,9 @@ public object DeviceStatement {
      * to [declareStorageLow], which is the platform's announcement that a disk is *nearly* full, and holds a
      * download rather than failing one.
      *
+     * Stated in `StatFs`'s whole blocks of 4096 bytes, rounded down, so less than a block reads as nothing free.
+     * Every reader of `StatFs` in the test sees it, `CachePolicy.deviceAware`'s suggested budget included.
+     *
      * ref: https://developer.android.com/reference/android/os/StatFs#getAvailableBytes()
      */
     @JvmStatic

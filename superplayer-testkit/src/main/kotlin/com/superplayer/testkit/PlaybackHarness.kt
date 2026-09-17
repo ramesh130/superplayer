@@ -593,7 +593,7 @@ public class PlaybackHarness : ExternalResource() {
     /**
      * Where a download of [content] loads, for a download store's builder to take: the transport a
      * [buildPlayer] player of the same content would load through — one origin, [faults] injected into
-     * it, [network] shaping it — on a loading thread this harness owns.
+     * it, [network] shaping it — with every segment load counted by this harness.
      *
      * The same origin is the point. A test downloads through one environment and plays through a player
      * built over the same [content], and what [networkRequests] reports for each is what left each: a
@@ -675,8 +675,8 @@ public class PlaybackHarness : ExternalResource() {
      * **A copy rather than the directory itself**, because a process that died released nothing — no
      * cache lock, no database handle, no thread — and a store in the same test process cannot be opened
      * over a directory the dead one still holds. What survives a real process death is exactly what was
-     * on disk, and a copy is that. The loading thread takes no further work from the moment this is
-     * called, the copy waits for the load it was running to finish, and the dead download's own thread is
+     * on disk, and a copy is that. No further load is taken from the moment this is
+     * called, the copy waits for the loads already running to finish, and the dead download's own thread is
      * refused its next load once the copy exists, so no *segment* is written into [directory] while it
      * is read. Nothing is released cleanly: an index the store had not written yet is not in the copy,
      * which is the case resumption has to survive. One writer is not held: Media3's download manager

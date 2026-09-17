@@ -257,7 +257,8 @@ Fifteen rules follow, and they are binding.
      an enqueue after room is made continues from the bytes the cache holds, as a resumption does.
    - **The budget still refuses nothing.** #244 asked that a cache budget unable to hold a download beside
      what is pinned fail it too. Rule 7 decided otherwise: pinned content may exceed the budget, and only the
-     disk fails an item.
+     disk fails an item. A consumer who wants downloads held to a size of their own opens a second cache
+     for them, which is rule 7's remedy.
 
 10. **Battery-not-low and storage-not-low are correctness too; the network requirement is unmetered by
     default and the viewer's to relax.** Draining a battery that is already low and filling a disk that

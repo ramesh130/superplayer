@@ -149,8 +149,9 @@ internal class StandardResilience(private val headers: HeaderProvider?) :
 
     // The very object a player's DRM slot is handed (#205), over the store's decision rather than a player's:
     // Media3 asks it about a licence load with `C.DATA_TYPE_DRM`, which `RetryBudgetKind` reads as the licence
-    // budget, and asks it nothing about a fallback, so rung 1 is the whole climb, as it is for a download's own
-    // requests. A record of its own because a store reports no rungs tried (`failureOf`).
+    // budget. The ladder is the whole standard one, but Media3's `DefaultDrmSession` asks only the retry question
+    // and never for a fallback, so rung 1 is all it climbs, as for a download's own requests. The `ClimbRecord`
+    // is `forPlayer`'s default, which nothing reads: a store reports no rungs tried (`failureOf`).
     override fun downloadLicenceErrors(decisions: DecisionInForce): LoadErrorHandlingPolicy =
         RetryingLoadErrors.forPlayer(decisions, Random.Default)
 

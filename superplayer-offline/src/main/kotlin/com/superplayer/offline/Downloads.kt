@@ -124,8 +124,8 @@ import java.util.concurrent.atomic.AtomicLong
  *   whose content declares protection acquires an offline licence into the licence store after its manifest
  *   is read and before its first media byte, and fails typed, having written and pinned nothing, where the
  *   licence is refused — on a store with a resilience, once the policy's licence budget is spent and a refused
- *   credential has had its repair, as for a player's licence. A player built with that licence plays the download with no network at all; what the
- *   licence allows is on [DownloadItem.licence] before any player is built, and nothing renews it. [remove]
+ *   credential has had its repair, as for a player's licence. A player built with that licence plays the
+ *   download with no network at all; what the licence allows is on [DownloadItem.licence] before any player is built, and nothing renews it. [remove]
  *   deletes the bytes at once and releases the licence at the server once the store's network requirement
  *   holds: until then the licence store reports it awaiting release and gives it to no player (ADR-0013 rule
  *   13).
@@ -195,9 +195,9 @@ public class Downloads internal constructor(
 
         /**
          * What tells a download whose network went away from one that failed, how long a stopped one waits
-         * before trying again, how often a failed request — a licence request included — is asked for again under
-         * the policy's budgets, and what repairs a refused credential, a licence server's included: `superplayer-resilience`'s `Resilience.standard(headers)`,
-         * normally the one this content's players are built with (ADR-0013 rule 14). Without one, a download
+         * before trying again, how often a failed request — a licence request included — is asked for again
+         * under the policy's budgets, and what repairs a refused credential, a licence server's included:
+         * `superplayer-resilience`'s `Resilience.standard(headers)`, normally the one this content's players are built with (ADR-0013 rule 14). Without one, a download
          * that meets any failure retries as Media3's download manager does and then fails, unnamed.
          */
         public fun setResilience(resilience: PlaybackResilience): Builder = apply { this.resilience = resilience }

@@ -745,7 +745,12 @@ refused licence fails the item typed, with nothing pinned. `DownloadItem.licence
 nothing renews. `remove` deletes the bytes at once and releases the licence once the store's network requirement
 holds, and until then `OfflineLicenceStore` lists it in `contentIdsAwaitingRelease` and gives it to no player. The
 trap: protection is what the manifest read sees, so HLS needs `EXT-X-SESSION-KEY`, and the synthetic HLS stream
-downloads with no licence. `DownloadLicenceTest` drives it all.
+downloads with no licence. `DownloadLicenceTest` drives it all. Since #251 live content is refused at enqueue
+(rule 8 and its addendum). The refusal is Media3's `DownloadHelper`'s own `LiveContentUnsupportedException`,
+raised on the manifest read that chooses tracks, before any period is prepared. The store reports it as
+`DownloadItem.refusal` (`DownloadRefusal.LIVE_CONTENT`) on a `FAILED` item, on every store. A refusal is not a
+failure, so it has no `FailureClass` and `failure` stays null. `DownloadLiveRefusalTest` counts no media and
+no pin over `TestContent.liveHls()` and `TestContent.liveDash()`, the latter the corpus's healthy dynamic MPD.
 `DownloadsPayNothingTest` counts rule 15 as platform registrations and the download index table.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and

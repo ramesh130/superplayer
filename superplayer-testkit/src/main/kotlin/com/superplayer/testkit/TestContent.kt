@@ -469,6 +469,19 @@ public class TestContent private constructor(
         }
 
         /**
+         * A live DASH stream: an MPD of `type="dynamic"` over a minute of time-shift window, which is
+         * `HostileManifests.dashLiveBaseline()` — the healthy stream the corpus's live entries are
+         * modifiers over — named for what it is rather than for the corpus it came from.
+         *
+         * Unlike [liveHls] it is served from fixed bytes: the MPD is written once, when this content is
+         * made, and a reload reads the same one. That is enough for a test that reads the manifest to
+         * learn the stream is live (#251), and it is why a test that needs a window moving on the
+         * harness's clock uses [liveHls].
+         */
+        @JvmStatic
+        public fun liveDash(): TestContent = hostile(HostileManifests.dashLiveBaseline())
+
+        /**
          * [hls], Widevine-protected: the same media, under a playlist whose `EXT-X-KEY` names
          * Widevine and carries its initialization data.
          *

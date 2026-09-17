@@ -649,6 +649,12 @@ the seam above until #239. What stands in for each piece, and what each stand-in
   tells it to, so `DownloadLicenceTest` moves `SystemClock` while a refusal is retried. What it cannot show:
   a key-set id a device forgot, and protection an HLS stream declares only in its media playlists, which the
   synthetic stream does and `DownloadLicenceTest` records as downloading with no licence.
+- **Live content is the player's live content.** `TestContent.liveHls()` is the origin that keeps
+  publishing, and `TestContent.liveDash()` is the corpus's healthy dynamic MPD served from fixed bytes, which
+  is enough for a store that reads a manifest once to learn it is live (#251). The refusal arrives from
+  Media3's download helper as the timeline is built, so no clock needs moving for it; an unreadable manifest
+  still does, for the poll above. What it cannot show is a live manifest a real origin changes between two
+  reads, which nothing here needs, since the first read refuses.
 - **`WorkManager`'s constraints are evaluated by the harness, not by `WorkManager`.** Its test driver
   runs constrained work only when told every constraint is met, so `runScheduledWork()` reads each
   enqueued request's `Constraints`, checks them against the statements above, and tells the driver only

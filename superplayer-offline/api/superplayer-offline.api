@@ -5,6 +5,7 @@ public final class com/superplayer/offline/DownloadItem {
 	public final fun getFailure ()Lcom/superplayer/core/SuperPlayerError;
 	public final fun getLicence ()Lcom/superplayer/offline/DownloadLicence;
 	public final fun getPercentDownloaded ()Ljava/lang/Float;
+	public final fun getRefusal ()Lcom/superplayer/offline/DownloadRefusal;
 	public final fun getState ()Lcom/superplayer/offline/DownloadState;
 	public final fun getStopReason ()Lcom/superplayer/offline/DownloadStopReason;
 	public fun hashCode ()I
@@ -18,6 +19,13 @@ public final class com/superplayer/offline/DownloadLicence {
 	public fun hashCode ()I
 	public final fun isExpired ()Z
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/offline/DownloadRefusal : java/lang/Enum {
+	public static final field LIVE_CONTENT Lcom/superplayer/offline/DownloadRefusal;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/offline/DownloadRefusal;
+	public static fun values ()[Lcom/superplayer/offline/DownloadRefusal;
 }
 
 public final class com/superplayer/offline/DownloadState : java/lang/Enum {

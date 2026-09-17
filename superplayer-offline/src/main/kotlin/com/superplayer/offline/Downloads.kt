@@ -117,8 +117,13 @@ import java.util.concurrent.atomic.AtomicInteger
  *   holds: until then the licence store reports it awaiting release and gives it to no player (ADR-0013 rule
  *   13).
  *
- * **Live content is not yet refused** at enqueue, as ADR-0013 rule 8 requires (#251). Not yet
- * here either, each with its ticket: the service a
+ * - **Live content is refused** (ADR-0013 rule 8): an HLS media playlist with no `EXT-X-ENDLIST` or a DASH MPD
+ *   of `type="dynamic"` has no end to download and a manifest that moves. The refusal is read off the manifest
+ *   read that chooses the tracks, over the same chain, and ends the item [DownloadState.FAILED] with
+ *   [DownloadRefusal.LIVE_CONTENT] on [DownloadItem.refusal], on every store, having fetched no media and
+ *   pinned nothing.
+ *
+ * Not yet here, each with its ticket: the service a
  * download outlives its screen in (#246), which is also what the scheduled work will start in a process
  * with no store open — until then that work waits there, retrying, until the app opens a store. Nor rule 14's retry budgets and
  * token refresh for a download (#254). An item enqueued while a condition holds it keeps its request in
@@ -397,7 +402,11 @@ public class Downloads internal constructor(
                     if (released || selecting[contentId]?.helper !== helper) return
                     selecting -= contentId
                     helper.release()
-                    failBeforeTheManager(contentId, error = null)
+                    // Media3's helper refuses a timeline whose window is live before it prepares a period, so the
+                    // manifest is all that was fetched and nothing was pinned: that is ADR-0013 rule 8's refusal,
+                    // reported as one rather than as a manifest that could not be read.
+                    val refusal = if (e is DownloadHelper.LiveContentUnsupportedException) DownloadRefusal.LIVE_CONTENT else null
+                    failBeforeTheManager(contentId, error = null, refusal = refusal)
                 }
             },
         )
@@ -430,14 +439,18 @@ public class Downloads internal constructor(
         }
     }
 
-    /** Fails [contentId] before the manager holds it, with [error] named where there is a resilience to ask. */
-    private fun failBeforeTheManager(contentId: String, error: Throwable?) {
+    /**
+     * Fails [contentId] before the manager holds it, with [error] named where there is a resilience to ask, or
+     * with the store's own [refusal], which every store reports.
+     */
+    private fun failBeforeTheManager(contentId: String, error: Throwable?, refusal: DownloadRefusal? = null) {
         val failed = DownloadItem(
             contentId,
             DownloadState.FAILED,
             bytesDownloaded = 0,
             percentDownloaded = null,
             failure = error?.let { resilience?.failureOf(it) },
+            refusal = refusal,
         )
         unselectable[contentId] = failed
         report(failed)

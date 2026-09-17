@@ -258,6 +258,30 @@ almost always refused.
 | --- | --- | --- |
 | `Drm.DowngradeRefused` | `Drm.Unsupported` | The device cannot honour the protection level it reports and the licence server did not permit the lower one. Carries its own `userMessageKey`, `superplayer_error_protection_unavailable`: the content may not be shown on this device, which is neither a licence that failed to arrive nor a device that cannot decode |
 
+**Version 2 stands — licence acquisition became a measured span (`#212`).** `LicenceAcquisitionEnded`
+is a new event type, and `SCHEMA_VERSION` did **not** move for it. That is the deliberate answer and
+not an oversight: [ADR-0008][adr8] rule 5 puts a new event type on the shape side of the line, and
+this one changes no existing definition — no denominator moves, no exclusion narrows, and a pipeline
+that ignores the event computes exactly what it computed before. It is the same ruling
+`DecisionChanged` got.
+
+What a pipeline can do about it is new, though, which is why the note is here rather than absent:
+protected playback's start-up cost was previously *unattributable*. A session whose first frame was
+late because a licence round trip was slow and one that was late because a manifest was slow looked
+identical in this vocabulary, and the committed benchmark reports said so outright. They no longer
+do.
+
+| Now reported | Was reported as | What it is |
+| --- | --- | --- |
+| `LicenceAcquisitionEnded`, `outcome = ACQUIRED_FROM_SERVER` | nothing at all | A licence fetched from the server, and what the round trip cost |
+| `LicenceAcquisitionEnded`, `outcome = REFUSED` | only the failure event, if the refusal ended playback | A licence attempt that ended without keys — how long it cost, and that it happened at all, which a failure event does not say |
+| `LicenceAcquisitionEnded`, `outcome = SERVED_FROM_OFFLINE_STORE` | nothing at all | Keys restored from a licence already on the device. **Not emitted by any release yet** — see the metric definition |
+
+One value of the outcome is therefore declared and unreachable, and that is deliberate too: an
+offline licence store is issue `#210`'s, and declaring the value now makes `#210` a behaviour change
+against a vocabulary a pipeline has already been told about, rather than a second change of this
+schema for the same metric.
+
 **A sink must tolerate a new event type.** `TelemetryEvent` is sealed, so a `when` over it can be
 exhaustive without an `else` — and such a `when` fails to compile when a later version adds an event.
 An `else` branch is the forward-compatible spelling; take the exhaustive one only if being told about
@@ -280,6 +304,7 @@ additions is what you want.
 | `TrackSwitched` | The video rendition changes | `fromBitrateBps`, `toBitrateBps`, `direction` |
 | `SeekRequested` | A seek is issued | `fromPositionMs`, `toPositionMs` |
 | `SeekCompleted` | Playback resumes at the target | `toPositionMs`, `seekLatencyMs` |
+| `LicenceAcquisitionEnded` | A DRM licence acquisition finishes | `durationMs`, `outcome`, `securityLevel` |
 | `LiveLatencySampled` | Every 10 s, live content only | `liveLatencyMs`, `targetLiveLatencyMs` |
 | `PlaybackStateSampled` | Every 10 s | `samplingIntervalMs`, `videoBitrateBps`, `bufferedDurationMs`, `playing` |
 | `VideoFramesDropped` | Every 10 s, while video renders | `droppedFrames`, `repeatedFrames`, `elapsedPlayingMs` |
@@ -527,6 +552,75 @@ special case, which is the reason for choosing it.
 
 *Departure from CTA-2066:* the standard defines an average bitrate without fixing the weighting.
 Media time is SuperPlayer's choice, stated here.
+
+### Licence acquisition
+
+> *SuperPlayer's own. CTA-2066 has no licence-acquisition metric; it measures what a viewer
+> experiences and treats protection as invisible. Stated rather than cited, because a citation this
+> metric does not have is the one thing this document may not manufacture.*
+
+**`durationMs` on `LicenceAcquisitionEnded`.** Milliseconds, on the monotonic clock, from the moment
+a DRM session was opened *without* keys to the moment it held them or was refused.
+
+A protected session cannot show a frame until it has keys, so this interval is inside
+`timeToFirstFrameMs` and is not a separate cost to add to it. It is reported separately because it is
+the part of start-up that a CDN dashboard cannot see and an app cannot act on without being told:
+every other slow-start remedy is about bytes, and this one is about an entitlement server.
+
+**The boundaries.** The span opens on Media3's `onDrmSessionAcquired` **only** where the session was
+opened without keys, and closes on the first of `onDrmKeysLoaded` (`ACQUIRED_FROM_SERVER`),
+`onDrmKeysRestored` (`SERVED_FROM_OFFLINE_STORE`) or `onDrmSessionManagerError` (`REFUSED`). Two
+consequences are worth stating because they are the two ways a reader could over-count:
+
+- **A reused session emits nothing.** Media3 reuses a DRM session for content whose initialization
+  data matched, and a session acquired *with* keys acquired nothing. Measuring it would report a
+  near-zero acquisition that never happened, and a licence-acquisition time that falls as session
+  reuse rises.
+- **A key rotation emits nothing.** A rotation renews inside a session that is already open and loads
+  keys with no acquisition to match, so it is not a second licence this session fetched.
+
+`durationMs` therefore includes whatever the transfer cost — the retries `RetryPolicy.licence`
+allows, the one token refresh a refused credential gets, and a provisioning round trip where the
+device needed one — because all of those happen inside the span and all of them are what the viewer
+waited for. It is the *attempt*, not the fastest possible request.
+
+**A session can carry several.** Content that declares two licence policies opens two DRM sessions
+and pays twice. Sum `durationMs` across a `sessionId` for what protection cost that view, and read
+the count for how many licences it took.
+
+**One limit of the measurement, stated rather than left to be discovered.** Media3's DRM callbacks
+carry no session identity, so an acquisition is paired with its outcome oldest-to-oldest. Where two
+acquisitions are genuinely *concurrent* — the two-policy case above — they can be attributed to each
+other's durations, so the sum over a session is right and the split between its two rows may not be.
+An acquisition abandoned because the player let go of the session before it was keyed reports
+nothing at all: it got neither keys nor a refusal, and none of the three outcomes is true of it.
+Every serial acquisition, and the count and outcomes of all of them, are exact.
+
+**`outcome`:**
+
+| Value | Meaning |
+| --- | --- |
+| `ACQUIRED_FROM_SERVER` | Keys arrived from the licence server, over the network |
+| `SERVED_FROM_OFFLINE_STORE` | Keys were restored from a licence already stored on the device, with no licence request. **Not emitted by any release yet**: nothing in this library stores a licence, which is issue `#210`'s subject. The value is declared now so that `#210` needs no second change of this schema |
+| `REFUSED` | No keys — the server refused, the request never arrived, or the device's protection stack failed the session |
+
+**What `REFUSED` deliberately does not say is *why*.** That is
+`PlaybackFailure.classification` on the failure event — a `FailureClass.Drm` leaf — and a second
+taxonomy on this event would be the drift [ADR-0011][adr11] rule 1 exists to prevent. Join the two on
+`sessionId`. Note also that a refusal is not always a failed session: a licence refused once and
+repaired by the header refresh appears here only if the repair came too late to keep the session
+open.
+
+**`securityLevel`** is the level in force when *this* acquisition ended — the same field, with the
+same meaning, as on `SessionEnded`, read at a different moment. It is null on every acquisition that
+negotiated no level, and it is per-acquisition rather than per-session because
+[ADR-0012][adr12] rule 11's ladder settles a level after a refusal: a session's first acquisition and
+its second need not have run at the same one.
+
+**Redaction.** Nothing about the licence itself is in this event: no licence URI, no key id, no key
+request or response, no device identifier. That is not a property of this event alone — the trace
+recorder's rule 6 already renders a licence load as `load … drm` and nothing more — but it is the
+property that lets this metric go on a bug report.
 
 ### Live-edge latency
 

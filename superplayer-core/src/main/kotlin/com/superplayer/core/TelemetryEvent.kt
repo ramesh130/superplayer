@@ -344,6 +344,49 @@ public sealed class TelemetryEvent {
     ) : TelemetryEvent()
 
     /**
+     * One licence acquisition finished, and this is how long it took and how it ended.
+     *
+     * Protected playback's own start-up cost. A DRM session cannot deliver a frame until it holds
+     * keys, so a protected session that is slow to start is often slow *here* — and with no event of
+     * its own that interval is indistinguishable, in the rest of this vocabulary, from a slow
+     * manifest or a slow first segment.
+     *
+     * SuperPlayer's own metric: CTA-2066 has no licence-acquisition measurement, which
+     * `docs/telemetry-schema.md` states rather than implying a citation the standard does not carry.
+     *
+     * One event per acquisition rather than a started/ended pair, and a session can carry several —
+     * content declaring two licence policies opens two sessions (ADR-0012 rule 1's addendum), and a
+     * key rotation renews inside the one it has. A session reused for content whose initialization
+     * data matched acquires nothing and reports nothing, which is the point of counting acquisitions
+     * rather than sessions.
+     */
+    public data class LicenceAcquisitionEnded(
+        override val sessionId: String,
+        override val contentId: String,
+        override val timestampMs: Long,
+        override val monotonicTimeMs: Long,
+        /**
+         * Milliseconds from the moment a DRM session without keys was opened to the moment it held
+         * them or was refused, on the monotonic clock.
+         */
+        public val durationMs: Long,
+        /** Where the keys came from, or that they never arrived — see [LicenceOutcome]. */
+        public val outcome: LicenceOutcome,
+        /**
+         * The `securityLevel` in force when this acquisition ended — `"L1"`, `"L3"` — or null where
+         * no level was negotiated, which is every acquisition on a device that can honour the level
+         * it reports.
+         *
+         * Read from [SuperPlayer.deliveredSecurityLevel] at the moment the acquisition ended, rather
+         * than once per session: ADR-0012 rule 11's ladder settles a level after the first refusal,
+         * so the level a session's *first* acquisition ran at and the level a later one ran at need
+         * not be the same number. The same field on [SessionEnded] is the level the session finished
+         * on; this one is the level this licence was fetched under.
+         */
+        public val securityLevel: String? = null,
+    ) : TelemetryEvent()
+
+    /**
      * Video frames the renderer dropped or repeated over an interval of playing time.
      *
      * **These are video frames, not UI frames**, and the two are close to independent pipelines.
@@ -417,6 +460,44 @@ public enum class TrackSwitchDirection {
 
     /** To a lower bitrate than the one playing. */
     DOWN,
+}
+
+/**
+ * How the acquisition [TelemetryEvent.LicenceAcquisitionEnded] measured ended.
+ *
+ * Three outcomes and not two, because *where the keys came from* is the question a protected
+ * catalogue is read for: an offline licence that is being honoured costs no round trip, and a
+ * deployment that believes its downloads play offline and is in fact re-acquiring every time looks
+ * identical in every other metric here.
+ */
+public enum class LicenceOutcome {
+
+    /** Keys arrived from the licence server, over the network, in [durationMs][TelemetryEvent.LicenceAcquisitionEnded.durationMs]. */
+    ACQUIRED_FROM_SERVER,
+
+    /**
+     * Keys were restored from a licence already stored on the device — no licence request was made.
+     *
+     * **Not reachable today**, and declared rather than omitted. Nothing in this library stores a
+     * licence yet: an offline licence store is issue #210's, and until it lands no session restores
+     * keys, so no event carries this value. It is here so that #210 is a behaviour change with a
+     * value already in the vocabulary rather than a second change of this schema, which a pipeline
+     * would have to be told about twice. `docs/telemetry-schema.md` says the same thing where the
+     * metric is defined.
+     */
+    SERVED_FROM_OFFLINE_STORE,
+
+    /**
+     * No keys: the licence server refused, the request never arrived, or the device's protection
+     * stack failed the session.
+     *
+     * *Which* of those is not this field — a refusal that ends playback is reported as a failure
+     * with `PlaybackFailure.classification` naming the `FailureClass.Drm` leaf, and a second
+     * taxonomy here would be the drift ADR-0011 rule 1 exists to prevent. What this value adds is
+     * that a licence was asked for at all, and how long the attempt cost, which a failure event does
+     * not say.
+     */
+    REFUSED,
 }
 
 /**

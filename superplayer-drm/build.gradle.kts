@@ -41,6 +41,14 @@ dependencies {
     // are that module's — so the claims of #205 cannot be driven through this module's public API
     // without it. Nothing in this module's main sources knows it exists.
     testImplementation(project(":superplayer-resilience"))
+
+    // Tests only, and a phase 2 module under a phase 6 one, which is the allowed direction. Licence
+    // acquisition is measured by `QoeCollector` from Media3's DRM analytics callbacks (#212) —
+    // `superplayer-telemetry`'s, because ADR-0012 rule 5 leaves this module with no vocabulary of
+    // its own — and a real licence round trip needs the protected stream, the stated device and the
+    // licence server that only this module's tests have. Nothing in this module's main sources knows
+    // it exists.
+    testImplementation(project(":superplayer-telemetry"))
 }
 
 // The one slot this module fills — the `DrmSessionManagerProvider` every media source `TransferChain`

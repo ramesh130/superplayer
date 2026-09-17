@@ -23,9 +23,12 @@ import androidx.media3.common.Format
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.exoplayer.drm.DrmSession
+import androidx.media3.exoplayer.drm.KeyRequestInfo
 import androidx.media3.exoplayer.source.MediaLoadData
 import com.superplayer.core.DecisionTrigger
 import com.superplayer.core.FailureCategory
+import com.superplayer.core.LicenceOutcome
 import com.superplayer.core.PlaybackDecision
 import com.superplayer.core.PlaybackFailure
 import com.superplayer.core.SuperPlayer
@@ -54,7 +57,8 @@ import com.superplayer.core.TtffStartBoundary
  * ## What it emits
  *
  * The whole of `docs/telemetry-schema.md`: the session boundary, the first frame, rebuffers,
- * startup and mid-stream failures, track switches, seeks, and the three periodic samples.
+ * startup and mid-stream failures, track switches, seeks, licence acquisitions, and the three
+ * periodic samples.
  *
  * **What each number means is that document, not this file.** Every metric there cites CTA-2066,
  * and every place SuperPlayer's definition departs from the standard says so with the reason. The
@@ -293,6 +297,46 @@ public class QoeCollector internal constructor(
             )
         }
 
+        // ref: Media3 1.11.0's `DefaultAnalyticsCollector` dispatches *both* arities of the DRM
+        // callbacks it grew a parameter on — `lambda$onDrmSessionAcquired$64` calls the deprecated
+        // `onDrmSessionAcquired(EventTime)` and then `onDrmSessionAcquired(EventTime, int)`, and
+        // `onDrmKeysLoaded` does the same. Only the newer arity is overridden below, in both cases:
+        // overriding both would count every acquisition twice.
+        override fun onDrmSessionAcquired(eventTime: AnalyticsListener.EventTime, state: Int) {
+            val session = openSession ?: return
+            // Counted whatever the state, because it is what [onDrmSessionReleased] is counted
+            // against — a session that reused keys still has to be released before the acquisitions
+            // behind it can be called stale.
+            session.drmSessionOpened()
+            // A session opened *with* keys acquired nothing. That is Media3 reusing a session for
+            // content whose initialization data matched (ADR-0012, `#209`), and measuring it would
+            // report a zero-length acquisition that never happened — which, averaged in, is a
+            // licence-acquisition time that falls as session reuse rises.
+            if (state != DrmSession.STATE_OPENED) return
+            session.openLicenceAcquisition(now())
+        }
+
+        override fun onDrmSessionReleased(eventTime: AnalyticsListener.EventTime) {
+            openSession?.drmSessionReleased()
+        }
+
+        override fun onDrmKeysLoaded(eventTime: AnalyticsListener.EventTime, keyRequestInfo: KeyRequestInfo) {
+            endLicenceAcquisition(LicenceOutcome.ACQUIRED_FROM_SERVER)
+        }
+
+        // Keys restored into a session from a licence already on the device. Unreachable until the
+        // offline store lands (`#210`); see `LicenceOutcome.SERVED_FROM_OFFLINE_STORE`.
+        override fun onDrmKeysRestored(eventTime: AnalyticsListener.EventTime) {
+            endLicenceAcquisition(LicenceOutcome.SERVED_FROM_OFFLINE_STORE)
+        }
+
+        // The exception is deliberately not read. What went wrong is the classifier's answer and
+        // reaches a pipeline on the failure event (ADR-0011 rule 1); all this callback settles is
+        // that the attempt ended without keys.
+        override fun onDrmSessionManagerError(eventTime: AnalyticsListener.EventTime, error: Exception) {
+            endLicenceAcquisition(LicenceOutcome.REFUSED)
+        }
+
         override fun onDroppedVideoFrames(
             eventTime: AnalyticsListener.EventTime,
             droppedFrames: Int,
@@ -497,6 +541,34 @@ public class QoeCollector internal constructor(
         )
     }
 
+    /**
+     * Closes the oldest licence acquisition in flight with [outcome], if there is one.
+     *
+     * Nothing to close is the ordinary case on most sessions: a key rotation renews inside a session
+     * that is already open (`KeyRotationTest`), which loads keys without a matching acquisition, and
+     * an event for it would be a second licence this session never fetched.
+     */
+    private fun endLicenceAcquisition(outcome: LicenceOutcome) {
+        val session = openSession ?: return
+        val startedAt = session.closeLicenceAcquisition() ?: return
+        val now = now()
+        emit(
+            TelemetryEvent.LicenceAcquisitionEnded(
+                sessionId = session.id,
+                contentId = session.contentId,
+                timestampMs = System.currentTimeMillis(),
+                monotonicTimeMs = now,
+                durationMs = now - startedAt,
+                outcome = outcome,
+                // Asked of the player as a consumer would, for `classify`'s reason: this collector is
+                // not a friend of core and keeps no second copy of what the DRM slot decided. Read
+                // now rather than held from the session's start, because the ladder can settle a
+                // lower level after the first refusal.
+                securityLevel = player?.deliveredSecurityLevel,
+            ),
+        )
+    }
+
     /** Completes a seek that is in flight, which is what makes seek latency a number. */
     private fun completeSeek(session: OpenSession) {
         val requestedAt = session.seekRequestedAtMs ?: return
@@ -649,6 +721,69 @@ public class QoeCollector internal constructor(
         var seekCompletedAtMs: Long? = null
 
         /**
+         * The start of every licence acquisition open right now, oldest first.
+         *
+         * A queue rather than one reading, because a session can have two acquisitions in flight at
+         * once — content declaring two licence policies opens a session for each — and they are
+         * paired oldest-to-oldest. That pairing is an approximation and is written down as one:
+         * ref: Media3 1.11.0's DRM analytics callbacks carry an `EventTime` and no session identity,
+         * so an acquisition cannot be matched to the load that answered it. Two *concurrent*
+         * acquisitions can therefore be attributed to each other's durations; the count, the
+         * outcomes and every serial acquisition are exact, which is what the metric is read for.
+         */
+        private val licenceAcquisitionsInFlight = ArrayDeque<Long>()
+
+        /**
+         * DRM sessions this measurement session has seen acquired and not yet released.
+         *
+         * The ceiling on how many acquisitions can still be in flight, and therefore what makes an
+         * unpaired start *stale* rather than pending: a session released without ever being keyed
+         * produces no keys-loaded and no error, so nothing else would ever close its start, and the
+         * next rotation's `onDrmKeysLoaded` would be paired with it and reported as a licence
+         * lasting the whole gap.
+         */
+        private var drmSessionsOpen = 0
+
+        /** Records that a DRM session was acquired, keyed or not. */
+        fun drmSessionOpened() {
+            drmSessionsOpen++
+        }
+
+        /**
+         * Records that a DRM session was released, and discards any start that can no longer close.
+         *
+         * A discarded start reports nothing at all. An acquisition that ended because the player let
+         * go of the session got neither keys nor a refusal, so none of [LicenceOutcome]'s three
+         * values is true of it, and inventing a fourth for a case a viewer never waited on the end
+         * of would be a value every pipeline has to learn to ignore.
+         */
+        fun drmSessionReleased() {
+            // Clamped, because a release can arrive for a session acquired before this measurement
+            // session opened — a pooled player recycled mid-licence does exactly that.
+            drmSessionsOpen = (drmSessionsOpen - 1).coerceAtLeast(0)
+            while (licenceAcquisitionsInFlight.size > drmSessionsOpen) {
+                licenceAcquisitionsInFlight.removeFirst()
+            }
+        }
+
+        /** Records that an acquisition began at [nowMs]. */
+        fun openLicenceAcquisition(nowMs: Long) {
+            // A backstop under the release accounting above, not the mechanism: Media3 dispatches an
+            // acquisition per *reference* taken on a session, so two periods sharing one session can
+            // push two starts that one keys-loaded closes, and only a release bounds the rest. Eight
+            // is well past any real concurrency — content with more than a couple of licence policies
+            // does not exist — and dropping the oldest keeps the newest acquisition, the one a later
+            // callback is most likely about, pairable.
+            if (licenceAcquisitionsInFlight.size >= MAX_LICENCE_ACQUISITIONS_IN_FLIGHT) {
+                licenceAcquisitionsInFlight.removeFirst()
+            }
+            licenceAcquisitionsInFlight.addLast(nowMs)
+        }
+
+        /** The start of the oldest acquisition in flight, removed, or null when none is. */
+        fun closeLicenceAcquisition(): Long? = licenceAcquisitionsInFlight.removeFirstOrNull()
+
+        /**
          * Gives up on a seek that can no longer complete, without reporting a latency for it.
          *
          * A seek interrupted by an error or by the end of the stream never resumes at its target, so
@@ -696,6 +831,9 @@ public class QoeCollector internal constructor(
 
         /** See [OpenSession.isSeekInducedAt]; the document is where this number is argued. */
         val SEEK_EXCLUSION_WINDOW_MS = 1_000L
+
+        /** See [OpenSession.openLicenceAcquisition], which argues the bound. */
+        val MAX_LICENCE_ACQUISITIONS_IN_FLIGHT = 8
     }
 }
 

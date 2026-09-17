@@ -221,6 +221,22 @@ internal class EngineConfiguration(
     var exoMediaDrm: ExoMediaDrm.Provider? = null
 
     /**
+     * The output slot ADR-0014 rule 3 opens: one player's [VideoOutputBinding], told of every surface
+     * the engine renders to and of each media item's declared frame rate.
+     *
+     * **The filled slot is the whole signal**, as [decisionTarget] is for re-consultation. On a player
+     * whose slot is filled, core builds the engine with `C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF`, so the
+     * binding is the only caller of `Surface.setFrameRate`, and registers the listener the frame rate
+     * arrives through. Later issues of Phase 8 hang the display watch and the selector's parameters on
+     * the same fact (#269, #270, #271).
+     *
+     * Null is every player built without `setOutput`: the engine keeps Media3's own frame-rate strategy
+     * and nothing is registered, which is ADR-0014 rule 14 and is counted by
+     * `SuperPlayerOutputSeamTest`.
+     */
+    var videoOutput: VideoOutputBinding? = null
+
+    /**
      * The decision in force on this player, readable from whatever thread a load fails on.
      *
      * Core fills it; the extensions read it. It exists because the two halves of ADR-0011 rule 11

@@ -93,6 +93,7 @@ class SuperPlayerHarness : ExternalResource() {
         cache: ContentCache? = null,
         resilience: PlaybackResilience? = null,
         drm: PlaybackDrm? = null,
+        output: PlaybackOutput? = null,
         alsoConfigure: (EngineConfiguration) -> Unit = {},
         alsoConfigureEngine: (ExoPlayer.Builder) -> Unit = {},
         pooled: PooledEngine? = null,
@@ -111,6 +112,7 @@ class SuperPlayerHarness : ExternalResource() {
                 .apply { cache?.let { setCache(it) } }
                 .apply { resilience?.let { setResilience(it) } }
                 .apply { drm?.let { setDrm(it) } }
+                .apply { output?.let { setOutput(it) } }
                 .setPooledEngine(pooled)
                 .setEngineConfigurator { configuration ->
                     configuration.engine.useHarnessClock(clock)

@@ -285,6 +285,7 @@ public class PlayerPool private constructor(
         private var cache: ContentCache? = null
         private var resilience: PlaybackResilience? = null
         private var drm: PlaybackDrm? = null
+        private var output: PlaybackOutput? = null
         private var telemetry: (() -> TelemetryCollector)? = null
         private var playerFactory: ((PooledEngine?) -> SuperPlayer)? = null
 
@@ -382,6 +383,14 @@ public class PlayerPool private constructor(
         public fun setDrm(drm: PlaybackDrm): Builder = apply { this.drm = drm }
 
         /**
+         * The output every player in this pool shows its picture through — what
+         * [SuperPlayer.Builder.setOutput] takes, for each of them. One object fills every pooled
+         * player's slot with a binding of that player's own, because a surface is one player's
+         * (ADR-0014 rule 3). Leave it unset and no pooled player pays anything for it (rule 14).
+         */
+        public fun setOutput(output: PlaybackOutput): Builder = apply { this.output = output }
+
+        /**
          * Measures every player this pool builds, each with the collector [collectorFactory] returns
          * for it — what [SuperPlayer.Builder.setTelemetry] takes, once per player.
          *
@@ -425,6 +434,7 @@ public class PlayerPool private constructor(
                     .apply { cache?.let { setCache(it) } }
                     .apply { resilience?.let { setResilience(it) } }
                     .apply { drm?.let { setDrm(it) } }
+                    .apply { output?.let { setOutput(it) } }
                     .apply { telemetry?.let { setTelemetry(it()) } }
                     .setPooledEngine(pooled)
                     .build()

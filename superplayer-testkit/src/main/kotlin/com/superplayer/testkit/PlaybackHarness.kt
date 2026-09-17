@@ -57,6 +57,7 @@ import com.superplayer.core.BufferPolicy
 import com.superplayer.core.ContentCache
 import com.superplayer.core.DownloadEnvironment
 import com.superplayer.core.PlaybackDrm
+import com.superplayer.core.PlaybackOutput
 import com.superplayer.core.PlaybackPolicy
 import com.superplayer.core.PlaybackProfile
 import com.superplayer.core.PlaybackResilience
@@ -165,6 +166,9 @@ public class PlaybackHarness : ExternalResource() {
      */
     private val outputs = mutableListOf<Pair<Surface, SurfaceTexture>>()
 
+    /** The recording surfaces each player was given, in order, which [frameRateRequests] reads. */
+    private val surfaces = IdentityHashMap<Player, MutableList<RecordingSurface>>()
+
     /**
      * The fault injector installed under each player, so [requestedResources] can report what the
      * session actually fetched and under which address.
@@ -230,6 +234,10 @@ public class PlaybackHarness : ExternalResource() {
      * so a licence request is a transfer like any other: addressed by [ResourceKind.LICENCE],
      * refusable through a [FaultScript], and counted by [networkRequests]. The Widevine device those
      * sessions open against is [DeviceStatement.declareWidevine]'s.
+     *
+     * [output], when set, is what `SuperPlayer.Builder.setOutput` takes. Every player this harness
+     * builds is given a surface that records what is asked of the display, so what an output requests
+     * is read back through [frameRateRequests]; the display it matches is [DeviceStatement]'s.
      */
     public fun buildPlayer(
         content: TestContent = TestContent.video(),
@@ -241,6 +249,7 @@ public class PlaybackHarness : ExternalResource() {
         cache: ContentCache? = null,
         resilience: PlaybackResilience? = null,
         drm: PlaybackDrm? = null,
+        output: PlaybackOutput? = null,
     ): SuperPlayer {
         // Protected content needs a `DrmSessionManagerProvider` on the media source factory, and on a
         // SuperPlayer that provider comes from the DRM slot ADR-0012 rule 3 puts on core's engine
@@ -251,7 +260,7 @@ public class PlaybackHarness : ExternalResource() {
             "Protected content needs a PlaybackDrm: pass `drm = Drm.widevine(...)`, whose licence " +
                 "server is FakeLicenceServer.LICENCE_URI, or play it through buildStockPlayer."
         }
-        return buildPlayerOver(composeTransport(content, faults, network), content, profile, telemetry, policy, cache, resilience, drm, pooled = null)
+        return buildPlayerOver(composeTransport(content, faults, network), content, profile, telemetry, policy, cache, resilience, drm, pooled = null, output = output)
     }
 
     /**
@@ -268,6 +277,7 @@ public class PlaybackHarness : ExternalResource() {
         resilience: PlaybackResilience?,
         drm: PlaybackDrm?,
         pooled: PooledEngine?,
+        output: PlaybackOutput? = null,
     ): SuperPlayer {
         var built: ControllableVideoRenderer? = null
         val transfers = transport.transfers
@@ -278,6 +288,7 @@ public class PlaybackHarness : ExternalResource() {
             .apply { cache?.let { setCache(it) } }
             .apply { resilience?.let { setResilience(it) } }
             .apply { drm?.let { setDrm(it) } }
+            .apply { output?.let { setOutput(it) } }
             .setPooledEngine(pooled)
             .setEngineConfigurator { configuration ->
                 // The slots rather than the engine builder, so a pool can hand the same clock and
@@ -1039,10 +1050,22 @@ public class PlaybackHarness : ExternalResource() {
      */
     public fun attachVideoOutput(player: Player) {
         val texture = SurfaceTexture(/* texName= */ 0)
-        val surface = Surface(texture)
+        val surface = RecordingSurface(texture)
         outputs += surface to texture
+        surfaces.getOrPut(player) { mutableListOf() } += surface
         player.setVideoSurface(surface)
     }
+
+    /**
+     * Every frame-rate request made so far on the surfaces this harness gave [player], withdrawals
+     * included, in the order made.
+     *
+     * Recorded at the surface, which is where a device's compositor would receive it, so it is what a
+     * player *asked* the display for. Robolectric has no compositor: the active mode does not move,
+     * and a request is not evidence that a panel switched (`docs/testing.md`, *A TV device*).
+     */
+    public fun frameRateRequests(player: Player): List<FrameRateRequest> =
+        surfaces[player].orEmpty().flatMap { it.requests }
 
     /** The reading every duration in `docs/telemetry-schema.md` is measured on, right now. */
     public fun elapsedRealtimeMs(): Long = SystemClock.elapsedRealtime()
@@ -1297,6 +1320,7 @@ public class PlaybackHarness : ExternalResource() {
             texture.release()
         }
         outputs.clear()
+        surfaces.clear()
     }
 
     private fun rendererFor(player: Player): ControllableVideoRenderer =
@@ -1504,7 +1528,7 @@ public class PlaybackHarness : ExternalResource() {
         .setAverageBitrate(rung.bitrateBps)
         .setWidth(rung.heightPx * WIDTH_NUMERATOR / HEIGHT_DENOMINATOR)
         .setHeight(rung.heightPx)
-        .setFrameRate(FRAME_RATE)
+        .setFrameRate(rung.frameRate ?: Format.NO_VALUE.toFloat())
         .build()
 
     public companion object {
@@ -1565,7 +1589,8 @@ public class PlaybackHarness : ExternalResource() {
         private const val WIDTH_NUMERATOR = 16
         private const val HEIGHT_DENOMINATOR = 9
 
-        private val FRAME_RATE = 30f
+        /** How far apart the described content's samples are; what a rung *declares* is the rung's. */
+        private val FRAME_RATE = TestContent.Rung.DEFAULT_FRAME_RATE
 
         /** One keyframe a second at [FRAME_RATE], which is what a real encoder ladder uses. */
         private val KEYFRAME_INTERVAL_FRAMES = 30

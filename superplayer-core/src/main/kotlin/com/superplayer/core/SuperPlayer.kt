@@ -20,6 +20,10 @@ import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.res.Configuration
 import android.os.SystemClock
+import android.view.Surface
+import android.view.SurfaceHolder
+import android.view.SurfaceView
+import android.view.TextureView
 import androidx.annotation.VisibleForTesting
 import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
@@ -236,6 +240,14 @@ public class SuperPlayer private constructor(
      * none.
      */
     internal val licenceSessions: LicenceSessions?,
+    /**
+     * Core's half of the output slot, and null on every player built without
+     * `SuperPlayer.Builder.setOutput` — which is ADR-0014 rule 14: no instance, no listener.
+     *
+     * Deliberately without a default value, for the reason [builtWithTrackSelectionParameters] has
+     * none.
+     */
+    private val videoOutput: VideoOutputAttachment?,
 ) : Player by delegate {
 
     /**
@@ -323,6 +335,9 @@ public class SuperPlayer private constructor(
 
     init {
         telemetryMemoryPressure?.let { applicationContext?.registerComponentCallbacks(it) }
+        // On the engine rather than through the listener wrapper: it is core's own, reports nothing to
+        // a consumer, and must survive the wrapper purge a pooled reset performs.
+        videoOutput?.let(delegate::addListener)
         // Wired here rather than in the builder so the loop never holds a half-built facade: it is
         // started, and can first call back, only once `build()` has this object in hand.
         reapplication?.onDecisionChanged = { decision, trigger ->
@@ -380,6 +395,8 @@ public class SuperPlayer private constructor(
         protectionRepair: ProtectionRepair? = null,
         // Null for the same reason: no slot of core's composed a session graph on it.
         licenceSessions: LicenceSessions? = null,
+        // Null for an engine somebody else built: no output of core's filled a slot on it.
+        videoOutput: VideoOutputAttachment? = null,
     ) : this(
         exoPlayer,
         profile,
@@ -396,6 +413,7 @@ public class SuperPlayer private constructor(
         deliveredProtection,
         protectionRepair,
         licenceSessions,
+        videoOutput,
     )
 
     /**
@@ -1131,6 +1149,8 @@ public class SuperPlayer private constructor(
     internal fun resetForReuse() {
         // Before the content, so nothing decoded for the outgoing item can reach the outgoing view.
         delegate.clearVideoSurface()
+        // And the binding hears it, so no frame-rate request outlives the view it was made on.
+        videoOutput?.surfaceSet(null)
 
         delegate.stop()
         delegate.clearMediaItems()
@@ -1191,6 +1211,11 @@ public class SuperPlayer private constructor(
         // Before the engine goes, for the same reason: the connectivity callback is registered
         // against the process, and would otherwise hold this player for as long as it lived.
         reapplication?.stop()
+        // Before the engine goes, so a request made on the surface is withdrawn while it still exists.
+        videoOutput?.let {
+            delegate.removeListener(it)
+            it.release()
+        }
 
         delegate.release()
         synchronized(wrappedListeners) { wrappedListeners.clear() }
@@ -1222,6 +1247,51 @@ public class SuperPlayer private constructor(
      * engine received it, so a newly-defaulted method fails there on the next catalog bump.
      */
     override fun getAudioSessionId(): Int = delegate.audioSessionId
+
+    // The video-surface calls, overridden so that a player built with `setOutput` can tell its binding
+    // which surface the engine renders to (ADR-0014 rule 3). Each forwards first, so the engine holds
+    // the surface before the binding asks anything of it; on every other player `videoOutput` is null
+    // and each is the delegation Kotlin would have generated.
+
+    override fun setVideoSurface(surface: Surface?) {
+        delegate.setVideoSurface(surface)
+        videoOutput?.surfaceSet(surface)
+    }
+
+    override fun clearVideoSurface() {
+        delegate.clearVideoSurface()
+        videoOutput?.surfaceSet(null)
+    }
+
+    override fun clearVideoSurface(surface: Surface?) {
+        delegate.clearVideoSurface(surface)
+        videoOutput?.surfaceCleared(surface)
+    }
+
+    override fun setVideoSurfaceHolder(surfaceHolder: SurfaceHolder?) {
+        delegate.setVideoSurfaceHolder(surfaceHolder)
+        videoOutput?.holderSet(surfaceHolder)
+    }
+
+    override fun clearVideoSurfaceHolder(surfaceHolder: SurfaceHolder?) {
+        delegate.clearVideoSurfaceHolder(surfaceHolder)
+        videoOutput?.holderCleared(surfaceHolder)
+    }
+
+    override fun setVideoSurfaceView(surfaceView: SurfaceView?) {
+        delegate.setVideoSurfaceView(surfaceView)
+        videoOutput?.holderSet(surfaceView?.holder)
+    }
+
+    override fun clearVideoSurfaceView(surfaceView: SurfaceView?) {
+        delegate.clearVideoSurfaceView(surfaceView)
+        videoOutput?.holderCleared(surfaceView?.holder)
+    }
+
+    override fun setVideoTextureView(textureView: TextureView?) {
+        delegate.setVideoTextureView(textureView)
+        videoOutput?.textureViewSet()
+    }
 
     /**
      * The engine's error, as rung 6 delivers it: the same object this player's listeners were handed
@@ -1312,6 +1382,7 @@ public class SuperPlayer private constructor(
         private var cache: ContentCache? = null
         private var resilience: PlaybackResilience? = null
         private var drm: PlaybackDrm? = null
+        private var output: PlaybackOutput? = null
         private var pooledEngine: PooledEngine? = null
 
         /**
@@ -1470,6 +1541,26 @@ public class SuperPlayer private constructor(
         public fun setDrm(drm: PlaybackDrm): Builder = apply { this.drm = drm }
 
         /**
+         * Shows this player's picture through [output]: on a television, the display's refresh rate
+         * matched to the content's frame rate (ADR-0014).
+         *
+         * ```kotlin
+         * val player = SuperPlayer.Builder(context)
+         *     .setProfile(PlaybackProfile.TV_LEANBACK)
+         *     .setOutput(TvOutput.standard(context))
+         *     .build()
+         * ```
+         *
+         * The object is `superplayer-tv`'s, and this call is the only thing that turns any of it on.
+         * What it does is correctness on every player built with it, and no profile varies it (rule 4).
+         * Leave it unset and the engine keeps Media3's own frame-rate strategy, no listener is
+         * registered and no class of the module is loaded — which is rule 14, and is counted rather
+         * than asserted about. Fixed for the player's lifetime: the strategy is set as the engine is
+         * built.
+         */
+        public fun setOutput(output: PlaybackOutput): Builder = apply { this.output = output }
+
+        /**
          * The single seam through which tests reach the engine's construction.
          *
          * A test that must run without a device or a network has to substitute Media3's fake clock
@@ -1536,9 +1627,18 @@ public class SuperPlayer private constructor(
             // `PlaybackDrm` that is not an extension fills nothing, and one never set looks the same
             // from here — which is the whole of what a consumer without the module pays.
             (drm as? EngineDrmExtension)?.configureEngine(configuration)
+            // And the output, per player for the same reason: what it fills holds one player's surface
+            // (ADR-0014 rule 3). An output never set fills nothing, which is rule 14.
+            (output as? EngineOutputExtension)?.configureEngine(configuration)
             engineConfigurator?.invoke(configuration)
             configuration.clock?.let(engineBuilder::setClock)
             configuration.renderersFactory?.let(engineBuilder::setRenderersFactory)
+            // A filled output slot is the binding's to ask the display with, and two callers of
+            // `Surface.setFrameRate` on one surface would overwrite each other's request: Media3's own
+            // seamless-only request is switched off so the binding's is the only one (ADR-0014 rule 3).
+            if (configuration.videoOutput != null) {
+                engineBuilder.setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF)
+            }
             // One playback thread for a pool whose players share components: a shared load control
             // pins itself to one thread, and a coordinator's preload manager prepares on it too.
             pooled?.let { engineBuilder.setPlaybackLooper(it.playbackLooper()) }
@@ -1637,6 +1737,9 @@ public class SuperPlayer private constructor(
                 // The graph itself, so the module that built it can find it again from the player
                 // (issue #210). Null on every player without `setDrm`.
                 licenceSessions = configuration.drm,
+                // And the output slot's binding, attached to this player; null on every player
+                // without `setOutput` (ADR-0014 rule 14).
+                videoOutput = configuration.videoOutput?.let(::VideoOutputAttachment),
             )
 
             // The first pooled player's components become the pool's. The factory handed on is the

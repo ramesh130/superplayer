@@ -15,10 +15,11 @@
  */
 
 /**
- * superplayer-tv — CTV: display capability, Leanback and Compose-for-TV surfaces
+ * superplayer-tv — CTV behind one output slot (ADR-0014)
  *
- * Placeholder. This module is created empty and buildable so that the module boundary and
- * dependency direction are fixed and enforceable now, rather than negotiated once code
- * arrives (phase 8). It intentionally declares no public API yet.
+ * `TvOutput.standard(context)` is what `SuperPlayer.Builder.setOutput` and
+ * `PlayerPool.Builder.setOutput` take. On a player built with it, the display's refresh rate is
+ * matched to the content's declared frame rate. The display watch, re-selection on an audio-output
+ * change, tunneling and the Compose-for-TV controls are Phase 8's later issues.
  */
 package com.superplayer.tv

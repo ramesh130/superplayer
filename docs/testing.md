@@ -404,11 +404,18 @@ What each stand-in cannot show:
 
 - **The synthetic streams have no video renderer.** `superplayer-testmedia` publishes audio, so a
   frame rate a real stream declares is one no harness session reaches through a protocol. The
-  harness's `TestContent.video()` ladder is the video there is: fake formats, each declaring the
-  harness's one frame rate, played by a fake renderer that decodes nothing.
+  harness's described video is the video there is: fake formats played by a fake renderer that
+  decodes nothing. Each rung declares `TestContent.Rung.frameRate`, 30 fps unless a test says
+  otherwise and null for a rung that declares none, which is what reaches `Format.frameRate` in place
+  of a manifest's `FRAME-RATE` or `@frameRate`. The samples stay 30 fps apart whatever a rung declares.
 - **Robolectric has no compositor.** A `Surface.setFrameRate` call is accepted and changes nothing, so
-  the active mode is what a test stated until it restates it. A mode switch taking effect, and the
-  blank a non-seamless switch costs, are a device's to show.
+  the active mode is what a test stated until it restates it. What a test *can* read is the request:
+  every surface the harness gives a player records each `setFrameRate` call made on it, and
+  `PlaybackHarness.frameRateRequests(player)` lists them as `FrameRateRequest`s, withdrawals included.
+  It is a `Surface` subclass rather than a shadow, so no test class declares anything, and it is the
+  call a device's compositor would receive, which is *Asserting on the platform* above. A mode switch
+  taking effect, the time an HDMI link takes to resynchronise, and the blank a non-seamless switch
+  costs are a device's to show (#274).
 - **There is no HDMI.** No link renegotiates, no EDID is read, and no HDCP level exists. The display
   and the audio output are what a test states, and a sink decoding a passthrough format is nothing
   anything here can hear: a format a player selected is one it *chose*.
@@ -903,6 +910,20 @@ is set and answers `DRM_UNSUPPORTED` is not nothing — so what is counted is th
 It also pins the ordering the whole Robolectric DRM story rests on: the device a test states reaches
 the slot at chain-composition time rather than through the extension, because an extension runs
 *before* the test configurator and so before a test has said what device this is.
+
+`superplayer-tv` is the eighth friend, and it fills a slot as the sixth does: `EngineConfiguration.videoOutput`,
+a per-player binding core tells of every surface the facade is handed and of each item's declared frame
+rate (ADR-0014 rule 3). Filling it builds the engine with Media3's own frame-rate request switched off,
+which is `@UnstableApi` vocabulary. Its `FrameRateMatchingTest` plays described video declaring a frame
+rate through a real `SuperPlayer` on a display `DeviceStatement.declareDisplayModes` states, and reads what
+was asked of the display through `harness.frameRateRequests`. `SuperPlayerOutputSeamTest` holds core's side,
+with an output hand-written in core's own tests.
+
+That test reads past the facade, recorded here as the DRM seam's is. It asserts on the `EngineConfiguration`
+the builder filled, and on the engine's `videoChangeFrameRateStrategy`, because ADR-0014 rule 14's claim is
+that a player without the module keeps Media3's own strategy, and nothing public reports which one an engine
+was built with. The same count on a player *with* an output reads the strategy off, so the counter is shown
+to count.
 
 `superplayer-testkit`'s own public API names **no Media3 type**, for the reason ADR-0001 rule 2 gives:
 a `Format` or a `Timeline` in one of its signatures would put Media3's opt-in marker on every test

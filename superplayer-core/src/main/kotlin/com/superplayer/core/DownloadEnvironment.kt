@@ -23,11 +23,10 @@ import java.util.concurrent.Executor
  * Where a download's loads run and what they travel over, when that is not the device's own network.
  *
  * **A consumer never has one.** What produces one is `superplayer-testkit`'s
- * `PlaybackHarness.downloadEnvironment`. What is to take one is `superplayer-offline`'s download store
- * (#240), through a setter internal to that module, so the only code able to hand one to a store will
- * be that module's own tests; a store built without one fetches over the platform's HTTP stack, as a
- * player built without the engine configurator does. Until #240 the harness's own tests drive Media3's
- * download manager over it directly.
+ * `PlaybackHarness.downloadEnvironment`. What takes one is `superplayer-offline`'s `Downloads.Builder`,
+ * through a setter internal to that module, so the only code able to hand one to a store is that module's
+ * own tests; a store built without one fetches over the platform's HTTP stack, as a player built without
+ * the engine configurator does. The harness's own tests drive Media3's download manager over it directly.
  *
  * It is public for one reason, and the shape is `ContentCache`'s (ADR-0010 rule 3): the harness is
  * phase 2 and `superplayer-offline` phase 7, so neither can name the other's types, and a type both can

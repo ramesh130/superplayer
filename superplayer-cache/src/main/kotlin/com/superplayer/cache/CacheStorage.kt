@@ -31,7 +31,8 @@ import java.io.File
  */
 internal class CacheStorage(directory: File, maxBytes: Long) {
 
-    private val index = DirectoryDatabaseProvider(File(directory, INDEX_FILE_NAME))
+    /** The index database, which Media3's cache index, the pins and a download store's index share. */
+    val index = DirectoryDatabaseProvider(File(directory, INDEX_FILE_NAME))
 
     private val pinned = PinnedContent(index)
 

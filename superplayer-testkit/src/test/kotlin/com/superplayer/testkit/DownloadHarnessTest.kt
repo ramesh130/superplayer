@@ -53,9 +53,9 @@ import java.io.File
  * The harness drives a download the way it drives a player (#239), so every Phase 7 test after this
  * one is writable under `check`.
  *
- * There is no download store yet — that is #240's — so what downloads here is Media3's own
- * `DownloadManager`, over a `SimpleCache` in a temporary directory, with the chain core assembles for a
- * download (`TransferChain.downloadChain`, ADR-0013 rule 6) as its upstream and the harness's
+ * What downloads here is Media3's own `DownloadManager` rather than `superplayer-offline`'s store,
+ * because testkit is phase 2 and cannot name a phase 7 type: over a `SimpleCache` in a temporary
+ * directory, with the chain core assembles for a download (`TransferChain.downloadChain`, ADR-0013 rule 6) as its upstream and the harness's
  * [DownloadEnvironment] beneath that. What is under test is the harness: that a download crosses its
  * transport, that its faults reach one, that a run repeats, that a process can die under one, and that
  * the conditions a download is scheduled under can be stated. `docs/testing.md`'s *Downloads* is what

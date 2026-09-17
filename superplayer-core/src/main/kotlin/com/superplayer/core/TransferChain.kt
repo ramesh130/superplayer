@@ -176,7 +176,7 @@ import java.util.concurrent.CopyOnWriteArrayList
  * rather than in a holder beside the chain.
  *
  * The same stamp says what kind of load a request is ([LoadKind]), on every item a player with either
- * slot filled plays, identified or not: a cache answers media and never a manifest, because a stored
+ * slot filled plays, identified or not: a cache answers media and never a streamed manifest, because a stored
  * live playlist is exactly the stale copy revalidation exists to get past, and the header-refresh
  * slot below it has to tell a 403 on a segment from a failure of the manifest before it repairs
  * anything (ADR-0011 rule 13). Only the media source knows the kind — HLS asks for a data source per
@@ -327,7 +327,7 @@ internal object TransferChain {
      * The cache is not composed here either: Media3's downloader writes through a `CacheDataSource`
      * it is handed per content id, over this chain as its upstream (rule 5). The header-refresh slot and
      * the load-error policy rule 6 also names arrive with the store that has a resilience to fill them
-     * from (#240, #242); nothing calls this with one yet.
+     * from (#242); the store #240 built calls this with an environment alone.
      */
     fun downloadChain(
         context: Context,

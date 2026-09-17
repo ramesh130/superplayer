@@ -17,13 +17,16 @@
 package com.superplayer.core
 
 import android.content.Context
+import android.net.Uri
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.Clock
 import androidx.media3.common.util.Util
 import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.TransferListener
 import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.dash.DefaultDashChunkSource
 import androidx.media3.exoplayer.drm.DrmSessionManagerProvider
@@ -325,14 +328,23 @@ internal object TransferChain {
      * a download is not a playback session and has no `sid` to join; no bandwidth meter, because nothing
      * here registers one; and neither live layer, because a live stream is refused at enqueue (rule 8).
      * The cache is not composed here either: Media3's downloader writes through a `CacheDataSource`
-     * it is handed per content id, over this chain as its upstream (rule 5). The header-refresh slot and
-     * the load-error policy rule 6 also names arrive with the store that has a resilience to fill them
-     * from (#242); the store #240 built calls this with an environment alone.
+     * it is handed per content id, over this chain as its upstream (rule 5). The header-refresh slot rule 6
+     * also names is not composed yet: a store takes a resilience for its classification and its resumption
+     * wait (#242), and a download's refused 401 or 403 is not yet repaired.
+     *
+     * Every request is stamped with its [LoadKind], as a player with resilience stamps it, because that is
+     * what lets `ErrorClassifier` tell a segment the origin has lost from a transfer that failed. A download
+     * has no media source to stamp by kind, so the kind is read off the request instead: Media3's segment
+     * downloader asks for every manifest — the multivariant playlist, each media playlist, the MPD — as a
+     * compressible request and for no segment that way (// ref: `SegmentDownloader.getCompressibleDataSpec`).
      */
     fun downloadChain(
         context: Context,
         environment: DownloadEnvironment? = null,
-    ): DataSource.Factory = environment?.transport ?: DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory())
+    ): DataSource.Factory {
+        val transport = environment?.transport ?: DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory())
+        return DataSource.Factory { DownloadStampingDataSource(transport.createDataSource()) }
+    }
 
     /**
      * The chain itself — see the composition order above for what wraps what — over [refreshed],
@@ -482,4 +494,29 @@ internal object TransferChain {
     }
 
     private enum class Packaging { HLS, DASH, PROGRESSIVE, UNCLASSIFIED }
+}
+
+/** Stamps each request a download opens with its [LoadKind], read off the request as [TransferChain.downloadChain] says. */
+private class DownloadStampingDataSource(private val upstream: DataSource) : DataSource {
+
+    override fun addTransferListener(transferListener: TransferListener) {
+        upstream.addTransferListener(transferListener)
+    }
+
+    override fun open(dataSpec: DataSpec): Long {
+        if (dataSpec.customData != null) return upstream.open(dataSpec)
+        val kind = if (dataSpec.isFlagSet(DataSpec.FLAG_ALLOW_GZIP)) LoadKind.MANIFEST else LoadKind.MEDIA
+        return upstream.open(dataSpec.buildUpon().setCustomData(RequestStamp(identity = null, kind)).build())
+    }
+
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int = upstream.read(buffer, offset, length)
+
+    override fun getUri(): Uri? = upstream.uri
+
+    // A Java default method, which Kotlin delegation would not forward: written out by hand.
+    override fun getResponseHeaders(): Map<String, List<String>> = upstream.responseHeaders
+
+    override fun close() {
+        upstream.close()
+    }
 }

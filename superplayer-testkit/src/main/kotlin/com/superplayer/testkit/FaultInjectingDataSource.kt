@@ -29,6 +29,7 @@ import java.io.IOException
 import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import javax.net.ssl.SSLHandshakeException
 import kotlin.math.min
@@ -186,6 +187,7 @@ internal class FaultInjectingDataSource(
     private val token: TokenLifetime,
     private val cacheBypassingRequests: AtomicInteger,
     private val countsTransfers: Boolean,
+    private val networkLost: AtomicBoolean,
 ) : DataSource {
 
     /** A response the intermediary cache answered, served from memory in place of the upstream. */
@@ -217,7 +219,8 @@ internal class FaultInjectingDataSource(
         val attempt = addresses.record(dataSpec)
         val address = attempt.address
         if (IntermediaryCache.asksCachesToStepAside(dataSpec)) cacheBypassingRequests.incrementAndGet()
-        val effects = script.faults.filter { it.matches(attempt) }.map { it.effect }
+        // A lost network is every request's fault at once, and the first a request meets: nothing resolves.
+        val effects = if (networkLost.get()) listOf(Effect.DnsFailure) else script.faults.filter { it.matches(attempt) }.map { it.effect }
 
         // Below the response first, in the order a real request meets them — which is data rather
         // than prose, because it is load-bearing: a name that does not resolve never reaches a
@@ -395,6 +398,13 @@ internal class FaultInjectingDataSource(
          */
         val isWaitingOnTheClock: Boolean get() = wait.isWaiting
 
+        /**
+         * Whether the network is gone: while set, every request this factory's sources open fails to
+         * resolve, whatever the script says — `PlaybackHarness.loseNetwork`'s stretch. Read per open, so a
+         * load already delivering bytes finishes and the next one fails.
+         */
+        val networkLost: AtomicBoolean = AtomicBoolean(false)
+
         override fun createDataSource(): DataSource = wrap(upstream.createDataSource())
 
         /** For the one caller that already holds a source: Media3's `FakeChunkSource` builds its own. */
@@ -409,6 +419,7 @@ internal class FaultInjectingDataSource(
                 token,
                 bypasses,
                 countsTransfers,
+                networkLost,
             )
     }
 

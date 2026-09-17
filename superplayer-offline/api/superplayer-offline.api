@@ -2,8 +2,10 @@ public final class com/superplayer/offline/DownloadItem {
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getBytesDownloaded ()J
 	public final fun getContentId ()Ljava/lang/String;
+	public final fun getFailure ()Lcom/superplayer/core/SuperPlayerError;
 	public final fun getPercentDownloaded ()Ljava/lang/Float;
 	public final fun getState ()Lcom/superplayer/offline/DownloadState;
+	public final fun getStopReason ()Lcom/superplayer/offline/DownloadStopReason;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -20,7 +22,15 @@ public final class com/superplayer/offline/DownloadState : java/lang/Enum {
 	public static fun values ()[Lcom/superplayer/offline/DownloadState;
 }
 
+public final class com/superplayer/offline/DownloadStopReason : java/lang/Enum {
+	public static final field NETWORK_LOST Lcom/superplayer/offline/DownloadStopReason;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/offline/DownloadStopReason;
+	public static fun values ()[Lcom/superplayer/offline/DownloadStopReason;
+}
+
 public final class com/superplayer/offline/Downloads {
+	public static final field STOP_REASON_NETWORK_LOST I
 	public final fun addListener (Lcom/superplayer/offline/DownloadsListener;)V
 	public final fun download (Ljava/lang/String;)Lcom/superplayer/offline/DownloadItem;
 	public final fun downloads ()Ljava/util/List;
@@ -38,6 +48,7 @@ public final class com/superplayer/offline/Downloads$Builder {
 	public final fun build ()Lcom/superplayer/offline/Downloads;
 	public final fun setPolicy (Lcom/superplayer/core/PlaybackPolicy;)Lcom/superplayer/offline/Downloads$Builder;
 	public final fun setProfile (Lcom/superplayer/core/PlaybackProfile;)Lcom/superplayer/offline/Downloads$Builder;
+	public final fun setResilience (Lcom/superplayer/core/PlaybackResilience;)Lcom/superplayer/offline/Downloads$Builder;
 }
 
 public abstract interface class com/superplayer/offline/DownloadsListener {

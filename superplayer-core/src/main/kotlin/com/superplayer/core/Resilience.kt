@@ -186,3 +186,34 @@ internal interface PlayerStateRungs {
      */
     fun forgetClimb()
 }
+
+/**
+ * What `superplayer-offline` asks of a [PlaybackResilience] a download store was built with (ADR-0013 rule
+ * 14): what a failed download is, and how long one stopped for a lost network waits before it tries again.
+ *
+ * Beside [EngineResilienceExtension] rather than a member of it, because a store builds no engine and
+ * fills no slot — it is built *from* core's seam (rule 4). The two questions are the module's reason to
+ * take a resilience at all: the classification is `ErrorClassifier`'s alone (ADR-0011 rule 1), so a store
+ * that tells a lost network from a missing segment has to ask, and the wait carries rule 12's jitter,
+ * which is correctness and lives with the backoff every other retry draws. A store built without one asks
+ * nothing and retries as Media3's download manager does.
+ *
+ * Pure, and asked on whichever thread met the failure: the store's, or Media3's download thread.
+ */
+internal interface DownloadResilienceExtension : PlaybackResilience {
+
+    /**
+     * What [error] — the exception a download's loader failed with — is, as the typed error a store
+     * reports: no rungs, since no rung is climbed for a download, and no position.
+     */
+    fun failureOf(error: Throwable): SuperPlayerError
+
+    /**
+     * Whether [error] is the network going away rather than the content or the origin being wrong: a
+     * download meeting one is stopped and resumed later instead of failing (ADR-0013 rule 9).
+     */
+    fun isNetworkLoss(error: Throwable): Boolean
+
+    /** How long a download stopped for a lost network waits before its [attempt]th resumption, from 1. */
+    fun waitBeforeResumingMs(attempt: Int): Long
+}

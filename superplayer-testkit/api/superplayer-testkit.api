@@ -169,6 +169,7 @@ public final class com/superplayer/testkit/PlaybackHarness : org/junit/rules/Ext
 	public final fun elapsedRealtimeMs ()J
 	public final fun failDecoderInitialization (Landroidx/media3/common/Player;Z)V
 	public final fun failRendering (Landroidx/media3/common/Player;)V
+	public final fun loseNetwork (Lcom/superplayer/core/DownloadEnvironment;)V
 	public final fun networkRequests (Landroidx/media3/common/Player;)Ljava/util/List;
 	public final fun networkRequests (Lcom/superplayer/core/DownloadEnvironment;)Ljava/util/List;
 	public final fun networkRequests (Lcom/superplayer/core/PlayerPool;)Ljava/util/List;
@@ -177,6 +178,7 @@ public final class com/superplayer/testkit/PlaybackHarness : org/junit/rules/Ext
 	public final fun processDeath (Lcom/superplayer/core/DownloadEnvironment;Ljava/io/File;)Ljava/io/File;
 	public final fun release (Landroidx/media3/common/Player;)V
 	public final fun reportDroppedFrames (Landroidx/media3/common/Player;IJ)V
+	public final fun restoreNetwork (Lcom/superplayer/core/DownloadEnvironment;)V
 	public final fun resumeRendering (Landroidx/media3/common/Player;)V
 	public final fun runScheduledWork ()I
 	public final fun settle (Landroidx/media3/common/Player;)V

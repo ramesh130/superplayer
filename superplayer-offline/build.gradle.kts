@@ -30,6 +30,9 @@ dependencies {
     // the only cache that has a download half is `superplayer-cache`'s; nothing in this module's main
     // sources knows it exists (ADR-0013 rule 1).
     testImplementation(project(":superplayer-cache"))
+    // Tests only, a phase 5 module under a phase 7 one, for the same reason: the store takes core's
+    // `PlaybackResilience`, and the one that tells a lost network from a lost segment is this module's.
+    testImplementation(project(":superplayer-resilience"))
 
     testImplementation(libs.media3.test.utils.robolectric)
     testImplementation(libs.robolectric)

@@ -608,6 +608,12 @@ the seam above until #239. What stands in for each piece, and what each stand-in
   cache recovers from both on open, and nothing here proves it. One writer is not held either: the
   download manager's own progress update, on a timer of Media3's, which can land in the copy's window;
   if that ever shows as a torn index in a test, it is this stand-in and not the library.
+- **A lost network is a stretch of the transport.** `loseNetwork(environment)` fails every request the
+  environment opens to resolve its host, whatever its `FaultScript` says, until `restoreNetwork(environment)`
+  (#242). The platform's readings do not move, so what it states is the case a store cannot see coming. A
+  download stopped for it waits on the store's thread, whose clock Robolectric moves only when a test tells
+  it to, so `DownloadResumptionTest` moves `SystemClock` a step per pass while it waits for a resumption.
+  What that cannot show is a real radio's loss, which the platform also reports. That half is #243's.
 - **The three conditions are stated into the platform.** `DeviceStatement.declareNetworkMetered`,
   `declareBatteryLow` and `declareStorageLow` write every reading a reader looks at — the active
   `NetworkInfo` and capabilities, the sticky `ACTION_BATTERY_CHANGED`, the sticky

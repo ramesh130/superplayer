@@ -35,15 +35,19 @@ import androidx.media3.exoplayer.util.ReleasableExecutor
 import com.superplayer.core.CacheDownloads
 import com.superplayer.core.ContentCache
 import com.superplayer.core.DownloadEnvironment
+import com.superplayer.core.DownloadResilienceExtension
 import com.superplayer.core.MediaRequest
 import com.superplayer.core.PlaybackConditions
 import com.superplayer.core.PlaybackPolicy
 import com.superplayer.core.PlaybackProfile
+import com.superplayer.core.PlaybackResilience
 import com.superplayer.core.StaticProfilePolicy
+import com.superplayer.core.SuperPlayerError
 import com.superplayer.core.TransferChain
 import com.superplayer.core.currentNetworkTransportOf
 import java.io.IOException
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -70,13 +74,20 @@ import java.util.concurrent.atomic.AtomicInteger
  *   under the policy's `DownloadSelectionPolicy` that the device's decoders can play; the
  *   audio languages and subtitles [enqueue] was told; and nothing else the manifest lists (rule 12). A
  *   player of the download is narrowed to the same tracks, so it plays what is on disk.
+ * - **A download survives its process.** A store opened again over the same directory finds every download
+ *   the last one held and carries on with the unfinished ones, fetching only what the cache does not already
+ *   hold, with their progress continuing from those bytes (ADR-0013 rule 9).
+ * - **A lost network stops a download rather than failing it**, where the store was built with a resilience
+ *   ([Builder.setResilience]): the item is [DownloadState.STOPPED] for [DownloadStopReason.NETWORK_LOST],
+ *   keeps its progress, and resumes on its own. A failure a later attempt cannot help — a segment the origin
+ *   has lost — still fails, named on [DownloadItem.failure].
  *
  * **Live content is not yet refused** at enqueue, as ADR-0013 rule 8 requires (#251). Not yet
- * here either, each with its ticket: resuming across
- * process death and stopping rather than failing on a lost network (#242); the conditions downloads run
+ * here either, each with its ticket: the conditions downloads run
  * under and the `WorkManager` scheduling behind them (#243 — today the store runs whenever the device has
  * a network, as Media3's own default requirement says); a full disk (#244); protected content (#245);
- * and the service a download outlives its screen in (#246).
+ * and the service a download outlives its screen in (#246). Nor rule 14's retry budgets and token refresh for
+ * a download, which have no ticket yet.
  *
  * Released by [release], before the cache it writes into.
  */
@@ -85,6 +96,7 @@ public class Downloads internal constructor(
     private val cache: CacheDownloads,
     private val environment: DownloadEnvironment?,
     private val policy: PlaybackPolicy,
+    private val resilience: DownloadResilienceExtension?,
 ) {
 
     /**
@@ -98,6 +110,8 @@ public class Downloads internal constructor(
         private var profile: PlaybackProfile = PlaybackProfile.VIDEO_ON_DEMAND
 
         private var policy: PlaybackPolicy? = null
+
+        private var resilience: PlaybackResilience? = null
 
         /**
          * The kind of playback the downloads are for, which decides the rendition each one takes: its
@@ -113,6 +127,16 @@ public class Downloads internal constructor(
         public fun setPolicy(policy: PlaybackPolicy): Builder = apply { this.policy = policy }
 
         /**
+         * What tells a download whose network went away from one that failed, and how long a stopped one waits
+         * before trying again: `superplayer-resilience`'s `Resilience.standard()`, normally the one this
+         * content's players are built with (ADR-0013 rule 14). Without one, a download that meets any failure
+         * retries as Media3's download manager does and then fails, unnamed. Not yet spent on a download: its
+         * `RetryPolicy` budgets, and its `HeaderProvider`'s repair of a refused 401 or 403 — a failure that is
+         * not a lost network retries as Media3's manager does, with or without one.
+         */
+        public fun setResilience(resilience: PlaybackResilience): Builder = apply { this.resilience = resilience }
+
+        /**
          * Loads over [environment] rather than the device's network: `superplayer-testkit`'s transport and
          * loading thread, for this module's own tests. Internal, so no consumer can reach it.
          */
@@ -123,7 +147,14 @@ public class Downloads internal constructor(
             val downloads = requireNotNull(cache.downloads) {
                 "This cache cannot be downloaded into: open one with superplayer-cache's CachePolicy.contentKeyed"
             }
-            return Downloads(context.applicationContext, downloads, environment, policy ?: StaticProfilePolicy(profile))
+            return Downloads(
+                context.applicationContext,
+                downloads,
+                environment,
+                policy ?: StaticProfilePolicy(profile),
+                // A resilience that is not the module's asks nothing, as it fills no slot on a player.
+                resilience as? DownloadResilienceExtension,
+            )
         }
     }
 
@@ -147,6 +178,24 @@ public class Downloads internal constructor(
         // A manager is built paused, for Media3's `DownloadService` to resume; this store has no service
         // yet (#246), so it resumes its own.
         resumeDownloads()
+    }
+
+    /** What each failed download failed with, while this store is open, by content id. */
+    private val failures = HashMap<String, SuperPlayerError>()
+
+    /** Downloads stopped for a lost network, with the attempt to resume each is waiting for, by content id. */
+    private val resumptions = HashMap<String, Resumption>()
+
+    init {
+        // A download a dead process stopped for its network is tried again at once by this one: the wait it
+        // was serving died with that process, and a new process is as good a moment to look as any.
+        manager.downloadIndex.getDownloads(Download.STATE_STOPPED).use { cursor ->
+            val lost = mutableListOf<String>()
+            while (cursor.moveToNext()) {
+                if (cursor.download.stopReason == STOP_REASON_NETWORK_LOST) lost += cursor.download.request.id
+            }
+            lost.forEach { manager.setStopReason(it, Download.STOP_REASON_NONE) }
+        }
     }
 
     /** Downloads whose manifest is being read to choose their tracks, before the manager holds them, by content id. */
@@ -254,6 +303,8 @@ public class Downloads internal constructor(
         val choosing = selecting.remove(contentId)
         choosing?.release()
         val failed = unselectable.remove(contentId)
+        failures -= contentId
+        forgetResumption(contentId)
         // Nothing reached the manager, so nothing was written and nothing is pinned: forgetting it is the removal.
         if ((choosing != null || failed != null) && manager.currentDownloads.none { it.request.id == contentId }) {
             reported -= contentId
@@ -303,15 +354,66 @@ public class Downloads internal constructor(
         listeners.forEach { it.onDownloadChanged(item) }
     }
 
+    /**
+     * Stops [contentId], whose loader found the network gone, and waits to resume it. On the store's thread.
+     *
+     * Media3's own answer to a failed load is a handful of retries a few seconds apart and then a failed
+     * download, which is right for an origin that is wrong and wrong for a network that is away for a
+     * minute: the stop keeps the item and its bytes, and the wait widens with each attempt that finds the
+     * network still gone (`DownloadResilienceExtension.waitBeforeResumingMs`).
+     */
+    private fun stopForLostNetwork(contentId: String) {
+        val resilience = resilience ?: return
+        // Unconditionally, whatever this thread last heard of the item: its loader waits for this stop, and a
+        // released store or a removed item has already cancelled it.
+        if (released) return
+        val attempt = (forgetResumption(contentId)?.attempt ?: 0) + 1
+        manager.setStopReason(contentId, STOP_REASON_NETWORK_LOST)
+        val resumption = Resumption(contentId, attempt)
+        resumptions[contentId] = resumption
+        handler.postDelayed(resumption, resilience.waitBeforeResumingMs(attempt))
+    }
+
+    /** Stops waiting to resume [contentId], and answers the wait that was pending, if one was. */
+    private fun forgetResumption(contentId: String): Resumption? = resumptions.remove(contentId)?.also { handler.removeCallbacks(it) }
+
+    /** The [attempt]th try at resuming a download stopped for its network. */
+    private inner class Resumption(private val contentId: String, val attempt: Int) : Runnable {
+        override fun run() {
+            // Kept in the map while the attempt runs, so a network still gone widens the next wait.
+            if (released || resumptions[contentId] !== this) return
+            manager.setStopReason(contentId, Download.STOP_REASON_NONE)
+        }
+    }
+
     /** What the manager says, on the store's thread. */
     private inner class ManagerEvents : DownloadManager.Listener {
 
         override fun onDownloadChanged(manager: DownloadManager, download: Download, finalException: Exception?) {
+            val contentId = download.request.id
+            when (download.state) {
+                Download.STATE_FAILED -> {
+                    forgetResumption(contentId)
+                    if (resilience != null && finalException != null) failures[contentId] = resilience.failureOf(finalException)
+                }
+
+                Download.STATE_COMPLETED -> forgetResumption(contentId)
+
+                // Queued again by an enqueue, or by a resumption: what it failed with is no longer what it is.
+                else -> failures -= contentId
+            }
+            // Downloading is announced by the downloader's first progress report rather than by the change of
+            // state. The state's progress is the index's, which Media3 writes on a timer, so in a process that
+            // resumed a download it can be zero while the cache holds most of it; the downloader counts what
+            // the cache holds before it fetches anything, so its first report continues from those bytes.
+            if (download.state == Download.STATE_DOWNLOADING) return
             report(download.toItem())
         }
 
         override fun onDownloadRemoved(manager: DownloadManager, download: Download) {
             val contentId = download.request.id
+            failures -= contentId
+            forgetResumption(contentId)
             reported -= contentId
             if (!released) listeners.forEach { it.onDownloadRemoved(contentId) }
         }
@@ -343,8 +445,26 @@ public class Downloads internal constructor(
      */
     private inner class PinningDownloader(private val delegate: Downloader, private val contentId: String) : Downloader {
 
+        /** Released once Media3 cancels this download, which a stop for a lost network waits for. */
+        private val canceled = CountDownLatch(1)
+
         override fun download(progressListener: Downloader.ProgressListener?) {
             cache.pin(contentId)
+            try {
+                downloadReporting(progressListener)
+            } catch (e: IOException) {
+                if (resilience?.isNetworkLoss(e) != true || canceled.count == 0L) throw e
+                // Held here until the stop cancels this download, rather than thrown: a thrown failure is one
+                // Media3 counts toward failing the item, and the stop is what keeps it from failing. Returning
+                // once canceled is a task Media3 forgets rather than finishes. Released by a removal or the
+                // store's release as well, since both cancel. Media3 interrupts a thread it cancels, which ends
+                // this wait by throwing, and a cancelled task's exception is one Media3 ignores.
+                handler.post { stopForLostNetwork(contentId) }
+                canceled.await()
+            }
+        }
+
+        private fun downloadReporting(progressListener: Downloader.ProgressListener?) {
             val lastWholePercent = AtomicInteger(Int.MIN_VALUE)
             delegate.download { contentLength, bytesDownloaded, percentDownloaded ->
                 progressListener?.onProgress(contentLength, bytesDownloaded, percentDownloaded)
@@ -359,6 +479,7 @@ public class Downloads internal constructor(
         }
 
         override fun cancel() {
+            canceled.countDown()
             delegate.cancel()
         }
 
@@ -382,32 +503,50 @@ public class Downloads internal constructor(
         val last = reported[contentId]
         if (last != null && last.bytesDownloaded > bytesDownloaded) return
         if (last?.percentDownloaded != null && last.percentDownloaded > percentDownloaded) return
+        // A downloader reports only bytes it has just cached, so a report is the network back: the next loss
+        // starts from the shortest wait.
+        forgetResumption(contentId)
         report(DownloadItem(contentId, DownloadState.DOWNLOADING, bytesDownloaded, percentOrNull(percentDownloaded)))
+    }
+
+    /** A download as the store reports it: Media3's, with what this store knows about why it stopped or failed. */
+    private fun Download.toItem(): DownloadItem = DownloadItem(
+        contentId = request.id,
+        state = stateOf(this),
+        bytesDownloaded = bytesDownloaded,
+        percentDownloaded = percentOrNull(percentDownloaded),
+        stopReason = if (state == Download.STATE_STOPPED && stopReason == STOP_REASON_NETWORK_LOST) DownloadStopReason.NETWORK_LOST else null,
+        failure = if (state == Download.STATE_FAILED) failures[request.id] else null,
+    )
+
+    private companion object {
+
+        /**
+         * Media3's stop reason for a download stopped for a lost network, written into the index with it.
+         * Any value but `STOP_REASON_NONE` stops a download; one is this store's first, and the conditions
+         * of #243 take the next ones.
+         */
+        const val STOP_REASON_NETWORK_LOST = 1
     }
 }
 
-private fun Download.toItem(): DownloadItem = DownloadItem(
-    contentId = request.id,
-    state = when (state) {
-        Download.STATE_QUEUED -> DownloadState.QUEUED
+private fun stateOf(download: Download): DownloadState = when (download.state) {
+    Download.STATE_QUEUED -> DownloadState.QUEUED
 
-        Download.STATE_DOWNLOADING -> DownloadState.DOWNLOADING
+    Download.STATE_DOWNLOADING -> DownloadState.DOWNLOADING
 
-        Download.STATE_STOPPED -> DownloadState.STOPPED
+    Download.STATE_STOPPED -> DownloadState.STOPPED
 
-        Download.STATE_COMPLETED -> DownloadState.COMPLETED
+    Download.STATE_COMPLETED -> DownloadState.COMPLETED
 
-        Download.STATE_FAILED -> DownloadState.FAILED
+    Download.STATE_FAILED -> DownloadState.FAILED
 
-        Download.STATE_REMOVING -> DownloadState.REMOVING
+    Download.STATE_REMOVING -> DownloadState.REMOVING
 
-        // Removing its old bytes before downloading again: queued, from the viewer's side.
-        Download.STATE_RESTARTING -> DownloadState.QUEUED
+    // Removing its old bytes before downloading again: queued, from the viewer's side.
+    Download.STATE_RESTARTING -> DownloadState.QUEUED
 
-        else -> error("Media3 reported a download state this store does not know: $state")
-    },
-    bytesDownloaded = bytesDownloaded,
-    percentDownloaded = percentOrNull(percentDownloaded),
-)
+    else -> error("Media3 reported a download state this store does not know: ${download.state}")
+}
 
 private fun percentOrNull(percent: Float): Float? = percent.takeUnless { it == C.PERCENTAGE_UNSET.toFloat() }

@@ -51,8 +51,17 @@ internal class HarnessDownloadEnvironment(
  * was given and waits for it, and with one thread segments are fetched in manifest order on every run,
  * which is what makes two runs of one download the same sequence of requests. Parallel segment
  * fetching is a throughput question for Phase 10, not a behaviour a Phase 7 test asserts on.
+ *
+ * **So the loads it holds count as one.** A load queued behind another on the one thread cannot act on
+ * the time that passes, so counting it into [wait] as a second active load would keep the clock from
+ * moving while the load ahead of it waits on that clock — which is every store downloading two items
+ * with a delay injected (#244). From the first submission until the last load has returned, [wait] sees
+ * one task, which is what the thread is doing.
  */
 internal class HarnessDownloadLoads(private val wait: HarnessClockWait) : Executor {
+
+    /** Loads submitted and not yet returned, queued or running. */
+    private val pending = AtomicInteger()
 
     private val service: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "superplayer-harness-download-${created.incrementAndGet()}").apply { isDaemon = true }
@@ -70,11 +79,11 @@ internal class HarnessDownloadLoads(private val wait: HarnessClockWait) : Execut
             latch.await()
             throw RejectedExecutionException("The process this download ran in is dead")
         }
-        wait.loadTaskSubmitted()
+        submitted()
         // Checked again once counted: a freeze that landed between the check above and the count would
         // otherwise see no load in flight, start its copy, and have this one begin writing under it.
         if (frozen != null) {
-            wait.loadTaskFinished()
+            finished()
             return execute(task)
         }
         try {
@@ -82,13 +91,21 @@ internal class HarnessDownloadLoads(private val wait: HarnessClockWait) : Execut
                 try {
                     task.run()
                 } finally {
-                    wait.loadTaskFinished()
+                    finished()
                 }
             }
         } catch (rejected: RejectedExecutionException) {
-            wait.loadTaskFinished()
+            finished()
             throw rejected
         }
+    }
+
+    private fun submitted() {
+        if (pending.getAndIncrement() == 0) wait.loadTaskSubmitted()
+    }
+
+    private fun finished() {
+        if (pending.decrementAndGet() == 0) wait.loadTaskFinished()
     }
 
     /** Takes no new work; a task already running finishes. */

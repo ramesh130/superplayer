@@ -76,6 +76,9 @@ class DownloadSelectionTest {
     fun anUnmeteredNetwork() {
         // As DownloadsTest says: Robolectric's own network is one Media3's default requirement refuses.
         DeviceStatement.declareNetworkMetered(false)
+        // A store with a download pending schedules it, and WorkManager is initialized by nothing else under
+        // Robolectric: without its test implementation the first enqueue throws.
+        harness.useScheduledWork()
     }
 
     @After

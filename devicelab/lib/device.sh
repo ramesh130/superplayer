@@ -15,6 +15,10 @@
 #   running the harness's own AVD that has stopped answering is killed and booted again, because that
 #   AVD is disposable.
 # - A device someone named with --serial is theirs. It is waited on and probed, and never restarted.
+#
+# A fifth is the kind of device. device.properties describes a phone and a television, and a run on
+# the other kind would measure a screen it did not ask for, so a device is adopted only when it is the
+# kind asked for (`--device`, or DEVICELAB_DEVICE).
 
 # `adb devices` on stdin → the serials whose state is `$1`.
 serials_in_state() {
@@ -157,46 +161,84 @@ wait_for_boot() {
     done
 }
 
-# Leaves $SERIAL naming a booted device that answers.
+# `pm list features` on stdin → `tv` when the device declares `android.software.leanback`, which Android
+# TV devices declare and phones do not; `phone` otherwise; and nothing when there was no answer at all,
+# so that a device that did not reply is not taken for a phone.
+#
+# ref: https://developer.android.com/training/tv/get-started/create
+device_kind_of_features() {
+    awk '
+        /^feature:/ { answered = 1 }
+        $0 == "feature:android.software.leanback" { tv = 1 }
+        END { if (tv) print "tv"; else if (answered) print "phone" }
+    '
+}
+
+device_kind() {
+    with_timeout 15 "$ADB" -s "$1" shell pm list features 2>/dev/null | tr -d '\r' | device_kind_of_features
+}
+
+# Leaves $SERIAL naming a booted, answering device of the kind `$DEVICELAB_DEVICE` asks for.
+#
+# Only a device of that kind is adopted. One of the other kind is left running and ignored, so a phone
+# emulator and a television emulator can be up side by side and each run takes its own; with none of
+# the kind attached, that kind's AVD is booted beside whatever is. A device named with --serial is
+# checked rather than chosen: a TV run on a phone would measure a screen the run did not ask for.
 ensure_device() {
-    local boot_timeout="${BOOT_TIMEOUT:-600}" devices ready offline avd
+    local boot_timeout="${BOOT_TIMEOUT:-600}" wanted="${DEVICELAB_DEVICE:-phone}" devices ready offline
+    local serial matching stale pass
 
     if [ -n "${SERIAL:-}" ]; then
         log "using $SERIAL, as asked"
         wait_for_boot "$SERIAL" "$boot_timeout"
         device_answers "$SERIAL" || die "$SERIAL is listed but not answering; it was named explicitly, so it is left alone"
+        [ "$(device_kind "$SERIAL")" = "$wanted" ] ||
+            die "$SERIAL is not a $wanted device; name one that is, or choose the kind with --device"
         return
     fi
 
-    devices="$(adb_devices)"
-    ready="$(printf '%s\n' "$devices" | ready_serials)"
-    offline="$(printf '%s\n' "$devices" | serials_in_state offline)"
+    # Twice at most. An offline emulator is waited on before its kind can be asked, and one that boots
+    # as the other kind sends the choice round once more, where, being ready, it is simply passed over.
+    for pass in 1 2; do
+        devices="$(adb_devices)"
+        ready="$(printf '%s\n' "$devices" | ready_serials)"
+        offline="$(printf '%s\n' "$devices" | serials_in_state offline)"
+        matching="" stale=""
+        for serial in $ready; do
+            if device_answers "$serial"; then
+                [ "$(device_kind "$serial")" != "$wanted" ] || matching="$matching $serial"
+            elif [ "$(emulator_avd "$serial")" = "$(device_property avd)" ]; then
+                stale="$serial"
+            fi
+        done
+        matching="${matching# }"
 
-    if [ "$(printf '%s' "$ready" | grep -c .)" -gt 1 ]; then
-        die "several devices are attached ($(printf '%s' "$ready" | tr '\n' ' ')); choose one with --serial"
-    fi
+        case "$matching" in
+            *" "*) die "several $wanted devices are attached ($matching); choose one with --serial" ;;
+        esac
 
-    if [ -n "$ready" ]; then
-        SERIAL="$ready"
-        if device_answers "$SERIAL"; then
-            log "adopting $SERIAL, which is already running"
+        if [ -n "$matching" ]; then
+            SERIAL="$matching"
+            log "adopting $SERIAL, a $wanted device that is already running"
+        elif [ -n "$stale" ]; then
+            SERIAL="$stale"
+            kill_emulator "$SERIAL" "$(device_property avd)"
+            boot_avd
+        elif [ -n "$offline" ] && [ "$pass" = 1 ]; then
+            # Most often an emulator part-way through booting: wait for it rather than start a second.
+            SERIAL="$(printf '%s\n' "$offline" | head -1)"
+            log "waiting for $SERIAL, which is listed offline"
         else
-            avd="$(emulator_avd "$SERIAL")"
-            [ "$avd" = "$(device_property avd)" ] ||
-                die "$SERIAL is listed but not answering, and is not the harness's AVD, so it is left alone"
-            kill_emulator "$SERIAL" "$avd"
             boot_avd
         fi
-    elif [ -n "$offline" ]; then
-        # Most often an emulator part-way through booting: wait for it rather than start a second.
-        SERIAL="$(printf '%s\n' "$offline" | head -1)"
-        log "waiting for $SERIAL, which is listed offline"
-    else
-        boot_avd
-    fi
 
-    wait_for_boot "$SERIAL" "$boot_timeout" 1
-    device_answers "$SERIAL" || die "$SERIAL booted but is not answering"
+        wait_for_boot "$SERIAL" "$boot_timeout" 1
+        device_answers "$SERIAL" || die "$SERIAL booted but is not answering"
+        [ "$(device_kind "$SERIAL")" != "$wanted" ] || return 0
+        log "$SERIAL booted as a device of the other kind; looking for a $wanted device again"
+        SERIAL=""
+    done
+    die "no $wanted device was attached or could be booted"
 }
 
 # Fails the run if the device has gone since ensure_device. A trace from a device that died part-way

@@ -22,8 +22,21 @@
          app justifies, and a library does not make it on every consumer's behalf (ADR-0013 rule 3). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
+    <!-- A television, as well as a phone. Declaring leanback is what lists the app in a TV's launcher and
+         its store, and `required="false"` is what keeps it installable on a phone. A touchscreen is
+         required by default, and no TV has one, so without the second line a TV would refuse the app
+         however it was launched.
+         ref: https://developer.android.com/training/tv/get-started/create -->
+    <uses-feature
+        android:name="android.software.leanback"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.touchscreen"
+        android:required="false" />
+
     <application
         android:allowBackup="false"
+        android:banner="@drawable/tv_banner"
         android:label="@string/app_name"
         android:theme="@style/Theme.SuperPlayerDemo">
         <!-- Lets shell-side tools profile this app when it is not debuggable: Perfetto's java_hprof
@@ -43,9 +56,13 @@
         <activity
             android:name=".MainActivity"
             android:exported="true">
+            <!-- Both launchers, on one activity: a phone's lists it under LAUNCHER and a TV's under
+                 LEANBACK_LAUNCHER, and the activity opens the TV screen when it finds itself on a
+                 television (MainActivity says why one activity rather than two). -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
 

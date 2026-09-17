@@ -213,6 +213,12 @@ dependencies {
     // network was lost. No DRM module: the demo's streams are clear and it has no licence server to name.
     implementation("com.superplayer:superplayer-offline:${libs.versions.superplayer.get()}")
     implementation("com.superplayer:superplayer-resilience:${libs.versions.superplayer.get()}")
+    // The TV screen's two, by published coordinates for the same reason: the output and the D-pad controls are
+    // superplayer-tv's, and the adaptive policy that refuses an HDR rendition the display cannot show is
+    // superplayer-abr's (ADR-0014 rule 10). Compose for TV's own Material library is not named here: the controls
+    // bring it, and nothing in the demo calls it.
+    implementation("com.superplayer:superplayer-tv:${libs.versions.superplayer.get()}")
+    implementation("com.superplayer:superplayer-abr:${libs.versions.superplayer.get()}")
     implementation(libs.media3.ui)
     // For `androidx.annotation.OptIn`, the form of opt-in that works on Media3's Java
     // `@UnstableApi` marker — see MainActivity.showBufferingSpinner. Named here rather than

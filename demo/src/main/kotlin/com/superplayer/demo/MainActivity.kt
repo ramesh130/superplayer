@@ -138,6 +138,10 @@ import java.util.concurrent.TimeUnit
  * included. The picker then follows what the player adopted, so the screen agrees with the
  * notification about what is playing, whoever started it.
  *
+ * The seventh is that the same app is a television's. On a TV it appears in the TV launcher, needs no
+ * touchscreen, and opens [TvScreen] rather than any of the above: `TV_LEANBACK`, the TV output and the
+ * D-pad controls, on a `SurfaceView`. That screen owns its own player and session and binds nothing here.
+ *
  * What this Activity does *not* do is worth as much as what it does. It creates no `MediaSession`,
  * builds no notification, creates no channel, calls no `startForeground`, and asks for no audio
  * focus. Six lines of binding is the whole of the integration.
@@ -152,7 +156,17 @@ class MainActivity : ComponentActivity() {
         // devices included.
         // ref: https://developer.android.com/develop/ui/views/layout/edge-to-edge
         enableEdgeToEdge()
-        setContent { DemoApp(DemoLaunch.from(intent)) }
+        val launch = DemoLaunch.from(intent, onTelevision = isTelevision())
+        setContent {
+            // One activity for both launchers rather than a second one for the TV's. A deep link, devicelab's
+            // `am start -n .MainActivity`, and the session's default session activity then name one component
+            // whatever the device, and which screen opens is a launch decision like the others DemoLaunch makes.
+            if (launch.television) {
+                TvScreen(stream = launch.stream ?: TV_DEFAULT_STREAM)
+            } else {
+                DemoApp(launch)
+            }
+        }
     }
 }
 
@@ -617,6 +631,11 @@ private enum class DemoScreen(val labelRes: Int) {
  * What the demo was launched with beyond "open the app": the screen to open on, the feed's length, and
  * a content id to hand to the session.
  *
+ * The screen may also be `TV`, which opens [TvScreen]. It is not a [DemoScreen], because it is not one of the
+ * picker's: on a television it is what opens when no screen was named, and anywhere a screen was named it is
+ * that one, so a phone can open the TV screen and a TV the phone's. On the TV screen a content id picks which of
+ * the demo's streams plays, rather than being handed to the service.
+ *
  * Launch arguments rather than taps, because what launches with them is usually a script. devicelab
  * drives the demo while it plays, and a playing demo never goes idle, so nothing can find a button on
  * it by its text (`devicelab/lib/ui.sh` says why). Each is also an ordinary thing for an app to be
@@ -627,22 +646,37 @@ private enum class DemoScreen(val labelRes: Int) {
  *     --es com.superplayer.demo.extra.SCREEN FEED --ei com.superplayer.demo.extra.FEED_ROWS 200
  * adb shell am start -n com.superplayer.demo/.MainActivity \
  *     --es com.superplayer.demo.extra.CONTENT_ID demo:tears-of-steel
+ * adb shell am start -n com.superplayer.demo/.MainActivity --es com.superplayer.demo.extra.SCREEN TV
  * ```
  *
  * An unrecognised screen or a non-positive row count reads as absent rather than failing the launch.
  */
-private class DemoLaunch(val screen: DemoScreen?, val feedRows: Int?, val contentId: String?) {
+private class DemoLaunch(
+    val screen: DemoScreen?,
+    val television: Boolean,
+    val feedRows: Int?,
+    val contentId: String?,
+) {
+    /** The demo stream [contentId] names, or null when it names none of them. */
+    val stream: DemoStream?
+        get() = DemoStream.entries.firstOrNull { it.contentId == contentId }
+
     companion object {
         const val EXTRA_SCREEN = "com.superplayer.demo.extra.SCREEN"
         const val EXTRA_FEED_ROWS = "com.superplayer.demo.extra.FEED_ROWS"
         const val EXTRA_CONTENT_ID = "com.superplayer.demo.extra.CONTENT_ID"
+        const val SCREEN_TV = "TV"
 
-        fun from(intent: Intent?): DemoLaunch = DemoLaunch(
-            screen = intent?.getStringExtra(EXTRA_SCREEN)
-                ?.let { name -> DemoScreen.entries.firstOrNull { it.name == name } },
-            feedRows = intent?.getIntExtra(EXTRA_FEED_ROWS, 0)?.takeIf { it > 0 },
-            contentId = intent?.getStringExtra(EXTRA_CONTENT_ID),
-        )
+        fun from(intent: Intent?, onTelevision: Boolean): DemoLaunch {
+            val name = intent?.getStringExtra(EXTRA_SCREEN)
+            val screen = DemoScreen.entries.firstOrNull { it.name == name }
+            return DemoLaunch(
+                screen = screen,
+                television = name == SCREEN_TV || (onTelevision && screen == null),
+                feedRows = intent?.getIntExtra(EXTRA_FEED_ROWS, 0)?.takeIf { it > 0 },
+                contentId = intent?.getStringExtra(EXTRA_CONTENT_ID),
+            )
+        }
     }
 }
 

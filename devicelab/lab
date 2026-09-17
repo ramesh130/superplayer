@@ -4,9 +4,9 @@
 #
 # devicelab: drives the demo on a device and comes back with a trace, a report and the run metadata.
 #
-#   devicelab/lab run <scenario> [--data-sources a,b] [--build-type benchmark|debug] [--serial S]
+#   devicelab/lab run <scenario> [--device phone|tv] [--data-sources a,b] [--build-type benchmark|debug] [--serial S]
 #   devicelab/lab device        ensure a booted, answering device and print its serial
-#   devicelab/lab create-avd    install the system image and create the AVD in device.properties
+#   devicelab/lab create-avd    install the system image and create the AVD in device.properties (--device: which)
 #   devicelab/lab config        print the Perfetto config a run would use
 #   devicelab/lab list          list the scenarios and Perfetto data sources
 #
@@ -30,6 +30,8 @@ usage() {
     cat >&2 <<'USAGE'
 
 Options:
+  --device K           phone (default) or tv: which AVD in device.properties is booted, and
+                       which kind of attached device is adopted (also: DEVICELAB_DEVICE)
   --data-sources a,b   Perfetto data sources beyond the base config (`lab list` names them);
                        empty or absent means the scenario's own SCENARIO_DATA_SOURCES
   --build-type T       benchmark (default) or debug
@@ -51,6 +53,7 @@ SCENARIO=""
 DATA_SOURCES=""
 BUILD_TYPE=benchmark
 SERIAL="${ANDROID_SERIAL:-}"
+DEVICELAB_DEVICE="${DEVICELAB_DEVICE:-phone}"
 HEADLESS=0
 [ -z "${CI:-}" ] || HEADLESS=1
 OUT="$DEVICELAB_HOME/out"
@@ -61,6 +64,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --data-sources) DATA_SOURCES="${2:?--data-sources needs a value}"; shift 2 ;;
         --build-type) BUILD_TYPE="${2:?--build-type needs a value}"; shift 2 ;;
+        --device) DEVICELAB_DEVICE="${2:?--device needs a value}"; shift 2 ;;
         --serial) SERIAL="${2:?--serial needs a value}"; shift 2 ;;
         --headless) HEADLESS=1; shift ;;
         --out) OUT="${2:?--out needs a value}"; shift 2 ;;
@@ -82,8 +86,13 @@ case "$BUILD_TYPE" in
     *) die "--build-type is benchmark or debug, not '$BUILD_TYPE'" ;;
 esac
 
+case "$DEVICELAB_DEVICE" in
+    phone | tv) ;;
+    *) die "--device is phone or tv, not '$DEVICELAB_DEVICE'" ;;
+esac
+
 ADB="$(adb_bin)"
-export HEADLESS
+export HEADLESS DEVICELAB_DEVICE
 
 load_scenario() {
     local file="$DEVICELAB_HOME/scenarios/$1.sh"
@@ -273,13 +282,13 @@ cmd_config() {
     perfetto_config "${TRACE_MS:-300000}" "$DEMO_PACKAGE" "$DATA_SOURCES"
 }
 
-# Installs the system image device.properties names, for this host's ABI, and creates the AVD from
-# it. The one description of the device, used by a laptop and by CI's android-emulator action alike.
+# Installs the system image device.properties names for the kind of device asked for, for this host's
+# ABI, and creates the AVD from it. The one description of the device, used by a laptop and by CI's android-emulator action alike.
 cmd_create_avd() {
     local tools image
     tools="$(sdk_root)/cmdline-tools/latest/bin"
     [ -x "$tools/sdkmanager" ] || tools="$(dirname "$(command -v sdkmanager || die "no sdkmanager in the SDK's cmdline-tools or on PATH")")"
-    image="system-images;$(device_property system_image_api);$(device_property system_image_tag);$(host_abi)"
+    image="$(avd_system_image "$(host_abi)")"
     log "installing $image"
     "$tools/sdkmanager" --install emulator platform-tools "$image" >/dev/null
     echo no | "$tools/avdmanager" create avd --force --name "$(device_property avd)" \
@@ -373,6 +382,7 @@ Scenario **$RUN_SCENARIO** on $DEVICE_MANUFACTURER $DEVICE_MODEL (API $DEVICE_SD
 against SuperPlayer \`$SP_COMMIT\`$([ "$SP_TREE_DIRTY" = 1 ] && printf ' **plus uncommitted changes**') and Media3 $MEDIA3_VERSION,
 in the demo's \`$DEMO_BUILD_TYPE\` build (debuggable: $(json_bool "$DEMO_DEBUGGABLE"), profileable: $(json_bool "$DEMO_PROFILEABLE")).
 
+- On a $DEVICELAB_DEVICE device, as asked (\`--device\`).
 - Playback confirmed advancing at ${RUN_PLAYBACK_POSITION_MS} ms.
 - Trace from **$RUN_TRACE_FROM**, data sources: ${RUN_DATA_SOURCES:-base config only}.$([ "$RUN_TRACE_ENDED_BY_BOUND" = 1 ] && printf ' **The trace hit its %s ms bound before the scenario ended.**' "$RUN_TRACE_MS")
 - The installed APK was verified as the one just built, against the SuperPlayer just published.

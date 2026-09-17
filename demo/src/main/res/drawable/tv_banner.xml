@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The TV launcher's banner, at the 320 by 180 dp a TV launcher shows one at. A vector rather than a bitmap per
+     density, because it is two shapes rather than a picture: a dark field and a play mark.
+
+     VectorRaster warns above 200 dp because a large vector is slow to draw every frame. The launcher draws this
+     one where a row of banners is laid out, and two paths cost it nothing, so the warning is ignored here rather
+     than answered with bitmaps.
+     ref: https://developer.android.com/training/tv/get-started/create -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180"
+    tools:ignore="VectorRaster">
+    <path
+        android:fillColor="#FF101418"
+        android:pathData="M0,0h320v180h-320z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M140,60L188,90L140,120Z" />
+</vector>

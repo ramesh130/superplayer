@@ -39,9 +39,10 @@ eligible rather than being observed.
 _Avoid_: Capability (for the reading), limit
 
 **Display capability**:
-The display a playback is shown on, as a policy and the selection see it: the active mode's shorter
-edge and the HDR types it lists. An observation on a television, where a hotplug changes it; read
-once everywhere else. It carries no refresh rate.
+The display a playback is shown on, as the selection sees it: the active mode's shorter edge and
+the HDR types it lists. Re-read on every change on a player built with the TV module, where a hotplug
+changes it, and read once at construction on every other player. A reading, not yet an observation,
+because no policy reads it. It carries no refresh rate.
 _Avoid_: Screen, display mode, resolution
 
 **Frame-rate matching**:

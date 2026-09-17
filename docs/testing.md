@@ -622,6 +622,9 @@ the seam above until #239. What stands in for each piece, and what each stand-in
   (#242). The platform's readings do not move, so what it states is the case a store cannot see coming. A
   download stopped for it waits on the store's thread, whose clock Robolectric moves only when a test tells
   it to, so `DownloadResumptionTest` moves `SystemClock` a step per pass while it waits for a resumption.
+  A failed request's retry waits on the same clock (#254), so `DownloadRetryBudgetTest` moves it too, and
+  shows that with it held nothing is asked for again: Media3's own retries sleep the download thread, which
+  no clock here moves.
   What that cannot show is a real radio's loss, which the platform also reports. That half is a statement
   of the platform's, below, and `DownloadConditionsTest` states it (#243).
 - **The three conditions are stated into the platform.** `DeviceStatement.declareNetworkMetered`,

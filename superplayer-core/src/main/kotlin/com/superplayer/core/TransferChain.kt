@@ -322,15 +322,16 @@ internal object TransferChain {
 
     /**
      * The chain a download loads through: the transport — [environment]'s under a test, the platform's
-     * HTTP stack otherwise.
+     * HTTP stack otherwise — with [headerRefresh] over it where the store's resilience has one.
      *
      * ADR-0013 rule 6: a download travels the one chain, less what is a *playback's*. No CMCD, because
      * a download is not a playback session and has no `sid` to join; no bandwidth meter, because nothing
      * here registers one; and neither live layer, because a live stream is refused at enqueue (rule 8).
      * The cache is not composed here either: Media3's downloader writes through a `CacheDataSource`
-     * it is handed per content id, over this chain as its upstream (rule 5). The header-refresh slot rule 6
-     * also names is not composed yet: a store takes a resilience for its classification and its resumption
-     * wait (#242), and a download's refused 401 or 403 is not yet repaired.
+     * it is handed per content id, over this chain as its upstream (rule 5). The header-refresh layer rule 6
+     * also names is composed innermost, as on a player, so a refused 401 or 403 it repairs is one transfer to
+     * the cache writer and to the downloader's retry count above it (rule 14, #254); it sits under the stamp,
+     * which is how it sees a request's kind as a player's layer does.
      *
      * Every request is stamped with its [LoadKind], as a player with resilience stamps it, because that is
      * what lets `ErrorClassifier` tell a segment the origin has lost from a transfer that failed. A download
@@ -341,9 +342,11 @@ internal object TransferChain {
     fun downloadChain(
         context: Context,
         environment: DownloadEnvironment? = null,
+        headerRefresh: HeaderRefreshLayer? = null,
     ): DataSource.Factory {
         val transport = environment?.transport ?: DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory())
-        return DataSource.Factory { DownloadStampingDataSource(transport.createDataSource()) }
+        val refreshed = headerRefresh?.over(transport) ?: transport
+        return DataSource.Factory { DownloadStampingDataSource(refreshed.createDataSource()) }
     }
 
     /**
@@ -351,8 +354,9 @@ internal object TransferChain {
      * [LoadKind.LICENCE] as a player's licence requests are (ADR-0013 rule 13).
      *
      * Beside [downloadChain] rather than through it, because that chain reads a request's kind off Media3's
-     * segment downloader, which composes no licence request. The header-refresh slot is not composed here
-     * either, for the reason it is not composed there (#254).
+     * segment downloader, which composes no licence request. The header-refresh layer is not composed here:
+     * #254 built it for a download's own requests, and a licence exchange's credential, like its
+     * `RetryPolicy.licence` budget, is not yet a download's.
      */
     fun downloadLicenceChain(
         context: Context,

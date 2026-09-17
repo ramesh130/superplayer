@@ -138,6 +138,22 @@ public object ErrorClassifier {
         causeChain(error).filterIsInstance<StaleLivePlaylistException>().firstOrNull()?.likelyCause
 
     /**
+     * Whether a server answered the request that failed with [error] — any status at all — rather than the
+     * request never reaching one: a download's lost network ends where an answer begins (ADR-0013 rule 9's
+     * addendum for #254). Not a classification either: a 503 and a DNS failure are both
+     * `Transient.Network`, and what this adds is only whether there was a network to lose.
+     */
+    internal fun aServerAnswered(error: Throwable): Boolean =
+        causeChain(error).any { it is InvalidResponseCodeException }
+
+    /**
+     * The [LoadKind] core stamped on the request that failed with [error], or null where no failed request
+     * carries one — which budget a download's failure spends (ADR-0013 rule 14).
+     */
+    internal fun loadKindIn(error: Throwable): LoadKind? =
+        causeChain(error).filterIsInstance<HttpDataSourceException>().firstOrNull()?.let { LoadKind.of(it.dataSpec) }
+
+    /**
      * [error] and its causes, nearest first, bounded.
      *
      * Bounded because a cause chain is built by whoever threw: a chain that loops, or one deep

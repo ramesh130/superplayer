@@ -372,7 +372,7 @@ class DownloadLicenceTest {
 
     /**
      * One step of the clock Media3's own licence retries wait on, which is Robolectric's system clock on the
-     * exchange's thread and not the harness's: a download spends no `RetryPolicy.licence` yet (#254).
+     * exchange's thread and not the harness's: a download's licence exchange spends no `RetryPolicy.licence` yet.
      */
     private fun advanceLicenceRetryClock() {
         ShadowSystemClock.advanceBy(Duration.ofMillis(LICENCE_RETRY_CLOCK_STEP_MS))

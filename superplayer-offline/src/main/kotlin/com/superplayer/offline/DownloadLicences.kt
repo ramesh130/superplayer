@@ -68,7 +68,8 @@ internal class DownloadLicences(
         LicenceContext(
             transport = transport,
             mediaDrm = environment?.mediaDrm,
-            // Media3's own handling for a licence load: a download spends no `RetryPolicy` budget yet (#254).
+            // Media3's own handling for a licence load: #254 spent the manifest and segment budgets on a download's own
+            // requests, and a licence exchange spends no `RetryPolicy.licence` yet.
             loadErrors = null,
             device = device,
             delivered = DeliveredProtection(),

@@ -22,8 +22,10 @@ import com.superplayer.core.DownloadResilienceExtension
 import com.superplayer.core.EngineConfiguration
 import com.superplayer.core.EngineResilienceExtension
 import com.superplayer.core.HeaderRefreshLayer
+import com.superplayer.core.LoadKind
 import com.superplayer.core.PlaybackResilience
 import com.superplayer.core.RetryBudget
+import com.superplayer.core.RetryPolicy
 import com.superplayer.core.SuperPlayerError
 import kotlin.random.Random
 
@@ -116,13 +118,31 @@ internal class StandardResilience(private val headers: HeaderProvider?) :
     // has no ladder and no playhead, and what it is is the classifier's as it is for a player.
     override fun failureOf(error: Throwable): SuperPlayerError = TypedError.of(error, C.TIME_UNSET, rungsTried = emptyList())
 
-    // The one class that is the path to the origin rather than the origin or the content: the band's own
-    // fall-through for a transfer that failed with nothing narrowing it, a status included (ADR-0011 rule
-    // 2). A download stopped on one tries again later, which a 5xx that outlasts it costs retries rather
-    // than the viewer's progress; a segment the edge refused or lost is `Transient.CdnEdge` and fails.
-    override fun isNetworkLoss(error: Throwable): Boolean = ErrorClassifier.classify(error) == FailureClass.Transient.Network
+    // The one class that is the path to the origin rather than the origin or the content — the band's own
+    // fall-through for a transfer that failed with nothing narrowing it (ADR-0011 rule 2) — and only where no
+    // server answered. A 5xx is the same class, but a network that carried an answer was not lost: it spends
+    // the segment's budget and then fails named, rather than being waited out for ever (ADR-0013 rule 9's
+    // addendum for #254). A segment the edge refused or lost is `Transient.CdnEdge`, which spends it too.
+    override fun isNetworkLoss(error: Throwable): Boolean =
+        ErrorClassifier.classify(error) == FailureClass.Transient.Network && !ErrorClassifier.aServerAnswered(error)
 
     override fun waitBeforeResumingMs(attempt: Int): Long = Backoff.delayMsFor(NETWORK_RESUMPTION, attempt, Random.Default)
+
+    // Rung 1's two refusals, in rung 1's order, and nothing above it: a download has no host, variant or
+    // source to fall back to, so the same bytes asked for again is the whole of its ladder (`RetrySameUrl`).
+    // A manifest spends the manifest budget and everything else the segment budget, read off the stamp the
+    // download chain puts on every request, as `RetryBudgetKind` reads Media3's data type on a player.
+    override fun waitBeforeRetryingMs(error: Throwable, retry: Int, policy: RetryPolicy): Long? {
+        if (!ErrorClassifier.classify(error).retryable) return null
+        val budget = if (ErrorClassifier.loadKindIn(error) == LoadKind.MANIFEST) policy.manifest else policy.segment
+        if (retry > budget.maxRetries) return null
+        return Backoff.delayMsFor(budget, retry, Random.Default)
+    }
+
+    // One layer per store, for the reason a player gets one of its own: the credential it refreshes is the
+    // store's. None without a provider, where a player gets the pass-through only so core stamps its requests,
+    // which a download's chain does anyway.
+    override fun downloadHeaderRefresh(): HeaderRefreshLayer? = headers?.let { TokenRefreshLayer(it) }
 
     private companion object {
 

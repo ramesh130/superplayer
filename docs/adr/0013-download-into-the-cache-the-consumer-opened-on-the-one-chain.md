@@ -244,12 +244,13 @@ Fifteen rules follow, and they are binding.
    - **The store takes a `PlaybackResilience` to tell them apart**, per rule 14, and a store built without
      one retries as Media3's download manager does and then fails, unnamed. A stop decided by reading
      exception types in this module would be the second taxonomy ADR-0011 rule 1 forbids.
-   - **`Transient.Network` stops the item; every other class fails it, named.** That is the classifier's
-     fall-through for a transfer that failed with nothing narrowing it, so a 5xx the origin keeps
-     answering is waited out rather than failed, and reported as a lost network. That costs attempts, not
-     the viewer's progress, and it departs from rule 14 until rule 14's budgets are built, when an origin
-     that spends a segment's budget will fail named instead. A
-     segment the edge refused or lost is `Transient.CdnEdge`, and fails.
+   - **`Transient.Network` with no answer stops the item; everything else spends a budget and fails,
+     named.** `Transient.Network` is the classifier's fall-through for a transfer that failed with nothing
+     narrowing it, a 5xx included. As built by #242, a 5xx the origin kept answering was waited out and
+     reported as a lost network. Since #254 a network is lost only where no server answered at all: a DNS
+     failure, a refused or reset connection, a timeout. A request that met any HTTP status found a network,
+     so a 5xx spends the request's budget (rule 14's addendum) and then fails the item, named
+     `Transient.Network`. A segment the edge refused or lost is `Transient.CdnEdge`, and does the same.
    - **A download's requests are stamped with their `LoadKind`**, read off the request, because the class
      of a refused segment depends on it and a download has no media source to stamp by kind. Media3's
      segment downloader asks for every manifest, and no segment, as a compressible request.
@@ -461,7 +462,8 @@ Fifteen rules follow, and they are binding.
     Not built, each named where it would go. The chain carries the `LoadKind.LICENCE` stamp and neither of
     the other two things this rule's refinement of ADR-0012 rule 9's addendum rests on: the app's credential,
     since the download chain composes no header-refresh slot, and `RetryPolicy.licence`, since Media3's own
-    handling answers a failed exchange. Both are #254's. A key-set id the device no longer knows is not
+    handling answers a failed exchange. #254 built both for a download's own requests and neither for its
+    licence exchange, which is left as it was. A key-set id the device no longer knows is not
     dropped: it cannot yet be told from a release the network lost, so it stays owed, and keeps the
     schedule wanted. One licence is acquired per download, for the first protected format selected, so
     content whose tracks are licensed under separate keys is not yet supported. A store released while an
@@ -480,6 +482,42 @@ Fifteen rules follow, and they are binding.
     retries as Media3's `DownloadManager` does by default and nothing more. The profile given to
     `setProfile` is what `StaticProfilePolicy` reads for both rule 12's half and the budgets, so a
     store has one profile as a player does.
+
+    *Addendum (2026-09-17, #254).* How the budgets are spent and the credential repaired, decided where it
+    was built:
+
+    - **The downloader wrapper retries, not the manager.** The store's `PinningDownloader` catches a failed
+      attempt, asks the resilience how long to wait, and calls Media3's downloader again, which counts what
+      the cache holds before it fetches. The item never leaves `DOWNLOADING`, so no viewer sees a transient
+      `FAILED`, and its progress continues from the cached bytes. The other option re-added a failed item
+      after a wait. It would have reported `FAILED` between attempts, or needed that state hidden from every
+      listener and from `download`, and Media3 would have restarted the item's task each time. The manager's
+      `minRetryCount` is zero on a store with a resilience, so a failure the wrapper gives up on is final;
+      without one it is left at Media3's default, and nothing about retrying changes.
+    - **A wait is a post on the store's thread, not a sleep.** The download thread waits on a latch that a
+      delayed post releases, with `Backoff`'s jitter (ADR-0011 rule 12), and that a cancellation releases
+      too: a stop, a removal, a lapsed condition or the store's release ends the wait at once. Media3's own
+      waits are `Thread.sleep` on its task thread, which no looper's clock moves.
+    - **A budget bounds one request, counted afresh where the download got further.** The count resets when
+      the bytes reported have moved since the last failure, as Media3's manager counts its own retries. A
+      request stamped `LoadKind.MANIFEST` spends `RetryPolicy.manifest`, and every other request
+      `RetryPolicy.segment`, the stamp rule 9's addendum already puts on each request. A class that says
+      retrying cannot help is not retried, which is rung 1's first refusal (`RetrySameUrl`). A download has
+      no host, variant or source to fall back to, so rung 1 is all of its ladder.
+    - **The budgets are the store's policy's, as last consulted on the store's thread.** They are consulted
+      when the store opens and again as each item is enqueued, and held for the download thread to read.
+      `PlaybackPolicy.decide` is its caller's thread's to call. A download is not re-consulted on a trigger,
+      because a store observes none.
+    - **The header-refresh layer reaches the chain through `DownloadResilienceExtension`.** A member builds a
+      `TokenRefreshLayer` over the resilience's `HeaderProvider`, once per store, and
+      `TransferChain.downloadChain` composes it closest to the transport, under the kind stamp. So a refused
+      401 or 403 is repaired inside the transfer and costs no retry, and `superplayer-offline` still depends
+      on core alone (rule 1). With no provider there is no layer: a player needs a pass-through only to make
+      core stamp its requests, and a download's chain stamps them anyway.
+    - **Not built: a licence exchange's budget and credential.** `DownloadLicences` still hands its session
+      manager no load-error policy, so Media3's own handling answers a failed licence request, and its chain
+      composes no header-refresh layer. The licence budget reaches a download only through that policy, as
+      on a player, and no test here refuses a licence credential.
 
 ### Pay nothing
 

@@ -83,9 +83,15 @@ public enum class FallbackRung {
  *   precondition — but it still acts on a failure, and rule 1 is that a failure acquires its meaning
  *   here and nowhere else. Answered here rather than by core matching on a class name, which would
  *   be this taxonomy kept twice, and rather than by `superplayer-drm`, which keeps none (ADR-0012
- *   rule 5). False for every class outside [Drm], and for most of those: only a device the
- *   provisioning service or the scheme itself refused is a device a different level might be
- *   certified or entitled at.
+ *   rule 5). False for most classes: only a device the provisioning service or the scheme itself
+ *   refused is a device a different level might be certified or entitled at.
+ *
+ *   #225 wrote "false for every class outside [Drm]" here, and #226 is where that stopped being
+ *   true. The third of `PRD.md` §3.2's ways `L1` becomes unusable is not a protection failure at
+ *   all — it is the *device* failing to bring up the secure decoder a protected session selected
+ *   ([Device.SecureDecoderInit]) — and a lower level is as much the remedy for it as for the other
+ *   two. So the question is the taxonomy's rather than the [Drm] branch's, which is why it is
+ *   declared on this class and not on that one.
  *
  * [category] is rule 3's one-to-one table: telemetry's coarse [FailureCategory] derived from the
  * class rather than kept as a second taxonomy. Two of that enum's buckets have no row here, and both
@@ -119,7 +125,7 @@ public sealed class FailureClass(
     public val userMessageKey: String,
     /**
      * Whether a licence issued at a lower security level could plausibly succeed where this failed
-     * (ADR-0012 rule 11's #225 addendum). False for everything but the two [Drm] leaves that say so.
+     * (ADR-0012 rule 11's #225 addendum). False for everything but the three leaves that say so.
      */
     public val lowerSecurityLevelMayHelp: Boolean = false,
 ) {
@@ -183,13 +189,23 @@ public sealed class FailureClass(
      * This device could not play it, which is a different question from whether the content is
      * playable.
      *
-     * Neither leaf is retryable — nothing about the transfer failed — and the two differ in exactly
-     * the thing the ladder needs: whether recreating the decoder can help.
+     * No leaf is retryable — nothing about the transfer failed — and the first two differ in exactly
+     * the thing the ladder needs: whether recreating the decoder can help. The third, added by #226,
+     * differs from both in what failed rather than in what cures it.
      */
     public sealed class Device(
         stableName: String,
         rungCeiling: FallbackRung,
-    ) : FailureClass(stableName, retryable = false, rungCeiling, FailureCategory.DECODER, DEVICE_MESSAGE_KEY) {
+        userMessageKey: String = DEVICE_MESSAGE_KEY,
+        lowerSecurityLevelMayHelp: Boolean = false,
+    ) : FailureClass(
+        stableName,
+        retryable = false,
+        rungCeiling,
+        FailureCategory.DECODER,
+        userMessageKey,
+        lowerSecurityLevelMayHelp,
+    ) {
 
         /**
          * No decoder or output could be initialised for this rung: none exists, none could be
@@ -206,6 +222,53 @@ public sealed class FailureClass(
          * has anything to do with it.
          */
         public object DecoderTransient : Device("Device.DecoderTransient", FallbackRung.RECREATE_DECODER)
+
+        /**
+         * A **secure** decoder was chosen and would not start: the protected output path it needs —
+         * the protected buffer queue, the secure surface it writes to — could not be allocated
+         * (`PRD.md` §3.2's third way `L1` becomes unusable, #226).
+         *
+         * A [Device] leaf and not a [Drm] one, which is the honest reading and keeps rule 3's table
+         * where it was: nothing about the entitlement failed. A session was open, a decoder was
+         * selected for it, and what could not be produced is an output path — so telemetry's bucket
+         * stays [FailureCategory.DECODER], as it was when this failure was indistinguishable from
+         * [DecoderInit].
+         *
+         * Distinguished from [DecoderInit] by two fields of Media3's own
+         * `MediaCodecRenderer.DecoderInitializationException`, and `ErrorClassifier`'s
+         * `theSecureDecoderWouldNotStart` argues both: a `codecInfo` at all, which means a decoder
+         * was selected and its initialisation threw rather than none being found; and that
+         * `codecInfo` being the `.secure` one. The narrowness is the point. Setting
+         * [lowerSecurityLevelMayHelp] on [DecoderInit] instead would lower the security level of
+         * every session whose codec would not start, protected or not — and even *within* protected
+         * playback, "no secure decoder for this codec" stays [DecoderInit], because another variant
+         * or another source may be one this device does have a secure decoder for and rung 4 is the
+         * cheaper answer than a level conceded for the session.
+         *
+         * **A lower level is the remedy**, and this is the only leaf here where one is: `L3` decodes
+         * in ordinary memory, needs no protected buffer queue and no secure surface, so a device that
+         * cannot allocate one plays the same content at the level the licence server's operator
+         * permitted. Whether one was permitted is not this taxonomy's business (ADR-0012 rule 11).
+         *
+         * Not retryable and capped at rung 6, for [Drm.DowngradeRefused]'s reason in the same words:
+         * every rung below is a different *place to get the bytes from*, and a protected output path
+         * this device cannot allocate is one it cannot allocate for any host, any rendition and any
+         * container. Rung 4 would download a second manifest to meet the same surface. That argument
+         * holds *because* of the narrowing above — it would not hold for a decoder that was never
+         * found, which is why that case is not this leaf.
+         *
+         * It carries [PROTECTION_UNAVAILABLE_MESSAGE_KEY] rather than [DEVICE_MESSAGE_KEY], for the
+         * reason [Drm.DowngradeRefused] does: a viewer who reaches this has been refused a
+         * *programme* on this device, which is not the "this device cannot play it" a missing codec
+         * means and not something a different stream would mend. No eighth key — the seventh already
+         * says exactly this.
+         */
+        public object SecureDecoderInit : Device(
+            "Device.SecureDecoderInit",
+            FallbackRung.TYPED_ERROR,
+            PROTECTION_UNAVAILABLE_MESSAGE_KEY,
+            lowerSecurityLevelMayHelp = true,
+        )
     }
 
     /**

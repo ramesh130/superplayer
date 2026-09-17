@@ -301,8 +301,32 @@ Thirteen rules follow, and they are binding.
     not that answer and cannot be — `Drm.Unsupported` reaches rung 4 and `Drm.Provisioning` reaches
     rung 1, while both may be cured by a level — which is the same reason this is not a rung. The bound is core's too and is one attempt per player
     (`SuperPlayer.MAX_PROTECTION_REOPENS`): Widevine has a single level below `L1`, so a second
-    attempt would ask for the level already in force. The third way — a secure surface that will not
-    allocate — is still uncovered, and reaches a player on this same path.
+    attempt would ask for the level already in force.
+
+    **Addendum (#226).** The third way — a secure surface that will not allocate — reached a player
+    on this same path, and closing it added no mechanism at all: the only production change is a
+    classifier leaf. What made that possible is that the fourth question turned out not to be the
+    `Drm` branch's. A secure surface that cannot be backed is the *device* failing to produce an
+    output path that keys already issued at `L1` oblige it to use, so it is
+    `FailureClass.Device.SecureDecoderInit`, it buckets `DECODER` as it always did, and rule 3's
+    one-to-one table does not move — but `lowerSecurityLevelMayHelp` is true for it, because `L3`
+    decodes in ordinary memory and needs no protected surface. Told from an ordinary decoder-init
+    failure by two fields of Media3's own `DecoderInitializationException`: a `codecInfo` at all,
+    which Media3 attaches only where a decoder was selected and its initialisation threw, and that
+    `codecInfo` being the secure one. Both halves of that narrowing earn their keep — the flag on
+    `Device.DecoderInit` wholesale would have lowered a security level for every codec that would not
+    start, and reading the exception's `secureDecoderRequired` instead would have swept in the case
+    where no secure decoder was *found*, which another variant or another source may well supply and
+    for which rung 4 is the cheaper remedy. Its ceiling is rung 6 for `Drm.DowngradeRefused`'s reason
+    in the same words: every rung below is a different place to get bytes that need the same surface
+    — an argument that holds precisely because the not-found case was left out of the leaf. And its
+    `userMessageKey` is
+    the seventh rather than an eighth — the content may not be shown on this device — because that is
+    the sentence, not "this device cannot play it". Where the claim is verified and where it is not is
+    argued in `SecureSurfaceDowngradeTest` and named in `docs/testing.md`; the origin of such a
+    failure is reachable on no device this repository tests on, and that is said rather than faked.
+    Nothing about rule 12's line moves: this is a surface that failed to *allocate*, and secure
+    surface discipline remains correctness under ADR-0006 rule 1.
 
 12. **The secure-decoder reading is a device constraint, read once, in core's one place.** ADR-0009
     rule 2's deferral table names the secure-decoder instance limit as this phase's, and rule 2's own

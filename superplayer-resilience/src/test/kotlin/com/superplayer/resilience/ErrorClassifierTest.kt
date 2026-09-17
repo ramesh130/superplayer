@@ -17,10 +17,14 @@
 package com.superplayer.resilience
 
 import android.media.MediaCodec
+import androidx.media3.common.Format
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
 import androidx.media3.exoplayer.drm.DrmSession
+import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
+import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.DecoderInitializationException
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
 import com.superplayer.core.FailureCategory
@@ -60,6 +64,7 @@ class ErrorClassifierTest {
         FailureClass.Content.SegmentGap,
         FailureClass.Device.DecoderInit,
         FailureClass.Device.DecoderTransient,
+        FailureClass.Device.SecureDecoderInit,
         FailureClass.Drm.Provisioning,
         FailureClass.Drm.LicenceAcquisition,
         FailureClass.Drm.LicenceExpired,
@@ -155,6 +160,10 @@ class ErrorClassifierTest {
             FailureCategory.SOURCE,
             FailureCategory.DECODER,
             FailureCategory.DECODER,
+            // #226's leaf is the third `DECODER` and not a seventh `DRM`: a secure decoder that
+            // would not start is the device failing, not the entitlement, so the branch grew and
+            // this table did not move — which is why `TelemetryEvent.SCHEMA_VERSION` did not either.
+            FailureCategory.DECODER,
             // Every leaf of the DRM branch — the two #206 added and the one #208 added included:
             // the branch grew and the coarse bucket did not, which is why
             // `TelemetryEvent.SCHEMA_VERSION` did not move for either (`docs/telemetry-schema.md`,
@@ -219,6 +228,86 @@ class ErrorClassifierTest {
             PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
         )
         assertThat(ErrorClassifier.classify(error)).isEqualTo(FailureClass.Device.DecoderTransient)
+    }
+
+    @Test
+    fun aSecureDecoderThatWouldNotStartIsItsOwnClassAndTheOnlyOneALowerLevelMayCure() {
+        // `PRD.md` §3.2's third way L1 becomes unusable, and #226's whole production change: a
+        // secure decoder was selected for a protected session and the protected output path it
+        // needs could not be allocated. The evidence is the `MediaCodecInfo` Media3's own renderer
+        // attached — nothing about the code says it.
+        val error = PlaybackException(
+            "init failed",
+            decoderInitializationException(secure = true),
+            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+        )
+
+        val failure = ErrorClassifier.classify(error)
+        assertThat(failure).isEqualTo(FailureClass.Device.SecureDecoderInit)
+        assertThat(failure.lowerSecurityLevelMayHelp).isTrue()
+        // A device failure, not a protection one: the licence was issued and the keys are held, so
+        // rule 3's table does not move and telemetry buckets it where it always bucketed.
+        assertThat(failure.category).isEqualTo(FailureCategory.DECODER)
+        // What a viewer is told is the seventh key rather than an eighth: a programme refused on
+        // this device, which is not the missing codec `DEVICE_MESSAGE_KEY` means.
+        assertThat(failure.userMessageKey).isEqualTo(FailureClass.PROTECTION_UNAVAILABLE_MESSAGE_KEY)
+        // Every rung below rung 6 is a different place to get bytes that need the same surface.
+        assertThat(failure.rungCeiling).isEqualTo(FallbackRung.TYPED_ERROR)
+    }
+
+    @Test
+    fun anOrdinaryDecoderThatWouldNotStartLowersNothing() {
+        // The control that keeps #226 from being "downgrade on any decoder failure", and the reason
+        // the flag could not simply be set on `Device.DecoderInit`: the identical code, the
+        // identical exception type, and the decoder that failed not being the secure one.
+        val error = PlaybackException(
+            "init failed",
+            decoderInitializationException(secure = false),
+            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+        )
+
+        val failure = ErrorClassifier.classify(error)
+        assertThat(failure).isEqualTo(FailureClass.Device.DecoderInit)
+        assertThat(failure.lowerSecurityLevelMayHelp).isFalse()
+        // And the rungs it could already climb are still open to it.
+        assertThat(failure.rungCeiling).isEqualTo(FallbackRung.NEXT_SOURCE)
+    }
+
+    @Test
+    fun noSecureDecoderAtAllKeepsItsRungsRatherThanConcedingALevel() {
+        // The second control, and the narrower one. Media3 raises the same exception where it found
+        // *no* decoder for the format, with `secureDecoderRequired` true on a protected session
+        // exactly as above — so a classification reading that flag alone would land here too. It
+        // must not: a device with no secure decoder for this codec may have one for the next variant
+        // or the next source, and rung 4 is a cheaper remedy than a security level conceded for the
+        // rest of the session. What tells the two apart is that no `MediaCodecInfo` was selected.
+        val error = PlaybackException(
+            "no suitable decoder",
+            noDecoderWasFound(secureDecoderRequired = true),
+            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+        )
+
+        val failure = ErrorClassifier.classify(error)
+        assertThat(failure).isEqualTo(FailureClass.Device.DecoderInit)
+        assertThat(failure.lowerSecurityLevelMayHelp).isFalse()
+        assertThat(failure.rungCeiling).isEqualTo(FallbackRung.NEXT_SOURCE)
+    }
+
+    @Test
+    fun aSecureDecoderTheCodecCallsTransientIsTransientRatherThanADowngrade() {
+        // The order in `fromBand`, asserted rather than left to reading order. A momentary shortage
+        // of secure decoder instances — a feed holding every one the device has — is cured by the
+        // moment passing, and rung 5 is bounded; conceding a security level for the rest of the
+        // session is not something a transient condition earns.
+        val error = PlaybackException(
+            "init failed",
+            decoderInitializationException(secure = true, cause = transientCodecException()),
+            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+        )
+
+        val failure = ErrorClassifier.classify(error)
+        assertThat(failure).isEqualTo(FailureClass.Device.DecoderTransient)
+        assertThat(failure.lowerSecurityLevelMayHelp).isFalse()
     }
 
     @Test
@@ -470,6 +559,53 @@ class ErrorClassifierTest {
         )
 
     /**
+     * The exception `MediaCodecRenderer` raises when a decoder it had selected will not initialise —
+     * the real class, through the real constructor, because a stand-in would be asserting that the
+     * stand-in behaved.
+     *
+     * The `MediaCodecInfo` is what the classification turns on, and passing one at all is half of it:
+     * Media3 raises this exception with a `codecInfo` only from the path where a decoder was chosen
+     * and its initialisation threw, and with a custom diagnostic code instead where none was found or
+     * the query failed ([noDecoderWasFound] is that other shape). `secure` is the other half.
+     */
+    private fun decoderInitializationException(
+        secure: Boolean,
+        cause: Throwable? = null,
+    ): DecoderInitializationException =
+        DecoderInitializationException(
+            INITIALISING_FORMAT,
+            cause,
+            /* secureDecoderRequired= */ secure,
+            MediaCodecInfo.newInstance(
+                /* name= */ if (secure) "c2.android.avc.decoder.secure" else "c2.android.avc.decoder",
+                /* mimeType= */ MimeTypes.VIDEO_H264,
+                /* codecMimeType= */ MimeTypes.VIDEO_H264,
+                /* capabilities= */ null,
+                /* hardwareAccelerated= */ true,
+                /* softwareOnly= */ false,
+                /* vendor= */ false,
+                /* forceDisableAdaptive= */ false,
+                /* forceSecure= */ secure,
+            ),
+        )
+
+    /**
+     * The other shape of the same exception: no decoder was found for the format at all, so Media3
+     * has no `MediaCodecInfo` to name and passes a custom diagnostic code instead.
+     *
+     * // ref: `MediaCodecRenderer.DecoderInitializationException.NO_SUITABLE_DECODER_ERROR`, which
+     * is `CUSTOM_ERROR_CODE_BASE + 1` and therefore -49999. Read from Media3 1.11's bytecode, because
+     * the constant is private and the offsets count upward from a negative base.
+     */
+    private fun noDecoderWasFound(secureDecoderRequired: Boolean): DecoderInitializationException =
+        DecoderInitializationException(
+            INITIALISING_FORMAT,
+            /* cause= */ null,
+            secureDecoderRequired,
+            /* errorCode= */ -49999,
+        )
+
+    /**
      * A `MediaCodec.CodecException` the framework would have raised when a resource was momentarily
      * unavailable. Its constructor is hidden from apps (`@hide`), so the only way to hold a real one
      * — rather than a stand-in whose `isTransient` the classifier would not be reading — is
@@ -483,4 +619,9 @@ class ErrorClassifierTest {
             ClassParameter.from(Int::class.javaPrimitiveType, 1),
             ClassParameter.from(String::class.java, "resource busy"),
         )
+
+    private companion object {
+        /** The video a protected session would have been obliged to decode in protected memory. */
+        val INITIALISING_FORMAT: Format = Format.Builder().setSampleMimeType(MimeTypes.VIDEO_H264).build()
+    }
 }

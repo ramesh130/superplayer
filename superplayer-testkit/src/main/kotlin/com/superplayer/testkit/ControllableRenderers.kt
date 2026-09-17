@@ -17,15 +17,23 @@
 package com.superplayer.testkit
 
 import androidx.media3.common.C
+import androidx.media3.common.Format
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.HandlerWrapper
 import androidx.media3.exoplayer.ExoPlaybackException
+import androidx.media3.exoplayer.audio.AudioRendererEventListener
+import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
+import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.DecoderInitializationException
 import androidx.media3.exoplayer.video.VideoRendererEventListener
+import androidx.media3.test.utils.FakeAudioRenderer
 import androidx.media3.test.utils.FakeVideoRenderer
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Media3's own fake video renderer, with two faults a test can switch on.
+ * Media3's own fake video renderer, with two faults of its own a test can switch on, plus the
+ * [DecoderInitFault] it shares with its audio sibling.
  *
  * ## Why the renderer and not the network
  *
@@ -43,10 +51,16 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * The failure injection has no such caveat: a renderer failing mid-render is a real
  * `ExoPlaybackException` of `TYPE_RENDERER`, which is one of the things `PlaybackFailure` buckets.
+ * [DecoderInitFault] has a caveat of its own and states it there.
  */
 internal class ControllableVideoRenderer(
     private val handler: HandlerWrapper,
     private val eventListener: VideoRendererEventListener,
+    /**
+     * The fault this renderer shares with its audio sibling, reachable here because the harness
+     * keeps one renderer per player and this is it ([DecoderInitFault] says why it is shared).
+     */
+    val decoderInitFault: DecoderInitFault,
 ) : FakeVideoRenderer(handler, eventListener) {
 
     private val stalled = AtomicBoolean(false)
@@ -97,11 +111,126 @@ internal class ControllableVideoRenderer(
                 ExoPlaybackException.ERROR_CODE_DECODING_FAILED,
             )
         }
+        decoderInitFault.throwIfArmed(name, index)
         if (stalled.get()) {
             // Nothing is rendered while stalled, which is the whole of what a stall looks like from
             // above: the position stops advancing and the player reports it is waiting for data.
             return
         }
         super.render(positionUs, elapsedRealtimeUs)
+    }
+}
+
+/**
+ * Media3's own fake audio renderer, carrying the one fault both renderers share.
+ *
+ * It exists for a reason worth writing down: `superplayer-testmedia`'s synthetic HLS and DASH streams
+ * publish **audio only**, so a test of a real protocol enables this renderer and never the video one.
+ * A fault armed on the video renderer alone would silently do nothing in exactly the tests that play
+ * a real manifest, which is why [DecoderInitFault] is one object handed to both rather than a flag on
+ * each.
+ */
+internal class ControllableAudioRenderer(
+    handler: HandlerWrapper,
+    eventListener: AudioRendererEventListener,
+    private val decoderInitFault: DecoderInitFault,
+) : FakeAudioRenderer(handler, eventListener) {
+
+    override fun render(positionUs: Long, elapsedRealtimeUs: Long) {
+        decoderInitFault.throwIfArmed(name, index)
+        super.render(positionUs, elapsedRealtimeUs)
+    }
+}
+
+/**
+ * One renderer set's armed decoder-initialisation failure: the fault #226 needs, held outside the
+ * renderers so that whichever of them the content enables raises it.
+ *
+ * ## What is real here and what is not
+ *
+ * The exception is the real one — Media3's own `DecoderInitializationException`, built through the
+ * constructor a selected-decoder failure uses and carrying the real `MediaCodecInfo` the classifier
+ * reads, inside a real `ExoPlaybackException` of renderer type at the real error code. Everything
+ * downstream of it runs on production code over a production object: the classification, the typed
+ * error, the security-level re-open, the licence the rebuilt graph acquires.
+ *
+ * What stands in is only the **origin**. A real renderer reaches that exception because `initCodec`
+ * threw — `MediaCodecVideoRenderer` asking `PlaceholderSurface.newInstance(context, codecInfo.secure)`
+ * and that call failing its `checkState` on a device that cannot back a protected surface, or
+ * `MediaCodec.configure` refusing a secure codec — and neither can happen under Robolectric, which
+ * has no `MediaCrypto` and no protected buffer queue. That Media3 turns such a throw into this
+ * exception carrying the secure `codecInfo` is established from Media3 1.11's bytecode and cited
+ * where the classifier reads it (`ErrorClassifier.theSecureDecoderWouldNotStart`), not asserted
+ * anywhere. `docs/testing.md`'s *A Widevine device and a licence server* names that boundary.
+ */
+internal class DecoderInitFault {
+
+    /** Null is disarmed; a value is armed and says whether the decoder that failed was the secure
+     * one. One reference rather than two flags, so arming is a single write. */
+    private val armed = AtomicReference<Boolean?>(null)
+
+    /** Arms the fault for the next render pass of whichever renderer the content enabled. */
+    fun arm(secureDecoderRequired: Boolean) {
+        armed.set(secureDecoderRequired)
+    }
+
+    /** Raises the armed failure, once, from the renderer named by [rendererName] and [index]. */
+    fun throwIfArmed(rendererName: String, index: Int) {
+        val secure = armed.getAndSet(null) ?: return
+        throw ExoPlaybackException.createForRenderer(
+            DecoderInitializationException(
+                INITIALISING_FORMAT,
+                IllegalStateException("Injected decoder initialization failure"),
+                // Media3 derives this from the DRM session's own state and it is set on every
+                // initialisation failure of a protected session, so the classifier reads the
+                // `codecInfo` below instead; it is passed faithfully rather than left false.
+                /* secureDecoderRequired= */ secure,
+                decoderThatFailed(secure),
+            ),
+            rendererName,
+            index,
+            /* rendererFormat= */ INITIALISING_FORMAT,
+            /* rendererFormatSupport= */ C.FORMAT_HANDLED,
+            /* isRecoverable= */ false,
+            ExoPlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+        )
+    }
+
+    /**
+     * The decoder Media3 would say it had selected and failed to bring up, secure or not.
+     *
+     * A real `MediaCodecInfo` rather than a stand-in, because `.secure` is the field the
+     * classification turns on. Media3 marks a decoder secure when its name carries the platform's
+     * `.secure` suffix or when it is built that way, which is the last argument of
+     * `newInstance` (// ref: `MediaCodecInfo.newInstance`'s `forceSecure`); the capabilities are null
+     * because nothing on this path reads them.
+     */
+    private fun decoderThatFailed(secure: Boolean): MediaCodecInfo = MediaCodecInfo.newInstance(
+        /* name= */ if (secure) "$DECODER_NAME.secure" else DECODER_NAME,
+        /* mimeType= */ MimeTypes.VIDEO_H264,
+        /* codecMimeType= */ MimeTypes.VIDEO_H264,
+        /* capabilities= */ null,
+        /* hardwareAccelerated= */ true,
+        /* softwareOnly= */ false,
+        /* vendor= */ false,
+        /* forceDisableAdaptive= */ false,
+        /* forceSecure= */ secure,
+    )
+
+    private companion object {
+
+        /**
+         * The format the injected failure names. `DecoderInitializationException` reads its
+         * `sampleMimeType` for the message, and H.264 is the video a protected stream would have
+         * been obliged to decode in protected memory — which is the format this failure is about
+         * even where the renderer that raises it is the audio one, since these synthetic streams
+         * publish no video track for a decoder to have been selected for.
+         */
+        val INITIALISING_FORMAT: Format = Format.Builder()
+            .setSampleMimeType(MimeTypes.VIDEO_H264)
+            .build()
+
+        /** A plausible hardware decoder name; only the `.secure` suffix convention matters. */
+        const val DECODER_NAME: String = "c2.android.avc.decoder"
     }
 }

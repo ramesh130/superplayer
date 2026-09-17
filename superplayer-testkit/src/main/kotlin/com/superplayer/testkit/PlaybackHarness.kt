@@ -960,6 +960,30 @@ public class PlaybackHarness : ExternalResource() {
         advanceTimeMs(player, RENDER_PASS_MS)
     }
 
+    /**
+     * Fails [player] on its next render pass the way `MediaCodecRenderer` fails when a decoder it had
+     * selected will not initialise — with [secureDecoderRequired] saying whether the decoder that
+     * failed was the secure one (#226).
+     *
+     * The two values are a case and its control: `true` is a protected session whose secure decoder,
+     * or the protected surface it must write to, could not be allocated, which
+     * `FailureClass.Device.SecureDecoderInit` is; `false` is an ordinary codec that would not start,
+     * which must lower no security level.
+     *
+     * The exception is Media3's own and so are the fields the classifier reads; what no test here can
+     * produce is the *origin* of such a failure, since Robolectric has no `MediaCrypto` and no
+     * protected buffer queue. `DecoderInitFault` states that boundary in full, and `docs/testing.md`
+     * names it beside the other things this seam cannot reach.
+     *
+     * Unlike [failRendering], which is the video renderer's, this reaches **whichever renderer the
+     * content enabled** — which is what lets it be armed on a real protocol stream, since
+     * `superplayer-testmedia` publishes audio only.
+     */
+    public fun failDecoderInitialization(player: Player, secureDecoderRequired: Boolean) {
+        rendererFor(player).decoderInitFault.arm(secureDecoderRequired)
+        advanceTimeMs(player, RENDER_PASS_MS)
+    }
+
     /** Raises the renderer's dropped-frame callback with [count] frames over [elapsedMs]. */
     public fun reportDroppedFrames(player: Player, count: Int, elapsedMs: Long) {
         rendererFor(player).reportDroppedFrames(count, elapsedMs)
@@ -1042,9 +1066,13 @@ public class PlaybackHarness : ExternalResource() {
     private fun renderersFactory(onVideoRenderer: (ControllableVideoRenderer) -> Unit) =
         RenderersFactory { eventHandler, videoListener, audioListener, _, _ ->
             val handler = clock.createHandler(eventHandler.looper, /* callback= */ null)
-            val video = ControllableVideoRenderer(handler, videoListener)
+            // One fault for the pair, because a real protocol stream here is audio-only and a
+            // described one video-only: whichever renderer the content enables is the one that has
+            // to be able to raise it (`DecoderInitFault`).
+            val decoderInitFault = DecoderInitFault()
+            val video = ControllableVideoRenderer(handler, videoListener, decoderInitFault)
             onVideoRenderer(video)
-            arrayOf<Renderer>(video, FakeAudioRenderer(handler, audioListener))
+            arrayOf<Renderer>(video, ControllableAudioRenderer(handler, audioListener, decoderInitFault))
         }
 
     /**

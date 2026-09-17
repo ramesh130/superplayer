@@ -1,0 +1,7 @@
+feature:reqGlEsVersion=0x30000
+feature:android.hardware.audio.output
+feature:android.hardware.camera
+feature:android.hardware.screen.portrait
+feature:android.hardware.telephony
+feature:android.hardware.touchscreen
+feature:android.software.picture_in_picture

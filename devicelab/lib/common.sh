@@ -83,10 +83,24 @@ adb_bin() {
     fi
 }
 
-# Reads key `$1` from devicelab/device.properties, the one place the AVD is described.
+# Reads key `$1` from devicelab/device.properties, the one place the AVDs are described, for the kind
+# of device `$DEVICELAB_DEVICE` names: `phone` (the default) reads the bare key and `tv` reads `tv.<key>`.
+# The phone's keys stay bare because CI's android-emulator action and every run before the television
+# was described read them that way.
 device_property() {
-    local value
-    value="$(sed -n "s/^$1=//p" "$DEVICELAB_HOME/device.properties" | head -1)"
-    [ -n "$value" ] || die "no '$1' in devicelab/device.properties"
+    local key value
+    case "${DEVICELAB_DEVICE:-phone}" in
+        phone) key="$1" ;;
+        tv) key="tv.$1" ;;
+        *) die "a device is a phone or tv, not '${DEVICELAB_DEVICE}'" ;;
+    esac
+    value="$(sed -n "s/^$key=//p" "$DEVICELAB_HOME/device.properties" | head -1)"
+    [ -n "$value" ] || die "no '$key' in devicelab/device.properties"
     printf '%s\n' "$value"
+}
+
+# The SDK package of the system image the described AVD boots, for ABI `$1`.
+avd_system_image() {
+    printf 'system-images;%s;%s;%s\n' \
+        "$(device_property system_image_api)" "$(device_property system_image_tag)" "$1"
 }

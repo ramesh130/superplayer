@@ -142,6 +142,91 @@ assert_not_contains "and nothing is booted" "$waited" "boot_avd"
 waited="$(waits 1 '' '' 'emulator-5556\tdevice\n')"
 assert_contains "a serial never yet listed is waited for, not taken as gone" "$waited" "ready: emulator-5556"
 
+# --- A phone or a television -------------------------------------------------------------------------
+#
+# Read from the real device.properties, since which AVD each kind boots is the thing being described.
+
+assert_eq "with no kind asked for, the phone's AVD is the one described" \
+    superplayer_verify_36 "$(device_property avd)"
+assert_eq "the television's AVD is described beside it" \
+    superplayer_tv_36 "$(DEVICELAB_DEVICE=tv device_property avd)"
+assert_eq "and boots a TV system image" \
+    "system-images;android-36;android-tv;arm64-v8a" "$(DEVICELAB_DEVICE=tv avd_system_image arm64-v8a)"
+assert_eq "on a TV device profile" tv_1080p "$(DEVICELAB_DEVICE=tv device_property device_profile)"
+assert_eq "while the phone's image is unchanged" \
+    "system-images;android-36.1;google_apis;x86_64" "$(DEVICELAB_DEVICE=phone avd_system_image x86_64)"
+if unknown_kind="$( (DEVICELAB_DEVICE=watch device_property avd) 2>&1)"; then
+    fail "a kind of device the harness does not describe fails rather than reading the phone's"
+else
+    assert_contains "and names the kinds it does describe" "$unknown_kind" "phone or tv"
+fi
+
+# Abridged `pm list features` output, written by hand rather than captured: the one line that decides is
+# `android.software.leanback`, which every Android TV device declares and no phone does.
+assert_eq "a device declaring leanback is a television" tv "$(device_kind_of_features < "$fixtures/pm-features-tv.txt")"
+assert_eq "one that does not is a phone" phone "$(device_kind_of_features < "$fixtures/pm-features-phone.txt")"
+assert_eq "a feature whose name only begins with leanback does not make a television" \
+    phone "$(printf 'feature:android.software.leanback_extra\nfeature:android.hardware.touchscreen\n' | device_kind_of_features)"
+assert_eq "no answer at all is no kind, not a phone" "" "$(device_kind_of_features < /dev/null)"
+
+# ensure_device against a scripted listing, with each serial's kind stated: emulator-5554 is a phone,
+# emulator-5556 a television, and a boot lists emulator-5558 as whatever kind was asked for. Waiting
+# and killing are recorded rather than done.
+chooses() { # kind listing
+    local kind="$1"
+    rm -rf "$scratch/choose" && mkdir -p "$scratch/choose"
+    printf 'List of devices attached\n%b' "$2" > "$scratch/choose/listing"
+    (
+        DEVICELAB_DEVICE="$kind" SERIAL=""
+        adb_devices() {
+            cat "$scratch/choose/listing"
+            [ ! -f "$scratch/choose/booted" ] || printf 'emulator-5558\tdevice\n'
+        }
+        device_answers() { :; }
+        device_kind() {
+            case "$1" in
+                emulator-5554) echo phone ;;
+                emulator-5556 | emulator-5557) echo tv ;;
+                emulator-5558) echo "$DEVICELAB_DEVICE" ;;
+            esac
+        }
+        wait_for_boot() { echo "wait_for_boot $1" >> "$scratch/choose/calls"; }
+        boot_avd() {
+            echo "boot_avd $(device_property avd)" >> "$scratch/choose/calls"
+            touch "$scratch/choose/booted"
+            SERIAL=emulator-5558
+        }
+        ensure_device && echo "chose: $SERIAL"
+    ) 2>&1
+    cat "$scratch/choose/calls" 2>/dev/null || true
+}
+
+chosen="$(chooses tv 'emulator-5554\tdevice\nemulator-5556\tdevice\n')"
+assert_contains "with a phone and a television attached, a TV run adopts the television" "$chosen" "chose: emulator-5556"
+assert_not_contains "and boots nothing" "$chosen" "boot_avd"
+
+chosen="$(chooses phone 'emulator-5554\tdevice\nemulator-5556\tdevice\n')"
+assert_contains "and a phone run adopts the phone, rather than failing on two attached devices" "$chosen" "chose: emulator-5554"
+
+chosen="$(chooses tv 'emulator-5554\tdevice\n')"
+assert_contains "with only a phone attached, a TV run boots the television's AVD beside it" \
+    "$chosen" "boot_avd superplayer_tv_36"
+assert_contains "and uses what it booted" "$chosen" "chose: emulator-5558"
+
+chosen="$(chooses phone 'emulator-5556\tdevice\n')"
+assert_contains "with only a television attached, a phone run boots the phone's AVD, not the television" \
+    "$chosen" "boot_avd superplayer_verify_36"
+
+chosen="$(chooses tv 'emulator-5556\tdevice\nemulator-5557\tdevice\n')"
+assert_contains "two televisions attached is a choice the run will not make" "$chosen" "several tv devices"
+
+# The option itself, refused before anything reads the SDK or a device.
+if refused="$("$lab/lab" config --device watch 2>&1)"; then
+    fail "lab refuses a --device it does not describe"
+else
+    assert_contains "and says which it does" "$refused" "--device is phone or tv"
+fi
+
 # --- The version catalog ---------------------------------------------------------------------------
 
 assert_eq "reads a catalog version, ignoring a commented-out line" \
@@ -306,6 +391,8 @@ metadata="$(run_json)"
 assert_contains "the metadata names the data sources as a list" "$metadata" '"data_sources": ["java_hprof", "frametimeline"]'
 assert_contains "and the artifacts with their hashes" "$metadata" "\"sha256\": \"$fresh\""
 assert_contains "and says the tree was dirty" "$metadata" '"tree_dirty": true'
+assert_contains "and names a phone as the kind of device when none was asked for" "$metadata" '"kind": "phone"'
+assert_contains "or the television, when one was" "$(DEVICELAB_DEVICE=tv run_json)" '"kind": "tv"'
 if command -v python3 >/dev/null 2>&1; then
     if printf '%s' "$metadata" | python3 -m json.tool >/dev/null 2>&1; then pass; else
         fail "the run metadata is valid JSON" "$metadata"

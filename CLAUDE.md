@@ -950,6 +950,12 @@ adb install -r -t demo/build/outputs/apk/debug/superplayer-demo-debug.apk
 adb shell am start -n com.superplayer.demo/.MainActivity
 ```
 
+On a television the same APK opens a Compose-for-TV screen instead (`TvScreen`, whose KDoc is the
+lifecycle to copy): it is listed in the TV launcher, needs no touchscreen, and plays `TV_LEANBACK` through
+`TvOutput` and `TvPlaybackControls` on a `SurfaceView`. `--es com.superplayer.demo.extra.SCREEN TV` opens it
+on a phone. The TV emulator beside the phone's is `superplayer_tv_36`, and devicelab takes `--device tv`
+(`devicelab/README.md`, *The television*).
+
 `devicelab/lab run smoke` is the executable version of this recipe and of every pitfall below. It
 boots or adopts the device, publishes, builds the demo's `benchmark` build type, and installs it. It
 refuses to go on unless the installed APK was built against the artifact it has just published. Then

@@ -67,6 +67,7 @@ run_json() {
   },
   "device": {
     "serial": $(json_str "$SERIAL"),
+    "kind": $(json_str "${DEVICELAB_DEVICE:-phone}"),
     "emulator": $(json_bool "$DEVICE_IS_EMULATOR"),
     "avd": $(json_str "$DEVICE_AVD"),
     "manufacturer": $(json_str "$DEVICE_MANUFACTURER"),

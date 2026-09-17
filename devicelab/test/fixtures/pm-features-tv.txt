@@ -1,0 +1,8 @@
+feature:reqGlEsVersion=0x30000
+feature:android.hardware.audio.output
+feature:android.hardware.hdmi.cec
+feature:android.hardware.screen.landscape
+feature:android.software.leanback
+feature:android.software.leanback_only
+feature:android.software.live_tv
+feature:android.software.picture_in_picture

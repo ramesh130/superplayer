@@ -10,6 +10,7 @@ devicelab/lab run smoke                                   # boot or adopt a devi
 devicelab/lab run smoke --data-sources java_hprof,heapprofd
 devicelab/lab run leak-hunt                               # the leak hunt; also ./gradlew huntLeaks
 devicelab/lab run smoke --serial emulator-5556            # the device you are watching
+devicelab/lab run smoke --device tv                       # the same run on the television emulator
 devicelab/lab list                                        # scenarios and Perfetto data sources
 devicelab/lab config --data-sources frametimeline         # the Perfetto config a run would use
 devicelab/lab device                                      # just a booted device; prints its serial
@@ -57,8 +58,9 @@ In this order. Each step is a failure somebody already hit by hand, and most of 
 
 1. **Composes the Perfetto config first**, so a misspelt data source costs a second rather than a
    build and a boot.
-2. **Gets a device** (`lib/device.sh`). It uses the one you named with `--serial` or
-   `ANDROID_SERIAL`, or adopts the one that is attached, or boots the AVD in `device.properties`.
+2. **Gets a device** (`lib/device.sh`) of the kind `--device` asks for, a phone unless it says `tv`. It
+   uses the one you named with `--serial` or `ANDROID_SERIAL`, failing if that is the other kind, or
+   adopts the one of that kind that is attached, or boots that kind's AVD in `device.properties`.
    Readiness means `sys.boot_completed`, never the device listing, because an emulator shows as
    `offline` for a while after it appears. An offline emulator is waited on rather than duplicated —
    unless it is on its way out rather than in: one that leaves the listing for longer than
@@ -247,6 +249,30 @@ Mac, x86_64 on a Linux runner. `run.json` records it.
 To create the AVD on a machine that lacks it: `devicelab/lab create-avd`. It installs the image
 for this host's ABI and creates the AVD, and it is the same command CI runs.
 
+### The television
+
+Beside the phone, `device.properties` describes a television under `tv.` keys: `superplayer_tv_36`, API 36's
+`android-tv` image on the `tv_1080p` profile. `--device tv` (or `DEVICELAB_DEVICE=tv`) selects it for every
+command, so `devicelab/lab create-avd --device tv` creates it and `devicelab/lab run smoke --device tv` boots or
+adopts it. Plain Android TV rather than Google TV, because API 36's Google TV images are published for 16 KB
+pages only.
+
+The kind of a device is read rather than assumed: a device declaring `android.software.leanback` in
+`pm list features` is a television, and anything else a phone. So a phone emulator and a television emulator
+can run side by side, and each run adopts its own and passes over the other. With none of the kind attached, a
+run boots that kind's AVD beside whatever is. Two of the same kind still fail and ask for `--serial`, and a
+device named with `--serial` that is the other kind fails the run rather than measuring a screen it did not ask
+for. `run.json` records the kind as `device.kind`, an added field, so `schema` stays 1.
+
+On a television the demo opens its TV screen rather than the phone's player screen, and that screen publishes a
+media session of its own, which is what the readiness probe waits on, so `smoke` needs nothing of its own for it.
+A scenario that opens a phone screen by launch argument, as the leak hunt opens the feed, gets that screen on a
+television too. None of this has been booted yet: the first run on the television is #274's, and that is where
+these claims are checked.
+
+CI creates and boots only the phone. Its `android-emulator` action runs `create-avd` and `device` with no
+`--device`, which is the phone.
+
 A booted emulator is left running after the run, for a human to look at. `--headless`, the default
 when `CI` is set, boots it without a window.
 
@@ -271,7 +297,8 @@ step is still running in the next, and that boot fits in the job's timeout on a 
 
 ## Limits
 
-- The harness has been run end to end on the API 36 emulator only. A physical device takes the
+- The harness has been run end to end on the API 36 phone emulator only. The television is described, and its
+  selection is in the self-test, but no run has booted it yet. A physical device takes the
   adoption path: it is never booted or restarted. The emulator-specific parts, such as the AVD name
   and `ro.boot.qemu`, then simply read empty.
 - One device per run. When several are attached, the run fails and asks for `--serial` rather than

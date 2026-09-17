@@ -17,6 +17,7 @@
 package com.superplayer.tv
 
 import android.content.Context
+import android.view.Display
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
@@ -239,7 +240,7 @@ class DisplayHotplugTest {
         val FHD_60 = DisplayMode(1920, 1080, 60f)
 
         /** `Display.HdrCapabilities.HDR_TYPE_HDR10`, named here so the test reads as the statement. */
-        const val HDR10 = 2
+        const val HDR10 = Display.HdrCapabilities.HDR_TYPE_HDR10
 
         /**
          * What makes a player protected as far as the selection gate is concerned: the builder was told

@@ -211,6 +211,26 @@ class SuperPlayerOutputSeamTest {
     }
 
     /**
+     * A pool's players share one display window, and each still acts on a change: the first watch to hear
+     * it writes the window, and the others must not find it already current and skip their own
+     * re-selection and frame-rate report (ADR-0014 rule 5 is per player).
+     */
+    @Test
+    fun everyPooledPlayerActsOnADisplayChangeItsSharedWindowAlreadyHolds() {
+        ShadowDisplayManager.changeDisplay(Display.DEFAULT_DISPLAY, "w3840dp-h2160dp-mdpi")
+        val pooled = PooledEngine(attachment = null)
+        val bindings = listOf(RecordingBinding(), RecordingBinding())
+        val players = bindings.map { harness.buildPlayer(output = TestOutput(it), pooled = pooled) }
+        players.forEach(::playUntilReady)
+        bindings.forEach { assertThat(it.events.filterIsInstance<FrameRate>()).hasSize(1) }
+
+        ShadowDisplayManager.changeDisplay(Display.DEFAULT_DISPLAY, "w1920dp-h1080dp-mdpi")
+        shadowMainLooper().idle()
+
+        bindings.forEach { assertThat(it.events.filterIsInstance<FrameRate>()).hasSize(2) }
+    }
+
+    /**
      * How many `DisplayListener`s the process's display service holds. The platform keeps them in a hidden
      * field of a hidden class, so this is read by name, and fails loudly if a Robolectric or platform
      * upgrade moves it rather than counting nothing.

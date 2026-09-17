@@ -437,6 +437,19 @@ What each stand-in cannot show:
   `currentTracks` and confirms it by what was fetched. No sink is configured, so a sink refusing a format
   mid-change cannot arise. How that refusal is classified is asserted over Media3's real exception in
   `ErrorClassifierTest` and `FallbackLadderTest`, and whether a real sink raises it is a device's (#274).
+- **Tunneling is enabled, not rendered.** Media3's fake renderers answer for no tunneling, so the
+  harness's video renderer answers from the stated device: the first decoder declared for the format's
+  type, the secure one where the format is protected, as Media3's own renderer chooses, tunnels where
+  `DeviceStatement.declareTunnelingVideoDecoder` declared `FEATURE_TunneledPlayback`. Its audio sibling
+  answers for tunneling wherever it plays a format, as Media3's does. Media3 tunnels a video renderer and an
+  audio renderer together, so the content is `TestContent.videoWithAudio`, described video with an AAC track
+  beside it, synthesized in memory and therefore not playable under a fault script or a trace.
+  `PlaybackHarness.videoRendererTunneled(player)` reads the configuration the engine enabled the video
+  renderer with, which is the decision *applied*, and `TunneledPlaybackTest` reads it beside
+  `playbackDecision`. No described stream is protected, so the secure-decoder half is asserted on the
+  renderer in `DeviceStatementTest`. Nothing is decoded and no audio session reaches a codec, so a frame
+  tunneled, A/V sync on a vendor's implementation, and the frames the platform drops unseen are a device's
+  (#274).
 - **There is no HDMI.** No link renegotiates, no EDID is read, and no HDCP level exists. The display
   and the audio output are what a test states, and a sink decoding a passthrough format is nothing
   anything here can hear: a format a player selected is one it *chose*.

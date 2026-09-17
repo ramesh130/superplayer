@@ -165,6 +165,7 @@ class SuperPlayerProfileTest {
                 licence = BEFORE_THE_FIRST_FRAME,
             ),
             download = DownloadSelectionPolicy(maxVideoBitrateBps = TrackSelectionPolicy.UNLIMITED, maxVideoHeightPx = 2_160),
+            output = OutputPolicy(tunneling = true),
         )
     }
 
@@ -345,12 +346,13 @@ class SuperPlayerProfileTest {
         preload: PreloadPolicy = PreloadPolicy.NONE,
         retry: RetryPolicy = RetryPolicy.MEDIA3_DEFAULT,
         download: DownloadSelectionPolicy = DownloadSelectionPolicy.UNLIMITED,
+        output: OutputPolicy = OutputPolicy.NONE,
     ) {
         val player = harness.buildPlayer(profile)
 
         assertThat(player.profile).isEqualTo(profile)
         assertThat(player.playbackDecision)
-            .isEqualTo(PlaybackDecision(buffer, trackSelection, preload = preload, retry = retry, download = download))
+            .isEqualTo(PlaybackDecision(buffer, trackSelection, preload = preload, retry = retry, download = download, output = output))
 
         val parameters = player.trackSelectionParameters
         assertThat(parameters.maxVideoBitrate).isEqualTo(trackSelection.maxVideoBitrateBps)

@@ -106,6 +106,12 @@ public class TestContent private constructor(
      * is the other half and is stated separately, in [DeviceStatement.declareWidevine].
      */
     internal val protected: Boolean = false,
+
+    /**
+     * Whether described content carries an audio track beside its video. Only [videoWithAudio] sets it:
+     * every other described stream is video alone, which is all a measurement of the video needs.
+     */
+    internal val withAudio: Boolean = false,
 ) {
 
     /**
@@ -282,6 +288,21 @@ public class TestContent private constructor(
             bitrateBps: Int = DEFAULT_BITRATE_BPS,
             durationMs: Long = DEFAULT_DURATION_MS,
         ): TestContent = TestContent(listOf(Rung.of(bitrateBps)), durationMs, live = false)
+
+        /**
+         * On-demand video with one rendition and an AAC audio track beside it: content a player enables
+         * both renderers for, which is what a tunneling decision needs, since Media3 tunnels only a video
+         * renderer and an audio renderer together (ADR-0014 rule 7).
+         *
+         * Synthesized in memory like [video], so it cannot be played under a fault script or a network
+         * trace, which need a transfer to sit in front of; the harness refuses the combination rather than
+         * dropping the audio.
+         */
+        @JvmStatic
+        public fun videoWithAudio(
+            bitrateBps: Int = DEFAULT_BITRATE_BPS,
+            durationMs: Long = DEFAULT_DURATION_MS,
+        ): TestContent = TestContent(listOf(Rung.of(bitrateBps)), durationMs, live = false, withAudio = true)
 
         /**
          * On-demand video with a rendition ladder, which is what an ABR switch needs.

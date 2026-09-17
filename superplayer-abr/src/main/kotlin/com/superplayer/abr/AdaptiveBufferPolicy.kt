@@ -152,6 +152,9 @@ public class AdaptiveBufferPolicy(public val profile: PlaybackProfile) : Playbac
         // The download half is carried the same way, for a reason of its own: a download store consults
         // its profile's static policy once, at enqueue (ADR-0013 rule 12), and a decision that dropped the
         // half would say something about downloads that no download is chosen under.
+        //
+        // And the output half, unmoved by any observation: the engine takes it from the construction
+        // decision only (ADR-0014 rule 7), so a value moved here on conditions would be one nothing honours.
         return PlaybackDecision(
             targets.toBufferPolicy(),
             base.trackSelection,
@@ -159,6 +162,7 @@ public class AdaptiveBufferPolicy(public val profile: PlaybackProfile) : Playbac
             preloadOn(conditions.transport, base.preload),
             base.retry,
             base.download,
+            base.output,
         )
     }
 

@@ -16,6 +16,8 @@
 
 package com.superplayer.testkit
 
+import android.media.MediaCodecInfo.CodecCapabilities
+import android.media.MediaCodecList
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Format
@@ -71,6 +73,17 @@ internal class ControllableVideoRenderer(
     private val stalled = AtomicBoolean(false)
     private val failing = AtomicBoolean(false)
 
+    /**
+     * Whether the engine last enabled this renderer tunneled, or null while it has never been enabled.
+     *
+     * What `DefaultTrackSelector` decided, read where a renderer receives it: the `RendererConfiguration`
+     * it is enabled with. Media3 writes that configuration only where tunneling was asked for *and*
+     * both renderers answered for it, so this is the decision applied rather than the parameter set.
+     */
+    @Volatile
+    var enabledTunneled: Boolean? = null
+        private set
+
     /** Stops being ready, which is what moves the player into `STATE_BUFFERING`. */
     fun stall() {
         stalled.set(true)
@@ -103,6 +116,41 @@ internal class ControllableVideoRenderer(
     }
 
     override fun isReady(): Boolean = !stalled.get() && super.isReady()
+
+    override fun onEnabled(joining: Boolean, mayRenderStartOfStream: Boolean) {
+        super.onEnabled(joining, mayRenderStartOfStream)
+        enabledTunneled = configuration.tunneling
+    }
+
+    /**
+     * Media3's fake answer, and tunneling where the stated device's decoder declares it — which Media3's
+     * fake never reports, so a tunneling decision would otherwise be refused on every device.
+     *
+     * The decoder asked is the one Media3's own video renderer would use: the first the device lists for
+     * the format's type, and for a format carrying protection the first *secure* one, because protected
+     * content is decoded there. Read from the platform's codec list directly rather than through Media3's
+     * `MediaCodecUtil`, whose decoder cache is process-wide and would carry one test's device into the next.
+     *
+     * ref: Media3 1.11's `MediaCodecVideoRenderer.supportsFormat` reports `TUNNELING_SUPPORTED` from the
+     * chosen decoder's `MediaCodecInfo.tunneling`, which is `FEATURE_TunneledPlayback`:
+     * https://github.com/androidx/media/blob/1.11.0/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/video/MediaCodecVideoRenderer.java
+     */
+    override fun supportsFormat(format: Format): Int {
+        val answer = super.supportsFormat(format)
+        val tunneling = if (declaredDecoderTunnels(format)) RendererCapabilities.TUNNELING_SUPPORTED else RendererCapabilities.TUNNELING_NOT_SUPPORTED
+        return (answer and RendererCapabilities.TUNNELING_SUPPORT_MASK.inv()) or tunneling
+    }
+
+    private fun declaredDecoderTunnels(format: Format): Boolean {
+        val mimeType = format.sampleMimeType ?: return false
+        val secure = format.drmInitData != null
+        val decoder = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.firstOrNull { info ->
+            !info.isEncoder &&
+                info.supportedTypes.any { it.equals(mimeType, ignoreCase = true) } &&
+                info.getCapabilitiesForType(mimeType).isFeatureSupported(CodecCapabilities.FEATURE_SecurePlayback) == secure
+        } ?: return false
+        return decoder.getCapabilitiesForType(mimeType).isFeatureSupported(CodecCapabilities.FEATURE_TunneledPlayback)
+    }
 
     override fun render(positionUs: Long, elapsedRealtimeUs: Long) {
         if (failing.compareAndSet(true, false)) {
@@ -172,13 +220,24 @@ internal class ControllableAudioRenderer(
         super.render(positionUs, elapsedRealtimeUs)
     }
 
+    /**
+     * Also answers for tunneling wherever it plays the format, as Media3's audio renderer does for every
+     * format its sink or a decoder takes. Media3's fake answers for none, which would refuse a tunneling
+     * decision on every device; the device's half of that answer is the video decoder's
+     * ([ControllableVideoRenderer.supportsFormat]).
+     */
     override fun supportsFormat(format: Format): Int {
-        if (format.sampleMimeType !in PASSTHROUGH_ONLY) return super.supportsFormat(format)
-        val current = capabilities ?: startReadingTheOutput()
-        return if (current.isPassthroughPlaybackSupported(format, AudioAttributes.DEFAULT)) {
+        val answer = if (format.sampleMimeType !in PASSTHROUGH_ONLY) {
+            super.supportsFormat(format)
+        } else if ((capabilities ?: startReadingTheOutput()).isPassthroughPlaybackSupported(format, AudioAttributes.DEFAULT)) {
             RendererCapabilities.create(C.FORMAT_HANDLED)
         } else {
-            RendererCapabilities.create(C.FORMAT_UNSUPPORTED_SUBTYPE)
+            return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_SUBTYPE)
+        }
+        return if (RendererCapabilities.getFormatSupport(answer) == C.FORMAT_HANDLED) {
+            (answer and RendererCapabilities.TUNNELING_SUPPORT_MASK.inv()) or RendererCapabilities.TUNNELING_SUPPORTED
+        } else {
+            answer
         }
     }
 

@@ -1058,6 +1058,18 @@ public class PlaybackHarness : ExternalResource() {
     }
 
     /**
+     * Whether the engine enabled [player]'s video renderer tunneled the last time it enabled it, or null
+     * if it has not enabled it at all — content with no video, or a player not yet prepared.
+     *
+     * Read where Media3 delivers the decision, the configuration a renderer is enabled with, so it is a
+     * tunneling decision *applied*: asked for, and answered for by a video decoder the stated device
+     * declares tunneling ([DeviceStatement.declareTunnelingVideoDecoder]) and by an audio renderer beside
+     * it. It is not evidence that a frame tunneled: nothing here decodes one, and no compositor receives
+     * a sideband stream (`docs/testing.md`, *A TV device*).
+     */
+    public fun videoRendererTunneled(player: Player): Boolean? = rendererFor(player).enabledTunneled
+
+    /**
      * Every frame-rate request made so far on the surfaces this harness gave [player], withdrawals
      * included, in the order made.
      *
@@ -1396,6 +1408,10 @@ public class PlaybackHarness : ExternalResource() {
                 }
                 .build(),
         )
+        // Only the in-memory path below can carry a second track; `TestContent.videoWithAudio` says so.
+        require(!content.withAudio || !(formats.size > 1 || transfers.loadsThroughADataSource)) {
+            "Content with audio is synthesized in memory and cannot be played under a fault script or a trace"
+        }
         return object : MediaSource.Factory {
             override fun createMediaSource(mediaItem: androidx.media3.common.MediaItem): MediaSource =
                 // A ladder needs the adaptive source to have anything to switch between; a fault
@@ -1432,7 +1448,7 @@ public class PlaybackHarness : ExternalResource() {
                             /* durationUs= */ content.durationMs * 1_000,
                             /* keyFrameInterval= */ KEYFRAME_INTERVAL_FRAMES,
                         ),
-                        formats.single(),
+                        *listOfNotNull(formats.single(), AUDIO_FORMAT.takeIf { content.withAudio }).toTypedArray(),
                     )
                 }
 
@@ -1596,6 +1612,20 @@ public class PlaybackHarness : ExternalResource() {
             .setColorSpace(C.COLOR_SPACE_BT2020)
             .setColorRange(C.COLOR_RANGE_LIMITED)
             .setColorTransfer(C.COLOR_TRANSFER_ST2084)
+            .build()
+
+        /**
+         * The audio `TestContent.videoWithAudio` carries: stereo AAC-LC at 48 kHz, the ordinary track beside
+         * a video, and a format every audio renderer here plays. Its samples are laid at the video's rate,
+         * which no renderer here decodes to notice.
+         */
+        private val AUDIO_FORMAT: Format = Format.Builder()
+            .setId("audio-0")
+            .setSampleMimeType(MimeTypes.AUDIO_AAC)
+            .setCodecs("mp4a.40.2")
+            .setChannelCount(2)
+            .setSampleRate(48_000)
+            .setAverageBitrate(128_000)
             .build()
 
         /** How far apart the described content's samples are; what a rung *declares* is the rung's. */

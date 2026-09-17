@@ -23,7 +23,12 @@ public final class com/superplayer/offline/DownloadState : java/lang/Enum {
 }
 
 public final class com/superplayer/offline/DownloadStopReason : java/lang/Enum {
+	public static final field BATTERY_LOW Lcom/superplayer/offline/DownloadStopReason;
+	public static final field DATA_SAVER Lcom/superplayer/offline/DownloadStopReason;
 	public static final field NETWORK_LOST Lcom/superplayer/offline/DownloadStopReason;
+	public static final field NO_NETWORK Lcom/superplayer/offline/DownloadStopReason;
+	public static final field NO_UNMETERED_NETWORK Lcom/superplayer/offline/DownloadStopReason;
+	public static final field STORAGE_LOW Lcom/superplayer/offline/DownloadStopReason;
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/offline/DownloadStopReason;
 	public static fun values ()[Lcom/superplayer/offline/DownloadStopReason;
@@ -38,9 +43,11 @@ public final class com/superplayer/offline/Downloads {
 	public final fun enqueue (Lcom/superplayer/core/MediaRequest;Ljava/util/List;)V
 	public final fun enqueue (Lcom/superplayer/core/MediaRequest;Ljava/util/List;Ljava/util/List;)V
 	public static synthetic fun enqueue$default (Lcom/superplayer/offline/Downloads;Lcom/superplayer/core/MediaRequest;Ljava/util/List;Ljava/util/List;ILjava/lang/Object;)V
+	public final fun getMeteredNetworksAllowed ()Z
 	public final fun release ()V
 	public final fun remove (Ljava/lang/String;)V
 	public final fun removeListener (Lcom/superplayer/offline/DownloadsListener;)V
+	public final fun setMeteredNetworksAllowed (Z)V
 }
 
 public final class com/superplayer/offline/Downloads$Builder {

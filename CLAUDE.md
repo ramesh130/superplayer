@@ -718,9 +718,18 @@ network. Two things are easy to get wrong. A downloading state is announced by t
 progress report and never by the state change, whose bytes are the index's stale ones. And
 `DownloadResumptionTest` moves Robolectric's `SystemClock` by hand while it waits for a resumption.
 `harness.loseNetwork(environment)` is the stretch. Rule 14's retry budgets and header refresh are not
-built. Not built:
-`WorkManager` and constraints (#243 — the
-store runs under Media3's default requirement, any network), a full disk (#244), protected content (#245).
+built (#254). Since #243 a download runs only on an unmetered network, a battery not low and storage not low
+(rules 10 and 11 and their addendum). A condition that does not hold is a `STOPPED` item naming it on
+`DownloadStopReason`, and nothing is fetched, the manifest included: an item enqueued while held waits in
+memory to be selected. The network and storage are the manager's Media3 `Requirements`; the battery and Data
+Saver are `DownloadConditions`, which pause the manager and are registered only while a download is pending.
+`Downloads.meteredNetworksAllowed` is the viewer's relaxation, and Data Saver still holds it on a metered
+network. `DownloadSchedule` keeps one unique, persisted `WorkManager` work per process under the same
+constraints, retried while anything is pending and cancelled once nothing is. With no store open it can resume
+nothing until #246's service exists. `DownloadConditionsTest` drives it through `DeviceStatement` and
+`runScheduledWork()`. Its lapse tests hold one segment on a latency so the lapse lands between segments,
+because a synthetic download otherwise asks for every segment before a stop arrives. Not built: a full disk
+(#244), protected content (#245).
 `DownloadsPayNothingTest` counts rule 15 as platform registrations and the download index table.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and

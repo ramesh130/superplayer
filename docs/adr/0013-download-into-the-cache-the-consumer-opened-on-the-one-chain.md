@@ -229,7 +229,7 @@ Fifteen rules follow, and they are binding.
    - **A stopped download resumes on a timer, not on a platform callback.** The wait is jittered and
      doubles from two seconds up to five minutes, with no count, and the backoff every retry draws
      supplies it. A timer also catches a network the platform still reports as connected. Resuming when a
-     platform condition returns is #243's. A process that finds an item stopped this way tries it at once.
+     platform condition returns is #243's (rule 11's addendum). A process that finds an item stopped this way tries it at once.
    - **A resumed download reports progress from the bytes the cache holds.** Its state change is not
      reported as downloading, because the progress it carries is the index's, and Media3 writes that on a
      timer. The downloader's first progress report announces it instead.
@@ -259,6 +259,32 @@ Fifteen rules follow, and they are binding.
     extend. While the process lives, `DownloadManager`'s requirements carry the network and the storage,
     and the module watches the battery and stops downloads with that reason when it runs low. Why a
     library scheduling this work does not contradict ADR-0012 rule 10 is rule 13's.
+
+    *Addendum (2026-09-17, #243).* How the three conditions were built, decided where they were:
+
+    - **A download a condition holds is `STOPPED`, naming it, not `QUEUED`.** The item's `stopReason` says
+      which: no unmetered network, no network, Data Saver, battery low or storage low. Several can hold at
+      once, and the item names the first in that order, and names a condition before a lost network, since a
+      download the network came back to would still wait for it. Nothing is written into the index for a
+      condition: the network and storage are the manager's requirements, and the battery and Data Saver
+      *pause* the manager, so a process that opens the store reads all of them afresh.
+    - **Nothing is fetched while a condition holds, the manifest included.** Track selection reads the
+      manifest (rule 12), so an item enqueued while held keeps its request in memory and is selected once
+      every condition holds, and a lapse abandons a read in progress. A process that dies first loses that
+      enqueue; persisting a request before its tracks are chosen would need a second index row that Media3's
+      stream-key merge cannot later narrow.
+    - **One piece of unique work per process, not per store or per item.** It waits under an unmetered
+      network, or any network where every pending store accepts one. When it runs it asks each open store to
+      read its conditions again and asks to be retried while anything is pending, so it stays persisted with
+      `WorkManager`'s own backoff. In a process with no store open it can resume nothing until #246's service
+      opens one, and it ends; the next store to open with a download pending schedules it again. It is
+      cancelled once nothing is pending, and never on a store's release, since what was pending still is.
+    - **The battery is read as `WorkManager` reads it, with one departure.** Low is a level at or under 15%
+      of the scale, and an unknown status is not low. No reading at all is not low here, where `WorkManager`
+      holds work on it: a device always has a sticky battery broadcast, so none is a platform that says
+      nothing, and refusing on it would refuse with nothing to show the viewer.
+    - **`meteredNetworksAllowed` is not persisted.** It is the viewer's setting and lives with the app, which
+      sets it on each store it opens; what the last store scheduled carries it across a reboot.
 
 ### Choosing what to download
 

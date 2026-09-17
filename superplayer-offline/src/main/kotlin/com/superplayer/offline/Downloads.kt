@@ -31,7 +31,9 @@ import androidx.media3.exoplayer.offline.DownloadManager
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.Downloader
 import androidx.media3.exoplayer.offline.DownloaderFactory
+import androidx.media3.exoplayer.scheduler.Requirements
 import androidx.media3.exoplayer.util.ReleasableExecutor
+import androidx.work.NetworkType
 import com.superplayer.core.CacheDownloads
 import com.superplayer.core.ContentCache
 import com.superplayer.core.DownloadEnvironment
@@ -81,13 +83,24 @@ import java.util.concurrent.atomic.AtomicInteger
  *   ([Builder.setResilience]): the item is [DownloadState.STOPPED] for [DownloadStopReason.NETWORK_LOST],
  *   keeps its progress, and resumes on its own. A failure a later attempt cannot help — a segment the origin
  *   has lost — still fails, named on [DownloadItem.failure].
+ * - **A download runs only while the network is unmetered, the battery is not low and storage is not low**
+ *   (rules 10 and 11). While one does not hold, nothing is fetched, the manifest included, and every pending
+ *   item is [DownloadState.STOPPED] naming it on [DownloadItem.stopReason]; a download it lapses under stops
+ *   keeping its bytes, and carries on from them once it holds again. Battery and storage are not a
+ *   consumer's to relax. The network is the viewer's: [meteredNetworksAllowed] accepts any network, and even
+ *   then Data Saver holds downloads on a metered one.
+ * - **Pending downloads are scheduled as persisted `WorkManager` work** under the same constraints, which
+ *   outlives the process and a reboot. `androidx.work` comes with this module, and `WorkManager` initializes
+ *   itself through App Startup unless the app configures it otherwise, which is the app's to decide and adds
+ *   its own entries to the app's merged manifest. A store with nothing pending schedules nothing and
+ *   registers no battery receiver.
  *
  * **Live content is not yet refused** at enqueue, as ADR-0013 rule 8 requires (#251). Not yet
- * here either, each with its ticket: the conditions downloads run
- * under and the `WorkManager` scheduling behind them (#243 — today the store runs whenever the device has
- * a network, as Media3's own default requirement says); a full disk (#244); protected content (#245);
- * and the service a download outlives its screen in (#246). Nor rule 14's retry budgets and token refresh for
- * a download, which have no ticket yet.
+ * here either, each with its ticket: a full disk (#244); protected content (#245); and the service a
+ * download outlives its screen in (#246), which is also what the scheduled work will start in a process
+ * with no store open — until then that work finds nothing to resume there. Nor rule 14's retry budgets and
+ * token refresh for a download (#254). An item enqueued while a condition holds it keeps its request in
+ * memory until its manifest can be read, so a process that dies first loses that enqueue.
  *
  * Released by [release], before the cache it writes into.
  */
@@ -173,12 +186,35 @@ public class Downloads internal constructor(
     // Media3's default runs a segment load on the downloading thread itself.
     private val loadExecutor: Executor = environment?.loadExecutor ?: Executor(Runnable::run)
 
+    /** The battery and Data Saver, which the manager's requirements cannot state; what they report reaches this thread. */
+    private val conditions = DownloadConditions(context) { handler.post(::onConditionsChanged) }
+
     private val manager = DownloadManager(context, cache.downloadIndex(), PinningDownloaderFactory()).apply {
+        // The network and storage, which Media3's requirements state and its watcher applies on the manager's
+        // own thread. Set before the listener is added, which would otherwise hear it before this store is built.
+        // Built paused, for Media3's `DownloadService` to resume; this store has no service yet (#246), so it
+        // resumes its own once it has read the battery (`onConditionsChanged`).
+        requirements = requirementsFor(meteredNetworksAllowed = false)
         addListener(ManagerEvents())
-        // A manager is built paused, for Media3's `DownloadService` to resume; this store has no service
-        // yet (#246), so it resumes its own.
-        resumeDownloads()
     }
+
+    /**
+     * Whether a download may run over a metered network, which the viewer decides: false unless set, so a
+     * download spends no data allowance nobody agreed to (ADR-0013 rule 10). Store-wide, and applied at once
+     * to every download, running or waiting. A store that accepts a metered network still downloads nothing
+     * over one while Data Saver restricts this app's background data.
+     *
+     * Not remembered: the setting is the viewer's and lives with the app, which sets it on every store it
+     * opens. What the last store scheduled carries it across a reboot.
+     */
+    public var meteredNetworksAllowed: Boolean = false
+        set(allowed) {
+            checkUsable()
+            if (field == allowed) return
+            field = allowed
+            manager.requirements = requirementsFor(allowed)
+            onConditionsChanged()
+        }
 
     /** What each failed download failed with, while this store is open, by content id. */
     private val failures = HashMap<String, SuperPlayerError>()
@@ -198,13 +234,21 @@ public class Downloads internal constructor(
         }
     }
 
+    /** Downloads enqueued while a condition held them, whose manifests are read once it lets go, by content id. */
+    private val waiting = LinkedHashMap<String, Enqueued>()
+
     /** Downloads whose manifest is being read to choose their tracks, before the manager holds them, by content id. */
-    private val selecting = LinkedHashMap<String, DownloadHelper>()
+    private val selecting = LinkedHashMap<String, Selecting>()
 
     /** Downloads whose tracks could not be chosen, held until removed or enqueued again, by content id. */
     private val unselectable = LinkedHashMap<String, DownloadItem>()
 
     private var released = false
+
+    init {
+        // Read before the manager is resumed, so a download the last process left is not started under a low battery.
+        onConditionsChanged()
+    }
 
     /**
      * Downloads [request]'s content: its first source, which is the one a player opens.
@@ -227,11 +271,28 @@ public class Downloads internal constructor(
     ) {
         checkUsable()
         val contentId = request.contentId
-        selecting.remove(contentId)?.release()
+        selecting.remove(contentId)?.helper?.release()
         unselectable -= contentId
+        waiting -= contentId
+        // Content the manager already holds keeps reporting what it holds, so a download enqueued again is
+        // never seen to go backwards; what is new is queued while its manifest is read, or stopped while a
+        // condition holds it.
+        val isNew = manager.currentDownloads.none { it.request.id == contentId } && manager.downloadIndex.getDownload(contentId) == null
+        val enqueued = Enqueued(request, audioLanguages.toList(), subtitleLanguages.toList())
+        // The battery as it is now, not as it was when this store last had anything to watch it for.
+        conditions.read()
+        applyConditions()
+        if (heldBy() == null) select(enqueued) else waiting[contentId] = enqueued
+        if (isNew) beforeTheManager(contentId)?.let(::report)
+        updatePending()
+    }
+
+    /** Reads [enqueued]'s manifest and chooses its tracks, and hands what was chosen to the manager. */
+    private fun select(enqueued: Enqueued) {
+        val contentId = enqueued.request.contentId
         // Consulted once, now, with what is observed now: bytes written at one rendition are not chosen again.
         val decision = policy.decide(PlaybackConditions(transport = currentNetworkTransportOf(context)))
-        val selection = DownloadSelection(decision.download, audioLanguages.toList(), subtitleLanguages.toList())
+        val selection = DownloadSelection(decision.download, enqueued.audioLanguages, enqueued.subtitleLanguages)
         val helper = DownloadHelper.Factory()
             // The manifest is read over the one chain, as the download itself is (rule 6).
             .setDataSourceFactory(upstream)
@@ -240,31 +301,28 @@ public class Downloads internal constructor(
             .setTrackSelectionParameters(selection.parameters)
             // Media3's own loading thread, which a release can cancel, except under a harness that owns it.
             .apply { environment?.let { owned -> setLoadExecutor { ReleasableExecutor.from(owned.loadExecutor) {} } } }
-            .create(MediaItem.fromUri(request.sources.first()))
-        selecting[contentId] = helper
-        // Content the manager already holds keeps reporting what it holds, so a download enqueued again is
-        // never seen to go backwards; what is new is queued while its manifest is read.
-        if (manager.currentDownloads.none { it.request.id == contentId } && manager.downloadIndex.getDownload(contentId) == null) {
-            report(queued(contentId))
-        }
+            .create(MediaItem.fromUri(enqueued.request.sources.first()))
+        selecting[contentId] = Selecting(helper, enqueued)
         helper.prepare(
             object : DownloadHelper.Callback {
                 override fun onPrepared(helper: DownloadHelper, tracksInfoAvailable: Boolean) {
-                    if (released || selecting[contentId] !== helper) return
+                    if (released || selecting[contentId]?.helper !== helper) return
                     selecting -= contentId
                     selection.applyTo(helper)
                     val chosen = helper.getDownloadRequest(contentId, null)
                     helper.release()
+                    // Pending throughout: the manager's report of the download it now holds is what updates that.
                     manager.addDownload(chosen)
                 }
 
                 override fun onPrepareError(helper: DownloadHelper, e: IOException) {
-                    if (released || selecting[contentId] !== helper) return
+                    if (released || selecting[contentId]?.helper !== helper) return
                     selecting -= contentId
                     helper.release()
                     val failed = DownloadItem(contentId, DownloadState.FAILED, bytesDownloaded = 0, percentDownloaded = null)
                     unselectable[contentId] = failed
                     report(failed)
+                    updatePending()
                 }
             },
         )
@@ -291,7 +349,7 @@ public class Downloads internal constructor(
         }
         val held = all.sortedBy { it.startTimeMs }.map { it.toItem() }
         val heldIds = held.mapTo(HashSet()) { it.contentId }
-        return held + (selecting.keys + unselectable.keys).filter { it !in heldIds }.mapNotNull(::beforeTheManager)
+        return held + (waiting.keys + selecting.keys + unselectable.keys).filter { it !in heldIds }.mapNotNull(::beforeTheManager)
     }
 
     /**
@@ -301,16 +359,18 @@ public class Downloads internal constructor(
     public fun remove(contentId: String) {
         checkUsable()
         val choosing = selecting.remove(contentId)
-        choosing?.release()
+        choosing?.helper?.release()
         val failed = unselectable.remove(contentId)
+        val held = waiting.remove(contentId)
         failures -= contentId
         forgetResumption(contentId)
         // Nothing reached the manager, so nothing was written and nothing is pinned: forgetting it is the removal.
-        if ((choosing != null || failed != null) && manager.currentDownloads.none { it.request.id == contentId }) {
+        if ((choosing != null || failed != null || held != null) && manager.currentDownloads.none { it.request.id == contentId }) {
             reported -= contentId
             listeners.forEach { it.onDownloadRemoved(contentId) }
         }
         manager.removeDownload(contentId)
+        updatePending()
     }
 
     /** Tells [listener] about every change from now on. */
@@ -332,8 +392,12 @@ public class Downloads internal constructor(
         released = true
         handler.removeCallbacksAndMessages(null)
         listeners.clear()
-        selecting.values.forEach(DownloadHelper::release)
+        selecting.values.forEach { it.helper.release() }
         selecting.clear()
+        waiting.clear()
+        conditions.unwatch()
+        // What is pending stays pending on disk, and so stays scheduled.
+        DownloadSchedule.forget(this)
         manager.release()
     }
 
@@ -342,9 +406,16 @@ public class Downloads internal constructor(
         check(Looper.myLooper() == handler.looper) { "A download store is used on the thread it was built on" }
     }
 
-    /** A download the manager does not hold yet, or never will: its tracks being chosen, or failing to be. */
+    /**
+     * A download the manager does not hold yet, or never will: waiting for a condition, its tracks being chosen,
+     * or failing to be.
+     */
     private fun beforeTheManager(contentId: String): DownloadItem? = unselectable[contentId]
-        ?: if (contentId in selecting) queued(contentId) else null
+        ?: when (contentId) {
+            in waiting -> heldBy()?.let { DownloadItem(contentId, DownloadState.STOPPED, 0, null, stopReason = it) } ?: queued(contentId)
+            in selecting -> queued(contentId)
+            else -> null
+        }
 
     private fun queued(contentId: String) = DownloadItem(contentId, DownloadState.QUEUED, bytesDownloaded = 0, percentDownloaded = null)
 
@@ -352,6 +423,86 @@ public class Downloads internal constructor(
         if (released || reported[item.contentId] == item) return
         reported[item.contentId] = item
         listeners.forEach { it.onDownloadChanged(item) }
+    }
+
+    /**
+     * The first condition that holds downloads back now, or null where every one holds (ADR-0013 rules 10 and
+     * 11). The network and storage are the manager's requirements, read as the manager last applied them, so
+     * what an item reports is what holds it; the battery and Data Saver are this store's, as last read.
+     */
+    private fun heldBy(): DownloadStopReason? {
+        val notMet = manager.notMetRequirements
+        return when {
+            // An unmetered requirement carries the plain network one with it, so it is asked first.
+            notMet and Requirements.NETWORK_UNMETERED != 0 -> DownloadStopReason.NO_UNMETERED_NETWORK
+
+            notMet and Requirements.NETWORK != 0 -> DownloadStopReason.NO_NETWORK
+
+            conditions.dataSaverRestricts -> DownloadStopReason.DATA_SAVER
+
+            conditions.batteryLow -> DownloadStopReason.BATTERY_LOW
+
+            notMet and Requirements.DEVICE_STORAGE_NOT_LOW != 0 -> DownloadStopReason.STORAGE_LOW
+
+            else -> null
+        }
+    }
+
+    /**
+     * Applies the conditions as last read: the manager paused for what its requirements cannot state, a
+     * manifest read that a lapse caught abandoned until the conditions hold, and a waiting one begun once they do.
+     */
+    private fun applyConditions() {
+        // Media3 moves a running download back to queued the moment it is paused, and cancels its loader.
+        if (conditions.batteryLow || conditions.dataSaverRestricts) manager.pauseDownloads() else manager.resumeDownloads()
+        if (heldBy() != null) {
+            selecting.values.toList().forEach { choosing ->
+                choosing.helper.release()
+                selecting -= choosing.enqueued.request.contentId
+                waiting[choosing.enqueued.request.contentId] = choosing.enqueued
+            }
+        } else {
+            val ready = waiting.values.toList()
+            waiting.clear()
+            ready.forEach(::select)
+        }
+    }
+
+    /** A condition changed, or may have: read them all again, apply them, and report what that changed. On the store's thread. */
+    private fun onConditionsChanged() {
+        if (released) return
+        conditions.read()
+        applyConditions()
+        reportAll()
+        updatePending()
+    }
+
+    /** Every download this store knows of, reported again where what it is has changed. */
+    private fun reportAll() {
+        // A running download is announced by its progress, for the reason `ManagerEvents` gives.
+        manager.currentDownloads.filter { it.state != Download.STATE_DOWNLOADING }.forEach { report(it.toItem()) }
+        (waiting.keys + selecting.keys).forEach { contentId ->
+            if (manager.currentDownloads.none { it.request.id == contentId }) beforeTheManager(contentId)?.let(::report)
+        }
+    }
+
+    /**
+     * Watches the conditions, and keeps the process's schedule, for as long as a download is pending — and not
+     * otherwise, so a store with nothing to download registers and schedules nothing (ADR-0013 rule 15).
+     */
+    private fun updatePending() {
+        if (released) return
+        val pending = waiting.isNotEmpty() ||
+            selecting.isNotEmpty() ||
+            manager.currentDownloads.any { it.state != Download.STATE_REMOVING }
+        if (pending) conditions.watch() else conditions.unwatch()
+        val network = if (meteredNetworksAllowed) NetworkType.CONNECTED else NetworkType.UNMETERED
+        DownloadSchedule.want(context, this, network.takeIf { pending })
+    }
+
+    /** The scheduled work ran, on whichever thread `WorkManager` ran it: the conditions it waited for may hold now. */
+    internal fun onScheduledWorkRan() {
+        handler.post(::onConditionsChanged)
     }
 
     /**
@@ -406,8 +557,8 @@ public class Downloads internal constructor(
             // state. The state's progress is the index's, which Media3 writes on a timer, so in a process that
             // resumed a download it can be zero while the cache holds most of it; the downloader counts what
             // the cache holds before it fetches anything, so its first report continues from those bytes.
-            if (download.state == Download.STATE_DOWNLOADING) return
-            report(download.toItem())
+            if (download.state != Download.STATE_DOWNLOADING) report(download.toItem())
+            updatePending()
         }
 
         override fun onDownloadRemoved(manager: DownloadManager, download: Download) {
@@ -416,6 +567,16 @@ public class Downloads internal constructor(
             forgetResumption(contentId)
             reported -= contentId
             if (!released) listeners.forEach { it.onDownloadRemoved(contentId) }
+            updatePending()
+        }
+
+        override fun onInitialized(manager: DownloadManager) {
+            // What the last process left pending is known only now the index has been read.
+            updatePending()
+        }
+
+        override fun onRequirementsStateChanged(manager: DownloadManager, requirements: Requirements, notMetRequirements: Int) {
+            onConditionsChanged()
         }
     }
 
@@ -510,23 +671,40 @@ public class Downloads internal constructor(
     }
 
     /** A download as the store reports it: Media3's, with what this store knows about why it stopped or failed. */
-    private fun Download.toItem(): DownloadItem = DownloadItem(
-        contentId = request.id,
-        state = stateOf(this),
-        bytesDownloaded = bytesDownloaded,
-        percentDownloaded = percentOrNull(percentDownloaded),
-        stopReason = if (state == Download.STATE_STOPPED && stopReason == STOP_REASON_NETWORK_LOST) DownloadStopReason.NETWORK_LOST else null,
-        failure = if (state == Download.STATE_FAILED) failures[request.id] else null,
-    )
+    private fun Download.toItem(): DownloadItem {
+        val lostNetwork = state == Download.STATE_STOPPED && stopReason == STOP_REASON_NETWORK_LOST
+        // A condition holds what would otherwise run, and outranks a lost network: it is what the item waits for
+        // once the network is back.
+        val held = if (state == Download.STATE_QUEUED || lostNetwork) heldBy() else null
+        return DownloadItem(
+            contentId = request.id,
+            state = if (held != null) DownloadState.STOPPED else stateOf(this),
+            bytesDownloaded = bytesDownloaded,
+            percentDownloaded = percentOrNull(percentDownloaded),
+            stopReason = held ?: DownloadStopReason.NETWORK_LOST.takeIf { lostNetwork },
+            failure = if (state == Download.STATE_FAILED) failures[request.id] else null,
+        )
+    }
+
+    /** A request enqueued, with the languages it was enqueued for. */
+    private class Enqueued(val request: MediaRequest, val audioLanguages: List<String>, val subtitleLanguages: List<String>)
+
+    /** An enqueued request whose manifest [helper] is reading. */
+    private class Selecting(val helper: DownloadHelper, val enqueued: Enqueued)
 
     private companion object {
 
         /**
          * Media3's stop reason for a download stopped for a lost network, written into the index with it.
-         * Any value but `STOP_REASON_NONE` stops a download; one is this store's first, and the conditions
-         * of #243 take the next ones.
+         * Any value but `STOP_REASON_NONE` stops a download. The conditions take none: they pause the manager
+         * or are its requirements, neither written into the index, so a process that opens it reads them afresh.
          */
         const val STOP_REASON_NETWORK_LOST = 1
+
+        /** The network and storage a download needs, as Media3's requirements state them; the battery is the store's. */
+        fun requirementsFor(meteredNetworksAllowed: Boolean) = Requirements(
+            (if (meteredNetworksAllowed) Requirements.NETWORK else Requirements.NETWORK_UNMETERED) or Requirements.DEVICE_STORAGE_NOT_LOW,
+        )
     }
 }
 

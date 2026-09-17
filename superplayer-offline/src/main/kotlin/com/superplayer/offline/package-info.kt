@@ -21,5 +21,18 @@
  * it answers per `contentId`, and [DownloadsListener] how a screen hears about changes. A downloaded item
  * plays through `SuperPlayer.setMediaRequest` on a player built with the same cache, and reaches the
  * network for nothing. ADR-0013 is the decisions this module implements.
+ *
+ * **What the app declares, and what arrives on its own.** The schedule a pending download waits in is
+ * `WorkManager`'s, and asks the app to declare nothing: `androidx.work:work-runtime`'s own manifest merges
+ * into the app's the `WAKE_LOCK`, `ACCESS_NETWORK_STATE`, `RECEIVE_BOOT_COMPLETED` and `FOREGROUND_SERVICE`
+ * permissions, App Startup's `InitializationProvider` with `WorkManagerInitializer`, the `SystemJobService` and
+ * `SystemForegroundService` it runs work in, and the receivers that reschedule work after a reboot or a force
+ * stop. Those entries are WorkManager's, listed here so they surprise nobody reading a merged manifest; an app
+ * that configures `WorkManager` itself removes the initializer in its own manifest, as WorkManager's
+ * documentation says. The service a download runs in outside a screen, its `<service>` element, and the
+ * `FOREGROUND_SERVICE_DATA_SYNC` and `POST_NOTIFICATIONS` permissions it needs are the app's to declare and
+ * justify (ADR-0013 rule 3, #246); this module declares none of them.
+ *
+ * ref: https://developer.android.com/develop/background-work/background-tasks/persistent/configuration/custom-configuration
  */
 package com.superplayer.offline

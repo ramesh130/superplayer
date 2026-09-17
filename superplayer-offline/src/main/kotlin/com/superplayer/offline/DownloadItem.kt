@@ -61,7 +61,11 @@ public class DownloadItem internal constructor(
         (stopReason?.let { ", stopped: $it" } ?: "") + (failure?.let { ", failed: ${it.causeClass}" } ?: "") + ")"
 }
 
-/** What holds a stopped download. */
+/**
+ * What holds a stopped download. Where several hold at once the item names one: a condition before a lost
+ * network, since a download the network came back to would still wait for it, and among the conditions the
+ * first in the order declared here.
+ */
 public enum class DownloadStopReason {
 
     /**
@@ -70,24 +74,42 @@ public enum class DownloadStopReason {
      * through (ADR-0013 rule 9). Only a store built with a resilience tells a lost network from a failure.
      */
     NETWORK_LOST,
+
+    /**
+     * No unmetered network is connected, and the store accepts no other ([Downloads.meteredNetworksAllowed]).
+     * Unmetered is the platform's reading, not Wi-Fi: an unlimited Ethernet link counts and a phone's hotspot
+     * does not (ADR-0013 rule 10).
+     */
+    NO_UNMETERED_NETWORK,
+
+    /** No network is connected, on a store that accepts a metered one. */
+    NO_NETWORK,
+
+    /** The network is metered and Data Saver restricts this app's background data, on a store that accepts a metered network. */
+    DATA_SAVER,
+
+    /** The battery is low. Not a consumer's to relax (rule 10). */
+    BATTERY_LOW,
+
+    /** The device's storage is low. Not a consumer's to relax (rule 10). */
+    STORAGE_LOW,
 }
 
 /**
  * Where a download has got to.
  *
  * What holds a [STOPPED] item and why a [FAILED] one failed are carried beside the state, as
- * [DownloadItem.stopReason] and [DownloadItem.failure]; the conditions a download waits for (#243) and a
- * full disk (#244) add to them.
+ * [DownloadItem.stopReason] and [DownloadItem.failure]; a full disk (#244) adds to them.
  */
 public enum class DownloadState {
 
-    /** Enqueued and waiting its turn, or for the conditions it downloads under. */
+    /** Enqueued and waiting its turn. One waiting for a condition it downloads under is [STOPPED] instead, naming it. */
     QUEUED,
 
     /** Fetching now. */
     DOWNLOADING,
 
-    /** Held, keeping what it has, until what holds it lets go. */
+    /** Held, keeping what it has, until what holds it lets go: its [DownloadItem.stopReason]. */
     STOPPED,
 
     /** Everything is on disk, and a player built over the cache plays it with no network. */

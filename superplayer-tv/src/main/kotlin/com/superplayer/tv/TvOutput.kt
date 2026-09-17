@@ -50,7 +50,9 @@ import com.superplayer.core.PlaybackOutput
  * - **A display that offers no matching mode is left alone**, and so is one already refreshing at a
  *   multiple of the content's rate; `FrameRateMatching` says why each asks for nothing.
  * - **A `TextureView` is not matched.** Its surface is composited by the app and reaches no display
- *   layer, so a TV player's surface is a `SurfaceView` (ADR-0014 rule 12).
+ *   layer, so a TV player's surface is a `SurfaceView` (ADR-0014 rule 12). A GL surface view Media3
+ *   renders through (a spherical or decoder GL view) is not matched either: the request would land on
+ *   the view's holder, which is not the surface the engine renders to.
  * - **Below API 30, nothing.** No `Surface` API exists there; an app targeting such a device sets
  *   `WindowManager.LayoutParams.preferredDisplayModeId` on its own window, which the library does not
  *   hold.

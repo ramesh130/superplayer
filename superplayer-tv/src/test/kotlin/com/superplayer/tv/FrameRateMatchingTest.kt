@@ -163,6 +163,24 @@ class FrameRateMatchingTest {
         assertThat(harness.frameRateRequests(player)).containsExactly(matching(24f), matching(WITHDRAWN)).inOrder()
     }
 
+    /**
+     * A surface recreated after the panel switched — a `SurfaceView` across a pause, say — finds the active
+     * mode matching the request the player made, and asks again on the new surface rather than letting
+     * the panel fall back to judder. The switch is stated, because Robolectric has no compositor to make it.
+     */
+    @Test
+    fun aSurfaceRecreatedAfterTheSwitchKeepsTheRequestInForce() {
+        DeviceStatement.declareDisplayModes(listOf(FHD_60, FHD_24), activeMode = FHD_60)
+        val player = play(film(24f), TvOutput.standard(context))
+        DeviceStatement.declareDisplayModes(listOf(FHD_60, FHD_24), activeMode = FHD_24)
+
+        harness.attachVideoOutput(player)
+
+        assertThat(harness.frameRateRequests(player))
+            .containsExactly(matching(24f), matching(WITHDRAWN), matching(24f))
+            .inOrder()
+    }
+
     private fun play(content: TestContent, output: PlaybackOutput?): SuperPlayer {
         val player = harness.buildPlayer(content = content, output = output)
         player.setMediaRequest(request(content))

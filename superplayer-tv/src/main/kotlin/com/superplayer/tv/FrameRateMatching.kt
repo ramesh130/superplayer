@@ -20,7 +20,6 @@ import android.hardware.display.DisplayManager
 import android.os.Build
 import android.view.Display
 import android.view.Surface
-import androidx.annotation.RequiresApi
 import com.superplayer.core.VideoOutputBinding
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -43,22 +42,29 @@ import kotlin.math.roundToInt
  *   is held because a frame-rate request does not change resolution, so a matching mode at another
  *   size is not one the request could reach.
  *
- * One exception keeps a request in force: once this binding has asked, the active mode matching is
+ * One exception keeps a request in force: once this binding has asked, on any surface, the active mode matching is
  * most likely *its own request honoured*, and withdrawing it would put the panel back where it judders.
  * So a match on the active mode withdraws nothing already asked for; it only stops a first request.
  *
  * **Why the display is read here and not watched.** The mode list is read once per decision, on the
  * application thread, from `DisplayManager`. It is not `DisplayCapability` (ADR-0014 rule 9 keeps the
  * rate out of that, because a player re-selecting on its own request would loop), and it is not a
- * watch: when the display changes, core hands the binding the rate again (rule 5, #269) and this reads
- * the new display then.
+ * watch: rule 5 has core hand the binding the rate again when the display changes, and this will read
+ * the new display then. That watch is #269's and is not built yet.
  */
 internal class FrameRateMatching(private val displays: DisplayManager) : VideoOutputBinding {
 
     private var surface: Surface? = null
     private var framesPerSecond: Float? = null
 
-    /** The rate asked for on [surface] and not withdrawn, or null for no request in force. */
+    /**
+     * The rate this binding has decided should be in force, whichever surface carries it. Kept across a
+     * surface change, because a `SurfaceView` recreated after the panel switched finds the active mode
+     * matching its own earlier request, and must ask again rather than let the panel fall back.
+     */
+    private var decided: Float? = null
+
+    /** The rate asked for on [surface] and not withdrawn, or null for no request on it. */
     private var requested: Float? = null
 
     override fun onSurfaceChanged(surface: Surface?) {
@@ -78,12 +84,14 @@ internal class FrameRateMatching(private val displays: DisplayManager) : VideoOu
         withdraw()
         surface = null
         framesPerSecond = null
+        decided = null
     }
 
     private fun update() {
         val surface = surface ?: return
         val rate = framesPerSecond
         val wanted = if (rate != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && worthAskingFor(rate)) rate else null
+        decided = wanted
         if (wanted == requested) return
         if (wanted == null) {
             withdraw()
@@ -97,7 +105,11 @@ internal class FrameRateMatching(private val displays: DisplayManager) : VideoOu
         // A display that is not connected has no mode to match.
         val display = displays.getDisplay(Display.DEFAULT_DISPLAY) ?: return false
         val active = display.mode
-        if (refreshMatches(active.refreshRate, framesPerSecond)) return requested != null
+        // Kept only where the rate already decided is one the active mode honours too, which is what
+        // makes the match plausibly that request's rather than the panel's own.
+        if (refreshMatches(active.refreshRate, framesPerSecond)) {
+            return decided?.let { refreshMatches(active.refreshRate, it) } == true
+        }
         return display.supportedModes.any { mode ->
             mode.physicalWidth == active.physicalWidth &&
                 mode.physicalHeight == active.physicalHeight &&
@@ -115,7 +127,6 @@ internal class FrameRateMatching(private val displays: DisplayManager) : VideoOu
         requested = null
     }
 
-    @RequiresApi(Build.VERSION_CODES.R)
     private fun ask(surface: Surface, framesPerSecond: Float) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             // `ALWAYS` rather than Media3's seamless-only default: whether a switch may blank the panel
@@ -123,13 +134,13 @@ internal class FrameRateMatching(private val displays: DisplayManager) : VideoOu
             // request, and asking for seamless only would override a viewer who chose *Always*
             // (ADR-0014 rule 4).
             surface.setFrameRate(framesPerSecond, Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE, Surface.CHANGE_FRAME_RATE_ALWAYS)
-        } else {
-            // API 30 has only this form, whose strategy is the platform's own.
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // API 30 has only this form, whose strategy is the platform's own. Below it, nothing exists.
             surface.setFrameRate(framesPerSecond, Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE)
         }
     }
 
-    internal companion object {
+    private companion object {
 
         /** The rate `Surface.setFrameRate` reads as "no request". */
         private const val WITHDRAWN = 0f

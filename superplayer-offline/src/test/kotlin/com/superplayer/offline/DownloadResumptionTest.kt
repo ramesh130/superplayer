@@ -85,11 +85,11 @@ class DownloadResumptionTest {
     fun aStoreReopenedAfterProcessDeathFetchesNoSegmentItHadCompletedAndContinuesItsProgress() {
         val content = TestContent.hls(SEGMENTS)
         val directory = folder.newFolder()
-        val beforeDeath = harness.downloadEnvironment(content)
+        val beforeDeath = harness.downloadEnvironment(content, heldAfterThreeSegments())
         val dying = openStore(openCache(directory), beforeDeath)
         val reportsBeforeDeath = record(dying)
         dying.enqueue(request(content))
-        harness.advanceUntil(beforeDeath, "three segments were fetched") { segmentsFetched(beforeDeath).size >= 3 }
+        harness.advanceUntil(beforeDeath, "the fourth segment was asked for") { segmentsFetched(beforeDeath).size > HELD_SEGMENTS }
 
         val reopenedDirectory = harness.processDeath(beforeDeath, directory)
         // Every segment asked for before the death had finished loading when the directory was copied.
@@ -123,12 +123,12 @@ class DownloadResumptionTest {
     @Test
     fun aDownloadWhoseNetworkIsLostStopsKeepingItsProgressAndCompletesOnceItReturns() {
         val content = TestContent.hls(SEGMENTS)
-        val environment = harness.downloadEnvironment(content)
+        val environment = harness.downloadEnvironment(content, heldAfterThreeSegments())
         val cache = openCache()
         val downloads = openStore(cache, environment, Resilience.standard())
         val reports = record(downloads)
         downloads.enqueue(request(content))
-        harness.advanceUntil(environment, "three segments were fetched") { segmentsFetched(environment).size >= 3 }
+        harness.advanceUntil(environment, "the fourth segment was asked for") { segmentsFetched(environment).size > HELD_SEGMENTS }
 
         harness.loseNetwork(environment)
         harness.advanceUntil(environment, "the download stopped") { downloads.download(CONTENT_ID)?.state == DownloadState.STOPPED }
@@ -166,10 +166,10 @@ class DownloadResumptionTest {
     fun aDownloadStoppedForItsNetworkWhenItsProcessDiedResumesWhenTheStoreIsOpenedAgain() {
         val content = TestContent.hls(SEGMENTS)
         val directory = folder.newFolder()
-        val beforeDeath = harness.downloadEnvironment(content)
+        val beforeDeath = harness.downloadEnvironment(content, heldAfterThreeSegments())
         val dying = openStore(openCache(directory), beforeDeath, Resilience.standard())
         dying.enqueue(request(content))
-        harness.advanceUntil(beforeDeath, "three segments were fetched") { segmentsFetched(beforeDeath).size >= 3 }
+        harness.advanceUntil(beforeDeath, "the fourth segment was asked for") { segmentsFetched(beforeDeath).size > HELD_SEGMENTS }
         // Taken before the network goes: a request that then failed to resolve stored nothing.
         val heldSegments = segmentsFetched(beforeDeath)
         harness.loseNetwork(beforeDeath)
@@ -217,10 +217,10 @@ class DownloadResumptionTest {
     @Test
     fun aStoreWithoutResilienceFailsADownloadWhoseNetworkIsLost() {
         val content = TestContent.hls(SEGMENTS)
-        val environment = harness.downloadEnvironment(content)
+        val environment = harness.downloadEnvironment(content, heldAfterThreeSegments())
         val downloads = openStore(openCache(), environment)
         downloads.enqueue(request(content))
-        harness.advanceUntil(environment, "three segments were fetched") { segmentsFetched(environment).size >= 3 }
+        harness.advanceUntil(environment, "the fourth segment was asked for") { segmentsFetched(environment).size > HELD_SEGMENTS }
 
         harness.loseNetwork(environment)
         harness.advanceUntil(environment, "the download failed") { downloads.download(CONTENT_ID)?.state == DownloadState.FAILED }
@@ -241,6 +241,18 @@ class DownloadResumptionTest {
     private fun advanceStoreClock() {
         ShadowSystemClock.advanceBy(Duration.ofMillis(STORE_CLOCK_STEP_MS))
     }
+
+    /**
+     * The fourth segment's first request waits on the harness clock before its first byte, so a lost network or a
+     * process death lands on a download that still has segments to ask for. Without it the download's own threads can fetch every
+     * segment before the test thread next looks — which a JVM warmed by the classes run before this one does — and
+     * a loss or a death then meets a download that has already completed (`DownloadConditionsTest` holds one for its lapses).
+     * The held request was opened before the loss and is served once the clock moves; the next one meets the loss.
+     * A death lets it finish before the copy, and refuses the next.
+     */
+    private fun heldAfterThreeSegments(): FaultScript = FaultScript.Builder()
+        .addLatencyMs(HELD_SEGMENT_LATENCY_MS, kind = ResourceKind.MEDIA_SEGMENT, index = HELD_SEGMENTS, firstAttempts = 1)
+        .build()
 
     private fun segmentsFetched(environment: DownloadEnvironment): Set<String> = harness.networkRequests(environment)
         .filter { it.kind == ResourceKind.MEDIA_SEGMENT }
@@ -277,6 +289,12 @@ class DownloadResumptionTest {
     private companion object {
         const val CONTENT_ID = "film/the-lady-vanishes"
         const val SEGMENTS = 8
+
+        // How many segments a download has whole when its network goes, and how long the next one waits before its
+        // first byte. Any length holds it, since the harness clock moves only in a wait the test begins after stating
+        // the loss; short against the harness's 30-second bound on a wait, which a stop's wait has to fit inside too.
+        const val HELD_SEGMENTS = 3
+        const val HELD_SEGMENT_LATENCY_MS = 5_000L
 
         // Far more than any synthetic stream here, so nothing is evicted.
         const val LARGE_BUDGET_BYTES = 64L * 1024 * 1024

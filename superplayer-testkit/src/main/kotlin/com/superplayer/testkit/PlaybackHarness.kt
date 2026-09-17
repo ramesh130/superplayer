@@ -735,7 +735,11 @@ public class PlaybackHarness : ExternalResource() {
     private fun downloadFor(environment: DownloadEnvironment): HarnessDownloadEnvironment =
         checkNotNull(downloads[environment]) { "This harness did not make that download environment" }
 
-    /** Until no transfer is open and no load task active, and that has held across a second look. */
+    /**
+     * Until no transfer is open and no load task active, and that has held across a second look. A load held by
+     * an injected delay or a shaped link finishes on this harness's clock, which is moved a step while one waits
+     * on it, as [advanceUntil] moves it: otherwise a death that lands on a held load could never be quiet.
+     */
     private fun awaitQuiet(download: HarnessDownloadEnvironment) {
         val startedAtMs = System.currentTimeMillis()
         var seen = -1
@@ -747,7 +751,11 @@ public class PlaybackHarness : ExternalResource() {
             check(System.currentTimeMillis() - startedAtMs < CATCH_UP_WALL_CLOCK_MS) {
                 "A download's load did not finish within $CATCH_UP_WALL_CLOCK_MS ms of real time"
             }
-            Thread.sleep(QUIET_LOOK_MS)
+            if (download.wait.isWaiting && download.wait.transfersHaveCaughtUp) {
+                clock.advanceTime(WAIT_STEP_MS)
+            } else {
+                Thread.sleep(QUIET_LOOK_MS)
+            }
         }
     }
 

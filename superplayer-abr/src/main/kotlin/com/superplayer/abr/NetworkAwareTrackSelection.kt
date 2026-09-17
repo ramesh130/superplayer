@@ -54,7 +54,9 @@ import kotlin.math.min
  *
  * 1. **The device.** A rung whose shorter edge is longer than the display's, whose codec profile
  *    and level no declared decoder reaches, or — where the ladder also offers an SDR rung — whose
- *    PQ transfer the display does not list, is refused whatever the network delivers. Read once from [DeviceConstraints] when the selection
+ *    PQ transfer the display does not list, is refused whatever the network delivers. On a player
+ *    built with `SuperPlayer.Builder.setDrm` the decoder asked is the *secure* one, which is a
+ *    different table and often a lower ceiling (ADR-0012 rule 12). Read once from [DeviceConstraints] when the selection
  *    is built (ADR-0009 rule 2), and *unknown* refuses nothing — the KDoc there says why that
  *    direction is load-bearing. Refused through this hook and not through `isTrackExcluded`,
  *    deliberately: when every rung is refused Media3 falls back to the lowest one it evaluated,
@@ -296,6 +298,18 @@ internal class NetworkAwareTrackSelection(
         private val constraints: DeviceConstraints,
         private val source: ThroughputSource?,
         initial: TrackSelectionPolicy,
+        /**
+         * Whether the player this gate serves was built with `SuperPlayer.Builder.setDrm`, from
+         * `EngineConfiguration.protectedPlayback`. On such a player the decoder refusal asks the
+         * *secure* decoders' profiles and levels rather than the plain ones' — ADR-0012 rule 12, and
+         * `PRD.md` §3.1's note that F4's frame drops on a low-end device are usually a variant the
+         * secure decoder cannot sustain rather than the cost of DRM.
+         *
+         * Read once with the device and never observed, because protection is fixed for a player's
+         * lifetime; the reasoning for taking it from the builder rather than from `Format.drmInitData`
+         * is on `EngineConfiguration.protectedPlayback`.
+         */
+        private val protectedPlayback: Boolean = false,
     ) {
         /** Written on the thread a decision arrives on, read on the loading thread: volatile, not locked. */
         @Volatile
@@ -346,17 +360,30 @@ internal class NetworkAwareTrackSelection(
          * decoder declares only profile 5 still plays profile 8's base layer on its HEVC decoder,
          * and a gate that refused it would hold a ladder whose 4K rungs are all profile 8 at 1080p
          * (#116). Two unknowns still refuse nothing.
+         *
+         * On a [protectedPlayback] player the decoders asked are the *secure* ones, base layer
+         * included: a protected rung and the base layer Media3 falls back to for it both decode on
+         * protected memory, so asking one table for the rung and the other for its fallback would let
+         * a plain decoder vouch for content it will never be handed.
          */
         private fun decoderRefuses(format: Format): Boolean {
             val mimeType = format.sampleMimeType ?: return false
             if (!MimeTypes.isVideo(mimeType)) return false
             val profileLevel = MediaCodecUtil.getCodecProfileAndLevel(format) ?: return false
             val answers = listOfNotNull(
-                constraints.canDecode(mimeType, profileLevel.first, profileLevel.second),
-                baseLayerOf(mimeType, profileLevel.first)?.let { constraints.canDecode(it.mimeType, it.profile, ANY_LEVEL) },
+                canDecode(mimeType, profileLevel.first, profileLevel.second),
+                baseLayerOf(mimeType, profileLevel.first)?.let { canDecode(it.mimeType, it.profile, ANY_LEVEL) },
             )
             return false in answers && true !in answers
         }
+
+        /** What the decoders this player will actually open declare, plain or secure. */
+        private fun canDecode(mimeType: String, profile: Int, level: Int): Boolean? =
+            if (protectedPlayback) {
+                constraints.canDecodeProtected(mimeType, profile, level)
+            } else {
+                constraints.canDecode(mimeType, profile, level)
+            }
 
         /**
          * The decoder and profile a Dolby Vision rung's base layer decodes on, or null for a format

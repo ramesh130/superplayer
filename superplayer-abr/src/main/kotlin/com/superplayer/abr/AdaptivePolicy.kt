@@ -110,11 +110,17 @@ internal class AdaptiveEnginePolicy(
         val loadControl = AdaptiveLoadControl(onEngineReleased = oracle::release).also { this.loadControl = it }
         // The device is read here, once, and the first ceiling and pace are the profile's own with
         // nothing observed; the first consultation's decision replaces them before anything plays.
+        //
+        // Protection is read from the same configuration, and for a pool that is the first player's
+        // answer: a pool built with this policy configures one engine and shares it
+        // (`AdaptivePolicyPoolTest`), and `PlayerPool.Builder.setDrm` gives every player in it the
+        // same protection, so there is one answer to read.
         val selections = NetworkAwareTrackSelection.Factory(
             NetworkAwareTrackSelection.Gate(
                 constraints = deviceConstraintsOf(context),
                 source = oracle.meter,
                 initial = decide(PlaybackConditions()).trackSelection,
+                protectedPlayback = configuration.protectedPlayback,
             ),
         )
 

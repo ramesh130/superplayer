@@ -26,6 +26,7 @@ import com.google.common.truth.Truth.assertWithMessage
 import com.superplayer.core.DecisionTrigger
 import com.superplayer.core.MediaRequest
 import com.superplayer.core.NetworkTransport
+import com.superplayer.core.PlaybackDrm
 import com.superplayer.core.PlaybackProfile
 import com.superplayer.core.SuperPlayer
 import com.superplayer.core.TelemetryEvent
@@ -150,6 +151,42 @@ class NetworkAwareTrackSelectionPlaybackTest {
         DeviceStatement.declareVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC, CodecProfileLevel.AVCProfileMain to CodecProfileLevel.AVCLevel4)
         val gated = playAndCollectSwitches(profiledLadder())
         assertWithMessage("gated: ${gated.map { it.toBitrateBps }}").that(gated.maxOf { it.toBitrateBps }).isEqualTo(800_000)
+    }
+
+    // #211: on a protected player the decoder asked is the *secure* one, which is a different table
+    // over the same MIME type and commonly a lower ceiling (ADR-0012 rule 12). Two tests for the
+    // codec-list caching above, and the first is the control: the same device, the same ladder, on a
+    // player that was not built with `setDrm` — so the refusal below is protection's and not the
+    // device's, and the fix is not "refuse everything".
+    @Test
+    fun anUnprotectedPlayerReachesTheHighProfileRungTheSecureDecoderCannotSustain() {
+        declareAPlainDecoderAheadOfTheSecureOne()
+        val ungated = playAndCollectSwitches(profiledLadder())
+        assertWithMessage("control: ${ungated.map { it.toBitrateBps }}").that(ungated.maxOf { it.toBitrateBps }).isEqualTo(4_000_000)
+    }
+
+    @Test
+    fun aProtectedPlayerNeverPlaysARungOnlyThePlainDecoderReaches() {
+        declareAPlainDecoderAheadOfTheSecureOne()
+        val gated = playAndCollectSwitches(profiledLadder(), drm = PROTECTED)
+        assertWithMessage("gated: ${gated.map { it.toBitrateBps }}").that(gated.maxOf { it.toBitrateBps }).isEqualTo(800_000)
+    }
+
+    /**
+     * The device both tests above run on: a plain H.264 decoder that reaches High at level 4.0 and a
+     * secure one — the `.secure` sibling, the same MIME type, which is why the two readings have to
+     * be kept apart — that stops at Main. `profiledLadder`'s two top rungs are High.
+     *
+     * One secure instance, which is what a phone that ships several ordinary video decoders commonly
+     * declares.
+     */
+    private fun declareAPlainDecoderAheadOfTheSecureOne() {
+        DeviceStatement.declareVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC, CodecProfileLevel.AVCProfileHigh to CodecProfileLevel.AVCLevel4)
+        DeviceStatement.declareSecureVideoDecoder(
+            MediaFormat.MIMETYPE_VIDEO_AVC,
+            maxSupportedInstances = 1,
+            CodecProfileLevel.AVCProfileMain to CodecProfileLevel.AVCLevel4,
+        )
     }
 
     // #116: Media3's renderer decodes a Dolby Vision profile 8 rung's HEVC base layer on an HEVC
@@ -291,7 +328,11 @@ class NetworkAwareTrackSelectionPlaybackTest {
         return run
     }
 
-    private fun playAndCollectSwitches(content: TestContent, playedMs: Long = PLAYED_MS): List<TelemetryEvent.TrackSwitched> {
+    private fun playAndCollectSwitches(
+        content: TestContent,
+        playedMs: Long = PLAYED_MS,
+        drm: PlaybackDrm? = null,
+    ): List<TelemetryEvent.TrackSwitched> {
         events.clear()
         val player = harness.buildPlayer(
             content = content,
@@ -299,6 +340,7 @@ class NetworkAwareTrackSelectionPlaybackTest {
             telemetry = QoeCollector(sink),
             network = NetworkProfile.STABLE_WIFI.trace,
             policy = AdaptivePolicy.forProfile(context, PlaybackProfile.VIDEO_ON_DEMAND),
+            drm = drm,
         )
         player.setMediaRequest(request())
         harness.playToReady(player)
@@ -320,6 +362,18 @@ class NetworkAwareTrackSelectionPlaybackTest {
         const val CONTENT = "series/expanse/s01e04"
         const val SOURCE = "fake://superplayer.test/never-fetched"
         const val LONG_CONTENT_MS = 240_000L
+
+        /**
+         * What makes a player protected, as far as the selection gate is concerned: the builder was
+         * told `setDrm`, which is the constraint read once at construction (ADR-0012 rule 12).
+         *
+         * A bare [PlaybackDrm] and not `superplayer-drm`'s `Drm.widevine(...)`, because `docs/modules.md`
+         * forbids a phase 3 module depending on a phase 6 one — and because nothing about the gate
+         * needs a session to be opened: an implementation that is not an `EngineDrmExtension` fills no
+         * slot, acquires no licence and plays this clear ladder exactly as an unprotected player does,
+         * which is what makes the pair above differ in one thing only.
+         */
+        val PROTECTED: PlaybackDrm = object : PlaybackDrm {}
         const val LARGE_HEAP_MB = 2_048
 
         /** Long enough for the on-demand thresholds to allow a climb to the top of a ladder. */

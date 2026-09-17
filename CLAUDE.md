@@ -116,7 +116,11 @@ device reports — `DeviceCapacity.kt` is the only place that reading happens, a
 platform's concurrent-decoder limit over the codecs the feed declares (`setFeedCodecs(VideoCodec…)`,
 H.264 and HEVC by default; a declared codec the device has no decoder for is left out rather than
 collapsing the bound) and a per-player budget against the *app's* heap
-(`ActivityManager.memoryClass`, since Media3 buffers on the Java heap), never below one. `acquire()` returns null rather than growing past the bound, `recycle(player)` hands
+(`ActivityManager.memoryClass`, since Media3 buffers on the Java heap), never below one. A pool built
+with `setDrm` is bounded by the *secure* decoder's limit wherever the device declared one, because a
+phone that ships several ordinary video decoders commonly ships exactly one secure one and that is
+the number a protected feed runs out of (#211, ADR-0012 rule 12); a device that declared none is
+bounded exactly as a clear feed is, because Widevine L3 plays protected content on ordinary decoders. `acquire()` returns null rather than growing past the bound, `recycle(player)` hands
 one back, and `SuperPlayer.resetForReuse` is what makes a reused player carry nothing of the last
 item: surface detached first (a stale frame in a recycled view is the tell of a hand-rolled pool),
 then content, playback state, listeners, audio attributes and the remembered-position map. Audio
@@ -359,7 +363,11 @@ SuperPlayer's own factory (Media3 1.11's is final where it builds), overriding t
 consults per rung per evaluation. Three refusals in order — the device (a rung the display's
 shorter edge cannot show, an HDR transfer it does not list, or a codec profile and level no declared
 decoder reaches, read *once* from core's `DeviceConstraints` as ADR-0009 rule 2 says and never
-observed), the policy's ceiling (retargeted through the same `DecisionTarget` as the load control,
+observed — and on a player built with `setDrm` the decoder asked is the **secure** one, a second
+table `readDecoderTable` keeps on the walk it already made, because a `.secure` decoder shares its
+plain sibling's MIME type and the merged answer is the plain one's; the protection signal is the
+builder's call and not `Format.drmInitData`, which is what keeps it a constraint, #211), the policy's
+ceiling (retargeted through the same `DecisionTarget` as the load control,
 which is how a hold is honoured and why it lapses on a trigger), and the estimate discounted by its
 spread on the oracle's own stable line. Startup needs no code: Media3's first choice reads the
 meter, which is the per-transport memory or its cold default. The climb and descent thresholds are

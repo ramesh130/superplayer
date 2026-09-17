@@ -124,6 +124,33 @@ class PlayerPoolTest {
     }
 
     @Test
+    fun aPoolWithDrmBuildsEveryPlayerWithIt() {
+        // Through the real factory for the reason the test above gives, and here that is the whole
+        // claim: `setDrm` on the pool has to reach `SuperPlayer.Builder`, because what makes a pooled
+        // feed's *selection* gate the secure decoder is the per-player builder call and not the
+        // pool's bound (#211). A pool that only sized itself and built clear players would size a
+        // protected feed correctly and then play it on the wrong decoder table.
+        val configured = mutableListOf<EngineConfiguration>()
+        val drm = object : EngineDrmExtension {
+            override fun configureEngine(configuration: EngineConfiguration) {
+                configured += configuration
+            }
+        }
+        val pool = PlayerPool.Builder(ApplicationProvider.getApplicationContext())
+            .setMaxSize(2)
+            .setDrm(drm)
+            .build()
+        try {
+            checkNotNull(pool.acquire())
+            checkNotNull(pool.acquire())
+            assertThat(configured).hasSize(2)
+            assertThat(configured.map { it.protectedPlayback }).containsExactly(true, true)
+        } finally {
+            pool.release()
+        }
+    }
+
+    @Test
     fun aPoolWithTelemetryGivesEveryPlayerItBuildsACollectorOfItsOwn() {
         // Through the real factory, for the reason the test above gives: the harness substitutes its
         // own, so this is the only place `setTelemetry` reaches `SuperPlayer.Builder`.

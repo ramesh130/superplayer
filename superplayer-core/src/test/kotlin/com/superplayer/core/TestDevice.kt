@@ -83,8 +83,33 @@ internal object TestDevice {
      * unless a test says otherwise.
      */
     fun declareVideoDecoder(mimeType: String, maxSupportedInstances: Int = REPORTED_DECODER_INSTANCES) {
+        addVideoDecoder(mimeType, maxSupportedInstances, secure = false)
+    }
+
+    /**
+     * As [declareVideoDecoder], and declaring the decoder able to operate on protected memory — what a
+     * pool of players built with `PlayerPool.Builder.setDrm` is bounded by (ADR-0012 rule 12).
+     *
+     * Declared *beside* a plain decoder rather than instead of one, because that is the device: a
+     * secure decoder shares its plain sibling's MIME type and is conventionally its name with
+     * `.secure` appended, and a pool bounded by the merged answer is the defect. Testkit's
+     * `DeviceStatement.declareSecureVideoDecoder` states the same device for the modules that have it.
+     */
+    fun declareSecureVideoDecoder(mimeType: String, maxSupportedInstances: Int = REPORTED_DECODER_INSTANCES) {
+        addVideoDecoder(mimeType, maxSupportedInstances, secure = true)
+    }
+
+    private fun addVideoDecoder(mimeType: String, maxSupportedInstances: Int, secure: Boolean) {
         val capabilities = MediaCodecInfoBuilder.CodecCapabilitiesBuilder.newBuilder()
-            .setMediaFormat(MediaFormat().apply { setString(MediaFormat.KEY_MIME, mimeType) })
+            .setMediaFormat(
+                MediaFormat().apply {
+                    setString(MediaFormat.KEY_MIME, mimeType)
+                    // ref: a capability is declared by the key `feature-` plus the feature name, and
+                    // `FEATURE_SecurePlayback` is `secure-playback`:
+                    // https://developer.android.com/reference/android/media/MediaCodecInfo.CodecCapabilities#FEATURE_SecurePlayback
+                    if (secure) setInteger("feature-secure-playback", 1)
+                },
+            )
             .setIsEncoder(false)
             .setColorFormats(
                 intArrayOf(MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible),
@@ -97,7 +122,7 @@ internal object TestDevice {
 
         ShadowMediaCodecList.addCodec(
             MediaCodecInfoBuilder.newBuilder()
-                .setName("test.decoder.${mimeType.substringAfterLast('/')}")
+                .setName("test.decoder.${mimeType.substringAfterLast('/')}${if (secure) ".secure" else ""}")
                 .setIsEncoder(false)
                 .setCapabilities(capabilities)
                 .build(),

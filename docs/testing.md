@@ -350,6 +350,15 @@ list on first read, so `NetworkAwareTrackSelectionPlaybackTest` keeps its ungate
 separate test rather than playing it first. `Display.Mode` has no public constructor, which is why
 `declareDisplay` builds the mode through Robolectric's reflection helper, in that one place.
 
+A player built with `setDrm` reads a **second** decoder table — the profile levels and instance limit
+of the decoders declaring `FEATURE_SecurePlayback`, which share their plain siblings' MIME type and are
+therefore pooled together unless they are tallied apart (#211). `DeviceStatement.declareSecureVideoDecoder`
+states one, beside a plain `declareVideoDecoder` rather than instead of it, because that is the device;
+core's own `TestDevice.declareSecureVideoDecoder` does the same for the pool's bound. Both halves keep
+the direction the rest of this section keeps: a device that declared no secure decoder refuses no rung
+and keeps the ordinary pool bound, because Widevine L3 plays protected content on ordinary decoders and
+declares nothing.
+
 ## A Widevine device and a licence server
 
 Protected playback is the one part of the platform this seam cannot reach at all: **Robolectric 4.16

@@ -371,8 +371,8 @@ class DownloadLicenceTest {
         ).also { it.setMediaRequest(request()) }
 
     /**
-     * One step of the clock Media3's own licence retries wait on, which is Robolectric's system clock on the
-     * exchange's thread and not the harness's: a download's licence exchange spends no `RetryPolicy.licence` yet.
+     * One step of the clock a licence retry waits on, which is Robolectric's system clock on the session's request
+     * thread and not the harness's: Media3's own waits, or the store's licence budget where it has a resilience (#260).
      */
     private fun advanceLicenceRetryClock() {
         ShadowSystemClock.advanceBy(Duration.ofMillis(LICENCE_RETRY_CLOCK_STEP_MS))

@@ -18,6 +18,7 @@ package com.superplayer.core
 
 import androidx.media3.common.PlaybackException
 import androidx.media3.datasource.DataSource
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 
 /**
  * How a player survives a failure: the retry, the fallback ladder and the token refresh
@@ -190,8 +191,9 @@ internal interface PlayerStateRungs {
 /**
  * What `superplayer-offline` asks of a [PlaybackResilience] a download store was built with (ADR-0013 rule
  * 14): what a failed download is, how long one stopped for a lost network waits before it tries again, how
- * long one that failed otherwise waits before it is asked for again and whether it is, and the layer that
- * repairs a refused credential inside a download's transfer.
+ * long one that failed otherwise waits before it is asked for again and whether it is, the layer that
+ * repairs a refused credential inside a download's transfer, and the policy a download's licence exchange
+ * spends its budget through.
  *
  * Beside [EngineResilienceExtension] rather than a member of it, because a store builds no engine and
  * fills no slot — it is built *from* core's seam (rule 4). The two questions are the module's reason to
@@ -199,7 +201,9 @@ internal interface PlayerStateRungs {
  * that tells a lost network from a missing segment has to ask, and every wait carries rule 12's jitter,
  * which is correctness and lives with the backoff every other retry draws. The header-refresh layer is the
  * one a player's slot is filled with, so `superplayer-offline` composes it into its chain while depending on
- * core alone (rule 1). A store built without one asks nothing and retries as Media3's download manager does.
+ * core alone (rule 1), and the licence policy is the one a player's DRM slot is handed, for the same reason.
+ * A store built without one asks nothing, retries as Media3's download manager does, and leaves a licence
+ * exchange to Media3's own licence handling.
  *
  * Pure, and asked on whichever thread met the failure: the store's, or Media3's download thread.
  */
@@ -234,4 +238,17 @@ internal interface DownloadResilienceExtension : PlaybackResilience {
      * that met it, as on a player. Null where there is no provider to repair one with.
      */
     fun downloadHeaderRefresh(): HeaderRefreshLayer?
+
+    /**
+     * The `LoadErrorHandlingPolicy` a store hands the session manager its licence exchanges run through, built
+     * once per store: a failed licence or provisioning request asked for again on [RetryPolicy.licence], after
+     * rule 12's jittered wait, as a player's licence load is (ADR-0012 rule 2, #205, #260). It reads
+     * [decisions] on every consultation, so the budget spent is the one the store's policy last decided.
+     *
+     * An object Media3 asks rather than a wait the store runs, unlike [waitBeforeRetryingMs]: a licence
+     * request is Media3's session's, made inside `OfflineLicenseHelper`, and Media3 asks a session manager's
+     * own policy about it and waits on that session's request thread, whose looper clock is the one a test
+     * moves.
+     */
+    fun downloadLicenceErrors(decisions: DecisionInForce): LoadErrorHandlingPolicy
 }

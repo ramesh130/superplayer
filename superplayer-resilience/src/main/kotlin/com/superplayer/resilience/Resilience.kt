@@ -18,6 +18,8 @@ package com.superplayer.resilience
 
 import androidx.media3.common.C
 import androidx.media3.datasource.DataSource
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
+import com.superplayer.core.DecisionInForce
 import com.superplayer.core.DownloadResilienceExtension
 import com.superplayer.core.EngineConfiguration
 import com.superplayer.core.EngineResilienceExtension
@@ -144,6 +146,13 @@ internal class StandardResilience(private val headers: HeaderProvider?) :
     // store's. None without a provider, where a player gets the pass-through only so core stamps its requests,
     // which a download's chain does anyway.
     override fun downloadHeaderRefresh(): HeaderRefreshLayer? = headers?.let { TokenRefreshLayer(it) }
+
+    // The very object a player's DRM slot is handed (#205), over the store's decision rather than a player's:
+    // Media3 asks it about a licence load with `C.DATA_TYPE_DRM`, which `RetryBudgetKind` reads as the licence
+    // budget, and asks it nothing about a fallback, so rung 1 is the whole climb, as it is for a download's own
+    // requests. A record of its own because a store reports no rungs tried (`failureOf`).
+    override fun downloadLicenceErrors(decisions: DecisionInForce): LoadErrorHandlingPolicy =
+        RetryingLoadErrors.forPlayer(decisions, Random.Default)
 
     private companion object {
 

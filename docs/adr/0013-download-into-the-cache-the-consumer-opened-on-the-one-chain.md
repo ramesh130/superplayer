@@ -487,11 +487,8 @@ Fifteen rules follow, and they are binding.
       player of it ends with — core dresses the exception with the same code a refused player's session
       carries, so both are `Drm.LicenceExpired`.
 
-    Not built, each named where it would go. The chain carries the `LoadKind.LICENCE` stamp and neither of
-    the other two things this rule's refinement of ADR-0012 rule 9's addendum rests on: the app's credential,
-    since the download chain composes no header-refresh slot, and `RetryPolicy.licence`, since Media3's own
-    handling answers a failed exchange. #254 built both for a download's own requests and neither for its
-    licence exchange, which is left as it was. A key-set id the device no longer knows is not
+    Not built, each named where it would go. (The chain's credential and `RetryPolicy.licence`, once listed
+    here, were built by #260: rule 14's addendum for #260.) A key-set id the device no longer knows is not
     dropped: it cannot yet be told from a release the network lost, so it stays owed, and keeps the
     schedule wanted. One licence is acquired per download, for the first protected format selected, so
     content whose tracks are licensed under separate keys is not yet supported. A store released while an
@@ -542,10 +539,33 @@ Fifteen rules follow, and they are binding.
       401 or 403 is repaired inside the transfer and costs no retry, and `superplayer-offline` still depends
       on core alone (rule 1). With no provider there is no layer: a player needs a pass-through only to make
       core stamp its requests, and a download's chain stamps them anyway.
-    - **Not built: a licence exchange's budget and credential.** `DownloadLicences` still hands its session
-      manager no load-error policy, so Media3's own handling answers a failed licence request, and its chain
-      composes no header-refresh layer. The licence budget reaches a download only through that policy, as
-      on a player, and no test here refuses a licence credential.
+    - **Not built: a licence exchange's budget and credential.** Built by #260, below.
+
+    *Addendum (2026-09-17, #260).* A licence exchange spends the budget and gets the repair, as a player's does:
+
+    - **The licence budget reaches the session manager as a player's does: through its load-error policy.**
+      A licence request is made inside Media3's `DefaultDrmSession`, which asks the session manager's
+      `LoadErrorHandlingPolicy` and nothing of the store, so a wrapper like `PinningDownloader` has nothing
+      to wrap. `DownloadResilienceExtension.downloadLicenceErrors` builds the policy a player's DRM slot is
+      handed (#205), once per store, and `DownloadLicences` passes it in `LicenceContext.loadErrors`, which
+      `superplayer-drm` already sets on the manager. The policy reads `C.DATA_TYPE_DRM` as the licence
+      budget, rung 1 is its whole climb, and `Backoff` draws the wait. The other option was an exchange
+      retried by the store around `OfflineLicenseHelper`. It would have left Media3's own retries running
+      underneath and opened a new session graph for every attempt.
+    - **The wait is on the session's request thread, not a sleep.** Media3 posts a retry as a delayed message
+      on the session's `HandlerThread`, which runs on the clock a test moves, and the licence thread blocks
+      only on the exchange's answer. `DownloadLicenceBudgetTest` reads that clock at each ask.
+    - **The budget is the decision the store last consulted.** The policy reads the store's decision through
+      a `DecisionInForce` on every consultation, and the store updates the decision on its thread when it
+      opens and as each item is enqueued, before the item's licence is acquired. `PlaybackPolicy.decide` is
+      never called on Media3's request thread.
+    - **One header-refresh layer per store, under both chains.** `TransferChain.downloadLicenceChain` composes
+      the same layer `downloadChain` has, under the licence stamp. A player's one layer serves its licence
+      and its media, and a credential repaired on one serves the other. So a refused 401 or 403 is repaired
+      inside the transfer and spends no retry.
+    - **Without a resilience nothing changes.** The context carries no policy and the chain no layer, so
+      Media3's own licence handling answers, which `DownloadLicenceBudgetTest` counts beside a store that has
+      one.
 
 ### Pay nothing
 

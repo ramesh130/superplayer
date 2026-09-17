@@ -34,6 +34,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
@@ -338,6 +339,8 @@ public class SuperPlayer private constructor(
         // On the engine rather than through the listener wrapper: it is core's own, reports nothing to
         // a consumer, and must survive the wrapper purge a pooled reset performs.
         videoOutput?.let(delegate::addListener)
+        // And the display watch, registered on the application looper only on a player with an output.
+        videoOutput?.start()
         // Wired here rather than in the builder so the loop never holds a half-built facade: it is
         // started, and can first call back, only once `build()` has this object in hand.
         reapplication?.onDecisionChanged = { decision, trigger ->
@@ -1598,16 +1601,22 @@ public class SuperPlayer private constructor(
                 // Audio focus, becoming-noisy and the wake locks: platform rules rather than
                 // policy, which is why they are not a profile's to decide. See LifecycleBinding.kt.
                 .withLifecycleCorrectness()
-            val configuration = EngineConfiguration(engineBuilder, protectedPlayback = drm != null)
+            // A pooled player after the first takes the components the first one assembled instead,
+            // so an extension configures one engine per pool (ADR-0010 rule 9; PooledEngine.kt).
+            val shared = pooled?.components
+            val configuration = EngineConfiguration(
+                engineBuilder,
+                protectedPlayback = drm != null,
+                // Read once here on every player, as the display was when it was a constraint; a pool
+                // shares the first player's window with the selection factory that reads it (ADR-0014
+                // rule 10).
+                displayInForce = shared?.displayInForce ?: DisplayInForce(displayCapabilityOf(context)),
+            )
             // A policy that brings its own engine components fills the slots first; the test seam
             // runs after it so a test's engine configuration wins over the policy's exactly as it
             // wins over the profile's: the clock, the renderers, a meter a test reads through. A
             // policy that is not an extension takes the path below untouched — nothing is looked
             // up and nothing is registered, which is what a consumer without abr pays.
-            //
-            // A pooled player after the first takes the components the first one assembled instead,
-            // so an extension configures one engine per pool (ADR-0010 rule 9; PooledEngine.kt).
-            val shared = pooled?.components
             if (shared == null) {
                 (policy as? EnginePolicyExtension)?.configureEngine(configuration)
             } else {
@@ -1671,8 +1680,14 @@ public class SuperPlayer private constructor(
             // are for the parameters below. A decided pace with no factory installed to own it
             // becomes Media3's own adaptive factory, fixed as the load control above is.
             val trackSelectionFactory = configuration.trackSelectionFactory ?: decision.trackSelection.pace?.toTrackSelectionFactory()
-            trackSelectionFactory?.let { factory ->
-                engineBuilder.setTrackSelector(DefaultTrackSelector(context, factory))
+            // On a player with an output, the same selector with its `invalidate` exposed, over the same
+            // factory or Media3's own default one, so a display change can ask it again (ADR-0014 rule 5).
+            val reselectingSelector = configuration.videoOutput?.let {
+                ReselectingTrackSelector(context, trackSelectionFactory ?: AdaptiveTrackSelection.Factory())
+            }
+            when {
+                reselectingSelector != null -> engineBuilder.setTrackSelector(reselectingSelector)
+                trackSelectionFactory != null -> engineBuilder.setTrackSelector(DefaultTrackSelector(context, trackSelectionFactory))
             }
             // The loading path, composed in one place rather than defaulted by Media3; TransferChain
             // says what wraps what, and where cache, measurement, CMCD and header refresh each go.
@@ -1739,7 +1754,14 @@ public class SuperPlayer private constructor(
                 licenceSessions = configuration.drm,
                 // And the output slot's binding, attached to this player; null on every player
                 // without `setOutput` (ADR-0014 rule 14).
-                videoOutput = configuration.videoOutput?.let(::VideoOutputAttachment),
+                // With its display watch, which re-selects through the selector built above (ADR-0014
+                // rule 5).
+                videoOutput = configuration.videoOutput?.let { binding ->
+                    VideoOutputAttachment(
+                        binding,
+                        DisplayWatch(context, engine.applicationLooper, checkNotNull(reselectingSelector), configuration.displayInForce),
+                    )
+                },
             )
 
             // The first pooled player's components become the pool's. The factory handed on is the
@@ -1760,6 +1782,7 @@ public class SuperPlayer private constructor(
                         identifiesContent = cache != null && configuration.mediaSourceFactory == null,
                         sessionIds = pooled.sessionIds,
                         initialDecision = decision,
+                        displayInForce = configuration.displayInForce,
                     ),
                 )
             }

@@ -49,8 +49,8 @@ import kotlin.math.roundToInt
  * **Why the display is read here and not watched.** The mode list is read once per decision, on the
  * application thread, from `DisplayManager`. It is not `DisplayCapability` (ADR-0014 rule 9 keeps the
  * rate out of that, because a player re-selecting on its own request would loop), and it is not a
- * watch: rule 5 has core hand the binding the rate again when the display changes, and this will read
- * the new display then. That watch is #269's and is not built yet.
+ * watch: core's display watch hands the binding the rate again when the display changes (rule 5, #269),
+ * and this reads the new display then.
  */
 internal class FrameRateMatching(private val displays: DisplayManager) : VideoOutputBinding {
 

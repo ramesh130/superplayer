@@ -22,6 +22,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.view.Surface
 import androidx.media3.common.C
+import androidx.media3.common.ColorInfo
 import androidx.media3.common.DrmInitData
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
@@ -1529,6 +1530,7 @@ public class PlaybackHarness : ExternalResource() {
         .setWidth(rung.heightPx * WIDTH_NUMERATOR / HEIGHT_DENOMINATOR)
         .setHeight(rung.heightPx)
         .setFrameRate(rung.frameRate ?: Format.NO_VALUE.toFloat())
+        .apply { if (rung.hdr) setColorInfo(HDR10_COLOR) }
         .build()
 
     public companion object {
@@ -1588,6 +1590,13 @@ public class PlaybackHarness : ExternalResource() {
         /** 16:9, as every rung of a modern ladder is: width is height × 16 ÷ 9. */
         private const val WIDTH_NUMERATOR = 16
         private const val HEIGHT_DENOMINATOR = 9
+
+        /** HDR10's colour, as `TestContent.Rung.hdr` declares it: BT.2020 primaries, limited range, the PQ transfer. */
+        private val HDR10_COLOR: ColorInfo = ColorInfo.Builder()
+            .setColorSpace(C.COLOR_SPACE_BT2020)
+            .setColorRange(C.COLOR_RANGE_LIMITED)
+            .setColorTransfer(C.COLOR_TRANSFER_ST2084)
+            .build()
 
         /** How far apart the described content's samples are; what a rung *declares* is the rung's. */
         private val FRAME_RATE = TestContent.Rung.DEFAULT_FRAME_RATE

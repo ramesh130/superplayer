@@ -160,6 +160,12 @@ internal class SharedComponents(
     /** The pool's ids minted ahead of adoption, which every pooled player's session reads (ADR-0010 rule 7). */
     val sessionIds: PremintedSessionIds,
     initialDecision: PlaybackDecision,
+    /**
+     * The first player's display window, which the shared selection factory's gate reads: every pooled
+     * player is built on it, so a display change any one of them hears reaches the one gate (ADR-0014
+     * rule 10).
+     */
+    val displayInForce: DisplayInForce,
 ) {
 
     /**

@@ -60,7 +60,7 @@ internal class DownloadLicences(
     private val transport by lazy { TransferChain.downloadLicenceChain(context, environment, headerRefresh) }
 
     // Read once, when first asked: a store that downloads nothing protected walks no codec list.
-    private val device by lazy { deviceConstraintsOf(context) }
+    private val device by lazy { deviceConstraintsOf() }
 
     private var executor: ExecutorService? = null
 

@@ -311,7 +311,7 @@ internal object TransferChain {
                             // Read here rather than by the module, and read only where there is a slot
                             // to read it for: a player without `setDrm` walks no codec list on this
                             // account (ADR-0012 rules 12 and 13).
-                            device = deviceConstraintsOf(context),
+                            device = deviceConstraintsOf(),
                             delivered = deliveredProtection,
                         ),
                     ),

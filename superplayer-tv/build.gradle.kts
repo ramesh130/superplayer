@@ -21,6 +21,12 @@ dependencies {
     // reads back what was asked of the display (`PlaybackHarness.frameRateRequests`). Phase 2 on
     // phase 8, tests only.
     testImplementation(project(":superplayer-testkit"))
+
+    // The selection gate a display change re-arms, which is `superplayer-abr`'s (ADR-0014 rule 10), and
+    // the collector whose `TrackSwitched` events are what a hotplug test reads the selection from. Phases
+    // 3 and 2 on phase 8, tests only (ADR-0014 rule 1).
+    testImplementation(project(":superplayer-abr"))
+    testImplementation(project(":superplayer-telemetry"))
 }
 
 // The one slot this module fills, `EngineConfiguration.videoOutput`, is core's internal seam, and

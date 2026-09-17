@@ -181,6 +181,23 @@ class FrameRateMatchingTest {
             .inOrder()
     }
 
+    /**
+     * ADR-0014 rule 5, step 4: a new display is asked afresh. The first panel offers no mode matching
+     * film, so nothing is asked; the one hotplugged in its place does, and the player asks it without
+     * the item changing.
+     */
+    @Test
+    fun aHotpluggedDisplayOfferingAMatchIsAskedForTheFilmsRate() {
+        DeviceStatement.declareDisplayModes(listOf(FHD_60, FHD_50), activeMode = FHD_60)
+        val player = play(film(24f), TvOutput.standard(context))
+        assertThat(harness.frameRateRequests(player)).isEmpty()
+
+        harness.scheduleDeviceChange(afterMs = 0) { DeviceStatement.declareDisplayModes(listOf(UHD_60, UHD_24), activeMode = UHD_60) }
+        harness.advanceTimeInStepsMs(player, HOTPLUG_SETTLE_MS)
+
+        assertThat(harness.frameRateRequests(player)).containsExactly(matching(24f))
+    }
+
     private fun play(content: TestContent, output: PlaybackOutput?): SuperPlayer {
         val player = harness.buildPlayer(content = content, output = output)
         player.setMediaRequest(request(content))
@@ -204,6 +221,10 @@ class FrameRateMatchingTest {
         val FHD_24 = DisplayMode(1920, 1080, 24f)
         val FHD_120 = DisplayMode(1920, 1080, 120f)
         val UHD_24 = DisplayMode(3840, 2160, 24f)
+        val UHD_60 = DisplayMode(3840, 2160, 60f)
+
+        /** Long enough for a scheduled change to be made and heard: one engine pass past it. */
+        const val HOTPLUG_SETTLE_MS = 100L
 
         /** 24 × 1000/1001, film pulled down for a 59.94 Hz broadcast. */
         const val NTSC_FILM_FPS = 24_000f / 1_001f

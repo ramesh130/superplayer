@@ -408,6 +408,17 @@ What each stand-in cannot show:
   decodes nothing. Each rung declares `TestContent.Rung.frameRate`, 30 fps unless a test says
   otherwise and null for a rung that declares none, which is what reaches `Format.frameRate` in place
   of a manifest's `FRAME-RATE` or `@frameRate`. The samples stay 30 fps apart whatever a rung declares.
+  A rung with `TestContent.Rung.hdr` declares HDR10's colour (BT.2020, PQ) in place of a manifest's
+  `VIDEO-RANGE=PQ`, which is what a display listing no PQ type is asked about; nothing is tone-mapped.
+- **A hotplug is heard, not negotiated.** `DisplayHotplugTest` replaces the display mid-playback and
+  reads the selection from the `TrackSwitched` events a consumer's sink is told, on a player built with
+  `AdaptivePolicy`, whose gate is the refusal a display change re-arms. What moves under the harness is
+  the rung chosen at the next chunk; a real sink's blank while the link comes back, and whether a
+  rendition that was on screen when the cable moved is shown at all, are a device's (#274). The
+  process-wide throughput memory is `superplayer-abr`'s and outlives a test, so an adaptive player built
+  after another test's finds samples timed on a clock that has since restarted. The memory forgets a
+  sample timed after now rather than aging it backwards, which is why a test class outside `superplayer-abr`
+  needs no reset of its own.
 - **Robolectric has no compositor.** A `Surface.setFrameRate` call is accepted and changes nothing, so
   the active mode is what a test stated until it restates it. What a test *can* read is the request:
   every surface the harness gives a player records each `setFrameRate` call made on it, and
@@ -923,7 +934,10 @@ That test reads past the facade, recorded here as the DRM seam's is. It asserts 
 the builder filled, and on the engine's `videoChangeFrameRateStrategy`, because ADR-0014 rule 14's claim is
 that a player without the module keeps Media3's own strategy, and nothing public reports which one an engine
 was built with. The same count on a player *with* an output reads the strategy off, so the counter is shown
-to count.
+to count. Since #269 it also counts the display service's `DisplayListener`s, read by name from the hidden
+`DisplayManagerGlobal`, because "no listener is registered" is rule 14's claim and no playback shows it, and
+reads the filled configuration's `displayInForce`, the window `superplayer-abr`'s gate reads, because core's
+tests cannot name that gate.
 
 `superplayer-testkit`'s own public API names **no Media3 type**, for the reason ADR-0001 rule 2 gives:
 a `Format` or a `Timeline` in one of its signatures would put Media3's opt-in marker on every test

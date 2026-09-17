@@ -18,7 +18,6 @@ package com.superplayer.abr
 
 import android.media.MediaCodecInfo.CodecProfileLevel
 import android.os.Handler
-import android.view.Display
 import androidx.media3.common.C
 import androidx.media3.common.ColorInfo
 import androidx.media3.common.Format
@@ -32,6 +31,9 @@ import androidx.media3.exoplayer.upstream.BandwidthMeter
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import com.superplayer.core.DeviceConstraints
+import com.superplayer.core.DisplayCapability
+import com.superplayer.core.DisplayInForce
+import com.superplayer.core.HdrType
 import com.superplayer.core.SelectionPace
 import com.superplayer.core.ThroughputEstimate
 import com.superplayer.core.ThroughputSource
@@ -79,8 +81,8 @@ class NetworkAwareTrackSelectionTest {
 
     @Test
     fun theDisplayRefusesARungLargerThanItsShorterEdge() {
-        val fullHd = DeviceConstraints(displayShortEdgePx = 1_080, displayHdrTypes = null, decodableProfileLevels = emptyMap())
-        val selection = selection(ladder(topHeightPx = 2_160), gate(constraints = fullHd))
+        val fullHd = DisplayCapability(shortEdgePx = 1_080, hdrTypes = null)
+        val selection = selection(ladder(topHeightPx = 2_160), gate(display = fullHd))
         meter.estimateBps = 50_000_000
         selection.evaluate()
         // The top rung is refused whatever the link affords; the next one down is the choice.
@@ -88,34 +90,56 @@ class NetworkAwareTrackSelectionTest {
         assertThat(selection.selectedFormat.bitrate).isEqualTo(2_400_000)
 
         // A portrait display shows a landscape rung of its own short edge.
-        val portraitPhone = DeviceConstraints(displayShortEdgePx = 1_080, displayHdrTypes = null, decodableProfileLevels = emptyMap())
-        assertThat(NetworkAwareTrackSelection.Gate(portraitPhone, null, UNCAPPED).deviceRefuses(video(6_000_000, 1_080))).isFalse()
-        assertThat(NetworkAwareTrackSelection.Gate(portraitPhone, null, UNCAPPED).deviceRefuses(video(6_000_000, 1_440))).isTrue()
+        val portraitPhone = gate(display = DisplayCapability(shortEdgePx = 1_080, hdrTypes = null))
+        assertThat(portraitPhone.deviceRefuses(video(6_000_000, 1_080))).isFalse()
+        assertThat(portraitPhone.deviceRefuses(video(6_000_000, 1_440))).isTrue()
+    }
+
+    /**
+     * ADR-0014 rule 5: a display change need not build a new selection, because Media3 keeps a selection
+     * equal to the one it would build, so a selection already playing reads the new display on its next
+     * evaluation — lower on a lesser display, and back up on a more capable one.
+     */
+    @Test
+    fun aSelectionReadsTheDisplayInForceOnEachEvaluation() {
+        val display = DisplayInForce(DisplayCapability(shortEdgePx = 2_160, hdrTypes = null))
+        val selection = selection(ladder(topHeightPx = 2_160), NetworkAwareTrackSelection.Gate(DeviceConstraints.UNKNOWN, null, UNCAPPED, displayInForce = display))
+        meter.estimateBps = 50_000_000
+        selection.evaluate()
+        assertThat(selection.selectedFormat.height).isEqualTo(2_160)
+
+        display.current = DisplayCapability(shortEdgePx = 1_080, hdrTypes = null)
+        selection.evaluate()
+        assertThat(selection.selectedFormat.height).isEqualTo(720)
+
+        display.current = DisplayCapability(shortEdgePx = 2_160, hdrTypes = null)
+        selection.evaluate()
+        assertThat(selection.selectedFormat.height).isEqualTo(2_160)
     }
 
     @Test
     fun theDisplayRefusesAPqRungItCannotShowOnlyBesideAnSdrOne() {
-        val sdrOnly = DeviceConstraints(displayShortEdgePx = null, displayHdrTypes = emptySet(), decodableProfileLevels = emptyMap())
-        val hdr10 = DeviceConstraints(displayShortEdgePx = null, displayHdrTypes = setOf(Display.HdrCapabilities.HDR_TYPE_HDR10), decodableProfileLevels = emptyMap())
+        val sdrOnly = DisplayCapability(shortEdgePx = null, hdrTypes = emptySet())
+        val hdr10 = DisplayCapability(shortEdgePx = null, hdrTypes = setOf(HdrType.HDR10))
         val pq = video(6_000_000, 1_080, colorTransfer = C.COLOR_TRANSFER_ST2084)
         val hlg = video(6_000_000, 1_080, colorTransfer = C.COLOR_TRANSFER_HLG)
         val sdr = video(6_000_000, 1_080, colorTransfer = C.COLOR_TRANSFER_SDR)
 
-        assertThat(NetworkAwareTrackSelection.Gate(sdrOnly, null, UNCAPPED).displayRefusesHdr(pq)).isTrue()
-        assertThat(NetworkAwareTrackSelection.Gate(sdrOnly, null, UNCAPPED).displayRefusesHdr(sdr)).isFalse()
-        assertThat(NetworkAwareTrackSelection.Gate(hdr10, null, UNCAPPED).displayRefusesHdr(pq)).isFalse()
+        assertThat(gate(display = sdrOnly).displayRefusesHdr(pq)).isTrue()
+        assertThat(gate(display = sdrOnly).displayRefusesHdr(sdr)).isFalse()
+        assertThat(gate(display = hdr10).displayRefusesHdr(pq)).isFalse()
         // HLG is shown by an SDR display by design, and a display that did not answer refuses nothing.
-        assertThat(NetworkAwareTrackSelection.Gate(sdrOnly, null, UNCAPPED).displayRefusesHdr(hlg)).isFalse()
-        assertThat(NetworkAwareTrackSelection.Gate(DeviceConstraints.UNKNOWN, null, UNCAPPED).displayRefusesHdr(pq)).isFalse()
+        assertThat(gate(display = sdrOnly).displayRefusesHdr(hlg)).isFalse()
+        assertThat(gate(display = DisplayCapability.UNKNOWN).displayRefusesHdr(pq)).isFalse()
 
         // Beside an SDR rung the PQ rung is refused; alone, the ladder is played from the top.
         meter.estimateBps = 50_000_000
-        val mixed = selection(TrackGroup(video(300_000, 360), video(2_400_000, 720, colorTransfer = C.COLOR_TRANSFER_SDR), pq), gate(constraints = sdrOnly))
+        val mixed = selection(TrackGroup(video(300_000, 360), video(2_400_000, 720, colorTransfer = C.COLOR_TRANSFER_SDR), pq), gate(display = sdrOnly))
         mixed.evaluate()
         assertThat(mixed.selectedFormat.bitrate).isEqualTo(2_400_000)
         val pqOnly = selection(
             TrackGroup(video(300_000, 360, colorTransfer = C.COLOR_TRANSFER_ST2084), video(2_400_000, 720, colorTransfer = C.COLOR_TRANSFER_ST2084), pq),
-            gate(constraints = sdrOnly),
+            gate(display = sdrOnly),
         )
         pqOnly.evaluate()
         assertThat(pqOnly.selectedFormat.bitrate).isEqualTo(6_000_000)
@@ -124,8 +148,6 @@ class NetworkAwareTrackSelectionTest {
     @Test
     fun theDecoderRefusesAProfileOrLevelItDoesNotReach() {
         val mainTo41 = DeviceConstraints(
-            displayShortEdgePx = null,
-            displayHdrTypes = null,
             decodableProfileLevels = mapOf(
                 MimeTypes.VIDEO_H264 to listOf(DeviceConstraints.ProfileLevel(CodecProfileLevel.AVCProfileMain, CodecProfileLevel.AVCLevel41)),
             ),
@@ -140,7 +162,7 @@ class NetworkAwareTrackSelectionTest {
         assertThat(gate.deviceRefuses(video(2_000_000, 720, codecs = null))).isFalse()
         assertThat(gate.deviceRefuses(video(2_000_000, 720, codecs = "hvc1.1.6.L93.B0", mimeType = MimeTypes.VIDEO_H265))).isFalse()
         // A decoder that declared no profiles is unknown, not empty.
-        val undeclared = DeviceConstraints(displayShortEdgePx = null, displayHdrTypes = null, decodableProfileLevels = mapOf(MimeTypes.VIDEO_H264 to emptyList()))
+        val undeclared = DeviceConstraints(decodableProfileLevels = mapOf(MimeTypes.VIDEO_H264 to emptyList()))
         assertThat(NetworkAwareTrackSelection.Gate(undeclared, null, UNCAPPED).deviceRefuses(video(2_000_000, 720, codecs = "avc1.640033"))).isFalse()
     }
 
@@ -156,8 +178,6 @@ class NetworkAwareTrackSelectionTest {
         // A device whose plain decoder reaches High at level 5.1 and whose secure decoder — the
         // `.secure` sibling, same MIME type, which is why the two tables exist — stops at Main 4.1.
         val device = DeviceConstraints(
-            displayShortEdgePx = null,
-            displayHdrTypes = null,
             decodableProfileLevels = mapOf(
                 MimeTypes.VIDEO_H264 to listOf(
                     DeviceConstraints.ProfileLevel(CodecProfileLevel.AVCProfileMain, CodecProfileLevel.AVCLevel51),
@@ -194,8 +214,6 @@ class NetworkAwareTrackSelectionTest {
     fun aProtectedPlayerOnADeviceThatDeclaredNoSecureDecoderRefusesNothing() {
         val rung = video(6_000_000, 2_160, codecs = "avc1.640033")
         val plainOnly = DeviceConstraints(
-            displayShortEdgePx = null,
-            displayHdrTypes = null,
             // A plain decoder that refuses the rung outright, so what is asserted is that the secure
             // reading is the one taken rather than that nothing was asked.
             decodableProfileLevels = mapOf(
@@ -208,8 +226,6 @@ class NetworkAwareTrackSelectionTest {
         // A secure decoder that declared no profiles at all is unknown, not empty — as its plain
         // counterpart is.
         val undeclared = DeviceConstraints(
-            displayShortEdgePx = null,
-            displayHdrTypes = null,
             decodableProfileLevels = emptyMap(),
             secureDecodableProfileLevels = mapOf(MimeTypes.VIDEO_H264 to emptyList()),
         )
@@ -219,7 +235,7 @@ class NetworkAwareTrackSelectionTest {
     @Test
     fun aDolbyVisionRungIsDecodableThroughTheBaseLayerDecoderMedia3FallsBackTo() {
         fun gateFor(vararg declared: Pair<String, DeviceConstraints.ProfileLevel>) = NetworkAwareTrackSelection.Gate(
-            DeviceConstraints(displayShortEdgePx = null, displayHdrTypes = null, decodableProfileLevels = declared.groupBy({ it.first }, { it.second })),
+            DeviceConstraints(decodableProfileLevels = declared.groupBy({ it.first }, { it.second })),
             null,
             UNCAPPED,
         )
@@ -248,8 +264,8 @@ class NetworkAwareTrackSelectionTest {
 
     @Test
     fun aLadderTheDeviceRefusesWholeFallsBackToItsBottomRung() {
-        val tiny = DeviceConstraints(displayShortEdgePx = 240, displayHdrTypes = null, decodableProfileLevels = emptyMap())
-        val selection = selection(ladder(), gate(constraints = tiny))
+        val tiny = DisplayCapability(shortEdgePx = 240, hdrTypes = null)
+        val selection = selection(ladder(), gate(display = tiny))
         meter.estimateBps = 50_000_000
         selection.evaluate()
         assertThat(selection.selectedFormat.bitrate).isEqualTo(300_000)
@@ -375,7 +391,8 @@ class NetworkAwareTrackSelectionTest {
         constraints: DeviceConstraints = DeviceConstraints.UNKNOWN,
         source: ThroughputSource? = null,
         policy: TrackSelectionPolicy = UNCAPPED,
-    ) = NetworkAwareTrackSelection.Gate(constraints, source, policy)
+        display: DisplayCapability = DisplayCapability.UNKNOWN,
+    ) = NetworkAwareTrackSelection.Gate(constraints, source, policy, displayInForce = DisplayInForce(display))
 
     private fun selection(group: TrackGroup, gate: NetworkAwareTrackSelection.Gate): NetworkAwareTrackSelection =
         NetworkAwareTrackSelection(

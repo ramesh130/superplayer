@@ -208,14 +208,21 @@ public class TestContent private constructor(
      * reads (ADR-0014 rule 4). It does not space the samples: the fake renderer shows whatever it is
      * handed, so a declared 24 fps rung is still delivered at [DEFAULT_FRAME_RATE].
      *
+     * [hdr] is a rung that declares HDR10's colour: BT.2020 primaries and the PQ (SMPTE ST 2084)
+     * transfer, as HLS's `VIDEO-RANGE=PQ` and DASH's colour descriptors do. It is what a display that
+     * lists no PQ type is asked about (ADR-0014 rule 9); false, the default, declares nothing, which a
+     * selector reads as SDR.
+     *
      * ref: RFC 6381 §3.3 for the `codecs` form; `avc1.640028` is H.264 High profile level 4.0.
-     * spec: RFC 8216 §4.3.4.2 (`FRAME-RATE`); ISO/IEC 23009-1 §5.3.7.2 (`@frameRate`).
+     * spec: RFC 8216 §4.3.4.2 (`FRAME-RATE`, `VIDEO-RANGE`); ISO/IEC 23009-1 §5.3.7.2 (`@frameRate`);
+     * ITU-R BT.2100 for PQ over BT.2020.
      */
     public data class Rung(
         public val bitrateBps: Int,
         public val heightPx: Int,
         public val codecs: String? = null,
         public val frameRate: Float? = DEFAULT_FRAME_RATE,
+        public val hdr: Boolean = false,
     ) {
         init {
             require(bitrateBps > 0) { "A rung needs a positive bitrate, was $bitrateBps" }

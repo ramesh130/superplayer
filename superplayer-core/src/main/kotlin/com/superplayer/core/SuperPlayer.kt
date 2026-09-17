@@ -212,6 +212,15 @@ public class SuperPlayer private constructor(
      * none.
      */
     private val deliveredProtection: DeliveredProtection,
+    /**
+     * Who core asks whether a protection failure can be repaired by re-opening the session graph at
+     * a permitted lower level, and null on every player without one (ADR-0012 rule 11's #225
+     * addendum).
+     *
+     * Deliberately without a default value, for the reason [builtWithTrackSelectionParameters] has
+     * none.
+     */
+    private val protectionRepair: ProtectionRepair?,
 ) : Player by delegate {
 
     /**
@@ -227,6 +236,12 @@ public class SuperPlayer private constructor(
      * Null on every player built without `SuperPlayer.Builder.setDrm`, and also on one whose device
      * could honour the level it reports — the ordinary case, where no negotiation happens and there
      * is nothing to say.
+     *
+     * **It can change during a session**, and a reader that caches it is reading a guess. A device
+     * the provisioning service refuses at the level it reports is found out after its session graph
+     * was composed, and the graph is then built again at the permitted level (ADR-0012 rule 11's
+     * #225 addendum) — so this is null until that happens and the lower level afterwards.
+     * `QoeCollector` reads it at the end of the session, which is the moment it is settled.
      */
     public val deliveredSecurityLevel: String?
         get() = deliveredProtection.securityLevel
@@ -345,6 +360,9 @@ public class SuperPlayer private constructor(
         playerStateRungs: PlayerStateRungs? = null,
         // Empty for an engine somebody else built: no slot of core's opened a session on it.
         deliveredProtection: DeliveredProtection = DeliveredProtection(),
+        // Null for the same reason: no protection of core's composed a graph, so there is none to
+        // compose again.
+        protectionRepair: ProtectionRepair? = null,
     ) : this(
         exoPlayer,
         profile,
@@ -359,6 +377,7 @@ public class SuperPlayer private constructor(
         pooled,
         playerStateRungs,
         deliveredProtection,
+        protectionRepair,
     )
 
     /**
@@ -460,6 +479,14 @@ public class SuperPlayer private constructor(
     private var decoderRecreations: Int = 0
     private var recreatedAtPositionMs: Long = C.TIME_UNSET
 
+    /**
+     * How many times this player has re-opened its protection at a permitted lower level, bounded by
+     * [MAX_PROTECTION_REOPENS] — which says why this one is never started over.
+     *
+     * Touched on the application thread only, like the two above and for the same reason.
+     */
+    private var protectionReopens: Int = 0
+
     // Where a climb out of the top of `superplayer-resilience`'s ladder reaches the player: rungs 4
     // and 5 are performed here, on a player that has somebody to ask and on no other (ADR-0011
     // rules 5 and 14).
@@ -473,6 +500,7 @@ public class SuperPlayer private constructor(
                 object : Player.Listener {
                     override fun onPlayerError(error: PlaybackException) {
                         when (repairFor(error)) {
+                            FailureRepair.REOPEN_PROTECTION -> reopenProtection()
                             FailureRepair.NEXT_SOURCE -> openNextSource()
                             FailureRepair.RECREATE_DECODER -> recreateDecoder()
                             FailureRepair.NONE -> Unit
@@ -692,6 +720,64 @@ public class SuperPlayer private constructor(
     }
 
     /**
+     * Core's half of the protection repair: whether *this* failure, on *this* player, is one a
+     * permitted lower level could be the remedy for (ADR-0012 rule 11's #225 addendum).
+     *
+     * Two halves, both core's, and neither is a classification of its own. The first is
+     * [SuperPlayerError.lowerSecurityLevelMayHelp], which is the one classifier's own answer to
+     * exactly this question and is why core matches on no class name here: a licence that expired
+     * and a protection stack that faulted are not failures of the level asked for, and telling them
+     * from a device the provisioning service or the scheme refused is what the taxonomy is for
+     * (ADR-0011 rule 1). A player with no resilience has no typed error and therefore no repair,
+     * which is the same "pays nothing" every rung has.
+     *
+     * The second is the bound, [MAX_PROTECTION_REOPENS], which says why it is one and why it never
+     * starts over. Whether there is a permitted level left to ask for is the protection's half and
+     * is not visible from here.
+     */
+    private fun mayReopenProtection(): Boolean {
+        // Nothing prepared is nothing to re-prepare, exactly as for rung 5: a failure before there
+        // was an item is not a session that opened at the wrong level.
+        if (delegate.currentMediaItem == null) return false
+        if (failureTypedError?.lowerSecurityLevelMayHelp != true) return false
+        return protectionReopens < MAX_PROTECTION_REOPENS
+    }
+
+    /**
+     * The protection opened again at the level the licence server's operator permitted, and this
+     * player prepared on it at the instant playback had reached.
+     *
+     * Called only from the failure listener, and only for a failure [repairFor] has already routed
+     * here. The graph is `superplayer-drm`'s to rebuild and the player is core's to re-prepare,
+     * which is the same split every rung has and the reason [ProtectionRepair] is two methods.
+     *
+     * **The item is re-set rather than merely re-prepared**, and that is the one mechanism worth
+     * knowing: `ExoPlayer` asks the media source factory for a source when an item is set, and the
+     * factory asks the `DrmSessionManagerProvider` for a manager as it builds one — so a graph
+     * rebuilt behind the provider reaches the renderer only through a source built after it.
+     * `prepare()` alone retries the source that already holds the refused manager (// ref:
+     * `Player.prepare()` retries *the current* media item).
+     *
+     * The same item object, so the identity, the CMCD `sid`, the measurement session and the cache
+     * key are the ones the viewing started with (ADR-0011 rule 10 for the same reason rung 4 keeps
+     * them): one viewing rescued is one session. The position goes into `setMediaItem` rather than
+     * into a seek afterwards, and into the remembered-position map before it, which is rung 4's
+     * rule 9 in the same words.
+     */
+    private fun reopenProtection(): Boolean {
+        val item = delegate.currentMediaItem ?: return false
+
+        // Read before anything replaces the item, for the reason rung 4 reads it there.
+        val positionMs = positionOfCurrentContent()
+        protectionReopens++
+        rememberPositionOfCurrentContent()
+        protectionRepair?.reopenAtLowerLevel()
+        delegate.setMediaItem(item, positionMs)
+        delegate.prepare()
+        return true
+    }
+
+    /**
      * Core's half of rung 5: whether recreating a decoder on this player could be a remedy rather
      * than the start of a loop.
      *
@@ -735,6 +821,14 @@ public class SuperPlayer private constructor(
      * Which rung, if any, this player performs for [error] — the one place rungs 4 and 5 are routed,
      * and therefore the one place ADR-0011 rule 7's order between them is imposed.
      *
+     * **The protection's repair is offered the failure before either of them** (ADR-0012 rule 11's
+     * #225 addendum), and that is also an order rather than a preference: a session refused at the
+     * level it asked for is refused at every source, because a request's sources are one piece of
+     * content in more than one place and protection is the player's (ADR-0012 rule 1). Rung 4 would
+     * download a second manifest to meet the same refusal, and rung 5 would build a decoder nothing
+     * has keys for. It is not a rung, gains no `FallbackRung` and moves no ceiling — what makes it
+     * reachable is a permission rather than a classification ([ProtectionRepair]).
+     *
      * Rung 4 is offered the failure first and rung 5 only where it declined, which is the order and
      * not a preference. It costs a `Device.DecoderTransient` nothing, because the ladder refuses that
      * class the next source in as many words — a decoder that stopped is not a property of the source,
@@ -756,6 +850,9 @@ public class SuperPlayer private constructor(
             // had got to, and a rung that re-prepares or replaces the item moves it.
             failureTypedError = rungs.typedErrorFor(error, positionOfCurrentContent())
             failureRepair = when {
+                mayReopenProtection() && protectionRepair?.mayReopenAtLowerLevel() == true ->
+                    FailureRepair.REOPEN_PROTECTION
+
                 currentRequest?.let { hasNextSource(it) } == true && rungs.opensNextSource(error) ->
                     FailureRepair.NEXT_SOURCE
 
@@ -768,15 +865,19 @@ public class SuperPlayer private constructor(
     }
 
     /**
-     * Whether [error] is one this player takes on itself at rung 4 or rung 5, and therefore one the
-     * consumer is never told about.
+     * Whether [error] is one this player takes on itself — at rung 4, at rung 5, or by re-opening
+     * its protection at a permitted lower level — and therefore one the consumer is never told
+     * about.
      *
      * A rescued session that also reported an error would be two contradictory accounts of one
      * viewing: ADR-0011 rule 10 makes the typed error rung 6 — what a consumer is handed once nothing
      * below it worked — so an error a rung below repairs is not an error the `Player` API delivers.
      * That rule's addendum carries the argument, and **this is the one deliberate exception to
      * ADR-0003 rule 3's "a wrapper forwards every callback"**, recorded at that rule too and bounded
-     * where the wrapper reads it ([reportingSourceAs]).
+     * where the wrapper reads it ([reportingSourceAs]). The protection's re-open is inside that one
+     * exception rather than beside it: the argument is about a session core rescued rather than
+     * about which mechanism rescued it, and a viewer whose stream came back at the permitted level
+     * has had no error to handle either.
      *
      * The listener wrappers ask this before forwarding, which is the only place the callback can be
      * withheld: Media3 hands one event to every listener in one pass, so a decision taken after the
@@ -1152,6 +1253,26 @@ public class SuperPlayer private constructor(
          * consumer who hits it sees the error rather than the count.
          */
         internal const val MAX_DECODER_RECREATIONS: Int = 2
+
+        /**
+         * How many times one player re-opens its protection at a permitted lower level: once.
+         *
+         * The bound ADR-0012 rule 11's #225 addendum asks for, here rather than in
+         * `superplayer-drm` for the reason [MAX_DECODER_RECREATIONS] is here rather than in the
+         * ladder: what it bounds is an operation on this player's own state, and a repair free to
+         * repeat is a loop rather than a remedy — a refusal the lower level does not cure fails
+         * again the moment the new graph asks.
+         *
+         * One rather than two, and the asymmetry with [MAX_DECODER_RECREATIONS] is the whole
+         * argument: a decoder may come back on the second ask because what stopped it was a moment
+         * passing, while a licence server's operator publishes one set of permitted levels and
+         * asking again cannot enlarge it. Widevine has exactly one level below `L1`, so a second
+         * attempt would be an attempt at the level already in force. Counted for the player's
+         * lifetime and never started over, unlike the decoder count, because a lowered level is a
+         * property of the session graph rather than of the content playing through it: new content
+         * on this player is still protected by the graph the first content's failure rebuilt.
+         */
+        internal const val MAX_PROTECTION_REOPENS: Int = 1
     }
 
     /**
@@ -1162,7 +1283,7 @@ public class SuperPlayer private constructor(
      * dispatch — the listener wrappers ask only whether the failure is withheld, while the engine
      * listener has to perform the right remedy — and a pair of booleans would let the two disagree.
      */
-    private enum class FailureRepair { NONE, NEXT_SOURCE, RECREATE_DECODER }
+    private enum class FailureRepair { NONE, REOPEN_PROTECTION, NEXT_SOURCE, RECREATE_DECODER }
 
     public class Builder(private val context: Context) {
 
@@ -1491,6 +1612,10 @@ public class SuperPlayer private constructor(
                 // the whole of what a player without the module pays for rung 4 (ADR-0011 rule 14).
                 playerStateRungs = configuration.playerStateRungs,
                 deliveredProtection = deliveredProtection,
+                // And whatever the protection put in the slot that faces the other way, which is
+                // null on every player whose protection has no permitted level to fall to — and on
+                // every player without `setDrm` at all (ADR-0012 rule 13).
+                protectionRepair = configuration.protectionRepair,
             )
 
             // The first pooled player's components become the pool's. The factory handed on is the

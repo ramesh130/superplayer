@@ -70,8 +70,56 @@ public interface PlaybackDrm
  */
 internal interface EngineDrmExtension : PlaybackDrm {
 
-    /** Fills [EngineConfiguration.drm]. Called once per `build()`, before the test configurator. */
+    /**
+     * Fills [EngineConfiguration.drm], and [EngineConfiguration.protectionRepair] where the
+     * protection can be re-opened. Called once per `build()`, before the test configurator.
+     */
     fun configureEngine(configuration: EngineConfiguration)
+}
+
+/**
+ * Who core asks whether this player's protection can be opened again at a level the licence server's
+ * operator permitted — the repair for a failure the session graph could not have seen coming
+ * (ADR-0012 rule 11's #225 addendum).
+ *
+ * **Beside the fallback ladder and not inside it.** Nothing here is a [PlayerStateRungs] question: no
+ * `FallbackRung` is added, no ceiling moves, and a failure a lower level cures is one no
+ * classification could have routed, because what makes it curable is a permission rather than a
+ * class. Core asks this *before* it asks the rungs, which is the order and not a preference — a
+ * second source is a second container for the same entitlement (ADR-0012 rule 1), so downloading one
+ * to meet the same refusal is a startup a viewer waits through for nothing.
+ *
+ * **It is asked about no particular failure, and that is deliberate.** Which failures are worth
+ * offering is core's, read off the classification the one classifier already made
+ * ([SuperPlayerError.category]); `superplayer-drm` keeps no taxonomy and names no error code
+ * (ADR-0012 rule 5, checked against that module's source tree). So the question here is the half only
+ * the protection can answer: whether there is a permitted level below the one in force that has not
+ * been tried.
+ *
+ * The two halves are split for the reason every rung's are: the implementation says what the
+ * permission allows, and core says whether this player may perform it at all
+ * ([SuperPlayer.MAX_PROTECTION_REOPENS]) and then performs the re-preparation.
+ *
+ * Both methods are called on the application thread, from the failure dispatch.
+ */
+internal interface ProtectionRepair {
+
+    /**
+     * Whether a level below the one in force was permitted and has not been asked for yet.
+     *
+     * Pure: it changes nothing, so core may ask it for a failure it then decides not to act on.
+     */
+    fun mayReopenAtLowerLevel(): Boolean
+
+    /**
+     * Builds this player's session graph again at that level, and writes the level down
+     * ([DeliveredProtection]).
+     *
+     * What it does *not* do is re-prepare the player: the item, the position and the identity are
+     * core's, and core re-sets the item afterwards so that the media source is built again and the
+     * new graph is the one it asks for a session.
+     */
+    fun reopenAtLowerLevel()
 }
 
 /**

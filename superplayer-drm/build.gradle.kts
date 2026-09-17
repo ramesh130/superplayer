@@ -41,6 +41,13 @@ dependencies {
     // are that module's — so the claims of #205 cannot be driven through this module's public API
     // without it. Nothing in this module's main sources knows it exists.
     testImplementation(project(":superplayer-resilience"))
+
+    // `QoeCollector`, for the half of ADR-0012 rule 11 that is a report rather than a behaviour: a
+    // session that fell to a lower level mid-flight says so on `SessionEnded`. It is asserted here
+    // because the fall is this module's, and a phase 2 module may not depend on a phase 6 one —
+    // the same direction, and the same reason, as the resilience dependency above. Phase 6 on phase
+    // 2, tests only.
+    testImplementation(project(":superplayer-telemetry"))
 }
 
 // The one slot this module fills — the `DrmSessionManagerProvider` every media source `TransferChain`

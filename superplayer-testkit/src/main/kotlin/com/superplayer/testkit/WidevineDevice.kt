@@ -129,15 +129,39 @@ private class StatedExoMediaDrm(
 ) : ExoMediaDrm by delegate {
 
     /**
+     * The level this implementation is operating at: what the device reports, unless it has been
+     * asked to work at a lower one and agreed ([setPropertyString]).
+     *
+     * Per implementation rather than per statement, which is what a real `MediaDrm` does: the
+     * property is set on an instance, and a provider that hands out two hands out two devices at
+     * whatever level each was asked for.
+     */
+    private var level: SecurityLevel = statement.securityLevel
+
+    /**
      * ref: `MediaDrm.PROPERTY_SECURITY_LEVEL` — the property a Widevine device answers `L1` or `L3`
      * to, and the one every piece of software that cares about the distinction reads.
      */
     override fun getPropertyString(propertyName: String): String =
         if (propertyName == SECURITY_LEVEL_PROPERTY) {
-            statement.securityLevel.name
+            level.name
         } else {
             delegate.getPropertyString(propertyName)
         }
+
+    /**
+     * ref: `MediaDrm.setPropertyString` with `securityLevel` — the one lever for asking a Widevine
+     * implementation to operate below what it is capable of, and the lever ADR-0012 rule 11's
+     * downgrade pulls. A device honours a request for a level at or below its own and ignores the
+     * rest, which is why this narrows and never raises.
+     */
+    override fun setPropertyString(propertyName: String, value: String) {
+        if (propertyName == SECURITY_LEVEL_PROPERTY && value == SecurityLevel.L3.name) {
+            level = SecurityLevel.L3
+            return
+        }
+        delegate.setPropertyString(propertyName, value)
+    }
 
     /**
      * ref: `MediaDrm.requiresSecureDecoderComponent` — whether the licence in force can only be used
@@ -145,7 +169,7 @@ private class StatedExoMediaDrm(
      * [SecurityLevel.L3], which is the definition of the two levels rather than a simplification.
      */
     override fun requiresSecureDecoder(sessionId: ByteArray, mimeType: String): Boolean =
-        statement.securityLevel == SecurityLevel.L1
+        level == SecurityLevel.L1
 
     /**
      * The provisioning round trip this device would make, addressed at [FakeLicenceServer].
@@ -180,9 +204,16 @@ private class StatedExoMediaDrm(
      * and not the transfer's, which is why it is stated here and not as a [FaultScript] fault: a
      * fault at [ResourceKind.LICENCE] is a provisioning request that never reached a server, and this
      * is one that reached it and was turned down.
+     *
+     * **Refused at the level the statement names and not below it**, which is the whole of what makes
+     * #225 reachable through a real player. Provisioning is per security level on a real handset — a
+     * certificate is issued for the keybox being certified — so a device refused at `L1` is routinely
+     * certified at `L3`, which is [DeviceStatement.declareWidevineProvisioningFailure]'s own sentence
+     * about the commonest reason L1 is unusable. An implementation that has been lowered
+     * ([setPropertyString]) is therefore asking a different question, and gets a different answer.
      */
     override fun provideProvisionResponse(response: ByteArray) {
-        if (statement.provisioningFails) {
+        if (statement.provisioningFails && level == statement.securityLevel) {
             throw DeniedByServerException("The provisioning service refused this device (stated by DeviceStatement)")
         }
         delegate.provideProvisionResponse(response)

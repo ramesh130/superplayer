@@ -278,6 +278,32 @@ Thirteen rules follow, and they are binding.
     level says so in telemetry, because a support engineer reading a session needs to know which
     thing was delivered.
 
+    *Addendum (#225).* "The session-opening path" was where the mechanism could run, not where the
+    rule holds, and one of the three ways `PRD.md` §3.2 says L1 becomes unusable is invisible from
+    there: a device the provisioning service will not certify declares a secure decoder, reports
+    `L1`, and is refused from inside `DefaultDrmSessionManager` once the graph is fixed. Such a
+    player now **builds its session graph again** at the permitted level and is re-prepared at the
+    position playback had reached. Every clause above survives it unchanged: the permission is still
+    the set the operator published and an empty one is still a refusal, so nothing is lowered that
+    the configuration did not name; the level is still written down for telemetry, now settled
+    mid-session rather than before it, which `SuperPlayer.deliveredSecurityLevel` and `SessionEnded`
+    report at the end either way; and it is still not a rung — no `FallbackRung`, no
+    `FailureClass` leaf and no ceiling moves, and `PlayerStateRungs` is untouched. What is new is a
+    second slot in core's seam, `EngineConfiguration.protectionRepair`, which core *interrogates* at
+    failure time exactly as ADR-0011 rule 13's addendum has it interrogate the two player-state
+    rungs, and which is offered the failure **before** them: a request's sources are one piece of
+    content in more than one place, so a refusal at the level asked for is a refusal at every source.
+    Which failures are offered is the *classifier's*, as a fourth question on `FailureClass`
+    (`lowerSecurityLevelMayHelp`, true for the two leaves a refused keybox reaches and false for
+    every other failure in the library) carried out on `SuperPlayerError`: the module keeps no
+    taxonomy (rule 5) and core matches on no class name, so ADR-0011 rule 1's "a failure acquires a
+    meaning in exactly one place" holds for this mechanism as it does for the ladder. A ceiling is
+    not that answer and cannot be — `Drm.Unsupported` reaches rung 4 and `Drm.Provisioning` reaches
+    rung 1, while both may be cured by a level — which is the same reason this is not a rung. The bound is core's too and is one attempt per player
+    (`SuperPlayer.MAX_PROTECTION_REOPENS`): Widevine has a single level below `L1`, so a second
+    attempt would ask for the level already in force. The third way — a secure surface that will not
+    allocate — is still uncovered, and reaches a player on this same path.
+
 12. **The secure-decoder reading is a device constraint, read once, in core's one place.** ADR-0009
     rule 2's deferral table names the secure-decoder instance limit as this phase's, and rule 2's own
     test decides its shape: it does not change under a playing session, so it is a *constraint* and
@@ -332,7 +358,8 @@ easier to break than the previous four, because a `DrmSessionManagerProvider` is
 set unconditionally and let answer `DRM_UNSUPPORTED`. The test counts the set, not the answer.
 
 Rule 11 costs a capability the field will ask for. A device whose L1 provisioning fails and whose
-server has permitted nothing plays nothing, and someone will propose a flag. The flag is the silent
+server has permitted nothing plays nothing — still true after #225, which changed only what happens
+where the server *has* permitted something — and someone will propose a flag. The flag is the silent
 downgrade under another name, and the place to change this decision is a superseding ADR arguing
 that the client may decide, which is a harder argument than it looks.
 

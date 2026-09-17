@@ -63,10 +63,11 @@ import org.junit.runner.RunWith
  *
  * `PRD.md` §3.2 names three ways L1 becomes unusable. This covers the one a player can see before
  * spending a licence: no secure decoder. **A failed L1 provisioning** surfaces from inside
- * `DefaultDrmSessionManager` after the session graph is fixed, and since #207 it ends at rung 6
- * (`ProvisioningTest`). **A secure surface that cannot be allocated** needs a `MediaCrypto` and a
- * protected buffer queue, neither of which exists under Robolectric — the same limit
- * `DrmFailureTest` and `SuperPlayerDecoderRecreationTest` state about their own subjects.
+ * `DefaultDrmSessionManager` after the session graph is fixed, so it is not a different graph but the
+ * same graph built again — which is #225's, in `ProvisioningDowngradeTest`. **A secure surface that
+ * cannot be allocated** needs a `MediaCrypto` and a protected buffer queue, neither of which exists
+ * under Robolectric — the same limit `DrmFailureTest` and `SuperPlayerDecoderRecreationTest` state
+ * about their own subjects.
  *
  * Each test states its device in its own method rather than in a `@Before`, because the platform
  * caches the codec list on first read and a harness that stated one device for the class could not

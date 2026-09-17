@@ -37,6 +37,11 @@ hook is `internal` precisely so that a consumer cannot reach for it and call it 
 design exists to keep out of the sink. It is a *waiting* seam rather than a configuring one, which is
 why it is not the "second seam" the next section warns about.
 
+`superplayer-offline`'s `Downloads` carries a second, `isReleasingLicences` (#245), for the same reason. A
+release of an owed licence runs on the store's own thread, and a test that goes on before the attempt has
+given up proves nothing about what stays owed. It waits and asserts nothing, and is `internal` for the reason
+above.
+
 `superplayer-core/src/test/kotlin/com/superplayer/core/` is the worked example.
 
 ## What the seam is
@@ -636,6 +641,14 @@ the seam above until #239. What stands in for each piece, and what each stand-in
   and refuses nothing on. What it cannot show is the platform's own `ENOSPC` — the write failing because
   another writer took the space after the reading — which is translated to the same exception and forced
   by nothing here. `DownloadStorageFullTest` states it.
+- **A protected download acquires on the player's device.** A download environment over protected content
+  carries the Widevine device `DeviceStatement.declareWidevine` states and the licence server a player of
+  that content is served, so `networkRequests(environment)` counts a download's acquisition and release as
+  `ResourceKind.LICENCE` and a later player restores the licence from the same device (#245). Media3 retries
+  a failed licence exchange on the exchange's own thread, whose clock Robolectric moves only when a test
+  tells it to, so `DownloadLicenceTest` moves `SystemClock` while a refusal is retried. What it cannot show:
+  a key-set id a device forgot, and protection an HLS stream declares only in its media playlists, which the
+  synthetic stream does and `DownloadLicenceTest` records as downloading with no licence.
 - **`WorkManager`'s constraints are evaluated by the harness, not by `WorkManager`.** Its test driver
   runs constrained work only when told every constraint is met, so `runScheduledWork()` reads each
   enqueued request's `Constraints`, checks them against the statements above, and tells the driver only

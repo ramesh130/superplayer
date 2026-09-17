@@ -387,6 +387,61 @@ Fifteen rules follow, and they are binding.
     download and then for its removal, and the constraints are rules 9 and 10's rather than a timetable
     the library chose.
 
+    *Addendum (2026-09-17, #245).* How the binding was built, decided where it was:
+
+    - **`LicenceStore` carries its internal half as a value, as `ContentCache` does.** Core's public
+      abstract class takes an internal `StoredLicences` — read a licence's standing, write one, mark one owed
+      a release, list those owed, forget one — which `superplayer-drm`'s `OfflineLicenceStore` fills over its
+      own index. So the tracked API gains a type with no members, and no internal override leaks into the drm
+      module's surface. What a licence's expiry and renewal-due mean stays the drm module's reading, handed
+      over as values, so a download and a list screen cannot disagree about a licence.
+    - **The exchange graph is core's `DownloadDrmExtension`, beside `EngineDrmExtension` and not inside
+      it.** A download is not an engine, and the hand-written engine extensions core's own tests use need
+      not learn about one. `Drm.widevine` answers it with the graph a player of the content would open, at
+      the level it would open at, and throws `SecurityDowngradeRefusedException` where rule 11 refuses a
+      player, so a refused level fails the item at enqueue rather than at playback. The chain is
+      `TransferChain.downloadLicenceChain`, the download transport stamped `LoadKind.LICENCE`.
+    - **Acquisition runs between the track choice and the manager.** The manifest read is given the graph,
+      so the device's own renderers see a protected format as one they can decrypt. The protected format the
+      choice selected is what the licence is asked for, on a thread of the store's own, and only once it is
+      stored is the download handed to Media3's manager. A refusal therefore fails an item that has written
+      and pinned nothing. The item is queued throughout, and an enqueue made during it is lost with its
+      process, as one made during the manifest read already was. A licence still in force is kept on a
+      second enqueue rather than acquired again, which would leave the first counted against the device at
+      the server.
+    - **Protection is what the manifest read sees.** A DASH MPD's `ContentProtection` is. An HLS stream's
+      key is only where the multivariant playlist declares it, in `EXT-X-SESSION-KEY`: Media3 reads no media
+      playlist to choose tracks, so a stream that declares its key only in each media playlist's `EXT-X-KEY`
+      downloads with no licence and cannot play offline. `DownloadLicenceTest` records that rather than
+      asserting it as desirable.
+    - **A release owed is a table of the licence index, keyed by key-set id.** Removal moves the licence
+      there in one transaction before the bytes are deleted, so `licenceFor` stops answering at once. One
+      content id can owe several releases, removed and downloaded again before a network came back, and a
+      licence an acquisition replaces, expired or overtaken by a second enqueue, is owed one too rather than
+      forgotten. A release forgets its own key-set id and never a licence in force. A pass releases
+      every owed licence where the store's network requirement holds, read afresh rather than as the
+      manager last applied it. It runs on removal, on every change of conditions, on each run of the
+      scheduled work, and when a store is opened over licences a last process left owed. A release that
+      fails stays owed, and the schedule stays wanted while one does.
+    - **The licence store is read and written on the store's thread.** Removal marks the release owed there,
+      so no moment exists where the download is gone and its licence playable; an item's licence is read
+      there on each state change, as `download` and `downloads` already read the download index. Each is one
+      row of a small table, unlike the pin #240 moved off `enqueue`, which waited on the cache's lock.
+    - **What is a player's is expressed on the item.** `DownloadItem.licence` carries whether the licence has
+      expired, whether renewal is due, and, on a store with a resilience, the expiry as the typed error a
+      player of it ends with — core dresses the exception with the same code a refused player's session
+      carries, so both are `Drm.LicenceExpired`.
+
+    Not built, each named where it would go. The chain carries the `LoadKind.LICENCE` stamp and neither of
+    the other two things this rule's refinement of ADR-0012 rule 9's addendum rests on: the app's credential,
+    since the download chain composes no header-refresh slot, and `RetryPolicy.licence`, since Media3's own
+    handling answers a failed exchange. Both are #254's. A key-set id the device no longer knows is not
+    dropped: it cannot yet be told from a release the network lost, so it stays owed, and keeps the
+    schedule wanted. One licence is acquired per download, for the first protected format selected, so
+    content whose tracks are licensed under separate keys is not yet supported. A store released while an
+    acquisition is in flight stores the licence and never hands the download to the manager, so that licence
+    is released by nothing.
+
 14. **Downloads spend the download store's resilience, not a player's, and the module is what spends
     the budget.** Where the store was built with a `PlaybackResilience`, its `HeaderProvider` repairs a
     refused 401 or 403 inside the transfer, as on a player, because the header-refresh layer is in rule

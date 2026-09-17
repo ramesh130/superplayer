@@ -18,6 +18,7 @@ package com.superplayer.testkit
 
 import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.RenderersFactory
+import androidx.media3.exoplayer.drm.ExoMediaDrm
 import com.superplayer.core.DownloadEnvironment
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executor
@@ -37,6 +38,7 @@ internal class HarnessDownloadEnvironment(
     val wait: HarnessClockWait,
     override val loadExecutor: HarnessDownloadLoads,
     override val renderersFactory: RenderersFactory,
+    override val mediaDrm: ExoMediaDrm.Provider?,
 ) : DownloadEnvironment()
 
 /**

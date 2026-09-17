@@ -28,6 +28,7 @@ import androidx.media3.exoplayer.drm.DrmSessionManagerProvider
 import androidx.media3.exoplayer.drm.ExoMediaDrm
 import androidx.media3.exoplayer.drm.FrameworkMediaDrm
 import androidx.media3.exoplayer.drm.HttpMediaDrmCallback
+import com.superplayer.core.DownloadDrmExtension
 import com.superplayer.core.EngineConfiguration
 import com.superplayer.core.EngineDrmExtension
 import com.superplayer.core.LicenceContext
@@ -58,7 +59,8 @@ internal class WidevineDrm(
      * "playback error" instead of as the expiry the consumer could see.
      */
     private val offline: OfflineLicence? = null,
-) : EngineDrmExtension {
+) : EngineDrmExtension,
+    DownloadDrmExtension {
 
     override fun configureEngine(configuration: EngineConfiguration) {
         val protection = PlayerProtection(config, offline)
@@ -70,6 +72,30 @@ internal class WidevineDrm(
         if (config.permittedSecurityLevels.isNotEmpty()) {
             configuration.protectionRepair = protection
         }
+    }
+
+    /**
+     * A download's exchange graph, at the level a player of the same content would open at (ADR-0013 rule
+     * 13): the device's own where it can honour it, the permitted lower one where it cannot, and a refusal
+     * where nothing was permitted — the three answers [PlayerProtection.over] gives, for a download.
+     *
+     * A graph of [PlayerProtection]'s description, so there is still one account of what a Widevine session
+     * is. A stored licence this was built with plays nothing here: a download acquires one rather than
+     * restoring one.
+     */
+    override fun downloadSessions(licence: LicenceContext): DefaultDrmSessionManager {
+        val device = licence.mediaDrm ?: FrameworkMediaDrm.DEFAULT_PROVIDER
+        val lowerLevel = SecurityLevelLadder.levelToAskAbout(device, licence.device)
+            ?: return PlayerProtection(config, offline = null).exchangeSessionsOver(licence, device)
+        if (lowerLevel !in config.permittedSecurityLevels) {
+            throw SecurityDowngradeRefusedException(
+                deviceSecurityLevel = WidevineConfig.SECURITY_LEVEL_L1,
+                refusedLevel = lowerLevel,
+                permittedLevels = config.permittedSecurityLevels,
+            )
+        }
+        licence.delivered.securityLevel = lowerLevel
+        return PlayerProtection(config, offline = null).exchangeSessionsOver(licence, LoweredSecurityLevel(device, lowerLevel))
     }
 }
 
@@ -378,6 +404,10 @@ internal class PlayerProtection(
         val licence = checkNotNull(this.licence) { "This player's protection composed no session graph" }
         return widevineSessions(licence, checkNotNull(this.effectiveDevice))
     }
+
+    /** A session graph in no mode over [licence] and [device], composed by no player: a download's. */
+    internal fun exchangeSessionsOver(licence: LicenceContext, device: ExoMediaDrm.Provider): DefaultDrmSessionManager =
+        widevineSessions(licence, device)
 
     private fun widevineSessions(licence: LicenceContext, device: ExoMediaDrm.Provider): DefaultDrmSessionManager {
         val licenceTransport = licence.transport

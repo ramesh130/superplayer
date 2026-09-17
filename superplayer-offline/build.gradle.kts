@@ -38,6 +38,9 @@ dependencies {
     // Tests only, a phase 5 module under a phase 7 one, for the same reason: the store takes core's
     // `PlaybackResilience`, and the one that tells a lost network from a lost segment is this module's.
     testImplementation(project(":superplayer-resilience"))
+    // Tests only, a phase 6 module under a phase 7 one, for the same reason again: the store takes core's
+    // `PlaybackDrm` and `LicenceStore`, and the ones that acquire a Widevine licence are this module's.
+    testImplementation(project(":superplayer-drm"))
 
     // WorkManager's test driver, which the harness's `runScheduledWork()` runs the store's schedule under.
     testImplementation(libs.androidx.work.testing)

@@ -3,10 +3,20 @@ public final class com/superplayer/offline/DownloadItem {
 	public final fun getBytesDownloaded ()J
 	public final fun getContentId ()Ljava/lang/String;
 	public final fun getFailure ()Lcom/superplayer/core/SuperPlayerError;
+	public final fun getLicence ()Lcom/superplayer/offline/DownloadLicence;
 	public final fun getPercentDownloaded ()Ljava/lang/Float;
 	public final fun getState ()Lcom/superplayer/offline/DownloadState;
 	public final fun getStopReason ()Lcom/superplayer/offline/DownloadStopReason;
 	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/offline/DownloadLicence {
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getExpiry ()Lcom/superplayer/core/SuperPlayerError;
+	public final fun getRenewalDue ()Z
+	public fun hashCode ()I
+	public final fun isExpired ()Z
 	public fun toString ()Ljava/lang/String;
 }
 
@@ -53,6 +63,7 @@ public final class com/superplayer/offline/Downloads {
 public final class com/superplayer/offline/Downloads$Builder {
 	public fun <init> (Landroid/content/Context;Lcom/superplayer/core/ContentCache;)V
 	public final fun build ()Lcom/superplayer/offline/Downloads;
+	public final fun setDrm (Lcom/superplayer/core/PlaybackDrm;Lcom/superplayer/core/LicenceStore;)Lcom/superplayer/offline/Downloads$Builder;
 	public final fun setPolicy (Lcom/superplayer/core/PlaybackPolicy;)Lcom/superplayer/offline/Downloads$Builder;
 	public final fun setProfile (Lcom/superplayer/core/PlaybackProfile;)Lcom/superplayer/offline/Downloads$Builder;
 	public final fun setResilience (Lcom/superplayer/core/PlaybackResilience;)Lcom/superplayer/offline/Downloads$Builder;

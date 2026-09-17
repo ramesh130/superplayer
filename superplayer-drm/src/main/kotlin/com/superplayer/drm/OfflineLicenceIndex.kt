@@ -69,12 +69,24 @@ internal class OfflineLicenceIndex(directory: File) {
                 "$COLUMN_LICENCE_EXPIRES_AT INTEGER NOT NULL, " +
                 "$COLUMN_PLAYBACK_EXPIRES_AT INTEGER NOT NULL)",
         )
+        // A table of its own rather than a column of that one, so an index an earlier version wrote opens
+        // unchanged: a licence a removed download still owes the server a release of (ADR-0013 rule 13).
+        it.execSQL(
+            "CREATE TABLE IF NOT EXISTS $RELEASES_TABLE (" +
+                "$COLUMN_KEY_SET_ID BLOB PRIMARY KEY NOT NULL, " +
+                "$COLUMN_CONTENT_ID TEXT NOT NULL)",
+        )
         database = it
     }
 
     @Synchronized
     fun write(contentId: String, keySetId: ByteArray, licenceSecondsLeft: Long, playbackSecondsLeft: Long): OfflineLicence {
         val now = System.currentTimeMillis()
+        // A licence replaced by a download's acquisition is owed a release rather than forgotten: the server still
+        // counts it against the device (ADR-0013 rule 13). A renewal answers the same key-set id and owes nothing.
+        keySetIdIn(contentId)?.takeUnless { it.contentEquals(keySetId) }?.let { replaced ->
+            open().execSQL("INSERT OR REPLACE INTO $RELEASES_TABLE VALUES (?, ?)", arrayOf(replaced, contentId))
+        }
         val licenceExpiresAt = deadline(now, licenceSecondsLeft)
         val playbackExpiresAt = deadline(now, playbackSecondsLeft)
         open().execSQL(
@@ -109,6 +121,43 @@ internal class OfflineLicenceIndex(directory: File) {
     fun remove(contentId: String) {
         open().delete(TABLE, "$COLUMN_CONTENT_ID = ?", arrayOf(contentId))
     }
+
+    /** Moves [contentId]'s licence out of what is played and into what is owed a release, in one transaction. */
+    @Synchronized
+    fun awaitRelease(contentId: String): Boolean {
+        val database = open()
+        database.beginTransaction()
+        try {
+            val keySetId = keySetIdIn(contentId)
+            if (keySetId != null) {
+                database.execSQL("INSERT OR REPLACE INTO $RELEASES_TABLE VALUES (?, ?)", arrayOf(keySetId, contentId))
+                database.delete(TABLE, "$COLUMN_CONTENT_ID = ?", arrayOf(contentId))
+            }
+            database.setTransactionSuccessful()
+            return keySetId != null
+        } finally {
+            database.endTransaction()
+        }
+    }
+
+    @Synchronized
+    fun awaitingRelease(): List<Pair<String, ByteArray>> =
+        open().query(RELEASES_TABLE, arrayOf(COLUMN_CONTENT_ID, COLUMN_KEY_SET_ID), null, null, null, null, null).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) add(cursor.getString(0) to cursor.getBlob(1))
+            }
+        }
+
+    @Synchronized
+    fun released(keySetId: ByteArray) {
+        // Bound as a blob: `delete`'s arguments are strings, which never equal a blob column.
+        open().execSQL("DELETE FROM $RELEASES_TABLE WHERE $COLUMN_KEY_SET_ID = ?", arrayOf<Any>(keySetId))
+    }
+
+    private fun keySetIdIn(contentId: String): ByteArray? =
+        open().query(TABLE, arrayOf(COLUMN_KEY_SET_ID), "$COLUMN_CONTENT_ID = ?", arrayOf(contentId), null, null, null).use { cursor ->
+            if (cursor.moveToFirst()) cursor.getBlob(0) else null
+        }
 
     @Synchronized
     fun close() {
@@ -153,6 +202,7 @@ internal class OfflineLicenceIndex(directory: File) {
 
         const val INDEX_FILE_NAME = "offline-licences.db"
         const val TABLE = "offline_licences"
+        const val RELEASES_TABLE = "offline_licence_releases"
         const val COLUMN_CONTENT_ID = "content_id"
         const val COLUMN_KEY_SET_ID = "key_set_id"
         const val COLUMN_LICENCE_EXPIRES_AT = "licence_expires_at_ms"

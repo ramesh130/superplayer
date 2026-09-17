@@ -18,6 +18,7 @@ package com.superplayer.core
 
 import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.RenderersFactory
+import androidx.media3.exoplayer.drm.ExoMediaDrm
 import java.util.concurrent.Executor
 
 /**
@@ -57,4 +58,11 @@ public abstract class DownloadEnvironment internal constructor() {
      * what that player could play rather than what a codec list Robolectric leaves empty would refuse.
      */
     internal abstract val renderersFactory: RenderersFactory
+
+    /**
+     * The Widevine device a protected download acquires its licence on, in place of the platform's
+     * `MediaDrm`, which Robolectric cannot construct: the device a harness-built player of the same content
+     * is given ([LicenceContext.mediaDrm]). Null for content that declares no protection.
+     */
+    internal abstract val mediaDrm: ExoMediaDrm.Provider?
 }

@@ -22,7 +22,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import com.superplayer.core.MediaRequest
 import com.superplayer.core.SecurityDowngradeRefusedException
-import com.superplayer.core.SecurityLevelNegotiation
 import com.superplayer.core.SuperPlayer
 import com.superplayer.resilience.ErrorClassifier
 import com.superplayer.resilience.FailureClass
@@ -49,9 +48,16 @@ import org.junit.runner.RunWith
  * is the commonest way L1 becomes unusable while L3 is fine.
  *
  * The pair that makes this a test of the rule rather than of a behaviour is
- * [FakeLicenceServer.permitSecurityLevel]: one server permits `L3` and one says nothing, the device
- * is identical in both, and the two must end differently. Either half alone would pass for the wrong
- * reason — a client that downgraded always, and a client that refused always, each pass one of them.
+ * [WidevineConfig.permittedSecurityLevels]: one server's operator permits `L3` and one has said
+ * nothing, the device is identical in both, and the two must end differently. Either half alone would
+ * pass for the wrong reason — a client that downgraded always, and a client that refused always, each
+ * pass one of them.
+ *
+ * The permission is configuration rather than an exchange because #223 withdrew the wire format #208
+ * built for it; `WidevineConfig.permittedSecurityLevels` argues why that is still the server's
+ * permission and not the app's. What that removed from these tests is worth noticing:
+ * [aPermittedDowngradeCostsNoExtraRoundTrip] and [aRefusedSessionAsksForNothingAtAll] now count one
+ * licence request and none, where the exchange made them two and one.
  *
  * ## What this cannot reach, and why it is said here rather than implied
  *
@@ -75,40 +81,38 @@ class SecurityLevelTest {
     @Test
     fun aServerThatPermitsTheDowngradeGetsASessionAtTheLowerLevel() {
         declareADeviceThatCannotHonourL1()
-        FakeLicenceServer.permitSecurityLevel(SecurityLevel.L3)
 
-        val player = play()
+        val player = play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
 
-        // It played, and it played at the level the *server* named — not at the one the device
+        // It played, and it played at the level the *server's operator* named — not at the one the device
         // reports, which it cannot honour, and not at one the client picked.
         assertThat(player.playerError).isNull()
         assertThat(player.playbackState).isEqualTo(Player.STATE_READY)
-        assertThat(player.deliveredSecurityLevel).isEqualTo(SecurityLevelNegotiation.LEVEL_L3)
+        assertThat(player.deliveredSecurityLevel).isEqualTo(WidevineConfig.SECURITY_LEVEL_L3)
     }
 
     @Test
-    fun theDowngradeIsAskedForBeforeAnyLicenceIsRequested() {
+    fun aPermittedDowngradeCostsNoExtraRoundTrip() {
         declareADeviceThatCannotHonourL1()
-        FakeLicenceServer.permitSecurityLevel(SecurityLevel.L3)
 
-        val player = play()
+        val player = play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
 
-        // The permission question is a transfer of this player's own chain, at the licence server's
-        // address and stamped as a licence load — which is what carries the app's credential onto it
-        // and what makes it refusable, countable and delayable like every other (ADR-0012 rule 2).
-        // A client that decided for itself would show no such request at all.
+        // Exactly one request at the licence server: the key request. A permission that is
+        // configuration costs nothing on the wire, which is the plainest statement of what #223
+        // bought — under #208's exchange this count was two, and the extra one was a `GET` most real
+        // licence endpoints answer 405.
         val licences = harness.networkRequests(player).filter { it.kind == ResourceKind.LICENCE }
-        assertThat(licences.map { it.uri }).contains(FakeLicenceServer.LICENCE_URI)
+        assertThat(licences.map { it.uri }).containsExactly(FakeLicenceServer.LICENCE_URI)
         // And the licence itself was still acquired: the downgrade is a change of level, not a
         // substitute for an entitlement.
-        assertThat(licences.size).isAtLeast(2)
     }
 
     @Test
     fun aServerThatPermitsNothingEndsTheSessionTypedRatherThanDowngradingIt() {
         declareADeviceThatCannotHonourL1()
-        // And no `permitSecurityLevel`, which is what a licence server that has never heard of the
-        // exchange does. Silence is a refusal; see `SecurityLevelNegotiation`.
+        // And no permitted levels, which is what an app whose licence provider never told it about a
+        // lower level configures — that is to say, most apps. Empty is a refusal; see
+        // `WidevineConfig.permittedSecurityLevels`.
 
         val player = playToFailure()
 
@@ -117,9 +121,9 @@ class SecurityLevelTest {
         // Typed, with the evidence the module found rather than a code standing in for it.
         val refusal = causeChainOf(error!!).filterIsInstance<SecurityDowngradeRefusedException>().firstOrNull()
         assertThat(refusal).isNotNull()
-        assertThat(refusal!!.deviceSecurityLevel).isEqualTo(SecurityLevelNegotiation.LEVEL_L1)
-        assertThat(refusal.refusedLevel).isEqualTo(SecurityLevelNegotiation.LEVEL_L3)
-        assertThat(refusal.permittedLevel).isNull()
+        assertThat(refusal!!.deviceSecurityLevel).isEqualTo(WidevineConfig.SECURITY_LEVEL_L1)
+        assertThat(refusal.refusedLevel).isEqualTo(WidevineConfig.SECURITY_LEVEL_L3)
+        assertThat(refusal.permittedLevels).isEmpty()
         // No silent downgrade: nothing was delivered rather than something weaker.
         assertThat(player.deliveredSecurityLevel).isNull()
     }
@@ -142,16 +146,16 @@ class SecurityLevelTest {
     }
 
     @Test
-    fun aRefusedSessionAsksForNoLicenceAtAll() {
+    fun aRefusedSessionAsksForNothingAtAll() {
         declareADeviceThatCannotHonourL1()
 
         val player = playToFailure()
 
-        // The answer is already known, so spending a licence request to arrive at it would put a
-        // refusal on `RetryPolicy.licence`'s budget and in the CDN's log for nothing. Exactly one
-        // request goes to the licence server — the permission question — and no key request follows.
+        // The answer was known before the player was built, so nothing reaches the licence server:
+        // no key request, and since #223 no permission question either. A refusal that spent a
+        // request would put it on `RetryPolicy.licence`'s budget and in the CDN's log for nothing.
         val licences = harness.networkRequests(player).filter { it.kind == ResourceKind.LICENCE }
-        assertThat(licences).hasSize(1)
+        assertThat(licences).isEmpty()
     }
 
     @Test
@@ -169,7 +173,7 @@ class SecurityLevelTest {
         // Null means "nothing was negotiated", which is the ordinary case and is not the same answer
         // as `L1`: this player never asked, so it has nothing to report.
         assertThat(player.deliveredSecurityLevel).isNull()
-        // One licence request — the key request — and no permission question beside it.
+        // One licence request, the key request, exactly as an unprobed player makes.
         val licences = harness.networkRequests(player).filter { it.kind == ResourceKind.LICENCE }
         assertThat(licences).hasSize(1)
     }
@@ -180,12 +184,41 @@ class SecurityLevelTest {
         // nothing about a device that can honour `L1`. Permission is not an instruction.
         DeviceStatement.declareSecureVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC, maxSupportedInstances = 1)
         DeviceStatement.declareWidevine(SecurityLevel.L1)
-        FakeLicenceServer.permitSecurityLevel(SecurityLevel.L3)
 
-        val player = play()
+        val player = play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
 
         assertThat(player.playbackState).isEqualTo(Player.STATE_READY)
         assertThat(player.deliveredSecurityLevel).isNull()
+    }
+
+    @Test
+    fun aServerThatPermitsSomeOtherLevelIsStillARefusalForThisOne() {
+        // The case the wire format could not express and configuration can: a server whose operator
+        // published a permission that does not cover what this device needs. It is not silence and
+        // it is not consent, and a client that read "permits something" as "permits this" would be
+        // downgrading on its own authority — the exact failure ADR-0012 rule 11 forbids.
+        declareADeviceThatCannotHonourL1()
+
+        val player = playToFailure(permits = setOf(WidevineConfig.SECURITY_LEVEL_L1))
+
+        val refusal = causeChainOf(player.playerError!!)
+            .filterIsInstance<SecurityDowngradeRefusedException>()
+            .firstOrNull()
+        assertThat(refusal).isNotNull()
+        assertThat(refusal!!.refusedLevel).isEqualTo(WidevineConfig.SECURITY_LEVEL_L3)
+        // The evidence keeps what *was* permitted, because "permits nothing" and "permits the wrong
+        // thing" are one outcome and two quite different bug reports.
+        assertThat(refusal.permittedLevels).containsExactly(WidevineConfig.SECURITY_LEVEL_L1)
+        assertThat(player.deliveredSecurityLevel).isNull()
+    }
+
+    @Test
+    fun aLevelNoWidevineDeviceReportsIsRejectedWhereItIsWrittenRatherThanIgnored() {
+        // A permission that is never going to match is a misconfiguration, and the failure mode this
+        // whole type exists to prevent arriving by spelling: configured, plausible-looking, and
+        // silently inert forever. It is refused at the point it is written instead.
+        val thrown = runCatching { WidevineConfig(FakeLicenceServer.LICENCE_URI, setOf("L2")) }
+        assertThat(thrown.exceptionOrNull()).isInstanceOf(IllegalArgumentException::class.java)
     }
 
     /**
@@ -201,16 +234,18 @@ class SecurityLevelTest {
         DeviceStatement.declareWidevine(SecurityLevel.L1)
     }
 
-    private fun play(): SuperPlayer = build().also { harness.playToReady(it) }
+    private fun play(permits: Set<String> = emptySet()): SuperPlayer =
+        build(permits).also { harness.playToReady(it) }
 
-    private fun playToFailure(): SuperPlayer = build().also { harness.playToFailure(it) }
+    private fun playToFailure(permits: Set<String> = emptySet()): SuperPlayer =
+        build(permits).also { harness.playToFailure(it) }
 
     /** What a consumer writes: protection, and the resilience both halves of ADR-0012 rule 2 need. */
-    private fun build(): SuperPlayer {
+    private fun build(permits: Set<String> = emptySet()): SuperPlayer {
         val content = TestContent.protectedDash()
         val player = harness.buildPlayer(
             content = content,
-            drm = Drm.widevine(WidevineConfig(FakeLicenceServer.LICENCE_URI)),
+            drm = Drm.widevine(WidevineConfig(FakeLicenceServer.LICENCE_URI, permittedSecurityLevels = permits)),
             resilience = Resilience.standard(),
         )
         player.setMediaRequest(MediaRequest.Builder(CONTENT_ID).addSource(content.sourceUri).build())

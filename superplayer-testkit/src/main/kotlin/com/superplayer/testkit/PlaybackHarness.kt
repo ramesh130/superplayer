@@ -1009,7 +1009,6 @@ public class PlaybackHarness : ExternalResource() {
         DeviceStatement.forgetWidevine()
         // And the server's own statement beside the device's, for the same reason: both outlive a
         // test method, and a permission left standing would be the next test's silent downgrade.
-        FakeLicenceServer.forgetPermission()
     }
 
     /** Releases every player this harness built and still holds, newest first. */

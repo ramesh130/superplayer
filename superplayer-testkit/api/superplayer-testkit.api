@@ -26,7 +26,6 @@ public final class com/superplayer/testkit/FakeLicenceServer {
 	public static final field INSTANCE Lcom/superplayer/testkit/FakeLicenceServer;
 	public static final field LICENCE_URI Ljava/lang/String;
 	public static final field PROVISION_URI Ljava/lang/String;
-	public static final fun permitSecurityLevel (Lcom/superplayer/testkit/SecurityLevel;)V
 }
 
 public final class com/superplayer/testkit/FaultScript {

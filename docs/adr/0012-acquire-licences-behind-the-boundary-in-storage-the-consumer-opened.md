@@ -375,6 +375,17 @@ that is the licence server's to give, one build-time boolean away from the silen
 §3.2 names; an app that genuinely has the permission has a server that can say so, and an app whose
 server cannot say so has not decided this question at all.
 
+*Addendum (#223).* This rejection is narrower than it first reads, and #208 read it too widely —
+withdrawing the wire format it built in consequence. What is rejected is a **boolean the app
+asserts**: true of every server it ever talks to, and carrying no statement from any of them. It is
+not a rejection of configuration as a channel, which rule 11 names in its own sentence — "in its
+licence response, **or in the configuration the app was given for it**". `WidevineConfig`'s
+`permittedSecurityLevels` is the second: a set of levels *this* server's operator published, named
+per server, carrying as much of the app's own opinion as the licence address beside it does, which is
+none. The test that separates them is whether an app could answer it without asking anyone — `true`
+it can, a list of levels its licence provider will issue at it cannot. Both keep rule 11's default,
+since an app that states nothing permits nothing.
+
 **Persist offline licences in a directory the library picks, since they are small and opaque.**
 Rejected under ADR-0006 rule 2 and rule 8. Size is not the argument the rule rests on; a
 device-bound credential describing what a person has downloaded is precisely the data the rule is

@@ -203,19 +203,34 @@ public class TestContent private constructor(
      * the rung's MIME type, as a manifest's would, so `dvhe.08.07` is a Dolby Vision rung; one with
      * none is H.264. Media3 adapts within one MIME type, so a ladder mixing them is not a ladder.
      *
+     * [frameRate] is the rate the rung *declares*, as HLS's `FRAME-RATE` attribute and DASH's
+     * `@frameRate` do, and null for a rung that declares none. It is what a player matching the display
+     * reads (ADR-0014 rule 4). It does not space the samples: the fake renderer shows whatever it is
+     * handed, so a declared 24 fps rung is still delivered at [DEFAULT_FRAME_RATE].
+     *
      * ref: RFC 6381 §3.3 for the `codecs` form; `avc1.640028` is H.264 High profile level 4.0.
+     * spec: RFC 8216 §4.3.4.2 (`FRAME-RATE`); ISO/IEC 23009-1 §5.3.7.2 (`@frameRate`).
      */
     public data class Rung(
         public val bitrateBps: Int,
         public val heightPx: Int,
         public val codecs: String? = null,
+        public val frameRate: Float? = DEFAULT_FRAME_RATE,
     ) {
         init {
             require(bitrateBps > 0) { "A rung needs a positive bitrate, was $bitrateBps" }
             require(heightPx > 0) { "A rung needs a positive height, was $heightPx" }
+            require(frameRate == null || frameRate > 0f) { "A declared frame rate is positive, was $frameRate" }
         }
 
         public companion object {
+
+            /**
+             * The frame rate every rung declared before a rung could say otherwise, and the spacing of
+             * the described content's samples: 30 fps, a common broadcast and web rate.
+             */
+            public const val DEFAULT_FRAME_RATE: Float = 30f
+
             /**
              * A rung of [bitrateBps] at the frame height a stream would encode it at.
              *

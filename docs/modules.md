@@ -47,10 +47,10 @@ than to wave the dependency through.
 | `superplayer-ui` | — † | Optional Compose player surface | core |
 
 `superplayer-testkit`, `superplayer-abr`, `superplayer-cache`, `superplayer-preload`,
-`superplayer-resilience`, `superplayer-drm` and `superplayer-offline` also
+`superplayer-resilience`, `superplayer-drm`, `superplayer-offline` and `superplayer-tv` also
 compile as Kotlin *friends* of core (`docs/testing.md`'s *Reaching that seam from another module*,
-ADR-0009 rule 7, ADR-0010 rules 3 and 6, ADR-0011 rule 13, ADR-0012 rule 4, ADR-0013 rule 4), and
-`superplayer-tv` will join them with its first slot (ADR-0014 rule 3, #268). A friend path is a compiler flag rather than a Gradle
+ADR-0009 rule 7, ADR-0010 rules 3 and 6, ADR-0011 rule 13, ADR-0012 rule 4, ADR-0013 rule 4, ADR-0014
+rule 3). A friend path is a compiler flag rather than a Gradle
 dependency, which is why it does not appear in the column above and why it is not what the rule
 measures.
 

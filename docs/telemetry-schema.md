@@ -130,6 +130,7 @@ case and says nothing about memory.
 [adr8]: adr/0008-measure-behind-an-engine-agnostic-sink-boundary.md
 [adr11]: adr/0011-classify-every-failure-once-and-keep-the-rungs-behind-the-boundary.md
 [adr12]: adr/0012-acquire-licences-behind-the-boundary-in-storage-the-consumer-opened.md
+[adr14]: adr/0014-match-the-display-and-watch-it-change-behind-one-output-slot.md
 
 ### Two clocks, and which is which
 
@@ -466,6 +467,14 @@ player.declarePlaybackIntent()
 standard's boundary and exists because the alternative — refusing to report anything for an app that
 declares no intent — would leave the most common integration unmeasured. It is labelled rather than
 silently substituted, which is the part that matters.
+
+*On a television:* a player built with `superplayer-tv` asks the display for the content's frame
+rate before the first frame ([ADR-0014][adr14] rule 4). On a TV whose viewer set *Match content frame
+rate* to *Always*, a switch that is not seamless blanks the panel while the HDMI link resynchronises,
+and the first frame waits for it. That wait is **inside** `timeToFirstFrameMs`, and on some sinks it is
+seconds rather than milliseconds. The meaning does not change, because the viewer waited for it, so
+the schema version does not move. A report comparing a television arm with a phone arm will still show
+the difference, and should say which device each ran on.
 
 *Agreement with CMCD:* CMCD v2's `msd` (media start delay) uses the same boundary — the viewer's
 request to the first frame — so the two routes report the same number rather than two numbers with

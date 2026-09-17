@@ -215,6 +215,30 @@ class PlayerPoolTest {
     }
 
     /**
+     * ADR-0014 rule 3 for a pool: one output handed to the pool fills every player it builds with a
+     * binding of that player's own, because a binding holds one player's surface. Through the real
+     * factory, for the reason [aPoolWithResilienceFillsTheSlotsOfEveryPlayerItBuildsFromTheOneObject]
+     * gives, and with no playback, because the slot is filled at construction.
+     */
+    @Test
+    fun aPoolWithAnOutputFillsEveryPlayerItBuildsWithABindingOfItsOwn() {
+        val filled = mutableListOf<EngineConfiguration>()
+        val pool = PlayerPool.Builder(ApplicationProvider.getApplicationContext())
+            .setMaxSize(2)
+            .setOutput(RecordingOutput(filled))
+            .build()
+        try {
+            checkNotNull(pool.acquire())
+            checkNotNull(pool.acquire())
+
+            assertThat(filled).hasSize(2)
+            assertThat(filled.map { it.videoOutput }.toSet()).hasSize(2)
+        } finally {
+            pool.release()
+        }
+    }
+
+    /**
      * ADR-0010 rules 1 and 13 for a pool: the cache a consumer opened and handed the pool is composed
      * into every player it builds, and a pool handed none gives its players none.
      *
@@ -609,6 +633,19 @@ class PlayerPoolTest {
      * with a token refresh, and it is what makes the shared-instance requirement in
      * [PlaybackResilience]'s KDoc visible here rather than only stated there.
      */
+    private class RecordingOutput(private val filled: MutableList<EngineConfiguration>) : EngineOutputExtension {
+        override fun configureEngine(configuration: EngineConfiguration) {
+            configuration.videoOutput = object : VideoOutputBinding {
+                override fun onSurfaceChanged(surface: android.view.Surface?) = Unit
+
+                override fun onVideoFrameRate(framesPerSecond: Float?) = Unit
+
+                override fun release() = Unit
+            }
+            filled += configuration
+        }
+    }
+
     private class RecordingResilience(private val filled: MutableList<EngineConfiguration>) : EngineResilienceExtension {
 
         val refresh: HeaderRefreshLayer = HeaderRefreshLayer { upstream -> upstream }

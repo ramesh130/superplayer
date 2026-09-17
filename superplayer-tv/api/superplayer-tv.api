@@ -1,0 +1,5 @@
+public final class com/superplayer/tv/TvOutput {
+	public static final field INSTANCE Lcom/superplayer/tv/TvOutput;
+	public static final fun standard (Landroid/content/Context;)Lcom/superplayer/core/PlaybackOutput;
+}
+

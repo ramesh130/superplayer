@@ -777,10 +777,27 @@ which nothing under `check` can show. The demo's `DownloadsScreen` is the recipe
 a consumer copies. `DownloadsPayNothingTest` counts rule 15 as platform registrations and the download index table,
 and rule 3 as a manifest declaring no service and no foreground-service or notification permission.
 
+`superplayer-tv` has the first of Phase 8, the tracer bullet (#268): frame-rate matching.
+`TvOutput.standard(context)` returns core's public `PlaybackOutput`, which `SuperPlayer.Builder.setOutput`
+and `PlayerPool.Builder.setOutput` take. It is core's **eighth** Kotlin friend and fills one slot,
+`EngineConfiguration.videoOutput`, with a per-player `VideoOutputBinding` (ADR-0014 rule 3). A filled slot
+makes core build the engine with `VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF` and attach `VideoOutputAttachment`,
+which tells the binding every surface the facade is handed (the video-surface calls are overridden for it,
+a `SurfaceHolder`'s callbacks included, a `TextureView` passing null) and the first selected video format's
+declared frame rate once per item. The binding, `FrameRateMatching`, asks `Surface.setFrameRate(…,
+CHANGE_FRAME_RATE_ALWAYS)` on API 31 and later and the two-argument form on 30. It asks only where the
+default display's active mode is not already a whole multiple of the rate and a mode at the same size
+is, with 23.976 pairing with 24, and it withdraws with a rate of zero. That is rule 4's #268 addendum.
+Two things are easy to get wrong. The synthetic streams are audio, so the content is described video
+whose `TestContent.Rung.frameRate` a test sets. And the observation stops at the request:
+`harness.frameRateRequests(player)` reads what was asked of each surface the harness gave, and
+Robolectric's active mode never moves. `FrameRateMatchingTest` drives it on
+`DeviceStatement.declareDisplayModes`, and `SuperPlayerOutputSeamTest` counts rule 14.
+
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,
 `superplayer-abr`, `superplayer-cache`, `superplayer-preload`, `superplayer-resilience`,
-`superplayer-drm`, `superplayer-offline` and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
+`superplayer-drm`, `superplayer-offline`, `superplayer-tv` and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
 requirements, and the phase table are what the issues are cut from.
 
 `benchmark/` is the fourth build and the phases' exit criteria: `PRD.md` §6's fixed matrix — six

@@ -210,6 +210,21 @@ Fourteen rules follow, and they are binding.
      on a phone gets `ALWAYS` there too, and a phone's default preference makes that seamless in
      practice.
 
+   *Addendum (2026-09-17, #268).* "When the binding holds both a surface and a frame rate, it calls"
+   is narrowed to *it calls where the request can do what it is for*, because #268's own acceptance
+   criteria ask that a display offering no matching mode be left alone and that content already at the
+   display's rate ask for nothing, and the request as first written did neither. The binding reads the
+   default display's active mode and mode list at the moment it decides, and asks for the content's
+   rate only where the active mode's refresh rate is not already a whole multiple of it and some mode
+   at the active mode's size is (23.976 pairing with 24 on the platform's own 1000/1001 tolerance). The
+   size is held because a frame-rate request does not change resolution. Once the binding has asked, a
+   matching active mode keeps the request in force rather than withdrawing it, because that match is
+   most likely its own request honoured. A request no mode can honour is still one the platform may act
+   on, by choosing whichever mode scores best, and that is a switch the content gains nothing from.
+   Rule 9 is untouched: the mode list is read on each decision and never enters `DisplayCapability`,
+   and it is not a watch. What reads it is this binding, so rule 9's "nothing reads them" now means
+   nothing in the selection or the policy. The request still lets the platform choose the mode.
+
 5. **Surviving a display change is correctness on every player built with the module.** The display
    watch is core's. It is a `DisplayManager.DisplayListener` on the default display, registered on
    the player's application looper, and its reading is translated into a `DisplayCapability` in

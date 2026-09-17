@@ -86,12 +86,12 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
  * ## The eighth, of the first shape
  *
  * ADR-0014 rule 3 admits `superplayer-tv`, and it adds an instance rather than a shape. What the
- * module will reach is one core-internal extension interface on the `PlaybackOutput` a consumer passes to
+ * module reaches is one core-internal extension interface on the `PlaybackOutput` a consumer passes to
  * `setOutput`, through which it fills one slot core declared, `EngineConfiguration.videoOutput`. What
- * filling it changes is set as the engine is built: the frame-rate strategy on `ExoPlayer.Builder` and
+ * filling it changes is set as the engine is built: the frame-rate strategy on `ExoPlayer.Builder` and, from #271,
  * tunneling on `DefaultTrackSelector`'s parameters, both `@UnstableApi` types, so no public call could
- * have carried it instead. The build file that declares the friendship arrives with the slot (#268). A
- * ninth that is neither shape still needs an ADR of its own.
+ * have carried it instead. The friendship and the slot arrived together (#268). A ninth that is neither
+ * shape still needs an ADR of its own.
  *
  * ## Why it is not the second seam `docs/testing.md` warns about
  *

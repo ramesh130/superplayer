@@ -47,7 +47,16 @@ public object Drm {
      * One object may be handed to many players: nothing returned here holds a player's state, and
      * everything with a lifetime — the session manager, the device handle, the callback — is built
      * per player, as the engine is.
+     *
+     * [licence] is what makes a player play **offline**: a value read out of an
+     * [OfflineLicenceStore], whose keys every session of this player restores instead of asking the
+     * server for. Null is the ordinary online player, and that asymmetry is deliberate — a consumer
+     * cannot reach the stored keys without first reading the store, which is where both expiries are
+     * (ADR-0012 rule 9), so a dead download is a message the app chose rather than a playback error
+     * it was handed.
      */
     @JvmStatic
-    public fun widevine(config: WidevineConfig): PlaybackDrm = WidevineDrm(config)
+    @JvmOverloads
+    public fun widevine(config: WidevineConfig, licence: OfflineLicence? = null): PlaybackDrm =
+        WidevineDrm(config, licence)
 }

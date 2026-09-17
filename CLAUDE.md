@@ -76,8 +76,8 @@ labelled as such rather than silently mixed in.
 
 Since #212 it also carries protected playback's own start-up cost: `LicenceAcquisitionEnded`, one
 span per licence a session fetched, with a `LicenceOutcome` of `ACQUIRED_FROM_SERVER`, `REFUSED`, or
-`SERVED_FROM_OFFLINE_STORE` — the last declared and **unreachable** until #210 opens an offline
-store, so that #210 is a behaviour change rather than a second change of the schema. It is
+`SERVED_FROM_OFFLINE_STORE` — the last declared **unreachable** and made reachable by #210's offline
+store, so that #210 was a behaviour change rather than a second change of the schema. It is
 SuperPlayer's own metric, since CTA-2066 has none, and it is `QoeCollector`'s from Media3's DRM
 analytics callbacks rather than `superplayer-drm`'s, because that module classifies nothing (ADR-0012
 rule 5). A new event type is shape and not meaning, so `SCHEMA_VERSION` stays **2** for the fourth
@@ -630,6 +630,35 @@ harness can count, delay and refuse at last — and `ProvisioningTest` is what t
 One expectation moved with it: a device whose provisioning the service *refuses* now reaches
 `provideProvisionResponse` and is `Drm.Unsupported` (6007, revoked), where it read `Drm.Provisioning`
 only because the session used to fail on the address first.
+Since #210 the module also holds the **offline licence lifecycle** `PRD.md` Part 4 names — acquire,
+play offline, renew, release — over Media3's `OfflineLicenseHelper` and behind types that name none
+of it. `OfflineLicences.store(directory)` opens an `OfflineLicenceStore` in a directory the consumer
+named (ADR-0012 rule 8, ADR-0010 rule 1's shape taken again): one database file inside it, holding a
+key-set id and two deadlines per `contentId` and never the keys, which are the device's. Reading is
+free and writing is not — `licenceFor(contentId)` answers both expiries with no player, no device and
+no network, which is ADR-0012 rule 9's "before playback rather than after it fails" and therefore
+usable on a list screen, while the three verbs that talk to the server are `store.over(player)`'s,
+because a licence exchange travels the *player's* chain (rule 2): the app's credential, the
+`RetryPolicy.licence` budget and the `LoadKind.LICENCE` stamp are all facts about a player, and a
+store with an HTTP stack of its own would answer to none of them. Playing offline is the fourth verb
+and is not a call at all: `Drm.widevine(config, licence)` takes the value the store answered with and
+sets `MODE_PLAYBACK` with its key-set id, so every session restores rather than asks — which
+`OfflineLicenceTest` asserts as a count of **zero** licence requests with the entitlement server off
+the network, never as "it played". A licence a consumer hands over that has already **expired is
+refused** rather than quietly re-acquired (core's `expiredLicenceSessions` and the public
+`OfflineLicenceExpiredException`, which `ErrorClassifier` reaches as `Drm.LicenceExpired` off the
+error code it carries): Media3's own answer is to go to the server, which on a player built to play
+offline is a round trip that was not to happen and, with no network, reads as a licence that failed
+to arrive instead of as the licence that died. **Renewal is reported and never scheduled** — ADR-0012
+rule 10 — so `OfflineLicence.renewalDue` is a reading on a stated threshold, `RENEWAL_DUE_WITHIN_MS`,
+a day, argued against the coarsest job a consumer plausibly runs rather than against the licence. What
+made any of it testable is in `superplayer-testkit`: Media3's `FakeExoMediaDrm` refuses offline key
+requests and throws from `restoreKeys`, so `WidevineDevice.kt` adds the device bookkeeping — a key
+store on the statement rather than on one `ExoMediaDrm`, and the two durations
+`DeviceStatement.declareOfflineLicence` states — around Media3's own exchange. That is also what
+closed #212's declared gap: `LicenceOutcome.SERVED_FROM_OFFLINE_STORE` is now emitted and asserted in
+`LicenceTelemetryTest`, and `SCHEMA_VERSION` stays **2**, because a value a pipeline was told to
+expect arriving is a change of population and not of shape.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,

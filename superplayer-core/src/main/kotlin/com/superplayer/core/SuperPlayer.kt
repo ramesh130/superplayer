@@ -221,6 +221,21 @@ public class SuperPlayer private constructor(
      * none.
      */
     private val protectionRepair: ProtectionRepair?,
+    /**
+     * The session graph this player's protection composed, and null on every player built without
+     * `SuperPlayer.Builder.setDrm`.
+     *
+     * Core reads nothing off it — the slot is filled at chain composition and Media3 asks it for a
+     * session, which is the whole of core's interest. It is held here so that `superplayer-drm` can
+     * find *this player's* protection again from the player itself, which is what an offline licence
+     * store needs in order to perform its verbs over the licence transport ADR-0012 rule 2 put on the
+     * player rather than on the store (issue #210). A second registry keyed by player, kept in the
+     * module, would be the same fact recorded twice and leaked on every player nobody released.
+     *
+     * Deliberately without a default value, for the reason [builtWithTrackSelectionParameters] has
+     * none.
+     */
+    internal val licenceSessions: LicenceSessions?,
 ) : Player by delegate {
 
     /**
@@ -363,6 +378,8 @@ public class SuperPlayer private constructor(
         // Null for the same reason: no protection of core's composed a graph, so there is none to
         // compose again.
         protectionRepair: ProtectionRepair? = null,
+        // Null for the same reason: no slot of core's composed a session graph on it.
+        licenceSessions: LicenceSessions? = null,
     ) : this(
         exoPlayer,
         profile,
@@ -378,6 +395,7 @@ public class SuperPlayer private constructor(
         playerStateRungs,
         deliveredProtection,
         protectionRepair,
+        licenceSessions,
     )
 
     /**
@@ -1616,6 +1634,9 @@ public class SuperPlayer private constructor(
                 // null on every player whose protection has no permitted level to fall to — and on
                 // every player without `setDrm` at all (ADR-0012 rule 13).
                 protectionRepair = configuration.protectionRepair,
+                // The graph itself, so the module that built it can find it again from the player
+                // (issue #210). Null on every player without `setDrm`.
+                licenceSessions = configuration.drm,
             )
 
             // The first pooled player's components become the pool's. The factory handed on is the

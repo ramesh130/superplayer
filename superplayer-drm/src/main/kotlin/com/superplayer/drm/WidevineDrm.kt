@@ -16,8 +16,13 @@
 
 package com.superplayer.drm
 
+import android.os.Looper
 import androidx.media3.common.C
+import androidx.media3.common.Format
+import androidx.media3.exoplayer.analytics.PlayerId
 import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
+import androidx.media3.exoplayer.drm.DrmSession
+import androidx.media3.exoplayer.drm.DrmSessionEventListener
 import androidx.media3.exoplayer.drm.DrmSessionManager
 import androidx.media3.exoplayer.drm.DrmSessionManagerProvider
 import androidx.media3.exoplayer.drm.ExoMediaDrm
@@ -27,8 +32,10 @@ import com.superplayer.core.EngineConfiguration
 import com.superplayer.core.EngineDrmExtension
 import com.superplayer.core.LicenceContext
 import com.superplayer.core.LicenceSessions
+import com.superplayer.core.OfflineLicenceExpiredException
 import com.superplayer.core.ProtectionRepair
 import com.superplayer.core.SecurityDowngradeRefusedException
+import com.superplayer.core.expiredLicenceSessions
 import com.superplayer.core.refusedSessions
 
 /**
@@ -40,10 +47,21 @@ import com.superplayer.core.refusedSessions
  * Stateless, because it has to be: one `PlaybackDrm` may be handed to many players, so everything
  * with a lifetime belongs to the [PlayerProtection] this builds per `build()` and not to this.
  */
-internal class WidevineDrm(private val config: WidevineConfig) : EngineDrmExtension {
+internal class WidevineDrm(
+    private val config: WidevineConfig,
+    /**
+     * The stored licence this player is to play with, or null for an ordinary online one.
+     *
+     * A value the consumer read out of an [OfflineLicenceStore] before building the player, which is
+     * ADR-0012 rule 9 made structural: there is no way to play from the store without having first
+     * read what the store holds, and therefore no way for a dead download to reach the engine as
+     * "playback error" instead of as the expiry the consumer could see.
+     */
+    private val offline: OfflineLicence? = null,
+) : EngineDrmExtension {
 
     override fun configureEngine(configuration: EngineConfiguration) {
-        val protection = PlayerProtection(config)
+        val protection = PlayerProtection(config, offline)
         configuration.drm = protection
         // The second slot, and only for a server whose operator published a level to fall to: a
         // player that could never lower anything is asked nothing at failure time, which keeps "an
@@ -70,8 +88,10 @@ internal class WidevineDrm(private val config: WidevineConfig) : EngineDrmExtens
  * running player could have met. Both build the same graph through [sessionManager], so there is one
  * description of what a Widevine session is and not two that drift.
  */
-private class PlayerProtection(private val config: WidevineConfig) :
-    LicenceSessions,
+internal class PlayerProtection(
+    private val config: WidevineConfig,
+    private val offline: OfflineLicence?,
+) : LicenceSessions,
     ProtectionRepair {
 
     /**
@@ -99,6 +119,22 @@ private class PlayerProtection(private val config: WidevineConfig) :
     private var manager: DrmSessionManager? = null
 
     override fun over(licence: LicenceContext): DrmSessionManagerProvider {
+        // The stored licence first, before any device is touched, because a dead one settles the
+        // question: no graph is composed, no session opened and no licence asked for, and the
+        // consumer gets back the fact the store already told them (ADR-0012 rule 9). Core dresses
+        // it, as it dresses the downgrade refusal and for the same reason — the exception is core's
+        // and this module names no Media3 error code (rule 5). Nothing is adopted, so there is no
+        // graph for #225's repair to re-open either, which is right: a lower security level cures
+        // an expiry in no way at all.
+        offline?.takeIf { it.isExpired }?.let {
+            return expiredLicenceSessions(
+                OfflineLicenceExpiredException(
+                    contentId = it.contentId,
+                    playbackDurationRemainingMs = it.playbackDurationRemainingMs,
+                    licenceDurationRemainingMs = it.licenceDurationRemainingMs,
+                ),
+            )
+        }
         // ADR-0012 rule 11: a device that cannot honour the level it reports may open at a lower
         // one, but only where the licence server's operator said that server will issue at it.
         // `levelToAskAbout` returns null for every ordinary device, and nothing below — no
@@ -251,6 +287,56 @@ private class PlayerProtection(private val config: WidevineConfig) :
      * graph is here, built at chain composition and again at a re-open.
      */
     private fun sessionManager(licence: LicenceContext, device: ExoMediaDrm.Provider): DrmSessionManager {
+        val manager = widevineSessions(licence, device)
+        offline?.let {
+            // ref: `DefaultDrmSessionManager.setMode(MODE_PLAYBACK, keySetId)` is Media3's whole
+            // mechanism for playing from a licence already on the device: every session this manager
+            // opens restores those keys instead of composing a key request, so no licence leaves the
+            // device — which is the claim `OfflineLicenceTest` counts rather than infers.
+            //
+            // Media3 still goes to the server on its own initiative in one case, and it is the right
+            // one: a restored licence inside sixty seconds of expiry is re-requested rather than
+            // played to a stop mid-view (`DefaultDrmSession.doLicense`). One already expired is a
+            // `KeysExpiredException`, which reaches the consumer classified as an expired licence
+            // with its own message key — the after-the-fact half of the pair
+            // `OfflineLicence.isExpired` is the before-the-fact half of. This module names no
+            // classification, here or anywhere (ADR-0012 rule 5, and `DrmFailureTest` checks it).
+            manager.setMode(DefaultDrmSessionManager.MODE_PLAYBACK, it.keySetId)
+        }
+        // The one thing a licence store needs and the session graph alone cannot give it: which
+        // format the engine actually asked for a session over. Only the content declares its own
+        // protection data, so an acquisition for offline use is composed from what this player
+        // loaded rather than from anything the store could have been told (ADR-0012 rule 9).
+        return FormatRecordingSessions(manager) { protectedFormat = it }
+    }
+
+    /**
+     * The format this player's engine last asked for a DRM session over, or null before it has asked
+     * for one.
+     *
+     * Volatile because it is written on whichever thread enabled the renderer and read on the one a
+     * consumer calls [OfflineLicenceExchange] from.
+     */
+    @Volatile
+    internal var protectedFormat: Format? = null
+        private set
+
+    /**
+     * A session graph of this player's, in no mode, for an [OfflineLicenceExchange] to drive.
+     *
+     * A second manager rather than the playing one, because Media3's `OfflineLicenseHelper` takes
+     * one over: it sets the mode, prepares it, opens a session of its own on its own thread and
+     * releases it. Handing it the manager the renderers are holding sessions out of would end
+     * playback to download a licence. What the two share is everything that makes the exchange this
+     * *player's* — the licence transport with its header-refresh layer, the retry budget, the device,
+     * and the licence server the app named (ADR-0012 rule 2).
+     */
+    internal fun exchangeSessions(): DefaultDrmSessionManager {
+        val licence = checkNotNull(this.licence) { "This player's protection composed no session graph" }
+        return widevineSessions(licence, checkNotNull(this.device))
+    }
+
+    private fun widevineSessions(licence: LicenceContext, device: ExoMediaDrm.Provider): DefaultDrmSessionManager {
         val licenceTransport = licence.transport
         val loadErrors = licence.loadErrors
         // Media3's own callback rather than one of ours, which is ADR-0001's whole posture: it
@@ -340,5 +426,48 @@ private class PlayerProtection(private val config: WidevineConfig) :
             // gap: such a player keeps Media3's handling for every other load too.
             .apply { loadErrors?.let(::setLoadErrorHandlingPolicy) }
             .build(callback)
+    }
+}
+
+/**
+ * A session graph that also writes down which format it was asked about.
+ *
+ * Every member forwarded **by hand** and not by Kotlin delegation, which is ADR-0003's rule arriving
+ * at a Media3 interface other than `Player`: four of `DrmSessionManager`'s six members are Java
+ * `default` methods, and `by delegate` would silently leave them at the interface's own defaults —
+ * a `prepare`/`release` pair that never reached the real manager, so the device would be acquired
+ * and never let go. The compiler says nothing about it, which is why it is written out.
+ */
+private class FormatRecordingSessions(
+    private val delegate: DrmSessionManager,
+    private val onFormat: (Format) -> Unit,
+) : DrmSessionManager {
+
+    override fun setPlayer(playbackLooper: Looper, playerId: PlayerId) = delegate.setPlayer(playbackLooper, playerId)
+
+    override fun prepare() = delegate.prepare()
+
+    override fun release() = delegate.release()
+
+    override fun preacquireSession(
+        eventDispatcher: DrmSessionEventListener.EventDispatcher?,
+        format: Format,
+    ): DrmSessionManager.DrmSessionReference {
+        record(format)
+        return delegate.preacquireSession(eventDispatcher, format)
+    }
+
+    override fun acquireSession(eventDispatcher: DrmSessionEventListener.EventDispatcher?, format: Format): DrmSession? {
+        record(format)
+        return delegate.acquireSession(eventDispatcher, format)
+    }
+
+    override fun getCryptoType(format: Format): Int = delegate.getCryptoType(format)
+
+    // Only a format that carries protection data, because that is the only kind a licence can be
+    // acquired for: Media3 asks a manager about clear formats too, and the last one asked about is
+    // otherwise whichever track the engine enabled last.
+    private fun record(format: Format) {
+        if (format.drmInitData != null) onFormat(format)
     }
 }

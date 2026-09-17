@@ -269,6 +269,26 @@ public object DeviceStatement {
     }
 
     /**
+     * How long a licence this device persists for offline use has left: the *licence* duration and
+     * the *playback* duration, in seconds.
+     *
+     * ref: Widevine reports the two separately (`MediaDrm.queryKeyStatus` answers
+     * `LicenseDurationRemaining` and `PlaybackDurationRemaining`, which Media3 reads in
+     * `WidevineUtil`), and they mean different things: the licence duration is how long the
+     * entitlement itself lives, while the playback duration is the viewing window that starts when
+     * the download is first played. ADR-0012 rule 9 requires SuperPlayer to keep them apart and
+     * report both before playback, so a test needs to be able to state them apart too.
+     *
+     * The defaults are an ordinary month-long rental with a two-day viewing window; state something
+     * small — zero, for a licence that has died — to reach the expiry cases. Declare after
+     * [declareWidevine], which states the device itself, and before the first player is built.
+     */
+    @JvmStatic
+    public fun declareOfflineLicence(licenceDurationSec: Long, playbackDurationSec: Long) {
+        widevine.declareOfflineLicenceDurations(licenceDurationSec, playbackDurationSec)
+    }
+
+    /**
      * This device telling every DRM session it currently holds open that its keys must be renewed.
      *
      * The one declaration here that is not a statement about the device *before* a player is built,

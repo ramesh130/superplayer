@@ -403,6 +403,26 @@ device commonly runs several ordinary video decoders and exactly one secure one.
 field rather than a Robolectric shadow, so nothing resets it between tests but the harness, which
 does so in `before()`.
 
+**The offline half of the device is the harness's and not Media3's** (#210). `FakeExoMediaDrm`
+refuses a `KEY_TYPE_OFFLINE` or `KEY_TYPE_RELEASE` key request outright — "Offline key requests are
+not supported" — throws unconditionally from `restoreKeys`, and reports neither of the two durations
+`queryKeyStatus` carries on a real Widevine implementation, because Media3's own tests never download
+a licence. So `WidevineDevice.kt` adds exactly that bookkeeping around Media3's exchange and nothing
+else: a key store held on the *statement* rather than on one `ExoMediaDrm`, so a licence acquired
+through one player restores under the next one's device as it would on a handset; a key-set id minted
+per stored licence; `restoreKeys` replaying the stored response into Media3's own fake, so a restored
+session becomes a keyed session by the path a streaming one does; and `LicenseDurationRemaining` and
+`PlaybackDurationRemaining` reported from what `DeviceStatement.declareOfflineLicence(licenceSec,
+playbackSec)` stated. The request, the response and the entitlement decision stay Media3's and the
+licence server's, which is what keeps a download the same round trip as a stream under a different
+key type rather than a second protocol.
+
+Two numbers of Media3's are worth knowing before writing such a test, because both are easy to meet
+by accident. A restored licence within **sixty seconds** of expiry is re-requested from the server
+during playback rather than played to a stop (`DefaultDrmSession.doLicense`), so a stated duration
+under that turns an offline test into an online one; the defaults are a month and two days for that
+reason. And a missing duration reads as long expired, which is why the statement always reports both.
+
 **The licence server is an origin at a host of its own**, `FakeLicenceServer.HOST`, answering
 `LICENCE_URI` and `PROVISION_URI`. That is what makes a licence exchange visible to everything this
 module already has: it is a transfer, so it passes through the shaper, the fault injector and the

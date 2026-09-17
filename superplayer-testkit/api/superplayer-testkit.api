@@ -7,6 +7,7 @@ public final class com/superplayer/testkit/DeviceStatement {
 	public static final fun declareDisplay (II)V
 	public static final fun declareDisplayHdrTypes ([I)V
 	public static final fun declareLowRamDevice ()V
+	public static final fun declareOfflineLicence (JJ)V
 	public static final fun declareSecureVideoDecoder (Ljava/lang/String;I[Lkotlin/Pair;)V
 	public static final fun declareVideoDecoder (Ljava/lang/String;I[Lkotlin/Pair;)V
 	public static final fun declareVideoDecoder (Ljava/lang/String;[Lkotlin/Pair;)V

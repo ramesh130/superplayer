@@ -38,6 +38,7 @@ import androidx.media3.exoplayer.drm.ExoMediaDrm
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.TrackGroupArray
+import androidx.media3.exoplayer.text.TextRenderer
 import androidx.media3.test.utils.FakeAdaptiveDataSet
 import androidx.media3.test.utils.FakeAdaptiveMediaSource
 import androidx.media3.test.utils.FakeAudioRenderer
@@ -617,6 +618,7 @@ public class PlaybackHarness : ExternalResource() {
             injector = transport.injector,
             wait = transport.wait,
             loadExecutor = HarnessDownloadLoads(transport.wait),
+            renderersFactory = downloadRenderersFactory(),
         )
         downloads[environment] = environment
         return environment
@@ -1241,6 +1243,16 @@ public class PlaybackHarness : ExternalResource() {
             onVideoRenderer(video)
             arrayOf<Renderer>(video, ControllableAudioRenderer(handler, audioListener, decoderInitFault))
         }
+
+    /**
+     * What a download's tracks are chosen against: the renderers a harness-built player has, and Media3's
+     * own text renderer beside them, because a player here renders no subtitles while a download has to be
+     * able to choose them. Asked for capabilities only; a download renders nothing.
+     */
+    private fun downloadRenderersFactory() = RenderersFactory { eventHandler, videoListener, audioListener, textOutput, metadataOutput ->
+        renderersFactory { }.createRenderers(eventHandler, videoListener, audioListener, textOutput, metadataOutput) +
+            TextRenderer(textOutput, eventHandler.looper)
+    }
 
     /**
      * The content [content] describes, as something the engine can load.

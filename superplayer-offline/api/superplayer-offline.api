@@ -25,6 +25,9 @@ public final class com/superplayer/offline/Downloads {
 	public final fun download (Ljava/lang/String;)Lcom/superplayer/offline/DownloadItem;
 	public final fun downloads ()Ljava/util/List;
 	public final fun enqueue (Lcom/superplayer/core/MediaRequest;)V
+	public final fun enqueue (Lcom/superplayer/core/MediaRequest;Ljava/util/List;)V
+	public final fun enqueue (Lcom/superplayer/core/MediaRequest;Ljava/util/List;Ljava/util/List;)V
+	public static synthetic fun enqueue$default (Lcom/superplayer/offline/Downloads;Lcom/superplayer/core/MediaRequest;Ljava/util/List;Ljava/util/List;ILjava/lang/Object;)V
 	public final fun release ()V
 	public final fun remove (Ljava/lang/String;)V
 	public final fun removeListener (Lcom/superplayer/offline/DownloadsListener;)V
@@ -33,6 +36,7 @@ public final class com/superplayer/offline/Downloads {
 public final class com/superplayer/offline/Downloads$Builder {
 	public fun <init> (Landroid/content/Context;Lcom/superplayer/core/ContentCache;)V
 	public final fun build ()Lcom/superplayer/offline/Downloads;
+	public final fun setProfile (Lcom/superplayer/core/PlaybackProfile;)Lcom/superplayer/offline/Downloads$Builder;
 }
 
 public abstract interface class com/superplayer/offline/DownloadsListener {

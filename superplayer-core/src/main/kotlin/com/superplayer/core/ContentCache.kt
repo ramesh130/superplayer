@@ -18,6 +18,7 @@ package com.superplayer.core
 
 import android.net.Uri
 import androidx.media3.common.MediaItem
+import androidx.media3.common.StreamKey
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
@@ -76,6 +77,17 @@ internal interface CacheDownloads {
 
     /** Removes the pin on [contentId], as `ContentKeyedCache.unpin` does. A database write too. */
     fun unpin(contentId: String)
+
+    /**
+     * The tracks the download of [contentId] from [uri] holds, as Media3's stream keys, or an empty list
+     * for content with no such download — including content downloaded from another of its sources.
+     *
+     * What a player adopting that content plays is narrowed to these, so a player of a download selects
+     * what was downloaded rather than a rendition or a language it would have to fetch (ADR-0013 rule 12).
+     * Content that is not pinned is answered without a read, so a cache nothing was downloaded into
+     * pays nothing for the question (rule 15); a pinned item costs one row, read on the calling thread.
+     */
+    fun downloadedTracks(contentId: String, uri: Uri): List<StreamKey>
 }
 
 /**

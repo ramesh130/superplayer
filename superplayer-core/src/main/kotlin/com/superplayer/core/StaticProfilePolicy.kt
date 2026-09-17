@@ -99,6 +99,13 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
                 segment = RetryBudget(maxRetries = 5, initialBackoffMs = 500, maxBackoffMs = 8_000),
                 licence = RetryBudget(maxRetries = 4, initialBackoffMs = 250, maxBackoffMs = 2_000),
             ),
+            // 1080p for a download, with no bitrate ceiling. A download is watched on the device that
+            // fetched it, which is a phone or a tablet far more often than a television, and 1080p is
+            // the highest rung such a screen shows a difference at; a 2160p rung costs about four
+            // times the storage for a picture that screen cannot resolve. No bitrate ceiling, because
+            // at a fixed height a higher bitrate is the better encode of the same picture, and that is
+            // the trade a viewer downloading a long-form title is making on purpose.
+            download = DownloadSelectionPolicy(maxVideoBitrateBps = TrackSelectionPolicy.UNLIMITED, maxVideoHeightPx = 1080),
         )
 
         // Live linear. Buffer depth is latency here: seconds held ahead of the playhead are seconds
@@ -146,6 +153,9 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
                 segment = RetryBudget(maxRetries = 2, initialBackoffMs = 250, maxBackoffMs = 1_000),
                 licence = RetryBudget(maxRetries = 4, initialBackoffMs = 250, maxBackoffMs = 2_000),
             ),
+            // No download ceiling of its own. Live content is not downloaded at all (ADR-0013 rule 8),
+            // so what this profile would download is on-demand content a live app also offers, and for
+            // that the unlimited default is the honest answer rather than a live-shaped number.
         )
 
         // Short-form feed content. Two costs dominate, and both are paid before the viewer has
@@ -200,6 +210,10 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
                 segment = FEED_BUDGET,
                 licence = FEED_BUDGET,
             ),
+            // 720p for a download. Clips are downloaded many at a time and each is watched once, in a
+            // feed on a phone held upright, where the video is shown across the screen's short edge;
+            // 720p fills that edge on most phones and costs about half the storage of 1080p per clip.
+            download = DownloadSelectionPolicy(maxVideoBitrateBps = TrackSelectionPolicy.UNLIMITED, maxVideoHeightPx = 720),
         )
 
         // Data saver. The viewer has asked to spend fewer bytes, so every number here is chosen
@@ -248,6 +262,10 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
                 segment = DATA_SAVER_BUDGET,
                 licence = RetryBudget(maxRetries = 4, initialBackoffMs = 250, maxBackoffMs = 2_000),
             ),
+            // A download is held to the same 480p and 800 kbps as playback, for the same reason: the
+            // bytes of a download are data spent exactly as a stream's are, and a viewer who asked to
+            // spend less did not exempt the ones fetched ahead of time.
+            download = DownloadSelectionPolicy(maxVideoBitrateBps = 800_000, maxVideoHeightPx = 480),
         )
     }
 

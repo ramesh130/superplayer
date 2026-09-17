@@ -148,12 +148,17 @@ public class AdaptiveBufferPolicy(public val profile: PlaybackProfile) : Playbac
         // about what it should become, and a number invented here would be one with no argument
         // behind it. Carried through rather than dropped, so a player built on this policy asks for
         // its profile's budgets rather than for Media3's.
+        //
+        // The download half is carried the same way, for a reason of its own: a download store consults
+        // its profile's static policy once, at enqueue (ADR-0013 rule 12), and a decision that dropped the
+        // half would say something about downloads that no download is chosen under.
         return PlaybackDecision(
             targets.toBufferPolicy(),
             base.trackSelection,
             liveLatency,
             preloadOn(conditions.transport, base.preload),
             base.retry,
+            base.download,
         )
     }
 

@@ -54,6 +54,24 @@ public final class com/superplayer/core/DecisionTrigger : java/lang/Enum {
 public abstract class com/superplayer/core/DownloadEnvironment {
 }
 
+public final class com/superplayer/core/DownloadSelectionPolicy {
+	public static final field Companion Lcom/superplayer/core/DownloadSelectionPolicy$Companion;
+	public static final field UNLIMITED Lcom/superplayer/core/DownloadSelectionPolicy;
+	public fun <init> (II)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun copy (II)Lcom/superplayer/core/DownloadSelectionPolicy;
+	public static synthetic fun copy$default (Lcom/superplayer/core/DownloadSelectionPolicy;IIILjava/lang/Object;)Lcom/superplayer/core/DownloadSelectionPolicy;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMaxVideoBitrateBps ()I
+	public final fun getMaxVideoHeightPx ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/DownloadSelectionPolicy$Companion {
+}
+
 public final class com/superplayer/core/FailureCategory : java/lang/Enum {
 	public static final field DECODER Lcom/superplayer/core/FailureCategory;
 	public static final field DRM Lcom/superplayer/core/FailureCategory;
@@ -218,16 +236,19 @@ public final class com/superplayer/core/PlaybackDecision {
 	public fun <init> (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;)V
 	public fun <init> (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;Lcom/superplayer/core/PreloadPolicy;)V
 	public fun <init> (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;Lcom/superplayer/core/PreloadPolicy;Lcom/superplayer/core/RetryPolicy;)V
-	public synthetic fun <init> (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;Lcom/superplayer/core/PreloadPolicy;Lcom/superplayer/core/RetryPolicy;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;Lcom/superplayer/core/PreloadPolicy;Lcom/superplayer/core/RetryPolicy;Lcom/superplayer/core/DownloadSelectionPolicy;)V
+	public synthetic fun <init> (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;Lcom/superplayer/core/PreloadPolicy;Lcom/superplayer/core/RetryPolicy;Lcom/superplayer/core/DownloadSelectionPolicy;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Lcom/superplayer/core/BufferPolicy;
 	public final fun component2 ()Lcom/superplayer/core/TrackSelectionPolicy;
 	public final fun component3 ()Lcom/superplayer/core/LiveLatencyPolicy;
 	public final fun component4 ()Lcom/superplayer/core/PreloadPolicy;
 	public final fun component5 ()Lcom/superplayer/core/RetryPolicy;
-	public final fun copy (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;Lcom/superplayer/core/PreloadPolicy;Lcom/superplayer/core/RetryPolicy;)Lcom/superplayer/core/PlaybackDecision;
-	public static synthetic fun copy$default (Lcom/superplayer/core/PlaybackDecision;Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;Lcom/superplayer/core/PreloadPolicy;Lcom/superplayer/core/RetryPolicy;ILjava/lang/Object;)Lcom/superplayer/core/PlaybackDecision;
+	public final fun component6 ()Lcom/superplayer/core/DownloadSelectionPolicy;
+	public final fun copy (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;Lcom/superplayer/core/PreloadPolicy;Lcom/superplayer/core/RetryPolicy;Lcom/superplayer/core/DownloadSelectionPolicy;)Lcom/superplayer/core/PlaybackDecision;
+	public static synthetic fun copy$default (Lcom/superplayer/core/PlaybackDecision;Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;Lcom/superplayer/core/PreloadPolicy;Lcom/superplayer/core/RetryPolicy;Lcom/superplayer/core/DownloadSelectionPolicy;ILjava/lang/Object;)Lcom/superplayer/core/PlaybackDecision;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getBuffer ()Lcom/superplayer/core/BufferPolicy;
+	public final fun getDownload ()Lcom/superplayer/core/DownloadSelectionPolicy;
 	public final fun getLiveLatency ()Lcom/superplayer/core/LiveLatencyPolicy;
 	public final fun getPreload ()Lcom/superplayer/core/PreloadPolicy;
 	public final fun getRetry ()Lcom/superplayer/core/RetryPolicy;

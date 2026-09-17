@@ -613,7 +613,8 @@ the seam above until #239. What stands in for each piece, and what each stand-in
   (#242). The platform's readings do not move, so what it states is the case a store cannot see coming. A
   download stopped for it waits on the store's thread, whose clock Robolectric moves only when a test tells
   it to, so `DownloadResumptionTest` moves `SystemClock` a step per pass while it waits for a resumption.
-  What that cannot show is a real radio's loss, which the platform also reports. That half is #243's.
+  What that cannot show is a real radio's loss, which the platform also reports. That half is a statement
+  of the platform's, below, and `DownloadConditionsTest` states it (#243).
 - **The three conditions are stated into the platform.** `DeviceStatement.declareNetworkMetered`,
   `declareBatteryLow` and `declareStorageLow` write every reading a reader looks at — the active
   `NetworkInfo` and capabilities, the sticky `ACTION_BATTERY_CHANGED`, the sticky
@@ -636,7 +637,10 @@ the seam above until #239. What stands in for each piece, and what each stand-in
 - **A reboot is not stated.** WorkManager's test implementation keeps its work in an in-memory
   database, so nothing persisted survives a simulated restart and there is no faithful stand-in under
   `check`. Under `check`, #243 asserts only that downloads are scheduled as persisted work under their
-  constraints; surviving a reboot is verified on a device, in #247, and nowhere else.
+  constraints; surviving a reboot is verified on a device, in #247, and nowhere else. `DownloadConditionsTest`
+  is that assertion: the work's `Constraints`, held while a statement fails them, and the download it
+  resumes once `runScheduledWork()` finds them met. What runs the download in-process is the store's own
+  watcher hearing the same statement, so the work's run is shown to happen, not shown to be what started it.
 
 `DownloadHarnessTest` is the worked example. There is no store yet, so what downloads is Media3's own
 `DownloadManager` over a `SimpleCache` in a temporary directory, and everything it asserts is a claim
@@ -1196,7 +1200,7 @@ its README says so. Its device-free self-test is the exception, and it is in `ch
 
 **A reboot is not covered here.** Under `check` a download's scheduled work lives in WorkManager's
 in-memory test database, which no simulated restart survives; *Downloads* above says what that leaves
-to #243 and to a device (#247).
+to a device (#247).
 
 **And a claim `devicelab` cannot carry either, named because #226 had to answer where it goes.** Two
 reasons, and the first settles it on its own: `devicelab` measures and never asserts, so a scenario

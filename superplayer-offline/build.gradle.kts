@@ -20,6 +20,11 @@ dependencies {
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.datasource)
 
+    // The schedule a pending download outlives its process and a reboot by (ADR-0013 rule 11): persisted
+    // work under the three constraints, because Media3's own `WorkManagerScheduler` cannot state
+    // battery-not-low. Its App Startup initializer arrives with it, which the package documentation names.
+    implementation(libs.androidx.work.runtime)
+
     // The deterministic playback harness downloads over the same transport a player of the same
     // content plays through, so "it plays on a plane" is a count of zero requests rather than a
     // screenshot. Phase 2 on phase 7, tests only.
@@ -33,6 +38,9 @@ dependencies {
     // Tests only, a phase 5 module under a phase 7 one, for the same reason: the store takes core's
     // `PlaybackResilience`, and the one that tells a lost network from a lost segment is this module's.
     testImplementation(project(":superplayer-resilience"))
+
+    // WorkManager's test driver, which the harness's `runScheduledWork()` runs the store's schedule under.
+    testImplementation(libs.androidx.work.testing)
 
     testImplementation(libs.media3.test.utils.robolectric)
     testImplementation(libs.robolectric)

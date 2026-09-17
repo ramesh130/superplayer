@@ -35,10 +35,15 @@ import androidx.work.WorkerParameters
  * store or per item: what it does when it runs is look at every store, and the constraints are the same
  * for every download bar the network, which is any network only where every pending store accepts one.
  *
- * **What it does when it runs** is ask each open store to read its conditions again, and stay scheduled
- * while any download is pending — a retry, so the constraints and the backoff are `WorkManager`'s. In a
- * process with no store open there is nobody to hand the queue to: opening one is the consumer's service's
- * (#246), and until then the work ends and the next store to open with something pending schedules it again.
+ * **What it does when it runs** is ask each open store to read its conditions again, and ask to be retried —
+ * so it stays persisted, under `WorkManager`'s own backoff — until a store finds nothing pending and cancels it.
+ * In a process with no store open, after a reboot say, it can resume nothing yet: opening one is the
+ * consumer's service's (#246). It retries there too rather than ending, so the schedule survives until
+ * something opens a store.
+ *
+ * **Nothing here caches what `WorkManager` holds.** Work is enqueued again whenever a store's want changes —
+ * something became pending, the network it accepts changed — so work an app cancelled itself is scheduled
+ * again at the next change, and the constraint follows the stores still open rather than one released.
  */
 internal object DownloadSchedule {
 
@@ -47,44 +52,39 @@ internal object DownloadSchedule {
     /** The network each open store with a download pending needs, by store. */
     private val wanted = HashMap<Downloads, NetworkType>()
 
-    /** What this process last scheduled, or null for nothing, or for not knowing. */
-    private var scheduled: NetworkType? = null
-
     /**
-     * [store] has a download pending that needs [network], or with null has none. Enqueues or cancels the
-     * work where the process's answer changed.
+     * [store] has a download pending that needs [network], or with null has none. Enqueues the work afresh, or
+     * cancels it, where that changes what the store wants; a store that asks for what it already wanted costs
+     * nothing, which is what lets it ask on every condition it hears.
      */
     @Synchronized
     fun want(context: Context, store: Downloads, network: NetworkType?) {
+        if (wanted[store] == network) return
         if (network == null) wanted -= store else wanted[store] = network
-        val needed = when {
-            wanted.isEmpty() -> null
-            wanted.values.all { it == NetworkType.CONNECTED } -> NetworkType.CONNECTED
-            else -> NetworkType.UNMETERED
-        }
-        if (needed == scheduled) return
-        scheduled = needed
-        val workManager = WorkManager.getInstance(context)
-        if (needed == null) {
-            workManager.cancelUniqueWork(UNIQUE_WORK_NAME)
-        } else {
-            workManager.enqueueUniqueWork(UNIQUE_WORK_NAME, ExistingWorkPolicy.REPLACE, workFor(needed))
-        }
+        sync(context)
     }
 
     /**
-     * [store] was released. Its pending downloads are still pending on disk, so the work stays; what this
-     * process believes it scheduled is forgotten once no store is open, so the next store schedules afresh
-     * rather than trusting a belief about work nobody here can see any more.
+     * [store] was released. Its pending downloads are still pending on disk, so the work is not cancelled; where
+     * other stores remain, it is enqueued again for what they need.
      */
     @Synchronized
-    fun forget(store: Downloads) {
-        wanted -= store
-        if (wanted.isEmpty()) scheduled = null
+    fun forget(context: Context, store: Downloads) {
+        if (wanted.remove(store) != null && wanted.isNotEmpty()) sync(context)
     }
 
     @Synchronized
-    private fun ran(): List<Downloads> = wanted.keys.toList().also { if (it.isEmpty()) scheduled = null }
+    private fun openStores(): List<Downloads> = wanted.keys.toList()
+
+    private fun sync(context: Context) {
+        val workManager = WorkManager.getInstance(context)
+        if (wanted.isEmpty()) {
+            workManager.cancelUniqueWork(UNIQUE_WORK_NAME)
+            return
+        }
+        val network = if (wanted.values.all { it == NetworkType.CONNECTED }) NetworkType.CONNECTED else NetworkType.UNMETERED
+        workManager.enqueueUniqueWork(UNIQUE_WORK_NAME, ExistingWorkPolicy.REPLACE, workFor(network))
+    }
 
     private fun workFor(network: NetworkType) = OneTimeWorkRequestBuilder<PendingDownloadsWorker>()
         .setConstraints(
@@ -100,9 +100,7 @@ internal object DownloadSchedule {
     internal class PendingDownloadsWorker(context: Context, parameters: WorkerParameters) : Worker(context, parameters) {
 
         override fun doWork(): Result {
-            val stores = ran()
-            if (stores.isEmpty()) return Result.success()
-            stores.forEach(Downloads::onScheduledWorkRan)
+            openStores().forEach(Downloads::onScheduledWorkRan)
             return Result.retry()
         }
     }

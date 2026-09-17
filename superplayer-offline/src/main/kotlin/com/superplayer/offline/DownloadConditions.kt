@@ -119,8 +119,8 @@ internal class DownloadConditions(private val context: Context, private val onCh
             return level.toFloat() / scale <= LOW_FRACTION
         }
 
-        // ref: https://developer.android.com/reference/androidx/work/Constraints.Builder#setRequiresBatteryNotLow(boolean)
-        // — the platform's `ACTION_BATTERY_LOW` threshold, which WorkManager's tracker reads as this fraction.
+        // ref: https://cs.android.com/androidx/platform/frameworks/support/+/androidx-main:work/work-runtime/src/main/java/androidx/work/impl/constraints/trackers/BatteryNotLowTracker.kt
+        // — `BATTERY_LOW_THRESHOLD`, the fraction WorkManager's battery-not-low constraint is decided against.
         const val LOW_FRACTION = 0.15f
     }
 }

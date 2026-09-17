@@ -146,11 +146,18 @@ class DownloadConditionsTest {
         assertThat(constraints.requiresBatteryNotLow()).isTrue()
         assertThat(constraints.requiresStorageNotLow()).isTrue()
 
+        // Held by each constraint in turn: the battery, then the network alone, then storage alone.
+        assertThat(harness.runScheduledWork()).isEqualTo(0)
+        DeviceStatement.declareBatteryLow(false)
+        DeviceStatement.declareNetworkMetered(true)
+        assertThat(harness.runScheduledWork()).isEqualTo(0)
+        DeviceStatement.declareNetworkMetered(false)
+        DeviceStatement.declareStorageLow(true)
         assertThat(harness.runScheduledWork()).isEqualTo(0)
         assertThat(enqueuedWork()).hasSize(1)
         assertThat(harness.networkRequests(environment)).isEmpty()
 
-        DeviceStatement.declareBatteryLow(false)
+        DeviceStatement.declareStorageLow(false)
         assertThat(harness.runScheduledWork()).isEqualTo(1)
         harness.advanceUntil(environment, "the download completed") { downloads.download(CONTENT_ID)?.state == DownloadState.COMPLETED }
 
@@ -169,6 +176,24 @@ class DownloadConditionsTest {
         // Scheduled as it is enqueued, before a download that nothing holds has had the moment it needs to finish.
         assertThat(enqueuedWork().single().constraints.requiredNetworkType).isEqualTo(NetworkType.CONNECTED)
 
+        harness.advanceUntil(environment, "the download completed") { downloads.download(CONTENT_ID)?.state == DownloadState.COMPLETED }
+        assertThat(segmentsFetched(environment)).hasSize(SEGMENTS)
+    }
+
+    @Test
+    fun allowingMeteredNetworksAtRuntimeStartsADownloadAMeteredNetworkWasHolding() {
+        DeviceStatement.declareNetworkMetered(true)
+        val content = TestContent.hls(SEGMENTS)
+        val environment = harness.downloadEnvironment(content)
+        val downloads = openStore(openCache(), environment)
+        downloads.enqueue(request(content))
+        harness.advanceUntil(environment, "the item was held for its network") {
+            downloads.download(CONTENT_ID)?.stopReason == DownloadStopReason.NO_UNMETERED_NETWORK
+        }
+        assertThat(enqueuedWork().single().constraints.requiredNetworkType).isEqualTo(NetworkType.UNMETERED)
+
+        downloads.meteredNetworksAllowed = true
+        assertThat(enqueuedWork().single().constraints.requiredNetworkType).isEqualTo(NetworkType.CONNECTED)
         harness.advanceUntil(environment, "the download completed") { downloads.download(CONTENT_ID)?.state == DownloadState.COMPLETED }
         assertThat(segmentsFetched(environment)).hasSize(SEGMENTS)
     }

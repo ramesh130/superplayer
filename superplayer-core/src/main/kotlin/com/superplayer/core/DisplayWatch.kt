@@ -66,8 +66,15 @@ internal class DisplayWatch(
     /** The player's application looper, where the facade and the binding are called. */
     private val looper: Looper,
     private val selector: ReselectingTrackSelector,
-    private val display: DisplayInForce,
+    private val displayInForce: DisplayInForce,
 ) : DisplayManager.DisplayListener {
+
+    /**
+     * The reading this watch last acted on, kept apart from [displayInForce] because a pool's players
+     * share that window: the first watch to hear a hotplug writes it, and every other player must still
+     * re-select and ask its own surface again rather than finding the window already current.
+     */
+    private var heard: DisplayCapability = displayInForce.current
 
     /**
      * Step 3: what the output is told once the selection has been asked again. Set by the
@@ -102,8 +109,9 @@ internal class DisplayWatch(
     override fun onDisplayChanged(displayId: Int) {
         if (displayId != Display.DEFAULT_DISPLAY) return
         val reading = displayCapabilityOf(context.defaultDisplay() ?: return)
-        if (reading == display.current) return
-        display.current = reading
+        if (reading == heard) return
+        heard = reading
+        displayInForce.current = reading
         selector.reselect()
         afterChange()
     }

@@ -321,6 +321,13 @@ Nine rules follow, and they are binding.
    *permitted* by this ADR and is not built by Phase 3: it is added when the benchmark's cold-start
    cells show that a process-lifetime memory costs enough to be worth an API, and not before.
 
+   *Addendum (2026-09-18, #269).* A sample timed *after* the moment the memory is asked about is
+   forgotten, as a stale one is, rather than given a negative age. Elapsed realtime never runs
+   backwards within a process, so on a device this never fires. It fires for a test class outside
+   `superplayer-abr`, which cannot reset the internal memory, when one test's harness clock restarts
+   below the samples the last test recorded. A sample from another timeline is worth nothing on this
+   one, which is the stale age's own reasoning.
+
 ### What changes in ADR-0005
 
 ADR-0005 is not superseded. Its rules 1 and 2 stand as written; this ADR adds to rule 1 that the

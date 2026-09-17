@@ -21,9 +21,11 @@ of truth. This file records *what* is depended on and under *what license*.
 | `androidx.media3:media3-ui` | Apache-2.0 | `demo` |
 | `androidx.work:work-runtime` | Apache-2.0 | `superplayer-offline` (ADR-0013 rule 11), `superplayer-testkit` (compile only) |
 | `androidx.annotation:annotation` | Apache-2.0 | `superplayer-core`, `superplayer-abr`, `superplayer-testkit`, `demo`, `benchmark` |
-| `androidx.compose:compose-bom` | Apache-2.0 | `demo` (a BOM: pins versions, ships no code) |
-| `androidx.compose.ui:ui` | Apache-2.0 | `demo` |
-| `androidx.compose.foundation:foundation` | Apache-2.0 | `demo` |
+| `androidx.compose:compose-bom` | Apache-2.0 | `superplayer-tv` (api), `demo` (a BOM: pins versions, ships no code) |
+| `androidx.compose.ui:ui` | Apache-2.0 | `demo`, `superplayer-tv` (transitive, via `foundation`; its public signature names `Modifier`) |
+| `androidx.compose.runtime:runtime` | Apache-2.0 | `demo`, `superplayer-tv` (transitive, via `foundation`) |
+| `androidx.compose.foundation:foundation` | Apache-2.0 | `superplayer-tv` (api), `demo` |
+| `androidx.tv:tv-material` | Apache-2.0 | `superplayer-tv` (the D-pad controls' buttons, ADR-0014 rule 12) |
 | `androidx.compose.material3:material3` | Apache-2.0 | `demo` |
 | `androidx.activity:activity-compose` | Apache-2.0 | `demo` |
 | `androidx.lifecycle:lifecycle-runtime-compose` | Apache-2.0 | `demo` |
@@ -38,6 +40,8 @@ of truth. This file records *what* is depended on and under *what license*.
 | `junit:junit` | Eclipse Public License 1.0 | all modules (test), `build-logic` (test), `benchmark` (test) |
 | `androidx.media3:media3-test-utils` | Apache-2.0 | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`, `superplayer-abr`, `superplayer-cache`, `superplayer-preload`, `benchmark` (test) |
 | `androidx.media3:media3-test-utils-robolectric` | Apache-2.0 | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`, `superplayer-abr`, `superplayer-cache`, `superplayer-preload`, `benchmark` (test) |
+| `androidx.compose.ui:ui-test-junit4` | Apache-2.0 | `superplayer-tv` (test) |
+| `androidx.compose.ui:ui-test-manifest` | Apache-2.0 | `superplayer-tv` (test) |
 | `androidx.work:work-testing` | Apache-2.0 | `superplayer-testkit` (compile only, and its own tests), `superplayer-offline` (test) |
 | `org.robolectric:robolectric` | MIT | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`, `superplayer-abr`, `superplayer-cache`, `superplayer-preload`, `benchmark` (test) |
 | `com.google.truth:truth` | Apache-2.0 | transitive, via `media3-test-utils` |
@@ -111,8 +115,12 @@ paragraph below for the same reason. A build-time tool is still third-party code
 and "which licenses does this repository pull in" is a question that should be answerable from this
 one file. Neither reaches a published artifact.
 
-The Compose rows are the demo app's alone. No published module depends on Compose: `superplayer-ui`,
-the library's optional Compose surface, is a later phase and still an empty placeholder.
+The Compose rows are the demo app's and `superplayer-tv`'s. The TV module is the one published module
+that depends on Compose, because its D-pad controls are Compose for TV (ADR-0014 rule 12), and it is
+optional: a phone app that never adds it resolves no Compose from SuperPlayer. `superplayer-ui`, the
+library's optional phone Compose surface, is a later phase and still an empty placeholder. `tv-material`
+also brings `androidx.compose.material:material-icons-core` transitively, and the controls draw their
+glyphs rather than naming it.
 
 ## Device measurement tools
 

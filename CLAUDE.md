@@ -829,6 +829,16 @@ tunneling on their own, so its video renderer answers from `DeviceStatement.decl
 and the content is `TestContent.videoWithAudio`, since tunneling needs both tracks.
 `harness.videoRendererTunneled(player)` reads the renderer's enabled configuration. `TunneledPlaybackTest`
 drives it, and `DeviceStatementTest` holds the secure-decoder half.
+Since #272 the module also holds the controls, `TvPlaybackControls(player, visible)`: Compose for TV, over
+`tv-material`, taking any Media3 `Player`, so a stock `ExoPlayer` works. It is the one library module with
+Compose, and it applies the Compose compiler plugin itself. Left and Right on the focused seek bar move a
+target (`Scrub`), and the player is sought once, a second after the D-pad goes quiet, on the centre key, or
+when focus leaves. A hold accelerates on held time, not on repeats. On a `SuperPlayer` a scrub also switches
+the engine's scrubbing mode on (rule 12). Focus returns to the last focused control when `visible` comes
+back. Two things are easy to get wrong. A composable lambda that captures nothing becomes a public
+`ComposableSingletons` class with hashed names, which `docs/api-surface.md` explains. And the scrub tests
+step Compose's clock by hand, because the commit is a timeout. `TvPlaybackControlsTest` is the library's
+one Compose UI test and `ScrubTest` holds the curve.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,

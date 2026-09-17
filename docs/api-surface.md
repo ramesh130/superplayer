@@ -40,6 +40,14 @@ Whether a Media3 type is annotated is read off the pinned Media3 on the module's
 classpath, not from a list maintained by hand — ADR-0001 is explicit that per-class status must come
 from the pinned version, because annotations move between releases.
 
+A module compiled with the Compose compiler, which today is `superplayer-tv` alone, carries two kinds of
+generated member in its surface. Every class gets a `public static final field $stable`, the compiler's
+stability record, and that line in the tracked file is expected. A composable lambda that captures nothing
+is hoisted into a public `ComposableSingletons$<File>Kt` class whose member names are hashes of the source,
+so any edit to that file would move the tracked surface. The module's composables avoid it by passing
+their content lambdas something to capture, and a `ComposableSingletons` class appearing in a diff is a
+lambda that lost its capture.
+
 ## Explicit API mode, one step earlier
 
 The checks above are detection: they report that the surface changed, once it has. Kotlin's

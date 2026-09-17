@@ -1,5 +1,10 @@
 public final class com/superplayer/tv/TvOutput {
+	public static final field $stable I
 	public static final field INSTANCE Lcom/superplayer/tv/TvOutput;
 	public static final fun standard (Landroid/content/Context;)Lcom/superplayer/core/PlaybackOutput;
+}
+
+public final class com/superplayer/tv/TvPlaybackControlsKt {
+	public static final fun TvPlaybackControls (Landroidx/media3/common/Player;ZLandroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
 }
 

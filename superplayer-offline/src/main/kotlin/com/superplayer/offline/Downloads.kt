@@ -56,7 +56,9 @@ import java.util.concurrent.atomic.AtomicInteger
  * - **Everything happens on the thread the store was built on**, which must have a `Looper` — the main
  *   thread, normally. Listeners are called there too.
  *
- * Not yet here, each with its ticket: the rendition and languages a download takes (#241 — today it is
+ * **Live content is not yet refused** at enqueue, as ADR-0013 rule 8 requires: telling live from on-demand
+ * needs the manifest, which no ticket after this one has yet been cut to fetch before enqueueing. Not yet
+ * here either, each with its ticket: the rendition and languages a download takes (#241 — today it is
  * what Media3's downloader fetches by default, every rendition the manifest lists); resuming across
  * process death and stopping rather than failing on a lost network (#242); the conditions downloads run
  * under and the `WorkManager` scheduling behind them (#243 — today the store runs whenever the device has
@@ -128,7 +130,7 @@ public class Downloads internal constructor(
 
     /**
      * The download of [contentId], or null for content this store holds no download of. A download that
-     * has finished is read from the cache's database, so a screen listing many belongs off the main thread.
+     * is not running is read from the cache's database, one row, on the calling thread.
      */
     public fun download(contentId: String): DownloadItem? {
         checkUsable()
@@ -137,7 +139,7 @@ public class Downloads internal constructor(
         return download?.toItem()
     }
 
-    /** Every download this store holds, in the order they were enqueued. Reads the cache's database. */
+    /** Every download this store holds, in the order they were enqueued. Reads the cache's database on the calling thread. */
     public fun downloads(): List<DownloadItem> {
         checkUsable()
         val current = manager.currentDownloads.associateBy { it.request.id }
@@ -224,7 +226,7 @@ public class Downloads internal constructor(
      * the bytes, and reports progress as it is made.
      *
      * The pin is taken as the download begins rather than on [enqueue]'s thread: it is a database write,
-     * and [enqueue] is called from a screen. What ADR-0013 rule 7 pins at enqueue for — that no early
+     * and [enqueue] is called from a screen (ADR-0013 rule 7's addendum). What the rule pins at enqueue for — that no early
      * segment is evicted while a later one arrives — holds either way, because nothing is written before
      * [download] runs, and it is taken again on every resumption, which costs nothing when already held.
      */
@@ -263,6 +265,12 @@ public class Downloads internal constructor(
         // A download that has already moved on — completed, stopped, removed — reports that instead.
         val download = manager.currentDownloads.firstOrNull { it.request.id == contentId } ?: return
         if (download.state != Download.STATE_DOWNLOADING) return
+        // A state change reads the download's progress live, and parallel segment loads post their own
+        // readings, so a reading can arrive behind a newer one already reported: it is dropped rather than
+        // reported as progress going backwards.
+        val last = reported[contentId]
+        if (last != null && last.bytesDownloaded > bytesDownloaded) return
+        if (last?.percentDownloaded != null && last.percentDownloaded > percentDownloaded) return
         report(DownloadItem(contentId, DownloadState.DOWNLOADING, bytesDownloaded, percentOrNull(percentDownloaded)))
     }
 }

@@ -79,8 +79,10 @@ import kotlinx.coroutines.launch
  * position shown follow the target, and the player is sought **once**, when the scrub is committed. A scrub is
  * committed a second after the last D-pad release, at once on the centre key, and when the seek bar loses
  * focus or the controls hide. A release alone does not commit, because a viewer who taps Right four times is
- * making one scrub and not four. Holding a direction accelerates on the curve `Scrub` states, and the curve is
- * measured in the time the key has been held, so it runs at the same speed on every remote.
+ * making one scrub and not four. A press moves ten seconds. Holding a direction moves at thirty seconds of content
+ * a second, doubling every two seconds held, until it would cross a tenth of the content a second. The curve is
+ * measured in the time the key has been held, so it runs at the same speed on every remote, and `Scrub` argues
+ * each number.
  *
  * On a `SuperPlayer`, a scrub also switches Media3's scrubbing mode on for its duration (ADR-0014 rule 12), so
  * playback is suppressed while the viewer chooses a position. Any other `Player`, a stock `ExoPlayer` included,
@@ -88,7 +90,8 @@ import kotlinx.coroutines.launch
  *
  * **Hiding.** [visible] false composes nothing, and the controls keep which control had focus. When they show
  * again, focus returns there, so a viewer who hid them from the seek bar comes back to the seek bar. Controls
- * that hide on a timer belong to the app, which passes [visible].
+ * that hide on a timer belong to the app, which passes [visible]. An app that removes the composable instead
+ * removes that memory with it, and the controls show again with focus on play/pause.
  *
  * The controls are the surface's peers, not its owner: the video surface is the app's `SurfaceView`, laid out
  * beneath them (ADR-0014 rule 12).
@@ -100,7 +103,7 @@ import kotlinx.coroutines.launch
 @Composable
 public fun TvPlaybackControls(player: Player, visible: Boolean, modifier: Modifier = Modifier) {
     val focus = remember { ControlFocus() }
-    val reading = rememberPlayerReading(player)
+    val reading = rememberPlayerReading(player, visible)
 
     if (!visible) return
 
@@ -161,7 +164,7 @@ private fun TransportButton(shape: GlyphShape, @StringRes description: Int, enab
     ) { Glyph(shape) }
 }
 
-/** The controls a viewer can focus, in the order a first showing prefers them. */
+/** The controls a viewer can focus. */
 private enum class Control { PLAY_PAUSE, SEEK_BAR, SEEK_BACK, SEEK_FORWARD }
 
 /**
@@ -180,8 +183,9 @@ private class ControlFocus {
         .focusRequester(requester(control))
         .onFocusChanged { if (it.isFocused) last = control }
 
+    /** Focus back where it was, or on play/pause where that control can no longer take it (a seek button disabled). */
     fun restore() {
-        requester(last).requestFocus()
+        if (!requester(last).requestFocus()) requester(Control.PLAY_PAUSE).requestFocus()
     }
 }
 
@@ -207,7 +211,7 @@ private class PlayerReading(private val player: Player) {
 }
 
 @Composable
-private fun rememberPlayerReading(player: Player): PlayerReading {
+private fun rememberPlayerReading(player: Player, visible: Boolean): PlayerReading {
     val reading = remember(player) { PlayerReading(player).apply { refresh() } }
     DisposableEffect(player) {
         val listener = object : Player.Listener {
@@ -216,9 +220,9 @@ private fun rememberPlayerReading(player: Player): PlayerReading {
         player.addListener(listener)
         onDispose { player.removeListener(listener) }
     }
-    // The position moves without an event while content plays, so it is read on a tick then and only then.
-    LaunchedEffect(player, reading.isPlaying) {
-        while (reading.isPlaying) {
+    // The position moves without an event while content plays, so it is read on a tick then, and only while shown.
+    LaunchedEffect(player, visible, reading.isPlaying) {
+        while (visible && reading.isPlaying) {
             delay(POSITION_TICK_MS)
             reading.refresh()
         }
@@ -310,7 +314,7 @@ private fun SeekBar(player: Player, reading: PlayerReading, modifier: Modifier) 
         Text(text = position, color = colors.onSurface, style = MaterialTheme.typography.labelLarge)
         val fraction = if (durationMs > 0) (shownMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
         val barModifier = Modifier.fillMaxWidth().height(if (focused) FocusedBarHeight else BarHeight)
-        Canvas(modifier = if (focused) barModifier.border(1.dp, colors.border) else barModifier) {
+        Canvas(modifier = if (focused) barModifier.border(FocusedBarBorder, colors.border) else barModifier) {
             drawRect(color = colors.surfaceVariant)
             drawRect(color = colors.primary, size = size.copy(width = size.width * fraction))
         }
@@ -322,8 +326,8 @@ private fun isCentre(key: Key): Boolean = key == Key.DirectionCenter || key == K
 /**
  * The engine whose scrubbing mode a scrub switches, which is a `SuperPlayer`'s own and nobody else's.
  *
- * ADR-0014 rule 12 puts scrubbing mode behind a `SuperPlayer` and keeps the controls' public face `Player`,
- * which is why this reaches for `exoPlayer` rather than asking the caller for an engine.
+ * ADR-0014 rule 12 keeps the controls' public face `Player`, so no engine can be asked of the caller, and
+ * `exoPlayer` is the escape hatch a consumer reaches the engine through, as `superplayer-telemetry` does.
  */
 private fun scrubbingEngine(player: Player) = (player as? SuperPlayer)?.exoPlayer
 
@@ -348,7 +352,10 @@ private const val MILLIS_PER_HOUR = 3_600_000L
 
 private enum class GlyphShape { PLAY, PAUSE, BACK, FORWARD }
 
-/** The buttons' glyphs, drawn rather than taken from an icon library, which would be a dependency for four shapes. */
+/**
+ * The buttons' glyphs, drawn rather than taken from an icon library, which would be a dependency for four shapes.
+ * The proportions are fractions of the glyph's box, drawn by eye.
+ */
 @Composable
 private fun Glyph(shape: GlyphShape) {
     val color = LocalContentColor.current
@@ -393,7 +400,7 @@ private fun DrawScope.triangle(color: Color, left: Float, right: Float, pointsRi
  * a direction repeatedly, which remotes make a common way to scrub, stays inside one scrub, and short enough
  * that a viewer who stops sees playback resume from the new position without asking for it.
  */
-// ref: androidx.media3.ui.DefaultTimeBar, STOP_SCRUBBING_TIMEOUT_MS (Media3 1.11, Apache-2.0)
+// ref: https://github.com/androidx/media/blob/1.11.0/libraries/ui/src/main/java/androidx/media3/ui/DefaultTimeBar.java (STOP_SCRUBBING_TIMEOUT_MS)
 internal const val SCRUB_COMMIT_DELAY_MS: Long = 1_000
 
 /**
@@ -404,11 +411,22 @@ internal const val SCRUB_COMMIT_DELAY_MS: Long = 1_000
  */
 private const val POSITION_TICK_MS: Long = 500
 
-// Layout. Television-sized, read from across a room: the overscan margin Android TV's design guidance asks
-// for around the screen's edge is the app's, because the app places the controls.
+// Layout. The overscan margin around the screen's edge is the app's, because the app places the controls. The
+// numbers below are chosen by eye on Material's 8dp grid rather than taken from a specification, and how they
+// read from across a room is a device's to judge (#274).
+// Inside the app's margin, a half-step of space so the bar and the row do not touch the controls' own edge.
 private val ControlsPadding = 16.dp
+
+// Wider than the padding, so each button's focus scale and glow grow without touching its neighbour.
 private val ButtonSpacing = 24.dp
 private val BarVerticalPadding = 8.dp
+
+// Media3's own time bar is 4dp, and the focused bar doubles it so focus is visible without colour alone.
 private val BarHeight = 4.dp
 private val FocusedBarHeight = 8.dp
+
+// Material's standard icon size, which tv-material's IconButton is sized around.
 private val GlyphSize = 24.dp
+
+// The focused bar's outline: the thinnest stroke that shows, beside the height change that carries focus.
+private val FocusedBarBorder = 1.dp

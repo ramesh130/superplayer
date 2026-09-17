@@ -75,7 +75,7 @@ internal class Scrub(startMs: Long, private val durationMs: Long) {
          * the content in a reasonable number of presses. This one accelerates while held, so a press
          * can be fine, and ten seconds is the distance a viewer goes back to catch a missed line.
          */
-        // ref: androidx.media3.ui.DefaultTimeBar, DEFAULT_INCREMENT_COUNT (Media3 1.11, Apache-2.0)
+        // ref: https://github.com/androidx/media/blob/1.11.0/libraries/ui/src/main/java/androidx/media3/ui/DefaultTimeBar.java (DEFAULT_INCREMENT_COUNT)
         const val TAP_STEP_MS: Long = 10_000
 
         /**
@@ -98,8 +98,9 @@ internal class Scrub(startMs: Long, private val durationMs: Long) {
         /**
          * The speed stops doubling once the target would cross a tenth of the content per second.
          *
-         * The cap is what a viewer's reaction costs. A human reacts to a visual cue in about a quarter of a
-         * second, so at a tenth of the bar per second a viewer who lets go on seeing the right place
+         * The cap is what a viewer's reaction costs. This project assumes a quarter of a second from seeing
+         * the right place to letting go, which is a round figure for simple visual reaction time and not a
+         * measurement of remotes, so at a tenth of the bar per second a viewer who lets go on seeing the right place
          * overshoots by about two and a half percent of the bar. On short content the start speed is
          * already above this, and the start speed is kept.
          */

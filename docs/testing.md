@@ -464,7 +464,8 @@ What each stand-in cannot show:
   (`mainClock.autoAdvance = false`) and step it, because the commit is a timeout and a clock that
   advances itself while the test waits for idle would commit every scrub before the test looked. A held
   key is Compose's test injection repeating it, which has one repeat rate, so the claim that a hold's
-  distance does not depend on the rate is `ScrubTest`'s, over the pure curve. Nothing is drawn to a
+  distance does not depend on the rate is `ScrubTest`'s. That test reads past the facade, into the internal
+  `Scrub`, because no key injection can vary a repeat rate. Nothing is drawn to a
   screen, so how the focus indication looks from across a room is a device's (#274).
 
 ## A Widevine device and a licence server

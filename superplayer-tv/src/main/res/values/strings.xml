@@ -2,6 +2,8 @@
 <!--
   What a screen reader says for each of TvPlaybackControls' controls. Prefixed with the module, because a
   library's resources merge into the app's own namespace and an unprefixed `play` would collide.
+  These are accessibility labels a screen reader needs to name a control, not words shown to a viewer, and an
+  app translates or replaces them by declaring the same names in its own resources.
 -->
 <resources>
     <string name="superplayer_tv_play">Play</string>

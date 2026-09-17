@@ -160,9 +160,10 @@ class TvPlaybackControlsTest {
         compose.mainClock.autoAdvance = false
         press(Key.DirectionUp)
 
-        // Two four-second holds, each its own scrub, and then one eight-second hold from the start again. Held
-        // time is the whole difference between them, so the one hold travelling further than the two is the
-        // speed rising with it rather than with the number of key events.
+        // Two four-second holds, each its own scrub, and then one eight-second hold from the start again. The one
+        // hold travelling further than the two is the speed rising while held, and the exact positions pin the
+        // curve. That the rise follows held time rather than the number of repeats is `ScrubTest`'s, since the
+        // injection here has one repeat rate.
         hold(Key.DirectionRight, 4_000)
         compose.mainClock.advanceTimeBy(SCRUB_COMMIT_DELAY_MS + 100)
         hold(Key.DirectionRight, 4_000)
@@ -226,6 +227,31 @@ class TvPlaybackControlsTest {
         assertThat(player.playbackSuppressionReason).isEqualTo(Player.PLAYBACK_SUPPRESSION_REASON_NONE)
     }
 
+    /** Controls hidden mid-scrub commit where the viewer had got to, and leave the SuperPlayer unsuppressed. */
+    @Test
+    fun hidingTheControlsMidScrubCommitsItOnce() {
+        val player = ready(harness.buildPlayer(TestContent.video()), TestContent.video())
+        val seeks = countSeeks(player)
+        var visible by mutableStateOf(true)
+        compose.setContent { TvPlaybackControls(player, visible) }
+        compose.mainClock.autoAdvance = false
+        compose.mainClock.advanceTimeByFrame()
+        press(Key.DirectionUp)
+
+        repeat(2) { press(Key.DirectionRight) }
+        visible = false
+        compose.mainClock.advanceTimeByFrame()
+        harness.settle(player)
+
+        assertThat(seeks).hasSize(1)
+        assertThat(seeks.single()).isIn(com.google.common.collect.Range.closed(20_000L, 21_000L))
+        assertThat(player.playbackSuppressionReason).isEqualTo(Player.PLAYBACK_SUPPRESSION_REASON_NONE)
+        // Nothing is left to commit: the delay passing changes nothing.
+        compose.mainClock.advanceTimeBy(SCRUB_COMMIT_DELAY_MS + 100)
+        harness.settle(player)
+        assertThat(seeks).hasSize(1)
+    }
+
     /** The controls take a `Player`, so a stock `ExoPlayer` scrubs, seeks once, and plays and pauses the same way. */
     @Test
     fun theControlsDriveAStockExoPlayer() {
@@ -249,7 +275,7 @@ class TvPlaybackControlsTest {
         harness.settle(player)
 
         assertThat(seeks).hasSize(1)
-        assertThat(seeks.single()).isAtLeast(20_000L)
+        assertThat(seeks.single()).isIn(com.google.common.collect.Range.closed(20_000L, 21_000L))
     }
 
     /** [player] playing [content], ready. The item is set through `Player`, which a stock player and a SuperPlayer share. */

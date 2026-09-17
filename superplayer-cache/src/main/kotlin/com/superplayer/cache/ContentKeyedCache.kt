@@ -37,9 +37,12 @@ import java.io.File
  *   part, and that limit.
  * - **Content set through `setMediaItem` is keyed by its URL**, because it has no content identity
  *   to key by, and it never shares an entry with a [MediaRequest]'s.
- * - **Only media is cached.** Segments, initialization segments and progressive files are; HLS
- *   playlists, DASH manifests and encryption keys never are, so a live stream is never played from a
- *   stored playlist and revalidation sees every playlist the origin sends.
+ * - **Only media is cached by playing.** Segments, initialization segments and progressive files are;
+ *   HLS playlists, DASH manifests and encryption keys never are, so a live stream is never played from a
+ *   stored playlist and revalidation sees every playlist the origin sends. The one exception is content
+ *   `superplayer-offline` downloaded into this cache: its manifests were stored by the download, it is
+ *   pinned, and a player reads them from here, which is what lets it play with no network at all
+ *   (ADR-0013 rule 8).
  * - **A hit is not a throughput sample.** Reads answered from here report themselves as local, so the
  *   bandwidth estimate an adaptive policy selects on is untouched by a warm replay.
  * - **Past [maxBytes], the least recently used goes first**, where playing an entry again counts as
@@ -55,8 +58,8 @@ public class ContentKeyedCache internal constructor(
     /** The budget the consumer passed, in bytes of media. */
     public val maxBytes: Long,
     internal val storage: CacheStorage,
-    private val keyedLayer: ContentKeyedCacheLayer = ContentKeyedCacheLayer(storage.cache),
-) : ContentCache(keyedLayer) {
+    private val keyedLayer: ContentKeyedCacheLayer = ContentKeyedCacheLayer(storage.cache, storage::isPinned),
+) : ContentCache(keyedLayer, StorageDownloads(storage)) {
 
     /**
      * How many media requests have been answered at least partly from this cache since it was opened, by

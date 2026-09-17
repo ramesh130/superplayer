@@ -678,10 +678,30 @@ closed #212's declared gap: `LicenceOutcome.SERVED_FROM_OFFLINE_STORE` is now em
 `LicenceTelemetryTest`, and `SCHEMA_VERSION` stays **2**, because a value a pipeline was told to
 expect arriving is a change of population and not of shape.
 
+`superplayer-offline` has the first of Phase 7, the tracer bullet (#240): `Downloads.Builder(context,
+cache).build()` opens a store over the `ContentKeyedCache` the consumer already opened, `enqueue` takes
+the same `MediaRequest` a player adopts, `download(contentId)` and `downloads()` answer a `DownloadItem`
+(a `DownloadState`, bytes and percent), a `DownloadsListener` hears each state change and each whole
+percent in the order it was made, and `remove` deletes the bytes and then the pin. It is core's
+**seventh** Kotlin friend and the one *built from* the seam rather than filling a slot (ADR-0013 rule 4):
+what it reaches is `ContentCache.downloads`, core's internal `CacheDownloads` that `superplayer-cache`'s
+`StorageDownloads` fills — the download index as a table of the cache's own database, a
+`CacheDataSource.Factory` keyed by `ContentKeys.boundTo(contentId)` so a downloaded segment is the entry
+a player reads, and the pin — plus `TransferChain.downloadChain`. Three things are easy to get wrong.
+The **pin is taken inside the downloader** as the download begins, not on `enqueue`'s thread, because it
+is a database write; nothing is written before then, which is rule 7's reason. **The cache layer now
+answers a manifest** — for pinned content whose manifest it holds whole, and only then (rule 8,
+`ContentKeyedCacheLayer.isDownloadedManifest`) — which is what makes `DownloadsTest`'s count of zero
+possible, while streamed content still fetches every manifest. And the store **resumes its own
+`DownloadManager`**, which Media3 builds paused, because there is no service yet (#246). Not built:
+rendition choice (#241), resumption and network loss (#242), `WorkManager` and constraints (#243 — the
+store runs under Media3's default requirement, any network), a full disk (#244), protected content (#245).
+`DownloadsPayNothingTest` counts rule 15 as platform registrations and the download index table.
+
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,
 `superplayer-abr`, `superplayer-cache`, `superplayer-preload`, `superplayer-resilience`,
-`superplayer-drm` and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
+`superplayer-drm`, `superplayer-offline` and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
 requirements, and the phase table are what the issues are cut from.
 
 `benchmark/` is the fourth build and the phases' exit criteria: `PRD.md` §6's fixed matrix — six

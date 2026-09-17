@@ -15,10 +15,11 @@
  */
 
 /**
- * superplayer-offline — DownloadManager wrapper, WorkManager constraints, battery policy
+ * superplayer-offline — downloads into the `ContentCache` the consumer opened, on the one chain.
  *
- * Placeholder. This module is created empty and buildable so that the module boundary and
- * dependency direction are fixed and enforceable now, rather than negotiated once code
- * arrives (phase 7). It intentionally declares no public API yet.
+ * [Downloads] is the store and [Downloads.Builder] how one is opened over a cache; [DownloadItem] is what
+ * it answers per `contentId`, and [DownloadsListener] how a screen hears about changes. A downloaded item
+ * plays through `SuperPlayer.setMediaRequest` on a player built with the same cache, and reaches the
+ * network for nothing. ADR-0013 is the decisions this module implements.
  */
 package com.superplayer.offline

@@ -21,6 +21,8 @@ import androidx.media3.common.MediaItem
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.exoplayer.offline.WritableDownloadIndex
 
 /**
  * A content cache a consumer opened, in a directory they named and within a budget they passed, that
@@ -41,7 +43,40 @@ import androidx.media3.datasource.TransferListener
 public abstract class ContentCache internal constructor(
     /** What the cache puts into the transfer chain's cache slot; see [CacheLayer]. */
     internal val layer: CacheLayer,
+    /** What a download store writes into this cache through, or null for a cache nothing downloads into; see [CacheDownloads]. */
+    internal val downloads: CacheDownloads? = null,
 )
+
+/**
+ * The download half of a [ContentCache]: what `superplayer-offline` is built from rather than a slot it
+ * fills (ADR-0013 rule 4). `superplayer-cache` fills it; a store refuses a cache that has none.
+ *
+ * Every member is Media3's `@UnstableApi` vocabulary or a write to the cache's own index, which is why
+ * the half is internal and reached only by a friend of core.
+ */
+internal interface CacheDownloads {
+
+    /**
+     * Media3's download index, as a table of this cache's own index database, inside the consumer's
+     * directory (ADR-0013 rule 5). Nothing is created until the index is first used, so a cache no
+     * store was opened over has no such table (rule 15).
+     */
+    fun downloadIndex(): WritableDownloadIndex
+
+    /**
+     * What a download of [contentId] writes through: this cache over [upstream], every request keyed
+     * as a player adopting a `MediaRequest` with that id would key it, so a downloaded segment is the
+     * entry that player reads (rule 5). The id is bound here rather than stamped per request, because a
+     * downloader opens requests no media source built.
+     */
+    fun writerFor(contentId: String, upstream: DataSource.Factory): CacheDataSource.Factory
+
+    /** Pins [contentId], as `ContentKeyedCache.pin` does. A database write, so never on the main thread. */
+    fun pin(contentId: String)
+
+    /** Removes the pin on [contentId], as `ContentKeyedCache.unpin` does. A database write too. */
+    fun unpin(contentId: String)
+}
 
 /**
  * The link a [ContentCache] contributes to `TransferChain`'s cache slot: below live-playlist
@@ -60,10 +95,11 @@ public abstract class ContentCache internal constructor(
  * content set through `setMediaItem`, and only such a request is keyed by its URL.
  *
  * Whether a request may be cached at all is on it too: [LoadKind.of] says whether it loads media, a
- * manifest, or something the chain could not classify. Only media is a cache's to answer. A manifest
+ * manifest, or something the chain could not classify. Media is a cache's to answer. A manifest
  * describes where media is *now* — a live playlist is stale the moment it is stored, and a VOD one
- * names its own host's segments — so it is always passed upstream, where live-playlist revalidation
- * above the slot sees what the origin said.
+ * names its own host's segments — so it is passed upstream, where live-playlist revalidation above the
+ * slot sees what the origin said, with one exception: a manifest a download stored for pinned content,
+ * which the cache answers, because that content is meant to play with no network (ADR-0013 rule 8).
  *
  * Every media source factory setting is replayed per item by a recorded list in `TransferChain`, so a
  * setter Media3 adds to `MediaSource.Factory` later has to be added there, or it is dropped on a

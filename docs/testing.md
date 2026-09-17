@@ -574,9 +574,8 @@ the seam above until #239. What stands in for each piece, and what each stand-in
   returns a `DownloadEnvironment` — core's public type with an internal constructor, `ContentCache`'s
   shape, because the harness is phase 2 and the offline module phase 7 and neither can name the other's
   types. It carries the transport a `buildPlayer` player of the same content would load through (the
-  origin, the fault injector, the shaper), and a download store's builder takes it through a setter
-  internal to `superplayer-offline` once #240 builds the store, so only that module's tests will be
-  able to hand one over. Beneath a download, core's `TransferChain.downloadChain` puts it where the HTTP stack goes (ADR-0013 rule 6), so
+  origin, the fault injector, the shaper), and `Downloads.Builder` takes it through a setter internal to
+  `superplayer-offline` (#240), so only that module's tests can hand one over. Beneath a download, core's `TransferChain.downloadChain` puts it where the HTTP stack goes (ADR-0013 rule 6), so
   `FaultScript` addresses a download's requests and `networkRequests(environment)` counts them exactly
   as for a player. This is the player seam's twin rather than a second seam: nothing new is
   configurable, and a consumer's store never has one.

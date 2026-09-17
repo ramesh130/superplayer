@@ -17,12 +17,14 @@
 package com.superplayer.cache
 
 import android.net.Uri
+import androidx.media3.common.C
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.cache.Cache
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheKeyFactory
+import androidx.media3.datasource.cache.ContentMetadata
 import com.superplayer.core.CacheLayer
 import com.superplayer.core.ContentIdentity
 import com.superplayer.core.LoadKind
@@ -30,7 +32,7 @@ import java.util.concurrent.atomic.AtomicLong
 
 /**
  * What a [ContentKeyedCache] puts into the transfer chain's cache slot: a `CacheDataSource` keyed by
- * [ContentKeys], reached by media requests only.
+ * [ContentKeys], reached by media requests and by the manifests of downloaded content only.
  *
  * The hit is kept out of the throughput estimate by Media3 rather than by anything here: a
  * `CacheDataSource` answers a hit from a file source, which reports `isNetwork = false`, and both the
@@ -40,7 +42,10 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * ref: https://developer.android.com/reference/androidx/media3/datasource/cache/CacheDataSource
  */
-internal class ContentKeyedCacheLayer(private val cache: Cache) : CacheLayer {
+internal class ContentKeyedCacheLayer(
+    private val cache: Cache,
+    private val isPinned: (contentId: String) -> Boolean,
+) : CacheLayer {
 
     private val hits = AtomicLong()
 
@@ -68,7 +73,23 @@ internal class ContentKeyedCacheLayer(private val cache: Cache) : CacheLayer {
             // is fetched upstream instead. Resilience's retries are Phase 5's, and a broken disk is not
             // a transfer to retry.
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-        return DataSource.Factory { MediaOnlyDataSource(cached, upstream) }
+        return DataSource.Factory { MediaOnlyDataSource(cached, upstream, ::isDownloadedManifest) }
+    }
+
+    /**
+     * Whether [dataSpec] is a manifest this cache holds whole for pinned content — which only a download
+     * writes, because streaming never sends a manifest here — and so one to answer from disk
+     * (ADR-0013 rule 8). Every other manifest keeps going upstream, a live one above all.
+     *
+     * "Whole" is the length the download recorded when the manifest's transfer ended, every byte of it
+     * held: a manifest cut off mid-download is not one to parse, and goes upstream as it always did.
+     */
+    private fun isDownloadedManifest(dataSpec: DataSpec): Boolean {
+        val contentId = ContentIdentity.of(dataSpec) ?: return false
+        if (!isPinned(contentId)) return false
+        val key = ContentKeys.keyFor(contentId, dataSpec)
+        val length = ContentMetadata.getContentLength(cache.getContentMetadata(key))
+        return length != C.LENGTH_UNSET.toLong() && cache.isCached(key, 0, length)
     }
 }
 
@@ -118,11 +139,21 @@ internal object ContentKeys : CacheKeyFactory {
     private const val BY_CONTENT = "content:"
     private const val BY_URL = "url:"
 
-    override fun buildCacheKey(dataSpec: DataSpec): String {
-        val contentId = ContentIdentity.of(dataSpec) ?: return BY_URL + CacheKeyFactory.DEFAULT.buildCacheKey(dataSpec)
+    override fun buildCacheKey(dataSpec: DataSpec): String = keyFor(ContentIdentity.of(dataSpec), dataSpec)
+
+    /**
+     * The key [dataSpec] is stored under as a request of [contentId], whatever the request itself
+     * carries: how a download, whose requests no media source stamped, writes the entry a player
+     * adopting that id reads (ADR-0013 rule 5). A null id is content set through `setMediaItem`.
+     */
+    fun keyFor(contentId: String?, dataSpec: DataSpec): String {
+        contentId ?: return BY_URL + CacheKeyFactory.DEFAULT.buildCacheKey(dataSpec)
         val path = dataSpec.uri.path?.takeIf { it.startsWith("/") }
         return "$BY_CONTENT${contentId.length}:$contentId${path ?: dataSpec.uri.toString()}"
     }
+
+    /** [keyFor] with the id bound: the key factory a download of [contentId] writes through. */
+    fun boundTo(contentId: String): CacheKeyFactory = CacheKeyFactory { dataSpec -> keyFor(contentId, dataSpec) }
 
     /**
      * The content id a key of [buildCacheKey]'s was built from, read back through the length written
@@ -140,7 +171,8 @@ internal object ContentKeys : CacheKeyFactory {
 }
 
 /**
- * Sends a media request through the cache and every other request straight upstream.
+ * Sends a media request through the cache, a downloaded manifest too, and every other request straight
+ * upstream.
  *
  * Decided per request, at `open`, from the kind `TransferChain` stamped on it: which source to open is
  * not known until then, so the engine's transfer listeners are held and handed to each source as it
@@ -150,6 +182,7 @@ internal object ContentKeys : CacheKeyFactory {
 private class MediaOnlyDataSource(
     private val cached: DataSource.Factory,
     private val direct: DataSource.Factory,
+    private val isDownloadedManifest: (DataSpec) -> Boolean,
 ) : DataSource {
 
     private val listeners = mutableListOf<TransferListener>()
@@ -161,7 +194,11 @@ private class MediaOnlyDataSource(
     }
 
     override fun open(dataSpec: DataSpec): Long {
-        val factory = if (LoadKind.of(dataSpec) == LoadKind.MEDIA) cached else direct
+        val factory = when (LoadKind.of(dataSpec)) {
+            LoadKind.MEDIA -> cached
+            LoadKind.MANIFEST -> if (isDownloadedManifest(dataSpec)) cached else direct
+            else -> direct
+        }
         val source = factory.createDataSource()
         listeners.forEach(source::addTransferListener)
         // Held before opening, so a failed open is still closed by the engine's `close`.

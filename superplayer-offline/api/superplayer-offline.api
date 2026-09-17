@@ -1,0 +1,42 @@
+public final class com/superplayer/offline/DownloadItem {
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytesDownloaded ()J
+	public final fun getContentId ()Ljava/lang/String;
+	public final fun getPercentDownloaded ()Ljava/lang/Float;
+	public final fun getState ()Lcom/superplayer/offline/DownloadState;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/offline/DownloadState : java/lang/Enum {
+	public static final field COMPLETED Lcom/superplayer/offline/DownloadState;
+	public static final field DOWNLOADING Lcom/superplayer/offline/DownloadState;
+	public static final field FAILED Lcom/superplayer/offline/DownloadState;
+	public static final field QUEUED Lcom/superplayer/offline/DownloadState;
+	public static final field REMOVING Lcom/superplayer/offline/DownloadState;
+	public static final field STOPPED Lcom/superplayer/offline/DownloadState;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/offline/DownloadState;
+	public static fun values ()[Lcom/superplayer/offline/DownloadState;
+}
+
+public final class com/superplayer/offline/Downloads {
+	public final fun addListener (Lcom/superplayer/offline/DownloadsListener;)V
+	public final fun download (Ljava/lang/String;)Lcom/superplayer/offline/DownloadItem;
+	public final fun downloads ()Ljava/util/List;
+	public final fun enqueue (Lcom/superplayer/core/MediaRequest;)V
+	public final fun release ()V
+	public final fun remove (Ljava/lang/String;)V
+	public final fun removeListener (Lcom/superplayer/offline/DownloadsListener;)V
+}
+
+public final class com/superplayer/offline/Downloads$Builder {
+	public fun <init> (Landroid/content/Context;Lcom/superplayer/core/ContentCache;)V
+	public final fun build ()Lcom/superplayer/offline/Downloads;
+}
+
+public abstract interface class com/superplayer/offline/DownloadsListener {
+	public abstract fun onDownloadChanged (Lcom/superplayer/offline/DownloadItem;)V
+	public abstract fun onDownloadRemoved (Ljava/lang/String;)V
+}
+

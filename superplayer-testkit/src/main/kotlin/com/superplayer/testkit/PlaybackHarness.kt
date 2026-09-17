@@ -177,6 +177,12 @@ public class PlaybackHarness : ExternalResource() {
     /** The transport half of each player's trace, replayed into the platform as [advanceTimeMs] moves the clock. */
     private val transportReplays = IdentityHashMap<Player, TransportReplay>()
 
+    /**
+     * The device changes [scheduleDeviceChange] has been asked for and [advanceTimeMs] has not yet
+     * reached, soonest first; a tie keeps the order they were scheduled in.
+     */
+    private val deviceChanges = mutableListOf<ScheduledDeviceChange>()
+
     /** The one fault injector each pool's players share, so [networkRequests] can answer for the pool. */
     private val poolInjectors = IdentityHashMap<PlayerPool, FaultInjectingDataSource.Factory>()
 
@@ -843,6 +849,47 @@ public class PlaybackHarness : ExternalResource() {
      */
     public fun advanceTimeMs(player: Player, millis: Long) {
         require(millis >= 0) { "Time does not go backwards" }
+        val untilMs = clock.elapsedRealtime() + millis
+        // A device change inside the span splits it, so the change lands at its own moment rather than
+        // at the end of whatever step a test happened to take.
+        while (true) {
+            val due = deviceChanges.firstOrNull()?.takeIf { it.atMs <= untilMs }
+            if (due == null) {
+                stepTimeMs(player, untilMs - clock.elapsedRealtime())
+                return
+            }
+            stepTimeMs(player, due.atMs - clock.elapsedRealtime())
+            deviceChanges.remove(due)
+            due.change()
+            quiesce(player)
+        }
+    }
+
+    /**
+     * Schedules [change] — a restatement of the device through [DeviceStatement] — for [afterMs] from
+     * now on the harness's clock, where [advanceTimeMs] will make it.
+     *
+     * The mid-session half of stating a television: the display replaced by an HDMI hotplug, or an AV
+     * receiver powered on under playback, at a moment a test can name and then assert a listener heard
+     * it at. [TransportReplay] does the same for a network, off a trace; this takes the change itself,
+     * so that every restatable declaration is scheduled one way rather than one way each.
+     *
+     * [advanceTimeMs] stops the clocks at the moment, lets every player act on the time so far, makes
+     * the change, and settles the player it was advancing before going on — so both clocks read exactly
+     * that moment in every callback the change causes. Device-wide, as the device is: every player in the
+     * harness sees it, whichever one's advance crossed it. A change scheduled for now is made at the start
+     * of the next advance.
+     */
+    public fun scheduleDeviceChange(afterMs: Long, change: () -> Unit) {
+        require(afterMs >= 0) { "A change is scheduled for now or later, not $afterMs ms ago" }
+        val scheduled = ScheduledDeviceChange(clock.elapsedRealtime() + afterMs, change)
+        val index = deviceChanges.indexOfFirst { it.atMs > scheduled.atMs }
+        if (index < 0) deviceChanges += scheduled else deviceChanges.add(index, scheduled)
+    }
+
+    private class ScheduledDeviceChange(val atMs: Long, val change: () -> Unit)
+
+    private fun stepTimeMs(player: Player, millis: Long) {
         // Quiet before either clock moves, as well as after: a load that finished between the last
         // settle and this call would otherwise be heard by the engine at the new time on some runs
         // and at the old time on others.
@@ -1239,6 +1286,7 @@ public class PlaybackHarness : ExternalResource() {
         injectors.clear()
         waits.clear()
         transportReplays.clear()
+        deviceChanges.clear()
         poolInjectors.clear()
         poolPlayers.clear()
         downloads.values.forEach { it.loadExecutor.shutDown() }

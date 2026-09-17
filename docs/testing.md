@@ -352,8 +352,9 @@ consulted — the same defect it already closes for Media3's own viewport constr
 the display gate *narrows* the display rather than declaring one. And a decoder is declared before
 the test's first player is built, not only before the one it is about: the platform caches its codec
 list on first read, so `NetworkAwareTrackSelectionPlaybackTest` keeps its ungated control in a
-separate test rather than playing it first. `Display.Mode` has no public constructor, which is why
-`declareDisplay` builds the mode through Robolectric's reflection helper, in that one place.
+separate test rather than playing it first. `Display.Mode` has no public constructor, and a display
+stated in one event needs Robolectric's hidden display service, which is why every hidden member the
+display statement names is in `StatedDisplay`, in that one place (*A TV device*, below).
 
 A player built with `setDrm` reads a **second** decoder table — the profile levels and instance limit
 of the decoders declaring `FEATURE_SecurePlayback`, which share their plain siblings' MIME type and are
@@ -363,6 +364,57 @@ core's own `TestDevice.declareSecureVideoDecoder` does the same for the pool's b
 the direction the rest of this section keeps: a device that declared no secure decoder refuses no rung
 and keeps the ordinary pool bound, because Widevine L3 plays protected content on ordinary decoders and
 declares nothing.
+
+## A TV device
+
+Phase 8 plays on a television whose display and audio output change underneath playback (ADR-0014
+rules 4 to 6), so `DeviceStatement` states that too (#266), and `PlaybackHarness.scheduleDeviceChange`
+makes a change at a stated moment. `TelevisionDeviceTest` is the worked example, and asserts each
+statement through a listener the platform registers rather than through a player.
+
+- **A television.** `declareTelevision` makes `UiModeManager.getCurrentModeType` answer
+  `UI_MODE_TYPE_TELEVISION` and the package manager report `FEATURE_LEANBACK`. It is not only a
+  label: Media3 reads the UI mode to choose where it reads the audio output from, so it is stated
+  before the first player. The resource configuration's `uiMode` is left alone, because the library
+  holds no resources that vary by it.
+- **Display modes.** `declareDisplayModes(modes, activeMode)` states several `DisplayMode`s, each a
+  physical size and a refresh rate, and the one in force. `declareDisplay(width, height)` is one mode
+  at 60 Hz, and is what the harness still states before every test, so the default device is the one
+  every test before #266 ran on.
+- **A hotplug.** The display statements are restatable mid-test. A restatement reaches every
+  `DisplayManager.DisplayListener` as **one** `onDisplayChanged`, with the display already whole,
+  because Robolectric's own setters publish a qualifier change, the modes and the HDR types as three
+  events, and the first of them is a display with no HDR answer. A statement that changes nothing
+  reaches nobody, as on a device. `declareDisplayDisconnected` removes the display and a later
+  `declareDisplayModes` adds it back under the default display's id, for a device that reports a
+  hotplug as removed and added rather than changed.
+- **An audio output.** `declareAudioOutput(encodings)` states what the output passes through beside
+  PCM, and restating it is an AV receiver powered on or off. It is written to both channels Media3's
+  `AudioCapabilitiesReceiver` reads: a television's direct playback profiles on API 33 and later, and
+  the sticky HDMI audio plug broadcast. So an `AudioDeviceCallback`, a broadcast receiver and Media3
+  each hear it, and Media3 hears one change of capabilities. Robolectric's audio service reports the
+  devices already present *inside* a callback's registration, which Media3 hears as a change before
+  it has a first reading, so a test that counts changes starts counting after it registers.
+- **At a moment.** `scheduleDeviceChange(afterMs) { … }` takes the restatement itself, so that every
+  restatable declaration is scheduled one way. `advanceTimeMs` splits a step at the change, lets
+  playback reach it, makes it, and settles the player before going on, so both clocks read that
+  moment in every callback the change causes. It is device-wide, as `TransportReplay`'s network is.
+
+What each stand-in cannot show:
+
+- **The synthetic streams have no video renderer.** `superplayer-testmedia` publishes audio, so a
+  frame rate a real stream declares is one no harness session reaches through a protocol. The
+  harness's `TestContent.video()` ladder is the video there is: fake formats, each declaring the
+  harness's one frame rate, played by a fake renderer that decodes nothing.
+- **Robolectric has no compositor.** A `Surface.setFrameRate` call is accepted and changes nothing, so
+  the active mode is what a test stated until it restates it. A mode switch taking effect, and the
+  blank a non-seamless switch costs, are a device's to show.
+- **There is no HDMI.** No link renegotiates, no EDID is read, and no HDCP level exists. The display
+  and the audio output are what a test states, and a sink decoding a passthrough format is nothing
+  anything here can hear: a format a player selected is one it *chose*.
+- **Media3's API 29 to 32 television path is not stated.** It reads
+  `AudioTrack.isDirectPlaybackSupported` against a player's own audio attributes rather than the
+  device's, and the pinned runtime is 35.
 
 ## A Widevine device and a licence server
 

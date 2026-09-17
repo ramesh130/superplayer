@@ -414,7 +414,11 @@ device reports an empty codec table and a small display); the refusals go throug
 and not `isTrackExcluded`, because a ladder refused whole must fall back to its bottom rung and not
 its top; and the harness declares a television-sized display by default for the same reason it
 ignores the viewport, with `DeviceStatement` the way a test narrows it or declares a decoder —
-before its first player is built, since the platform caches the codec list on first read.
+before its first player is built, since the platform caches the codec list on first read. Since #266
+it states a television too: `declareTelevision`, several `DisplayMode`s, a display disconnected, and
+the encodings an audio output passes through. The display and the audio output are restatable
+mid-test, each heard by a platform listener as one change at the moment `PlaybackHarness.scheduleDeviceChange`
+names, and `docs/testing.md`'s *A TV device* says what each cannot show.
 
 `superplayer-resilience` has the first of Phase 5, and it is the vocabulary rather than any
 behaviour: `FailureClass`, the sealed taxonomy `PRD.md` §3.3 names, and `ErrorClassifier`, the single

@@ -17,24 +17,24 @@
 package com.superplayer.testkit
 
 import android.app.ActivityManager
+import android.app.UiModeManager
 import android.content.Context
-import android.hardware.display.DisplayManager
+import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.net.ConnectivityManager
 import android.os.Build
-import android.view.Display
 import androidx.annotation.RequiresApi
 import androidx.test.core.app.ApplicationProvider
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.shadows.MediaCodecInfoBuilder
-import org.robolectric.shadows.ShadowDisplayManager
 import org.robolectric.shadows.ShadowMediaCodecList
 import org.robolectric.util.ReflectionHelpers
-import org.robolectric.util.ReflectionHelpers.ClassParameter
 
 /**
- * What the device under test reports about itself: its display, its decoders, its heap.
+ * What the device under test reports about itself: its display, its decoders, its heap, its audio
+ * output, and whether it is a television.
  *
  * A track selector that gates on the display and on the decoder table, and a pool whose bound is
  * derived from decoder instances and heap, are running on a device whether a test says so or not —
@@ -47,9 +47,11 @@ import org.robolectric.util.ReflectionHelpers.ClassParameter
  * Android types only in these signatures, and no Media3 type, for the reason the rest of this
  * module's API gives: a `Format` here would put Media3's opt-in marker on every test that named it.
  *
- * Declarations are read by SuperPlayer when a player is *built* (ADR-0009 rule 2: display and
- * decoder are constraints read once, not observations), so a test states its device before
- * `buildPlayer`, never after.
+ * Most declarations are read by SuperPlayer when a player is *built* (ADR-0009 rule 2: a decoder is
+ * a constraint read once, not an observation), so a test states its device before `buildPlayer`.
+ * The display and the audio output are the exceptions a television makes: an HDMI hotplug or an AV
+ * receiver changes them underneath playback (ADR-0014 rules 5 and 6), so each says where it may be
+ * restated mid-test and what a listener hears when it is.
  */
 public object DeviceStatement {
 
@@ -59,47 +61,110 @@ public object DeviceStatement {
     public const val DEFAULT_DISPLAY_HEIGHT_PX: Int = 2160
 
     /**
-     * The default display's one mode: [widthPx] by [heightPx] physical pixels, at a density where a
-     * pixel is a pixel.
-     *
-     * Two declarations, because Robolectric keeps them apart. The size the *configuration* reports
-     * is declared through resource qualifiers, in density-independent pixels at `mdpi` where the
-     * two are equal; the *mode* `Display.getSupportedModes` reports — which is what SuperPlayer
-     * reads, because a mode is a physical size and a configuration is a logical one — is declared
-     * separately, and Robolectric's qualifier change leaves it empty. `Display.Mode` has no public
-     * constructor, so the mode is built through Robolectric's own reflection helper: the one place
-     * in this module a hidden platform constructor is named, and it is here rather than in a test
-     * so that it is named once.
+     * The default display's one mode: [widthPx] by [heightPx] physical pixels at 60 Hz, at a density
+     * where a pixel is a pixel. The display a phone test means, and the one the harness states before
+     * every test; [declareDisplayModes] is the television's.
      */
     @JvmStatic
     public fun declareDisplay(widthPx: Int, heightPx: Int) {
-        require(widthPx > 0 && heightPx > 0) { "A display needs a positive size, was $widthPx × $heightPx" }
-        ShadowDisplayManager.changeDisplay(Display.DEFAULT_DISPLAY, "+w${widthPx}dp-h${heightPx}dp-mdpi")
-        val mode: Display.Mode = ReflectionHelpers.callConstructor(
-            Display.Mode::class.java,
-            ClassParameter.from(Int::class.javaPrimitiveType, DECLARED_MODE_ID),
-            ClassParameter.from(Int::class.javaPrimitiveType, widthPx),
-            ClassParameter.from(Int::class.javaPrimitiveType, heightPx),
-            ClassParameter.from(Float::class.javaPrimitiveType, DECLARED_REFRESH_RATE_HZ),
-        )
-        ShadowDisplayManager.setSupportedModes(Display.DEFAULT_DISPLAY, mode)
+        declareDisplayModes(listOf(DisplayMode(widthPx, heightPx, DECLARED_REFRESH_RATE_HZ)))
     }
 
     /**
-     * The HDR types the default display supports: `Display.HdrCapabilities.HDR_TYPE_*` constants.
-     * None declared is a display that answers with an empty list, which is a display that shows
-     * SDR only — not one that has not answered.
+     * The default display offers [modes], and [activeMode] is the one it is showing — what an HDMI sink
+     * advertises and what the source device chose from it. A television lists several: 2160p and 1080p,
+     * each at 60, 50 and 24 Hz, say, which is what a frame-rate request (ADR-0014 rule 4) picks among.
+     *
+     * Two things the platform reports keep apart, and so does this. The *configuration's* size follows
+     * the active mode, in density-independent pixels at `mdpi`, where the two are equal; the *modes*
+     * `Display.getSupportedModes` and `Display.getMode` report are physical, and are what SuperPlayer
+     * reads. The HDR types the display reports are kept: [declareDisplayHdrTypes] states those.
+     *
+     * Restatable mid-test, which is what a hotplug is: an AV receiver switched into the HDMI chain, or a
+     * 4K television swapped for a 1080p one. Every `DisplayManager.DisplayListener` hears the restatement
+     * as **one** `onDisplayChanged(DEFAULT_DISPLAY)`, with the display already in its new state, and a
+     * restatement that changes nothing is heard by nobody. After [declareDisplayDisconnected] it connects
+     * the display again, heard as `onDisplayAdded(DEFAULT_DISPLAY)`. `PlaybackHarness.scheduleDeviceChange`
+     * makes it at a stated moment on the harness's clock.
+     *
+     * What it cannot show: a mode switch taking effect. Robolectric has no compositor and no HDMI link,
+     * so the active mode is what was stated until it is restated, whatever a surface asked for.
+     */
+    @JvmStatic
+    @JvmOverloads
+    public fun declareDisplayModes(modes: List<DisplayMode>, activeMode: DisplayMode = modes.first()) {
+        require(modes.isNotEmpty()) { "A display offers at least one mode" }
+        require(modes.toSet().size == modes.size) { "A display lists each mode once, was $modes" }
+        require(activeMode in modes) { "The active mode $activeMode is not one the display offers: $modes" }
+        StatedDisplay.publishModes(modes, activeMode)
+    }
+
+    /**
+     * The HDR types the default display supports: `Display.HdrCapabilities.HDR_TYPE_*` constants,
+     * reported by `Display.getHdrCapabilities` and, from API 34, by every mode's `getSupportedHdrTypes`.
+     * None declared is a display that answers with an empty list, which is a display that shows SDR
+     * only — not one that has not answered.
+     *
+     * Restatable mid-test on the same terms as [declareDisplayModes]: one `onDisplayChanged`, and the
+     * modes kept.
      */
     @JvmStatic
     public fun declareDisplayHdrTypes(vararg hdrTypes: Int) {
-        val display = checkNotNull(displayManager.getDisplay(Display.DEFAULT_DISPLAY)) { "No default display" }
-        shadowOf(display).setDisplayHdrCapabilities(
-            Display.DEFAULT_DISPLAY,
-            REFERENCE_MAX_LUMINANCE,
-            REFERENCE_MAX_AVERAGE_LUMINANCE,
-            REFERENCE_MIN_LUMINANCE,
-            *hdrTypes,
-        )
+        StatedDisplay.publishHdrTypes(hdrTypes)
+    }
+
+    /**
+     * The default display goes away — every listener hears `onDisplayRemoved(DEFAULT_DISPLAY)`, and
+     * `DisplayManager.getDisplay(DEFAULT_DISPLAY)` answers null — until [declareDisplayModes] connects
+     * it again, under the same id and with the HDR types it had.
+     *
+     * The other shape an HDMI hotplug takes. A device whose sink is unplugged and plugged back in may
+     * report the display removed and added rather than changed, so a watch on the display has to
+     * survive both, and a test states whichever it means. A player built in between reads no display
+     * at all, which SuperPlayer reads as *unknown*.
+     */
+    @JvmStatic
+    public fun declareDisplayDisconnected() {
+        StatedDisplay.disconnect()
+    }
+
+    /**
+     * The device is a television: `UiModeManager.getCurrentModeType` answers
+     * `Configuration.UI_MODE_TYPE_TELEVISION` and the package manager reports
+     * `PackageManager.FEATURE_LEANBACK`, the two readings an Android TV device gives an app.
+     *
+     * Not only a label. Media3 reads the UI mode to decide *where* it reads the audio output from — a
+     * television's direct playback profiles rather than the HDMI plug broadcast — so a test of
+     * passthrough on a TV states this before its first player, as a device is a TV before any app runs.
+     *
+     * ref: https://developer.android.com/training/tv/start/hardware#check-tv-device
+     */
+    @JvmStatic
+    public fun declareTelevision() {
+        shadowOf(context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager)
+            .setCurrentModeType(Configuration.UI_MODE_TYPE_TELEVISION)
+        shadowOf(context.packageManager).setSystemFeature(PackageManager.FEATURE_LEANBACK, true)
+    }
+
+    /**
+     * The audio output passes [encodings] through undecoded — `AudioFormat.ENCODING_*` constants such
+     * as `ENCODING_AC3` and `ENCODING_E_AC3` — beside the PCM every output plays. None is an output that
+     * plays PCM alone: a television's own speakers, or an AV receiver switched off.
+     *
+     * Stated where Media3's `AudioCapabilitiesReceiver` reads it, on a television and off one
+     * (`StatedAudioOutput` names the channels), and restatable mid-test, which is an AV receiver powered
+     * on or off underneath playback: the HDMI audio plug broadcast is sent again and the output device
+     * replaced, so a broadcast receiver and an `AudioDeviceCallback` each hear it, and Media3 hears one
+     * change of capabilities. `PlaybackHarness.scheduleDeviceChange` makes it at a stated moment.
+     *
+     * What it cannot show: a sink decoding anything. Robolectric has no HDMI link and its audio track
+     * writes nowhere, so a passthrough format a player selects is one it *chose*, not one heard.
+     *
+     * ref: https://developer.android.com/reference/android/media/AudioManager#ACTION_HDMI_AUDIO_PLUG
+     */
+    @JvmStatic
+    public fun declareAudioOutput(vararg encodings: Int) {
+        StatedAudioOutput.publish(encodings)
     }
 
     /**
@@ -130,7 +195,7 @@ public object DeviceStatement {
      *
      * Robolectric's codec builder has no setter for it and answers 32 without one, so the value is
      * written into the built capabilities through Robolectric's reflection helper — the second hidden
-     * platform member this module names, here for the reason [declareDisplay] names the first.
+     * platform member this module names beside the display's, which `StatedDisplay` names.
      */
     @JvmStatic
     @RequiresApi(Build.VERSION_CODES.Q)
@@ -455,17 +520,7 @@ public object DeviceStatement {
     private val connectivityManager: ConnectivityManager
         get() = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
-    private val displayManager: DisplayManager
-        get() = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-
-    // Luminance figures for the declared HDR capabilities. SuperPlayer reads the *types* only, so
-    // these are a plausible HDR10 panel's numbers rather than anything a test asserts on.
-    private const val REFERENCE_MAX_LUMINANCE = 1_000f
-    private const val REFERENCE_MAX_AVERAGE_LUMINANCE = 500f
-    private const val REFERENCE_MIN_LUMINANCE = 0.005f
-
-    /** A mode id nothing else on the simulated device uses, and the refresh rate every display has. */
-    private const val DECLARED_MODE_ID = 1
+    /** The refresh rate every display offers, and so the one a display stated by its size alone has. */
     private const val DECLARED_REFRESH_RATE_HZ = 60f
 
     /**

@@ -66,6 +66,9 @@ class DownloadsTest {
         // Robolectric's own network is metered and unvalidated, which Media3's default requirement — a
         // validated network — refuses. Nothing here is about the network.
         DeviceStatement.declareNetworkMetered(false)
+        // A store with a download pending schedules it, and WorkManager is initialized by nothing else under
+        // Robolectric: without its test implementation the first enqueue throws.
+        harness.useScheduledWork()
     }
 
     @After

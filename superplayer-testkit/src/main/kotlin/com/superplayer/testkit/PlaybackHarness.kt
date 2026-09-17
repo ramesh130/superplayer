@@ -619,6 +619,9 @@ public class PlaybackHarness : ExternalResource() {
             wait = transport.wait,
             loadExecutor = HarnessDownloadLoads(transport.wait),
             renderersFactory = downloadRenderersFactory(),
+            // The stated device a player of the same content is given, so a protected download acquires its
+            // licence on the device a later player restores it on.
+            mediaDrm = if (content.protected) ExoMediaDrm.Provider { DeviceStatement.widevine.exoMediaDrm() } else null,
         )
         downloads[environment] = environment
         return environment

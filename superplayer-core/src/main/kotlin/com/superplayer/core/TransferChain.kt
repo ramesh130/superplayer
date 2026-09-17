@@ -347,6 +347,22 @@ internal object TransferChain {
     }
 
     /**
+     * The chain a download's licence exchange travels: [downloadChain]'s transport, every request stamped
+     * [LoadKind.LICENCE] as a player's licence requests are (ADR-0013 rule 13).
+     *
+     * Beside [downloadChain] rather than through it, because that chain reads a request's kind off Media3's
+     * segment downloader, which composes no licence request. The header-refresh slot is not composed here
+     * either, for the reason it is not composed there (#254).
+     */
+    fun downloadLicenceChain(
+        context: Context,
+        environment: DownloadEnvironment? = null,
+    ): DataSource.Factory {
+        val transport = environment?.transport ?: DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory())
+        return transport.stampedWith(identity = null, kind = LoadKind.LICENCE)
+    }
+
+    /**
      * The chain itself — see the composition order above for what wraps what — over [refreshed],
      * which is the transport with the header-refresh slot already composed onto it, and with
      * [cache]'s layer in the cache slot when there is one. One call is one player's chain: the

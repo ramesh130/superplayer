@@ -20,6 +20,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -36,18 +37,24 @@ import androidx.media3.exoplayer.util.ReleasableExecutor
 import androidx.work.NetworkType
 import com.superplayer.core.CacheDownloads
 import com.superplayer.core.ContentCache
+import com.superplayer.core.DownloadDrmExtension
 import com.superplayer.core.DownloadEnvironment
 import com.superplayer.core.DownloadResilienceExtension
+import com.superplayer.core.LicenceStore
 import com.superplayer.core.MediaRequest
+import com.superplayer.core.OfflineLicenceExpiredException
 import com.superplayer.core.PlaybackConditions
+import com.superplayer.core.PlaybackDrm
 import com.superplayer.core.PlaybackPolicy
 import com.superplayer.core.PlaybackProfile
 import com.superplayer.core.PlaybackResilience
+import com.superplayer.core.SecurityDowngradeRefusedException
 import com.superplayer.core.StaticProfilePolicy
 import com.superplayer.core.StorageFullException
 import com.superplayer.core.SuperPlayerError
 import com.superplayer.core.TransferChain
 import com.superplayer.core.currentNetworkTransportOf
+import com.superplayer.core.expiredLicenceFailure
 import java.io.IOException
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
@@ -101,8 +108,17 @@ import java.util.concurrent.atomic.AtomicInteger
  *   bytes; [DownloadItem.failure] names it `Storage.Full`, with a message key of its own, where the store was
  *   built with a resilience. The platform's reading of free space is what is measured, before each write.
  *
+ * - **Protected content carries its licence**, where the store was built with [Builder.setDrm]. A download
+ *   whose content declares protection acquires an offline licence into the licence store after its manifest
+ *   is read and before its first media byte, and fails typed, having written and pinned nothing, where the
+ *   licence is refused. A player built with that licence plays the download with no network at all; what the
+ *   licence allows is on [DownloadItem.licence] before any player is built, and nothing renews it. [remove]
+ *   deletes the bytes at once and releases the licence at the server once the store's network requirement
+ *   holds: until then the licence store reports it awaiting release and gives it to no player (ADR-0013 rule
+ *   13).
+ *
  * **Live content is not yet refused** at enqueue, as ADR-0013 rule 8 requires (#251). Not yet
- * here either, each with its ticket: protected content (#245); and the service a
+ * here either, each with its ticket: the service a
  * download outlives its screen in (#246), which is also what the scheduled work will start in a process
  * with no store open — until then that work waits there, retrying, until the app opens a store. Nor rule 14's retry budgets and
  * token refresh for a download (#254). An item enqueued while a condition holds it keeps its request in
@@ -116,6 +132,7 @@ public class Downloads internal constructor(
     private val environment: DownloadEnvironment?,
     private val policy: PlaybackPolicy,
     private val resilience: DownloadResilienceExtension?,
+    private val licences: DownloadLicences?,
 ) {
 
     /**
@@ -131,6 +148,10 @@ public class Downloads internal constructor(
         private var policy: PlaybackPolicy? = null
 
         private var resilience: PlaybackResilience? = null
+
+        private var drm: PlaybackDrm? = null
+
+        private var licenceStore: LicenceStore? = null
 
         /**
          * The kind of playback the downloads are for, which decides the rendition each one takes: its
@@ -156,6 +177,20 @@ public class Downloads internal constructor(
         public fun setResilience(resilience: PlaybackResilience): Builder = apply { this.resilience = resilience }
 
         /**
+         * The protection a protected download acquires its offline licence under, and the store it keeps the
+         * licence in: `superplayer-drm`'s `Drm.widevine(config)`, the one this content's players are built
+         * with, and an `OfflineLicences.store(directory)` the consumer opened (ADR-0013 rule 13). Without it,
+         * content that declares protection downloads with no licence, and nothing can play it offline.
+         *
+         * A player of a download plays with the licence the licence store holds for its content id, read
+         * before the player is built: `Drm.widevine(config, licences.licenceFor(contentId))`.
+         */
+        public fun setDrm(drm: PlaybackDrm, licences: LicenceStore): Builder = apply {
+            this.drm = drm
+            this.licenceStore = licences
+        }
+
+        /**
          * Loads over [environment] rather than the device's network: `superplayer-testkit`'s transport and
          * loading thread, for this module's own tests. Internal, so no consumer can reach it.
          */
@@ -173,6 +208,10 @@ public class Downloads internal constructor(
                 policy ?: StaticProfilePolicy(profile),
                 // A resilience that is not the module's asks nothing, as it fills no slot on a player.
                 resilience as? DownloadResilienceExtension,
+                // A protection that is not the module's acquires nothing, as it fills no slot on a player.
+                (drm as? DownloadDrmExtension)?.let { drm ->
+                    DownloadLicences(context.applicationContext, drm, checkNotNull(licenceStore), environment)
+                },
             )
         }
     }
@@ -249,6 +288,22 @@ public class Downloads internal constructor(
     /** Downloads whose tracks could not be chosen, held until removed or enqueued again, by content id. */
     private val unselectable = LinkedHashMap<String, DownloadItem>()
 
+    /** Protected downloads whose licence is being acquired, before the manager holds them, by content id. */
+    private val licensing = LinkedHashMap<String, Enqueued>()
+
+    /** What each expired licence is as a typed error, made once so an item reporting it compares equal. */
+    private val expiries = HashMap<String, SuperPlayerError>()
+
+    /**
+     * Whether a removed download's licence is owed a release: set by a removal, and by a store opened over one a
+     * last process left owed; cleared by a pass that released every one.
+     */
+    private var owesLicenceReleases = false
+
+    private var releasingLicences = false
+
+    private var releaseAgain = false
+
     private var released = false
 
     init {
@@ -280,6 +335,7 @@ public class Downloads internal constructor(
         selecting.remove(contentId)?.helper?.release()
         unselectable -= contentId
         waiting -= contentId
+        licensing -= contentId
         // Content the manager already holds keeps reporting what it holds, so a download enqueued again is
         // never seen to go backwards; what is new is queued while its manifest is read, or stopped while a
         // condition holds it.
@@ -299,12 +355,21 @@ public class Downloads internal constructor(
         // Consulted once, now, with what is observed now: bytes written at one rendition are not chosen again.
         val decision = policy.decide(PlaybackConditions(transport = currentNetworkTransportOf(context)))
         val selection = DownloadSelection(decision.download, enqueued.audioLanguages, enqueued.subtitleLanguages)
+        val sessions = try {
+            licences?.sessions()
+        } catch (refusal: SecurityDowngradeRefusedException) {
+            // The device cannot be given this content at any level the server permits: nothing to download.
+            failBeforeTheManager(contentId, refusal)
+            return
+        }
         val helper = DownloadHelper.Factory()
             // The manifest is read over the one chain, as the download itself is (rule 6).
             .setDataSourceFactory(upstream)
             // The device's own renderers, whose decoders are the device's refusal (ADR-0009 rule 2).
             .setRenderersFactory(renderers)
             .setTrackSelectionParameters(selection.parameters)
+            // A protected format is one the renderers can decrypt only where the manifest read has sessions to ask.
+            .apply { sessions?.let(::setDrmSessionManager) }
             // Media3's own loading thread, which a release can cancel, except under a harness that owns it.
             .apply { environment?.let { owned -> setLoadExecutor { ReleasableExecutor.from(owned.loadExecutor) {} } } }
             .create(MediaItem.fromUri(enqueued.request.sources.first()))
@@ -316,22 +381,67 @@ public class Downloads internal constructor(
                     selecting -= contentId
                     selection.applyTo(helper)
                     val chosen = helper.getDownloadRequest(contentId, null)
+                    val protectedFormat = licences?.protectedFormatOf(helper)
                     helper.release()
-                    // Pending throughout: the manager's report of the download it now holds is what updates that.
-                    manager.addDownload(chosen)
+                    // A licence still in force is kept rather than acquired again, which would leave the first one
+                    // counted against the device at the server with nothing left to release it.
+                    if (protectedFormat == null || licences.standingOf(contentId)?.isExpired == false) {
+                        // Pending throughout: the manager's report of the download it now holds is what updates that.
+                        manager.addDownload(chosen)
+                    } else {
+                        acquireLicence(enqueued, protectedFormat) { manager.addDownload(chosen) }
+                    }
                 }
 
                 override fun onPrepareError(helper: DownloadHelper, e: IOException) {
                     if (released || selecting[contentId]?.helper !== helper) return
                     selecting -= contentId
                     helper.release()
-                    val failed = DownloadItem(contentId, DownloadState.FAILED, bytesDownloaded = 0, percentDownloaded = null)
-                    unselectable[contentId] = failed
-                    report(failed)
-                    updatePending()
+                    failBeforeTheManager(contentId, error = null)
                 }
             },
         )
+    }
+
+    /**
+     * Acquires [enqueued]'s licence for [format] before the manager is handed its download, and then calls
+     * [addDownload]: after the manifest and before the first media byte, so a refused licence fails an item
+     * that has written nothing and pinned nothing (ADR-0013 rule 13).
+     */
+    private fun acquireLicence(enqueued: Enqueued, format: Format, addDownload: () -> Unit) {
+        val contentId = enqueued.request.contentId
+        val licences = checkNotNull(licences)
+        licensing[contentId] = enqueued
+        licences.acquire(contentId, format) { failure, replaced ->
+            handler.post {
+                if (released) return@post
+                // The licence it replaced — expired, or acquired by an enqueue this one overtook — is owed a release.
+                if (replaced) releaseOwedLicences(owed = true)
+                if (licensing[contentId] !== enqueued) {
+                    // Removed while its licence was on the way: the licence arrived for a download nobody wants.
+                    val wanted = contentId in licensing || contentId in selecting || contentId in waiting ||
+                        manager.currentDownloads.any { it.request.id == contentId }
+                    if (failure == null && !wanted && licences.owe(contentId)) releaseOwedLicences(owed = true)
+                    return@post
+                }
+                licensing -= contentId
+                if (failure == null) addDownload() else failBeforeTheManager(contentId, failure)
+            }
+        }
+    }
+
+    /** Fails [contentId] before the manager holds it, with [error] named where there is a resilience to ask. */
+    private fun failBeforeTheManager(contentId: String, error: Throwable?) {
+        val failed = DownloadItem(
+            contentId,
+            DownloadState.FAILED,
+            bytesDownloaded = 0,
+            percentDownloaded = null,
+            failure = error?.let { resilience?.failureOf(it) },
+        )
+        unselectable[contentId] = failed
+        report(failed)
+        updatePending()
     }
 
     /**
@@ -355,7 +465,7 @@ public class Downloads internal constructor(
         }
         val held = all.sortedBy { it.startTimeMs }.map { it.toItem() }
         val heldIds = held.mapTo(HashSet()) { it.contentId }
-        return held + (waiting.keys + selecting.keys + unselectable.keys).filter { it !in heldIds }.mapNotNull(::beforeTheManager)
+        return held + (waiting.keys + selecting.keys + licensing.keys + unselectable.keys).filter { it !in heldIds }.mapNotNull(::beforeTheManager)
     }
 
     /**
@@ -368,14 +478,19 @@ public class Downloads internal constructor(
         choosing?.helper?.release()
         val failed = unselectable.remove(contentId)
         val held = waiting.remove(contentId)
+        val acquiring = licensing.remove(contentId)
         failures -= contentId
+        expiries -= contentId
         forgetResumption(contentId)
         // Nothing reached the manager, so nothing was written and nothing is pinned: forgetting it is the removal.
-        if ((choosing != null || failed != null || held != null) && manager.currentDownloads.none { it.request.id == contentId }) {
+        if ((choosing != null || failed != null || held != null || acquiring != null) && manager.currentDownloads.none { it.request.id == contentId }) {
             reported -= contentId
             listeners.forEach { it.onDownloadRemoved(contentId) }
         }
         manager.removeDownload(contentId)
+        // The bytes go now and the licence as soon as the network allows: the storage is the viewer's the moment
+        // they asked, and a release is a round trip a removal made on a plane still owes (ADR-0013 rule 13).
+        if (licences?.owe(contentId) == true) releaseOwedLicences(owed = true)
         updatePending()
     }
 
@@ -402,6 +517,7 @@ public class Downloads internal constructor(
         selecting.clear()
         waiting.clear()
         conditions.unwatch()
+        licences?.shutDown()
         // What is pending stays pending on disk, and so stays scheduled.
         DownloadSchedule.forget(context, this)
         manager.release()
@@ -419,7 +535,7 @@ public class Downloads internal constructor(
     private fun beforeTheManager(contentId: String): DownloadItem? = unselectable[contentId]
         ?: when (contentId) {
             in waiting -> heldBy()?.let { DownloadItem(contentId, DownloadState.STOPPED, 0, null, stopReason = it) } ?: queued(contentId)
-            in selecting -> queued(contentId)
+            in selecting, in licensing -> queued(contentId)
             else -> null
         }
 
@@ -480,14 +596,46 @@ public class Downloads internal constructor(
         conditions.read()
         applyConditions()
         reportAll()
+        releaseOwedLicences()
         updatePending()
+    }
+
+    /**
+     * Releases the licences removed downloads owe, where the store's network requirement holds and a pass is
+     * not already running; [owed] says a removal has just added one. A pass that leaves one owed is tried
+     * again at the next change of conditions or run of the scheduled work, which stays scheduled until none is.
+     */
+    private fun releaseOwedLicences(owed: Boolean = false) {
+        val licences = licences ?: return
+        if (owed) owesLicenceReleases = true
+        if (released || !owesLicenceReleases) return
+        if (releasingLicences) {
+            releaseAgain = releaseAgain || owed
+            return
+        }
+        // The network the store downloads under, and nothing else: a release is small, and the battery and
+        // Data Saver hold what is fetched rather than what is given back.
+        // Read now rather than as the manager last applied it: a removal can follow a change the manager has not
+        // yet heard, and a release sent over a network the viewer did not accept is the one thing not to do.
+        if (manager.requirements.getNotMetRequirements(context) and (Requirements.NETWORK or Requirements.NETWORK_UNMETERED) != 0) return
+        releasingLicences = true
+        licences.releaseOwed { stillOwed ->
+            handler.post {
+                releasingLicences = false
+                owesLicenceReleases = stillOwed || releaseAgain
+                val again = releaseAgain
+                releaseAgain = false
+                if (again) releaseOwedLicences()
+                updatePending()
+            }
+        }
     }
 
     /** Every download this store knows of, reported again where what it is has changed. */
     private fun reportAll() {
         // A running download is announced by its progress, for the reason `ManagerEvents` gives.
         manager.currentDownloads.filter { it.state != Download.STATE_DOWNLOADING }.forEach { report(it.toItem()) }
-        (waiting.keys + selecting.keys).forEach { contentId ->
+        (waiting.keys + selecting.keys + licensing.keys).forEach { contentId ->
             if (manager.currentDownloads.none { it.request.id == contentId }) beforeTheManager(contentId)?.let(::report)
         }
     }
@@ -500,11 +648,16 @@ public class Downloads internal constructor(
         if (released) return
         val pending = waiting.isNotEmpty() ||
             selecting.isNotEmpty() ||
+            licensing.isNotEmpty() ||
+            owesLicenceReleases ||
             manager.currentDownloads.any { it.state != Download.STATE_REMOVING }
         if (pending) conditions.watch() else conditions.unwatch()
         val network = if (meteredNetworksAllowed) NetworkType.CONNECTED else NetworkType.UNMETERED
         DownloadSchedule.want(context, this, network.takeIf { pending })
     }
+
+    /** Whether a pass releasing owed licences is running now: for this module's own tests to wait on. */
+    internal fun isReleasingLicences(): Boolean = releasingLicences
 
     /** The scheduled work ran, on whichever thread `WorkManager` ran it: the conditions it waited for may hold now. */
     internal fun onScheduledWorkRan() {
@@ -577,7 +730,9 @@ public class Downloads internal constructor(
         }
 
         override fun onInitialized(manager: DownloadManager) {
-            // What the last process left pending is known only now the index has been read.
+            // What the last process left pending is known only now the index has been read. The releases it owed
+            // are read here too, one query of the licence store, so a store that owes none schedules nothing.
+            if (licences?.owesAny() == true) releaseOwedLicences(owed = true)
             updatePending()
         }
 
@@ -679,7 +834,8 @@ public class Downloads internal constructor(
         // A downloader reports only bytes it has just cached, so a report is the network back: the next loss
         // starts from the shortest wait.
         forgetResumption(contentId)
-        report(DownloadItem(contentId, DownloadState.DOWNLOADING, bytesDownloaded, percentOrNull(percentDownloaded)))
+        // The licence as the last state change read it: a progress report is no reason to read the licence store.
+        report(DownloadItem(contentId, DownloadState.DOWNLOADING, bytesDownloaded, percentOrNull(percentDownloaded), licence = last?.licence))
     }
 
     /** A download as the store reports it: Media3's, with what this store knows about why it stopped or failed. */
@@ -695,7 +851,23 @@ public class Downloads internal constructor(
             percentDownloaded = percentOrNull(percentDownloaded),
             stopReason = held ?: DownloadStopReason.NETWORK_LOST.takeIf { lostNetwork },
             failure = if (state == Download.STATE_FAILED) failures[request.id] else null,
+            licence = licenceOf(request.id),
         )
+    }
+
+    /** What [contentId]'s licence allows, read from the licence store now, or null where it holds none. */
+    private fun licenceOf(contentId: String): DownloadLicence? {
+        val standing = licences?.standingOf(contentId) ?: return null
+        val expiry = if (!standing.isExpired) {
+            null
+        } else {
+            expiries[contentId] ?: resilience?.failureOf(
+                expiredLicenceFailure(
+                    OfflineLicenceExpiredException(contentId, standing.playbackDurationRemainingMs, standing.licenceDurationRemainingMs),
+                ),
+            )?.also { expiries[contentId] = it }
+        }
+        return DownloadLicence(standing.isExpired, standing.renewalDue, expiry)
     }
 
     /** A download's failure, thrown as something other than an I/O failure so Media3 fails the item without retrying it. */

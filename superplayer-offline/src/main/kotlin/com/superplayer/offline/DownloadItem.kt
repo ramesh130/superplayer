@@ -45,6 +45,11 @@ public class DownloadItem internal constructor(
      * earlier process, whose exception did not survive it.
      */
     public val failure: SuperPlayerError? = null,
+    /**
+     * The offline licence a protected download holds, read from the licence store the store was built with,
+     * and null for content that declares no protection and on a store built without one (ADR-0013 rule 13).
+     */
+    public val licence: DownloadLicence? = null,
 ) {
 
     override fun equals(other: Any?): Boolean = other is DownloadItem &&
@@ -53,12 +58,59 @@ public class DownloadItem internal constructor(
         bytesDownloaded == other.bytesDownloaded &&
         percentDownloaded == other.percentDownloaded &&
         stopReason == other.stopReason &&
-        failure == other.failure
+        failure == other.failure &&
+        licence == other.licence
 
-    override fun hashCode(): Int = listOf(contentId, state, bytesDownloaded, percentDownloaded, stopReason, failure).hashCode()
+    override fun hashCode(): Int = listOf(contentId, state, bytesDownloaded, percentDownloaded, stopReason, failure, licence).hashCode()
 
     override fun toString(): String = "DownloadItem($contentId, $state, $bytesDownloaded bytes, $percentDownloaded%" +
-        (stopReason?.let { ", stopped: $it" } ?: "") + (failure?.let { ", failed: ${it.causeClass}" } ?: "") + ")"
+        (stopReason?.let { ", stopped: $it" } ?: "") + (failure?.let { ", failed: ${it.causeClass}" } ?: "") +
+        (licence?.let { ", licence: $it" } ?: "") + ")"
+}
+
+/**
+ * What a protected download's licence allows, readable before any player is built — the difference between
+ * `PRD.md` §3.2's "go online and refresh this download", which a viewer can act on, and "playback error",
+ * which they cannot (ADR-0012 rule 9).
+ *
+ * How long each of the licence's two durations has left is the licence store's to answer, per content id:
+ * this carries what follows from them, which is what a list of downloads shows.
+ */
+public class DownloadLicence internal constructor(
+    /**
+     * Whether either duration has run out, so a player of the download would fail rather than play. A
+     * completed download with an expired licence is still completed: its bytes are all there.
+     */
+    public val isExpired: Boolean,
+    /**
+     * Whether the licence should be renewed now, on the licence store's threshold. Reported and never acted
+     * on: nothing renews a licence on its own, since when to run background work is the consumer's
+     * (ADR-0012 rule 10), and the renewal is the licence store's verb.
+     */
+    public val renewalDue: Boolean,
+    /**
+     * An expired licence as the typed error playing it would end with, `Drm.LicenceExpired` with its own
+     * message key, so the words a viewer is shown can be chosen before they press play. Null for a licence
+     * that has not expired, and where the store was built without a resilience, which has nobody to ask
+     * (ADR-0013 rule 14).
+     */
+    public val expiry: SuperPlayerError?,
+) {
+
+    override fun equals(other: Any?): Boolean = other is DownloadLicence &&
+        isExpired == other.isExpired &&
+        renewalDue == other.renewalDue &&
+        expiry == other.expiry
+
+    override fun hashCode(): Int = listOf(isExpired, renewalDue, expiry).hashCode()
+
+    override fun toString(): String = if (isExpired) {
+        "expired"
+    } else if (renewalDue) {
+        "renewal due"
+    } else {
+        "valid"
+    }
 }
 
 /**

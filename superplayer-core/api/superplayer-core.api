@@ -94,6 +94,9 @@ public final class com/superplayer/core/LicenceOutcome : java/lang/Enum {
 	public static fun values ()[Lcom/superplayer/core/LicenceOutcome;
 }
 
+public abstract class com/superplayer/core/LicenceStore {
+}
+
 public final class com/superplayer/core/LiveLatencyPolicy {
 	public fun <init> (FF)V
 	public final fun component1 ()F

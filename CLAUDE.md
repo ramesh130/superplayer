@@ -736,8 +736,16 @@ which `ErrorClassifier` names `FailureClass.Storage.Full` — its own branch, a 
 a later enqueue. `DownloadStorageFullTest` states the disk with `DeviceStatement.declareStorageFree`. Two things
 are easy to get wrong. Robolectric's `StatFs` describes no volume, which refuses nothing. Every download test
 calls `useScheduledWork()`, because an earlier class's installation is what made them pass together. And a
-harness download's segment loads run on the download's own thread, so two items in one store are independent. Not built:
-protected content (#245).
+harness download's segment loads run on the download's own thread, so two items in one store are independent. Since
+#245 a protected download carries its offline licence (rule 13 and its addendum). `Downloads.Builder.setDrm(drm,
+licences)` takes a `PlaybackDrm` and core's new `LicenceStore`, which `OfflineLicenceStore` extends, so the module
+still depends on core alone. After the manifest read and before the manager holds the item, the licence for the
+selected protected format is acquired on a thread of the store's own, through core's `DownloadDrmExtension`. A
+refused licence fails the item typed, with nothing pinned. `DownloadItem.licence` reports expiry and renewal due and
+nothing renews. `remove` deletes the bytes at once and releases the licence once the store's network requirement
+holds, and until then `OfflineLicenceStore` lists it in `contentIdsAwaitingRelease` and gives it to no player. The
+trap: protection is what the manifest read sees, so HLS needs `EXT-X-SESSION-KEY`, and the synthetic HLS stream
+downloads with no licence. `DownloadLicenceTest` drives it all.
 `DownloadsPayNothingTest` counts rule 15 as platform registrations and the download index table.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and

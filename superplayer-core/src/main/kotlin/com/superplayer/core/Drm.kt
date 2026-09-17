@@ -22,6 +22,7 @@ import androidx.media3.common.Format
 import androidx.media3.common.PlaybackException
 import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.analytics.PlayerId
+import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
 import androidx.media3.exoplayer.drm.DrmSession
 import androidx.media3.exoplayer.drm.DrmSessionEventListener
 import androidx.media3.exoplayer.drm.DrmSessionManager
@@ -75,6 +76,29 @@ internal interface EngineDrmExtension : PlaybackDrm {
      * protection can be re-opened. Called once per `build()`, before the test configurator.
      */
     fun configureEngine(configuration: EngineConfiguration)
+}
+
+/**
+ * The seam by which `superplayer-offline` acquires a download's licence under the protection a store was
+ * built with: a [PlaybackDrm] that *also* implements this can protect a download (ADR-0013 rule 13).
+ *
+ * Its own interface rather than a member of [EngineDrmExtension], because a download is not an engine:
+ * nothing a player builds is asked it, and the offline module reaches it as core's seventh friend, built
+ * from the seam rather than filling a slot of it (ADR-0013 rule 4).
+ */
+internal interface DownloadDrmExtension : PlaybackDrm {
+
+    /**
+     * A session graph for a download's licence exchange, over [licence] — the store's licence chain and
+     * the device — in no mode, for Media3's `OfflineLicenseHelper` to drive and for the download's manifest
+     * read to learn which formats the device can decrypt.
+     *
+     * The graph a player of the content would open, at the level it would open at: a licence acquired for
+     * download at a level the device may not show the content at would be a licence for nothing. Throws
+     * [SecurityDowngradeRefusedException] where the device cannot honour its level and the server's
+     * operator permitted no lower one, which is a player's refusal arriving before the first media byte.
+     */
+    fun downloadSessions(licence: LicenceContext): DefaultDrmSessionManager
 }
 
 /**
@@ -266,9 +290,19 @@ internal fun refusedSessions(refusal: SecurityDowngradeRefusedException): DrmSes
  * this code already says precisely what happened.
  */
 internal fun expiredLicenceSessions(refusal: OfflineLicenceExpiredException): DrmSessionManagerProvider =
-    erroringSessions(refusal, PlaybackException.ERROR_CODE_DRM_LICENSE_EXPIRED)
+    erroringSessions(expiredLicenceFailure(refusal))
 
-private fun erroringSessions(refusal: Throwable, errorCode: Int): DrmSessionManagerProvider {
+/**
+ * [refusal] dressed as the failure a player of an expired stored licence ends with, so a download store that
+ * reports the expiry before any player is built names it exactly as that player would (ADR-0013 rule 13).
+ */
+internal fun expiredLicenceFailure(refusal: OfflineLicenceExpiredException): DrmSession.DrmSessionException =
+    DrmSession.DrmSessionException(refusal, PlaybackException.ERROR_CODE_DRM_LICENSE_EXPIRED)
+
+private fun erroringSessions(refusal: Throwable, errorCode: Int): DrmSessionManagerProvider =
+    erroringSessions(DrmSession.DrmSessionException(refusal, errorCode))
+
+private fun erroringSessions(failure: DrmSession.DrmSessionException): DrmSessionManagerProvider {
     val manager = object : DrmSessionManager {
 
         override fun setPlayer(playbackLooper: Looper, playerId: PlayerId) = Unit
@@ -276,7 +310,7 @@ private fun erroringSessions(refusal: Throwable, errorCode: Int): DrmSessionMana
         override fun acquireSession(
             eventDispatcher: DrmSessionEventListener.EventDispatcher?,
             format: Format,
-        ): DrmSession = ErrorStateDrmSession(DrmSession.DrmSessionException(refusal, errorCode))
+        ): DrmSession = ErrorStateDrmSession(failure)
 
         // `CRYPTO_TYPE_UNSUPPORTED` rather than `CRYPTO_TYPE_NONE` for a format that declares
         // protection, so that Media3 asks for a session at all: answering "none" would have the

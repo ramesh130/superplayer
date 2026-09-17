@@ -18,6 +18,9 @@ package com.superplayer.drm
 
 import androidx.media3.exoplayer.drm.DrmSessionEventListener
 import androidx.media3.exoplayer.drm.OfflineLicenseHelper
+import com.superplayer.core.LicenceStanding
+import com.superplayer.core.LicenceStore
+import com.superplayer.core.StoredLicences
 import com.superplayer.core.SuperPlayer
 import java.io.File
 
@@ -77,8 +80,16 @@ public object OfflineLicences {
  * than after it fails" reachable from a list screen. The four verbs that change something are
  * [OfflineLicenceExchange]'s, because each of them is a round trip to the licence server and that
  * server is reached over a *player's* transport (ADR-0012 rule 2).
+ *
+ * **A download store keeps its licences here too.** It is core's `LicenceStore`, which is what
+ * `superplayer-offline`'s `Downloads.Builder.setDrm` takes: a protected download acquires its licence into
+ * this store with the download and releases it when the download is removed, over the download store's own
+ * chain rather than a player's, which ADR-0013 rule 13 refines rule 9's addendum to allow. A licence a removed
+ * download still owes the server a release of is in [contentIdsAwaitingRelease] and not in [licenceFor].
  */
-public class OfflineLicenceStore internal constructor(private val index: OfflineLicenceIndex) : AutoCloseable {
+public class OfflineLicenceStore internal constructor(private val index: OfflineLicenceIndex) :
+    LicenceStore(IndexedLicences(index)),
+    AutoCloseable {
 
     /**
      * The licence this store holds for [contentId], or null where it holds none.
@@ -92,6 +103,14 @@ public class OfflineLicenceStore internal constructor(private val index: Offline
 
     /** Every content id this store holds a licence for, expired ones included. */
     public fun contentIds(): Set<String> = index.contentIds()
+
+    /**
+     * Every content id whose download was removed while its licence's release has not yet reached the
+     * server: a removal made with no network, say (ADR-0013 rule 13). None of them is answered by
+     * [licenceFor], so no player is given a licence its viewer has already let go of; the download store
+     * that removed them releases each once its network requirement holds.
+     */
+    public fun contentIdsAwaitingRelease(): Set<String> = index.awaitingRelease().mapTo(HashSet()) { it.first }
 
     /**
      * The store's four verbs, performed over [player]'s protection.
@@ -122,6 +141,34 @@ public class OfflineLicenceStore internal constructor(private val index: Offline
      */
     override fun close() {
         index.close()
+    }
+}
+
+/** [OfflineLicenceStore]'s index, as the half of core's `LicenceStore` a download store is built from. */
+internal class IndexedLicences(private val index: OfflineLicenceIndex) : StoredLicences {
+
+    // The store's own reading, so a download and a list screen cannot disagree about when a licence is dead or due.
+    override fun standingOf(contentId: String): LicenceStanding? = index.read(contentId)?.let {
+        LicenceStanding(
+            playbackDurationRemainingMs = it.playbackDurationRemainingMs,
+            licenceDurationRemainingMs = it.licenceDurationRemainingMs,
+            isExpired = it.isExpired,
+            renewalDue = it.renewalDue,
+        )
+    }
+
+    override fun write(contentId: String, keySetId: ByteArray, licenceSecondsLeft: Long, playbackSecondsLeft: Long): Boolean {
+        val replaced = index.read(contentId)?.keySetId?.contentEquals(keySetId) == false
+        index.write(contentId, keySetId, licenceSecondsLeft, playbackSecondsLeft)
+        return replaced
+    }
+
+    override fun awaitRelease(contentId: String): Boolean = index.awaitRelease(contentId)
+
+    override fun awaitingRelease(): List<ByteArray> = index.awaitingRelease().map { it.second }
+
+    override fun released(keySetId: ByteArray) {
+        index.released(keySetId)
     }
 }
 

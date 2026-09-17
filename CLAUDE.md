@@ -319,7 +319,7 @@ drives it through a **stock** `ExoPlayer`, and `buildPlayer(content = …, drm =
 The harness drives a *download* too (#239), for Phase 7: `harness.downloadEnvironment(content, faults,
 network)` returns core's `DownloadEnvironment` — public, internal constructor, `ContentCache`'s shape,
 because testkit (phase 2) and `superplayer-offline` (phase 7) cannot name each other's types — carrying
-the same transport a player of that content loads through and a loading thread the harness owns, which
+the same transport a player of that content loads through and a load executor the harness counts, which
 core's `TransferChain.downloadChain` puts under a download (ADR-0013 rule 6). `networkRequests(environment)`,
 `advanceUntil(environment, …)`, `processDeath(environment, directory)` (a copy of the directory taken
 with no load in flight — what a dead process leaves), `DeviceStatement.declareNetworkMetered`,
@@ -486,8 +486,8 @@ rescued ends the session on core's public `SuperPlayerError` — `PRD.md` §3.2'
 under it so nothing Media3 said is lost. No new listener and no callback. The other half is
 `PlaybackFailure.classification`, the same stable name, which `QoeCollector` gets by asking
 `player.classify(error)` rather than by keeping a taxonomy: telemetry is not a friend of core and
-reaches it as a consumer does. `category` stays six values and is derived from the class where there
-is one — which is what moved `TelemetryEvent.SCHEMA_VERSION` to **2**, because the class and the
+reaches it as a consumer does. `category` is derived from the class where there
+is one (six values until #244 added `STORAGE`, ADR-0011 rule 3's addendum) — which is what moved `TelemetryEvent.SCHEMA_VERSION` to **2**, because the class and the
 error-code band disagree for five kinds of failure and `docs/telemetry-schema.md`'s release note is
 the table of them. `code` is still `errorCodeName`, deliberately: what the engine raised and what
 SuperPlayer made of it are two facts. A player with no resilience classifies nothing, reports null,
@@ -734,8 +734,9 @@ addendum). The cache's download half asks `StatFs` before it writes and raises c
 which `ErrorClassifier` names `FailureClass.Storage.Full` — its own branch, a seventh `FailureCategory`
 (`STORAGE`) and an eighth message key, with `SCHEMA_VERSION` still 2. The failed item keeps its bytes pinned for
 a later enqueue. `DownloadStorageFullTest` states the disk with `DeviceStatement.declareStorageFree`. Two things
-are easy to get wrong. Robolectric's `StatFs` describes no volume, which refuses nothing. And every download test
-calls `useScheduledWork()`, because an earlier class's installation is what made them pass together. Not built:
+are easy to get wrong. Robolectric's `StatFs` describes no volume, which refuses nothing. Every download test
+calls `useScheduledWork()`, because an earlier class's installation is what made them pass together. And a
+harness download's segment loads run on the download's own thread, so two items in one store are independent. Not built:
 protected content (#245).
 `DownloadsPayNothingTest` counts rule 15 as platform registrations and the download index table.
 

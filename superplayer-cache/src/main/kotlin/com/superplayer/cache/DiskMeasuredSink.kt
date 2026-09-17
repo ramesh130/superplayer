@@ -69,7 +69,8 @@ internal class DiskMeasuredSink(private val delegate: DataSink, private val dire
     }
 
     override fun close() {
-        // Closing is where the delegate flushes its buffer, so a write can meet the disk here too.
+        // Closing is where the delegate flushes its buffer, so a write can meet the disk here too. The bytes it
+        // flushes were counted as written when they were handed over, so none are reported as still to write.
         translatingNoSpace(bytesToWrite = 0) { delegate.close() }
     }
 

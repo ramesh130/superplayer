@@ -44,7 +44,7 @@ import java.net.URI
  * #244, ADR-0013 rule 9: a download that meets a full disk fails, named, and the queue does not. Two items
  * share one store, each served from a host of its own so a fault can pace one without the other: the first
  * fetches its segments a short latency apart, so the disk can be stated full between two of them, and the
- * second waits long enough on each that it has written none of its media while the disk is full.
+ * second's latency is long enough that it has written none of its media while the disk is full.
  *
  * What the harness cannot state is a write that fails *because* the disk filled: a full disk here is the
  * platform's reading of free space ([DeviceStatement.declareStorageFree]), which the cache's download half
@@ -92,7 +92,9 @@ class DownloadStorageFullTest {
         val held = segmentsFrom(environment, FILLING_HOST).take(HELD_SEGMENTS)
 
         DeviceStatement.declareStorageFree(0)
-        harness.advanceUntil(environment, boundMs = TWO_ITEMS_BOUND_MS, wanted = "the filling item failed") { downloads.download(FILLING_ID)?.state == DownloadState.FAILED }
+        harness.advanceUntil(environment, boundMs = TWO_ITEMS_BOUND_MS, wanted = "the filling item failed") {
+            downloads.download(FILLING_ID)?.state == DownloadState.FAILED
+        }
         val failed = downloads.download(FILLING_ID)!!
         assertThat(failed.failure?.causeClass).isEqualTo(FailureClass.Storage.Full.stableName)
         assertThat(failed.failure?.userMessageKey).isEqualTo(FailureClass.STORAGE_FULL_MESSAGE_KEY)
@@ -111,7 +113,7 @@ class DownloadStorageFullTest {
         // What the failed item wrote is kept, pinned, for an enqueue once there is room to continue from.
         downloads.enqueue(request(FILLING_ID, filling))
         harness.advanceUntil(environment, boundMs = TWO_ITEMS_BOUND_MS, wanted = "the filling item completed") { downloads.download(FILLING_ID)?.state == DownloadState.COMPLETED }
-        assertWithMessage("segments the failed item had written, fetched again")
+        assertWithMessage("requests for the segments the failed item had written, each asked for once")
             .that(segmentRequestsFrom(environment, FILLING_HOST).filter { it in held })
             .containsExactlyElementsIn(held)
         assertThat(downloads.download(FILLING_ID)!!.failure).isNull()
@@ -187,16 +189,17 @@ class DownloadStorageFullTest {
         // asked for and is still waiting out its latency.
         const val HELD_SEGMENTS = 3
 
-        // Different, so the two items' segments interleave on the one loading thread rather than one item
-        // finishing before the other starts: each waits out the other's delay as well as its own.
+        // Each item loads on its own thread, as in an app. The filling item reaches its held segment, meets the full
+        // disk and fails within a few of its own latencies, while the roomy item's first segment is still waiting
+        // out one of its own: so the roomy item writes no media while the disk is full.
         const val FILLING_LATENCY_MS = 1_000L
-        const val ROOMY_LATENCY_MS = 5_000L
+        const val ROOMY_LATENCY_MS = 60_000L
 
         // Far more than both items, as a reading; the reading does not shrink as they write.
         const val ROOM_BYTES = 1L shl 30
 
         // Harness time for two items whose segments each wait out both delays: a few multiples of what they need.
-        const val TWO_ITEMS_BOUND_MS = 300_000L
+        const val TWO_ITEMS_BOUND_MS = 900_000L
 
         // Far more than any synthetic stream here, so nothing is evicted.
         const val LARGE_BUDGET_BYTES = 64L * 1024 * 1024

@@ -592,18 +592,18 @@ the seam above until #239. What stands in for each piece, and what each stand-in
   what would let it be a count instead.
   Media3's download helper also polls for a failed manifest on its own thread's system clock, which
   Robolectric moves only when a test tells it to.
-- **The loading thread is the harness's.** Segment loads run on one thread the environment owns,
-  counted into the same wait a player's loads are, so segments are fetched in manifest order on every
-  run and `advanceUntil(environment, …)` knows when a load has finished. One thread is a determinism
-  choice: it cannot show what parallel segment fetching does, which is a throughput question for Phase
-  10. `DownloadManager`'s own task thread and its main-thread callbacks are Media3's; the harness runs
-  the main looper between passes and moves its clock only while a load waits on it. Two items in one
-  store share that thread, so their loads queue behind each other, and the wait counts what the thread
-  holds as one load: a load queued behind a delayed one cannot act on the time that passes, and counting
-  it would keep the clock still for ever (#244). Each item then waits out the other's delays too, which a
-  test pacing two items bounds its waits for.
+- **Loads run on the download's own thread, counted.** Segment loads run where Media3's segment
+  downloader hands them over, as Media3's default executor runs them, counted into the same wait a
+  player's loads are, so a download's segments are fetched in manifest order on every run and
+  `advanceUntil(environment, …)` knows when a load has finished. It cannot show what parallel segment
+  fetching does within one item, which is a throughput question for Phase 10. Two items in one store
+  load on two threads, as in an app. A thread shared by the environment was the earlier shape, and it
+  coupled them: a load queued behind another item's delayed one kept the clock still, and an item that
+  failed waited for its queued next segment behind the other item's held load (#244). `DownloadManager`'s
+  own task thread and its main-thread callbacks are Media3's; the harness runs the main looper between
+  passes and moves its clock only while a load waits on it.
 - **Process death is a copy of the directory.** `processDeath(environment, directory)` stops the
-  environment's thread taking work, waits until no load is in flight, copies the directory, and returns
+  environment's loads being taken, waits until no load is in flight, copies the directory, and returns
   the copy for the test to open a store over. A process that died released nothing — no cache lock, no
   database handle, no thread — so a store in the same test process cannot reopen the directory itself;
   what survives a real death is what was on disk, which is what the copy holds, including an index the

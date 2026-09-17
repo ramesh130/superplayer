@@ -191,6 +191,15 @@ Fourteen rules follow, and they are binding.
 
 ### What is core's, and what is not
 
+   *Addendum (2026-09-17, #244).* "Is not extended" held until a class arrived that no bucket describes.
+   A download that meets a full disk is `FailureClass.Storage.Full`. `DECODER`, `SOURCE` and `NETWORK` each
+   describe some other failure, and `UNKNOWN` is what a total classifier never produces. So `category`
+   gained a seventh value, `STORAGE`, rather than stretching a bucket to cover it. That is rule 2's own
+   remedy, a class for what fits none, applied to the bucket. The rest of this rule stands: one table,
+   derived from the class. A new leaf that fits an existing bucket still takes it. Adding the value moved no
+   `SCHEMA_VERSION`, because no failure changed bucket and no playback session reaches the new one;
+   `docs/telemetry-schema.md`'s *Release notes* is the argument.
+
 4. **Core detects; resilience classifies.** A defect in the transfer that a consumer with only
    `superplayer-core` is exposed to — today a frozen live playlist and a too-short live window —
    is caught in `TransferChain` and raised as a public core exception carrying the evidence

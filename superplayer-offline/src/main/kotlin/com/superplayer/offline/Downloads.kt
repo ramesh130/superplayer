@@ -625,7 +625,7 @@ public class Downloads internal constructor(
                 // read it as a lost network and wait. Anything else Media3 fails at once. This decides only
                 // *when* the item fails, off the exception core raised as evidence; what it failed with is still
                 // the classifier's, which finds core's exception beneath this one.
-                if (generateSequence<Throwable>(e) { it.cause }.any { it is StorageFullException }) throw DiskFull(e)
+                if (generateSequence<Throwable>(e) { it.cause }.take(CAUSE_DEPTH).any { it is StorageFullException }) throw NotRetried(e)
                 if (resilience?.isNetworkLoss(e) != true || canceled.count == 0L) throw e
                 // Held here until the stop cancels this download, rather than thrown: a thrown failure is one
                 // Media3 counts toward failing the item, and the stop is what keeps it from failing. Returning
@@ -698,17 +698,20 @@ public class Downloads internal constructor(
         )
     }
 
+    /** A download's failure, thrown as something other than an I/O failure so Media3 fails the item without retrying it. */
+    private class NotRetried(cause: IOException) : RuntimeException(cause)
+
     /** A request enqueued, with the languages it was enqueued for. */
-
-    /** A download that met a full disk, thrown as something other than an I/O failure so Media3 does not retry it. */
-    private class DiskFull(cause: IOException) : RuntimeException(cause)
-
     private class Enqueued(val request: MediaRequest, val audioLanguages: List<String>, val subtitleLanguages: List<String>)
 
     /** An enqueued request whose manifest [helper] is reading. */
     private class Selecting(val helper: DownloadHelper, val enqueued: Enqueued)
 
     private companion object {
+
+        // Far past the depth a download's failure is wrapped to — Media3's task, the cache's sink exception, the
+        // stream's — and a bound because a cause chain that loops is the thrower's to build.
+        private const val CAUSE_DEPTH = 8
 
         /**
          * Media3's stop reason for a download stopped for a lost network, written into the index with it.

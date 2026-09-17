@@ -91,6 +91,23 @@ import java.util.concurrent.TimeUnit
  * that is the honest description and not a widening of the seam — which is what lets one harness
  * serve every phase-2-and-later module.
  *
+ * ## The two Media3 types its public API names, and why no more
+ *
+ * This module is published — `benchmark/` resolves it by Maven coordinates — so its public API is
+ * tracked and held to `verifyNoUnstableMedia3InPublicApi` like any other (`docs/api-surface.md`).
+ * What that guarantees is no *unstable* Media3 type, not none at all, and two appear on purpose:
+ *
+ * - **`Player`**, the parameter of every method that drives or inspects a player — [advanceTimeMs],
+ *   [advanceUntil], [playToReady], [playToFailure], [networkRequests], [attachVideoOutput],
+ *   [failDecoderInitialization] and their neighbours. They must accept a stock `ExoPlayer` and a
+ *   [SuperPlayer] alike, and `Player` is the only supertype the two share (ADR-0003). It is stable.
+ * - **`ExoPlayer`**, the return type of [buildStockPlayer], because the stock arm *is* one. That is
+ *   ADR-0001 rule 2's single exception, and [buildStockPlayer] argues it where it is used.
+ *
+ * Anything else — a `LoadControl`, a `DataSource`, a fake — stays internal, which is why a stock arm's
+ * tuning arrives as core's [BufferPolicy]. The stronger claim, no Media3 type at all, is
+ * `superplayer-testmedia`'s and is argued in `docs/testing.md` (#234).
+ *
  * ## The clocks, which is the part that decides whether a measurement test is exact
  *
  * Two clocks are in play and they are advanced **together**, by [advanceTimeMs], because a

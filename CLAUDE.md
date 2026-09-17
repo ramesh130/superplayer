@@ -285,7 +285,13 @@ in a commit that says why in the row. `docs/testing.md`'s *The QoE regression ga
 and the median. `superplayer-testkit` holds
 `PlaybackHarness` — the deterministic playback harness every module from phase 2 onward tests
 against, which compiles as a Kotlin *friend* of core so it can reach the one internal seam
-`docs/testing.md` describes, and whose own public API names no Media3 type. `superplayer-testmedia`
+`docs/testing.md` describes, and whose public API names **no unstable** Media3 type — the published
+artifact is held to `verifyNoUnstableMedia3InPublicApi` like every other module. It does name two
+Media3 types, deliberately, and its class KDoc says why: `Player`, stable, because every driving
+method accepts a stock `ExoPlayer` and a `SuperPlayer` alike and that is the only supertype they
+share; and `ExoPlayer`, which `buildStockPlayer` returns under ADR-0001's one exception because the
+stock arm *is* one (#234). No Media3 type at all is the stronger claim, and it is the next module's.
+`superplayer-testmedia`
 holds `SyntheticHlsStream` and `SyntheticDashStream`, the known-good streams both core's tests and
 that harness play; it is phase 1 and depends on nothing — not even Media3 — because it has to sit
 below both, and `docs/testing.md` carries the argument for the module rather than a second copy.

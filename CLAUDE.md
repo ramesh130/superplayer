@@ -74,6 +74,19 @@ its start boundary is *user intent*, which the library cannot see, so a consumer
 `player.declarePlaybackIntent()` and a session that gets none is measured from content adoption and
 labelled as such rather than silently mixed in.
 
+Since #212 it also carries protected playback's own start-up cost: `LicenceAcquisitionEnded`, one
+span per licence a session fetched, with a `LicenceOutcome` of `ACQUIRED_FROM_SERVER`, `REFUSED`, or
+`SERVED_FROM_OFFLINE_STORE` — the last declared and **unreachable** until #210 opens an offline
+store, so that #210 is a behaviour change rather than a second change of the schema. It is
+SuperPlayer's own metric, since CTA-2066 has none, and it is `QoeCollector`'s from Media3's DRM
+analytics callbacks rather than `superplayer-drm`'s, because that module classifies nothing (ADR-0012
+rule 5). A new event type is shape and not meaning, so `SCHEMA_VERSION` stays **2** for the fourth
+release running, which the release notes say in as many words. A reused DRM session and a key
+rotation each emit nothing, which is the difference between counting acquisitions and counting
+sessions. `superplayer-drm`'s `LicenceTelemetryTest` drives it — a phase 6 test of a phase 2 metric,
+because only there is there a licence server to acquire from — and asserts rule 6's redaction against
+a trace of a session that really acquired one.
+
 The whole vocabulary is emitted. Core signals the session edges from `adopt`, `restoreSnapshot`,
 `resetForReuse` and `release`, because only core knows which item change carried a `MediaRequest` and
 which was a recycle; everything else `QoeCollector` derives from Media3's `AnalyticsListener`, and

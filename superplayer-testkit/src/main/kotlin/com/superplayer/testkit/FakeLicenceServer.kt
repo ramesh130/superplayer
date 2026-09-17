@@ -27,7 +27,6 @@ import androidx.media3.exoplayer.drm.ExoMediaDrm
 import androidx.media3.exoplayer.drm.MediaDrmCallback
 import androidx.media3.exoplayer.drm.MediaDrmCallbackException
 import androidx.media3.test.utils.FakeExoMediaDrm
-import com.superplayer.core.SecurityLevelNegotiation
 import java.io.IOException
 import kotlin.math.min
 
@@ -58,38 +57,6 @@ public object FakeLicenceServer {
 
     /** Whether [uri] is one of this server's, which is the whole of how a licence load is recognised. */
     internal fun serves(uri: Uri): Boolean = uri.host == HOST
-
-    /**
-     * States that this server permits content to be delivered at [level] on a device that cannot
-     * honour the level it reports — ADR-0012 rule 11's permission, answered in the one place a server
-     * can answer it ([SecurityLevelNegotiation]).
-     *
-     * A *server* statement rather than a [DeviceStatement] one, and the distinction is the whole
-     * subject: the permission is the licence server's to give and the device's to need, and a test
-     * that could only say both at once could not tell a client that obeys the server from one that
-     * reads the device and decides for itself.
-     *
-     * The default is to permit nothing, which is what a licence server that has never heard of the
-     * exchange does, and is why every test written before this one is unaffected by it.
-     */
-    @JvmStatic
-    public fun permitSecurityLevel(level: SecurityLevel) {
-        permitted = level
-    }
-
-    /** What this server permits, or null for a server that permits no downgrade. */
-    internal var permitted: SecurityLevel? = null
-        private set
-
-    /**
-     * Forgets the permission, so one test's server is not the next one's.
-     *
-     * A field of an object that outlives a test method, exactly like [DeviceStatement.widevine], so
-     * the reset has to be written down; [PlaybackHarness] calls it before each test beside that one.
-     */
-    internal fun forgetPermission() {
-        permitted = null
-    }
 }
 
 /**
@@ -101,14 +68,6 @@ public object FakeLicenceServer {
  * body is what it answers. Nothing is invented in between — the entitlement decision, the
  * provisioning rule and the deliberate failures are all Media3's, which is what stops this file from
  * becoming a second, home-made licence server nobody has reviewed.
- *
- * **One thing is this file's own, and it is the exception rather than a hole in that rule** (#208).
- * ADR-0012 rule 11's downgrade permission travels in headers beside the licence
- * ([SecurityLevelNegotiation]), and Media3's `FakeExoMediaDrm.LicenseServer` has no lever for it at
- * all: it is an allow-list over `SchemeData` byte lists, it inspects no request and it varies no
- * response. So the permission — and only the permission — is answered here, out of what a test stated
- * with [FakeLicenceServer.permitSecurityLevel]. It is a *policy* answer rather than an entitlement
- * one, no key ever comes out of it, and every licence this server issues is still Media3's decision.
  *
  * **It raises no transfer callbacks and reports no bytes to a listener**, and that is deliberate
  * rather than an omission: measurement is a propagated `TransferListener` (`PRD.md` §2.4) feeding a
@@ -126,7 +85,6 @@ internal class LicenceServerDataSource(
     private var readPosition = 0
     private var servedUri: Uri? = null
     private var upstreamOpen = false
-    private var answeredHeaders: Map<String, List<String>> = emptyMap()
 
     override fun addTransferListener(transferListener: TransferListener) {
         upstream.addTransferListener(transferListener)
@@ -137,12 +95,7 @@ internal class LicenceServerDataSource(
             upstreamOpen = true
             return upstream.open(dataSpec)
         }
-        answeredHeaders = permissionHeadersFor(dataSpec)
-        // A permission question carries no key request and gets no licence back: it is answered out
-        // of the stated policy, in headers, and Media3's licence server never sees it. That is what
-        // [SecurityLevelNegotiation] describes and the one thing about this class that is not a
-        // translation of Media3's own decisions — see the class KDoc's paragraph on it.
-        val answered = if (isPermissionQuestion(dataSpec)) ByteArray(0) else answer(dataSpec)
+        val answered = answer(dataSpec)
         body = answered
         readPosition = dataSpec.position.toInt()
         servedUri = dataSpec.uri
@@ -166,38 +119,15 @@ internal class LicenceServerDataSource(
     // for the origin would hide the headers a stream declares — which is what
     // `HostileManifests.hlsCachedLivePlaylist`'s whole defect is, read one layer above this.
     override fun getResponseHeaders(): Map<String, List<String>> =
-        if (body != null) answeredHeaders else upstream.responseHeaders
+        if (body != null) emptyMap() else upstream.responseHeaders
 
     override fun close() {
         body = null
         servedUri = null
-        answeredHeaders = emptyMap()
         if (upstreamOpen) {
             upstreamOpen = false
             upstream.close()
         }
-    }
-
-    /**
-     * Whether [dataSpec] is a downgrade-permission question rather than a licence or provisioning
-     * request: it names the level the client can honour in a request header, and carries no body.
-     */
-    private fun isPermissionQuestion(dataSpec: DataSpec): Boolean =
-        dataSpec.httpRequestHeaders.containsKey(SecurityLevelNegotiation.LEVEL_REQUEST_HEADER)
-
-    /**
-     * The permission this server grants [dataSpec], as response headers.
-     *
-     * Empty unless a test stated one with [FakeLicenceServer.permitSecurityLevel] **and** the client
-     * asked about exactly that level. Both halves matter: a server that answered whatever it was
-     * asked would permit every downgrade and could not be told from a client that never asked.
-     */
-    private fun permissionHeadersFor(dataSpec: DataSpec): Map<String, List<String>> {
-        if (!isPermissionQuestion(dataSpec)) return emptyMap()
-        val asked = dataSpec.httpRequestHeaders[SecurityLevelNegotiation.LEVEL_REQUEST_HEADER]
-        val permitted = FakeLicenceServer.permitted?.name ?: return emptyMap()
-        if (asked != permitted) return emptyMap()
-        return mapOf(SecurityLevelNegotiation.LEVEL_PERMITTED_HEADER to listOf(permitted))
     }
 
     /**

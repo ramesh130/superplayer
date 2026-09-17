@@ -537,11 +537,14 @@ move, so `TelemetryEvent.SCHEMA_VERSION` did not either, and
 client never downgrades on its own authority (ADR-0012 rule 11). `SecurityLevelLadder` asks at all
 only where the device has already lost — it reports `L1` and core's `DeviceConstraints` says it
 declares no secure decoder, the one of `PRD.md` §3.2's three cases a player can see before spending a
-licence — and what it asks is a `GET` at the licence URI naming the level it can honour, answered (or
-not) in a response header. The wire format is core's public `SecurityLevelNegotiation`, SuperPlayer's
-own rather than any standard's, and **silence is a refusal**: a server that never heard of the
-exchange refuses every downgrade by doing nothing, which is what makes failing-hard the default and
-downgrading-silently unreachable. A permission sets `securityLevel` on the device
+licence. What it reads is `WidevineConfig.permittedSecurityLevels`, the levels *that* licence
+server's operator published, and **empty is a refusal**: an app told nothing permits nothing, which
+is what makes failing-hard the default and downgrading-silently unreachable. #208 built an HTTP
+exchange of SuperPlayer's own for this and **#223 withdrew it** — a `GET` at a licence URI is
+answered 405 by most real deployments, every failure of it read as a refusal indistinguishably, and
+its answer had to be waited for on the playback thread; rule 11 always allowed configuration as the
+channel, and the ADR's *Alternatives considered* now records why a level set an operator published
+is not the `setAllowSecurityDowngrade` flag it rejects. A permission sets `securityLevel` on the device
 (`LoweredSecurityLevel`) before any key request is composed; a refusal fills the slot with core's
 `refusedSessions`, which opens nothing, asks for no licence, and carries the public
 `SecurityDowngradeRefusedException` that `ErrorClassifier` maps to the seventh `FailureClass.Drm`

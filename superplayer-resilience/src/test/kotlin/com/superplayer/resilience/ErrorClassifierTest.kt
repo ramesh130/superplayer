@@ -28,7 +28,6 @@ import com.superplayer.core.LiveWindowTooShortException
 import com.superplayer.core.LoadKind
 import com.superplayer.core.RequestStamp
 import com.superplayer.core.SecurityDowngradeRefusedException
-import com.superplayer.core.SecurityLevelNegotiation
 import com.superplayer.core.StaleLivePlaylistException
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -455,9 +454,9 @@ class ErrorClassifierTest {
     /** A refusal as `superplayer-drm` raises it: the evidence, and no `PlaybackException` yet. */
     private fun refusedDowngrade() =
         SecurityDowngradeRefusedException(
-            deviceSecurityLevel = SecurityLevelNegotiation.LEVEL_L1,
-            refusedLevel = SecurityLevelNegotiation.LEVEL_L3,
-            permittedLevel = null,
+            deviceSecurityLevel = "L1",
+            refusedLevel = "L3",
+            permittedLevels = emptySet(),
         )
 
     private fun stalePlaylist(likelyCause: StaleLivePlaylistException.LikelyCause) =

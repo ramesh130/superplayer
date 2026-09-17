@@ -424,16 +424,8 @@ public final class com/superplayer/core/RetryPolicy$Companion {
 
 public final class com/superplayer/core/SecurityDowngradeRefusedException : java/io/IOException {
 	public final fun getDeviceSecurityLevel ()Ljava/lang/String;
-	public final fun getPermittedLevel ()Ljava/lang/String;
+	public final fun getPermittedLevels ()Ljava/util/Set;
 	public final fun getRefusedLevel ()Ljava/lang/String;
-}
-
-public final class com/superplayer/core/SecurityLevelNegotiation {
-	public static final field INSTANCE Lcom/superplayer/core/SecurityLevelNegotiation;
-	public static final field LEVEL_L1 Ljava/lang/String;
-	public static final field LEVEL_L3 Ljava/lang/String;
-	public static final field LEVEL_PERMITTED_HEADER Ljava/lang/String;
-	public static final field LEVEL_REQUEST_HEADER Ljava/lang/String;
 }
 
 public final class com/superplayer/core/SelectionPace {

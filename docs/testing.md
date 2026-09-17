@@ -407,16 +407,19 @@ a second, home-made licence server nobody has reviewed. The player's side is
 uses Media3's own `HttpMediaDrmCallback`, whose key-request half posts to the address
 `WidevineConfig` named.
 
-**One decision is the harness's own, and it is the exception to the sentence above rather than a hole
-in it** (#208). ADR-0012 rule 11's downgrade permission is not an entitlement and does not travel in a
-licence: it is a *policy* answer, stated in response headers beside the licence
-(`SecurityLevelNegotiation`), and Media3's `FakeExoMediaDrm.LicenseServer` has no lever for it at all
-— it is an allow-list over `SchemeData` byte lists, it inspects no request and it varies no response.
-So `LicenceServerDataSource` answers that one question itself, out of what a test stated with
-`FakeLicenceServer.permitSecurityLevel(...)`, and no key ever comes out of it. The statement is the
-*server's* rather than the device's, deliberately: a permission the device could state would be a
-permission the client had given itself, and the pair of tests that matters — a server that permits and
-a server that does not, over one identical device — would be unwritable.
+**The sentence above has no exception, and for one release it did** (#208, withdrawn by #223).
+ADR-0012 rule 11's downgrade permission is a *policy* answer rather than an entitlement, and Media3's
+`FakeExoMediaDrm.LicenseServer` has no lever for one — it is an allow-list over `SchemeData` byte
+lists, it inspects no request and it varies no response. #208 concluded that the harness must
+therefore answer that question itself, out of response headers a test stated, which made
+`LicenceServerDataSource` a small home-made licence server after all. #223 moved the permission into
+`WidevineConfig.permittedSecurityLevels`, where it is the server operator's published policy rather
+than a round trip, and the harness went back to translating Media3's decisions and nothing else.
+
+What that leaves a test writer is simpler: the pair that matters — an operator who permits `L3` and
+one who has said nothing, over one identical device — is two `WidevineConfig`s, and neither touches
+the licence server at all. `SecurityLevelTest` counts the consequence, which is that a permitted
+downgrade now costs one licence request and a refused session costs none.
 
 **Provisioning is where the two used to diverge, and #207 settled it in the harness rather than in
 the library.** Media3 sends a provisioning request to the URL the *device* names — on a handset, the

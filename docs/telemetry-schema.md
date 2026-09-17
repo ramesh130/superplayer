@@ -239,11 +239,20 @@ a `securityLevel`, and the `Drm` branch gained a seventh leaf, `Drm.DowngradeRef
 
 What a pipeline can do about it: `SessionEnded.securityLevel` is `null` on every session that
 negotiated nothing, which is every unprotected session and every protected one on a device that could
-honour the level it reports. It is non-null only where [ADR-0012][adr12] rule 11's negotiation ran and
-the licence server permitted a lower level — so a non-null value is precisely *this viewer had
-something weaker delivered than they were entitled to*, and it is the field a support engineer reads
-before asking anything else. Counting it per app version and per device model is how a fused-off
+honour the level it reports. It is non-null only where [ADR-0012][adr12] rule 11's ladder engaged and
+the licence server's operator permitted a lower level — so a non-null value is precisely *this viewer
+had something weaker delivered than they were entitled to*, and it is the field a support engineer
+reads before asking anything else. Counting it per app version and per device model is how a fused-off
 secure path shows up as a fleet fact rather than as one confused ticket.
+
+**Nothing here moved when the permission channel did (`#223`).** `#208` read the permission off an
+HTTP exchange of SuperPlayer's own and `#223` reads it out of `WidevineConfig` instead, which changes
+how a session decides but nothing it reports: the field is the same field with the same meaning, the
+leaf is the same leaf in the same category, and `SCHEMA_VERSION` stands at 2 for the third release
+running. A pipeline needs to do nothing. The one thing a reader of old data should know is that
+`securityLevel` was non-null far less often before `#223` than after, and not because devices changed
+— the exchange it depended on is answered `405` by most real licence endpoints, so in the field it
+almost always refused.
 
 | Now reported | Was reported as | What it is |
 | --- | --- | --- |

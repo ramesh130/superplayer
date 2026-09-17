@@ -25,7 +25,6 @@ import com.superplayer.core.EngineConfiguration
 import com.superplayer.core.EngineDrmExtension
 import com.superplayer.core.LicenceSessions
 import com.superplayer.core.SecurityDowngradeRefusedException
-import com.superplayer.core.SecurityLevelNegotiation
 import com.superplayer.core.refusedSessions
 
 /**
@@ -43,10 +42,20 @@ internal class WidevineDrm(private val config: WidevineConfig) : EngineDrmExtens
         configuration.drm = LicenceSessions { licence ->
             val licenceTransport = licence.transport
             val loadErrors = licence.loadErrors
-            // ADR-0012 rule 11, and the whole of #208: a device that cannot honour the level it
-            // reports asks the licence server whether the lower one is permitted, and does nothing
-            // at all otherwise. `levelToAskAbout` returns null for every ordinary device, and the
-            // question — the thread, the request, the wrapper below — is never composed for one.
+            // ADR-0012 rule 11: a device that cannot honour the level it reports may open at a lower
+            // one, but only where the licence server's operator said that server will issue at it.
+            // `levelToAskAbout` returns null for every ordinary device, and nothing below — no
+            // wrapper, no refusal — is composed for one.
+            //
+            // The permission is read out of the configuration and not off the wire, which is #223
+            // withdrawing #208. What #208 built was an HTTP exchange of SuperPlayer's own: a `GET` at
+            // the licence URI, answered in a header. Every real licence endpoint is POST-only, so it
+            // was answered 405 and read as a refusal; a refusal, a 405, a stripped header and a
+            // timeout were one indistinguishable null; and the answer had to be waited for on the
+            // playback thread. A fact that does not change between sessions is configuration, and
+            // rule 11 always allowed that channel — "in its licence response, or in the
+            // configuration the app was given for it". `WidevineConfig.permittedSecurityLevels` says
+            // why that is still the *server's* permission and not the app's.
             //
             // The device is resolved to a provider first, because the probe has to read a property
             // off it and `null` here means Media3's own `FrameworkMediaDrm.DEFAULT_PROVIDER` rather
@@ -54,8 +63,8 @@ internal class WidevineDrm(private val config: WidevineConfig) : EngineDrmExtens
             // graph and is what makes the probe reachable on a real handset as well as under the
             // harness.
             val device = licence.mediaDrm ?: FrameworkMediaDrm.DEFAULT_PROVIDER
-            val askingAbout = SecurityLevelLadder.levelToAskAbout(device, licence.device)
-            val permission = askingAbout?.let { DowngradePermission(licenceTransport, config.licenceUri, it) }
+            val lowerLevel = SecurityLevelLadder.levelToAskAbout(device, licence.device)
+            val permitted = lowerLevel != null && lowerLevel in config.permittedSecurityLevels
             // Media3's own callback rather than one of ours, which is ADR-0001's whole posture: it
             // POSTs the key request to the licence URL over the `DataSource.Factory` it is given, and
             // performs provisioning against the URL the device's own provision request names — the
@@ -81,11 +90,11 @@ internal class WidevineDrm(private val config: WidevineConfig) : EngineDrmExtens
                 //
                 // Where a downgrade was permitted, the same device asked to compose its key requests
                 // at the lower level — which is what "requesting an L3 licence" is on the wire
-                // (// ref: `MediaDrm.setPropertyString` with `securityLevel`). Where none was asked
-                // for, the device untouched.
+                // (// ref: `MediaDrm.setPropertyString` with `securityLevel`). Where none was
+                // permitted, the device untouched.
                 .setUuidAndExoMediaDrmProvider(
                     C.WIDEVINE_UUID,
-                    if (permission == null) device else LoweredSecurityLevel(device, askingAbout, permission),
+                    if (permitted) LoweredSecurityLevel(device, checkNotNull(lowerLevel)) else device,
                 )
                 // Media3's default here is `true`, and it is wrong for a player whose consumer has
                 // declared protection. It means a sample that arrives in the clear is handed to a
@@ -157,18 +166,18 @@ internal class WidevineDrm(private val config: WidevineConfig) : EngineDrmExtens
             // while it did: at Media3's default the manager keeps one session for everything, and the
             // comment described the behaviour the line above now actually produces.
             when {
-                // Nothing was negotiated, so there is nothing to say: the session opened at whatever
-                // the device does, which is the ordinary case and not a support engineer's question.
-                // Reading the property back here to report it would charge every protected player a
-                // `MediaDrm` acquisition for a line in a log.
-                permission == null -> DrmSessionManagerProvider { manager }
+                // The ordinary device, which is almost every device: it can honour the level it
+                // reports, so there is nothing to lower and nothing to say. Reading the property back
+                // here to report it would charge every protected player a `MediaDrm` acquisition for
+                // a line in a log.
+                lowerLevel == null -> DrmSessionManagerProvider { manager }
 
-                // The server permitted the lower level, so the device was asked to compose its key
-                // requests at it (`LoweredSecurityLevel`, installed above) and the session graph is
-                // otherwise the ordinary one. What was delivered is written down, because it is not
-                // what the viewer was entitled to.
-                permission.permits() -> {
-                    licence.delivered.securityLevel = askingAbout
+                // The server's operator permits the lower level, so the device was asked to compose
+                // its key requests at it (`LoweredSecurityLevel`, installed above) and the session
+                // graph is otherwise the ordinary one. What was delivered is written down, because it
+                // is not what the viewer was entitled to.
+                permitted -> {
+                    licence.delivered.securityLevel = lowerLevel
                     DrmSessionManagerProvider { manager }
                 }
 
@@ -176,13 +185,13 @@ internal class WidevineDrm(private val config: WidevineConfig) : EngineDrmExtens
                 // exception travels to the consumer where every other DRM failure does — ADR-0012
                 // rule 11's "fails the session rather than downgrading it". Core dresses it, because
                 // the exception is core's and this module names no Media3 error code (rule 5). The
-                // device's own level is `L1` by construction: `levelToAskAbout` returns a level to
-                // ask about for no other.
+                // device's own level is `L1` by construction: `levelToAskAbout` returns a lower level
+                // for no other.
                 else -> refusedSessions(
                     SecurityDowngradeRefusedException(
-                        deviceSecurityLevel = SecurityLevelNegotiation.LEVEL_L1,
-                        refusedLevel = askingAbout,
-                        permittedLevel = permission.permittedLevel(),
+                        deviceSecurityLevel = WidevineConfig.SECURITY_LEVEL_L1,
+                        refusedLevel = lowerLevel,
+                        permittedLevels = config.permittedSecurityLevels,
                     ),
                 )
             }

@@ -98,13 +98,10 @@ class DownloadRetryBudgetTest {
         val reports = record(downloads)
         downloads.enqueue(request(content))
 
-        harness.advanceUntil(environment, "the faulted segment was first asked for") { faultedSegmentAsks(environment).size == 1 }
-        // Media3's own retries sleep the download thread; the store's wait is a post on its own looper, so with
-        // that looper's clock held, however long real time runs, nothing is asked for again.
-        repeat(HELD_PASSES) {
-            shadowOf(Looper.getMainLooper()).idle()
-            Thread.sleep(HELD_PASS_REAL_MS)
-        }
+        // Media3's own retries sleep the download thread; the store's wait is a post on its looper, so with that
+        // looper's clock held the downloader parks, having asked once, and asks nothing more until it moves.
+        harness.advanceUntil(environment, "the downloader waited to retry") { downloads.isWaitingToRetry() }
+        shadowOf(Looper.getMainLooper()).idle()
         assertThat(faultedSegmentAsks(environment)).hasSize(1)
         assertThat(downloads.download(CONTENT_ID)!!.state).isEqualTo(DownloadState.DOWNLOADING)
 
@@ -231,14 +228,14 @@ class DownloadRetryBudgetTest {
 
     /**
      * The control for the resilience: a store built without one reads no budget, and its manager retries as Media3
-     * ships it. A budget of nothing and a segment that fails once: without a resilience it completes, asked twice;
-     * with one it fails, asked once.
+     * ships it. A budget of nothing and a segment that fails three times: without a resilience it completes, asked
+     * four times; with one it fails, asked once.
      */
     @Test
     fun aStoreWithoutResilienceRetriesAsMedia3DoesWhateverThePolicysBudget() {
         val policy = policyOf(segment = budget(maxRetries = 0))
         val oneFailure = FaultScript.Builder()
-            .failWithHttpStatus(FaultScript.HTTP_SERVER_ERROR, kind = ResourceKind.MEDIA_SEGMENT, index = FAULTED, firstAttempts = 1)
+            .failWithHttpStatus(FaultScript.HTTP_SERVER_ERROR, kind = ResourceKind.MEDIA_SEGMENT, index = FAULTED, firstAttempts = MEDIA3_RETRIES_SHOWN)
             .build()
 
         val content = TestContent.hls(SEGMENTS)
@@ -248,7 +245,7 @@ class DownloadRetryBudgetTest {
         harness.advanceUntil(withoutResilience, "the download without a resilience completed") {
             plain.download(CONTENT_ID)?.state == DownloadState.COMPLETED
         }
-        assertThat(faultedSegmentAsks(withoutResilience)).hasSize(2)
+        assertThat(faultedSegmentAsks(withoutResilience)).hasSize(1 + MEDIA3_RETRIES_SHOWN)
 
         val withResilience = harness.downloadEnvironment(content, oneFailure)
         val resilient = openStore(withResilience, Resilience.standard(), policy)
@@ -334,16 +331,15 @@ class DownloadRetryBudgetTest {
 
         const val AUTHORIZATION = "Authorization"
 
+        // Failures Media3's manager retries past on a store without a resilience: more than any budget the test
+        // decides, and short of Media3's five, whose linear waits sleep real seconds (0, 1 and 2 here).
+        const val MEDIA3_RETRIES_SHOWN = 3
+
         // Far more than any synthetic stream here, so nothing is evicted.
         const val LARGE_BUDGET_BYTES = 64L * 1024 * 1024
 
         // Short against the shortest wait these tests draw (50 ms, half of 100), so no retry is skipped past.
         const val STORE_CLOCK_STEP_MS = 25L
-
-        // A few hundred milliseconds of real time with the store's clock held: far longer than a download thread
-        // sleeping Media3's first retry wait (none) would need to ask again.
-        const val HELD_PASSES = 10
-        const val HELD_PASS_REAL_MS = 30L
 
         val ENDED = setOf(DownloadState.COMPLETED, DownloadState.FAILED)
 

@@ -141,7 +141,8 @@ public object ErrorClassifier {
      * Whether a server answered the request that failed with [error] — any status at all — rather than the
      * request never reaching one: a download's lost network ends where an answer begins (ADR-0013 rule 9's
      * addendum for #254). Not a classification either: a 503 and a DNS failure are both
-     * `Transient.Network`, and what this adds is only whether there was a network to lose.
+     * `Transient.Network`, and what this adds is only whether there was a network to lose. A status is
+     * what counts as an answer; a response rejected for its content type is not one, and reads as lost.
      */
     internal fun aServerAnswered(error: Throwable): Boolean =
         causeChain(error).any { it is InvalidResponseCodeException }

@@ -128,7 +128,8 @@ internal class StandardResilience(private val headers: HeaderProvider?) :
 
     override fun waitBeforeResumingMs(attempt: Int): Long = Backoff.delayMsFor(NETWORK_RESUMPTION, attempt, Random.Default)
 
-    // Rung 1's two refusals, in rung 1's order, and nothing above it: a download has no host, variant or
+    // Rung 1's two refusals, in rung 1's order, and nothing above it — written here rather than by asking
+    // `RetrySameUrl`, whose `FailedLoad` carries Media3's `LoadErrorInfo`, which a downloader's failure has none of: a download has no host, variant or
     // source to fall back to, so the same bytes asked for again is the whole of its ladder (`RetrySameUrl`).
     // A manifest spends the manifest budget and everything else the segment budget, read off the stamp the
     // download chain puts on every request, as `RetryBudgetKind` reads Media3's data type on a player.

@@ -249,6 +249,19 @@ public class Downloads internal constructor(
     /** The battery and Data Saver, which the manager's requirements cannot state; what they report reaches this thread. */
     private val conditions = DownloadConditions(context) { handler.post(::onConditionsChanged) }
 
+    /**
+     * The retry half of the policy's decision, as the store's thread last consulted it: when the store opened,
+     * and again as each item is enqueued. Read by a downloader on Media3's download thread, which is why it is
+     * held rather than decided there: `PlaybackPolicy.decide` is called on the thread that drives it. Store-wide
+     * rather than per item, because a store has one policy as a player does (ADR-0013 rule 14); what differs
+     * between consultations is only what was observed. Before the manager, whose downloaders read it.
+     */
+    @Volatile
+    private var retryPolicy: RetryPolicy = decideNow().retry
+
+    /** Downloaders waiting on the store's clock to ask for a failed request again; before the manager, whose downloaders count. */
+    private val waitingToRetry = AtomicInteger()
+
     private val manager = DownloadManager(context, cache.downloadIndex(), PinningDownloaderFactory()).apply {
         // The network and storage, which Media3's requirements state and its watcher applies on the manager's
         // own thread. Set before the listener is added, which would otherwise hear it before this store is built.
@@ -280,14 +293,6 @@ public class Downloads internal constructor(
             manager.requirements = requirementsFor(allowed)
             onConditionsChanged()
         }
-
-    /**
-     * The retry half of the policy's decision, as the store's thread last consulted it: when the store opened,
-     * and again as each item is enqueued. Read by a downloader on Media3's download thread, which is why it is
-     * held rather than decided there: `PlaybackPolicy.decide` is called on the thread that drives it.
-     */
-    @Volatile
-    private var retryPolicy: RetryPolicy = decideNow().retry
 
     /** What each failed download failed with, while this store is open, by content id. */
     private val failures = HashMap<String, SuperPlayerError>()
@@ -699,6 +704,9 @@ public class Downloads internal constructor(
     /** Whether a pass releasing owed licences is running now: for this module's own tests to wait on. */
     internal fun isReleasingLicences(): Boolean = releasingLicences
 
+    /** Whether a downloader is waiting to ask for a failed request again: for this module's own tests to wait on. */
+    internal fun isWaitingToRetry(): Boolean = waitingToRetry.get() > 0
+
     /** The scheduled work ran, on whichever thread `WorkManager` ran it: the conditions it waited for may hold now. */
     internal fun onScheduledWorkRan() {
         handler.post(::onConditionsChanged)
@@ -873,10 +881,13 @@ public class Downloads internal constructor(
             val due = CountDownLatch(1)
             retryDue = due
             val wake = Runnable { due.countDown() }
-            handler.postDelayed(wake, waitMs)
+            // A looper that has quit takes no post: the store's thread is gone, and the wait would never end.
+            if (!handler.postDelayed(wake, waitMs)) return false
+            waitingToRetry.incrementAndGet()
             try {
                 if (canceled.count != 0L) due.await()
             } finally {
+                waitingToRetry.decrementAndGet()
                 handler.removeCallbacks(wake)
                 retryDue = null
             }

@@ -16,6 +16,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Downloads that outlive their screen. The download service runs in the foreground with the `dataSync`
+         type, which this permission is for, and posts its notification under the permission above. The app's
+         rather than superplayer-offline's, on the same argument: a foreground service type is a commitment an
+         app justifies, and a library does not make it on every consumer's behalf (ADR-0013 rule 3). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
     <application
         android:allowBackup="false"
         android:label="@string/app_name"
@@ -54,6 +60,12 @@
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>
         </service>
+
+        <!-- Not exported: only this app's own download store and its scheduled work start it. -->
+        <service
+            android:name=".DemoDownloadsService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 
 </manifest>

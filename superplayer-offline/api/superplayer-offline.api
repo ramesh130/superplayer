@@ -75,10 +75,31 @@ public final class com/superplayer/offline/Downloads$Builder {
 	public final fun setPolicy (Lcom/superplayer/core/PlaybackPolicy;)Lcom/superplayer/offline/Downloads$Builder;
 	public final fun setProfile (Lcom/superplayer/core/PlaybackProfile;)Lcom/superplayer/offline/Downloads$Builder;
 	public final fun setResilience (Lcom/superplayer/core/PlaybackResilience;)Lcom/superplayer/offline/Downloads$Builder;
+	public final fun setService (Ljava/lang/Class;)Lcom/superplayer/offline/Downloads$Builder;
 }
 
 public abstract interface class com/superplayer/offline/DownloadsListener {
 	public abstract fun onDownloadChanged (Lcom/superplayer/offline/DownloadItem;)V
 	public abstract fun onDownloadRemoved (Ljava/lang/String;)V
+}
+
+public abstract class com/superplayer/offline/DownloadsService : android/app/Service {
+	public static final field Companion Lcom/superplayer/offline/DownloadsService$Companion;
+	public static final field DEFAULT_NOTIFICATION_CHANNEL_ID Ljava/lang/String;
+	public static final field DEFAULT_NOTIFICATION_ID I
+	public static final field NOTIFICATION_UPDATE_INTERVAL_MS J
+	public fun <init> ()V
+	protected fun getNotificationChannelId ()Ljava/lang/String;
+	protected abstract fun getNotificationChannelName ()I
+	protected fun getNotificationId ()I
+	protected abstract fun getNotificationSmallIcon ()I
+	public fun onBind (Landroid/content/Intent;)Landroid/os/IBinder;
+	public fun onDestroy ()V
+	protected abstract fun onDownloads ()Lcom/superplayer/offline/Downloads;
+	protected fun onNotification (Ljava/util/List;)Landroid/app/Notification;
+	public fun onStartCommand (Landroid/content/Intent;II)I
+}
+
+public final class com/superplayer/offline/DownloadsService$Companion {
 }
 

@@ -678,6 +678,15 @@ the seam above until #239. What stands in for each piece, and what each stand-in
   is that assertion: the work's `Constraints`, held while a statement fails them, and the download it
   resumes once `runScheduledWork()` finds them met. What runs the download in-process is the store's own
   watcher hearing the same statement, so the work's run is shown to happen, not shown to be what started it.
+- **The service is Robolectric's, and a start is a recorded intent.** `DownloadsServiceTest` builds the
+  app's `DownloadsService` with `Robolectric.buildService` over a store the test opened, and reads its
+  foreground state off `ShadowService`: a notification announced, the foreground stopped, the service stopped
+  by itself. What the store and the scheduled work start is read off `ShadowApplication`'s started services,
+  which records a start and runs nothing, so a test that wants the service running builds it itself (#246).
+  Robolectric forgets a notification `stopForeground` removed but not its id, which is why a service that
+  announced itself and stopped at once is asserted by the id. What it cannot show: the platform refusing a
+  foreground-service start from the background, the `dataSync` type's time budget, and the notification a
+  viewer sees. Those are a device's, and #247's.
 
 `DownloadHarnessTest` is the worked example. There is no store yet, so what downloads is Media3's own
 `DownloadManager` over a `SimpleCache` in a temporary directory, and everything it asserts is a claim

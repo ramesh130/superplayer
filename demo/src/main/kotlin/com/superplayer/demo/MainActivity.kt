@@ -342,7 +342,7 @@ private fun DemoApp(launch: DemoLaunch) {
     // feed does not resume a paused one; the viewer presses play, as after any other pause.
     LaunchedEffect(player, selectedScreen) {
         val current = player ?: return@LaunchedEffect
-        if (selectedScreen == DemoScreen.FEED && current.playbackState != Player.STATE_IDLE) current.pause()
+        if (selectedScreen != DemoScreen.PLAYER && current.playbackState != Player.STATE_IDLE) current.pause()
     }
 
     MaterialTheme(colorScheme = darkColorScheme()) {
@@ -403,6 +403,10 @@ private fun DemoApp(launch: DemoLaunch) {
                         rowCount = launch.feedRows ?: FeedItem.DEFAULT_COUNT,
                         modifier = Modifier.weight(1f),
                     )
+
+                    // Its own player too, on the downloads' cache: the service's player has none, and a
+                    // download played on it would be fetched again.
+                    DemoScreen.DOWNLOADS -> DownloadsScreen(modifier = Modifier.weight(1f))
                 }
             }
         }
@@ -597,14 +601,16 @@ private data class Status(val stream: DemoStream, val startedAtMs: Long)
 /**
  * Which screen the demo is showing.
  *
- * Two, because SuperPlayer makes two different kinds of promise and they are not visible on the same
+ * Three, because SuperPlayer makes different kinds of promise and they are not visible on the same
  * screen. One player played correctly — profiles, resume, background, a notification — is
  * [DemoScreen.PLAYER]. How many players may exist at once is [DemoScreen.FEED], and the only way to
- * see that is to scroll past the number.
+ * see that is to scroll past the number. Content that plays with no network at all is
+ * [DemoScreen.DOWNLOADS].
  */
 private enum class DemoScreen(val labelRes: Int) {
     PLAYER(R.string.screen_player),
     FEED(R.string.screen_feed),
+    DOWNLOADS(R.string.screen_downloads),
 }
 
 /**

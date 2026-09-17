@@ -41,4 +41,30 @@
     <string name="feed_row_placeholder">%1$s \u2014 no player free</string>
     <string name="feed_row_first_frame">first frame %1$d ms</string>
     <string name="feed_row_first_frame_from_adoption">first frame %1$d ms (from adoption, not intent)</string>
+    <!-- The downloads screen. Each row says what holds its download, because "stopped" alone does not tell a
+         viewer whether to find Wi-Fi, a charger or some space. -->
+    <string name="screen_downloads">Downloads</string>
+    <string name="downloads_channel_name">Downloads</string>
+    <string name="downloads_row_state">%1$s \u00b7 %2$d MB</string>
+    <string name="downloads_state_none">Not downloaded</string>
+    <string name="downloads_state_queued">Queued</string>
+    <string name="downloads_state_downloading">Downloading</string>
+    <string name="downloads_state_stopped">Stopped</string>
+    <string name="downloads_state_completed">Downloaded</string>
+    <string name="downloads_state_failed">Failed</string>
+    <string name="downloads_state_removing">Removing</string>
+    <string name="downloads_held_no_unmetered_network">Waiting for Wi-Fi or another unmetered network</string>
+    <string name="downloads_held_no_network">Waiting for a network</string>
+    <string name="downloads_held_data_saver">Held by Data Saver</string>
+    <string name="downloads_held_battery_low">Waiting for the battery to recover</string>
+    <string name="downloads_held_storage_low">Waiting for storage to be freed</string>
+    <string name="downloads_held_network_lost">Network lost \u2014 resuming on its own</string>
+    <string name="downloads_refused_live">Live content cannot be downloaded</string>
+    <string name="downloads_failed_with">Failed: %1$s</string>
+    <string name="downloads_licence_valid">Licence valid</string>
+    <string name="downloads_licence_renewal_due">Licence renewal due</string>
+    <string name="downloads_licence_expired">Licence expired</string>
+    <string name="downloads_action_download">Download</string>
+    <string name="downloads_action_play">Play</string>
+    <string name="downloads_action_remove">Remove</string>
 </resources>

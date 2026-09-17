@@ -18,6 +18,7 @@ package com.superplayer.offline
 
 import android.app.Application
 import android.content.Context
+import android.content.pm.PackageManager
 import android.database.sqlite.SQLiteDatabase
 import android.net.ConnectivityManager
 import androidx.media3.common.Player
@@ -42,6 +43,10 @@ import java.io.File
  * brings — the requirements watcher Media3's download manager registers with the platform, and the
  * download index table it keeps in the cache's database — and each is counted with no store and again
  * with one, so the counter is shown to see what it counts.
+ *
+ * Rule 3's half of paying nothing is the manifest: the service a download outlives its screen in, and the
+ * foreground-service and notification permissions it needs, are the app's to declare, so this module's own
+ * manifest declares none of them and the manifest merged into a test's declares no service of the module's.
  */
 @RunWith(AndroidJUnit4::class)
 class DownloadsPayNothingTest {
@@ -82,6 +87,28 @@ class DownloadsPayNothingTest {
         storeCache.release()
         assertWithMessage("a cache nothing downloaded into").that(downloadTables(alone)).isEmpty()
         assertWithMessage("a cache a store was opened over").that(downloadTables(attached)).isNotEmpty()
+    }
+
+    @Test
+    fun theModulesManifestDeclaresNothingRuleThreeSaysIsTheApps() {
+        // The module's own manifest, as published: `FOREGROUND_SERVICE` included, which WorkManager merges on its own.
+        val own = File("src/main/AndroidManifest.xml").readText()
+        assertThat(own).contains("android.permission.ACCESS_NETWORK_STATE")
+        listOf("<service", "android.permission.FOREGROUND_SERVICE", "android.permission.POST_NOTIFICATIONS").forEach { appOwned ->
+            assertWithMessage("this module's manifest").that(own).doesNotContain(appOwned)
+        }
+
+        // The merged manifest, which carries every library's entries: WorkManager's services are there, which is what
+        // shows the reading sees what a library merges.
+        val merged = context.packageManager.getPackageInfo(
+            context.packageName,
+            PackageManager.GET_SERVICES or PackageManager.GET_PERMISSIONS,
+        )
+        val services = merged.services.orEmpty().map { it.name }
+        assertThat(services).contains("androidx.work.impl.background.systemjob.SystemJobService")
+        assertWithMessage("services merged from this module").that(services.filter { it.startsWith("com.superplayer.offline") }).isEmpty()
+        assertThat(merged.requestedPermissions.orEmpty().toList())
+            .containsNoneOf("android.permission.FOREGROUND_SERVICE_DATA_SYNC", "android.permission.POST_NOTIFICATIONS")
     }
 
     /** Broadcast receivers and network callbacks registered with the platform, as a pair. */

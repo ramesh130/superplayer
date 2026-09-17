@@ -693,7 +693,8 @@ is a database write; nothing is written before then, which is rule 7's reason. *
 answers a manifest** — for pinned content whose manifest it holds whole, and only then (rule 8,
 `ContentKeyedCacheLayer.isDownloadedManifest`) — which is what makes `DownloadsTest`'s count of zero
 possible, while streamed content still fetches every manifest. And the store **resumes its own
-`DownloadManager`**, which Media3 builds paused, because there is no service yet (#246). Since #241 a download takes
+`DownloadManager`**, which Media3 builds paused, because the downloads run in the store whether or not a
+service holds it. Since #241 a download takes
 what a viewer will watch rather than the whole ladder (ADR-0013 rule 12 and its addendum). `enqueue(request,
 audioLanguages, subtitleLanguages)` first reads the manifest through Media3's `DownloadHelper`, over the one
 chain. It then takes one video rendition, the highest under `PlaybackDecision.download` (a
@@ -731,8 +732,8 @@ memory to be selected. The network and storage are the manager's Media3 `Require
 Saver are `DownloadConditions`, which pause the manager and are registered only while a download is pending.
 `Downloads.meteredNetworksAllowed` is the viewer's relaxation, and Data Saver still holds it on a metered
 network. `DownloadSchedule` keeps one unique, persisted `WorkManager` work per process under the same
-constraints, retried while anything is pending and cancelled once nothing is. With no store open it can resume
-nothing until #246's service exists. `DownloadConditionsTest` drives it through `DeviceStatement` and
+constraints, retried while anything is pending and cancelled once nothing is. With no store open it starts the
+app's service, which opens one. `DownloadConditionsTest` drives it through `DeviceStatement` and
 `runScheduledWork()`. Its lapse tests hold one segment on a latency so the lapse lands between segments,
 because a synthetic download otherwise asks for every segment before a stop arrives. Since #244 a full disk
 fails the one item that met it, at once and on every store, while the rest of the queue carries on (rule 9's
@@ -757,7 +758,16 @@ raised on the manifest read that chooses tracks, before any period is prepared. 
 `DownloadItem.refusal` (`DownloadRefusal.LIVE_CONTENT`) on a `FAILED` item, on every store. A refusal is not a
 failure, so it has no `FailureClass` and `failure` stays null. `DownloadLiveRefusalTest` counts no media and
 no pin over `TestContent.liveHls()` and `TestContent.liveDash()`, the latter the corpus's healthy dynamic MPD.
-`DownloadsPayNothingTest` counts rule 15 as platform registrations and the download index table.
+Since #246 a download outlives its screen in the app's `DownloadsService` (rule 3 and its addendum), a public
+abstract `android.app.Service` naming no Media3 type. The app subclasses it, overrides `onDownloads()` and the
+notification's channel name and icon, names it with `Downloads.Builder.setService`, and declares the
+`<service>` (`dataSync`) and the permissions itself. The store starts it whenever a download can run, meaning
+pending and held by no condition, and it stops once none can. The scheduled work carries the class name in its
+input data and starts it in a process with no store open. `DownloadsServiceTest` drives it through
+`Robolectric.buildService`. A start from the background the platform refuses is caught and left to the schedule,
+which nothing under `check` can show. The demo's `DownloadsScreen` is the recipe, and its KDoc is the lifecycle
+a consumer copies. `DownloadsPayNothingTest` counts rule 15 as platform registrations and the download index table,
+and rule 3 as a manifest declaring no service and no foreground-service or notification permission.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,

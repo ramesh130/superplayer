@@ -18,7 +18,8 @@
  * superplayer-offline — downloads into the `ContentCache` the consumer opened, on the one chain.
  *
  * [Downloads] is the store and [Downloads.Builder] how one is opened over a cache; [DownloadItem] is what
- * it answers per `contentId`, and [DownloadsListener] how a screen hears about changes. A downloaded item
+ * it answers per `contentId`, and [DownloadsListener] how a screen hears about changes. [DownloadsService] is
+ * what an app subclasses so a download outlives its screen. A downloaded item
  * plays through `SuperPlayer.setMediaRequest` on a player built with the same cache, and reaches the
  * network for nothing. ADR-0013 is the decisions this module implements.
  *
@@ -29,9 +30,10 @@
  * `SystemForegroundService` it runs work in, and the receivers that reschedule work after a reboot or a force
  * stop. Those entries are WorkManager's, listed here so they surprise nobody reading a merged manifest; an app
  * that configures `WorkManager` itself removes the initializer in its own manifest, as WorkManager's
- * documentation says. The service a download runs in outside a screen, its `<service>` element, and the
+ * documentation says. The service a download runs in outside a screen is the app's subclass of
+ * [DownloadsService]; its `<service>` element (with `foregroundServiceType="dataSync"`), and the
  * `FOREGROUND_SERVICE_DATA_SYNC` and `POST_NOTIFICATIONS` permissions it needs are the app's to declare and
- * justify (ADR-0013 rule 3, #246); this module declares none of them.
+ * justify (ADR-0013 rule 3); this module declares none of them.
  *
  * ref: https://developer.android.com/develop/background-work/background-tasks/persistent/configuration/custom-configuration
  */

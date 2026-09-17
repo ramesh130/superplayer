@@ -17,6 +17,8 @@
 package com.superplayer.offline
 
 import android.content.Context
+import android.content.Intent
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.C
@@ -132,10 +134,14 @@ import java.util.concurrent.atomic.AtomicLong
  *   [DownloadRefusal.LIVE_CONTENT] on [DownloadItem.refusal], on every store, having fetched no media and
  *   pinned nothing.
  *
- * Not yet here, each with its ticket: the service a
- * download outlives its screen in (#246), which is also what the scheduled work will start in a process
- * with no store open — until then that work waits there, retrying, until the app opens a store. An item enqueued while a condition holds it keeps its request in
- * memory until its manifest can be read, so a process that dies first loses that enqueue.
+ * - **A download outlives its screen in the app's service**, where the store was built with [Builder.setService]:
+ *   the store starts that [DownloadsService] whenever a download can run, which holds the process in the
+ *   foreground until none can, and the scheduled work starts it in a process with no store open, after a
+ *   reboot say, so the store it opens resumes what was pending (ADR-0013 rules 3 and 11). Without one, a
+ *   download runs only while something in the process keeps it alive.
+ *
+ * Not yet here: an item enqueued while a condition holds it keeps its request in memory until its manifest
+ * can be read, so a process that dies first loses that enqueue.
  *
  * Released by [release], before the cache it writes into.
  */
@@ -146,6 +152,7 @@ public class Downloads internal constructor(
     private val policy: PlaybackPolicy,
     private val resilience: DownloadResilienceExtension?,
     private val licences: DownloadLicences?,
+    private val service: Class<out DownloadsService>?,
 ) {
 
     /**
@@ -165,6 +172,8 @@ public class Downloads internal constructor(
         private var drm: PlaybackDrm? = null
 
         private var licenceStore: LicenceStore? = null
+
+        private var service: Class<out DownloadsService>? = null
 
         /**
          * The kind of playback the downloads are for, which decides the rendition each one takes — its
@@ -205,6 +214,15 @@ public class Downloads internal constructor(
         }
 
         /**
+         * The app's [DownloadsService] subclass, which this store starts whenever a download can run and the
+         * scheduled work starts in a process with no store open (ADR-0013 rules 3 and 11). The service's
+         * `onDownloads()` must answer this store, or the one a fresh process opens over the same directory.
+         * Its manifest entry and permissions are the app's, as that class says. Without one, nothing is
+         * started: a download runs while the process lives, and the schedule waits for a store to be opened.
+         */
+        public fun setService(service: Class<out DownloadsService>): Builder = apply { this.service = service }
+
+        /**
          * Loads over [environment] rather than the device's network: `superplayer-testkit`'s transport and
          * loading thread, for this module's own tests. Internal, so no consumer can reach it.
          */
@@ -226,6 +244,7 @@ public class Downloads internal constructor(
                 (drm as? DownloadDrmExtension)?.let { drm ->
                     DownloadLicences(context.applicationContext, drm, checkNotNull(licenceStore), environment)
                 },
+                service,
             )
         }
     }
@@ -265,8 +284,10 @@ public class Downloads internal constructor(
     private val manager = DownloadManager(context, cache.downloadIndex(), PinningDownloaderFactory()).apply {
         // The network and storage, which Media3's requirements state and its watcher applies on the manager's
         // own thread. Set before the listener is added, which would otherwise hear it before this store is built.
-        // Built paused, for Media3's `DownloadService` to resume; this store has no service yet (#246), so it
-        // resumes its own once it has read the battery (`onConditionsChanged`).
+        // Built paused, for Media3's `DownloadService` to resume. This store resumes its own once it has read the
+        // battery (`onConditionsChanged`): the downloads run in the store, and the app's `DownloadsService` only
+        // holds the process in the foreground around them (ADR-0013 rule 3), so a store opened by a screen alone
+        // downloads just as one a service holds does.
         requirements = requirementsFor(meteredNetworksAllowed = false)
         // A store with a resilience spends the policy's budgets inside its downloader (`PinningDownloader`), so
         // a failure it gives up on is final. Left at Media3's own count, the manager would ask again, sleeping a
@@ -338,6 +359,12 @@ public class Downloads internal constructor(
     private var releaseAgain = false
 
     private var released = false
+
+    /** Whether a download can run now: pending, and held by no condition. What the service is in the foreground for. */
+    private var running = false
+
+    /** What hears [running] change: the service holding this store in the foreground. */
+    private val runningObservers = CopyOnWriteArrayList<(Boolean) -> Unit>()
 
     init {
         // Read before the manager is resumed, so a download the last process left is not started under a low battery.
@@ -553,6 +580,8 @@ public class Downloads internal constructor(
     public fun release() {
         if (released) return
         released = true
+        // Nothing runs on a released store, so a service holding it lets the process go.
+        setRunning(false)
         handler.removeCallbacksAndMessages(null)
         listeners.clear()
         selecting.values.forEach { it.helper.release() }
@@ -695,8 +724,33 @@ public class Downloads internal constructor(
             manager.currentDownloads.any { it.state != Download.STATE_REMOVING }
         if (pending) conditions.watch() else conditions.unwatch()
         val network = if (meteredNetworksAllowed) NetworkType.CONNECTED else NetworkType.UNMETERED
-        DownloadSchedule.want(context, this, network.takeIf { pending })
+        DownloadSchedule.want(context, this, network.takeIf { pending }, service)
+        setRunning(pending && heldBy() == null)
     }
+
+    private fun setRunning(running: Boolean) {
+        if (this.running == running) return
+        this.running = running
+        if (running) service?.let { startDownloadsService(context, it) }
+        runningObservers.forEach { it(running) }
+    }
+
+    /** Whether a download can run now: for [DownloadsService], which holds the process in the foreground while one can. */
+    internal fun isRunning(): Boolean = running
+
+    /** Tells [observer] each time [isRunning] changes, on the store's thread. */
+    internal fun addRunningObserver(observer: (Boolean) -> Unit) {
+        runningObservers += observer
+    }
+
+    internal fun removeRunningObserver(observer: (Boolean) -> Unit) {
+        runningObservers -= observer
+    }
+
+    /** Media3's downloads the manager holds now, and the requirements it waits on: for the service's default notification. */
+    internal fun currentMediaDownloads(): List<Download> = manager.currentDownloads
+
+    internal fun notMetRequirements(): Int = manager.notMetRequirements
 
     /** The policy's decision under what is observed now. On the store's thread. */
     private fun decideNow(): PlaybackDecision = policy.decide(PlaybackConditions(transport = currentNetworkTransportOf(context)))
@@ -1000,6 +1054,20 @@ public class Downloads internal constructor(
         fun requirementsFor(meteredNetworksAllowed: Boolean) = Requirements(
             (if (meteredNetworksAllowed) Requirements.NETWORK else Requirements.NETWORK_UNMETERED) or Requirements.DEVICE_STORAGE_NOT_LOW,
         )
+    }
+}
+
+/**
+ * Starts [service], as a foreground service where the platform asks for one to be announced as such. A
+ * start the platform refuses — from the background, where it restricts foreground-service starts — is
+ * left to the scheduled work, which tries again under `WorkManager`'s backoff (ADR-0013 rule 11's addendum).
+ */
+internal fun startDownloadsService(context: Context, service: Class<out DownloadsService>) {
+    val intent = Intent(context, service)
+    try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent) else context.startService(intent)
+    } catch (refused: IllegalStateException) {
+        // `ForegroundServiceStartNotAllowedException` and the background-start refusal are both this type.
     }
 }
 

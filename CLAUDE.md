@@ -1021,6 +1021,18 @@ Style preferences these are not. A change violating one is not accepted, whateve
   fifth half of `PlaybackDecision` and the languages the consumer's argument; a protected download
   acquires its licence before its first media byte and releases it as part of its removal; and
   nothing that opens no download store pays for one, which a test counts.
+- **[ADR-0014](docs/adr/0014-match-the-display-and-watch-it-change-behind-one-output-slot.md)** —
+  decides Phase 8's shape: `superplayer-tv` depends on core alone and is core's eighth Kotlin friend,
+  filling one slot, `EngineConfiguration.videoOutput`, from the `PlaybackOutput` a consumer passes to
+  `setOutput`; frame-rate matching (`Surface.setFrameRate` with `CHANGE_FRAME_RATE_ALWAYS`, the
+  viewer's own setting deciding) and re-selecting on a display change are correctness on every player
+  built with it, and an audio-capability change is Media3's own re-selection on every player, fixed in
+  core if it fails; tunneling is a sixth half of `PlaybackDecision`, applied from the construction
+  decision only, and `TV_LEANBACK` is a core profile; the display is a seventh observation with a
+  sixth trigger, `DISPLAY_CHANGED`, while decoders stay a constraint read once; the only TV surface is
+  Compose for TV on a `SurfaceView`, with Leanback rejected; #213's `TextureView` refusal is core's,
+  `FLAG_SECURE` the app's, and its display-change half this module's; and a player built without
+  `setOutput` registers and allocates nothing for it, which a test counts.
 - **[`docs/api-surface.md`](docs/api-surface.md)** — every published module's public API is tracked
   in `<module>/api/<module>.api` and validated by `check`. Changing it means running
   `./gradlew updateApiSurface` and committing the diff in the same change. A leaked `@UnstableApi`

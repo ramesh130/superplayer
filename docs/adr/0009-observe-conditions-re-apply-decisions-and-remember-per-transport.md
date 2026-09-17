@@ -6,6 +6,9 @@
 - **Supersedes:** None
 - **Extends:** [ADR-0005](0005-decide-playback-policy-behind-an-engine-agnostic-boundary.md), whose
   rules 3 and 4 are reworded below and whose rules 1 and 2 stand as written.
+- **Refined by:** [ADR-0014](0014-match-the-display-and-watch-it-change-behind-one-output-slot.md)
+  rules 9 to 11, which turn the display from a constraint into a seventh observation with a sixth
+  trigger; recorded as addenda at rules 1, 2 and 4.
 - **Summary:** Cashes in ADR-0005's bet for the adaptive engine (`superplayer-abr`). Six concrete,
   optional observations (transport, throughput with its spread, stall history, stream type, heap
   budget, playback speed) are added to `PlaybackConditions`; the policy is re-consulted on named
@@ -134,6 +137,11 @@ Nine rules follow, and they are binding.
    and comparing it to a target is the mechanism that applies a decision, not the decision. A policy
    keyed on occupancy would be re-implementing `LoadControl` behind the boundary.
 
+   *Addendum (2026-09-17, ADR-0014 rule 9).* The list has a seventh entry, `display`, a
+   `DisplayCapability` of the active mode's short edge and the HDR types. Its reader is
+   `AdaptiveSelectionPolicy`, which caps the height ceiling at the short edge so that the buffer's
+   heap ceiling is sized for rungs the display can show. Rule 2's addendum says why it arrives now.
+
 2. **The observations named by `PRD.md` §3.1 and #96 that Phase 3 does not add are these, and each
    waits for the phase named, so that nobody adds it speculatively.**
 
@@ -143,6 +151,17 @@ Nine rules follow, and they are binding.
    | Decoder profile, level and instance limits | A constraint, not a condition, for the same reason; read once by the selector | Read in Phase 3 as a constraint; the *secure*-decoder limit that varies by DRM level is Phase 6, `superplayer-drm` |
    | Whether a transfer was a cache hit | Not an observation a policy makes: `BandwidthOracle` excludes cache reads from its samples through Media3's `isNetwork` flag (`TransferChain`'s KDoc), so the estimate a policy sees is already clean | Built in Phase 3, exercised by Phase 4, `superplayer-cache` |
    | Whether a request is being retried, and what the last error was | Resilience's, and a policy that changed its buffering on an error class would be doing resilience's job behind the wrong boundary | Phase 5, `superplayer-resilience` |
+
+   *Addendum (2026-09-17, [ADR-0014](0014-match-the-display-and-watch-it-change-behind-one-output-slot.md)).* The first row has arrived, and it has changed kind. On a
+   television the display changes under a playing session: an HDMI hotplug, an AV receiver in the
+   chain, a lesser panel swapped in. By this rule's own test it is therefore a *condition*, not a
+   constraint. ADR-0014 rules 9 to 11 make it one: a seventh observation (rule 1's addendum), a sixth
+   trigger, `DISPLAY_CHANGED` (rule 4's addendum), and a `DisplayInForce` window that the selection
+   gate reads in place of the two display fields `DeviceConstraints` held. The display is observed
+   live only on a player built with `superplayer-tv`, and every other player reads it once at
+   construction exactly as before. The second row does not move: decoder profiles, levels,
+   instance limits and the secure decoders are the device's own and no hotplug changes them, so they
+   stay a constraint read once.
 
 3. **Observation is core's, and the translation from Android's and Media3's vocabulary into
    `PlaybackConditions` happens in one internal core file (`ConditionsBinding.kt`), the inverse of
@@ -167,6 +186,11 @@ Nine rules follow, and they are binding.
    fact. Hysteresis is the policy's own: `stallHistory` tells it how long ago the last stall was,
    and a policy that wants a cooldown holds its previous answer until that number is large enough.
    `PlaybackPolicy.decide` stays a pure function of its conditions.
+
+   *Addendum (2026-09-17, ADR-0014 rule 11).* A sixth trigger joins the list: the display changed,
+   `DISPLAY_CHANGED`. It fires only on a re-consulted player built with `superplayer-tv`, when the
+   display's short edge or HDR types change. A change of refresh rate alone is not a trigger,
+   because a player's own frame-rate request causes one.
 
 5. **A re-applied decision is honoured whole, or the policy is not re-consulted at all.** A changed
    decision reaches the engine only through components built to accept one after construction —

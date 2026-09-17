@@ -19,14 +19,13 @@ package com.superplayer.core
 import android.app.ActivityManager
 import android.content.Context
 import android.content.pm.ApplicationInfo
-import android.hardware.display.DisplayManager
 import android.media.MediaCodecInfo
 import android.media.MediaCodecList
-import android.view.Display
 
 /**
  * The one place a device is asked how many players it can afford to have alive at once — and, since
- * #101, the one place it is asked what it can show and decode ([deviceConstraintsOf]).
+ * #101, the one place it is asked what it can decode ([deviceConstraintsOf]). What it can *show* is
+ * a live reading since ADR-0014, and `ConditionsBinding.kt` translates it.
  *
  * The counterpart of `EngineBinding.kt` and `LifecycleBinding.kt` for [PlayerPool]: the pool itself
  * decides nothing about size, it applies what this file reports. That split is what keeps the bound
@@ -369,16 +368,17 @@ private const val MINIMUM_CAPACITY: Int = 1
 internal val DEFAULT_FEED_CODECS: Set<VideoCodec> = setOf(VideoCodec.H264, VideoCodec.HEVC)
 
 /**
- * What the device can show and decode, read once and handed to a track selector as a constraint.
+ * What the device can decode, read once and handed to a track selector as a constraint.
  *
- * A *constraint* and not a [PlaybackConditions] observation, which is ADR-0009 rule 2's line: on a
- * phone the display and the decoder table do not change under a playing session, so the selector
- * reads them when it is built and a policy is never consulted about them. The day they can change
- * — an external display on a television — is Phase 8's, and it turns these into observations then.
+ * A *constraint* and not a [PlaybackConditions] observation, which is ADR-0009 rule 2's line: the
+ * decoder table is the device's own silicon and does not change under a playing session, so the
+ * selector reads it when it is built and a policy is never consulted about it. The display was read
+ * here too until Phase 8 found the session under which it does change — an HDMI hotplug — and it is
+ * now a live reading of its own, [DisplayCapability] in [DisplayInForce] (ADR-0014 rule 10).
  *
  * Every field is *unknown* rather than *none* where the platform does not answer, and an unknown
  * constrains nothing. That direction is load-bearing: Robolectric's default device reports an
- * empty codec table and a small display, and a gate that read "no decoder declared" as "nothing
+ * empty codec table, and a gate that read "no decoder declared" as "nothing
  * decodable" would exclude every rung of every ladder under test and fall back to the bottom one,
  * which looks like a selection and is not. `MediaCodecVideoRenderer` still refuses a format the
  * device really cannot decode; this constraint only stops the selector *asking* for one.
@@ -387,22 +387,6 @@ internal val DEFAULT_FEED_CODECS: Set<VideoCodec> = setOf(VideoCodec.H264, Video
  * gets written, and a table by model is wrong on the next device the table has not met.
  */
 internal class DeviceConstraints(
-    /**
-     * The shorter edge of the largest display mode, in physical pixels, or null when unknown.
-     *
-     * The shorter edge, because a rendition is judged by whether the display can show it at full
-     * resolution in *some* orientation: a 1080 × 2400 phone shows a 1920 × 1080 rung edge to edge
-     * in landscape, and what disqualifies a 2160p rung on it is that its own short edge is longer
-     * than the display's.
-     */
-    val displayShortEdgePx: Int?,
-
-    /**
-     * The HDR types the display reports (`Display.HdrCapabilities.HDR_TYPE_*`), or null when the
-     * platform does not say. An empty set is a display that answered and supports none.
-     */
-    val displayHdrTypes: Set<Int>?,
-
     /**
      * For each video MIME type (lowercased) a decoder is declared for, the profile and level pairs
      * it declares. A MIME type with no entry is *unknown*; an entry with an empty list is a decoder
@@ -500,8 +484,6 @@ internal class DeviceConstraints(
     internal companion object {
         /** A device that answered nothing: constrains nothing. */
         val UNKNOWN: DeviceConstraints = DeviceConstraints(
-            displayShortEdgePx = null,
-            displayHdrTypes = null,
             decodableProfileLevels = emptyMap(),
             secureDecodableMimeTypes = null,
             secureDecodableProfileLevels = emptyMap(),
@@ -510,46 +492,22 @@ internal class DeviceConstraints(
 }
 
 /**
- * The device's constraints, read from the platform now: the default display's modes and HDR
- * capabilities through `DisplayManager`, and the video decoders' profile levels through the same
- * walk of the decoder list [concurrentPlayerCapacityOf] reads, [readDecoderTable].
+ * The device's constraints, read from the platform now: the video decoders' profile levels, through
+ * the same walk of the decoder list [concurrentPlayerCapacityOf] reads, [readDecoderTable]. The
+ * display is not among them; `ConditionsBinding.kt`'s `displayCapabilityOf` reads it.
  *
  * Read on demand rather than cached, for the reason the file's KDoc gives about the pool: a test
  * states a different device per test.
- *
- * ref: https://developer.android.com/reference/android/view/Display#getSupportedModes()
- * ref: https://developer.android.com/reference/android/view/Display#getHdrCapabilities()
  */
-internal fun deviceConstraintsOf(context: Context): DeviceConstraints {
-    val display = try {
-        (context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)?.getDisplay(Display.DEFAULT_DISPLAY)
-    } catch (e: RuntimeException) {
-        null
-    }
-    val shortEdgePx = display?.supportedModes
-        ?.map { minOf(it.physicalWidth, it.physicalHeight) }
-        ?.filter { it > 0 }
-        ?.maxOrNull()
-    val hdrTypes = display?.let { readHdrTypes(it) }
-    // One walk for both readings, because the platform caches the codec list on first read and a
-    // second walk would be a second chance to disagree with the first.
+internal fun deviceConstraintsOf(): DeviceConstraints {
+    // One walk for both readings, plain and secure, because the platform caches the codec list on
+    // first read and a second walk would be a second chance to disagree with the first.
     val decoders = readDecoderTable()
     return DeviceConstraints(
-        displayShortEdgePx = shortEdgePx,
-        displayHdrTypes = hdrTypes,
         decodableProfileLevels = decoders.all.profileLevels,
         secureDecodableMimeTypes = decoders.secureMimeTypes,
         secureDecodableProfileLevels = decoders.secure.profileLevels,
     )
-}
-
-private fun readHdrTypes(display: Display): Set<Int>? {
-    val capabilities = try {
-        display.hdrCapabilities
-    } catch (e: RuntimeException) {
-        return null
-    } ?: return null
-    return capabilities.supportedHdrTypes.toSet()
 }
 
 private const val VIDEO_MIME_PREFIX = "video/"

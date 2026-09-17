@@ -66,8 +66,9 @@ internal interface EngineOutputExtension : PlaybackOutput {
  * rate of the content it renders (ADR-0014 rule 3).
  *
  * Every method is called on the player's application thread. Core tells the binding *facts*; what it
- * asks of the platform about them — a frame-rate request, and in later issues a re-selection — is the
- * binding's, so nothing here names a display.
+ * asks of the platform about them — a frame-rate request — is the binding's, so nothing here names a
+ * display. Re-selecting when the display changes is core's own ([DisplayWatch]), and the binding hears
+ * of that change only as the item's frame rate reported again.
  */
 internal interface VideoOutputBinding {
 
@@ -88,7 +89,8 @@ internal interface VideoOutputBinding {
      * application thread while the frame is rendered on the playback thread, so an application looper
      * busy past the first frame makes the request land after it. A fallback to the next source is a
      * new item to Media3 and is reported again; a source of the same content declares the same rate,
-     * and a rate already requested asks nothing more.
+     * and a rate already requested asks nothing more. A display change reports the item's rate again
+     * too, because a new display is asked afresh (ADR-0014 rule 5).
      */
     fun onVideoFrameRate(framesPerSecond: Float?)
 
@@ -105,7 +107,18 @@ internal interface VideoOutputBinding {
  * overrides of `Player`'s video-surface methods, after the engine has been handed the surface, and the
  * frame rate from a [Player.Listener] on the engine.
  */
-internal class VideoOutputAttachment(private val binding: VideoOutputBinding) : Player.Listener {
+internal class VideoOutputAttachment(
+    private val binding: VideoOutputBinding,
+    /**
+     * The display watch of ADR-0014 rule 5, which this attachment starts and stops, and which tells it
+     * when the display changed so the binding can be asked for the frame rate again.
+     */
+    private val displayWatch: DisplayWatch,
+) : Player.Listener {
+
+    init {
+        displayWatch.afterChange = ::displayChanged
+    }
 
     /** The surface set directly, or the holder's surface while it exists; null otherwise. */
     private var surface: Surface? = null
@@ -118,6 +131,9 @@ internal class VideoOutputAttachment(private val binding: VideoOutputBinding) : 
      * once per item: a rung switch changes the selected format and not the item.
      */
     private var reportedForItem = false
+
+    /** The rate reported for the current item, which a display change reports again. */
+    private var reportedRate: Float? = null
 
     private val holderCallback = object : SurfaceHolder.Callback {
         override fun surfaceCreated(created: SurfaceHolder) {
@@ -176,10 +192,26 @@ internal class VideoOutputAttachment(private val binding: VideoOutputBinding) : 
         }
         if (reportedForItem) return
         reportedForItem = true
-        binding.onVideoFrameRate(declaredVideoFrameRate(tracks))
+        reportedRate = declaredVideoFrameRate(tracks)
+        binding.onVideoFrameRate(reportedRate)
+    }
+
+    /** Starts the display watch; called once the player holding this attachment exists. */
+    fun start() {
+        displayWatch.start()
+    }
+
+    /**
+     * The display changed and the selection has been asked again: a new display is asked afresh for the
+     * item's rate (ADR-0014 rule 5, step 4). Before the item's first report there is nothing to repeat,
+     * and the first report will read the new display itself.
+     */
+    private fun displayChanged() {
+        if (reportedForItem) binding.onVideoFrameRate(reportedRate)
     }
 
     fun release() {
+        displayWatch.stop()
         detachHolder()
         surface = null
         binding.release()

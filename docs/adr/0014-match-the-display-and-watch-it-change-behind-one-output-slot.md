@@ -253,6 +253,31 @@ Fourteen rules follow, and they are binding.
    stays where it is, in abr's gate, and rule 10 says why it is not copied into core. #269 builds
    this rule, and its test includes a player built with `setDrm` (rule 13).
 
+   *Addendum (2026-09-18, #269).* Step 2 has nothing to rewrite in Media3 1.11, so it is folded into
+   step 3 and **every** change re-selects through the subclass. The rule assumed a viewport Media3
+   stored in `TrackSelectionParameters` at construction. 1.11 stores none: `DefaultTrackSelector` is
+   built on `Parameters.DEFAULT`, whose viewport is unset, with `isViewportSizeLimitedByPhysicalDisplaySize`
+   true. Its `selectVideoTrack` then reads the display's mode size through `Util.getCurrentDisplayModeSize`
+   on every video selection. So a re-selection is what makes Media3's own viewport bound read the new
+   display. A viewport the consumer set is still left alone, because nothing writes the parameters at
+   all. ADR-0009 rule 5's addendum therefore records an exception that is never taken, and the
+   *Consequences* heuristic about a viewport equal to the derived one no longer arises. Three smaller
+   facts were settled in the same change:
+   - **A removed display is not a reading.** `onDisplayRemoved` changes nothing, and the capability in
+     force holds until a display is added. An unplugged sink read as *unknown* would lift every refusal,
+     only for the next sink to bring them back.
+   - **abr's selection is usually kept, not rebuilt.** Media3 keeps a selection equal to the one it
+     would build, and the gate refuses through its hook rather than by narrowing tracks. So on a player
+     with `AdaptivePolicy` the selection re-decides its device refusals when it next sees a new reading,
+     rather than when it is built. The lesser rung then arrives at the next chunk choice, and the buffer
+     is kept. The rebuffer step 3 allows is one a player *without* abr can pay, where Media3's viewport
+     bound narrows its tracks.
+   - **The active mode changes what a phone reads.** Rule 9 reads the active mode where
+     `DeviceConstraints` read the largest. Every player now fills `DisplayInForce` from the active mode,
+     so rule 10's "refuses exactly what it refuses today" holds only where the two agree. A phone whose
+     panel runs below its largest mode, a QHD panel set to FHD+ say, now refuses rungs above the
+     resolution it is showing. That is the rung the panel would downscale anyway.
+
 6. **Surviving an audio-capability change is correctness on every player built with the module, and
    the mechanism is Media3's, switched on.** Media3 already watches the capabilities and reports a
    change to the selector (Context). What is missing is the parameter that lets the selector act on

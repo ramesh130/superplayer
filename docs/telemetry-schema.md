@@ -347,6 +347,19 @@ and not meaning. What a pipeline should do is what it does for a new event type:
 | --- | --- | --- |
 | `category = STORAGE` (`Storage.Full`) | nothing — no playback session reaches it | A write the device's storage could not hold. Carries its own `userMessageKey`, `superplayer_error_storage_full`, the eighth: the one failure whose remedy is the viewer freeing space |
 
+**Nothing here moved when a display change began to re-select (`#269`).** A player built with
+`superplayer-tv` watches the display, and an HDMI hotplug to a lesser or more capable one re-selects at
+the position reached ([ADR-0014][adr14] rule 5). What a pipeline sees of it is what it already sees of
+any rendition change: `TrackSwitched`, `DOWN` onto a lesser display and `UP` onto a better one, and a
+rebuffer where Media3's re-selection discarded a buffer. **No `DecisionChanged` is emitted** and no
+`DecisionTrigger` was added, because a display change consults no policy: the display is a reading the
+selection gate re-reads, not a `PlaybackConditions` observation, and a trigger that re-asks a policy
+reading nothing of the display could only re-derive the decision in force (ADR-0014 rules 9 and 11).
+So the decision in force is unchanged across a hotplug, and the reconstruction under *Decision changes*
+still holds. When a policy first reads the display, `DecisionTrigger.DISPLAY_CHANGED` arrives with it
+(the name is reserved), and that is **shape, not meaning** — a new value of an existing field changes no
+denominator — so `SCHEMA_VERSION` stays 2 then as it does now.
+
 **A sink must tolerate a new event type.** `TelemetryEvent` is sealed, so a `when` over it can be
 exhaustive without an `else` — and such a `when` fails to compile when a later version adds an event.
 An `else` branch is the forward-compatible spelling; take the exhaustive one only if being told about
@@ -414,6 +427,11 @@ discovered: a player whose engine can honour a changed decision whole — one bu
 `superplayer-abr`'s policy — is consulted again on the triggers; every other player, whatever policy
 it was given, is consulted once at construction and emits no `DecisionChanged` at all
 (ADR-0009 rule 5). A session with none is therefore not evidence that conditions were stable.
+
+**A display change is not a decision change.** On a player built with `superplayer-tv`, an HDMI hotplug
+re-selects renditions under the new display without consulting the policy, so it appears as
+`TrackSwitched` and never as `DecisionChanged` ([ADR-0014][adr14] rules 5, 9 and 11; *Release notes*,
+`#269`).
 
 An addition of shape, not of meaning: `SCHEMA_VERSION` did not move for it. The definition of
 `SessionStarted.decision` was clarified in the same change from "in force for the whole session" to

@@ -231,6 +231,12 @@ Nine rules follow, and they are binding.
    On a re-consulted player `playbackDecision` can therefore name a tunneling value not in force,
    which the half's KDoc says.
 
+   *Addendum (2026-09-18, ADR-0014 rule 5's #269 addendum).* The first exception is never taken.
+   Media3 1.11 stores no viewport derived from the display in the parameters. It reads the display
+   on each selection instead, so a display change re-selects without writing
+   `TrackSelectionParameters`. This rule's promise, that a re-application never rewrites the
+   parameters, holds without exception there.
+
 6. **`SuperPlayer.playbackDecision` is the decision currently in force; `SessionStarted.decision`
    is the decision in force when the session started; and every change afterwards is a
    `DecisionChanged` telemetry event.** `DecisionChanged` carries the new decision and the trigger

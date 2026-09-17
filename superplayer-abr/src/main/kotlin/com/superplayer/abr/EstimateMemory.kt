@@ -96,9 +96,16 @@ internal class EstimateMemory(
         windows.clear()
     }
 
+    /**
+     * Forgets [window] once its newest sample is [STALE_AGE_MS] old — or taken *after* [nowMs]. Elapsed
+     * realtime never runs backwards within a process, so a sample from the future was timed on a clock
+     * that has since restarted, which only a test's does, and a memory of another timeline is worth
+     * nothing on this one. Without it, a player built by one test on a clock earlier than the last test's
+     * samples would read a negative age.
+     */
     private fun forgetIfStale(window: SampleWindow, nowMs: Long) {
         val newestAtMs = window.newestAtMs ?: return
-        if (nowMs - newestAtMs >= STALE_AGE_MS) window.clear()
+        if (nowMs < newestAtMs || nowMs - newestAtMs >= STALE_AGE_MS) window.clear()
     }
 
     /** How far a measurement [ageMs] old is trusted over the cold default: 1 while fresh, 0 when stale. */

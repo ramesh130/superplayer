@@ -105,6 +105,18 @@ internal class EngineConfiguration(
      * taken per format per evaluation would be an observation in all but name.
      */
     val protectedPlayback: Boolean,
+
+    /**
+     * What the display this player is shown on can show, as a window a selection gate reads on every
+     * evaluation (ADR-0014 rule 10).
+     *
+     * Filled by core before any extension runs, from `ConditionsBinding.kt`'s one translation, and on
+     * every player — so a gate built from it refuses what it refused when the display was a constraint
+     * read once. Only a player whose [videoOutput] is filled writes it again, from its [DisplayWatch]
+     * (rule 5). A pool's players share the first player's window, as they share its selection factory,
+     * so the gate that factory holds reads what any of them heard.
+     */
+    val displayInForce: DisplayInForce,
 ) {
 
     /** The data source the chain's layers are composed over, in place of the HTTP stack. */
@@ -227,8 +239,9 @@ internal class EngineConfiguration(
      * **The filled slot is the whole signal**, as [decisionTarget] is for re-consultation. On a player
      * whose slot is filled, core builds the engine with `C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF`, so the
      * binding is the only caller of `Surface.setFrameRate`, and registers the listener the frame rate
-     * arrives through. Later issues of Phase 8 hang the display watch and the selector's parameters on
-     * the same fact (#269, #270, #271).
+     * arrives through, and the [DisplayWatch] that rewrites [displayInForce] and re-selects when the
+     * display changes (rule 5). Later issues of Phase 8 hang the selector's parameters on the same fact
+     * (#270, #271).
      *
      * Null is every player built without `setOutput`: the engine keeps Media3's own frame-rate strategy
      * and nothing is registered, which is ADR-0014 rule 14 and is counted by
@@ -299,4 +312,19 @@ internal class DecisionInForce {
 
     /** The decision in force right now, or null before the policy has been consulted. */
     fun current(): PlaybackDecision? = source?.invoke()
+}
+
+/**
+ * A window onto the [DisplayCapability] in force on one player, or on one pool's players, opened before
+ * the player exists (ADR-0014 rule 10) — [DecisionInForce]'s twin for the display.
+ *
+ * A value rather than a supplier, unlike its twin, because what it reports is not held anywhere else:
+ * core writes the reading at construction and, on a player with an output, the [DisplayWatch] writes
+ * each reading that differs. The selection gate reads it per evaluation on the playback thread.
+ */
+internal class DisplayInForce(initial: DisplayCapability = DisplayCapability.UNKNOWN) {
+
+    /** Volatile because it is written on the application thread and read on the playback thread. */
+    @Volatile
+    var current: DisplayCapability = initial
 }

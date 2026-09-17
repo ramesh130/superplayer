@@ -16,9 +16,11 @@
 
 package com.superplayer.core
 
+import android.annotation.SuppressLint
 import android.graphics.Canvas
 import android.graphics.Rect
 import android.graphics.SurfaceTexture
+import android.view.Display
 import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.TextureView
@@ -35,6 +37,9 @@ import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.shadows.ShadowDisplayManager
+import org.robolectric.shadows.ShadowLooper.shadowMainLooper
+import org.robolectric.util.ReflectionHelpers
 
 /**
  * The slot ADR-0014 rule 3 adds to core's engine seam, driven by a `PlaybackOutput` hand-written here
@@ -50,7 +55,10 @@ import org.junit.runner.RunWith
  * It reads past the facade, and `docs/testing.md` records where: the filled `EngineConfiguration`,
  * because "the slot is empty" is a claim about construction no playback shows, and the engine's
  * `videoChangeFrameRateStrategy`, because which frame-rate strategy Media3 was built with is the other
- * half of rule 14 and nothing public reports it.
+ * half of rule 14 and nothing public reports it. Since #269 it also reads the display service's listener
+ * count, because "no `DisplayListener` is registered" is rule 14's third claim and no playback shows it,
+ * and the filled configuration's `displayInForce`, because the window a gate reads is the seam's half of
+ * a hotplug and the selection's half needs `superplayer-abr`, which core's tests cannot name.
  */
 @RunWith(AndroidJUnit4::class)
 class SuperPlayerOutputSeamTest {
@@ -78,6 +86,7 @@ class SuperPlayerOutputSeamTest {
      */
     @Test
     fun aPlayerBuiltWithoutAnOutputFillsNoSlotAndKeepsMediaThreesFrameRateStrategy() {
+        val listenersAtStart = displayListenerCount()
         var withoutSlot: EngineConfiguration? = null
         val without = harness.buildPlayer(alsoConfigure = { withoutSlot = it })
         without.setVideoSurface(surface())
@@ -85,6 +94,7 @@ class SuperPlayerOutputSeamTest {
 
         assertThat(withoutSlot?.videoOutput).isNull()
         assertThat(without.exoPlayer.videoChangeFrameRateStrategy).isEqualTo(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_ONLY_IF_SEAMLESS)
+        assertThat(displayListenerCount()).isEqualTo(listenersAtStart)
 
         val binding = RecordingBinding()
         var withSlot: EngineConfiguration? = null
@@ -95,6 +105,34 @@ class SuperPlayerOutputSeamTest {
         assertThat(withSlot?.videoOutput).isSameInstanceAs(binding)
         assertThat(with.exoPlayer.videoChangeFrameRateStrategy).isEqualTo(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF)
         assertThat(binding.events).isNotEmpty()
+        // ADR-0014 rule 14's display half, and the counter shown to see what it counts: one watch for the
+        // player with an output, and none left once it is released.
+        assertThat(displayListenerCount()).isEqualTo(listenersAtStart + 1)
+        with.release()
+        assertThat(displayListenerCount()).isEqualTo(listenersAtStart)
+    }
+
+    /**
+     * ADR-0014 rule 10: every player fills its display window once, from the display it is built on, and
+     * only a player with an output writes it again when the display changes (rule 5). The window is what
+     * `superplayer-abr`'s gate reads, so this is the seam's half of a hotplug; the selection's half is
+     * `superplayer-tv`'s `DisplayHotplugTest`.
+     */
+    @Test
+    fun onlyAPlayerWithAnOutputRewritesItsDisplayWindowOnAChange() {
+        ShadowDisplayManager.changeDisplay(Display.DEFAULT_DISPLAY, "w3840dp-h2160dp-mdpi")
+        var without: EngineConfiguration? = null
+        var with: EngineConfiguration? = null
+        harness.buildPlayer(alsoConfigure = { without = it })
+        harness.buildPlayer(output = TestOutput(RecordingBinding()), alsoConfigure = { with = it })
+        assertThat(checkNotNull(without).displayInForce.current.shortEdgePx).isEqualTo(2160)
+        assertThat(checkNotNull(with).displayInForce.current.shortEdgePx).isEqualTo(2160)
+
+        ShadowDisplayManager.changeDisplay(Display.DEFAULT_DISPLAY, "w1920dp-h1080dp-mdpi")
+        shadowMainLooper().idle()
+
+        assertThat(checkNotNull(without).displayInForce.current.shortEdgePx).isEqualTo(2160)
+        assertThat(checkNotNull(with).displayInForce.current.shortEdgePx).isEqualTo(1080)
     }
 
     /**
@@ -170,6 +208,17 @@ class SuperPlayerOutputSeamTest {
         player.setVideoTextureView(TextureView(ApplicationProvider.getApplicationContext()))
 
         assertThat(binding.events).containsExactly(SurfaceChanged(null))
+    }
+
+    /**
+     * How many `DisplayListener`s the process's display service holds. The platform keeps them in a hidden
+     * field of a hidden class, so this is read by name, and fails loudly if a Robolectric or platform
+     * upgrade moves it rather than counting nothing.
+     */
+    @SuppressLint("PrivateApi")
+    private fun displayListenerCount(): Int {
+        val global = ReflectionHelpers.callStaticMethod<Any>(Class.forName("android.hardware.display.DisplayManagerGlobal"), "getInstance")
+        return ReflectionHelpers.getField<Collection<*>>(global, "mDisplayListeners").size
     }
 
     private fun surface(): Surface {

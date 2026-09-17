@@ -20,9 +20,12 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.hardware.display.DisplayManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.os.Build
 import android.telephony.TelephonyManager
+import android.view.Display
 import androidx.media3.common.Player
 
 /**
@@ -31,9 +34,9 @@ import androidx.media3.common.Player
  *
  * Each function here translates one reading and decides nothing. What to observe *when* is
  * [DecisionReapplication]'s; what to do with an observation is the policy's. Every translation is
- * here — the transport, the generation, the stream type, and the stall state machine in
- * [StallObservation] — so that a reader asking "where does an observation come from" has one
- * answer. [DecisionReapplication] names `NetworkCapabilities` only in the callback signature the
+ * here — the transport, the generation, the stream type, the stall state machine in
+ * [StallObservation], and the display's [DisplayCapability] (ADR-0014 rule 5) — so that a reader
+ * asking "where does an observation come from" has one answer. [DecisionReapplication] names `NetworkCapabilities` only in the callback signature the
  * platform dictates, and hands it straight here.
  */
 
@@ -121,6 +124,73 @@ internal fun Context.connectivityManager(): ConnectivityManager? =
 
 internal fun Context.telephonyManager(): TelephonyManager? =
     getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+
+/**
+ * The default display's [DisplayCapability] now, or [DisplayCapability.UNKNOWN] where there is no
+ * display or the platform does not answer (ADR-0014 rule 9).
+ *
+ * The one translation of `Display.Mode` and `Display.HdrCapabilities` into SuperPlayer's vocabulary:
+ * every player reads it once at construction into its [DisplayInForce], and a player built with
+ * `superplayer-tv` reads it again on each change its [DisplayWatch] hears.
+ *
+ * ref: https://developer.android.com/reference/android/view/Display#getMode()
+ * ref: https://developer.android.com/reference/android/view/Display.Mode#getSupportedHdrTypes()
+ * ref: https://developer.android.com/reference/android/view/Display#getHdrCapabilities()
+ */
+internal fun displayCapabilityOf(context: Context): DisplayCapability = displayCapabilityOf(context.defaultDisplay())
+
+/** [displayCapabilityOf] for a display already in hand, or for none. */
+internal fun displayCapabilityOf(display: Display?): DisplayCapability {
+    display ?: return DisplayCapability.UNKNOWN
+    val mode = try {
+        display.mode
+    } catch (e: RuntimeException) {
+        return DisplayCapability.UNKNOWN
+    }
+    return DisplayCapability(
+        shortEdgePx = minOf(mode.physicalWidth, mode.physicalHeight).takeIf { it > 0 },
+        hdrTypes = hdrTypesOf(display, mode),
+    )
+}
+
+/** The default display, or null where there is none or the service does not answer. */
+internal fun Context.defaultDisplay(): Display? = try {
+    (getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)?.getDisplay(Display.DEFAULT_DISPLAY)
+} catch (e: RuntimeException) {
+    null
+}
+
+/**
+ * The HDR types [mode] shows: the mode's own from API 34, where the platform moved them, and the
+ * display-wide capabilities below it.
+ *
+ * A display reporting no capabilities at all is *unknown* on every API level, its modes included.
+ * From API 34 a mode with nothing declared answers an empty array, which would read as "supports no
+ * HDR" on a display that said nothing, and the capabilities being absent is what tells the two apart.
+ */
+private fun hdrTypesOf(display: Display, mode: Display.Mode): Set<HdrType>? {
+    val capabilities = try {
+        display.hdrCapabilities
+    } catch (e: RuntimeException) {
+        return null
+    } ?: return null
+    val declared = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        mode.supportedHdrTypes
+    } else {
+        @Suppress("DEPRECATION")
+        capabilities.supportedHdrTypes
+    }
+    return declared.asList().mapNotNull(::hdrTypeOf).toSet()
+}
+
+/** The type SuperPlayer names for a platform one, or null for a type nothing here reads, which refuses nothing. */
+private fun hdrTypeOf(platformType: Int): HdrType? = when (platformType) {
+    Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION -> HdrType.DOLBY_VISION
+    Display.HdrCapabilities.HDR_TYPE_HDR10 -> HdrType.HDR10
+    Display.HdrCapabilities.HDR_TYPE_HLG -> HdrType.HLG
+    Display.HdrCapabilities.HDR_TYPE_HDR10_PLUS -> HdrType.HDR10_PLUS
+    else -> null
+}
 
 /**
  * The translation of the engine's state transitions into a [StallHistory].

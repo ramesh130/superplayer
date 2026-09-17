@@ -87,6 +87,17 @@ class EstimateMemoryTest {
         assertThat(memory.estimate(NetworkTransport.Wifi, nowMs = EstimateMemory.STALE_AGE_MS + 1).sampleCount).isEqualTo(1)
     }
 
+    /** A clock that restarted — a test's, never a device's — makes the samples before it another timeline's. */
+    @Test
+    fun aMemoryTimedAfterNowIsForgottenRatherThanAgedBackwards() {
+        memory.record(NetworkTransport.Wifi, 20 * MBPS, nowMs = 100_000)
+
+        val restarted = memory.estimate(NetworkTransport.Wifi, nowMs = 1_000)
+
+        assertThat(restarted.meanBps).isEqualTo(ColdDefaults.WIFI_BPS)
+        assertThat(restarted.sampleCount).isEqualTo(0)
+    }
+
     private companion object {
         const val MBPS = 1_000_000L
     }

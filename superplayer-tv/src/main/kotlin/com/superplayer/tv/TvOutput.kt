@@ -33,8 +33,8 @@ import com.superplayer.core.PlaybackOutput
  * player.setVideoSurfaceView(surfaceView)
  * ```
  *
- * **What it does today: frame-rate matching** (ADR-0014 rule 4). When the player holds a surface and
- * the current item's first video format declares a frame rate, the player asks the display for that
+ * **Frame-rate matching** (ADR-0014 rule 4). When the player holds a surface and the current item's
+ * first video format declares a frame rate, the player asks the display for that
  * rate with `Surface.setFrameRate`, so 24 fps film on a 60 Hz panel that also offers 24, 48 or 120 Hz
  * is shown at a matching rate rather than with 3:2 judder. It is correctness on every player built with
  * it, and no profile varies it. The request is withdrawn when the surface goes, the content declares no
@@ -57,6 +57,13 @@ import com.superplayer.core.PlaybackOutput
  *   `WindowManager.LayoutParams.preferredDisplayModeId` on its own window, which the library does not
  *   hold.
  *
+ * **Surviving a display change** (ADR-0014 rule 5). An HDMI hotplug to a lesser or more capable display
+ * re-selects at the position reached, under the new display's size and HDR types, rather than holding a
+ * rendition the display cannot show, and the new display is asked for the content's frame rate afresh.
+ * A change of refresh rate alone is not a display change. The refusal that re-arms is the selection
+ * gate of `superplayer-abr`'s `AdaptivePolicy`; a player without it re-runs Media3's own
+ * viewport-bounded selection, which refuses no HDR rendition. A re-selection may cost a rebuffer.
+ *
  * **What only a device shows.** Under `check` the request is observed at the surface, as the call a
  * compositor would receive (`docs/testing.md`, *A TV device*): whether the panel then switched, how
  * long the HDMI link took to resynchronise, and the blank a non-seamless switch costs are not visible
@@ -66,9 +73,9 @@ import com.superplayer.core.PlaybackOutput
 public object TvOutput {
 
     /**
-     * A [PlaybackOutput] that matches the display's refresh rate to the content. One instance may be
-     * handed to many builders, a pool's included: it fills each player's slot with a binding of that
-     * player's own.
+     * A [PlaybackOutput] that matches the display's refresh rate to the content and survives a display
+     * change. One instance may be handed to many builders, a pool's included: it fills each player's slot
+     * with a binding of that player's own.
      */
     @JvmStatic
     public fun standard(context: Context): PlaybackOutput = StandardTvOutput(context.applicationContext)

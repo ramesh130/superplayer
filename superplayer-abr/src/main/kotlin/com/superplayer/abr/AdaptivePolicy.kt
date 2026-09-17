@@ -71,8 +71,9 @@ public object AdaptivePolicy {
  * reads on its next evaluation. That is why `EngineBinding.kt` lays no ceiling into the engine's
  * `TrackSelectionParameters` on a player built with this policy (ADR-0009 rule 5): a ceiling laid
  * there would clamp every later decision that raised it, and a consumer's own parameters are
- * never rewritten by a trigger. The display and the decoder are read here, once, and handed to the
- * factory as a constraint rather than observed (rule 2).
+ * never rewritten by a trigger. The decoder is read here, once, and handed to the factory as a
+ * constraint rather than observed (rule 2); the display is core's live reading, which the factory's
+ * gate reads in force (ADR-0014 rule 10).
  */
 internal class AdaptiveEnginePolicy(
     private val context: Context,
@@ -108,7 +109,7 @@ internal class AdaptiveEnginePolicy(
 
         val oracle = BandwidthOracle.Builder(context).build()
         val loadControl = AdaptiveLoadControl(onEngineReleased = oracle::release).also { this.loadControl = it }
-        // The device is read here, once, and the first ceiling and pace are the profile's own with
+        // The decoders are read here, once, and the first ceiling and pace are the profile's own with
         // nothing observed; the first consultation's decision replaces them before anything plays.
         //
         // Protection is read from the same configuration, and for a pool that is the first player's
@@ -117,10 +118,13 @@ internal class AdaptiveEnginePolicy(
         // same protection, so there is one answer to read.
         val selections = NetworkAwareTrackSelection.Factory(
             NetworkAwareTrackSelection.Gate(
-                constraints = deviceConstraintsOf(context),
+                constraints = deviceConstraintsOf(),
                 source = oracle.meter,
                 initial = decide(PlaybackConditions()).trackSelection,
                 protectedPlayback = configuration.protectedPlayback,
+                // The display is not read here: it is core's window, written at construction on every
+                // player and again on each change where an output watches it (ADR-0014 rule 10).
+                displayInForce = configuration.displayInForce,
             ),
         )
 

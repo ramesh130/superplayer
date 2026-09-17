@@ -17,7 +17,6 @@
 package com.superplayer.abr
 
 import android.media.MediaCodecInfo.CodecProfileLevel
-import android.view.Display
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
@@ -34,6 +33,9 @@ import androidx.media3.exoplayer.trackselection.FixedTrackSelection
 import androidx.media3.exoplayer.upstream.BandwidthMeter
 import com.superplayer.abr.OracleBandwidthMeter.Companion.isStable
 import com.superplayer.core.DeviceConstraints
+import com.superplayer.core.DisplayCapability
+import com.superplayer.core.DisplayInForce
+import com.superplayer.core.HdrType
 import com.superplayer.core.SelectionPace
 import com.superplayer.core.ThroughputEstimate
 import com.superplayer.core.ThroughputSource
@@ -56,8 +58,10 @@ import kotlin.math.min
  *    and level no declared decoder reaches, or — where the ladder also offers an SDR rung — whose
  *    PQ transfer the display does not list, is refused whatever the network delivers. On a player
  *    built with `SuperPlayer.Builder.setDrm` the decoder asked is the *secure* one, which is a
- *    different table and often a lower ceiling (ADR-0012 rule 12). Read once from [DeviceConstraints] when the selection
- *    is built (ADR-0009 rule 2), and *unknown* refuses nothing — the KDoc there says why that
+ *    different table and often a lower ceiling (ADR-0012 rule 12). The decoders are read once from
+ *    [DeviceConstraints] when the selection is built (ADR-0009 rule 2); the display is read from core's
+ *    `DisplayInForce`, which a player built with `superplayer-tv` rewrites when an HDMI hotplug changes
+ *    it (ADR-0014 rules 5 and 10). *Unknown* refuses nothing — the KDoc there says why that
  *    direction is load-bearing. Refused through this hook and not through `isTrackExcluded`,
  *    deliberately: when every rung is refused Media3 falls back to the lowest one it evaluated,
  *    which is the bottom of the ladder, whereas a ladder whose every rung is *excluded* falls
@@ -122,7 +126,14 @@ internal class NetworkAwareTrackSelection(
 ) {
 
     /**
-     * Refusal 1, decided once per rung: the device does not change under a selection.
+     * Refusal 1, decided once per rung for each display: the decoders do not change under a selection,
+     * and the display changes only when core's display watch writes a new reading (ADR-0014 rule 5).
+     *
+     * Kept per reading rather than per selection because a display change need not build a new
+     * selection. Media3 re-selects on it and keeps the selection it has wherever the new one is equal —
+     * the same group and tracks, which is every re-selection of this class, whose refusals are not
+     * exclusions — so the refusals are decided again here on the first evaluation that sees the new
+     * reading.
      *
      * The HDR half is decided over the ladder rather than per rung: a display that lists no HDR
      * type refuses a PQ rung only where the ladder also offers a rung it does not refuse. Android
@@ -130,14 +141,23 @@ internal class NetworkAwareTrackSelection(
      * as stock Media3 plays it — from the top — rather than collapsed to its bottom rung by a gate
      * whose purpose is to prefer the SDR rung *when there is one*.
      */
-    private val refusedByDevice: BooleanArray = run {
-        val refused = BooleanArray(length) { gate.deviceRefuses(getFormat(it)) }
-        val hdrRefused = BooleanArray(length) { gate.displayRefusesHdr(getFormat(it)) }
+    @Volatile
+    private var deviceRefusals: DeviceRefusals? = null
+
+    /** The rungs refused by the device on one display reading. */
+    private class DeviceRefusals(val display: DisplayCapability, val refused: BooleanArray)
+
+    private fun refusedByDevice(): BooleanArray {
+        val display = gate.display
+        deviceRefusals?.takeIf { it.display == display }?.let { return it.refused }
+        val refused = BooleanArray(length) { gate.deviceRefuses(getFormat(it), display) }
+        val hdrRefused = BooleanArray(length) { gate.displayRefusesHdr(getFormat(it), display) }
         val anSdrRungRemains = (0 until length).any { !refused[it] && !hdrRefused[it] }
         if (anSdrRungRemains) {
             for (index in 0 until length) refused[index] = refused[index] || hdrRefused[index]
         }
-        refused
+        deviceRefusals = DeviceRefusals(display, refused)
+        return refused
     }
 
     /**
@@ -247,7 +267,7 @@ internal class NetworkAwareTrackSelection(
 
     /** Refusals 1 and 2 for the rung at [index]: what the device and the ceiling in force say, bandwidth aside. */
     private fun ceilingRefuses(index: Int): Boolean {
-        if (refusedByDevice[index]) return true
+        if (refusedByDevice()[index]) return true
         val format = getFormat(index)
         if (!MimeTypes.isVideo(format.sampleMimeType)) return false
         val ceiling = gate.policy
@@ -260,11 +280,10 @@ internal class NetworkAwareTrackSelection(
         // fields exist; that index is superseded on the first `updateSelectedTrack`, so the
         // provisional answer is Media3's own.
         val gate: Gate? = this.gate
-        val refused: BooleanArray? = this.refusedByDevice
-        if (gate == null || refused == null) return trackBitrate <= effectiveBitrate
+        if (gate == null) return trackBitrate <= effectiveBitrate
 
         val index = indexOf(format)
-        if (refused[index]) return false
+        if (refusedByDevice()[index]) return false
         if (MimeTypes.isVideo(format.sampleMimeType)) {
             val ceiling = gate.policy
             if (trackBitrate > ceiling.maxVideoBitrateBps) return false
@@ -291,7 +310,7 @@ internal class NetworkAwareTrackSelection(
     override fun getMinDurationToRetainAfterDiscardUs(): Long = gate.pace.retainAfterDiscardMs * MICROS_PER_MILLI
 
     /**
-     * What one factory's selections share: the device, read once; the ceiling and the pace,
+     * What one factory's selections share: the decoders, read once; the display, read in force; the ceiling and the pace,
      * retargeted by the `DecisionTarget`; and the source whose spread discounts the estimate.
      */
     internal class Gate(
@@ -310,6 +329,13 @@ internal class NetworkAwareTrackSelection(
          * is on `EngineConfiguration.protectedPlayback`.
          */
         private val protectedPlayback: Boolean = false,
+        /**
+         * Core's window onto the display this player is shown on, `EngineConfiguration.displayInForce`
+         * (ADR-0014 rule 10). Read on every evaluation rather than once, because on a player built with
+         * `superplayer-tv` core writes it again when an HDMI hotplug changes the display (rule 5); on
+         * every other player it holds the one reading core took at construction.
+         */
+        private val displayInForce: DisplayInForce = DisplayInForce(),
     ) {
         /** Written on the thread a decision arrives on, read on the loading thread: volatile, not locked. */
         @Volatile
@@ -319,13 +345,17 @@ internal class NetworkAwareTrackSelection(
         val pace: SelectionPace
             get() = policy.pace ?: SelectionPace.ENGINE_DEFAULT
 
-        /** The refusals that stand on their own: the display's size and the decoder. */
-        fun deviceRefuses(format: Format): Boolean =
-            displayRefusesSize(format) || decoderRefuses(format)
+        /** The display reading in force now. */
+        val display: DisplayCapability
+            get() = displayInForce.current
 
-        private fun displayRefusesSize(format: Format): Boolean {
+        /** The refusals that stand on their own: the size of [display], and the decoder. */
+        fun deviceRefuses(format: Format, display: DisplayCapability = this.display): Boolean =
+            displayRefusesSize(format, display) || decoderRefuses(format)
+
+        private fun displayRefusesSize(format: Format, display: DisplayCapability): Boolean {
             if (!MimeTypes.isVideo(format.sampleMimeType)) return false
-            val shortEdge = constraints.displayShortEdgePx ?: return false
+            val shortEdge = display.shortEdgePx ?: return false
             if (format.width == Format.NO_VALUE || format.height == Format.NO_VALUE) return false
             return minOf(format.width, format.height) > shortEdge
         }
@@ -343,8 +373,8 @@ internal class NetworkAwareTrackSelection(
          * ref: https://developer.android.com/reference/android/view/Display.HdrCapabilities
          * ref: https://www.itu.int/rec/R-REC-BT.2100
          */
-        fun displayRefusesHdr(format: Format): Boolean {
-            val hdrTypes = constraints.displayHdrTypes ?: return false
+        fun displayRefusesHdr(format: Format, display: DisplayCapability = this.display): Boolean {
+            val hdrTypes = display.hdrTypes ?: return false
             val color = format.colorInfo ?: return false
             if (color.colorTransfer != C.COLOR_TRANSFER_ST2084) return false
             return PQ_DISPLAY_TYPES.none { it in hdrTypes }
@@ -438,11 +468,7 @@ internal class NetworkAwareTrackSelection(
         const val ANY_LEVEL: Int = 0
 
         /** The display types that show a PQ transfer. */
-        val PQ_DISPLAY_TYPES: List<Int> = listOf(
-            Display.HdrCapabilities.HDR_TYPE_HDR10,
-            Display.HdrCapabilities.HDR_TYPE_HDR10_PLUS,
-            Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION,
-        )
+        val PQ_DISPLAY_TYPES: List<HdrType> = listOf(HdrType.HDR10, HdrType.HDR10_PLUS, HdrType.DOLBY_VISION)
 
         /**
          * How long a playing rung the ceiling refuses stays excluded: one millisecond, which is

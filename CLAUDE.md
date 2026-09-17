@@ -793,6 +793,21 @@ whose `TestContent.Rung.frameRate` a test sets. And the observation stops at the
 `harness.frameRateRequests(player)` reads what was asked of each surface the harness gave, and
 Robolectric's active mode never moves. `FrameRateMatchingTest` drives it on
 `DeviceStatement.declareDisplayModes`, and `SuperPlayerOutputSeamTest` counts rule 14.
+Since #269 a filled slot also registers core's `DisplayWatch`, a `DisplayListener` on the application
+looper (rule 5). The display left `DeviceConstraints` for `DisplayCapability` (the active mode's short
+edge and `HdrType`s, translated in `ConditionsBinding.kt`). Every player reads it once into
+`EngineConfiguration.displayInForce`, which `NetworkAwareTrackSelection.Gate` reads per evaluation, and a
+pool shares the first player's window. A differing reading is written there, re-selects through
+`ReselectingTrackSelector` (Media3's selector with `invalidate` exposed), and hands the binding the frame
+rate again. A refresh-rate change alone and a removed display are not readings. It is **not** a
+`PlaybackConditions` observation and fires no `DecisionChanged`: rules 9 and 11 reserve
+`DISPLAY_CHANGED` for the first policy that reads the display. Three things are easy to get wrong.
+Media3 1.11 reads the display's mode size on every video selection rather than storing a viewport, so
+rule 5's viewport rewrite has nothing to do (its #269 addendum). Media3 keeps a re-selection equal to
+the old one, so the selection re-decides its device refusals per reading rather than once per
+instance. And `EstimateMemory` forgets a sample timed after now, which is what lets a test class
+outside `superplayer-abr` build adaptive players across tests. `DisplayHotplugTest` drives it with
+`scheduleDeviceChange`, on a ladder whose `TestContent.Rung.hdr` rung is HDR10.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,

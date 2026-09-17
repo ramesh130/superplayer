@@ -42,7 +42,7 @@ than to wave the dependency through.
 | `superplayer-resilience` | 5 | ErrorClassifier, RetryPolicy, FallbackLadder | core |
 | `superplayer-drm` | 6 | WidevineSessionManager, provisioning, offline licenses, fallback ladder | core; testkit, resilience and telemetry (tests only) |
 | `superplayer-offline` | 7 | Downloads into the ContentCache the consumer opened, on the one chain: a store over Media3's download stack, WorkManager scheduling under unmetered, battery-not-low and storage-not-low, download track selection, and the licence bound to the download (ADR-0013) | core; testkit, testmedia, cache, drm and resilience (tests only) |
-| `superplayer-tv` | 8 | CTV behind one output slot: frame-rate matching, the display as a live condition, tunneling where the policy asks, and Compose-for-TV controls on a `SurfaceView` (ADR-0014) | core; testkit, testmedia, abr, drm, resilience and telemetry (tests only) |
+| `superplayer-tv` | 8 | CTV behind one output slot: frame-rate matching, the display as a live reading, tunneling where the policy asks, and Compose-for-TV controls on a `SurfaceView` (ADR-0014) | core; testkit, testmedia, abr, drm, resilience and telemetry (tests only) |
 | `superplayer-diagnostics` | 9 | MediaSourceDoctor, session trace bundle, on-device debug HUD | core |
 | `superplayer-ui` | — † | Optional Compose player surface | core |
 
@@ -50,7 +50,7 @@ than to wave the dependency through.
 `superplayer-resilience`, `superplayer-drm` and `superplayer-offline` also
 compile as Kotlin *friends* of core (`docs/testing.md`'s *Reaching that seam from another module*,
 ADR-0009 rule 7, ADR-0010 rules 3 and 6, ADR-0011 rule 13, ADR-0012 rule 4, ADR-0013 rule 4), and
-`superplayer-tv` joins them with its first slot (ADR-0014 rule 3). A friend path is a compiler flag rather than a Gradle
+`superplayer-tv` will join them with its first slot (ADR-0014 rule 3, #268). A friend path is a compiler flag rather than a Gradle
 dependency, which is why it does not appear in the column above and why it is not what the rule
 measures.
 

@@ -9,7 +9,8 @@
 - **Refined by:**
   [ADR-0013](0013-download-into-the-cache-the-consumer-opened-on-the-one-chain.md),
   which adds a fifth half of `PlaybackDecision`, recorded as an addendum at rule 2; and
-  [ADR-0014](0014-match-the-display-and-watch-it-change-behind-one-output-slot.md), which adds a sixth, recorded there too.
+  [ADR-0014](0014-match-the-display-and-watch-it-change-behind-one-output-slot.md),
+  which adds a sixth, recorded there too.
 - **Summary:** All buffering and track-selection policy is decided behind one engine-agnostic
   `PlaybackPolicy` interface that maps observed conditions to a decision — no Media3 type crosses
   it. Phase 1 ships a static per-profile lookup, deliberately non-adaptive; the consumer names a
@@ -102,7 +103,7 @@ Four rules follow, and they are binding:
    observation changes which language a viewer asked for; the device refusals it is bounded by are
    ADR-0009 rule 2's constraints.
 
-   *Addendum (#265, ADR-0014 rule 7).* **Tunneling** is policy under this rule for the same reason.
+   *Addendum (2026-09-17, ADR-0014 rule 7).* **Tunneling** is policy under this rule for the same reason.
    It hands A/V synchronisation to the platform's hardware, which is cheaper on a low-end TV and
    worse on a poor vendor implementation, and it costs the frame visibility telemetry reports. It is
    a sixth half of `PlaybackDecision`, an `OutputPolicy`, defaulting to off. It is laid into the

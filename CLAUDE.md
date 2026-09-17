@@ -1026,11 +1026,12 @@ Style preferences these are not. A change violating one is not accepted, whateve
   filling one slot, `EngineConfiguration.videoOutput`, from the `PlaybackOutput` a consumer passes to
   `setOutput`; frame-rate matching (`Surface.setFrameRate` with `CHANGE_FRAME_RATE_ALWAYS`, the
   viewer's own setting deciding) and re-selecting on a display change are correctness on every player
-  built with it, and an audio-capability change is Media3's own re-selection on every player, fixed in
-  core if it fails; tunneling is a sixth half of `PlaybackDecision`, applied from the construction
-  decision only, and `TV_LEANBACK` is a core profile; the display is a seventh observation with a
-  sixth trigger, `DISPLAY_CHANGED`, while decoders stay a constraint read once; the only TV surface is
-  Compose for TV on a `SurfaceView`, with Leanback rejected; #213's `TextureView` refusal is core's,
+  built with it, as is re-selecting on an audio-capability change, which is Media3's own mechanism
+  with its selector parameter switched on; tunneling is a sixth half of `PlaybackDecision`, applied
+  from the construction decision only, and `TV_LEANBACK` is a core profile; the display is a live
+  reading the selection gate re-reads, not yet a policy observation or a trigger because no policy
+  reads it, while decoders stay a constraint read once; the only TV UI is Compose for TV and a TV
+  player's surface a `SurfaceView`, with Leanback rejected; #213's `TextureView` refusal is core's,
   `FLAG_SECURE` the app's, and its display-change half this module's; and a player built without
   `setOutput` registers and allocates nothing for it, which a test counts.
 - **[`docs/api-surface.md`](docs/api-surface.md)** — every published module's public API is tracked

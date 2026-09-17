@@ -85,8 +85,8 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
  *
  * ## The eighth, of the first shape
  *
- * ADR-0014 rule 3 admits `superplayer-tv`, and it adds an instance rather than a shape. What the module
- * reaches is one core-internal extension interface on the `PlaybackOutput` a consumer passes to
+ * ADR-0014 rule 3 admits `superplayer-tv`, and it adds an instance rather than a shape. What the
+ * module will reach is one core-internal extension interface on the `PlaybackOutput` a consumer passes to
  * `setOutput`, through which it fills one slot core declared, `EngineConfiguration.videoOutput`. What
  * filling it changes is set as the engine is built: the frame-rate strategy on `ExoPlayer.Builder` and
  * tunneling on `DefaultTrackSelector`'s parameters, both `@UnstableApi` types, so no public call could

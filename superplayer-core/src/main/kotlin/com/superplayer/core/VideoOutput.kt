@@ -83,6 +83,12 @@ internal interface VideoOutputBinding {
      * The frame rate the first selected video format of the current media item declares, once per
      * item and before its first frame is rendered. Null for a format that declares none and for
      * content with no video. A later rung with a different rate is not reported (ADR-0014 rule 4).
+     *
+     * "Before its first frame" is the ordinary case rather than a guarantee: the tracks arrive on the
+     * application thread while the frame is rendered on the playback thread, so an application looper
+     * busy past the first frame makes the request land after it. A fallback to the next source is a
+     * new item to Media3 and is reported again; a source of the same content declares the same rate,
+     * and a rate already requested asks nothing more.
      */
     fun onVideoFrameRate(framesPerSecond: Float?)
 
@@ -131,8 +137,9 @@ internal class VideoOutputAttachment(private val binding: VideoOutputBinding) : 
     }
 
     fun surfaceCleared(surface: Surface?) {
-        // Media3 clears only the surface it holds, and a clear naming another one is a no-op there too.
-        if (surface == null || (surface === this.surface && holder == null)) surfaceSet(null)
+        // Media3 clears only the surface it holds, and a clear naming another one, or none, is a no-op
+        // there too.
+        if (surface != null && surface === this.surface && holder == null) surfaceSet(null)
     }
 
     fun holderSet(holder: SurfaceHolder?) {
@@ -148,7 +155,7 @@ internal class VideoOutputAttachment(private val binding: VideoOutputBinding) : 
     }
 
     fun holderCleared(holder: SurfaceHolder?) {
-        if (holder == null || holder === this.holder) surfaceSet(null)
+        if (holder != null && holder === this.holder) surfaceSet(null)
     }
 
     /** A `TextureView`'s surface is composited by the app, so no request on it reaches the display. */

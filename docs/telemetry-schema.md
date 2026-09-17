@@ -245,6 +245,15 @@ had something weaker delivered than they were entitled to*, and it is the field 
 reads before asking anything else. Counting it per app version and per device model is how a fused-off
 secure path shows up as a fleet fact rather than as one confused ticket.
 
+**Nothing here moved when the ladder learnt its second trigger either (`#225`).** A device the
+provisioning service will not certify at the level it reports now falls to the permitted one
+mid-session, where before it ended the session. `SessionEnded.securityLevel` is read when the session
+ends, so such a session reports the reduced level exactly as one decided before playback does — the
+field is the same field, with the same meaning and the same null rule, and `SCHEMA_VERSION` stands at
+2. What moves is the population, not the definition: a non-null value is now sometimes a session that
+*played through* a refusal rather than one that never met one. A pipeline joining it to failures
+should not expect a failure row beside it, because a rescued session reports none (ADR-0011 rule 10).
+
 **Nothing here moved when the permission channel did (`#223`).** `#208` read the permission off an
 HTTP exchange of SuperPlayer's own and `#223` reads it out of `WidevineConfig` instead, which changes
 how a session decides but nothing it reports: the field is the same field with the same meaning, the

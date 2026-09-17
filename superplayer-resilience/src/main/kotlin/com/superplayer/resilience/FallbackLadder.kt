@@ -441,6 +441,7 @@ internal object TypedError {
             userMessageKey = failureClass.userMessageKey,
             isRetryable = failureClass.retryable,
             category = failureClass.category,
+            lowerSecurityLevelMayHelp = failureClass.lowerSecurityLevelMayHelp,
             rungsTried = rungsTried,
             positionMs = positionMs,
             likelyCause = ErrorClassifier.likelyPartyIn(error),

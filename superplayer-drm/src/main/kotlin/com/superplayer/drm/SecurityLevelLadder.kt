@@ -39,20 +39,29 @@ import com.superplayer.core.DeviceConstraints
  *
  * ## When the question is asked
  *
- * Exactly once per player, and only where the device has already lost: it reports
- * [WidevineConfig.SECURITY_LEVEL_L1] — so every licence it is issued will require a decoder
- * operating on protected memory (// ref: `MediaDrm.requiresSecureDecoderComponent`) — and
- * [DeviceConstraints.hasSecureVideoDecoder] says it has none. That is one of the three ways `PRD.md`
- * §3.2 says L1 can be unusable, and it is the one a player can see *before* it has spent a licence
- * round trip finding out.
+ * At two moments, for two of the three ways `PRD.md` §3.2 says L1 can become unusable, and never
+ * anywhere else.
  *
- * The other two are named rather than handled, because naming what is not covered is worth more than
- * implying it is. **A failed L1 provisioning** surfaces asynchronously from inside
- * `DefaultDrmSessionManager`, after the session graph this file builds is fixed, and since #207 it
- * ends at rung 6 on `Drm.Provisioning` or `Drm.Unsupported` rather than here. **A secure surface that
- * cannot be allocated** is a property of the `Surface` a consumer attaches, which no test under
- * Robolectric can produce — there is no `MediaCrypto` and no protected buffer queue — and which
- * `docs/testing.md` therefore keeps out of `check` rather than faking.
+ * **Before the session graph is composed** ([levelToAskAbout]), and then only where the device has
+ * already lost: it reports [WidevineConfig.SECURITY_LEVEL_L1] — so every licence it is issued will
+ * require a decoder operating on protected memory (// ref: `MediaDrm.requiresSecureDecoderComponent`)
+ * — and [DeviceConstraints.hasSecureVideoDecoder] says it has none. That is the way a player can see
+ * *before* it has spent a licence round trip finding out, and #208 built it.
+ *
+ * **After a protection failure** ([levelToFallTo]), which is #225 and the second way: a device the
+ * provisioning service will not certify at the level it reports. Nothing about such a device is
+ * visible in advance — it declares a secure decoder and looks perfectly capable — and the refusal
+ * arrives from inside `DefaultDrmSessionManager` once the graph is fixed. So the remedy is the graph
+ * built again, which is `WidevineDrm`'s `reopenAtLowerLevel`, and the permission it needs is the same
+ * permission and read from the same place. It is still not a rung: core offers the failure here
+ * before it offers it to the ladder, and the ladder is neither consulted nor changed
+ * (ADR-0012 rule 11's #225 addendum).
+ *
+ * **A secure surface that cannot be allocated** is the third way and is still not handled. It is a
+ * property of the `Surface` a consumer attaches, which no test under Robolectric can produce — there
+ * is no `MediaCrypto` and no protected buffer queue — and which `docs/testing.md` therefore keeps out
+ * of `check` rather than faking. It reaches a player as an ordinary failure on the same path #225
+ * built, so what it needs is the predicate widened rather than a mechanism (#226).
  *
  * A device that can honour what it reports runs none of this: no probe, no request, no wrapper. That
  * is ADR-0012 rule 13's posture applied one level in.
@@ -74,6 +83,24 @@ internal object SecurityLevelLadder {
         // property means instantiating the device's protection stack. A device with a secure decoder
         // — or one that declared no decoders at all — never gets that far.
         if (device.hasSecureVideoDecoder() != false) return null
+        return levelToFallTo(mediaDrm)
+    }
+
+    /**
+     * The level below the one [mediaDrm] reports, or null where there is none to fall to or the
+     * device would not say.
+     *
+     * The other half of [levelToAskAbout], asked on its own after a protection failure (#225), where
+     * the device's decoder table has already been proved irrelevant: a device the provisioning
+     * service refuses at `L1` is refused whatever its decoders can do.
+     *
+     * Null for a device that already reports [WidevineConfig.SECURITY_LEVEL_L3], which is what makes
+     * this an actual *fall*: there is exactly one level below `L1` in Widevine's vocabulary, and
+     * asking to be lowered to the level already in force would spend a session graph to change
+     * nothing. Null too for a device that will not answer, which is [reportedSecurityLevel]'s rule
+     * that unknown engages nothing.
+     */
+    fun levelToFallTo(mediaDrm: ExoMediaDrm.Provider?): String? {
         val reported = reportedSecurityLevel(mediaDrm) ?: return null
         if (reported != WidevineConfig.SECURITY_LEVEL_L1) return null
         return WidevineConfig.SECURITY_LEVEL_L3

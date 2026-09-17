@@ -87,6 +87,20 @@ Three rules follow, and they are binding:
    callbacks through the wrapper and still catches the next `default` member, unchanged. A wrapper
    that ever wants a second exception argues it here.
 
+   *Addendum (#225, ADR-0012 rule 11).* Here is that argument, and the exception is the same
+   exception rather than a second one — what widened is which repairs it covers, not what may be
+   withheld. A `SuperPlayer` whose protection was refused at the security level it asked for, and
+   whose licence server's operator published a lower one, opens its session graph again at that
+   level and re-prepares. That is not a rung of ADR-0011's ladder and ADR-0012 rule 11 is explicit
+   that it must not become one, so the previous addendum's "performs rungs of the fallback ladder"
+   no longer describes every case and is corrected here to: **a failure the player repairs itself**.
+   Every bound above survives unchanged and the bounds are what the rule rests on — the same two
+   callbacks and no others, a failure the player has taken on rather than one the consumer must act
+   on, and nothing withheld at all on a player that gives the wrapper nothing to ask. The reason is
+   also unchanged: a viewer whose stream came back, at a level the operator permitted, has had a
+   session rescued and not a session that failed, and reporting both would be the two contradictory
+   accounts rule 10 exists to prevent. A third kind of repair argues itself here as this one did.
+
 ## Consequences
 
 **Easier.** Rule 2 holds where it is measured — from the consumer's side. The demo application now

@@ -19,8 +19,10 @@ public abstract class com/superplayer/resilience/FailureClass {
 	public static final field NETWORK_MESSAGE_KEY Ljava/lang/String;
 	public static final field PROTECTION_UNAVAILABLE_MESSAGE_KEY Ljava/lang/String;
 	public static final field UNSUPPORTED_MESSAGE_KEY Ljava/lang/String;
-	public synthetic fun <init> (Ljava/lang/String;ZLcom/superplayer/resilience/FallbackRung;Lcom/superplayer/core/FailureCategory;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;ZLcom/superplayer/resilience/FallbackRung;Lcom/superplayer/core/FailureCategory;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;ZLcom/superplayer/resilience/FallbackRung;Lcom/superplayer/core/FailureCategory;Ljava/lang/String;ZLkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getCategory ()Lcom/superplayer/core/FailureCategory;
+	public final fun getLowerSecurityLevelMayHelp ()Z
 	public final fun getRetryable ()Z
 	public final fun getRungCeiling ()Lcom/superplayer/resilience/FallbackRung;
 	public final fun getStableName ()Ljava/lang/String;
@@ -56,8 +58,8 @@ public final class com/superplayer/resilience/FailureClass$Device$DecoderTransie
 }
 
 public abstract class com/superplayer/resilience/FailureClass$Drm : com/superplayer/resilience/FailureClass {
-	public synthetic fun <init> (Ljava/lang/String;ZLcom/superplayer/resilience/FallbackRung;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public synthetic fun <init> (Ljava/lang/String;ZLcom/superplayer/resilience/FallbackRung;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;ZLcom/superplayer/resilience/FallbackRung;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;ZLcom/superplayer/resilience/FallbackRung;Ljava/lang/String;ZLkotlin/jvm/internal/DefaultConstructorMarker;)V
 }
 
 public final class com/superplayer/resilience/FailureClass$Drm$DowngradeRefused : com/superplayer/resilience/FailureClass$Drm {

@@ -189,6 +189,22 @@ internal class EngineConfiguration(
     var drm: LicenceSessions? = null
 
     /**
+     * Who core asks whether a protection failure can be repaired by opening the session graph again
+     * at a permitted lower level (ADR-0012 rule 11's #225 addendum).
+     *
+     * The DRM half of the slot above, facing the other way — core *puts* this question where it
+     * *calls* the one above, exactly as [playerStateRungs] faces the other way from [loadErrors]. It
+     * is a second slot and not a widening of [drm] because the two are asked at different times: the
+     * session graph is composed while the chain is built, and this is interrogated at failure time
+     * with the player already running. A filler sets both from one object, so an implementation
+     * cannot fill one and not the other.
+     *
+     * Null is every player without `superplayer-drm`, and also one whose protection has no level to
+     * fall to. Such a player is asked nothing and performs nothing, which is ADR-0012 rule 13.
+     */
+    var protectionRepair: ProtectionRepair? = null
+
+    /**
      * The Widevine implementation a test stands the device in with, and null everywhere else.
      *
      * A slot for [transport]'s reason and with the same bound: it substitutes the platform's

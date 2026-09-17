@@ -88,6 +88,25 @@ public class SuperPlayerError internal constructor(
     public val category: FailureCategory,
 
     /**
+     * Whether a licence issued at a lower Widevine security level could plausibly have succeeded
+     * where this failed (ADR-0012 rule 11's #225 addendum).
+     *
+     * The classifier's answer, carried rather than re-derived for [category]'s reason, and what core
+     * asks the protection to act on before it offers the failure to any rung. False on every failure
+     * that is not a protection failure, and on most of those: a licence that expired and a device
+     * whose protection stack faulted are no more possible at `L3` than at `L1`.
+     *
+     * False where nothing said otherwise, which is the direction every unknown in this library is
+     * read in: a classification that has not considered the question permits no downgrade.
+     *
+     * Rarely a consumer's business, and here because it is the honest account of what happened: a
+     * session that ends with this true on a player whose licence server permitted nothing is one a
+     * published permission would have rescued, which is a configuration conversation rather than a
+     * device one.
+     */
+    public val lowerSecurityLevelMayHelp: Boolean = false,
+
+    /**
      * The rungs the ladder actually climbed for this failure, in the order it climbed them, by their
      * stable names — `"RETRY_SAME_URL"`, `"NEXT_HOST"`, and so on.
      *

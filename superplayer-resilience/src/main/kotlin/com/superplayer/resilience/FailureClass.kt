@@ -60,7 +60,8 @@ public enum class FallbackRung {
  * the typed error a failed session ends with, a data pipeline groups by [stableName], and the rest of
  * Phase 5 reads [retryable] and [rungCeiling] instead of branching on an error code of its own.
  *
- * Each class answers the three questions rule 1 requires of it, and nothing else:
+ * Each class answers the questions rule 1 requires of it, and nothing else. Three of them are the
+ * ladder's:
  *
  * - [retryable] — whether rung 1, the same bytes again, can change the outcome. It is the whole of
  *   what a class says about rung 1: a failure that is not retryable is not retried, however much
@@ -72,6 +73,19 @@ public enum class FallbackRung {
  * - [stableName] — the string a log line, a bug report and a warehouse row all carry. Written out
  *   rather than derived from the class name, so that renaming a Kotlin type is not a silent schema
  *   change, and so that it survives an engine that renumbers its codes.
+ *
+ * The fourth is not the ladder's, and #225 added it rather than leaving the question to be answered
+ * somewhere else:
+ *
+ * - [lowerSecurityLevelMayHelp] — whether a licence issued at a lower Widevine security level could
+ *   plausibly succeed where this failure happened. ADR-0012 rule 11's downgrade is a mechanism
+ *   *beside* the ladder and not a rung of it, so no ceiling and no `FallbackRung` can express its
+ *   precondition — but it still acts on a failure, and rule 1 is that a failure acquires its meaning
+ *   here and nowhere else. Answered here rather than by core matching on a class name, which would
+ *   be this taxonomy kept twice, and rather than by `superplayer-drm`, which keeps none (ADR-0012
+ *   rule 5). False for every class outside [Drm], and for most of those: only a device the
+ *   provisioning service or the scheme itself refused is a device a different level might be
+ *   certified or entitled at.
  *
  * [category] is rule 3's one-to-one table: telemetry's coarse [FailureCategory] derived from the
  * class rather than kept as a second taxonomy. Two of that enum's buckets have no row here, and both
@@ -103,6 +117,11 @@ public sealed class FailureClass(
      * rather than for the class, because that is what an app switches on.
      */
     public val userMessageKey: String,
+    /**
+     * Whether a licence issued at a lower security level could plausibly succeed where this failed
+     * (ADR-0012 rule 11's #225 addendum). False for everything but the two [Drm] leaves that say so.
+     */
+    public val lowerSecurityLevelMayHelp: Boolean = false,
 ) {
 
     final override fun toString(): String = stableName
@@ -232,14 +251,32 @@ public sealed class FailureClass(
         retryable: Boolean,
         rungCeiling: FallbackRung,
         userMessageKey: String = DRM_MESSAGE_KEY,
-    ) : FailureClass(stableName, retryable, rungCeiling, FailureCategory.DRM, userMessageKey) {
+        lowerSecurityLevelMayHelp: Boolean = false,
+    ) : FailureClass(
+        stableName,
+        retryable,
+        rungCeiling,
+        FailureCategory.DRM,
+        userMessageKey,
+        lowerSecurityLevelMayHelp,
+    ) {
 
         /**
          * The device could not be provisioned. A server-side operation between the device and the
          * provisioning service that a later attempt commonly succeeds at, and that no other host,
          * variant or source has any bearing on — so rung 1 is the ceiling as well as the remedy.
+         *
+         * A lower level may help, and this is the leaf #225 was written for: provisioning certifies
+         * a device *at a level* — the keybox being certified is the L1 one — so a service that will
+         * not certify a handset's trusted execution environment routinely certifies its software
+         * implementation, which is `PRD.md` §3.2's first way L1 becomes unusable.
          */
-        public object Provisioning : Drm("Drm.Provisioning", retryable = true, FallbackRung.RETRY_SAME_URL)
+        public object Provisioning : Drm(
+            "Drm.Provisioning",
+            retryable = true,
+            FallbackRung.RETRY_SAME_URL,
+            lowerSecurityLevelMayHelp = true,
+        )
 
         /**
          * A licence could not be acquired: the round trip to the licence server did not produce one.
@@ -295,8 +332,20 @@ public sealed class FailureClass(
          * The scheme, the device or the operation is refused: an unsupported key system, a revoked
          * device, a disallowed operation, content whose protection data is wrong. Another source may
          * be protected differently, so the ceiling is rung 4 rather than the error at once.
+         *
+         * A lower level may help here too, and for the same reason it does for [Provisioning]: this
+         * is the leaf a *revoked* Widevine implementation reaches (`DeniedByServerException`, error
+         * code 6007), and revocation is of a keybox rather than of a handset. Core offers the
+         * downgrade before rung 4 whatever this ceiling says, because the two answer different
+         * questions: the ceiling is how far the ladder may climb, and this is whether the ladder is
+         * the right mechanism at all.
          */
-        public object Unsupported : Drm("Drm.Unsupported", retryable = false, FallbackRung.NEXT_SOURCE)
+        public object Unsupported : Drm(
+            "Drm.Unsupported",
+            retryable = false,
+            FallbackRung.NEXT_SOURCE,
+            lowerSecurityLevelMayHelp = true,
+        )
 
         /**
          * The device cannot honour the protection level it reports, and the licence server did not

@@ -46,8 +46,9 @@ dependencies {
     // acquisition is measured by `QoeCollector` from Media3's DRM analytics callbacks (#212) —
     // `superplayer-telemetry`'s, because ADR-0012 rule 5 leaves this module with no vocabulary of
     // its own — and a real licence round trip needs the protected stream, the stated device and the
-    // licence server that only this module's tests have. Nothing in this module's main sources knows
-    // it exists.
+    // licence server that only this module's tests have. The same collector reports the other half
+    // of ADR-0012 rule 11 (#225): a session that fell to a lower level mid-flight says so on
+    // `SessionEnded`. Nothing in this module's main sources knows it exists.
     testImplementation(project(":superplayer-telemetry"))
 }
 

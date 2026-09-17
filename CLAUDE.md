@@ -575,9 +575,24 @@ decode. It is a mechanism beside `FallbackLadder` and **not a seventh rung**; th
 ADR-0012 rejected stays rejected. What was delivered is `player.deliveredSecurityLevel`, which
 `QoeCollector` reads onto `TelemetryEvent.SessionEnded.securityLevel` — an addition of shape, so
 `SCHEMA_VERSION` stays 2, which the release notes say in as many words. `SecurityLevelTest` states
-one device and two servers, one permitting and one silent. The two cases it cannot force — a failed
-L1 provisioning, and a secure surface that will not allocate — are named in its KDoc rather than
-implied. Since #209 the manager is built `setMultiSession(true)`, and that is a **defect repaired**
+one device and two servers, one permitting and one silent. Since #225 the ladder also runs **after**
+a failure, for the second of `PRD.md` §3.2's three cases: a device the provisioning service will not
+certify at `L1` looks perfectly capable up front, so the remedy is the session graph *built again* at
+the permitted level — `PlayerProtection` is the per-player object that holds the graph behind a
+swappable provider, and core asks it through `EngineConfiguration.protectionRepair`, a second slot it
+interrogates at failure time before it asks either player-state rung, since a request's sources are
+one piece of content and a refusal at the level asked for is a refusal at every one of them. Which
+failures are offered is core's (`SuperPlayerError.category`), because a predicate in the module would
+be the taxonomy rule 5 forbids it; the bound is core's too, `SuperPlayer.MAX_PROTECTION_REOPENS`, and
+it is one, because Widevine has a single level below `L1`. `ProvisioningDowngradeTest` drives it, with
+the two controls that keep it from being "downgrade on any DRM failure": nothing permitted still ends
+exactly where `DrmFailureTest` says, and a device the service certifies negotiates nothing. The one
+case still uncovered — a secure surface that will not allocate — is named in `SecurityLevelLadder`'s
+KDoc rather than implied, and arrives on the same path. Which failures reach that path is the
+classifier's fourth question, `FailureClass.lowerSecurityLevelMayHelp`, carried out on
+`SuperPlayerError`: true for the two leaves a refused keybox reaches and false for everything else,
+so a licence that expired lowers nothing.
+Since #209 the manager is built `setMultiSession(true)`, and that is a **defect repaired**
 rather than a saving added: Media3's default keeps one `noMultiSessionDrmSession` for *every* format
 whatever its `DrmInitData`, so a player whose protection is declared once per item-spanning manager
 (rule 1) held one session across content a licence server licensed separately. Reuse is now decided

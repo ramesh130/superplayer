@@ -19,7 +19,8 @@ package com.superplayer.testkit
 import java.util.Random
 
 /**
- * The six network profiles `PRD.md` Part 6 names, each as a [ThroughputTrace].
+ * The six network profiles `PRD.md` Part 6 names, each as a [ThroughputTrace], and [ETHERNET], the
+ * seventh, which `PRD.md` §3.8's Ethernet-transport profile needs a link to be forced on (#267).
  *
  * Synthetic on purpose, and alongside recorded traces rather than instead of them: a profile is
  * legible — a regression under `LTE_WITH_DROPOUTS` is attributable to a dropout — while a recorded
@@ -29,7 +30,11 @@ import java.util.Random
  * **Every number carries a public source**, per the clean-room rule in `CONTRIBUTING.md`, and where
  * the source fixes the regime but not the exact value, the comment says which part is this
  * project's choice and why. Round-trip time is 0 — not modelled — everywhere except
- * [HIGH_LATENCY], so that latency is the one variable that profile changes.
+ * [HIGH_LATENCY], so that latency is the one variable that profile changes, and [ETHERNET] is
+ * [STABLE_WIFI]'s rate so that the transport is the one variable it changes.
+ *
+ * The benchmark's matrix is `PRD.md` §6's six and names its own rows, so a profile added here joins
+ * the QoE regression gate, which plays every entry, and not the matrix.
  */
 public enum class NetworkProfile(public val trace: ThroughputTrace) {
 
@@ -82,6 +87,25 @@ public enum class NetworkProfile(public val trace: ThroughputTrace) {
             // A geostationary satellite link is what a 600 ms round trip is in the field, and the
             // device reaches the satellite terminal over the home WiFi it is connected to.
             .add(ONE_SECOND_MS, STABLE_WIFI_BPS, NetworkTransport.WIFI, HIGH_LATENCY_RTT_MS)
+            .build(),
+    ),
+
+    /**
+     * A wired link at [STABLE_WIFI]'s bandwidth, so that the transport is the only thing that differs:
+     * a television on Ethernet, which `PRD.md` §3.8 says should not behave like a phone on WiFi.
+     */
+    ETHERNET(
+        ThroughputTrace.Builder()
+            // ref: derivation (CONTRIBUTING.md rule 4), not a claim about a network. A cable has no
+            // radio hop to fade or contend, so the link is written as one constant stretch, as
+            // STABLE_WIFI's is, rather than with CONGESTED_WIFI's swing; what varies on a real wired
+            // line is the access network behind the router, which is a recorded trace's subject. The
+            // rate is STABLE_WIFI_BPS on purpose: a faster line would change two variables at once,
+            // and 20 Mbit/s already leaves the network never the reason a rung was refused (the
+            // Netflix source at STABLE_WIFI_BPS). The transport is the platform's TRANSPORT_ETHERNET,
+            // which TransportReplay reports unmetered as the platform does.
+            // https://developer.android.com/reference/android/net/NetworkCapabilities#TRANSPORT_ETHERNET
+            .add(ONE_SECOND_MS, STABLE_WIFI_BPS, NetworkTransport.ETHERNET)
             .build(),
     ),
     ;

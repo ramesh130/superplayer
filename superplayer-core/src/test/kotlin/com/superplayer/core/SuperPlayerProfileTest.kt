@@ -144,6 +144,31 @@ class SuperPlayerProfileTest {
     }
 
     @Test
+    fun tvLeanbackProducesItsDocumentedConfiguration() {
+        assertProfileProduces(
+            profile = PlaybackProfile.TV_LEANBACK,
+            buffer = BufferPolicy(
+                minBufferMs = 50_000,
+                maxBufferMs = 120_000,
+                bufferForPlaybackMs = 2_500,
+                bufferForPlaybackAfterRebufferMs = 5_000,
+                backBufferMs = 30_000,
+                retainBackBufferFromKeyframe = true,
+            ),
+            trackSelection = TrackSelectionPolicy(
+                maxVideoBitrateBps = TrackSelectionPolicy.UNLIMITED,
+                maxVideoHeightPx = TrackSelectionPolicy.UNLIMITED,
+            ),
+            preload = PreloadPolicy(itemsAhead = 1, itemsBehind = 1, depth = PreloadDepth.SourcePrepared),
+            retry = RetryPolicy(
+                segment = RetryBudget(maxRetries = 5, initialBackoffMs = 500, maxBackoffMs = 8_000),
+                licence = BEFORE_THE_FIRST_FRAME,
+            ),
+            download = DownloadSelectionPolicy(maxVideoBitrateBps = TrackSelectionPolicy.UNLIMITED, maxVideoHeightPx = 2_160),
+        )
+    }
+
+    @Test
     fun dataSaverProducesItsDocumentedConfiguration() {
         assertProfileProduces(
             profile = PlaybackProfile.DATA_SAVER,
@@ -169,10 +194,10 @@ class SuperPlayerProfileTest {
     }
 
     /**
-     * The profiles differ from each other, which is the only reason to have four of them.
+     * The profiles differ from each other, which is the only reason to have five of them.
      *
      * Written as a set comparison rather than as pairwise assertions so that a future profile added
-     * as a copy of an existing one — the way a fifth profile most plausibly goes wrong — fails here.
+     * as a copy of an existing one — the way a new profile most plausibly goes wrong — fails here.
      */
     @Test
     fun noTwoProfilesProduceTheSameConfiguration() {
@@ -356,7 +381,7 @@ class SuperPlayerProfileTest {
         val DATA_SAVER_BUDGET = RetryBudget(maxRetries = 2, initialBackoffMs = 1_000, maxBackoffMs = 5_000)
 
         /**
-         * The licence budget three of the four profiles share, and they share the numbers rather
+         * The licence budget four of the five profiles share, and they share the numbers rather
          * than the argument: each row of `StaticProfilePolicy` reaches them for a reason of its own,
          * and `SHORT_FORM` — the one profile a licence is not worth waiting for — does not.
          */

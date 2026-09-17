@@ -134,6 +134,7 @@ public final class com/superplayer/testkit/HostileOutcome : java/lang/Enum {
 public final class com/superplayer/testkit/NetworkProfile : java/lang/Enum {
 	public static final field CONGESTED_WIFI Lcom/superplayer/testkit/NetworkProfile;
 	public static final field Companion Lcom/superplayer/testkit/NetworkProfile$Companion;
+	public static final field ETHERNET Lcom/superplayer/testkit/NetworkProfile;
 	public static final field HANDOVER_AT_MS J
 	public static final field HIGH_LATENCY Lcom/superplayer/testkit/NetworkProfile;
 	public static final field LTE_DROPOUT_PERIOD_MS J

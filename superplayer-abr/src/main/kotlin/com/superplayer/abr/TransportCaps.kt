@@ -51,7 +51,15 @@ internal object TransportCaps {
 
     /** The cap for [profile] on [transport]; [UNCAPPED] where the transport itself imposes none. */
     fun capFor(profile: PlaybackProfile, transport: NetworkTransport): TrackSelectionPolicy = when (transport) {
-        NetworkTransport.Wifi, NetworkTransport.Ethernet, NetworkTransport.Unknown -> UNCAPPED
+        NetworkTransport.Wifi, NetworkTransport.Unknown -> UNCAPPED
+
+        // A wired link is capped for no profile, a television's included. F1's trade buys fewer
+        // interruptions with bytes on a link that is metered and drops out, and Ethernet is neither:
+        // it has no radio to lose and is reported unmetered, so a cap here would give up quality for
+        // nothing. What bounds a slow wired line is the estimate, which is kept per transport, so a
+        // television moved from WiFi to a cable starts from the wired window and not the wireless one.
+        // ref: https://developer.android.com/reference/android/net/NetworkCapabilities#NET_CAPABILITY_NOT_METERED
+        NetworkTransport.Ethernet -> UNCAPPED
 
         is NetworkTransport.Cellular -> when (transport.generation ?: CellularGeneration.LTE) {
             // 5G is not capped on its own account. Its delivered rate ranges from below LTE's to
@@ -64,6 +72,12 @@ internal object TransportCaps {
                 // and a 1080p rung is one an ordinary LTE cell sustains only on a good day; the
                 // 1440p and 2160p tiers above it are the ones it never does.
                 PlaybackProfile.VIDEO_ON_DEMAND, PlaybackProfile.LIVE_LINEAR -> RUNG_1080P
+
+                // A television on cellular is one on a phone's hotspot or a cellular router, and the
+                // cell is the same cell: 1080p is where it stops paying whatever screen is downstream.
+                // Not lower for the larger panel, because a 720p picture across a living room is the
+                // loss a viewer sees, and one who put a film on the television chose the picture.
+                PlaybackProfile.TV_LEANBACK -> RUNG_1080P
 
                 // A feed clip is watched for seconds; the climb to 1080p is bytes spent on a rung
                 // that is abandoned before it is seen, and on a metered link that is the viewer's

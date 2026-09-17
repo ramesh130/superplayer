@@ -76,6 +76,22 @@ public enum class PlaybackProfile {
     SHORT_FORM,
 
     /**
+     * Lean-back viewing on a television — a film or an episode chosen with a remote and watched across
+     * a room, usually by more than one person.
+     *
+     * The long-form case with its costs moved further in the same direction. The device is on mains
+     * power and most often on a home link nobody meters, so holding media ahead costs neither battery
+     * nor the viewer's data. A stall, meanwhile, happens on the largest screen in the house, in front of
+     * everyone watching, and nobody has a hand on the device to nudge it. So the cushion is deep from
+     * the first decision rather than earned once the link is measured, and scrubbing back with the
+     * remote lands in media already held.
+     *
+     * It names the kind of viewing and not the device: a television app that also plays short-form
+     * clips plays them under [SHORT_FORM].
+     */
+    TV_LEANBACK,
+
+    /**
      * The viewer has asked to spend less data, or the app has decided on their behalf.
      *
      * The only profile that caps quality rather than only shaping buffering, and the only one whose

@@ -19,8 +19,8 @@ package com.superplayer.core
 /**
  * Which mode each [PlaybackProfile] emits under when a consumer does not choose one.
  *
- * `PRD.md` §3.1 makes CMCD non-optional in the CDN-facing profiles. All four are CDN-facing, and all
- * four default to [CmcdMode.REQUEST_HEADERS] — so the table is uniform today, and it exists anyway
+ * `PRD.md` §3.1 makes CMCD non-optional in the CDN-facing profiles. All five are CDN-facing, and all
+ * five default to [CmcdMode.REQUEST_HEADERS] — so the table is uniform today, and it exists anyway
  * because the *reasoning* is per-profile and the one profile with a real case against is the one most
  * likely to be argued about later.
  *
@@ -37,6 +37,10 @@ package com.superplayer.core
  *                                     a single segment, and `su` on a feed is the difference between
  *                                     "the CDN is slow" and "the CDN is slow on the request the
  *                                     viewer is waiting for".
+ *   TV_LEANBACK      REQUEST_HEADERS  The longest sessions, on a home line many viewers share one
+ *                                     edge of, and a device nobody opens a log on. `bl` on a stall
+ *                                     here says whether a 50-second cushion ran dry or was never
+ *                                     filled, which is the whole question on a wired link.
  *   DATA_SAVER       REQUEST_HEADERS  The judgement call, and it goes the same way. See below.
  * ```
  *
@@ -61,6 +65,7 @@ internal object StaticCmcdPolicy {
         PlaybackProfile.VIDEO_ON_DEMAND,
         PlaybackProfile.LIVE_LINEAR,
         PlaybackProfile.SHORT_FORM,
+        PlaybackProfile.TV_LEANBACK,
         PlaybackProfile.DATA_SAVER,
         -> CmcdMode.REQUEST_HEADERS
     }

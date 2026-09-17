@@ -3,7 +3,7 @@
 `superplayer-testkit` can replay a network under a player: a time series of bandwidth, round-trip
 time and transport, delivered against the harness's clock. This document is the trace format's
 specification, the rules of the replay, how to bring a public dataset into the format, and where
-each of the six built-in profiles' numbers comes from.
+each of the seven built-in profiles' numbers comes from.
 
 ```kotlin
 val player = harness.buildPlayer(
@@ -114,11 +114,14 @@ session did — which segments, in which order, failing where — rather than on
 finished or the state at one instant, which `NetworkShapingTest` asserts at the transfer level
 instead.
 
-## The six profiles
+## The seven profiles
 
-`NetworkProfile` holds the six `PRD.md` Part 6 names. Each constant carries its source in the code;
-this is the summary. Round-trip time is 0 everywhere except `HIGH_LATENCY`, so that latency is the
-only thing that profile changes.
+`NetworkProfile` holds the six `PRD.md` Part 6 names, and `ETHERNET`, which `PRD.md` §3.8's
+Ethernet-transport profile needs (#267). Each constant carries its source in the code; this is the
+summary. Round-trip time is 0 everywhere except `HIGH_LATENCY`, so that latency is the only thing that
+profile changes, and `ETHERNET` is `STABLE_WIFI`'s rate, so that the transport is the only thing it
+changes. The benchmark's matrix keeps `PRD.md` §6's six and names them itself; the QoE regression gate
+plays all seven.
 
 | Profile | Trace | Source |
 | --- | --- | --- |
@@ -128,6 +131,7 @@ only thing that profile changes.
 | `THREE_G` | 1 Mbit/s, cellular | HSDPA dataset; Pensieve §5.1's under-6 Mbit/s trace band |
 | `WIFI_TO_CELLULAR_HANDOVER` | 20 Mbit/s WiFi for 10 s, then 5 Mbit/s cellular, held | The two profiles above; no outage at the switch, because its length is the HTTP stack's (ADR-0004) |
 | `HIGH_LATENCY` | 20 Mbit/s, 600 ms round trip | RFC 2488 §2: a geostationary round trip is at least 558 ms |
+| `ETHERNET` | 20 Mbit/s, Ethernet | `STABLE_WIFI`'s rate on Android's `TRANSPORT_ETHERNET`, reported unmetered; constant, because a cable has no radio hop |
 
 Where a source fixes the regime but not the exact number, the number is `PRD.md`'s and the code says
 so. `CONGESTED_WIFI` is antithetic pairs from a fixed-seed `java.util.Random` — whose algorithm the

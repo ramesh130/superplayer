@@ -59,6 +59,16 @@ class AdaptiveSelectionPolicyTest {
         }
     }
 
+    // Rule 2's wired row (#267): Ethernet is neither metered nor radio, so no profile gives up a rung on it.
+    @Test
+    fun aWiredTransportCapsNoProfile() {
+        for (profile in PlaybackProfile.entries) {
+            val static = PlaybackPolicy.forProfile(profile).decide(PlaybackConditions()).trackSelection
+            val onEthernet = AdaptiveSelectionPolicy(profile).decide(PlaybackConditions(transport = NetworkTransport.Ethernet))
+            assertWithMessage("$profile on Ethernet").that(onEthernet.trackSelection).isEqualTo(static.paced(profile))
+        }
+    }
+
     @Test
     fun theTransportCapNeverRaisesTheProfilesOwnCeiling() {
         val dataSaver = PlaybackPolicy.forProfile(PlaybackProfile.DATA_SAVER).decide(PlaybackConditions()).trackSelection

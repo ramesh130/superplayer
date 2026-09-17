@@ -41,7 +41,7 @@ configuration change is issue #10's subject, not this one's.
 
 The third public type is `PlaybackProfile`: what kind of playback this is, chosen by
 `SuperPlayer.Builder.setProfile(...)` and fixed for a player's lifetime. It names a use case —
-`VIDEO_ON_DEMAND` (the default), `LIVE_LINEAR`, `SHORT_FORM`, `DATA_SAVER` — rather than carrying
+`VIDEO_ON_DEMAND` (the default), `LIVE_LINEAR`, `SHORT_FORM`, `TV_LEANBACK`, `DATA_SAVER` — rather than carrying
 numbers. The numbers, and a written rationale for every one that departs from Media3's own default,
 live in `StaticProfilePolicy`, which is internal.
 
@@ -335,7 +335,8 @@ of it. The harness also replays a network: `buildPlayer(network = …)` takes a 
 round trip and a *transport* per stretch, the last so a WiFi→cellular handover is a change of network
 rather than of rate — and paces every transfer on it through `ShapingDataSource`, which sits in front
 of the fault injector so a trace and a `FaultScript` are one player. `NetworkProfile` is `PRD.md`
-Part 6's six profiles, each constant with its public source. `docs/throughput-traces.md` is the
+Part 6's six profiles plus `ETHERNET` (#267, `STABLE_WIFI`'s rate on a wired transport), each constant
+with its public source; the benchmark's matrix keeps the six, and the QoE gate plays all seven. `docs/throughput-traces.md` is the
 format's specification and the replay's limits — notably that concurrent transfers each see the whole
 link — and says how a public dataset comes in: `./gradlew convertThroughputTrace`, whose conversions
 live in `build-logic`, run locally, because no dataset is vendored. The harness owns the loading

@@ -96,8 +96,8 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
             // is spent entirely before playback. A quarter of a second to the first ask and a 2s
             // ceiling keeps the whole of it inside the few seconds a committed viewer gives a title.
             retry = RetryPolicy(
-                segment = RetryBudget(maxRetries = 5, initialBackoffMs = 500, maxBackoffMs = 8_000),
-                licence = RetryBudget(maxRetries = 4, initialBackoffMs = 250, maxBackoffMs = 2_000),
+                segment = LONG_FORM_SEGMENT_BUDGET,
+                licence = LONG_FORM_LICENCE_BUDGET,
             ),
             // 1080p for a download, with no bitrate ceiling. A download is watched on the device that
             // fetched it, which is a phone or a tablet far more often than a television, and 1080p is
@@ -194,7 +194,7 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
                 itemsBehind = 1,
                 depth = PreloadDepth.DecoderWarmed(durationMs = SHORT_FORM_BUFFER.bufferForPlaybackMs),
             ),
-            // The shortest budget of the four, and the same one for both kinds, because in a feed
+            // The shortest budget of the five, and the same one for both kinds, because in a feed
             // the thing being protected is the *start*: a row is seconds long and the viewer's
             // thumb is already moving, so a second spent asking again is a second of the row gone
             // and there is no cushion to hide it in. Two asks each, the first a quarter of a second
@@ -214,6 +214,69 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
             // feed on a phone held upright, where the video is shown across the screen's short edge;
             // 720p fills that edge on most phones and costs about half the storage of 1080p per clip.
             download = DownloadSelectionPolicy(maxVideoBitrateBps = TrackSelectionPolicy.UNLIMITED, maxVideoHeightPx = 720),
+        )
+
+        // Lean-back television. Long-form again, with both of its costs moved further the same way:
+        // holding media ahead costs less, and a stall costs more. The device is on mains power and
+        // usually on a home link nobody meters, so a buffer spends neither battery nor the viewer's
+        // data; the stall, when it comes, is on the room's largest screen in front of everyone
+        // watching it.
+        //
+        // A 50s floor, which is Media3's own and what the adaptive policy's deep cushion lifts
+        // on-demand to only once a stable, fast link has been measured. A television starts there,
+        // because what that measurement guards against is spending a metered or battery-bound link
+        // on media nobody watches, and neither is this device's case. The static table cannot see
+        // the transport, so a television tethered to a phone keeps the floor; the adaptive policy's
+        // transport cap is what spends less on that link.
+        //
+        // A 120s ceiling, the room above the floor being what rides out a household's broadband
+        // blip — another device saturating the shared line, a router's restart — without a stall.
+        // Bounded by what Media3 already bounds the buffer by in bytes: its default video target is
+        // 125 MiB (`DEFAULT_VIDEO_BUFFER_SIZE`), which the top 1080p tier Apple recommends, 7.8
+        // Mbit/s, takes about 134s to fill. So 120s is the deepest a 1080p ladder reaches in time
+        // before the byte target stops it, a 4K ladder stops on bytes first, and no media is held
+        // that Media3's own defaults would not have allowed. The adaptive policy's heap branch caps
+        // it further on a television with a small heap, which is most of them.
+        //
+        // Start floors stay on-demand's 2.5s/5s: a lean-back viewer has chosen the title and sat
+        // down, and a start that is a second faster buys nothing against a stall later.
+        //
+        // A 30s back buffer, as on-demand, and for a remote's reason too: the replay button on a
+        // television remote skips back a fixed step, and that step should land in memory.
+        PlaybackProfile.TV_LEANBACK -> PlaybackDecision(
+            buffer = BufferPolicy(
+                minBufferMs = 50_000,
+                maxBufferMs = 120_000,
+                bufferForPlaybackMs = 2_500,
+                bufferForPlaybackAfterRebufferMs = 5_000,
+                backBufferMs = 30_000,
+                retainBackBufferFromKeyframe = true,
+            ),
+            // Uncapped. A television is the one screen every rung of a ladder was encoded for, and
+            // what its panel cannot show is refused by the device constraint under any policy rather
+            // than guessed at here.
+            trackSelection = TrackSelectionPolicy(
+                maxVideoBitrateBps = TrackSelectionPolicy.UNLIMITED,
+                maxVideoHeightPx = TrackSelectionPolicy.UNLIMITED,
+            ),
+            // One title either side, manifests only. Titles are chosen as on-demand ones are, so media
+            // for a tile is most often media for a title nobody picked; but a remote moves focus one
+            // tile at a time and left is one press as right is, so the tile behind is as likely next
+            // as the one ahead.
+            preload = PreloadPolicy(itemsAhead = 1, itemsBehind = 1, depth = PreloadDepth.SourcePrepared),
+            // On-demand's budgets, for on-demand's reasons, and not raised on account of the deeper
+            // floor: past the segment budget's 8s ceiling another host is the better bet however
+            // much cushion is left, and the licence is spent before playback where no cushion exists.
+            retry = RetryPolicy(
+                segment = LONG_FORM_SEGMENT_BUDGET,
+                licence = LONG_FORM_LICENCE_BUDGET,
+            ),
+            // 2160p for a download, with no bitrate ceiling. A download a television fetched is
+            // watched on that television, and 2160p is the resolution its panel is sold at; the 4320p
+            // rung above it costs about four times the storage for a picture no such panel resolves.
+            // A television's storage is small, and running out of it is what the download store's
+            // storage conditions answer, not a lower rung chosen for every title in advance.
+            download = DownloadSelectionPolicy(maxVideoBitrateBps = TrackSelectionPolicy.UNLIMITED, maxVideoHeightPx = 2_160),
         )
 
         // Data saver. The viewer has asked to spend fewer bytes, so every number here is chosen
@@ -270,6 +333,15 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
     }
 
     private companion object {
+        /**
+         * The segment budget of the long-form rows, named because `VIDEO_ON_DEMAND` and `TV_LEANBACK`
+         * share it; the numbers are argued at the `VIDEO_ON_DEMAND` row.
+         */
+        val LONG_FORM_SEGMENT_BUDGET = RetryBudget(maxRetries = 5, initialBackoffMs = 500, maxBackoffMs = 8_000)
+
+        /** As [LONG_FORM_SEGMENT_BUDGET], for the licence. */
+        val LONG_FORM_LICENCE_BUDGET = RetryBudget(maxRetries = 4, initialBackoffMs = 250, maxBackoffMs = 2_000)
+
         /**
          * The feed's budget, named because both of its kinds share it; the numbers are argued at
          * the `SHORT_FORM` row.

@@ -208,6 +208,11 @@ dependencies {
     implementation("com.superplayer:superplayer-preload:${libs.versions.superplayer.get()}")
     implementation("com.superplayer:superplayer-cache:${libs.versions.superplayer.get()}")
     implementation("com.superplayer:superplayer-telemetry:${libs.versions.superplayer.get()}")
+    // The downloads screen's two modules, by published coordinates for the same reason: offline is what a
+    // download store and its service are, and resilience is what names a failed download and stops one whose
+    // network was lost. No DRM module: the demo's streams are clear and it has no licence server to name.
+    implementation("com.superplayer:superplayer-offline:${libs.versions.superplayer.get()}")
+    implementation("com.superplayer:superplayer-resilience:${libs.versions.superplayer.get()}")
     implementation(libs.media3.ui)
     // For `androidx.annotation.OptIn`, the form of opt-in that works on Media3's Java
     // `@UnstableApi` marker — see MainActivity.showBufferingSpinner. Named here rather than

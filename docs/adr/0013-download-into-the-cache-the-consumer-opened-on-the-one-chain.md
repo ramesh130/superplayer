@@ -134,6 +134,27 @@ Fifteen rules follow, and they are binding.
    consumer's behalf. The entries `WorkManager`'s own artifact merges are WorkManager's, and the
    module's documentation lists them so a consumer is not surprised by their manifest.
 
+   *Addendum (2026-09-17, #246).* How the service was built, decided where it was:
+
+   - **The consumer names the subclass on the store, `Downloads.Builder.setService`.** A third override the
+     rule does not list, and needed: the store is what knows a download can run, and the scheduled work is
+     what runs in a process where no store is open, so both must be able to start the service, and neither
+     can find a class in the app's manifest by its supertype. The app still starts it nowhere itself.
+   - **The service holds the process; the store runs the downloads.** The store resumes its own
+     `DownloadManager` whether or not a service holds it, so a store a screen opened downloads exactly as one
+     the service opened does, and the service's lifecycle is only foreground promotion, the notification and
+     stopping. Media3's `DownloadService` owns its manager's pause instead, which would make a download depend
+     on a service having started.
+   - **Foreground while a download can run: pending, and held by no condition.** A download a metered network
+     or a low battery holds is waiting, and a `dataSync` foreground service has a daily time budget from API
+     35; the service stops, and the schedule starts it again once the conditions hold. Every start announces a
+     notification first, including one with nothing to run, because a foreground start obliges it.
+   - **Not sticky.** Restarting a download whose process died is rule 11's schedule; a sticky restart would be
+     a second mechanism, and a foreground-service start from the background the platform refuses.
+   - **The notification's content defaults to Media3's progress notification**, built internally, under the
+     channel name and icon the consumer supplies, and is overridable as a list of `DownloadItem`s, rebuilt at
+     most once a second.
+
 4. **`superplayer-offline` is core's seventh Kotlin friend, and the shape it adds is being *built
    from* core's seam rather than filling a slot of it.** It fills nothing. It reaches three things,
    each core-internal and each unreachable otherwise without an `@UnstableApi` type in a public
@@ -342,6 +363,13 @@ Fifteen rules follow, and they are binding.
       of the scale, and an unknown status is not low. No reading at all is not low here, where `WorkManager`
       holds work on it: a device always has a sticky battery broadcast, so none is a platform that says
       nothing, and refusing on it would refuse with nothing to show the viewer.
+    - **The schedule starts the app's service (#246).** The work carries the class `Downloads.Builder.setService`
+      named in its own input data, which is `WorkManager`'s database and not storage of SuperPlayer's choosing,
+      and starts it when it runs, as Media3's `WorkManagerScheduler` starts its `DownloadService`. The service
+      opens the store, which resumes what the last process left. The platform may refuse a foreground-service
+      start from the background; the refusal is caught, the work retries under its backoff, and a store the app
+      opens itself resumes the downloads regardless. A store that names no service starts nothing, and its
+      schedule waits for a store to be opened, as before.
     - **`meteredNetworksAllowed` is not persisted.** It is the viewer's setting and lives with the app, which
       sets it on each store it opens; what the last store scheduled carries it across a reboot.
 

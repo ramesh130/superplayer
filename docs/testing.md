@@ -456,6 +456,16 @@ What each stand-in cannot show:
 - **Media3's API 29 to 32 television path is not stated.** It reads
   `AudioTrack.isDirectPlaybackSupported` against a player's own audio attributes rather than the
   device's, and the pinned runtime is 35.
+- **The controls are driven by key events, not seen.** `TvPlaybackControlsTest` is the library's one
+  Compose UI test (#272). It hosts `TvPlaybackControls` in Compose's test rule under Robolectric, over a
+  player this harness built, and presses D-pad keys with `performKeyInput`. Which control has focus and
+  the position the seek bar shows are read from semantics, and seeks are counted by a `Player.Listener`,
+  as a consumer's listener would hear them. The scrub tests turn Compose's clock to manual
+  (`mainClock.autoAdvance = false`) and step it, because the commit is a timeout and a clock that
+  advances itself while the test waits for idle would commit every scrub before the test looked. A held
+  key is Compose's test injection repeating it, which has one repeat rate, so the claim that a hold's
+  distance does not depend on the rate is `ScrubTest`'s, over the pure curve. Nothing is drawn to a
+  screen, so how the focus indication looks from across a room is a device's (#274).
 
 ## A Widevine device and a licence server
 

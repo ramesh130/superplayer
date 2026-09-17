@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  What a screen reader says for each of TvPlaybackControls' controls. Prefixed with the module, because a
+  library's resources merge into the app's own namespace and an unprefixed `play` would collide.
+-->
+<resources>
+    <string name="superplayer_tv_play">Play</string>
+    <string name="superplayer_tv_pause">Pause</string>
+    <string name="superplayer_tv_seek_back">Seek back</string>
+    <string name="superplayer_tv_seek_forward">Seek forward</string>
+    <string name="superplayer_tv_seek_bar">Playback position</string>
+</resources>

@@ -20,7 +20,7 @@
  * `TvOutput.standard(context)` is what `SuperPlayer.Builder.setOutput` and
  * `PlayerPool.Builder.setOutput` take. On a player built with it, the display's refresh rate is
  * matched to the content's declared frame rate, a display or audio-output change re-selects, and a
- * decision asking for tunneling is laid on the selector. The Compose-for-TV controls are Phase 8's later
- * issues.
+ * decision asking for tunneling is laid on the selector. `TvPlaybackControls` is the D-pad controls in
+ * Compose for TV, for any Media3 `Player`: focus through every control, and seek-scrubbing that seeks once.
  */
 package com.superplayer.tv

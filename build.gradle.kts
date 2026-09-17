@@ -2,6 +2,8 @@ plugins {
     // Applied `apply false` so the versions resolve once, from the catalog, for all modules.
     alias(libs.plugins.android.library) apply false
     alias(libs.plugins.android.application) apply false
+    // `superplayer-tv`'s controls are composables, and the Compose compiler is a Kotlin compiler plugin.
+    alias(libs.plugins.kotlin.compose) apply false
 
     // Formatting and Apache-2.0 file headers. Applied to the root project only; the `spotless`
     // block below reaches every Kotlin file in the repository by path rather than by project.

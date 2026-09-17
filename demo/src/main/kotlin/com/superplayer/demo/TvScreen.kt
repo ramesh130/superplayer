@@ -53,7 +53,6 @@ import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import com.superplayer.abr.AdaptivePolicy
-import com.superplayer.core.MediaRequest
 import com.superplayer.core.PlaybackProfile
 import com.superplayer.core.PlaybackSession
 import com.superplayer.core.PlaybackSnapshot
@@ -111,7 +110,8 @@ internal fun TvScreen(stream: DemoStream, modifier: Modifier = Modifier) {
     var player by remember { mutableStateOf<SuperPlayer?>(null) }
     var videoAspectRatio by remember { mutableStateOf<Float?>(null) }
 
-    LifecycleStartEffect(stream) {
+    // Keyed on nothing: the stream is the launch's, fixed for this screen's life.
+    LifecycleStartEffect(Unit) {
         val started = SuperPlayer.Builder(context)
             .setProfile(PlaybackProfile.TV_LEANBACK)
             .setPolicy(AdaptivePolicy.forProfile(context, PlaybackProfile.TV_LEANBACK))
@@ -121,12 +121,15 @@ internal fun TvScreen(stream: DemoStream, modifier: Modifier = Modifier) {
         val session = PlaybackSession.Builder(context, started).setId(TV_SESSION_ID).build()
         started.setVideoSurfaceView(surfaceView)
 
-        val restored = snapshot
+        // The snapshot is what resumes: this player is new, so it remembers no position of its own. It is used only
+        // where it names this stream, since a snapshot whose request did not survive the bundle would restore
+        // the intent to play and nothing to play.
+        val restored = snapshot?.takeIf { it.request?.contentId == stream.contentId }
         if (restored != null) {
             // Carries playWhenReady too, so a viewer who paused and pressed Home comes back paused.
             started.restoreSnapshot(restored)
         } else {
-            started.setMediaRequest(tvRequestFor(context, stream))
+            started.setMediaRequest(stream.request(context))
             started.playWhenReady = true
         }
         started.prepare()
@@ -150,6 +153,8 @@ internal fun TvScreen(stream: DemoStream, modifier: Modifier = Modifier) {
             }
         }
         current.addListener(listener)
+        // A size reported before this effect ran would otherwise wait for the next change.
+        videoAspectRatio = current.videoSize.aspectRatio()
         onDispose { current.removeListener(listener) }
     }
 
@@ -213,7 +218,13 @@ internal fun TvScreen(stream: DemoStream, modifier: Modifier = Modifier) {
     }
 }
 
-/** Whether the demo is running on a television, which is what it opens [TvScreen] for. */
+/**
+ * Whether the demo is running on a television, which is what it opens [TvScreen] for.
+ *
+ * The UI mode rather than the leanback feature devicelab reads, because an app decides its layout by the mode it is
+ * shown in. The two agree on a TV, and devicelab reads the feature only because it asks from a shell, where there
+ * is no configuration to read.
+ */
 internal fun Context.isTelevision(): Boolean =
     (getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).currentModeType ==
         Configuration.UI_MODE_TYPE_TELEVISION
@@ -224,13 +235,6 @@ internal fun Context.isTelevision(): Boolean =
  * 60 are rates a TV panel already refreshes at.
  */
 internal val TV_DEFAULT_STREAM = DemoStream.DASH
-
-private fun tvRequestFor(context: Context, stream: DemoStream): MediaRequest = MediaRequest.Builder(stream.contentId)
-    .addSource(stream.uri)
-    .setStartPosition(MediaRequest.StartPosition.ResumeFromLastKnown)
-    .setTitle(context.getString(stream.titleRes))
-    .setSubtitle(context.getString(stream.subtitleRes))
-    .build()
 
 /** The shape the picture is shown at, pixel aspect ratio included, or null before the first frame's size is known. */
 private fun VideoSize.aspectRatio(): Float? =
@@ -249,7 +253,11 @@ private const val CONTROLS_HIDE_AFTER_MS = 5_000L
  */
 private const val TV_SESSION_ID = "tv"
 
-/** A remote's navigation keys: the ones that show hidden controls. */
+/**
+ * A remote's navigation keys, the ones that show hidden controls: its four directions and its centre, which some
+ * remotes and an emulator's keyboard send as Enter. Every other key is left to whatever it means, media keys
+ * above all.
+ */
 private val DPAD_KEYS = setOf(
     Key.DirectionUp,
     Key.DirectionDown,
@@ -257,6 +265,7 @@ private val DPAD_KEYS = setOf(
     Key.DirectionRight,
     Key.DirectionCenter,
     Key.Enter,
+    Key.NumPadEnter,
 )
 
 /** The snapshot as the `Bundle` it defines, so it crosses process death as the library says it may. */

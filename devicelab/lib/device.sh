@@ -174,8 +174,18 @@ device_kind_of_features() {
     '
 }
 
+# The kind of device `$1` is, asked until it answers or KIND_TIMEOUT seconds (default 60) pass, and
+# nothing if it never does. Just after `sys.boot_completed` the package manager may not answer yet, and
+# a device that has not answered is of no kind rather than of the other one.
 device_kind() {
-    with_timeout 15 "$ADB" -s "$1" shell pm list features 2>/dev/null | tr -d '\r' | device_kind_of_features
+    local deadline kind
+    deadline=$(($(date +%s) + ${KIND_TIMEOUT:-60}))
+    while :; do
+        kind="$(with_timeout 15 "$ADB" -s "$1" shell pm list features 2>/dev/null | tr -d '\r' | device_kind_of_features)"
+        [ -z "$kind" ] && [ "$(date +%s)" -lt "$deadline" ] || break
+        sleep "${BOOT_POLL_INTERVAL:-5}"
+    done
+    printf '%s\n' "$kind"
 }
 
 # Leaves $SERIAL naming a booted, answering device of the kind `$DEVICELAB_DEVICE` asks for.
@@ -186,19 +196,23 @@ device_kind() {
 # checked rather than chosen: a TV run on a phone would measure a screen the run did not ask for.
 ensure_device() {
     local boot_timeout="${BOOT_TIMEOUT:-600}" wanted="${DEVICELAB_DEVICE:-phone}" devices ready offline
-    local serial matching stale pass
+    local serial matching stale pass kind
 
     if [ -n "${SERIAL:-}" ]; then
         log "using $SERIAL, as asked"
         wait_for_boot "$SERIAL" "$boot_timeout"
         device_answers "$SERIAL" || die "$SERIAL is listed but not answering; it was named explicitly, so it is left alone"
-        [ "$(device_kind "$SERIAL")" = "$wanted" ] ||
-            die "$SERIAL is not a $wanted device; name one that is, or choose the kind with --device"
+        kind="$(device_kind "$SERIAL")"
+        [ -n "$kind" ] || die "$SERIAL did not report its features, so whether it is a $wanted device is unknown"
+        [ "$kind" = "$wanted" ] ||
+            die "$SERIAL is a $kind device, not a $wanted one; name one that is, or choose the kind with --device"
         return
     fi
 
-    # Twice at most. An offline emulator is waited on before its kind can be asked, and one that boots
-    # as the other kind sends the choice round once more, where, being ready, it is simply passed over.
+    # Twice at most. An offline emulator is waited on before its kind can be asked, whichever kind it
+    # turns out to be, and one that boots as the other kind sends the choice round once more, where,
+    # being ready, it is simply passed over. A device that answers but never reports its features is
+    # passed over too, since adopting it would be a guess.
     for pass in 1 2; do
         devices="$(adb_devices)"
         ready="$(printf '%s\n' "$devices" | ready_serials)"
@@ -234,8 +248,10 @@ ensure_device() {
 
         wait_for_boot "$SERIAL" "$boot_timeout" 1
         device_answers "$SERIAL" || die "$SERIAL booted but is not answering"
-        [ "$(device_kind "$SERIAL")" != "$wanted" ] || return 0
-        log "$SERIAL booted as a device of the other kind; looking for a $wanted device again"
+        kind="$(device_kind "$SERIAL")"
+        [ -n "$kind" ] || die "$SERIAL booted but did not report its features"
+        [ "$kind" != "$wanted" ] || return 0
+        log "$SERIAL booted as a $kind device; looking for a $wanted device again"
         SERIAL=""
     done
     die "no $wanted device was attached or could be booted"

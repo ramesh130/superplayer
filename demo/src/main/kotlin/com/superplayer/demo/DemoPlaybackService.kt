@@ -90,19 +90,13 @@ class DemoPlaybackService : PlaybackService() {
         DemoStream.entries.firstOrNull { it.contentId == contentId }?.let { requestFor(it) }
 
     /**
-     * The request for [stream], with everything an external surface needs to describe it.
+     * The request for [stream], resuming where this service's player last left it.
      *
-     * Public to the app rather than private, because the Activity loads content through the same
-     * function. Two descriptions of the same stream — one for the app, one for the notification —
-     * is exactly the drift that makes a notification say something the screen disagrees with.
+     * Visible to the app rather than private, because the Activity loads content through the same
+     * function, and the description itself is [DemoStream.request], which every screen shares.
      */
     internal fun requestFor(stream: DemoStream): MediaRequest =
-        MediaRequest.Builder(stream.contentId)
-            .addSource(stream.uri)
-            .setStartPosition(MediaRequest.StartPosition.ResumeFromLastKnown)
-            .setTitle(getString(stream.titleRes))
-            .setSubtitle(getString(stream.subtitleRes))
-            .build()
+        stream.request(this, MediaRequest.StartPosition.ResumeFromLastKnown)
 
     /**
      * The player, built with [profile], swapping it in if that is not the profile it already has.

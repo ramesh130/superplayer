@@ -665,6 +665,8 @@ private class DemoLaunch(
         const val EXTRA_SCREEN = "com.superplayer.demo.extra.SCREEN"
         const val EXTRA_FEED_ROWS = "com.superplayer.demo.extra.FEED_ROWS"
         const val EXTRA_CONTENT_ID = "com.superplayer.demo.extra.CONTENT_ID"
+
+        /** The screen name that opens [TvScreen]: not a [DemoScreen] name, since that screen is not the picker's. */
         const val SCREEN_TV = "TV"
 
         fun from(intent: Intent?, onTelevision: Boolean): DemoLaunch {

@@ -329,6 +329,23 @@ that refusal is `FailureClass.Drm.LicenceExpired` — the leaf and the message k
 reached through `ERROR_CODE_DRM_LICENSE_EXPIRED` exactly as an expiry met mid-playback is. No table
 here moves.
 
+**Version 2 stands — `category` gained a seventh value, `STORAGE` (`#244`).** A download that meets a
+full disk now fails as `FailureClass.Storage.Full`, a branch of the taxonomy of its own, and rule 3's
+one-to-one table needs a bucket for it. None of the six describes it: `DECODER` is a decoder that would
+not start, `SOURCE` bytes that arrived and would not play, `NETWORK` bytes that did not arrive, and
+`UNKNOWN` is what the classifier, being total, never produces. So the enum grew, and this document's
+line that `category` "is not extended" is amended below to say why once was right.
+
+**`SCHEMA_VERSION` does not move**, and that is the deliberate answer. No event in this vocabulary
+carries the value today: only a *download's* writes are measured against the disk, and a download is not
+a playback session and emits no telemetry (ADR-0013 rule 6). No existing failure changes bucket, no
+denominator moves and no exclusion narrows, so this is shape — an enum value a pipeline has not seen —
+and not meaning. What a pipeline should do is what it does for a new event type: take an `else`.
+
+| Now reported | Was reported as | What it is |
+| --- | --- | --- |
+| `category = STORAGE` (`Storage.Full`) | nothing — no playback session reaches it | A write the device's storage could not hold. Carries its own `userMessageKey`, `superplayer_error_storage_full`, the eighth: the one failure whose remedy is the viewer freeing space |
+
 **A sink must tolerate a new event type.** `TelemetryEvent` is sealed, so a `when` over it can be
 exhaustive without an `else` — and such a `when` fails to compile when a later version adds an event.
 An `else` branch is the forward-compatible spelling; take the exhaustive one only if being told about
@@ -481,7 +498,7 @@ failure **after** it. The split is the standard's, and it is the split a viewer 
 played, versus something played and then stopped.
 
 Both carry a `PlaybackFailure`: a coarse `category` (`NETWORK`, `SOURCE`, `DECODER`, `DRM`,
-`RENDERER`, `UNKNOWN`), the engine's own `code`, an optional `message` for a human reading a log, and
+`RENDERER`, `UNKNOWN`, and `STORAGE`, which no playback reaches today), the engine's own `code`, an optional `message` for a human reading a log, and
 an optional `classification`.
 
 **`classification` is the field to group and alert on.** It is the stable name
@@ -500,8 +517,10 @@ it. That is exactly the defect `#86` recorded — a live stream frozen behind a 
 as `ERROR_CODE_IO_UNSPECIFIED` — and it is resolved by `classification` naming it
 `Transient.CdnEdge`, not by rewriting `code`.
 
-**`category` stays coarse and is not extended.** Six values are the right number for a dashboard
-slice. Where a classification is present the bucket is derived from it rather than from the
+**`category` stays coarse and is extended only for a failure no bucket describes.** Six values were the
+right number for a dashboard slice of playback, and `#244` added a seventh, `STORAGE`, rather than file a
+full disk under a bucket whose definition it contradicts; a new leaf that fits an existing bucket still
+takes it, as every leaf since version 2 has. Where a classification is present the bucket is derived from it rather than from the
 error-code band, which is the change of meaning behind schema version 2 — see *Release notes* above
 for the failures where the two disagree.
 

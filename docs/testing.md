@@ -597,7 +597,11 @@ the seam above until #239. What stands in for each piece, and what each stand-in
   run and `advanceUntil(environment, …)` knows when a load has finished. One thread is a determinism
   choice: it cannot show what parallel segment fetching does, which is a throughput question for Phase
   10. `DownloadManager`'s own task thread and its main-thread callbacks are Media3's; the harness runs
-  the main looper between passes and moves its clock only while a load waits on it.
+  the main looper between passes and moves its clock only while a load waits on it. Two items in one
+  store share that thread, so their loads queue behind each other, and the wait counts what the thread
+  holds as one load: a load queued behind a delayed one cannot act on the time that passes, and counting
+  it would keep the clock still for ever (#244). Each item then waits out the other's delays too, which a
+  test pacing two items bounds its waits for.
 - **Process death is a copy of the directory.** `processDeath(environment, directory)` stops the
   environment's thread taking work, waits until no load is in flight, copies the directory, and returns
   the copy for the test to open a store over. A process that died released nothing — no cache lock, no
@@ -624,6 +628,14 @@ the seam above until #239. What stands in for each piece, and what each stand-in
   by reflection, in `DownloadConditions` and nowhere else. Robolectric's own device is a *metered*,
   unvalidated network, which Media3's default requirement already refuses, so a download test that is
   not about the network states it unmetered first.
+- **A full disk is a reading of free space.** `DeviceStatement.declareStorageFree(bytes)` registers what
+  `StatFs` answers for every path, restatable mid-test, and the cache's download half reads it before each
+  write, so zero is a disk that fills at the next write (#244). It is a reading and not a volume: it does
+  not shrink as a download writes, so a test states a disk full rather than stating a size and waiting for
+  it to fill. Robolectric describes no volume until it is said, which a download reads as nothing known
+  and refuses nothing on. What it cannot show is the platform's own `ENOSPC` — the write failing because
+  another writer took the space after the reading — which is translated to the same exception and forced
+  by nothing here. `DownloadStorageFullTest` states it.
 - **`WorkManager`'s constraints are evaluated by the harness, not by `WorkManager`.** Its test driver
   runs constrained work only when told every constraint is met, so `runScheduledWork()` reads each
   enqueued request's `Constraints`, checks them against the statements above, and tells the driver only
@@ -633,7 +645,10 @@ the seam above until #239. What stands in for each piece, and what each stand-in
   passing silently. What it cannot show is that WorkManager's own trackers agree with those readings on
   a device, which #247 checks there. `useScheduledWork()` installs the test driver; WorkManager is a
   compile-only dependency of the testkit, so a module whose tests schedule work declares
-  `work-runtime` and `work-testing` itself.
+  `work-runtime` and `work-testing` itself. **Every test that enqueues calls it**, not only a test about
+  scheduling: a store with anything pending schedules work, nothing initializes `WorkManager` under
+  Robolectric, and an earlier test class's installation outlives it in the same JVM, which is how
+  `superplayer-offline`'s classes passed together while failing alone before #244.
 - **A reboot is not stated.** WorkManager's test implementation keeps its work in an in-memory
   database, so nothing persisted survives a simulated restart and there is no faithful stand-in under
   `check`. Under `check`, #243 asserts only that downloads are scheduled as persisted work under their

@@ -78,6 +78,7 @@ public final class com/superplayer/core/FailureCategory : java/lang/Enum {
 	public static final field NETWORK Lcom/superplayer/core/FailureCategory;
 	public static final field RENDERER Lcom/superplayer/core/FailureCategory;
 	public static final field SOURCE Lcom/superplayer/core/FailureCategory;
+	public static final field STORAGE Lcom/superplayer/core/FailureCategory;
 	public static final field UNKNOWN Lcom/superplayer/core/FailureCategory;
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/core/FailureCategory;
@@ -525,6 +526,11 @@ public final class com/superplayer/core/StallHistory {
 
 public final class com/superplayer/core/StallHistory$Companion {
 	public final fun getNONE ()Lcom/superplayer/core/StallHistory;
+}
+
+public final class com/superplayer/core/StorageFullException : java/io/IOException {
+	public final fun getBytesAvailable ()J
+	public final fun getBytesToWrite ()J
 }
 
 public final class com/superplayer/core/StreamType : java/lang/Enum {

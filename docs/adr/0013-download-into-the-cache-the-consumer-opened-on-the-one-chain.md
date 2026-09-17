@@ -210,7 +210,8 @@ Fifteen rules follow, and they are binding.
    every other item in the queue carries on. A failure acquires its meaning in `ErrorClassifier`
    (ADR-0011 rule 1): the module keeps no taxonomy, and where it detects a fact the engine does not
    report — a disk that cannot hold the next span — it raises a public core exception carrying the
-   evidence, which the classifier maps (ADR-0011 rule 4's pattern). Which leaf is #244's.
+   evidence, which the classifier maps (ADR-0011 rule 4's pattern). Which leaf is #244's, and its
+   addendum below.
 
    *Addendum (2026-09-17, #242).* How a lost network is told from a failure, decided where it was built:
 
@@ -233,6 +234,30 @@ Fifteen rules follow, and they are binding.
    - **A resumed download reports progress from the bytes the cache holds.** Its state change is not
      reported as downloading, because the progress it carries is the index's, and Media3 writes that on a
      timer. The downloader's first progress report announces it instead.
+
+   *Addendum (2026-09-17, #244).* Which leaf, and where the fact is detected:
+
+   - **The leaf is `FailureClass.Storage.Full`**, a branch of its own, not retryable and capped at rung 6,
+     with an eighth message key, `superplayer_error_storage_full`. It is not a `Device` leaf, because every
+     one of those is the device failing to play and buckets `DECODER`. It buckets a seventh
+     `FailureCategory`, `STORAGE`, and `docs/telemetry-schema.md` argues why the category grew and why
+     `SCHEMA_VERSION` did not: no playback session reaches the value.
+   - **The cache's download half detects it, not this module.** `CacheDownloads.writerFor` writes through a
+     sink that asks `StatFs` what the volume can take before a request's first write, and again once its
+     writes would pass that reading. It raises core's `StorageFullException`, carrying the bytes to write and
+     the bytes available. The platform's own `ENOSPC` is translated to the same exception, for space another
+     writer took after the reading. The sink is where the volume and the writes both are; this module sees
+     neither. A volume the platform does not describe refuses nothing.
+   - **The item fails at once, on every store.** Thrown as an I/O failure, it would be asked for again by
+     Media3's retries onto a disk that is still full, and read as a lost network by a resilience. So this
+     module rethrows it as something Media3 does not retry. That decides *when* the item fails, off the
+     evidence core raised. What it failed *with* is still the classifier's, so a store without a resilience
+     fails the item at once and unnamed, as #242's addendum has every such store fail.
+   - **What the failed item wrote is kept, pinned.** Nothing unpins a download but its removal (rule 7), so
+     an enqueue after room is made continues from the bytes the cache holds, as a resumption does.
+   - **The budget still refuses nothing.** #244 asked that a cache budget unable to hold a download beside
+     what is pinned fail it too. Rule 7 decided otherwise: pinned content may exceed the budget, and only the
+     disk fails an item.
 
 10. **Battery-not-low and storage-not-low are correctness too; the network requirement is unmetered by
     default and the viewer's to relax.** Draining a battery that is already low and filling a disk that

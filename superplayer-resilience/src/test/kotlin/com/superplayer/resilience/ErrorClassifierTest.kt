@@ -33,6 +33,7 @@ import com.superplayer.core.LoadKind
 import com.superplayer.core.RequestStamp
 import com.superplayer.core.SecurityDowngradeRefusedException
 import com.superplayer.core.StaleLivePlaylistException
+import com.superplayer.core.StorageFullException
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -71,6 +72,7 @@ class ErrorClassifierTest {
         FailureClass.Drm.SystemError,
         FailureClass.Drm.Unsupported,
         FailureClass.Drm.DowngradeRefused,
+        FailureClass.Storage.Full,
         FailureClass.Fatal.Unsupported,
     )
 
@@ -174,8 +176,25 @@ class ErrorClassifierTest {
             FailureCategory.DRM,
             FailureCategory.DRM,
             FailureCategory.DRM,
+            // #244's branch is the one row that added a bucket: a full disk is none of the six, and no
+            // playback session reaches it (`docs/telemetry-schema.md`, *Release notes*).
+            FailureCategory.STORAGE,
             FailureCategory.SOURCE,
         ).inOrder()
+    }
+
+    @Test
+    fun aDiskTheDownloadCouldNotWriteToIsStorageFullWhateverWrapsIt() {
+        val full = StorageFullException(bytesToWrite = 4_096, bytesAvailable = 0)
+
+        assertThat(ErrorClassifier.classify(full)).isEqualTo(FailureClass.Storage.Full)
+        // Wrapped as a download's failure reaches the store, and the same with nothing narrowing it is
+        // what the store would otherwise wait out as a lost network.
+        assertThat(ErrorClassifier.classify(RuntimeException(IOException(full)))).isEqualTo(FailureClass.Storage.Full)
+        assertThat(ErrorClassifier.classify(IOException("write failed"))).isEqualTo(FailureClass.Transient.Network)
+        assertThat(FailureClass.Storage.Full.userMessageKey).isEqualTo(FailureClass.STORAGE_FULL_MESSAGE_KEY)
+        assertThat(FailureClass.Storage.Full.retryable).isFalse()
+        assertThat(FailureClass.Storage.Full.rungCeiling).isEqualTo(FallbackRung.TYPED_ERROR)
     }
 
     @Test

@@ -141,8 +141,8 @@ The alternatives were weighed and are worse:
 
 `superplayer-testmedia` **names no Media3 type**, and that is load-bearing rather than minimal.
 `FakeDataSet` is `@UnstableApi`, so an `addTo(FakeDataSet)` in a published module's public API would
-fail `verifyNoUnstableMedia3InPublicApi` — ADR-0001 rule 2, the same rule that keeps Media3 out of
-testkit's signatures. A stream is therefore handed over as URI-to-bytes:
+fail `verifyNoUnstableMedia3InPublicApi` — ADR-0001 rule 2, the same rule that keeps *unstable*
+Media3 out of testkit's signatures. A stream is therefore handed over as URI-to-bytes:
 
 ```kotlin
 SyntheticHlsStream.resources(segmentCount = 4).forEach { (uri, bytes) -> fakeDataSet.setData(uri, bytes) }

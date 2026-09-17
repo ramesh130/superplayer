@@ -324,8 +324,11 @@ public class QoeCollector internal constructor(
             endLicenceAcquisition(LicenceOutcome.ACQUIRED_FROM_SERVER)
         }
 
-        // Keys restored into a session from a licence already on the device. Unreachable until the
-        // offline store lands (`#210`); see `LicenceOutcome.SERVED_FROM_OFFLINE_STORE`.
+        // Keys restored into a session from a licence already on the device, which is what
+        // `superplayer-drm`'s offline licence store produces (#210). Declared one release before it
+        // could happen (#212), so that the store was a behaviour change against a vocabulary a
+        // pipeline already knew rather than a second change of the schema; see
+        // `LicenceOutcome.SERVED_FROM_OFFLINE_STORE`.
         override fun onDrmKeysRestored(eventTime: AnalyticsListener.EventTime) {
             endLicenceAcquisition(LicenceOutcome.SERVED_FROM_OFFLINE_STORE)
         }

@@ -248,6 +248,58 @@ class OfflineLicenceTest {
     }
 
     @Test
+    fun aDeadDownloadIsRenewableOnThePlayerThatRefusedIt() {
+        // The recovery an app actually takes after the reading above: the download is dead, so renew
+        // it — on the player already in hand rather than on a second one built for the purpose. The
+        // player's protection opened no session, but it holds the licence transport, and that is all
+        // a renewal needs.
+        DeviceStatement.declareOfflineLicence(licenceDurationSec = 0, playbackDurationSec = 0)
+        val store = OfflineLicences.store(storeDirectory())
+        val acquiring = playOnline()
+        val expired = store.over(acquiring).acquire(CONTENT_ID)
+        harness.release(acquiring)
+
+        val refused = harness.buildPlayer(
+            content = TestContent.protectedDash(),
+            drm = Drm.widevine(WidevineConfig(FakeLicenceServer.LICENCE_URI), expired),
+        )
+        refused.setMediaRequest(request())
+        harness.playToFailure(refused)
+        DeviceStatement.declareOfflineLicence(licenceDurationSec = 30 * 24 * 3600, playbackDurationSec = 2 * 24 * 3600)
+
+        val renewed = store.over(refused).renew(CONTENT_ID)
+
+        assertThat(renewed.isExpired).isFalse()
+        assertThat(store.licenceFor(CONTENT_ID)!!.isExpired).isFalse()
+        harness.release(refused)
+        store.close()
+    }
+
+    @Test
+    fun aDurationTheDeviceDoesNotReportIsIndistinguishableFromOneThatExpired() {
+        // Recorded rather than asserted as desirable, which is what this repo does with a limit it
+        // did not choose. A device that carries only one of the two properties — a purchase with no
+        // separate viewing window — is read as a licence with nothing left, and the collapse is
+        // Media3's and happens before the store can see it: an absent property is `C.TIME_UNSET`,
+        // Media3's own MODE_QUERY session reads that as expired and raises `KeysExpiredException`,
+        // and `OfflineLicenseHelper.getLicenseDurationRemainingSec` catches exactly that and answers
+        // (0, 0). There is no sentinel left to tell the two apart, so a store that wanted to would
+        // have to re-implement the query. A Widevine *offline* licence carries both properties,
+        // which is why this is written down rather than worked around.
+        DeviceStatement.declareOfflineLicence(licenceDurationSec = 30 * 24 * 3600, playbackDurationSec = null)
+        val store = OfflineLicences.store(storeDirectory())
+        val player = playOnline()
+
+        val acquired = store.over(player).acquire(CONTENT_ID)
+
+        assertThat(acquired.isExpired).isTrue()
+        assertThat(acquired.playbackDurationRemainingMs).isEqualTo(0L)
+        assertThat(acquired.licenceDurationRemainingMs).isEqualTo(0L)
+        harness.release(player)
+        store.close()
+    }
+
+    @Test
     fun aPlayerWithNoStoreBehavesExactlyAsBefore() {
         // ADR-0012 rule 13's posture applied to the store: the store is a thing a consumer opens, and
         // a player built without one acquires its licence online exactly as it did before #210 — the

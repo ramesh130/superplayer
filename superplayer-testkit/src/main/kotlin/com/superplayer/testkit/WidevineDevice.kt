@@ -123,13 +123,22 @@ internal class WidevineStatement(
      * can see is `queryKeyStatus`, and everything that acts on an expiry acts on those two numbers
      * ([DeviceStatement.declareOfflineLicence] for what the defaults are and why).
      */
-    var offlineLicenceDurationSec: Long = DEFAULT_OFFLINE_LICENCE_DURATION_SEC
+    var offlineLicenceDurationSec: Long? = DEFAULT_OFFLINE_LICENCE_DURATION_SEC
         private set
 
-    var offlinePlaybackDurationSec: Long = DEFAULT_OFFLINE_PLAYBACK_DURATION_SEC
+    /** The second half of the pair, and see [offlineLicenceDurationSec] for why there are two. */
+    var offlinePlaybackDurationSec: Long? = DEFAULT_OFFLINE_PLAYBACK_DURATION_SEC
         private set
 
-    fun declareOfflineLicenceDurations(licenceDurationSec: Long, playbackDurationSec: Long) {
+    /**
+     * What this device's licences will say from now on.
+     *
+     * Restatable after a player exists, unlike everything else about the device, because the two
+     * numbers are read at every `queryKeyStatus` rather than when a session graph is built — which
+     * is what lets a test say "the server now issues a longer licence" between an acquisition and a
+     * renewal.
+     */
+    fun declareOfflineLicenceDurations(licenceDurationSec: Long?, playbackDurationSec: Long?) {
         offlineLicenceDurationSec = licenceDurationSec
         offlinePlaybackDurationSec = playbackDurationSec
     }
@@ -163,8 +172,13 @@ internal class WidevineStatement(
         return keySetId
     }
 
+    /** What this device persisted under [keySetId], or null — which is what a `restoreKeys` fails on. */
     fun offlineKeysFor(keySetId: List<Byte>): OfflineKeys? = offlineKeys[keySetId]
 
+    /**
+     * Drops a stored licence: what a release response does, and what a renewal does to the licence it
+     * replaced, so that a renewed download is still one licence rather than two.
+     */
     fun forgetOfflineKeys(keySetId: List<Byte>) {
         offlineKeys.remove(keySetId)
     }
@@ -428,10 +442,14 @@ private class StatedExoMediaDrm(
      * long expired — so without this every restored licence would be a dead one.
      */
     override fun queryKeyStatus(sessionId: ByteArray): Map<String, String> =
-        delegate.queryKeyStatus(sessionId) + mapOf(
-            WidevineUtil.PROPERTY_LICENSE_DURATION_REMAINING to statement.offlineLicenceDurationSec.toString(),
-            WidevineUtil.PROPERTY_PLAYBACK_DURATION_REMAINING to statement.offlinePlaybackDurationSec.toString(),
-        )
+        delegate.queryKeyStatus(sessionId) +
+            // Omitted rather than reported as some number wherever the statement says this device's
+            // licences do not carry that duration, because omission is what a real implementation
+            // does and reading an omission is a case the library has to get right.
+            listOfNotNull(
+                statement.offlineLicenceDurationSec?.let { WidevineUtil.PROPERTY_LICENSE_DURATION_REMAINING to it.toString() },
+                statement.offlinePlaybackDurationSec?.let { WidevineUtil.PROPERTY_PLAYBACK_DURATION_REMAINING to it.toString() },
+            )
 }
 
 /** ref: the value of `MediaDrm.PROPERTY_SECURITY_LEVEL`. */

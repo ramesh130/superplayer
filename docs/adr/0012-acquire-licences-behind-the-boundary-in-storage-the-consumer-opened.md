@@ -248,6 +248,29 @@ Thirteen rules follow, and they are binding.
    duration have left — as a public, Media3-free value a consumer can act on, and a failure to open
    a session against an expired licence maps to the leaf rule 7 names rather than to a generic one.
 
+   **Addendum (#210): the store performs its verbs over a player's protection, and reaches it back
+   through the slot rule 3 opened.** Acquiring, renewing and releasing are each a round trip to the
+   licence server, and rule 2 already decided what that round trip travels: the app's credential
+   through the one `HeaderProvider`, `RetryPolicy.licence`'s budget, the `LoadKind.LICENCE` stamp —
+   every one of them a property of a *player*. A store with an HTTP stack of its own would be a
+   second way to reach the same licence server, answering to none of them. So `store.over(player)`
+   is the shape, and the protection is recovered from `SuperPlayer`'s internal `licenceSessions`,
+   which is the contents of rule 3's own slot handed back. That is the friend-path shape rule 4
+   permits rather than a new one — the module reads its own object out of the slot it filled, nothing
+   becomes configurable, and no helper of core's is reached — and the alternative, a registry keyed
+   by player kept inside the module, would record the same fact twice and leak on every player
+   nobody released. **Reading what the store holds needs none of it**: `licenceFor` answers from the
+   directory with no player, no device and no network, which is what makes the paragraph above usable
+   from a list screen rather than only from a player.
+
+   A stored licence that has *already* expired is refused at session composition rather than silently
+   re-acquired. Media3's own answer to a restored licence at or near expiry is a licence request to
+   the server, which on a player a consumer deliberately built to play offline is a round trip that
+   was not to happen and, with no network, reaches them as a licence that failed to arrive instead of
+   the licence that died — which is the "playback error" this rule exists to prevent. The refusal
+   carries core's public `OfflineLicenceExpiredException` under `ERROR_CODE_DRM_LICENSE_EXPIRED`, so
+   it is the leaf above rather than a new one, and rule 5 is untouched.
+
 10. **Renewal and release are the consumer's to call, and the library schedules nothing.** Renewing
     before `getLicenseDurationRemainingSec()` reaches zero is `PRD.md` §3.2's requirement and the
     library provides the operation; *when* to run it is a background-work decision — a scheduler, a

@@ -52,9 +52,11 @@ dependencies {
     testImplementation(project(":superplayer-telemetry"))
 }
 
-// The one slot this module fills — the `DrmSessionManagerProvider` every media source `TransferChain`
-// builds is given — is core's `EngineDrmExtension` and Media3 `@UnstableApi` vocabulary, so a consumer
-// names a `PlaybackDrm` and no Media3 type. This module is core's sixth Kotlin friend (ADR-0012 rule
-// 4), and `KotlinFriendModules.kt` says why a friend path is a compiler flag rather than a Gradle
-// dependency — and what the sixth makes the ceiling.
+// The slots this module fills — the `DrmSessionManagerProvider` every media source `TransferChain`
+// builds is given, and the protection repair core interrogates at failure time — are core's
+// `EngineDrmExtension` and Media3 `@UnstableApi` vocabulary, so a consumer names a `PlaybackDrm` and
+// no Media3 type. Since #210 the same friendship also reads `SuperPlayer.licenceSessions` back out,
+// which is that first slot's contents and not a second seam (ADR-0012 rule 9's addendum). This module
+// is core's sixth Kotlin friend (ADR-0012 rule 4), and `KotlinFriendModules.kt` says why a friend path
+// is a compiler flag rather than a Gradle dependency — and what the sixth makes the ceiling.
 declareKotlinFriendModule(":superplayer-core")

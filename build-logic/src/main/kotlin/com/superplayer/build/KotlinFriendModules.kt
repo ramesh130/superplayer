@@ -58,6 +58,14 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
  * `DrmSessionManagerProvider`, `MediaItem.DrmConfiguration` — so there is no version of this module
  * whose engine-facing half could have been public API instead.
  *
+ * Since #210 the same friendship also carries one *read* back the other way — `SuperPlayer`'s
+ * internal `licenceSessions`, which hands the module the protection object it itself put in core's
+ * DRM slot — so that an offline licence store can find *this player's* session graph and perform its
+ * licence exchange over it (ADR-0012 rule 9's addendum). It is the same shape rather than a second
+ * one: nothing new is configurable, no helper of core's is reached, and what comes back is the
+ * module's own object out of the slot it filled. The alternative was a registry keyed by player kept
+ * in the module, which is the same fact recorded twice and leaked on every player nobody released.
+ *
  * The count is the thing worth watching, and the sixth is where the ceiling gets written down:
  * **a friend path is right for a later phase of this library filling a slot core declared, and for
  * nothing else.** A module wanting friendship for any other reason — reaching a helper, avoiding an

@@ -20,12 +20,9 @@ import android.media.MediaFormat
 import androidx.media3.common.Player
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
-import com.superplayer.core.MediaRequest
 import com.superplayer.core.SuperPlayer
-import com.superplayer.core.SuperPlayerError
 import com.superplayer.core.TelemetryEvent
 import com.superplayer.resilience.FailureClass
-import com.superplayer.resilience.Resilience
 import com.superplayer.telemetry.QoeCollector
 import com.superplayer.testkit.DeviceStatement
 import com.superplayer.testkit.FakeLicenceServer
@@ -33,7 +30,6 @@ import com.superplayer.testkit.FaultScript
 import com.superplayer.testkit.PlaybackHarness
 import com.superplayer.testkit.ResourceKind
 import com.superplayer.testkit.SecurityLevel
-import com.superplayer.testkit.TestContent
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -78,7 +74,7 @@ class ProvisioningDowngradeTest {
     fun aDeviceRefusedAtL1PlaysAtTheLevelTheOperatorPermitted() {
         aDeviceRefusedByTheProvisioningService()
 
-        val player = play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
+        val player = harness.play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
         harness.playToReady(player)
 
         // It played, and the failure that got it there is the consumer's business no more than a
@@ -94,7 +90,7 @@ class ProvisioningDowngradeTest {
         aDeviceRefusedByTheProvisioningService()
 
         val events = Collections.synchronizedList(mutableListOf<TelemetryEvent>())
-        val player = play(
+        val player = harness.play(
             permits = setOf(WidevineConfig.SECURITY_LEVEL_L3),
             telemetry = QoeCollector { events += it },
         )
@@ -116,7 +112,7 @@ class ProvisioningDowngradeTest {
         // moves.
         aDeviceRefusedByTheProvisioningService()
 
-        val player = play()
+        val player = harness.play()
         harness.playToFailure(player)
 
         val typed = typedErrorOf(player)
@@ -134,7 +130,7 @@ class ProvisioningDowngradeTest {
         DeviceStatement.declareSecureVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC, maxSupportedInstances = 1)
         DeviceStatement.declareWidevine(SecurityLevel.L1, provisioningRequired = true)
 
-        val player = play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
+        val player = harness.play(permits = setOf(WidevineConfig.SECURITY_LEVEL_L3))
         harness.playToReady(player)
 
         assertThat(player.playerError).isNull()
@@ -156,7 +152,7 @@ class ProvisioningDowngradeTest {
         DeviceStatement.declareSecureVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC, maxSupportedInstances = 1)
         DeviceStatement.declareWidevine(SecurityLevel.L1)
 
-        val player = play(
+        val player = harness.play(
             permits = setOf(WidevineConfig.SECURITY_LEVEL_L3),
             faults = FaultScript.Builder()
                 .failWithHttpStatus(FaultScript.HTTP_SERVER_ERROR, kind = ResourceKind.LICENCE)
@@ -178,7 +174,7 @@ class ProvisioningDowngradeTest {
         DeviceStatement.declareSecureVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC, maxSupportedInstances = 1)
         DeviceStatement.declareWidevine(SecurityLevel.L1, provisioningRequired = true)
 
-        val player = play(
+        val player = harness.play(
             permits = setOf(WidevineConfig.SECURITY_LEVEL_L3),
             faults = FaultScript.Builder()
                 .failWithHttpStatus(FaultScript.HTTP_SERVER_ERROR, kind = ResourceKind.LICENCE, index = 0)
@@ -205,54 +201,7 @@ class ProvisioningDowngradeTest {
         DeviceStatement.declareWidevineProvisioningFailure(SecurityLevel.L1)
     }
 
-    /** What a consumer writes: protection, and the resilience both halves of ADR-0012 rule 2 need. */
-    private fun play(
-        permits: Set<String> = emptySet(),
-        telemetry: QoeCollector? = null,
-        faults: FaultScript = FaultScript.NONE,
-    ): SuperPlayer {
-        val content = TestContent.protectedDash()
-        val player = harness.buildPlayer(
-            content = content,
-            faults = faults,
-            telemetry = telemetry,
-            drm = Drm.widevine(WidevineConfig(FakeLicenceServer.LICENCE_URI, permittedSecurityLevels = permits)),
-            resilience = Resilience.standard(),
-        )
-        player.setMediaRequest(MediaRequest.Builder(CONTENT_ID).addSource(content.sourceUri).build())
-        return player
-    }
-
     /** How many times [uri] was asked for, repeats included — which is what a retry is. */
     private fun attemptsAt(player: SuperPlayer, uri: String): Int =
         harness.networkRequests(player).count { it.uri == uri }
-
-    /** The typed error rung 6 delivered, where a consumer already looks for a cause. */
-    private fun typedErrorOf(player: SuperPlayer): SuperPlayerError {
-        val error = player.playerError
-        assertThat(error).isNotNull()
-        assertThat(error?.cause).isInstanceOf(SuperPlayerError::class.java)
-        return error?.cause as SuperPlayerError
-    }
-
-    /**
-     * The session's `SessionEnded`, waited for rather than read: delivery is a bounded queue on a
-     * thread of its own (ADR-0008 rules 3 and 4), so the event a test wants is the last one to
-     * arrive. `TypedErrorPlaybackTest` waits the same way and for the same reason.
-     */
-    private fun endedEventOf(events: List<TelemetryEvent>): TelemetryEvent.SessionEnded {
-        val deadline = System.currentTimeMillis() + DELIVERY_TIMEOUT_MS
-        while (System.currentTimeMillis() < deadline) {
-            val delivered = synchronized(events) { events.toList() }
-            delivered.filterIsInstance<TelemetryEvent.SessionEnded>().firstOrNull()?.let { return it }
-            Thread.sleep(DELIVERY_POLL_MS)
-        }
-        throw AssertionError("the session's events did not arrive within $DELIVERY_TIMEOUT_MS ms")
-    }
-
-    private companion object {
-        const val CONTENT_ID = "film/the-third-man"
-        const val DELIVERY_TIMEOUT_MS = 5_000L
-        const val DELIVERY_POLL_MS = 10L
-    }
 }

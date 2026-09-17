@@ -184,6 +184,13 @@ Fifteen rules follow, and they are binding.
    accepted as it stood, and its remedy is the one it gave: a consumer who wants the two sized
    separately opens two caches and builds the players that play downloads over the second.
 
+   *Addendum (2026-09-17, #240).* "From enqueue" is kept as *before the first byte the enqueue causes*:
+   the pin is taken on the download's own thread as it begins, not on the thread that called `enqueue`,
+   because a pin is a database write and `enqueue` is called from a screen. The reason given above is
+   untouched — nothing is written before the download begins, so no early segment can be evicted while
+   a later one arrives — and the pin is taken again on every resumption, which costs nothing when held.
+   What it changes is only a window in which a queued item holding no bytes is not yet pinned.
+
 8. **A downloaded item plays through `setMediaRequest`, and the cache layer serves its manifest.** The
    layer's media-only rule is refined, not dropped: a request stamped `LoadKind.MANIFEST` is answered
    from the cache when, and only when, the cache holds that key for pinned content, which only a

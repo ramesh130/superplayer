@@ -181,13 +181,17 @@ class DownloadsTest {
         val cache = openCache(directory = directory)
         val downloads = openStore(cache, harness.downloadEnvironment(content))
         downloadToCompletion(downloads, content)
+        // At completion, before a removal could delete a stray file again.
+        assertWithMessage("at completion").that(filesUnder(applicationStorage)).isEqualTo(before)
+        assertWithMessage("at completion").that(context.databaseList().toSet()).isEqualTo(databasesBefore)
+        assertThat(filesUnder(directory).size).isGreaterThan(SEGMENTS)
+
         downloads.remove(CONTENT_ID)
         harness.advanceUntil(environmentOf(downloads), "the download was removed") { downloads.downloads().isEmpty() }
         downloads.release()
 
-        assertThat(filesUnder(applicationStorage)).isEqualTo(before)
-        assertThat(context.databaseList().toSet()).isEqualTo(databasesBefore)
-        assertThat(directory.list()!!.toList()).isNotEmpty()
+        assertWithMessage("after removal").that(filesUnder(applicationStorage)).isEqualTo(before)
+        assertWithMessage("after removal").that(context.databaseList().toSet()).isEqualTo(databasesBefore)
     }
 
     private fun assertProgressReportedInOrder(content: TestContent) {

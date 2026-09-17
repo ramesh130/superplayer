@@ -99,7 +99,7 @@ public enum class DownloadStopReason {
  * Where a download has got to.
  *
  * What holds a [STOPPED] item and why a [FAILED] one failed are carried beside the state, as
- * [DownloadItem.stopReason] and [DownloadItem.failure]; a full disk (#244) adds to them.
+ * [DownloadItem.stopReason] and [DownloadItem.failure].
  */
 public enum class DownloadState {
 

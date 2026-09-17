@@ -29,6 +29,7 @@ import org.robolectric.shadow.api.Shadow
 import org.robolectric.shadows.ShadowInstrumentation
 import org.robolectric.shadows.ShadowNetworkCapabilities
 import org.robolectric.shadows.ShadowNetworkInfo
+import org.robolectric.shadows.ShadowStatFs
 import org.robolectric.util.ReflectionHelpers
 
 /**
@@ -112,6 +113,15 @@ internal object DownloadConditions {
             forgetStickyBroadcast(Intent.ACTION_DEVICE_STORAGE_LOW)
             context.sendBroadcast(Intent(Intent.ACTION_DEVICE_STORAGE_OK))
         }
+    }
+
+    fun stateFreeStorage(bytes: Long) {
+        require(bytes >= 0) { "Free storage cannot be negative: $bytes" }
+        val free = (bytes / ShadowStatFs.BLOCK_SIZE).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        // Registered at the root, which the shadow matches as a prefix of every path. The volume is stated
+        // as large as the shadow can say, because a volume of no blocks is the one a download treats as
+        // undescribed; and Robolectric resets the registration between tests.
+        ShadowStatFs.registerStats("/", Int.MAX_VALUE, free, free)
     }
 
     /**

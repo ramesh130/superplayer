@@ -578,4 +578,11 @@ public enum class FailureCategory {
 
     /** Everything else, including a failure the engine reported without a usable cause. */
     UNKNOWN,
+
+    /**
+     * The device's storage could not hold what was being written (#244). Added after the other six and
+     * reached by no playback session today: only a download's writes are measured against the disk, and a
+     * download emits no telemetry. It is here so a full disk has a bucket that describes it when one does.
+     */
+    STORAGE,
 }

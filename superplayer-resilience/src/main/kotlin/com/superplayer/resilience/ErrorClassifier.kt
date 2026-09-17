@@ -26,6 +26,7 @@ import com.superplayer.core.LiveWindowTooShortException
 import com.superplayer.core.LoadKind
 import com.superplayer.core.SecurityDowngradeRefusedException
 import com.superplayer.core.StaleLivePlaylistException
+import com.superplayer.core.StorageFullException
 
 /**
  * The single place a failure acquires a meaning (ADR-0011 rule 1).
@@ -179,6 +180,11 @@ public object ErrorClassifier {
             // device's level, the level asked about, what the server actually answered — and a band
             // reading would throw all three away to arrive at a coarser answer.
             is SecurityDowngradeRefusedException -> FailureClass.Drm.DowngradeRefused
+
+            // A download's next write the disk could not hold (ADR-0013 rule 9). No Media3 band says it: a
+            // write that fails reaches a downloader as an ordinary I/O failure, which would read as a lost
+            // network and be waited out on a disk that stays full.
+            is StorageFullException -> FailureClass.Storage.Full
 
             else -> null
         }

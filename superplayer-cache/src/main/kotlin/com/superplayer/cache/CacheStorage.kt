@@ -36,8 +36,11 @@ internal class CacheStorage(directory: File, maxBytes: Long) {
 
     private val pinned = PinnedContent(index)
 
+    /** The folder the cache writes media into, whose volume a download's writes are measured against. */
+    val mediaDirectory = File(directory, MEDIA_DIRECTORY_NAME)
+
     /** Media3's cache, evicting the least recently used unpinned entries past [maxBytes]. */
-    val cache: SimpleCache = SimpleCache(File(directory, MEDIA_DIRECTORY_NAME), PinAwareLruEvictor(maxBytes, ::isPinnedKey), index)
+    val cache: SimpleCache = SimpleCache(mediaDirectory, PinAwareLruEvictor(maxBytes, ::isPinnedKey), index)
 
     private var released = false
 

@@ -246,13 +246,32 @@ public object DeviceStatement {
     /**
      * Storage is low — the platform's sticky `ACTION_DEVICE_STORAGE_LOW` — or, with [low] false, it has
      * recovered. The third condition (ADR-0013 rule 10), restatable mid-test. Not the same thing as a
-     * full disk, which is a write failing rather than a condition announced (#244).
+     * full disk, which is a write failing rather than a condition announced ([declareStorageFree]).
      *
      * ref: https://developer.android.com/reference/android/content/Intent#ACTION_DEVICE_STORAGE_LOW
      */
     @JvmStatic
     public fun declareStorageLow(low: Boolean) {
         DownloadConditions.stateStorage(low)
+    }
+
+    /**
+     * The device's storage has [bytes] free to this app — `StatFs.getAvailableBytes` answers it for every
+     * path — which is what a full disk is to a download: zero, or less than its next write (#244, ADR-0013
+     * rule 9). Restatable mid-test, and read again at a download's next write, so a disk can fill partway
+     * through an item and have room made on it afterwards.
+     *
+     * A reading and not a volume: it does not shrink as a download writes, so a test that wants a disk to
+     * fill states it full rather than stating a size and waiting. Robolectric's device describes no volume
+     * at all until this is said, which a download reads as nothing known and refuses nothing on. Unrelated
+     * to [declareStorageLow], which is the platform's announcement that a disk is *nearly* full, and holds a
+     * download rather than failing one.
+     *
+     * ref: https://developer.android.com/reference/android/os/StatFs#getAvailableBytes()
+     */
+    @JvmStatic
+    public fun declareStorageFree(bytes: Long) {
+        DownloadConditions.stateFreeStorage(bytes)
     }
 
     /**

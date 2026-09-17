@@ -44,6 +44,7 @@ import com.superplayer.core.PlaybackPolicy
 import com.superplayer.core.PlaybackProfile
 import com.superplayer.core.PlaybackResilience
 import com.superplayer.core.StaticProfilePolicy
+import com.superplayer.core.StorageFullException
 import com.superplayer.core.SuperPlayerError
 import com.superplayer.core.TransferChain
 import com.superplayer.core.currentNetworkTransportOf
@@ -94,9 +95,14 @@ import java.util.concurrent.atomic.AtomicInteger
  *   itself through App Startup unless the app configures it otherwise, which is the app's to decide and adds
  *   its own entries to the app's merged manifest. A store with nothing pending schedules nothing and
  *   registers no battery receiver.
+ * - **A full disk fails the one item that met it**, on every store and at once, rather than being retried
+ *   onto a disk that is still full or waited out as a lost network (ADR-0013 rule 9). Every other item carries
+ *   on. The failed one keeps what it wrote, pinned, so an [enqueue] once there is room continues from those
+ *   bytes; [DownloadItem.failure] names it `Storage.Full`, with a message key of its own, where the store was
+ *   built with a resilience. The platform's reading of free space is what is measured, before each write.
  *
  * **Live content is not yet refused** at enqueue, as ADR-0013 rule 8 requires (#251). Not yet
- * here either, each with its ticket: a full disk (#244); protected content (#245); and the service a
+ * here either, each with its ticket: protected content (#245); and the service a
  * download outlives its screen in (#246), which is also what the scheduled work will start in a process
  * with no store open — until then that work waits there, retrying, until the app opens a store. Nor rule 14's retry budgets and
  * token refresh for a download (#254). An item enqueued while a condition holds it keeps its request in
@@ -614,6 +620,12 @@ public class Downloads internal constructor(
             try {
                 downloadReporting(progressListener)
             } catch (e: IOException) {
+                // A full disk fails this item now, on every store (ADR-0013 rule 9): thrown as an I/O failure,
+                // Media3 would ask for the segment again on a disk that is still full, and a resilience would
+                // read it as a lost network and wait. Anything else Media3 fails at once. This decides only
+                // *when* the item fails, off the exception core raised as evidence; what it failed with is still
+                // the classifier's, which finds core's exception beneath this one.
+                if (generateSequence<Throwable>(e) { it.cause }.any { it is StorageFullException }) throw DiskFull(e)
                 if (resilience?.isNetworkLoss(e) != true || canceled.count == 0L) throw e
                 // Held here until the stop cancels this download, rather than thrown: a thrown failure is one
                 // Media3 counts toward failing the item, and the stop is what keeps it from failing. Returning
@@ -687,6 +699,10 @@ public class Downloads internal constructor(
     }
 
     /** A request enqueued, with the languages it was enqueued for. */
+
+    /** A download that met a full disk, thrown as something other than an I/O failure so Media3 does not retry it. */
+    private class DiskFull(cause: IOException) : RuntimeException(cause)
+
     private class Enqueued(val request: MediaRequest, val audioLanguages: List<String>, val subtitleLanguages: List<String>)
 
     /** An enqueued request whose manifest [helper] is reading. */

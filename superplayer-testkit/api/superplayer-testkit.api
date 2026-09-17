@@ -11,6 +11,7 @@ public final class com/superplayer/testkit/DeviceStatement {
 	public static final fun declareNetworkMetered (Z)V
 	public static final fun declareOfflineLicence (Ljava/lang/Long;Ljava/lang/Long;)V
 	public static final fun declareSecureVideoDecoder (Ljava/lang/String;I[Lkotlin/Pair;)V
+	public static final fun declareStorageFree (J)V
 	public static final fun declareStorageLow (Z)V
 	public static final fun declareVideoDecoder (Ljava/lang/String;I[Lkotlin/Pair;)V
 	public static final fun declareVideoDecoder (Ljava/lang/String;[Lkotlin/Pair;)V

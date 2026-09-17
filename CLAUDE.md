@@ -728,8 +728,15 @@ network. `DownloadSchedule` keeps one unique, persisted `WorkManager` work per p
 constraints, retried while anything is pending and cancelled once nothing is. With no store open it can resume
 nothing until #246's service exists. `DownloadConditionsTest` drives it through `DeviceStatement` and
 `runScheduledWork()`. Its lapse tests hold one segment on a latency so the lapse lands between segments,
-because a synthetic download otherwise asks for every segment before a stop arrives. Not built: a full disk
-(#244), protected content (#245).
+because a synthetic download otherwise asks for every segment before a stop arrives. Since #244 a full disk
+fails the one item that met it, at once and on every store, while the rest of the queue carries on (rule 9's
+addendum). The cache's download half asks `StatFs` before it writes and raises core's `StorageFullException`,
+which `ErrorClassifier` names `FailureClass.Storage.Full` — its own branch, a seventh `FailureCategory`
+(`STORAGE`) and an eighth message key, with `SCHEMA_VERSION` still 2. The failed item keeps its bytes pinned for
+a later enqueue. `DownloadStorageFullTest` states the disk with `DeviceStatement.declareStorageFree`. Two things
+are easy to get wrong. Robolectric's `StatFs` describes no volume, which refuses nothing. And every download test
+calls `useScheduledWork()`, because an earlier class's installation is what made them pass together. Not built:
+protected content (#245).
 `DownloadsPayNothingTest` counts rule 15 as platform registrations and the download index table.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and

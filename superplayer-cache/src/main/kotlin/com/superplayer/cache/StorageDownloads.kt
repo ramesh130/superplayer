@@ -20,6 +20,7 @@ import android.net.Uri
 import androidx.media3.common.StreamKey
 import androidx.media3.database.VersionTable
 import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.cache.CacheDataSink
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.exoplayer.offline.DefaultDownloadIndex
 import androidx.media3.exoplayer.offline.Download
@@ -43,6 +44,7 @@ internal class StorageDownloads(private val storage: CacheStorage) : CacheDownlo
             .setCache(storage.cache)
             .setCacheKeyFactory(ContentKeys.boundTo(contentId))
             .setUpstreamDataSourceFactory(upstream)
+            .setCacheWriteDataSinkFactory { DiskMeasuredSink(CacheDataSink(storage.cache, CacheDataSink.DEFAULT_FRAGMENT_SIZE), storage.mediaDirectory) }
 
     override fun pin(contentId: String) {
         storage.pin(contentId)

@@ -260,7 +260,7 @@ public sealed class FailureClass(
          * It carries [PROTECTION_UNAVAILABLE_MESSAGE_KEY] rather than [DEVICE_MESSAGE_KEY], for the
          * reason [Drm.DowngradeRefused] does: a viewer who reaches this has been refused a
          * *programme* on this device, which is not the "this device cannot play it" a missing codec
-         * means and not something a different stream would mend. No eighth key — the seventh already
+         * means and not something a different stream would mend. No new key — the seventh already
          * says exactly this.
          */
         public object SecureDecoderInit : Device(
@@ -441,6 +441,32 @@ public sealed class FailureClass(
     }
 
     /**
+     * The device's storage, not the content, the network or the decoder: bytes that arrived could not be
+     * written (#244, ADR-0013 rule 9).
+     *
+     * A branch of its own rather than a [Device] leaf, because every [Device] leaf is this device failing to
+     * *play* and buckets [FailureCategory.DECODER], and a full disk is neither. It buckets
+     * [FailureCategory.STORAGE], the one category added for it, and `docs/telemetry-schema.md` argues why the
+     * category was extended and why `TelemetryEvent.SCHEMA_VERSION` did not move with it.
+     */
+    public sealed class Storage(
+        stableName: String,
+    ) : FailureClass(stableName, retryable = false, FallbackRung.TYPED_ERROR, FailureCategory.STORAGE, STORAGE_FULL_MESSAGE_KEY) {
+
+        /**
+         * The volume the cache is on could not hold the next bytes a download was to write — core's
+         * `StorageFullException`, raised by the cache's download half before the write, or from the
+         * platform's own `ENOSPC` when another writer took the space first.
+         *
+         * Not retryable: the same bytes onto the same disk fail the same way until somebody frees space,
+         * which is the viewer's to do, not a backoff's. Capped at rung 6 because every rung below is another
+         * place to get the bytes *from*, and they would all be written to this disk. A download that meets it
+         * fails that item and no other, keeping what it had written for an enqueue after room is made.
+         */
+        public object Full : Storage("Storage.Full")
+    }
+
+    /**
      * The engine has named the content unsupported, and nothing the ladder does changes that.
      *
      * Reserved for exactly that — a code that says *unsupported* — and never a bucket for a failure
@@ -456,7 +482,7 @@ public sealed class FailureClass(
     }
 
     /**
-     * The seven things there are to say to a viewer, which is fewer than there are classes and is the
+     * The eight things there are to say to a viewer, which is fewer than there are classes and is the
      * point of [userMessageKey] being its own column.
      *
      * Named for the *message* rather than for the branch that carries it — `superplayer_error_` and
@@ -501,6 +527,15 @@ public sealed class FailureClass(
          */
         public const val PROTECTION_UNAVAILABLE_MESSAGE_KEY: String =
             "superplayer_error_protection_unavailable"
+
+        /**
+         * The device has no room for this download: the one failure whose remedy is the viewer's own
+         * storage, which is why it is a key of its own (#244). None of the seven says it —
+         * [DEVICE_MESSAGE_KEY] is this device being unable to *play* something, which no amount of
+         * freed space mends, and [NETWORK_MESSAGE_KEY] offers a retry that would meet the same disk. An
+         * app words this one around freeing space and trying the download again.
+         */
+        public const val STORAGE_FULL_MESSAGE_KEY: String = "superplayer_error_storage_full"
 
         /** The engine has named the content unplayable here: the one message that offers no remedy. */
         public const val UNSUPPORTED_MESSAGE_KEY: String = "superplayer_error_unsupported"

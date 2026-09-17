@@ -221,6 +221,7 @@ public final class com/superplayer/testkit/TestContent {
 	public static final fun hls (IILjava/lang/String;)Lcom/superplayer/testkit/TestContent;
 	public static final fun hostile (Lcom/superplayer/testmedia/HostileStream;)Lcom/superplayer/testkit/TestContent;
 	public static final fun ladder (Ljava/util/List;J)Lcom/superplayer/testkit/TestContent;
+	public static final fun liveDash ()Lcom/superplayer/testkit/TestContent;
 	public static final fun liveHls ()Lcom/superplayer/testkit/TestContent;
 	public static final fun liveHls (Z)Lcom/superplayer/testkit/TestContent;
 	public static final fun liveVideo (IJ)Lcom/superplayer/testkit/TestContent;
@@ -245,6 +246,7 @@ public final class com/superplayer/testkit/TestContent$Companion {
 	public final fun hostile (Lcom/superplayer/testmedia/HostileStream;)Lcom/superplayer/testkit/TestContent;
 	public final fun ladder (Ljava/util/List;J)Lcom/superplayer/testkit/TestContent;
 	public static synthetic fun ladder$default (Lcom/superplayer/testkit/TestContent$Companion;Ljava/util/List;JILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
+	public final fun liveDash ()Lcom/superplayer/testkit/TestContent;
 	public final fun liveHls ()Lcom/superplayer/testkit/TestContent;
 	public final fun liveHls (Z)Lcom/superplayer/testkit/TestContent;
 	public static synthetic fun liveHls$default (Lcom/superplayer/testkit/TestContent$Companion;ZILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;

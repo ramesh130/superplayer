@@ -200,6 +200,32 @@ Fifteen rules follow, and they are binding.
    meaning is that it moves. A downloaded item on a player built over that cache therefore opens no
    request at all, which is what #240 asserts as a count of zero.
 
+   *Addendum (2026-09-17, #251).* How live content is refused, decided where it was built:
+
+   - **The manifest read that chooses the tracks is the read that refuses.** Rule 12's addendum already reads
+     every manifest through Media3's `DownloadHelper`, over the one chain, before the manager is handed
+     anything, and that helper refuses a timeline whose window is live — an HLS media playlist with no
+     `EXT-X-ENDLIST` (RFC 8216 §4.3.3.4), a DASH MPD of `type="dynamic"` (ISO/IEC 23009-1 §5.3.1.2) — before
+     it prepares a period, with its own `LiveContentUnsupportedException`. So the store adds no fetch and no
+     parser: it recognises that exception where it already handles a failed read. Nothing past the manifest
+     has been asked for and nothing is pinned, because the pin is taken inside the downloader (rule 7's
+     addendum) and a refused item never reaches it. A second fetch of the manifest before the helper's would
+     have cost a round trip per enqueue to learn what the helper learns anyway, and refusing inside the
+     download would have taken a pin to release. Until this, the helper's refusal was already stopping live
+     content, but as a `FAILED` item with no reason, indistinguishable from an origin that answered nonsense.
+   - **A refusal is not a failure, so it has no class.** It is the store's own verdict on a manifest it read
+     perfectly well, and it carries a public `DownloadRefusal` on `DownloadItem.refusal`, beside the state,
+     as `DownloadStopReason` is: `LIVE_CONTENT`, its one value. ADR-0011 rule 1 gives a *failure* its
+     meaning in `ErrorClassifier`, and nothing here failed — no request, no exception of the engine's that
+     a consumer would otherwise meet. Routing it through the classifier would mean raising a core exception
+     only so that the classifier could name back what this module already knew, and would make the reason
+     visible only on a store built with a resilience (rule 14), where the issue requires every consumer to
+     see it. `failure` stays null beside a refusal on every store. Nor is it `Fatal.Unsupported`, which
+     means an engine that cannot play the content, where a player of this content plays it perfectly well.
+   - **The refused item is kept in memory, as every item failed before the manager is.** An enqueue reads
+     the manifest again, and `remove` forgets it; a process that dies forgets it too, which costs nothing,
+     since nothing was written.
+
 ### What is correctness and what is not
 
 9. **Resuming, stopping on a lapsed constraint, and failing one item on a full disk are correctness,

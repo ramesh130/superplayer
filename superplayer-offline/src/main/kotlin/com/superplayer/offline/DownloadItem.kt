@@ -41,7 +41,7 @@ public class DownloadItem internal constructor(
     /**
      * What a [DownloadState.FAILED] item failed with, as `ErrorClassifier` names it, and null in every other
      * state. Null on a failed item too where the store was built without a resilience, which has nobody to
-     * ask (ADR-0013 rule 14), where the manifest could not be read, and where the failure happened in an
+     * ask (ADR-0013 rule 14), where the manifest could not be read, on a [refusal], and where the failure happened in an
      * earlier process, whose exception did not survive it.
      */
     public val failure: SuperPlayerError? = null,
@@ -50,6 +50,13 @@ public class DownloadItem internal constructor(
      * and null for content that declares no protection and on a store built without one (ADR-0013 rule 13).
      */
     public val licence: DownloadLicence? = null,
+    /**
+     * Why the store would not download a [DownloadState.FAILED] item's content at all, and null in every other
+     * state and for a failure. A refusal is the store's own verdict on a manifest it read perfectly well, so it
+     * is reported on every store, with or without a resilience, and [failure] stays null beside it: nothing
+     * failed, so there is nothing for `ErrorClassifier` to name (ADR-0013 rule 8's addendum).
+     */
+    public val refusal: DownloadRefusal? = null,
 ) {
 
     override fun equals(other: Any?): Boolean = other is DownloadItem &&
@@ -59,13 +66,14 @@ public class DownloadItem internal constructor(
         percentDownloaded == other.percentDownloaded &&
         stopReason == other.stopReason &&
         failure == other.failure &&
-        licence == other.licence
+        licence == other.licence &&
+        refusal == other.refusal
 
-    override fun hashCode(): Int = listOf(contentId, state, bytesDownloaded, percentDownloaded, stopReason, failure, licence).hashCode()
+    override fun hashCode(): Int = listOf(contentId, state, bytesDownloaded, percentDownloaded, stopReason, failure, licence, refusal).hashCode()
 
     override fun toString(): String = "DownloadItem($contentId, $state, $bytesDownloaded bytes, $percentDownloaded%" +
         (stopReason?.let { ", stopped: $it" } ?: "") + (failure?.let { ", failed: ${it.causeClass}" } ?: "") +
-        (licence?.let { ", licence: $it" } ?: "") + ")"
+        (licence?.let { ", licence: $it" } ?: "") + (refusal?.let { ", refused: $it" } ?: "") + ")"
 }
 
 /**
@@ -148,10 +156,25 @@ public enum class DownloadStopReason {
 }
 
 /**
+ * Why a store refused to download content, decided from the content's manifest before a media byte is fetched
+ * or a pin taken. Carried on a [DownloadState.FAILED] item as [DownloadItem.refusal]. Enqueueing the same
+ * content again reads its manifest again, and is refused again for as long as the reason holds.
+ */
+public enum class DownloadRefusal {
+
+    /**
+     * The content is live: an HLS media playlist with no `EXT-X-ENDLIST`, or a DASH MPD of `type="dynamic"`.
+     * A live stream has no end to download and its manifest's whole meaning is that it moves, so a copy of it
+     * would be stale by definition (ADR-0013 rule 8).
+     */
+    LIVE_CONTENT,
+}
+
+/**
  * Where a download has got to.
  *
- * What holds a [STOPPED] item and why a [FAILED] one failed are carried beside the state, as
- * [DownloadItem.stopReason] and [DownloadItem.failure].
+ * What holds a [STOPPED] item, and why a [FAILED] one failed or was refused, are carried beside the state, as
+ * [DownloadItem.stopReason], [DownloadItem.failure] and [DownloadItem.refusal].
  */
 public enum class DownloadState {
 

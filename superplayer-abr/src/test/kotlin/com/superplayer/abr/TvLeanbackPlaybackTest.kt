@@ -44,6 +44,13 @@ import org.junit.runner.RunWith
  * What a viewer would notice is the media held ahead, which is what rides a household's broadband
  * blip out on the room's screen. `NetworkProfile.ETHERNET` is `STABLE_WIFI`'s rate on a wired
  * transport, so the link's speed is not what differs.
+ *
+ * Said plainly, because the pairing hides it: the buffer difference is the *profile's*. No buffer or
+ * cap rule departs on Ethernet from WiFi — a wired link is uncapped as WiFi is, and branch 1 deepens
+ * on both — so a television on WiFi would hold the same. What the wired transport changes is the cold
+ * estimate a session starts from (`ColdDefaults`), which the QoE gate's `ETHERNET` row scores. The
+ * transport is replayed here so that the television is observed on the link the profile is for, not
+ * to claim a second variable.
  */
 @RunWith(AndroidJUnit4::class)
 class TvLeanbackPlaybackTest {

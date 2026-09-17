@@ -51,15 +51,12 @@ internal object TransportCaps {
 
     /** The cap for [profile] on [transport]; [UNCAPPED] where the transport itself imposes none. */
     fun capFor(profile: PlaybackProfile, transport: NetworkTransport): TrackSelectionPolicy = when (transport) {
-        NetworkTransport.Wifi, NetworkTransport.Unknown -> UNCAPPED
-
-        // A wired link is capped for no profile, a television's included. F1's trade buys fewer
-        // interruptions with bytes on a link that is metered and drops out, and Ethernet is neither:
-        // it has no radio to lose and is reported unmetered, so a cap here would give up quality for
-        // nothing. What bounds a slow wired line is the estimate, which is kept per transport, so a
-        // television moved from WiFi to a cable starts from the wired window and not the wireless one.
-        // ref: https://developer.android.com/reference/android/net/NetworkCapabilities#NET_CAPABILITY_NOT_METERED
-        NetworkTransport.Ethernet -> UNCAPPED
+        // A wired link is capped for no profile, a television's included (#267). F1's trade buys
+        // fewer interruptions with bytes on a link that is metered and drops out, and a cable has no
+        // radio to drop out on, so a cap would give up quality for nothing. What bounds a slow wired
+        // line is the estimate, which is kept per transport and starts from `ColdDefaults`' wired
+        // entry, so a television moved from WiFi to a cable does not inherit the wireless window.
+        NetworkTransport.Wifi, NetworkTransport.Ethernet, NetworkTransport.Unknown -> UNCAPPED
 
         is NetworkTransport.Cellular -> when (transport.generation ?: CellularGeneration.LTE) {
             // 5G is not capped on its own account. Its delivered rate ranges from below LTE's to

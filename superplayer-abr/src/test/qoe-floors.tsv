@@ -15,4 +15,4 @@ LTE_WITH_DROPOUTS	2.000	2.000	0.000	0.000	First floor (#102): the Phase 3 adapti
 THREE_G	0.341	0.365	0.000	0.024	First floor (#102): the Phase 3 adaptive policy as committed at 4fc4885
 WIFI_TO_CELLULAR_HANDOVER	4.045	4.083	0.000	0.038	First floor (#102): the Phase 3 adaptive policy as committed at 4fc4885
 HIGH_LATENCY	4.046	4.083	0.000	0.038	First floor (#102): the Phase 3 adaptive policy as committed at 4fc4885
-ETHERNET	4.500	4.500	0.000	0.000	First floor (#267): STABLE_WIFI's rate on a wired transport; above WiFi's 4.045 because ColdDefaults starts Ethernet at 10 Mbit/s, so the first rung is the top one and there is no climb to pay a switch for
+ETHERNET	4.500	4.500	0.000	0.000	First floor (#267): STABLE_WIFI's rate on a wired transport; above WiFi's 4.045 because ColdDefaults' existing Ethernet start of 10 Mbit/s, at the selection's 0.7 of the estimate, affords the ladder's 4.5 Mbit/s top rung first, so there is no climb to pay a switch for

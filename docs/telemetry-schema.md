@@ -302,12 +302,32 @@ do.
 | --- | --- | --- |
 | `LicenceAcquisitionEnded`, `outcome = ACQUIRED_FROM_SERVER` | nothing at all | A licence fetched from the server, and what the round trip cost |
 | `LicenceAcquisitionEnded`, `outcome = REFUSED` | only the failure event, if the refusal ended playback | A licence attempt that ended without keys — how long it cost, and that it happened at all, which a failure event does not say |
-| `LicenceAcquisitionEnded`, `outcome = SERVED_FROM_OFFLINE_STORE` | nothing at all | Keys restored from a licence already on the device. **Not emitted by any release yet** — see the metric definition |
+| `LicenceAcquisitionEnded`, `outcome = SERVED_FROM_OFFLINE_STORE` | nothing at all | Keys restored from a licence already on the device. Declared by `#212` and unreachable until `#210` — see below |
 
-One value of the outcome is therefore declared and unreachable, and that is deliberate too: an
-offline licence store is issue `#210`'s, and declaring the value now makes `#210` a behaviour change
-against a vocabulary a pipeline has already been told about, rather than a second change of this
-schema for the same metric.
+One value of the outcome was therefore declared and unreachable for one release, and that was
+deliberate: an offline licence store was issue `#210`'s, and declaring the value in `#212` made
+`#210` a behaviour change against a vocabulary a pipeline had already been told about, rather than a
+second change of this schema for the same metric.
+
+**Version 2 still stands — the third outcome became reachable (`#210`).** `SuperPlayer` now has an
+offline licence store (`OfflineLicences.store(directory)`), so a player built with a stored licence
+restores its keys and reports `SERVED_FROM_OFFLINE_STORE`. **`SCHEMA_VERSION` does not move**, and
+that is the deliberate answer rather than an oversight: no definition changed, no denominator moved,
+no exclusion narrowed, and the value a pipeline sees is one this document already told it to expect.
+What changed is the *population* — a value that appeared in no row now appears in some — which is a
+behaviour change in the library and not a change of the schema. It is the same ruling `#225` recorded
+for `SessionEnded.securityLevel` one row above.
+
+What a pipeline can do about it is new, and is the reason the metric carries an outcome at all: a
+deployment that believes its downloads play offline and is in fact re-acquiring a licence every time
+looks identical in every other metric in this document, and different in exactly this one.
+`ACQUIRED_FROM_SERVER` on a session the app intended to be offline is the finding.
+
+`#210`'s other visible effect is a `classification` a pipeline may now see more of rather than a new
+one: a player built with an expired stored licence is refused rather than silently re-acquiring, and
+that refusal is `FailureClass.Drm.LicenceExpired` — the leaf and the message key `#206` added —
+reached through `ERROR_CODE_DRM_LICENSE_EXPIRED` exactly as an expiry met mid-playback is. No table
+here moves.
 
 **A sink must tolerate a new event type.** `TelemetryEvent` is sealed, so a `when` over it can be
 exhaustive without an `else` — and such a `when` fails to compile when a later version adds an event.
@@ -628,7 +648,7 @@ Every serial acquisition, and the count and outcomes of all of them, are exact.
 | Value | Meaning |
 | --- | --- |
 | `ACQUIRED_FROM_SERVER` | Keys arrived from the licence server, over the network |
-| `SERVED_FROM_OFFLINE_STORE` | Keys were restored from a licence already stored on the device, with no licence request. **Not emitted by any release yet**: nothing in this library stores a licence, which is issue `#210`'s subject. The value is declared now so that `#210` needs no second change of this schema |
+| `SERVED_FROM_OFFLINE_STORE` | Keys were restored from a licence already stored on the device (`OfflineLicences.store`), with no licence request. Declared by `#212` and first emitted by `#210`, which is why neither moved `SCHEMA_VERSION` |
 | `REFUSED` | No keys — the server refused, the request never arrived, or the device's protection stack failed the session |
 
 **What `REFUSED` deliberately does not say is *why*.** That is

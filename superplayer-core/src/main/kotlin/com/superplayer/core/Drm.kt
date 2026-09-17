@@ -240,7 +240,35 @@ internal class DeliveredProtection {
  * claiming a licence round trip failed, which would be untrue twice: there was no round trip, and
  * nothing failed.
  */
-internal fun refusedSessions(refusal: SecurityDowngradeRefusedException): DrmSessionManagerProvider {
+internal fun refusedSessions(refusal: SecurityDowngradeRefusedException): DrmSessionManagerProvider =
+    erroringSessions(refusal, PlaybackException.ERROR_CODE_DRM_DISALLOWED_OPERATION)
+
+/**
+ * Sessions that are one expiry: what fills the DRM slot for a player built to play from an offline
+ * licence that has run out (ADR-0012 rule 9, issue #210).
+ *
+ * **Refused rather than quietly re-acquired**, which is a decision and not the absence of one.
+ * Media3's own answer to a restored licence inside sixty seconds of its expiry is to ask the licence
+ * server for a new one (`DefaultDrmSession.doLicense`), and for a streaming player that is right. For
+ * a player a consumer built *to play offline* it is the wrong surprise twice over: it is a network
+ * round trip where the whole point was that there would be none, and where there is genuinely no
+ * network it fails as a licence that could not be acquired rather than as the licence that expired —
+ * which is exactly the "playback error" `PRD.md` §3.2 says a dead download must not produce.
+ *
+ * The consumer was given the fact first: [OfflineLicence][com.superplayer.core.SuperPlayer]'s store
+ * answers both expiries before a player is built. This is what happens when they play it anyway, and
+ * it says the same thing the store did.
+ *
+ * `ERROR_CODE_DRM_LICENSE_EXPIRED` is the code, so a consumer with `superplayer-resilience` reads
+ * `FailureClass.Drm.LicenceExpired` and its own `userMessageKey` — go online and refresh this
+ * download — and one without it lands in the same bucket off the band. No new classification and no
+ * second taxonomy: unlike a downgrade refusal, whose code says only that an operation was disallowed,
+ * this code already says precisely what happened.
+ */
+internal fun expiredLicenceSessions(refusal: OfflineLicenceExpiredException): DrmSessionManagerProvider =
+    erroringSessions(refusal, PlaybackException.ERROR_CODE_DRM_LICENSE_EXPIRED)
+
+private fun erroringSessions(refusal: Throwable, errorCode: Int): DrmSessionManagerProvider {
     val manager = object : DrmSessionManager {
 
         override fun setPlayer(playbackLooper: Looper, playerId: PlayerId) = Unit
@@ -248,9 +276,7 @@ internal fun refusedSessions(refusal: SecurityDowngradeRefusedException): DrmSes
         override fun acquireSession(
             eventDispatcher: DrmSessionEventListener.EventDispatcher?,
             format: Format,
-        ): DrmSession = ErrorStateDrmSession(
-            DrmSession.DrmSessionException(refusal, PlaybackException.ERROR_CODE_DRM_DISALLOWED_OPERATION),
-        )
+        ): DrmSession = ErrorStateDrmSession(DrmSession.DrmSessionException(refusal, errorCode))
 
         // `CRYPTO_TYPE_UNSUPPORTED` rather than `CRYPTO_TYPE_NONE` for a format that declares
         // protection, so that Media3 asks for a session at all: answering "none" would have the

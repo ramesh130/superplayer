@@ -1,6 +1,40 @@
 public final class com/superplayer/drm/Drm {
 	public static final field INSTANCE Lcom/superplayer/drm/Drm;
 	public static final fun widevine (Lcom/superplayer/drm/WidevineConfig;)Lcom/superplayer/core/PlaybackDrm;
+	public static final fun widevine (Lcom/superplayer/drm/WidevineConfig;Lcom/superplayer/drm/OfflineLicence;)Lcom/superplayer/core/PlaybackDrm;
+	public static synthetic fun widevine$default (Lcom/superplayer/drm/WidevineConfig;Lcom/superplayer/drm/OfflineLicence;ILjava/lang/Object;)Lcom/superplayer/core/PlaybackDrm;
+}
+
+public final class com/superplayer/drm/OfflineLicence {
+	public static final field Companion Lcom/superplayer/drm/OfflineLicence$Companion;
+	public static final field RENEWAL_DUE_WITHIN_MS J
+	public final fun getContentId ()Ljava/lang/String;
+	public final fun getLicenceDurationRemainingMs ()J
+	public final fun getPlaybackDurationRemainingMs ()J
+	public final fun getRenewalDue ()Z
+	public final fun isExpired ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/drm/OfflineLicence$Companion {
+}
+
+public final class com/superplayer/drm/OfflineLicenceExchange {
+	public final fun acquire (Ljava/lang/String;)Lcom/superplayer/drm/OfflineLicence;
+	public final fun release (Ljava/lang/String;)V
+	public final fun renew (Ljava/lang/String;)Lcom/superplayer/drm/OfflineLicence;
+}
+
+public final class com/superplayer/drm/OfflineLicenceStore {
+	public final fun close ()V
+	public final fun contentIds ()Ljava/util/Set;
+	public final fun licenceFor (Ljava/lang/String;)Lcom/superplayer/drm/OfflineLicence;
+	public final fun over (Lcom/superplayer/core/SuperPlayer;)Lcom/superplayer/drm/OfflineLicenceExchange;
+}
+
+public final class com/superplayer/drm/OfflineLicences {
+	public static final field INSTANCE Lcom/superplayer/drm/OfflineLicences;
+	public static final fun store (Ljava/io/File;)Lcom/superplayer/drm/OfflineLicenceStore;
 }
 
 public final class com/superplayer/drm/WidevineConfig {

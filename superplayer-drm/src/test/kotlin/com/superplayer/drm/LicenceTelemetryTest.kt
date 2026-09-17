@@ -35,7 +35,9 @@ import com.superplayer.testkit.TestContent
 import com.superplayer.testmedia.WidevineProtection
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
+import java.io.File
 import java.util.Collections
 
 /**
@@ -49,16 +51,22 @@ import java.util.Collections
  * Widevine device and a licence server, and all three of those are reachable only from here. The
  * dependency direction is the allowed one: phase 6 on phase 2, tests only.
  *
- * What cannot be driven here is `LicenceOutcome.SERVED_FROM_OFFLINE_STORE`. Nothing in this library
- * stores a licence yet, so no session restores keys and no event carries that value; issue #210 is
- * what makes it reachable, and the value is declared now so that #210 is a behaviour change rather
- * than a second change of the schema. The test that asserts it belongs with the store.
+ * All three outcomes are driven here, and the third arrived after the other two: #212 declared
+ * `LicenceOutcome.SERVED_FROM_OFFLINE_STORE` with nothing able to reach it, because nothing in this
+ * library stored a licence, and #210's offline store is what made it reachable. That order was the
+ * point — the value becoming *emitted* is a behaviour change against a vocabulary a pipeline had
+ * already been told about, rather than a second change of the schema for one metric — and it is why
+ * `SCHEMA_VERSION` did not move for either half.
  */
 @RunWith(AndroidJUnit4::class)
 class LicenceTelemetryTest {
 
     @get:Rule
     val harness: PlaybackHarness = PlaybackHarness()
+
+    /** Where the one test with an offline store keeps it — a directory the test named, as a consumer does. */
+    @get:Rule
+    val directory: TemporaryFolder = TemporaryFolder()
 
     /** Thread-safe: a sink is called on the delivery thread, never on the test's (ADR-0008 rule 4). */
     private val events = Collections.synchronizedList(mutableListOf<TelemetryEvent>())
@@ -112,6 +120,39 @@ class LicenceTelemetryTest {
         // the join `docs/telemetry-schema.md` tells a pipeline to make.
         val failure = events.filterIsInstance<TelemetryEvent.StartupFailed>().single()
         assertThat(failure.failure.category.name).isEqualTo("DRM")
+    }
+
+    @Test
+    fun keysRestoredFromTheOfflineStoreAreMeasuredAsServedFromIt() {
+        // #212 declared `SERVED_FROM_OFFLINE_STORE` and could not reach it: nothing stored a licence
+        // then. #210 does, so this is the value becoming reachable — a behaviour change against a
+        // vocabulary a pipeline was already told about, which is exactly why the value was declared
+        // early rather than added now. `SCHEMA_VERSION` therefore does not move: no definition
+        // changed, and a population a pipeline was told to expect arrived.
+        //
+        // It is also the distinction the outcome exists for. A deployment that believes its
+        // downloads play offline and is in fact re-acquiring every time looks identical in every
+        // other metric here, and different in exactly this one.
+        val store = OfflineLicences.store(File(directory.root, "licences"))
+        val acquiring = play(TestContent.protectedDash())
+        val licence = store.over(acquiring).acquire(CONTENT_ID)
+        harness.release(acquiring)
+        synchronized(events) { events.clear() }
+
+        val offline = harness.buildPlayer(
+            content = TestContent.protectedDash(),
+            telemetry = QoeCollector(TelemetrySink { events += it }),
+            drm = Drm.widevine(WidevineConfig(FakeLicenceServer.LICENCE_URI), licence),
+        )
+        offline.setMediaRequest(MediaRequest.Builder(CONTENT_ID).addSource(TestContent.protectedDash().sourceUri).build())
+        harness.playToReady(offline)
+
+        val acquisition = licenceAcquisitions(offline).single()
+        assertThat(acquisition.outcome).isEqualTo(LicenceOutcome.SERVED_FROM_OFFLINE_STORE)
+        // It is still a *span*, and a short one: a restore is work the device does rather than work
+        // a server does, which is the whole of what the value reports.
+        assertThat(acquisition.durationMs).isAtLeast(0L)
+        store.close()
     }
 
     @Test

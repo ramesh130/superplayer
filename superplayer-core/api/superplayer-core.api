@@ -181,6 +181,12 @@ public final class com/superplayer/core/NetworkTransport$Wifi : com/superplayer/
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class com/superplayer/core/OfflineLicenceExpiredException : java/io/IOException {
+	public final fun getContentId ()Ljava/lang/String;
+	public final fun getLicenceDurationRemainingMs ()J
+	public final fun getPlaybackDurationRemainingMs ()J
+}
+
 public final class com/superplayer/core/PlaybackConditions {
 	public fun <init> ()V
 	public fun <init> (Lcom/superplayer/core/NetworkTransport;Lcom/superplayer/core/ThroughputEstimate;Lcom/superplayer/core/StallHistory;Lcom/superplayer/core/StreamType;Ljava/lang/Long;Ljava/lang/Float;)V

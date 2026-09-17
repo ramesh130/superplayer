@@ -478,12 +478,15 @@ public enum class LicenceOutcome {
     /**
      * Keys were restored from a licence already stored on the device — no licence request was made.
      *
-     * **Not reachable today**, and declared rather than omitted. Nothing in this library stores a
-     * licence yet: an offline licence store is issue #210's, and until it lands no session restores
-     * keys, so no event carries this value. It is here so that #210 is a behaviour change with a
-     * value already in the vocabulary rather than a second change of this schema, which a pipeline
-     * would have to be told about twice. `docs/telemetry-schema.md` says the same thing where the
-     * metric is defined.
+     * Reachable since #210, which opened `superplayer-drm`'s offline licence store; #212 declared it
+     * before there was anything to emit it, so that #210 was a behaviour change against a vocabulary
+     * a pipeline had already been told about rather than a second change of this schema for one
+     * metric. `SCHEMA_VERSION` moved for neither half: no definition changed, and a population a
+     * pipeline was told to expect arrived. `docs/telemetry-schema.md` records both.
+     *
+     * It is the value a protected catalogue is read for. A deployment that believes its downloads
+     * play offline and is in fact re-acquiring a licence every time is identical in every other
+     * metric here and different in exactly this one.
      */
     SERVED_FROM_OFFLINE_STORE,
 

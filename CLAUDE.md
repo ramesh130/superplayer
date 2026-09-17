@@ -808,6 +808,16 @@ the old one, so the selection re-decides its device refusals per reading rather 
 instance. And `EstimateMemory` forgets a sample timed after now, which is what lets a test class
 outside `superplayer-abr` build adaptive players across tests. `DisplayHotplugTest` drives it with
 `scheduleDeviceChange`, on a ladder whose `TestContent.Rung.hdr` rung is HDR10.
+Since #270 a filled slot also switches on the selector's
+`allowInvalidateSelectionsOnRendererCapabilitiesChange`, so an AV receiver powered on or off re-selects the
+audio at the position reached (rule 6). The mechanism is Media3's own, and nothing of the module's watches the
+output. An output refusing a passthrough track mid-change (`ERROR_CODE_AUDIO_TRACK_INIT_FAILED` over a
+non-PCM `AudioSink.InitializationException.format`) is `Device.DecoderTransient`, so rung 5's re-prepare
+selects PCM, and PCM keeps `Device.DecoderInit`. That is rule 6's addendum. The trap: the harness's audio
+renderer is Media3's fake, so it answers for passthrough-only formats from the stated output through Media3's
+own `AudioCapabilitiesReceiver`, and a sink refusal cannot arise there. `AudioCapabilityChangeTest` drives it
+on `TestContent.dashWithPassthroughAudio` (stereo AAC beside 5.1 AC-3), and the classification is asserted
+over the real exception in `ErrorClassifierTest`.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,

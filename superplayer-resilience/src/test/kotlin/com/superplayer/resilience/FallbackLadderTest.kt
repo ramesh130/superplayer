@@ -18,8 +18,11 @@ package com.superplayer.resilience
 
 import android.net.Uri
 import androidx.media3.common.C
+import androidx.media3.common.Format
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.datasource.DataSpec
+import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.source.LoadEventInfo
 import androidx.media3.exoplayer.source.MediaLoadData
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
@@ -177,6 +180,12 @@ class FallbackLadderTest {
             .isTrue()
         assertThat(playerStateLadder.recreatesDecoder(errorOf(PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED)))
             .isTrue()
+        // An output that stopped carrying a passthrough track (#270): a re-prepare selects the PCM rendition
+        // under what the output reports now, and no other source is fetched on the way. The same refusal
+        // of PCM is an output that never could, and is not re-prepared.
+        assertThat(playerStateLadder.recreatesDecoder(audioTrackInitFailure(MimeTypes.AUDIO_E_AC3))).isTrue()
+        assertThat(playerStateLadder.opensNextSource(audioTrackInitFailure(MimeTypes.AUDIO_E_AC3))).isFalse()
+        assertThat(playerStateLadder.recreatesDecoder(audioTrackInitFailure(MimeTypes.AUDIO_RAW))).isFalse()
         // And its sibling refused, which is the distinction the taxonomy exists to draw: no decoder
         // was there to lose, so recreating one asks the device the same question again. It reached
         // rung 4 on the way here (above), and what is left for it is rung 6.
@@ -205,6 +214,19 @@ class FallbackLadderTest {
     /** A failure as the player delivers one: a code and nothing else for the classifier to read. */
     private fun errorOf(errorCode: Int): PlaybackException =
         PlaybackException("Injected failure", /* cause= */ null, errorCode)
+
+    /** Media3's audio renderer's failure to open a track for [sampleMimeType], its sink's exception inside. */
+    private fun audioTrackInitFailure(sampleMimeType: String): PlaybackException = PlaybackException(
+        "Injected failure",
+        AudioSink.InitializationException(
+            "AudioTrack init failed",
+            /* audioTrackState= */ 0,
+            Format.Builder().setSampleMimeType(sampleMimeType).build(),
+            /* isRecoverable= */ false,
+            /* audioTrackException= */ null,
+        ),
+        PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED,
+    )
 
     private fun climb(
         failureClass: FailureClass,

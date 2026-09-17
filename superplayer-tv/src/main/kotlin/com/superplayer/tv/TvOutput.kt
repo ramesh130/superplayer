@@ -64,11 +64,23 @@ import com.superplayer.core.PlaybackOutput
  * gate of `superplayer-abr`'s `AdaptivePolicy`; a player without it re-runs Media3's own
  * viewport-bounded selection, which refuses no HDR rendition. A re-selection may cost a rebuffer.
  *
+ * **Surviving an audio-output change** (ADR-0014 rule 6). An AV receiver or soundbar powered on under
+ * playback re-selects the audio at the position reached, so a passthrough track it can carry (AC-3, E-AC-3,
+ * DTS) is chosen over the PCM rendition, and powered off it re-selects PCM rather than writing a format
+ * the output refuses. The mechanism is Media3's own: its audio output already watches the capabilities and
+ * reports a change, and this switches on the selector's re-selection on that report. A change the content's
+ * tracks do not use re-selects nothing. If the output refuses a passthrough track before the re-selection
+ * lands, the failure is `Device.DecoderTransient` on a player built with `superplayer-resilience`, and a
+ * re-prepare selects the PCM track. Without that module it reaches the consumer as the engine's own error.
+ *
  * **What only a device shows.** Under `check` the request is observed at the surface, as the call a
  * compositor would receive (`docs/testing.md`, *A TV device*): whether the panel then switched, how
  * long the HDMI link took to resynchronise, and the blank a non-seamless switch costs are not visible
  * there. A time to first frame on a device set to *Always* includes that resynchronisation, which
- * `docs/telemetry-schema.md` says.
+ * `docs/telemetry-schema.md` says. The same holds for audio. Under `check` the selection is what moves.
+ * Only a device with a receiver shows whether the receiver decoded the passthrough stream, how long the
+ * audio was silent while the HDMI link renegotiated, and whether a real sink refused a track mid-change,
+ * which is the failure the transient class exists for.
  */
 public object TvOutput {
 

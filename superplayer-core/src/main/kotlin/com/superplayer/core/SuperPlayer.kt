@@ -1682,8 +1682,14 @@ public class SuperPlayer private constructor(
             val trackSelectionFactory = configuration.trackSelectionFactory ?: decision.trackSelection.pace?.toTrackSelectionFactory()
             // On a player with an output, the same selector with its `invalidate` exposed, over the same
             // factory or Media3's own default one, so a display change can ask it again (ADR-0014 rule 5).
+            // The same filled slot switches on Media3's own re-selection when a renderer's capabilities
+            // change, which is how an AV receiver powered on or off under playback moves the audio. Media3
+            // already watches the output and tells the selector, and only this parameter lets the selector
+            // act. Not policy, so not `EngineBinding.kt`'s, and set once, here (ADR-0014 rule 6).
             val reselectingSelector = configuration.videoOutput?.let {
-                ReselectingTrackSelector(context, trackSelectionFactory ?: AdaptiveTrackSelection.Factory())
+                ReselectingTrackSelector(context, trackSelectionFactory ?: AdaptiveTrackSelection.Factory()).apply {
+                    setParameters(buildUponParameters().setAllowInvalidateSelectionsOnRendererCapabilitiesChange(true))
+                }
             }
             when {
                 reselectingSelector != null -> engineBuilder.setTrackSelector(reselectingSelector)

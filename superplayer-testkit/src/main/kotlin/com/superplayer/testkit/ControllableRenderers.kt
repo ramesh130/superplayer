@@ -16,17 +16,22 @@
 
 package com.superplayer.testkit
 
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.HandlerWrapper
 import androidx.media3.exoplayer.ExoPlaybackException
+import androidx.media3.exoplayer.RendererCapabilities
+import androidx.media3.exoplayer.audio.AudioCapabilities
+import androidx.media3.exoplayer.audio.AudioCapabilitiesReceiver
 import androidx.media3.exoplayer.audio.AudioRendererEventListener
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
 import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.DecoderInitializationException
 import androidx.media3.exoplayer.video.VideoRendererEventListener
 import androidx.media3.test.utils.FakeAudioRenderer
 import androidx.media3.test.utils.FakeVideoRenderer
+import androidx.test.core.app.ApplicationProvider
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
@@ -129,6 +134,25 @@ internal class ControllableVideoRenderer(
  * A fault armed on the video renderer alone would silently do nothing in exactly the tests that play
  * a real manifest, which is why [DecoderInitFault] is one object handed to both rather than a flag on
  * each.
+ *
+ * ## An audio output it answers to
+ *
+ * Media3's fake handles every audio format, which leaves an AV receiver nothing to change (#270). So a
+ * format only an output can play — AC-3, E-AC-3, AC-4, DTS or TrueHD, for which the harness's device has no
+ * decoder, as a device without the licensed decoders has none — is supported exactly where the audio output
+ * `DeviceStatement.declareAudioOutput` stated passes it through. When the output changes, the renderer
+ * tells the selector its capabilities changed, as Media3's own audio renderer does when its sink hears the
+ * change. Everything else stays the fake's answer, so every test that plays no such format is unchanged.
+ *
+ * ref: Media3 1.11's `MediaCodecAudioRenderer.supportsFormat` answers `FORMAT_HANDLED` for a format its
+ * sink plays directly and `FORMAT_UNSUPPORTED_SUBTYPE` for one with no decoder, and its
+ * `onAudioCapabilitiesChanged` calls `BaseRenderer.onRendererCapabilitiesChanged`:
+ * https://github.com/androidx/media/blob/1.11.0/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/audio/MediaCodecAudioRenderer.java
+ *
+ * The reading is Media3's own `AudioCapabilitiesReceiver`, the reader `DefaultAudioSink` uses, registered
+ * the first time such a format is asked about and released with the renderer. What stands in is the sink:
+ * no audio track is configured, so a sink refusing a format mid-change is not something this renderer
+ * raises.
  */
 internal class ControllableAudioRenderer(
     handler: HandlerWrapper,
@@ -136,9 +160,70 @@ internal class ControllableAudioRenderer(
     private val decoderInitFault: DecoderInitFault,
 ) : FakeAudioRenderer(handler, eventListener) {
 
+    /** Media3's reader of the output, registered at the first question about a passthrough-only format; null until then. */
+    private var output: AudioCapabilitiesReceiver? = null
+
+    /** What the output carries, as [output] last read it; null until it is registered. */
+    @Volatile
+    private var capabilities: AudioCapabilities? = null
+
     override fun render(positionUs: Long, elapsedRealtimeUs: Long) {
         decoderInitFault.throwIfArmed(name, index)
         super.render(positionUs, elapsedRealtimeUs)
+    }
+
+    override fun supportsFormat(format: Format): Int {
+        if (format.sampleMimeType !in PASSTHROUGH_ONLY) return super.supportsFormat(format)
+        val current = capabilities ?: startReadingTheOutput()
+        return if (current.isPassthroughPlaybackSupported(format, AudioAttributes.DEFAULT)) {
+            RendererCapabilities.create(C.FORMAT_HANDLED)
+        } else {
+            RendererCapabilities.create(C.FORMAT_UNSUPPORTED_SUBTYPE)
+        }
+    }
+
+    override fun onRelease() {
+        output?.unregister()
+        output = null
+        super.onRelease()
+    }
+
+    @Synchronized
+    private fun startReadingTheOutput(): AudioCapabilities {
+        capabilities?.let { return it }
+        val receiver = AudioCapabilitiesReceiver(
+            ApplicationProvider.getApplicationContext(),
+            { changed ->
+                // A reading inside `register` is the devices already present, which the registration reports
+                // before it returns (`docs/testing.md`, *A TV device*): it is the first reading, not a change.
+                val registered = output != null
+                if (changed != capabilities) {
+                    capabilities = changed
+                    if (registered) onRendererCapabilitiesChanged()
+                }
+            },
+            // Media3's default attributes rather than the player's: the stated output answers every usage alike.
+            AudioAttributes.DEFAULT,
+            /* routedDevice= */ null,
+        )
+        val first = receiver.register()
+        capabilities = first
+        output = receiver
+        return first
+    }
+
+    private companion object {
+        /** The encodings a device plays only by passing them through to an output that decodes them. */
+        val PASSTHROUGH_ONLY = setOf(
+            MimeTypes.AUDIO_AC3,
+            MimeTypes.AUDIO_E_AC3,
+            MimeTypes.AUDIO_E_AC3_JOC,
+            MimeTypes.AUDIO_AC4,
+            MimeTypes.AUDIO_DTS,
+            MimeTypes.AUDIO_DTS_HD,
+            MimeTypes.AUDIO_DTS_X,
+            MimeTypes.AUDIO_TRUEHD,
+        )
     }
 }
 

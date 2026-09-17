@@ -360,6 +360,18 @@ still holds. When a policy first reads the display, `DecisionTrigger.DISPLAY_CHA
 (the name is reserved), and that is **shape, not meaning** — a new value of an existing field changes no
 denominator — so `SCHEMA_VERSION` stays 2 then as it does now.
 
+**Version 2 stands — an audio output that refused a passthrough track is transient (`#270`).** A player
+built with `superplayer-tv` re-selects its audio when an AV receiver is powered on or off
+([ADR-0014][adr14] rule 6), and what a pipeline sees of that is a `TrackSwitched` with no failure. Where the
+output refuses a passthrough track before the re-selection lands, the failure is now `Device.DecoderTransient`
+and is repaired by rung 5's re-prepare, which selects the PCM rendition, so a rescued session reports no
+failure row. Both leaves bucket `DECODER`, so no `category` slice or denominator moves. The one thing a
+reader of old data should know: `classification` for that failure used to be `Device.DecoderInit`.
+
+| Now reported | Was reported as | What it is |
+| --- | --- | --- |
+| `Device.DecoderTransient` (only when rung 5 did not rescue it) | `Device.DecoderInit` | The audio output would not open a track for an encoded format (AC-3, E-AC-3, DTS and the like) it had been carrying. An init failure for decoded PCM stays `Device.DecoderInit` |
+
 **A sink must tolerate a new event type.** `TelemetryEvent` is sealed, so a `when` over it can be
 exhaustive without an `else` — and such a `when` fails to compile when a later version adds an event.
 An `else` branch is the forward-compatible spelling; take the exhaustive one only if being told about

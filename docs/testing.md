@@ -517,6 +517,26 @@ device here can raise and are asserted in `ErrorClassifierTest` against the code
 Writing the weaker test and calling it the forcing one is the failure mode; saying which is which in
 the file is the habit.
 
+**A secure surface that will not allocate is the case this seam cannot reach at all, and #226 says so
+rather than faking one.** `PRD.md` §3.2's third way L1 becomes unusable is a protected buffer queue
+the device cannot back — and there is no `MediaCrypto` here, no protected buffer queue, and the
+renderers are Media3's fakes rather than `MediaCodecRenderer`, so nothing under `check` can allocate a
+secure surface or fail to. What #226 found is that the *ladder* does not need one: what it needs is
+two fields on one real Media3 object — a `DecoderInitializationException` whose `codecInfo` is present
+(a decoder was selected and would not start) and secure — and that object can be raised without a
+codec. So the claim is forced in two halves and the halves are named in
+`SecureSurfaceDowngradeTest`'s KDoc. Forced: the classification, the re-open where the operator
+permitted a lower level, the typed ending where nothing was permitted or there was nothing to fall to,
+and the controls that an ordinary decoder failure — and a secure decoder Media3 could not *find* —
+lower nothing. All of it through a real `SuperPlayer` over
+`PlaybackHarness.failDecoderInitialization`, which arms `DecoderInitFault` on whichever renderer the
+content enabled (the synthetic streams are audio-only, so a fault armed on the video renderer alone
+would do nothing under a real manifest). Not forced anywhere: that a real device's failed secure
+surface allocation produces that exception with that flag, which is established from Media3 1.11's
+bytecode and cited at `ErrorClassifier.theSecureDecoderWouldNotStart`. It is not `devicelab`'s
+either, and *What
+is not covered here* says why.
+
 `ProtectedPlaybackTest` is the worked example, and it drives a **stock** `ExoPlayer`: no SuperPlayer
 DRM code exists until #204, so everything it asserts is a claim about this harness rather than about
 the library. `PlaybackHarness.buildPlayer` refuses protected content outright and says why, because
@@ -1073,3 +1093,12 @@ the demo on an emulator or a phone and returns a Perfetto trace. A run fails onl
 measure, for example when playback never started or the APK was stale. It never fails because of what
 it measured. So it sits outside `check` rather than breaking this document's no-device rule, and
 its README says so. Its device-free self-test is the exception, and it is in `check`.
+
+**And a claim `devicelab` cannot carry either, named because #226 had to answer where it goes.** Two
+reasons, and the first settles it on its own: `devicelab` measures and never asserts, so a scenario
+could report a secure surface that failed to allocate but could not fail on one. The second is that no
+run can put a device *into* that state — it is a property of a particular handset under particular
+load rather than a condition a scenario provokes — and the device `devicelab` boots by default is an
+emulator, on which a protected session is not obtainable at all. So the answer for that half is **not
+verified anywhere**, said plainly here and in `SecureSurfaceDowngradeTest`, rather than a scenario
+that looks like coverage.

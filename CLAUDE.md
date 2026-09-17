@@ -586,12 +586,21 @@ failures are offered is core's (`SuperPlayerError.category`), because a predicat
 be the taxonomy rule 5 forbids it; the bound is core's too, `SuperPlayer.MAX_PROTECTION_REOPENS`, and
 it is one, because Widevine has a single level below `L1`. `ProvisioningDowngradeTest` drives it, with
 the two controls that keep it from being "downgrade on any DRM failure": nothing permitted still ends
-exactly where `DrmFailureTest` says, and a device the service certifies negotiates nothing. The one
-case still uncovered — a secure surface that will not allocate — is named in `SecurityLevelLadder`'s
-KDoc rather than implied, and arrives on the same path. Which failures reach that path is the
-classifier's fourth question, `FailureClass.lowerSecurityLevelMayHelp`, carried out on
-`SuperPlayerError`: true for the two leaves a refused keybox reaches and false for everything else,
-so a licence that expired lowers nothing.
+exactly where `DrmFailureTest` says, and a device the service certifies negotiates nothing. Which
+failures reach that path is the classifier's fourth question,
+`FailureClass.lowerSecurityLevelMayHelp`, carried out on `SuperPlayerError`, so a licence that expired
+lowers nothing. #226 closed the third case on that same path and added **no mechanism** — a secure
+surface that will not allocate is now `FailureClass.Device.SecureDecoderInit`, a `Device` leaf because
+the licence was issued and what failed is an output path, told from an ordinary decoder-init failure
+by a `DecoderInitializationException` carrying a `codecInfo` that is secure — not by its
+`secureDecoderRequired` flag, which is also true where no decoder was *found*, a case that keeps rung
+4 because another variant may supply one — and capped at rung 6 because every rung below fetches bytes
+needing the same surface. **Where that claim is verified is the interesting part
+and is argued in `SecureSurfaceDowngradeTest`'s KDoc**: the ladder half is forced under `check`
+through a real `SuperPlayer` (`PlaybackHarness.failDecoderInitialization` arms Media3's own exception
+on whichever renderer the content enabled — the synthetic streams are audio-only), and the *origin* —
+a protected buffer queue a device cannot back — is reachable under neither Robolectric nor
+`devicelab`, which `docs/testing.md` says rather than faking.
 Since #209 the manager is built `setMultiSession(true)`, and that is a **defect repaired**
 rather than a saving added: Media3's default keeps one `noMultiSessionDrmSession` for *every* format
 whatever its `DrmInitData`, so a player whose protection is declared once per item-spanning manager

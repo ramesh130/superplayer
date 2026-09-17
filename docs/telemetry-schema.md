@@ -267,6 +267,24 @@ almost always refused.
 | --- | --- | --- |
 | `Drm.DowngradeRefused` | `Drm.Unsupported` | The device cannot honour the protection level it reports and the licence server did not permit the lower one. Carries its own `userMessageKey`, `superplayer_error_protection_unavailable`: the content may not be shown on this device, which is neither a licence that failed to arrive nor a device that cannot decode |
 
+**Version 2 stands — the secure decoder path got a leaf of its own (`#226`).** A decoder that would
+not initialise on the *protected* path — `PRD.md` §3.2's third way L1 becomes unusable — is now
+`Device.SecureDecoderInit` rather than being indistinguishable from any other decoder-init failure,
+and it is the trigger for the same mid-session downgrade `#225` built. The version does not move, and
+the reason is the same one `#206`'s did not: it is a `Device` leaf and buckets `DECODER`, exactly
+where the failure bucketed when it had no name of its own, so rule 3's one-to-one table is unchanged
+and no `category` slice or denominator moves. It is a `Device` leaf rather than a `Drm` one on the
+merits: the licence was issued and the keys are held, and what could not be produced is an output
+path.
+
+One value a pipeline has not seen before can appear, and `SessionEnded.securityLevel`'s population
+grows once more for the same reason `#225` grew it — a session rescued by falling to the permitted
+level reports that level and no failure row.
+
+| Now reported | Was reported as | What it is |
+| --- | --- | --- |
+| `Device.SecureDecoderInit` | `Device.DecoderInit` | A secure decoder was selected for a protected session and would not start — the protected output path it writes to could not be allocated. A secure decoder that was never *found* stays `Device.DecoderInit`, because another variant may supply one. Carries `superplayer_error_protection_unavailable` — the same sentence `Drm.DowngradeRefused` carries, because it is the same fact to a viewer |
+
 **Version 2 stands — licence acquisition became a measured span (`#212`).** `LicenceAcquisitionEnded`
 is a new event type, and `SCHEMA_VERSION` did **not** move for it. That is the deliberate answer and
 not an oversight: [ADR-0008][adr8] rule 5 puts a new event type on the shape side of the line, and

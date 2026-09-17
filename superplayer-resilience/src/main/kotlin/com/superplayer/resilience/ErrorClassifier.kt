@@ -21,6 +21,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.datasource.HttpDataSource.HttpDataSourceException
 import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
 import androidx.media3.exoplayer.drm.DrmSession
+import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.DecoderInitializationException
 import com.superplayer.core.LiveWindowTooShortException
 import com.superplayer.core.LoadKind
 import com.superplayer.core.SecurityDowngradeRefusedException
@@ -55,8 +56,10 @@ import com.superplayer.core.StaleLivePlaylistException
  *    through to the band.
  * 3. **The engine's own band.** `PlaybackException.errorCode` in the ranges Media3 documents — or,
  *    where a failure is caught before a renderer has wrapped it, the same code off a
- *    `DrmSession.DrmSessionException` ([bandIn]) — with a `MediaCodec.CodecException` consulted
- *    where the device is the subject. This is the *last* resort and the total one, and it is the
+ *    `DrmSession.DrmSessionException` ([bandIn]) — with a `MediaCodec.CodecException` and a
+ *    `DecoderInitializationException` consulted where the device is the subject, the second of them
+ *    for the two fields that tell a secure decoder that would not start from an ordinary one
+ *    ([theSecureDecoderWouldNotStart]). This is the *last* resort and the total one, and it is the
  *    only `when` over an error code in the repository — a second one anywhere is a bug against
  *    rule 1. Its last branch is the one case where there is no band to read at all, and what decides
  *    it there is the kind of load that failed ([aLicenceWasRefused]).
@@ -241,7 +244,17 @@ public object ErrorClassifier {
             // A decoder that could not be had *this time* is the one init failure a recreate fixes,
             // and the codec is the only thing that knows which it was: a feed holding every instance
             // the device has raises the same code as content the device has no decoder for.
-            if (recreatingMayHelp(causes)) FailureClass.Device.DecoderTransient else FailureClass.Device.DecoderInit
+            //
+            // Asked first, and before the secure question, because it is the narrower remedy: every
+            // secure decoder is also a decoder, and a momentary shortage of one is cured by the
+            // moment passing rather than by conceding a security level for the rest of the session.
+            if (recreatingMayHelp(causes)) {
+                FailureClass.Device.DecoderTransient
+            } else if (theSecureDecoderWouldNotStart(causes)) {
+                FailureClass.Device.SecureDecoderInit
+            } else {
+                FailureClass.Device.DecoderInit
+            }
 
         // The format is past what this device lists: no recreate helps, another rung may fit.
         PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES -> FailureClass.Device.DecoderInit
@@ -328,4 +341,43 @@ public object ErrorClassifier {
      */
     private fun recreatingMayHelp(causes: List<Throwable>): Boolean =
         causes.filterIsInstance<MediaCodec.CodecException>().any { it.isTransient || it.isRecoverable }
+
+    /**
+     * Whether a **secure** decoder was chosen and could not be brought up — the evidence
+     * [FailureClass.Device.SecureDecoderInit] needs, and the reason #226 could be answered without a
+     * new mechanism.
+     *
+     * Read the way [recreatingMayHelp] reads its own: off a real object in the cause chain whose
+     * fields the renderer filled in, rather than off the code. The object is
+     * `MediaCodecRenderer.DecoderInitializationException`, and the two fields together are the
+     * question:
+     *
+     * - **`codecInfo != null`** means a decoder was selected and its initialisation threw. Media3
+     *   raises that exception from three places and only this one carries a `codecInfo`: the "no
+     *   suitable decoder" and "decoder query" constructions pass a custom diagnostic code instead
+     *   (// ref: `MediaCodecRenderer.maybeInitCodecWithFallback`, read from Media3 1.11's bytecode).
+     *   Excluding those two is deliberate and is what keeps rung 4 open for them — a device with no
+     *   secure decoder *for this codec* may well have one for the next variant or the next source,
+     *   which is exactly what [FailureClass.Device.DecoderInit]'s ceiling is for, and conceding a
+     *   security level for it would be the expensive answer to a cheap problem.
+     * - **`codecInfo.secure`** means the decoder that would not start was the one operating on
+     *   protected memory. Media3 picks from `getAvailableCodecInfos(mediaCryptoRequiresSecureDecoder)`,
+     *   so this is set only where the session required protected decoding.
+     *
+     * `secureDecoderRequired` on the same object is deliberately **not** read: it is true in all
+     * three constructions, including the two above, and its own derivation is
+     * `state == STATE_OPENED || state == STATE_OPENED_WITH_KEYS` — so it is true before any keys are
+     * held and says less than it appears to.
+     *
+     * That is what makes this the narrow signal for a secure surface that will not allocate:
+     * `MediaCodecVideoRenderer` asks `PlaceholderSurface.newInstance(context, codecInfo.secure)` from
+     * inside `initCodec`, and that call fails a `checkState` on a device that cannot back a protected
+     * surface (// ref: `PlaceholderSurface.isSecureSupported`) — an `IllegalStateException` the catch
+     * above turns into this exception with this `codecInfo`. A `MediaCodec.configure` refused for the
+     * same reason takes the identical path. What separates this class from
+     * [FailureClass.Device.DecoderInit] is a fact Media3 recorded, not an inference about a message.
+     */
+    private fun theSecureDecoderWouldNotStart(causes: List<Throwable>): Boolean =
+        causes.filterIsInstance<DecoderInitializationException>()
+            .any { it.codecInfo?.secure == true }
 }

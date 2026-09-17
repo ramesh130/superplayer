@@ -57,11 +57,22 @@ import com.superplayer.core.DeviceConstraints
  * before it offers it to the ladder, and the ladder is neither consulted nor changed
  * (ADR-0012 rule 11's #225 addendum).
  *
- * **A secure surface that cannot be allocated** is the third way and is still not handled. It is a
- * property of the `Surface` a consumer attaches, which no test under Robolectric can produce — there
- * is no `MediaCrypto` and no protected buffer queue — and which `docs/testing.md` therefore keeps out
- * of `check` rather than faking. It reaches a player as an ordinary failure on the same path #225
- * built, so what it needs is the predicate widened rather than a mechanism (#226).
+ * **A secure surface that cannot be allocated** is the third way, and #226 handled it exactly as the
+ * paragraph above predicted: on this same path, with the predicate widened and no mechanism added.
+ * What widened is `superplayer-resilience`'s taxonomy, not this object's — it grew a leaf for a
+ * decoder initialisation that failed on the *protected* path, and that leaf answers
+ * `lowerSecurityLevelMayHelp` yes. Nothing here changed, which is the point: [levelToFallTo] was
+ * already asked about a failure rather than about a class.
+ *
+ * The leaf sits on the *device* branch rather than the protection one, and that is the honest
+ * reading: the licence was issued and the keys are held, and what could not be produced is an output
+ * path. Which is also why it is not #213's — secure surface *discipline* is correctness under
+ * ADR-0006 rule 1 and sits on the far side of ADR-0012 rule 12's line.
+ *
+ * What is verified and what is not is stated in `SecureSurfaceDowngradeTest`'s KDoc rather than here,
+ * and named again in `docs/testing.md`: the ladder half is forced under `check` from the real Media3
+ * exception, and the origin — a protected buffer queue that will not allocate — is reachable on no
+ * device this suite has.
  *
  * A device that can honour what it reports runs none of this: no probe, no request, no wrapper. That
  * is ADR-0012 rule 13's posture applied one level in.

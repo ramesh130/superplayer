@@ -19,6 +19,9 @@ public final class com/superplayer/testkit/DeviceStatement {
 	public static final fun declareStorageFree (J)V
 	public static final fun declareStorageLow (Z)V
 	public static final fun declareTelevision ()V
+	public static final fun declareTunnelingVideoDecoder (Ljava/lang/String;)V
+	public static final fun declareTunnelingVideoDecoder (Ljava/lang/String;Z)V
+	public static synthetic fun declareTunnelingVideoDecoder$default (Ljava/lang/String;ZILjava/lang/Object;)V
 	public static final fun declareVideoDecoder (Ljava/lang/String;I[Lkotlin/Pair;)V
 	public static final fun declareVideoDecoder (Ljava/lang/String;[Lkotlin/Pair;)V
 	public static final fun declareWidevine ()V
@@ -225,6 +228,7 @@ public final class com/superplayer/testkit/PlaybackHarness : org/junit/rules/Ext
 	public final fun stallRendering (Landroidx/media3/common/Player;)V
 	public final fun useScheduledWork ()V
 	public final fun videoDecodersHeld (Lcom/superplayer/core/PlayerPool;)I
+	public final fun videoRendererTunneled (Landroidx/media3/common/Player;)Ljava/lang/Boolean;
 }
 
 public final class com/superplayer/testkit/PlaybackHarness$Companion {
@@ -275,6 +279,7 @@ public final class com/superplayer/testkit/TestContent {
 	public final fun servedFrom (Ljava/lang/String;)Lcom/superplayer/testkit/TestContent;
 	public static final fun video (IJ)Lcom/superplayer/testkit/TestContent;
 	public static final fun videoLadder (Ljava/util/List;J)Lcom/superplayer/testkit/TestContent;
+	public static final fun videoWithAudio (IJ)Lcom/superplayer/testkit/TestContent;
 }
 
 public final class com/superplayer/testkit/TestContent$Companion {
@@ -309,6 +314,8 @@ public final class com/superplayer/testkit/TestContent$Companion {
 	public static synthetic fun video$default (Lcom/superplayer/testkit/TestContent$Companion;IJILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
 	public final fun videoLadder (Ljava/util/List;J)Lcom/superplayer/testkit/TestContent;
 	public static synthetic fun videoLadder$default (Lcom/superplayer/testkit/TestContent$Companion;Ljava/util/List;JILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
+	public final fun videoWithAudio (IJ)Lcom/superplayer/testkit/TestContent;
+	public static synthetic fun videoWithAudio$default (Lcom/superplayer/testkit/TestContent$Companion;IJILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
 }
 
 public final class com/superplayer/testkit/TestContent$Rung {

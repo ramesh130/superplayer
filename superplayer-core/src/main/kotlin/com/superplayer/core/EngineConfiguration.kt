@@ -242,7 +242,8 @@ internal class EngineConfiguration(
      * arrives through, and the [DisplayWatch] that rewrites [displayInForce] and re-selects when the
      * display changes (rule 5). It also switches on the selector's
      * `allowInvalidateSelectionsOnRendererCapabilitiesChange`, so an audio output that changes under
-     * playback re-selects the audio (rule 6, #270). #271 hangs the tunneling parameter on the same fact.
+     * playback re-selects the audio (rule 6, #270). The decision's
+     * tunneling half is laid on the same fact, and only there (rule 7, #271).
      *
      * Null is every player built without `setOutput`: the engine keeps Media3's own frame-rate strategy
      * and selector parameters, and nothing is registered, which is ADR-0014 rule 14 and is counted by

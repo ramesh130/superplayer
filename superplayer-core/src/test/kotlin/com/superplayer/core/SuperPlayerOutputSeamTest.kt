@@ -57,7 +57,10 @@ import org.robolectric.util.ReflectionHelpers
  * because "the slot is empty" is a claim about construction no playback shows, and the engine's
  * `videoChangeFrameRateStrategy`, because which frame-rate strategy Media3 was built with is the other
  * half of rule 14 and nothing public reports it. Since #270 it also reads the selector's
- * `allowInvalidateSelectionsOnRendererCapabilitiesChange`, rule 6's switch, for the same reason. Since #269 it also reads the display service's listener
+ * `allowInvalidateSelectionsOnRendererCapabilitiesChange`, rule 6's switch, for the same reason, and since #271
+ * its `tunnelingEnabled`, rule 7's parameter, because "no tunneling parameter is laid" is rule 14's claim
+ * about a player that plays nothing tunneled either way; `superplayer-tv`'s `TunneledPlaybackTest` shows
+ * the parameter applied. Since #269 it also reads the display service's listener
  * count, because "no `DisplayListener` is registered" is rule 14's third claim and no playback shows it,
  * and the filled configuration's `displayInForce`, because the window a gate reads is the seam's half of
  * a hotplug and the selection's half needs `superplayer-abr`, which core's tests cannot name.
@@ -233,6 +236,27 @@ class SuperPlayerOutputSeamTest {
 
         bindings.forEach { assertThat(it.events.filterIsInstance<FrameRate>()).hasSize(2) }
     }
+
+    /**
+     * ADR-0014 rules 7 and 14: a decision asking for tunneling is laid on the selector only where the output
+     * slot is filled. The same `TV_LEANBACK` decision on a player without one decides it and lays nothing,
+     * and a decision that asks for none lays nothing on a player with one.
+     */
+    @Test
+    fun theTunnelingHalfIsLaidOnlyOnAPlayerBuiltWithAnOutput() {
+        val without = harness.buildPlayer(PlaybackProfile.TV_LEANBACK)
+        val with = harness.buildPlayer(PlaybackProfile.TV_LEANBACK, output = TestOutput(RecordingBinding()))
+        val untunneled = harness.buildPlayer(PlaybackProfile.VIDEO_ON_DEMAND, output = TestOutput(RecordingBinding()))
+
+        assertThat(without.playbackDecision.output.tunneling).isTrue()
+        assertThat(tunnelingLaid(without)).isFalse()
+        assertThat(tunnelingLaid(with)).isTrue()
+        assertThat(tunnelingLaid(untunneled)).isFalse()
+    }
+
+    /** Whether the engine's selector was asked to tunnel — ADR-0014 rule 7's parameter, which Media3 leaves off. */
+    private fun tunnelingLaid(player: SuperPlayer): Boolean =
+        (player.exoPlayer.trackSelector as DefaultTrackSelector).parameters.tunnelingEnabled
 
     /**
      * How many `DisplayListener`s the process's display service holds. The platform keeps them in a hidden

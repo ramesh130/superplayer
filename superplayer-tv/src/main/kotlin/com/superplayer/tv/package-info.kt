@@ -19,7 +19,8 @@
  *
  * `TvOutput.standard(context)` is what `SuperPlayer.Builder.setOutput` and
  * `PlayerPool.Builder.setOutput` take. On a player built with it, the display's refresh rate is
- * matched to the content's declared frame rate. The display watch, re-selection on an audio-output
- * change, tunneling and the Compose-for-TV controls are Phase 8's later issues.
+ * matched to the content's declared frame rate, a display or audio-output change re-selects, and a
+ * decision asking for tunneling is laid on the selector. The Compose-for-TV controls are Phase 8's later
+ * issues.
  */
 package com.superplayer.tv

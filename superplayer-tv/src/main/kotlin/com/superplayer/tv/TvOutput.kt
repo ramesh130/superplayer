@@ -73,6 +73,14 @@ import com.superplayer.core.PlaybackOutput
  * lands, the failure is `Device.DecoderTransient` on a player built with `superplayer-resilience`, and a
  * re-prepare selects the PCM track. Without that module it reaches the consumer as the engine's own error.
  *
+ * **Tunneling where the policy asks** (ADR-0014 rule 7). A player built with this output lays the
+ * construction decision's `PlaybackDecision.output` on its selector, and nowhere else is it laid.
+ * `TV_LEANBACK` asks for tunneling and every other profile does not, each row saying why. Media3 then tunnels
+ * only where one video and one audio track are playing and the decoder for the video declares
+ * `FEATURE_TunneledPlayback` — the secure decoder, for protected content — and plays untunneled everywhere
+ * else, which is a request declined and not an error. A later decision that changes the half is not
+ * honoured, because turning tunneling on or off re-enables both renderers mid-content.
+ *
  * **What only a device shows.** Under `check` the request is observed at the surface, as the call a
  * compositor would receive (`docs/testing.md`, *A TV device*): whether the panel then switched, how
  * long the HDMI link took to resynchronise, and the blank a non-seamless switch costs are not visible
@@ -80,7 +88,10 @@ import com.superplayer.core.PlaybackOutput
  * `docs/telemetry-schema.md` says. The same holds for audio. Under `check` the selection is what moves.
  * Only a device with a receiver shows whether the receiver decoded the passthrough stream, how long the
  * audio was silent while the HDMI link renegotiated, and whether a real sink refused a track mid-change,
- * which is the failure the transient class exists for.
+ * which is the failure the transient class exists for. Tunneling likewise: under `check` the renderers are
+ * seen enabled tunneled, but whether frames reach the display as a tunneled stream, whether audio and video
+ * stay in sync on a vendor's implementation, and the dropped-frame count the platform then keeps from the
+ * player are a device's to show.
  */
 public object TvOutput {
 

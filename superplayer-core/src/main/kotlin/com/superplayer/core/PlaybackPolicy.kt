@@ -147,6 +147,12 @@ public enum class DecisionTrigger {
  * nothing else: a player decides it and ignores it (ADR-0013 rule 12). It defaults to
  * [DownloadSelectionPolicy.UNLIMITED], so a policy written before it existed downloads the highest
  * rendition the device can play.
+ *
+ * [output] is read once, as the engine is built, and only on a player built with an output
+ * (`SuperPlayer.Builder.setOutput`): everywhere else it is decided and ignored (ADR-0014 rule 7). It
+ * defaults to [OutputPolicy.NONE], so a policy written before it existed decides no tunneling. It is the
+ * one half a re-consulted player decides and never honours again — [OutputPolicy] says why — so
+ * [SuperPlayer.playbackDecision] can name a tunneling value that is not in force.
  */
 public data class PlaybackDecision
 @JvmOverloads
@@ -157,7 +163,44 @@ constructor(
     public val preload: PreloadPolicy = PreloadPolicy.NONE,
     public val retry: RetryPolicy = RetryPolicy.MEDIA3_DEFAULT,
     public val download: DownloadSelectionPolicy = DownloadSelectionPolicy.UNLIMITED,
+    public val output: OutputPolicy = OutputPolicy.NONE,
 )
+
+/**
+ * How decoded media meets the platform's output — the sixth half of a [PlaybackDecision] (ADR-0014
+ * rule 7).
+ *
+ * [tunneling] asks for tunneled playback: video and audio handed to the platform together, which then
+ * keeps them in sync in its own hardware. That is cheaper on a low-end television's system-on-chip and
+ * smoother where the vendor's implementation is good; it costs the frame visibility telemetry reports,
+ * because frames the platform releases are not frames the player counts, and some implementations are
+ * worse than the path they replace. The right answer differs by profile and device, which is what makes
+ * it policy.
+ *
+ * **A request, not a guarantee.** It is honoured only where the device can do it for what was selected:
+ * a decoder for the selected video that declares tunneled playback — for protected content, the
+ * *secure* decoder, since that is the one that would decode it — and an audio track played beside it.
+ * Anywhere else the request is refused silently and playback is untunneled, which is not an error.
+ * Whether frames then actually tunnel is a device's to show; nothing under Robolectric renders one
+ * (`docs/testing.md`, *A TV device*).
+ *
+ * **Fixed at construction.** Turning tunneling on or off re-enables both renderers, a visible break in
+ * playback, so the engine takes this half from the decision it is built with and never from a later
+ * one. A policy that varies it with conditions varies something nothing honours, and
+ * [SuperPlayer.playbackDecision] will then name a value that is not in force.
+ *
+ * ref: https://developer.android.com/reference/android/media/MediaCodecInfo.CodecCapabilities#FEATURE_TunneledPlayback
+ */
+public data class OutputPolicy(
+    /** Whether tunneled playback is asked for, where the device and the selected content support it. */
+    public val tunneling: Boolean,
+) {
+    public companion object {
+        /** Tunneling off: the decision every policy makes unless it says otherwise, and Media3's own default. */
+        @JvmField
+        public val NONE: OutputPolicy = OutputPolicy(tunneling = false)
+    }
+}
 
 /**
  * The ceiling a download's video rendition is chosen under — the fifth half of a [PlaybackDecision]

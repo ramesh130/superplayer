@@ -22,7 +22,15 @@ import android.media.MediaCodecInfo
 import android.media.MediaCodecInfo.CodecProfileLevel
 import android.media.MediaCodecList
 import android.media.MediaFormat
+import android.os.Looper
 import android.view.Display
+import androidx.media3.common.C
+import androidx.media3.common.DrmInitData
+import androidx.media3.common.Format
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.util.Clock
+import androidx.media3.exoplayer.RendererCapabilities
+import androidx.media3.exoplayer.video.VideoRendererEventListener
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
@@ -128,6 +136,47 @@ class DeviceStatementTest {
     }
 
     @Test
+    fun aDeclaredTunnelingDecoderReportsTunneledPlaybackAndAnOrdinaryOneDoesNot() {
+        DeviceStatement.declareVideoDecoder(MediaFormat.MIMETYPE_VIDEO_HEVC)
+        DeviceStatement.declareTunnelingVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC)
+
+        val tunnels = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
+            .filter { !it.isEncoder }
+            .associate { info ->
+                val type = info.supportedTypes.single()
+                type to info.getCapabilitiesForType(type).isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_TunneledPlayback)
+            }
+        assertThat(tunnels).containsExactly(MediaFormat.MIMETYPE_VIDEO_AVC, true, MediaFormat.MIMETYPE_VIDEO_HEVC, false)
+    }
+
+    /**
+     * ADR-0014 rule 7's protected half, on the harness's stand-in for Media3's video renderer: protected
+     * content is answered for by the *secure* decoder, so a device whose ordinary decoder tunnels and whose
+     * secure one does not tunnels clear video only. No described stream carries protection, so this is
+     * where the rule is asserted rather than through a player (`superplayer-tv`'s `TunneledPlaybackTest`).
+     */
+    @Test
+    fun theHarnessVideoRendererAnswersTunnelingForProtectedVideoFromTheSecureDecoder() {
+        DeviceStatement.declareTunnelingVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC)
+        DeviceStatement.declareSecureVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC, maxSupportedInstances = 1)
+        val renderer = videoRenderer()
+
+        assertThat(tunnelingOf(renderer.supportsFormat(avc(protected = false)))).isEqualTo(RendererCapabilities.TUNNELING_SUPPORTED)
+        assertThat(tunnelingOf(renderer.supportsFormat(avc(protected = true)))).isEqualTo(RendererCapabilities.TUNNELING_NOT_SUPPORTED)
+    }
+
+    /** The case and its control: the same protected video, on a device whose secure decoder tunnels. */
+    @Test
+    fun theHarnessVideoRendererTunnelsProtectedVideoWhereTheSecureDecoderDeclaresIt() {
+        DeviceStatement.declareVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC)
+        DeviceStatement.declareTunnelingVideoDecoder(MediaFormat.MIMETYPE_VIDEO_AVC, secure = true)
+        val renderer = videoRenderer()
+
+        assertThat(tunnelingOf(renderer.supportsFormat(avc(protected = true)))).isEqualTo(RendererCapabilities.TUNNELING_SUPPORTED)
+        assertThat(tunnelingOf(renderer.supportsFormat(avc(protected = false)))).isEqualTo(RendererCapabilities.TUNNELING_NOT_SUPPORTED)
+    }
+
+    @Test
     fun aDeclaredSecurityLevelIsWhatTheImplementationAnswers() {
         // The property a Widevine implementation answers `L1` or `L3` to. Nothing in the library
         // reads it yet — #208 and #211 are where it starts to matter — so it is asserted here, on
@@ -147,4 +196,22 @@ class DeviceStatementTest {
 
     private fun defaultDisplay(): Display? =
         (context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager).getDisplay(Display.DEFAULT_DISPLAY)
+    private fun videoRenderer() = ControllableVideoRenderer(
+        Clock.DEFAULT.createHandler(Looper.getMainLooper(), /* callback= */ null),
+        object : VideoRendererEventListener {},
+        DecoderInitFault(),
+    )
+
+    private fun avc(protected: Boolean): Format = Format.Builder()
+        .setSampleMimeType(MimeTypes.VIDEO_H264)
+        .setWidth(1920)
+        .setHeight(1080)
+        .apply {
+            if (protected) {
+                setDrmInitData(DrmInitData(DrmInitData.SchemeData(C.WIDEVINE_UUID, MimeTypes.VIDEO_MP4, byteArrayOf(0))))
+            }
+        }
+        .build()
+
+    private fun tunnelingOf(capabilities: Int): Int = RendererCapabilities.getTunnelingSupport(capabilities)
 }

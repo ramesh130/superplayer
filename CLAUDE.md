@@ -818,6 +818,17 @@ renderer is Media3's fake, so it answers for passthrough-only formats from the s
 own `AudioCapabilitiesReceiver`, and a sink refusal cannot arise there. `AudioCapabilityChangeTest` drives it
 on `TestContent.dashWithPassthroughAudio` (stereo AAC beside 5.1 AC-3), and the classification is asserted
 over the real exception in `ErrorClassifierTest`.
+Since #271 a filled slot also lays the construction decision's tunneling half, `PlaybackDecision.output`
+(`OutputPolicy`, the sixth half, off by default), on the same selector through `EngineBinding.kt`. It is
+laid once and never from a re-consulted decision, because toggling it re-enables both renderers (rule 7).
+`TV_LEANBACK` is the one profile row that asks, and `AdaptivePolicy` carries the half unmoved. "Where
+supported" is Media3's check: one video and one audio renderer, each answering `TUNNELING_SUPPORTED`, the
+video's from its decoder, which for protected content is the secure one. Two things are easy to get wrong.
+`playbackDecision` can say `tunneling = true` on an untunneled player. And the harness's fakes answer for no
+tunneling on their own, so its video renderer answers from `DeviceStatement.declareTunnelingVideoDecoder`,
+and the content is `TestContent.videoWithAudio`, since tunneling needs both tracks.
+`harness.videoRendererTunneled(player)` reads the renderer's enabled configuration. `TunneledPlaybackTest`
+drives it, and `DeviceStatementTest` holds the secure-decoder half.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,

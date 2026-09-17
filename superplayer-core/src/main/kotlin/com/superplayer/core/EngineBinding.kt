@@ -23,6 +23,7 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.LoadControl
 import androidx.media3.exoplayer.source.preload.DefaultPreloadManager
 import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.trackselection.ExoTrackSelection
 import androidx.media3.exoplayer.upstream.DefaultAllocator
 
@@ -124,6 +125,29 @@ internal fun TrackSelectionPolicy.applyTo(
         // width the policy did not decide — no ceiling is decided here, which is ADR-0005 rule 2.
         .setMaxVideoSize(TrackSelectionPolicy.UNLIMITED, maxVideoHeightPx)
         .build()
+
+/**
+ * The decision's output half, as the selector parameter Media3 tunnels under, laid on the parameters of
+ * a player whose output slot is filled (ADR-0014 rule 7).
+ *
+ * Built upon, as the selection half is, so every parameter the selector already carries survives. Laid
+ * once, from the decision the engine is built with, and never from a re-consulted one: Media3 turns
+ * tunneling on or off only by enabling both renderers again, which is a visible break in playback.
+ * [OutputPolicy.NONE] lays nothing, so a decision that asks for no tunneling builds exactly the
+ * parameters it built before.
+ *
+ * "Where supported" is Media3's check and not this file's: its `DefaultTrackSelector` configures the
+ * renderers for tunneling only where exactly one video and one audio renderer are enabled and each
+ * reports `RendererCapabilities.TUNNELING_SUPPORTED` for its selected format. A video renderer reports
+ * that from the decoder it would use, which for protected content is the secure one — so ADR-0014
+ * rule 7's secure-decoder rule needs no line here.
+ *
+ * ref: https://developer.android.com/reference/androidx/media3/exoplayer/trackselection/DefaultTrackSelector.Parameters.Builder#setTunnelingEnabled(boolean)
+ * ref: https://github.com/androidx/media/blob/1.11.0/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/trackselection/DefaultTrackSelector.java
+ * (`maybeConfigureRenderersForTunneling`)
+ */
+internal fun OutputPolicy.applyTo(parameters: DefaultTrackSelector.Parameters): DefaultTrackSelector.Parameters =
+    if (tunneling == parameters.tunnelingEnabled) parameters else parameters.buildUpon().setTunnelingEnabled(tunneling).build()
 
 /**
  * The decision's selection pace, as the factory Media3's own `DefaultTrackSelector` builds its

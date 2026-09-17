@@ -204,12 +204,39 @@ public object DeviceStatement {
         addVideoDecoder(mimeType, maxSupportedInstances, profileLevels)
     }
 
+    /**
+     * As [declareVideoDecoder], declaring no profiles, and declaring the decoder able to play
+     * *tunneled*: to take the video and the audio session together and keep them in sync in the
+     * platform's own hardware, which is what a tunneling decision asks for (ADR-0014 rule 7).
+     *
+     * [secure] declares the secure decoder instead, as [declareSecureVideoDecoder] does, and is how a
+     * test states a device whose protected path tunnels. A device commonly declares tunneled playback
+     * on one and not the other, and for protected content the secure decoder is the one asked.
+     *
+     * The harness's video renderer answers for tunneling from this declaration — the first decoder
+     * for the format's type that is secure where the format is protected, as Media3's own renderer
+     * chooses — because Media3's fake renderer answers for no tunneling at all. What it cannot show is
+     * a frame tunneled: nothing is decoded, and no sideband stream reaches a compositor
+     * (`docs/testing.md`, *A TV device*).
+     *
+     * ref: `MediaCodecInfo.CodecCapabilities.FEATURE_TunneledPlayback`, declared by the key `feature-`
+     * plus that name (`tunneled-playback`):
+     * https://developer.android.com/reference/android/media/MediaCodecInfo.CodecCapabilities#FEATURE_TunneledPlayback
+     */
+    @JvmStatic
+    @JvmOverloads
+    @RequiresApi(Build.VERSION_CODES.Q)
+    public fun declareTunnelingVideoDecoder(mimeType: String, secure: Boolean = false) {
+        addVideoDecoder(mimeType, maxSupportedInstances = null, profileLevels = emptyArray(), secure = secure, tunneling = true)
+    }
+
     @RequiresApi(Build.VERSION_CODES.Q)
     private fun addVideoDecoder(
         mimeType: String,
         maxSupportedInstances: Int?,
         profileLevels: Array<out Pair<Int, Int>>,
         secure: Boolean = false,
+        tunneling: Boolean = false,
     ) {
         val declared = profileLevels.map { (profile, level) ->
             MediaCodecInfo.CodecProfileLevel().also {
@@ -222,6 +249,7 @@ public object DeviceStatement {
                 MediaFormat().apply {
                     setString(MediaFormat.KEY_MIME, mimeType)
                     if (secure) setInteger(SECURE_PLAYBACK_FEATURE_KEY, 1)
+                    if (tunneling) setInteger(TUNNELED_PLAYBACK_FEATURE_KEY, 1)
                 },
             )
             .setIsEncoder(false)
@@ -534,4 +562,7 @@ public object DeviceStatement {
      * `MediaCodecInfo.CodecCapabilities.FEATURE_SecurePlayback` is `secure-playback`.
      */
     private const val SECURE_PLAYBACK_FEATURE_KEY = "feature-secure-playback"
+
+    /** `FEATURE_TunneledPlayback`'s key, on [SECURE_PLAYBACK_FEATURE_KEY]'s pattern; cited at [declareTunnelingVideoDecoder]. */
+    private const val TUNNELED_PLAYBACK_FEATURE_KEY = "feature-tunneled-playback"
 }

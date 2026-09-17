@@ -107,6 +107,12 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
             // at a fixed height a higher bitrate is the better encode of the same picture, and that is
             // the trade a viewer downloading a long-form title is making on purpose.
             download = DownloadSelectionPolicy(maxVideoBitrateBps = TrackSelectionPolicy.UNLIMITED, maxVideoHeightPx = 1080),
+            // No tunneling, which is Media3's own default. This profile is watched on phones and tablets
+            // far more often than on televisions, where a decoder declaring tunneled playback is rare and
+            // its quality is the vendor's least-exercised path; what tunneling would buy is A/V sync a
+            // phone's own path already keeps, and what it costs is the dropped-frame count telemetry
+            // reports. A television playing long-form names `TV_LEANBACK`, whose row takes the trade.
+            output = OutputPolicy.NONE,
         )
 
         // Live linear. Buffer depth is latency here: seconds held ahead of the playhead are seconds
@@ -157,6 +163,13 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
             // No download ceiling of its own. Live content is not downloaded at all (ADR-0013 rule 8),
             // so what this profile would download is on-demand content a live app also offers, and for
             // that the unlimited default is the honest answer rather than a live-shaped number.
+            //
+            // No tunneling. The profile is phones' and televisions' alike and cannot tell them apart, so
+            // it keeps Media3's default path, as on-demand does. And it is the profile that varies the
+            // playback speed to hold its latency, which on a tunneled path is carried out by the vendor's
+            // audio implementation rather than Media3's: an unknown placed exactly on the mechanism this
+            // row exists to hold steady.
+            output = OutputPolicy.NONE,
         )
 
         // Short-form feed content. Two costs dominate, and both are paid before the viewer has
@@ -215,6 +228,11 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
             // feed on a phone held upright, where the video is shown across the screen's short edge;
             // 720p fills that edge on most phones and costs about half the storage of 1080p per clip.
             download = DownloadSelectionPolicy(maxVideoBitrateBps = TrackSelectionPolicy.UNLIMITED, maxVideoHeightPx = 720),
+            // No tunneling. A feed's players are pooled, and the nearest rows hold warm decoders prepared
+            // with no surface and no audio session; a tunneled decoder is bound to both, so the warmed
+            // one would not be the one a row plays on. And a clip lasts seconds, so the A/V sync a
+            // tunneled path keeps over a long title has no time to matter.
+            output = OutputPolicy.NONE,
         )
 
         // Lean-back television. Long-form again, with both of its costs moved further the same way:
@@ -282,6 +300,15 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
             // A television's storage is small, and running out of it is what the download store's
             // storage conditions answer, not a lower rung chosen for every title in advance.
             download = DownloadSelectionPolicy(maxVideoBitrateBps = TrackSelectionPolicy.UNLIMITED, maxVideoHeightPx = 2_160),
+            // Tunneling asked for: the one row that asks. A television is the device tunneled playback
+            // was specified for — its decoders declare the feature, the video is on a `SurfaceView` an
+            // output-built player requires anyway (ADR-0014 rule 3), and on a low-end television's
+            // system-on-chip handing A/V sync to the platform's hardware is the cheaper path. The cost is
+            // the dropped-frame count, which on a tunneled path the platform keeps and the player does
+            // not see; on the room's screen a smooth picture is worth more than a number about it. Only
+            // a request: a device whose decoder declares no tunneled playback, and content with no audio
+            // beside its video, play untunneled, and a player built without `setOutput` ignores it.
+            output = OutputPolicy(tunneling = true),
         )
 
         // Data saver. The viewer has asked to spend fewer bytes, so every number here is chosen
@@ -334,6 +361,9 @@ internal class StaticProfilePolicy(private val profile: PlaybackProfile) : Playb
             // bytes of a download are data spent exactly as a stream's are, and a viewer who asked to
             // spend less did not exempt the ones fetched ahead of time.
             download = DownloadSelectionPolicy(maxVideoBitrateBps = 800_000, maxVideoHeightPx = 480),
+            // No tunneling. It saves no byte, so it is not this profile's trade to make, and Media3's
+            // default path is kept rather than a trade chosen on a ground the viewer did not name.
+            output = OutputPolicy.NONE,
         )
     }
 

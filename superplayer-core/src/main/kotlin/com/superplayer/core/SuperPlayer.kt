@@ -1686,9 +1686,13 @@ public class SuperPlayer private constructor(
             // change, which is how an AV receiver powered on or off under playback moves the audio. Media3
             // already watches the output and tells the selector, and only this parameter lets the selector
             // act. Not policy, so not `EngineBinding.kt`'s, and set once, here (ADR-0014 rule 6).
+            // The same selector takes the decision's output half, which is policy, through
+            // `EngineBinding.kt`: from this construction decision only, and never from a re-consulted
+            // one, because toggling tunneling re-enables both renderers (ADR-0014 rule 7).
             val reselectingSelector = configuration.videoOutput?.let {
                 ReselectingTrackSelector(context, trackSelectionFactory ?: AdaptiveTrackSelection.Factory()).apply {
                     setParameters(buildUponParameters().setAllowInvalidateSelectionsOnRendererCapabilitiesChange(true))
+                    setParameters(decision.output.applyTo(parameters))
                 }
             }
             when {

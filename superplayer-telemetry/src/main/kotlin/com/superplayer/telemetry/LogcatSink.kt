@@ -148,6 +148,14 @@ public object LogcatSink : TelemetrySink {
                     "playing=${event.playing}",
             )
 
+            // INFO even when the outcome is a refusal: what a refused licence *means* arrives on the
+            // failure event, at WARN, and logging the same fact twice at that level would have a
+            // `SuperPlayerQoE:W` filter show two problems where there was one.
+            is TelemetryEvent.LicenceAcquisitionEnded -> info(
+                "evt=licence_acquisition $common durationMs=${event.durationMs} " +
+                    "outcome=${event.outcome} securityLevel=${event.securityLevel}",
+            )
+
             is TelemetryEvent.VideoFramesDropped -> info(
                 "evt=video_frames $common dropped=${event.droppedFrames} " +
                     "repeated=${event.repeatedFrames} elapsedPlayingMs=${event.elapsedPlayingMs}",

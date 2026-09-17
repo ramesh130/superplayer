@@ -427,6 +427,16 @@ What each stand-in cannot show:
   call a device's compositor would receive, which is *Asserting on the platform* above. A mode switch
   taking effect, the time an HDMI link takes to resynchronise, and the blank a non-seamless switch
   costs are a device's to show (#274).
+- **An audio output is chosen for, not played to.** The harness's audio renderer is Media3's fake, which
+  plays every format, so it answers for the formats a device plays only by passing them through (AC-3,
+  E-AC-3, AC-4, DTS, TrueHD). It supports one exactly where the stated output carries it, reads that
+  through Media3's own `AudioCapabilitiesReceiver` from the first time such a format is asked about, and
+  tells the selector when the output changes, as Media3's audio renderer does. Every test that plays no
+  such format is unchanged. `TestContent.dashWithPassthroughAudio` offers stereo AAC beside 5.1 AC-3 over
+  the same AAC bytes, each at a path of its own. `AudioCapabilityChangeTest` reads the selection from
+  `currentTracks` and confirms it by what was fetched. No sink is configured, so a sink refusing a format
+  mid-change cannot arise. How that refusal is classified is asserted over Media3's real exception in
+  `ErrorClassifierTest` and `FallbackLadderTest`, and whether a real sink raises it is a device's (#274).
 - **There is no HDMI.** No link renegotiates, no EDID is read, and no HDCP level exists. The display
   and the audio output are what a test states, and a sink decoding a passthrough format is nothing
   anything here can hear: a format a player selected is one it *chose*.
@@ -937,7 +947,10 @@ was built with. The same count on a player *with* an output reads the strategy o
 to count. Since #269 it also counts the display service's `DisplayListener`s, read by name from the hidden
 `DisplayManagerGlobal`, because "no listener is registered" is rule 14's claim and no playback shows it, and
 reads the filled configuration's `displayInForce`, the window `superplayer-abr`'s gate reads, because core's
-tests cannot name that gate.
+tests cannot name that gate. Since #270 it reads the engine selector's
+`allowInvalidateSelectionsOnRendererCapabilitiesChange`, ADR-0014 rule 6's switch, off on a player without
+an output and on with one. No core playback shows it, because core's tests state no audio output that
+changes. `superplayer-tv`'s `AudioCapabilityChangeTest` shows the behaviour, its control included.
 
 `superplayer-testkit`'s own public API names **no Media3 type**, for the reason ADR-0001 rule 2 gives:
 a `Format` or a `Timeline` in one of its signatures would put Media3's opt-in marker on every test

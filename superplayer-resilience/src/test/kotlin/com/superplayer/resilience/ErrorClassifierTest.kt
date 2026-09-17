@@ -17,11 +17,14 @@
 package com.superplayer.resilience
 
 import android.media.MediaCodec
+import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
+import androidx.media3.exoplayer.ExoPlaybackException
+import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.drm.DrmSession
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
 import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.DecoderInitializationException
@@ -235,6 +238,26 @@ class ErrorClassifierTest {
             .isEqualTo(FailureClass.Device.DecoderInit)
         assertThat(classify(PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED))
             .isEqualTo(FailureClass.Device.DecoderTransient)
+    }
+
+    /**
+     * #270: an audio output that will not open a track for a passthrough format stopped carrying it — an AV
+     * receiver powered off between the selection and the track — so a re-prepare, which selects again under
+     * what the output reports now, is the remedy. The same code for decoded PCM is an output that never
+     * could, and keeps its class. Nothing under the harness raises this exception, because its audio renderer
+     * configures no sink; so the evidence is the real exception Media3's audio renderer raises, built here.
+     */
+    @Test
+    fun anOutputThatRefusedAPassthroughTrackIsTransientAndOneThatRefusedPcmIsNot() {
+        assertThat(ErrorClassifier.classify(audioTrackInitFailure(MimeTypes.AUDIO_AC3)))
+            .isEqualTo(FailureClass.Device.DecoderTransient)
+        assertThat(ErrorClassifier.classify(audioTrackInitFailure(MimeTypes.AUDIO_E_AC3)))
+            .isEqualTo(FailureClass.Device.DecoderTransient)
+        assertThat(ErrorClassifier.classify(audioTrackInitFailure(MimeTypes.AUDIO_DTS)))
+            .isEqualTo(FailureClass.Device.DecoderTransient)
+        assertWithMessage("a PCM track the output would not open was read as a changed output")
+            .that(ErrorClassifier.classify(audioTrackInitFailure(MimeTypes.AUDIO_RAW)))
+            .isEqualTo(FailureClass.Device.DecoderInit)
     }
 
     @Test
@@ -538,6 +561,26 @@ class ErrorClassifierTest {
         repeat(200) { deep = IOException("wrapper", deep) }
         assertThat(everyClass).contains(ErrorClassifier.classify(deep))
     }
+
+    /**
+     * What Media3's audio renderer raises when its sink will not open an audio track for [sampleMimeType]:
+     * the sink's own exception, carrying the format it was configured with, at the band's init code.
+     */
+    private fun audioTrackInitFailure(sampleMimeType: String): PlaybackException = ExoPlaybackException.createForRenderer(
+        AudioSink.InitializationException(
+            "AudioTrack init failed",
+            /* audioTrackState= */ 0,
+            Format.Builder().setSampleMimeType(sampleMimeType).setChannelCount(6).setSampleRate(48_000).build(),
+            /* isRecoverable= */ false,
+            /* audioTrackException= */ null,
+        ),
+        "MediaCodecAudioRenderer",
+        /* rendererIndex= */ 1,
+        /* rendererFormat= */ null,
+        /* rendererFormatSupport= */ C.FORMAT_HANDLED,
+        /* isRecoverable= */ false,
+        PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED,
+    )
 
     private fun classify(errorCode: Int): FailureClass =
         ErrorClassifier.classify(PlaybackException("code $errorCode", null, errorCode))

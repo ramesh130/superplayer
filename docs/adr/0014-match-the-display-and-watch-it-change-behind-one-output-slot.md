@@ -294,6 +294,27 @@ Fourteen rules follow, and they are binding.
    - **Where it is set.** It is not policy, so it is not `EngineBinding.kt`'s. It is set beside the
      frame-rate strategy, where core reads the filled slot (rule 3).
 
+   *Addendum (2026-09-18, #270).* Built as written: core sets the parameter on the
+   `ReselectingTrackSelector` it builds for rule 5, and on nothing else. Two facts were settled in the
+   same change:
+   - **A refused passthrough track is `Device.DecoderTransient`, not a new leaf.** The rule's mechanism
+     can lose a race: the output stops carrying an encoding, and the sink is asked to open a track for it
+     before the re-selection lands. Media3 raises `ERROR_CODE_AUDIO_TRACK_INIT_FAILED` with an
+     `AudioSink.InitializationException` carrying the format. `ErrorClassifier` put that code in
+     `Device.DecoderInit`, whose ceiling is rung 4, and a second source would ask the same output the same
+     question. The remedy is rung 5's re-prepare, which selects tracks again under what the output
+     reports now. So an init failure whose format is encoded (anything but `audio/raw`) is
+     `Device.DecoderTransient`, read off the exception as `recreatingMayHelp` reads a codec's. PCM keeps
+     `Device.DecoderInit`, because an output that will not open PCM never could. A new leaf was
+     considered and rejected. ADR-0011 rule 1 asks what a class's acting needs, and this needs
+     exactly what `DecoderTransient` answers: not retryable, rung 5, `DECODER`. A write failure was
+     already that class. Core's `MAX_DECODER_RECREATIONS` bounds an output that refuses PCM too.
+   - **The harness can show the selection and not the refusal.** Its audio renderer is Media3's fake, so
+     `superplayer-testkit` makes it answer for passthrough-only formats from the stated output through
+     Media3's own `AudioCapabilitiesReceiver`, and report a change as Media3's renderer does. No sink is
+     configured, so the classification is asserted over the real exception in `ErrorClassifierTest` and
+     `FallbackLadderTest` rather than through playback (`docs/testing.md`, *A TV device*).
+
 7. **Tunneling is policy: a sixth half of `PlaybackDecision`, `output: OutputPolicy`, applied at
    construction and never re-applied.** `OutputPolicy(tunneling: Boolean)` defaults to
    `OutputPolicy.NONE`, which is tunneling off. A policy written before the half existed therefore

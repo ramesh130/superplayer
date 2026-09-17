@@ -17,9 +17,11 @@
 package com.superplayer.resilience
 
 import android.media.MediaCodec
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.datasource.HttpDataSource.HttpDataSourceException
 import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
+import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.drm.DrmSession
 import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.DecoderInitializationException
 import com.superplayer.core.LiveWindowTooShortException
@@ -287,8 +289,12 @@ public object ErrorClassifier {
 
         // The output half of the same device: initialising an audio track or a frame processor is a
         // decoder init in every way that matters to the ladder, and a write that failed mid-stream
-        // is what a recreate is for.
-        PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED,
+        // is what a recreate is for. One init failure is the exception, because the output changed
+        // underneath it rather than never having been able: a passthrough track the output no longer
+        // carries, which a re-prepare selects again under what the output now reports (#270).
+        PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED ->
+            if (theOutputRefusedAPassthroughFormat(causes)) FailureClass.Device.DecoderTransient else FailureClass.Device.DecoderInit
+
         PlaybackException.ERROR_CODE_AUDIO_TRACK_OFFLOAD_INIT_FAILED,
         PlaybackException.ERROR_CODE_VIDEO_FRAME_PROCESSOR_INIT_FAILED,
         -> FailureClass.Device.DecoderInit
@@ -364,6 +370,28 @@ public object ErrorClassifier {
      */
     private fun recreatingMayHelp(causes: List<Throwable>): Boolean =
         causes.filterIsInstance<MediaCodec.CodecException>().any { it.isTransient || it.isRecoverable }
+
+    /**
+     * Whether the audio output refused to open a track for an *encoded* format — AC-3, E-AC-3, DTS and the
+     * rest, which a device plays only by passing them through to an AV receiver.
+     *
+     * Read off `AudioSink.InitializationException.format`, the format the sink was configured with: a
+     * decoded stream reaches the sink as PCM (`audio/raw`), so anything else is passthrough. Such a track was
+     * selected because the output said it could carry the encoding, and a sink refusing it means the output
+     * stopped saying so — a receiver powered off, or an HDMI link renegotiating — between that selection
+     * and this track. That is what makes it rung 5's rather than [FailureClass.Device.DecoderInit]'s: a
+     * re-prepare selects tracks again against the capabilities the output reports now, and picks the PCM
+     * rendition beside it, where a rung-4 re-adoption would open another source only to ask the same question.
+     * The bound on re-preparing is core's, so an output that refuses the PCM track too still reaches rung 6.
+     *
+     * An offload init failure is not read, because offload is a sink's choice Media3 already withdraws from.
+     *
+     * ref: `androidx.media3.exoplayer.audio.AudioSink.InitializationException` and
+     * `MediaCodecAudioRenderer`, which raises it at `ERROR_CODE_AUDIO_TRACK_INIT_FAILED` (Media3 1.11).
+     */
+    private fun theOutputRefusedAPassthroughFormat(causes: List<Throwable>): Boolean =
+        causes.filterIsInstance<AudioSink.InitializationException>()
+            .any { it.format.sampleMimeType.let { mimeType -> mimeType != null && mimeType != MimeTypes.AUDIO_RAW } }
 
     /**
      * Whether a **secure** decoder was chosen and could not be brought up — the evidence

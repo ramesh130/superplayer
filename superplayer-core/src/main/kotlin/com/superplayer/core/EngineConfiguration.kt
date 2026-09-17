@@ -240,11 +240,12 @@ internal class EngineConfiguration(
      * whose slot is filled, core builds the engine with `C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF`, so the
      * binding is the only caller of `Surface.setFrameRate`, and registers the listener the frame rate
      * arrives through, and the [DisplayWatch] that rewrites [displayInForce] and re-selects when the
-     * display changes (rule 5). Later issues of Phase 8 hang the selector's parameters on the same fact
-     * (#270, #271).
+     * display changes (rule 5). It also switches on the selector's
+     * `allowInvalidateSelectionsOnRendererCapabilitiesChange`, so an audio output that changes under
+     * playback re-selects the audio (rule 6, #270). #271 hangs the tunneling parameter on the same fact.
      *
      * Null is every player built without `setOutput`: the engine keeps Media3's own frame-rate strategy
-     * and nothing is registered, which is ADR-0014 rule 14 and is counted by
+     * and selector parameters, and nothing is registered, which is ADR-0014 rule 14 and is counted by
      * `SuperPlayerOutputSeamTest`.
      */
     var videoOutput: VideoOutputBinding? = null

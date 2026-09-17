@@ -27,6 +27,7 @@ import android.view.TextureView
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.test.utils.robolectric.ShadowMediaCodecConfig
 import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
 import androidx.test.core.app.ApplicationProvider
@@ -55,7 +56,8 @@ import org.robolectric.util.ReflectionHelpers
  * It reads past the facade, and `docs/testing.md` records where: the filled `EngineConfiguration`,
  * because "the slot is empty" is a claim about construction no playback shows, and the engine's
  * `videoChangeFrameRateStrategy`, because which frame-rate strategy Media3 was built with is the other
- * half of rule 14 and nothing public reports it. Since #269 it also reads the display service's listener
+ * half of rule 14 and nothing public reports it. Since #270 it also reads the selector's
+ * `allowInvalidateSelectionsOnRendererCapabilitiesChange`, rule 6's switch, for the same reason. Since #269 it also reads the display service's listener
  * count, because "no `DisplayListener` is registered" is rule 14's third claim and no playback shows it,
  * and the filled configuration's `displayInForce`, because the window a gate reads is the seam's half of
  * a hotplug and the selection's half needs `superplayer-abr`, which core's tests cannot name.
@@ -94,6 +96,7 @@ class SuperPlayerOutputSeamTest {
 
         assertThat(withoutSlot?.videoOutput).isNull()
         assertThat(without.exoPlayer.videoChangeFrameRateStrategy).isEqualTo(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_ONLY_IF_SEAMLESS)
+        assertThat(reselectsOnCapabilityChange(without)).isFalse()
         assertThat(displayListenerCount()).isEqualTo(listenersAtStart)
 
         val binding = RecordingBinding()
@@ -104,6 +107,7 @@ class SuperPlayerOutputSeamTest {
 
         assertThat(withSlot?.videoOutput).isSameInstanceAs(binding)
         assertThat(with.exoPlayer.videoChangeFrameRateStrategy).isEqualTo(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF)
+        assertThat(reselectsOnCapabilityChange(with)).isTrue()
         assertThat(binding.events).isNotEmpty()
         // ADR-0014 rule 14's display half, and the counter shown to see what it counts: one watch for the
         // player with an output, and none left once it is released.
@@ -240,6 +244,14 @@ class SuperPlayerOutputSeamTest {
         val global = ReflectionHelpers.callStaticMethod<Any>(Class.forName("android.hardware.display.DisplayManagerGlobal"), "getInstance")
         return ReflectionHelpers.getField<Collection<*>>(global, "mDisplayListeners").size
     }
+
+    /**
+     * Whether the engine's selector acts on a renderer's changed capabilities — ADR-0014 rule 6's switch,
+     * which Media3 leaves off. Read off the selector, because a player on Robolectric's default audio output
+     * hears no change for a playback to show; `superplayer-tv`'s `AudioCapabilityChangeTest` shows it.
+     */
+    private fun reselectsOnCapabilityChange(player: SuperPlayer): Boolean =
+        (player.exoPlayer.trackSelector as DefaultTrackSelector).parameters.allowInvalidateSelectionsOnRendererCapabilitiesChange
 
     private fun surface(): Surface {
         val texture = SurfaceTexture(/* texName= */ 0)

@@ -19,6 +19,7 @@ package com.superplayer.testkit
 import com.superplayer.testmedia.HostileManifests
 import com.superplayer.testmedia.HostileStream
 import com.superplayer.testmedia.SyntheticDashChoice
+import com.superplayer.testmedia.SyntheticDashPassthrough
 import com.superplayer.testmedia.SyntheticDashStream
 import com.superplayer.testmedia.SyntheticHlsStream
 import com.superplayer.testmedia.WidevineProtection
@@ -420,6 +421,24 @@ public class TestContent private constructor(
             protocol = Protocol.DASH,
             sourceUri = SyntheticDashStream.MANIFEST_URI,
             resources = SyntheticDashStream.resources(segmentCount, mirrorHost),
+        )
+
+        /**
+         * A real DASH stream offering the choice an AV receiver changes: stereo AAC beside 5.1 AC-3, each
+         * at a path of its own that `SyntheticDashPassthrough` names, so what a player fetched can be
+         * counted per encoding. The harness's audio renderer plays AAC on any output and AC-3 only on an
+         * output `DeviceStatement.declareAudioOutput` says passes it through, as a device with no AC-3
+         * decoder does. The media is [dash]'s under both.
+         */
+        @JvmStatic
+        @JvmOverloads
+        public fun dashWithPassthroughAudio(segmentCount: Int = DEFAULT_SEGMENT_COUNT): TestContent = TestContent(
+            rungs = emptyList(),
+            durationMs = SyntheticDashPassthrough.durationMs(segmentCount),
+            live = false,
+            protocol = Protocol.DASH,
+            sourceUri = SyntheticDashPassthrough.MANIFEST_URI,
+            resources = SyntheticDashPassthrough.resources(segmentCount),
         )
 
         /**

@@ -81,6 +81,19 @@ public final class com/superplayer/testmedia/SyntheticDashChoice {
 	public static final fun subtitleUri (Ljava/lang/String;)Ljava/lang/String;
 }
 
+public final class com/superplayer/testmedia/SyntheticDashPassthrough {
+	public static final field INSTANCE Lcom/superplayer/testmedia/SyntheticDashPassthrough;
+	public static final field MANIFEST_URI Ljava/lang/String;
+	public static final field STEREO_PATH Ljava/lang/String;
+	public static final field SURROUND_BITRATE_BPS I
+	public static final field SURROUND_CHANNEL_COUNT I
+	public static final field SURROUND_CODECS Ljava/lang/String;
+	public static final field SURROUND_PATH Ljava/lang/String;
+	public static final field SURROUND_SAMPLE_RATE_HZ I
+	public final fun durationMs (I)J
+	public static final fun resources (I)Ljava/util/Map;
+}
+
 public final class com/superplayer/testmedia/SyntheticDashStream {
 	public static final field DECLARED_BITRATE_BPS I
 	public static final field DECLARED_CHANNEL_COUNT I

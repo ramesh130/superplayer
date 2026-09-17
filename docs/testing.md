@@ -963,7 +963,11 @@ reads the filled configuration's `displayInForce`, the window `superplayer-abr`'
 tests cannot name that gate. Since #270 it reads the engine selector's
 `allowInvalidateSelectionsOnRendererCapabilitiesChange`, ADR-0014 rule 6's switch, off on a player without
 an output and on with one. No core playback shows it, because core's tests state no audio output that
-changes. `superplayer-tv`'s `AudioCapabilityChangeTest` shows the behaviour, its control included.
+changes. `superplayer-tv`'s `AudioCapabilityChangeTest` shows the behaviour, its control included. Since
+#271 it reads the same selector's `tunnelingEnabled`, ADR-0014 rule 7's parameter, laid from a decision that
+asks for tunneling only on a player with an output. Core's tests play no video beside audio, so no core
+playback shows it. `superplayer-tv`'s `TunneledPlaybackTest` shows it applied at the renderer, its controls
+included.
 
 `superplayer-testkit`'s own public API names **no Media3 type**, for the reason ADR-0001 rule 2 gives:
 a `Format` or a `Timeline` in one of its signatures would put Media3's opt-in marker on every test

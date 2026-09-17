@@ -667,6 +667,7 @@ private val PlaybackProfile.labelRes: Int
         PlaybackProfile.VIDEO_ON_DEMAND -> R.string.profile_video_on_demand
         PlaybackProfile.LIVE_LINEAR -> R.string.profile_live_linear
         PlaybackProfile.SHORT_FORM -> R.string.profile_short_form
+        PlaybackProfile.TV_LEANBACK -> R.string.profile_tv_leanback
         PlaybackProfile.DATA_SAVER -> R.string.profile_data_saver
     }
 

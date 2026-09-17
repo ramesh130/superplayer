@@ -1064,8 +1064,8 @@ table rather than silently unswept.
 ### Replaying a network
 
 A fault is one request going wrong; a network is every request going through something. The harness
-replays one — a `ThroughputTrace` of bandwidth, round trip and transport over time, or one of the six
-`NetworkProfile`s `PRD.md` Part 6 names — under every transfer a player makes:
+replays one — a `ThroughputTrace` of bandwidth, round trip and transport over time, or a
+`NetworkProfile`, the six `PRD.md` Part 6 names and `ETHERNET` — under every transfer a player makes:
 
 ```kotlin
 val player = harness.buildPlayer(network = NetworkProfile.LTE_WITH_DROPOUTS.trace, faults = script)
@@ -1174,9 +1174,19 @@ because it runs `check`, and nothing else.
 
 **What a session is.** The benchmark's arm (c) with the adaptive policy in it — its VOD ladder, its
 sixty-second session, `AdaptivePolicy.forProfile(VIDEO_ON_DEMAND)`, `QoeCollector` as the source of
-events — played for every `NetworkProfile`, all six. Stable WiFi and high latency are in it beside the
+events — played for every `NetworkProfile`, all seven. Stable WiFi and high latency are in it beside the
 four the phase is meant to improve, so a change that wins on cellular by losing on WiFi meets a WiFi
-floor. The score is not computed twice: `SessionMetrics` and `QoeScore` moved from `benchmark/` into
+floor.
+
+**Which profile.** One, `VIDEO_ON_DEMAND`, for every trace, `ETHERNET` included (#267). The gate asks
+whether the adaptive policy got worse on a network, and a row is comparable with its neighbours only
+while the session is the same session: an `ETHERNET` row played under `TV_LEANBACK` would differ from
+`STABLE_WIFI`'s by two variables at once. A profile is not gated on its own either. A profile is a table
+of starting numbers each argued where it is chosen, and the policy's code it would exercise is the code
+the on-demand rows already exercise; a per-profile gate would multiply the gate's cost by five to score
+a buffer depth the QoE objective does not reward, since a deeper cushion on a stable link changes no
+term of the score. What `TV_LEANBACK` on Ethernet does differently is forced by `TvLeanbackPlaybackTest`,
+as a fact about media held rather than as a score. The score is not computed twice: `SessionMetrics` and `QoeScore` moved from `benchmark/` into
 `superplayer-telemetry` for this, so the gate and the benchmark reduce events through the same file.
 
 **Which traces.** Synthetic only, each named by its `NetworkProfile`, and that is a decision rather

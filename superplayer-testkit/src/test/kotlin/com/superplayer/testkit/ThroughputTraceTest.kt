@@ -21,7 +21,7 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 /**
- * The trace format, its reader and writer, the arithmetic that replays it, and the six profiles.
+ * The trace format, its reader and writer, the arithmetic that replays it, and the built-in profiles.
  *
  * No player and no clock: a trace is a value, and what it means — what bandwidth at what time, and
  * when a byte sent into it arrives — is checkable as one. `NetworkShapingTest` is where the same

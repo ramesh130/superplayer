@@ -16,6 +16,7 @@
     <string name="profile_video_on_demand">On demand</string>
     <string name="profile_live_linear">Live</string>
     <string name="profile_short_form">Short-form</string>
+    <string name="profile_tv_leanback">TV</string>
     <string name="profile_data_saver">Data saver</string>
 
     <!-- The status line under the picker. It reports what the *player* was asked to do, so that

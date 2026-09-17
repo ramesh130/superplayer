@@ -295,6 +295,7 @@ public final class com/superplayer/core/PlaybackProfile : java/lang/Enum {
 	public static final field DATA_SAVER Lcom/superplayer/core/PlaybackProfile;
 	public static final field LIVE_LINEAR Lcom/superplayer/core/PlaybackProfile;
 	public static final field SHORT_FORM Lcom/superplayer/core/PlaybackProfile;
+	public static final field TV_LEANBACK Lcom/superplayer/core/PlaybackProfile;
 	public static final field VIDEO_ON_DEMAND Lcom/superplayer/core/PlaybackProfile;
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/core/PlaybackProfile;

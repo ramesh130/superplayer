@@ -97,16 +97,42 @@ internal class PlayerProtection(
     /**
      * What the graph was composed from, kept for the one reason a re-open needs it: the licence
      * transport, the load-error policy and the device are core's to supply and are supplied once.
-     * Null until the chain is composed, and on a player whose answer was a refusal — which is what
-     * makes [mayReopenAtLowerLevel] false for a refused session without a second flag saying so.
+     * Null until the chain is composed, and on a player whose answer was a downgrade refusal — which
+     * is what makes [mayReopenAtLowerLevel] false for that player without a second flag saying so.
+     * A player refused for an *expired stored licence* is the one exception and does hold a context,
+     * for the reason [refusedAsExpired] gives.
      */
     private var licence: LicenceContext? = null
 
     /** The device the graph was composed over: the provider, never the `ExoMediaDrm` under it. */
     private var device: ExoMediaDrm.Provider? = null
 
+    /**
+     * The same device as [device] on the ordinary player, and the [LoweredSecurityLevel] wrapper over
+     * it wherever a level was lowered — which is to say, the device at the level this player is
+     * actually running at.
+     *
+     * Two fields and not one because the two are asked different questions. #225's re-open wraps
+     * [device], the raw one, at the level it is falling to; an offline licence exchange
+     * ([exchangeSessions]) has to compose its key requests at the level in force, because a download
+     * acquired at `L1` for a player playing at `L3` is a licence for content this device may not
+     * show.
+     */
+    private var effectiveDevice: ExoMediaDrm.Provider? = null
+
     /** Whether the level in force is already the lower one, whichever moment lowered it. */
     private var lowered = false
+
+    /**
+     * Whether this player's protection is one refusal: a stored licence that had already expired.
+     *
+     * A flag because the alternative reading is wrong in both directions. The licence context *is*
+     * adopted for such a player — so that `store.over(player).renew(id)` works on the player a
+     * consumer already has, which is the likeliest thing they do next — and adopting it is what
+     * would otherwise make [mayReopenAtLowerLevel] true, offering a security-level re-open as the
+     * remedy for an expiry it cures in no way at all.
+     */
+    private var refusedAsExpired = false
 
     /**
      * The graph Media3 is handed a session out of.
@@ -119,14 +145,22 @@ internal class PlayerProtection(
     private var manager: DrmSessionManager? = null
 
     override fun over(licence: LicenceContext): DrmSessionManagerProvider {
-        // The stored licence first, before any device is touched, because a dead one settles the
-        // question: no graph is composed, no session opened and no licence asked for, and the
-        // consumer gets back the fact the store already told them (ADR-0012 rule 9). Core dresses
-        // it, as it dresses the downgrade refusal and for the same reason — the exception is core's
-        // and this module names no Media3 error code (rule 5). Nothing is adopted, so there is no
-        // graph for #225's repair to re-open either, which is right: a lower security level cures
-        // an expiry in no way at all.
+        // The stored licence first, because a dead one settles the question: no session is opened
+        // and no licence asked for, and the consumer gets back the fact the store already told them
+        // (ADR-0012 rule 9). Core dresses it, as it dresses the downgrade refusal and for the same
+        // reason — the exception is core's and this module names no Media3 error code (rule 5).
+        //
+        // What *is* kept is the licence context, so that `store.over(player).renew(id)` works on the
+        // player the consumer already has: renewing a dead download is the likeliest next thing they
+        // do, and a store that made them build a second player for it would be a worse API for no
+        // gain. Nothing else follows from adopting it — [refusedAsExpired] is what keeps #225's
+        // security-level re-open from being offered as the remedy for an expiry.
         offline?.takeIf { it.isExpired }?.let {
+            val device = licence.mediaDrm ?: FrameworkMediaDrm.DEFAULT_PROVIDER
+            this.licence = licence
+            this.device = device
+            this.effectiveDevice = device
+            refusedAsExpired = true
             return expiredLicenceSessions(
                 OfflineLicenceExpiredException(
                     contentId = it.contentId,
@@ -158,14 +192,18 @@ internal class PlayerProtection(
         val device = licence.mediaDrm ?: FrameworkMediaDrm.DEFAULT_PROVIDER
         val lowerLevel = SecurityLevelLadder.levelToAskAbout(device, licence.device)
         val permitted = lowerLevel != null && lowerLevel in config.permittedSecurityLevels
-        val manager = sessionManager(
-            licence,
-            // Where a downgrade was permitted, the same device asked to compose its key requests
-            // at the lower level — which is what "requesting an L3 licence" is on the wire
-            // (// ref: `MediaDrm.setPropertyString` with `securityLevel`). Where none was
-            // permitted, the device untouched.
-            if (permitted) LoweredSecurityLevel(device, checkNotNull(lowerLevel)) else device,
-        )
+        // Where a downgrade was permitted, the same device asked to compose its key requests
+        // at the lower level — which is what "requesting an L3 licence" is on the wire
+        // (// ref: `MediaDrm.setPropertyString` with `securityLevel`). Where none was
+        // permitted, the device untouched.
+        //
+        // Kept apart from `device` rather than folded into it, because the two are asked different
+        // questions later: #225's re-open wraps the *raw* device at the level it is falling to, and
+        // an offline licence exchange must compose its key requests at the level this player is
+        // actually running at — a download acquired at L1 on a player playing at L3 would be a
+        // licence for content this device may not show.
+        val effectiveDevice = if (permitted) LoweredSecurityLevel(device, checkNotNull(lowerLevel)) else device
+        val manager = sessionManager(licence, effectiveDevice)
         // One manager for the player rather than one per item: the session graph is built once
         // per player because protection is the player's (rule 1), and — since #209 turned
         // `multiSession` on inside `sessionManager` — `DefaultDrmSessionManager` keeps one session
@@ -177,13 +215,13 @@ internal class PlayerProtection(
             // reports, so there is nothing to lower and nothing to say. Reading the property back
             // here to report it would charge every protected player a `MediaDrm` acquisition for
             // a line in a log.
-            lowerLevel == null -> adopt(licence, device, manager, loweredTo = null)
+            lowerLevel == null -> adopt(licence, device, effectiveDevice, manager, loweredTo = null)
 
             // The server's operator permits the lower level, so the device was asked to compose
             // its key requests at it (`LoweredSecurityLevel`, installed above) and the session
             // graph is otherwise the ordinary one. What was delivered is written down, because it
             // is not what the viewer was entitled to.
-            permitted -> adopt(licence, device, manager, loweredTo = lowerLevel)
+            permitted -> adopt(licence, device, effectiveDevice, manager, loweredTo = lowerLevel)
 
             // And the refusal: no session is opened, no licence is asked for, and the typed
             // exception travels to the consumer where every other DRM failure does — ADR-0012
@@ -217,11 +255,13 @@ internal class PlayerProtection(
     private fun adopt(
         licence: LicenceContext,
         device: ExoMediaDrm.Provider,
+        effectiveDevice: ExoMediaDrm.Provider,
         manager: DrmSessionManager,
         loweredTo: String?,
     ): DrmSessionManagerProvider {
         this.licence = licence
         this.device = device
+        this.effectiveDevice = effectiveDevice
         this.manager = manager
         loweredTo?.let {
             lowered = true
@@ -262,7 +302,9 @@ internal class PlayerProtection(
         val licence = checkNotNull(this.licence)
         val device = checkNotNull(this.device)
         lowered = true
-        manager = sessionManager(licence, LoweredSecurityLevel(device, level))
+        val loweredDevice = LoweredSecurityLevel(device, level)
+        effectiveDevice = loweredDevice
+        manager = sessionManager(licence, loweredDevice)
         licence.delivered.securityLevel = level
     }
 
@@ -277,7 +319,7 @@ internal class PlayerProtection(
      * answer costs.
      */
     private fun levelToFallTo(): String? {
-        if (licence == null || lowered) return null
+        if (licence == null || lowered || refusedAsExpired) return null
         val level = SecurityLevelLadder.levelToFallTo(device) ?: return null
         return level.takeIf { it in config.permittedSecurityLevels }
     }
@@ -328,12 +370,13 @@ internal class PlayerProtection(
      * one over: it sets the mode, prepares it, opens a session of its own on its own thread and
      * releases it. Handing it the manager the renderers are holding sessions out of would end
      * playback to download a licence. What the two share is everything that makes the exchange this
-     * *player's* — the licence transport with its header-refresh layer, the retry budget, the device,
-     * and the licence server the app named (ADR-0012 rule 2).
+     * *player's* — the licence transport with its header-refresh layer, the retry budget, the device
+     * at the level in force ([effectiveDevice], so a download is acquired at the level this player
+     * actually runs at), and the licence server the app named (ADR-0012 rule 2).
      */
     internal fun exchangeSessions(): DefaultDrmSessionManager {
         val licence = checkNotNull(this.licence) { "This player's protection composed no session graph" }
-        return widevineSessions(licence, checkNotNull(this.device))
+        return widevineSessions(licence, checkNotNull(this.effectiveDevice))
     }
 
     private fun widevineSessions(licence: LicenceContext, device: ExoMediaDrm.Provider): DefaultDrmSessionManager {

@@ -35,9 +35,16 @@ import java.io.File
  * The deadlines are absolute and wall-clock, computed once from what the device reported when the
  * licence was acquired or renewed. That is what makes a reading free — no device, no session, no
  * network, so a list screen can ask about fifty downloads (ADR-0012 rule 9) — and its one cost is
- * stated rather than hidden: a viewer who moves the device clock moves these readings with it. The
- * licence itself is unaffected, because the device enforces its own expiry whatever this file says,
- * so the worst such a move produces is a reading that disagrees with the refusal playback gives.
+ * stated rather than hidden: a viewer who moves the device clock forward moves these readings with
+ * it, and since a licence this store calls expired is one `Drm.widevine(config, licence)` refuses,
+ * such a move can refuse a licence the device would still have honoured.
+ *
+ * That is the right way round, and is the same trade every offline catalogue makes. The alternative
+ * is a reading that costs a `MediaDrm` session per row, which is not a reading a list screen can
+ * make — and the failure this direction produces is recoverable by going online and renewing, which
+ * is what the message says, while the other direction would play content whose entitlement had
+ * lapsed until the device refused it mid-view. Nothing here weakens the licence: the device enforces
+ * its own expiry whatever this file says.
  */
 internal class OfflineLicenceIndex(directory: File) {
 
@@ -125,11 +132,19 @@ internal class OfflineLicenceIndex(directory: File) {
     /**
      * When a duration of [secondsLeft] runs out, counted from [nowMs].
      *
-     * Clamped at both ends rather than trusted. A licence with nothing left reports a duration that
-     * is zero or negative and becomes a deadline in the past; and Media3 answers `Long.MIN_VALUE + 1`
-     * for a property the device did not report at all, which multiplied by a thousand would wrap into
-     * a deadline far in the future — a dead licence reading as a live one, which is the one direction
-     * this must never round.
+     * Zero or less is a duration that has run out and becomes a deadline in the past; anything else
+     * is clamped at [MAX_SECONDS] first, so that no implausibly large answer overflows a `Long` into
+     * a deadline in the past — the one direction this must never round.
+     *
+     * **A duration the device did not report reaches here as zero, and cannot be told from one that
+     * expired.** That is Media3's collapse rather than this file's, and it is written down because it
+     * looks like a gap here and is not: `WidevineUtil.getLicenseDurationRemainingSec` answers
+     * `C.TIME_UNSET` for a property `MediaDrm.queryKeyStatus` did not carry, Media3's own `MODE_QUERY`
+     * session then reads that as expired and raises `KeysExpiredException`, and
+     * `OfflineLicenseHelper.getLicenseDurationRemainingSec` catches exactly that and answers
+     * `Pair(0, 0)` — so no sentinel survives to be distinguished. A Widevine *offline* licence carries
+     * both properties, which is why this is a recorded limit rather than a defect;
+     * `OfflineLicenceTest` records the behaviour against a device stated not to report one of them.
      */
     private fun deadline(nowMs: Long, secondsLeft: Long): Long =
         if (secondsLeft <= 0L) nowMs else nowMs + secondsLeft.coerceAtMost(MAX_SECONDS) * 1000L

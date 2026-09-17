@@ -78,7 +78,7 @@ public object OfflineLicences {
  * [OfflineLicenceExchange]'s, because each of them is a round trip to the licence server and that
  * server is reached over a *player's* transport (ADR-0012 rule 2).
  */
-public class OfflineLicenceStore internal constructor(private val index: OfflineLicenceIndex) {
+public class OfflineLicenceStore internal constructor(private val index: OfflineLicenceIndex) : AutoCloseable {
 
     /**
      * The licence this store holds for [contentId], or null where it holds none.
@@ -114,8 +114,13 @@ public class OfflineLicenceStore internal constructor(private val index: Offline
         return OfflineLicenceExchange(index, protection)
     }
 
-    /** Closes the index. The directory is the consumer's and is not touched. */
-    public fun close() {
+    /**
+     * Closes the index. The directory is the consumer's and is not touched.
+     *
+     * [AutoCloseable] rather than a bare method, so that `use { }` is available and a store opened
+     * for one screen cannot leak its database handle down an early return.
+     */
+    override fun close() {
         index.close()
     }
 }
@@ -177,6 +182,11 @@ public class OfflineLicence internal constructor(
      * ADR-0006 rule 2 forbids choosing storage. So the store reports what is due and the consumer's
      * own job calls [OfflineLicenceExchange.renew].
      *
+     * It reads the *licence* duration and not the playback one, which is a choice: renewing asks the
+     * server for the entitlement again, and a viewing window that has begun is not a thing a renewal
+     * resets. An app that wants to say something about a closing window reads
+     * [playbackDurationRemainingMs] and says it.
+     *
      * The threshold is [RENEWAL_DUE_WITHIN_MS] and its reason is the consumer's schedule rather than
      * the licence's: a job that runs once a day is the coarsest thing an app plausibly uses for this,
      * and a threshold shorter than the gap between two of its runs would let a licence die between
@@ -209,6 +219,10 @@ public class OfflineLicence internal constructor(
  * **Every one of these blocks on a licence round trip**, as Media3's own `OfflineLicenseHelper` does,
  * and none of them may be called on the main thread of an app. They are also not playback: each opens
  * a session graph of its own so that the sessions a player is holding are untouched.
+ *
+ * All three work on a player built with an *expired* stored licence too, whose playback was refused:
+ * renewing the dead download on the player already in hand is the likeliest next thing an app does,
+ * and needing a second player for it would be a worse API for no gain.
  */
 public class OfflineLicenceExchange internal constructor(
     private val index: OfflineLicenceIndex,

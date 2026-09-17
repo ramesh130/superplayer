@@ -229,7 +229,10 @@ public object DeviceStatement {
      * meet it by accident.
      *
      * Declare before the test's first player is built, as every other declaration here is: the
-     * statement is read when a player's DRM session manager is constructed.
+     * statement is read when a player's DRM session manager is constructed. It **replaces** the
+     * statement whole, so anything said about the device separately — [declareOfflineLicence]'s
+     * durations, and the offline licences the device has persisted — is forgotten with it. Say the
+     * device first and the rest after.
      */
     @JvmStatic
     @JvmOverloads
@@ -280,11 +283,27 @@ public object DeviceStatement {
      * report both before playback, so a test needs to be able to state them apart too.
      *
      * The defaults are an ordinary month-long rental with a two-day viewing window; state something
-     * small — zero, for a licence that has died — to reach the expiry cases. Declare after
-     * [declareWidevine], which states the device itself, and before the first player is built.
+     * small — zero, for a licence that has died — to reach the expiry cases, and **null** for a
+     * duration this device's licences do not carry at all, which is the commonest shape of a purchase
+     * with no viewing window and of a rental with no separate entitlement clock. A real
+     * `queryKeyStatus` simply omits the property, and Media3 answers `C.TIME_UNSET` for it. Note the one number
+     * Media3 fixes: a restored licence within **sixty seconds** of expiry is re-requested from the
+     * server during playback rather than played to a stop (`DefaultDrmSession.doLicense`), so a
+     * duration under that turns an offline test into an online one.
+     *
+     * Declare after [declareWidevine], which builds the statement this writes into. Unlike every
+     * other declaration here it may also be restated *after* a player exists, and a test of a
+     * renewal does exactly that: the durations are read at each `queryKeyStatus`, so restating them
+     * is how a licence server that now issues a longer licence is said.
      */
     @JvmStatic
-    public fun declareOfflineLicence(licenceDurationSec: Long, playbackDurationSec: Long) {
+    public fun declareOfflineLicence(licenceDurationSec: Long?, playbackDurationSec: Long?) {
+        // Guarded like every sibling here: a negative duration is not a shorter licence, it is a
+        // typo that would arrive as an expiry by a route the test did not write. Null is not a
+        // negative duration — it is no duration, which is the case above.
+        require((licenceDurationSec ?: 0) >= 0 && (playbackDurationSec ?: 0) >= 0) {
+            "A licence has a duration of zero or more seconds, not $licenceDurationSec/$playbackDurationSec"
+        }
         widevine.declareOfflineLicenceDurations(licenceDurationSec, playbackDurationSec)
     }
 

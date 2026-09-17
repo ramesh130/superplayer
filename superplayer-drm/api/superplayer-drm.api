@@ -25,8 +25,8 @@ public final class com/superplayer/drm/OfflineLicenceExchange {
 	public final fun renew (Ljava/lang/String;)Lcom/superplayer/drm/OfflineLicence;
 }
 
-public final class com/superplayer/drm/OfflineLicenceStore {
-	public final fun close ()V
+public final class com/superplayer/drm/OfflineLicenceStore : java/lang/AutoCloseable {
+	public fun close ()V
 	public final fun contentIds ()Ljava/util/Set;
 	public final fun licenceFor (Ljava/lang/String;)Lcom/superplayer/drm/OfflineLicence;
 	public final fun over (Lcom/superplayer/core/SuperPlayer;)Lcom/superplayer/drm/OfflineLicenceExchange;

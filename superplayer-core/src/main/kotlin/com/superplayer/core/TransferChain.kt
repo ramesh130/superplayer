@@ -280,7 +280,7 @@ internal object TransferChain {
         // in the chain, and the licence transport it is handed carries a stamp of its own whether or
         // not an item's requests do.
         val stamps = cache != null || headerRefresh != null
-        val factory = if (stamps) StampingMediaSourceFactory(chain) else DefaultMediaSourceFactory(chain)
+        val factory = if (stamps) StampingMediaSourceFactory(chain, cache?.downloads) else DefaultMediaSourceFactory(chain)
         return factory.apply {
             cmcdMode.toCmcdConfigurationFactory(measurementSession)
                 ?.let(::setCmcdConfigurationFactory)
@@ -365,8 +365,17 @@ internal object TransferChain {
      * itself and a header-refresh layer can tell which load a failed credential belonged to; an item
      * with no identity — one set through `setMediaItem`, or any item on a player with resilience and
      * no cache — is stamped with the kind and no identity, and a cache keys it by its URL.
+     *
+     * An identified HLS or DASH item whose content [downloads] holds a download of is narrowed to the
+     * tracks that download holds, as Media3's stream keys on the item, so its player selects the
+     * rendition and the languages on disk rather than one it would fetch (ADR-0013 rule 12). Here rather
+     * than at adoption because every path that builds a source — a player's, a pool's, a preload
+     * manager's — builds it through this one factory.
      */
-    private class StampingMediaSourceFactory(private val chain: DataSource.Factory) : MediaSource.Factory {
+    private class StampingMediaSourceFactory(
+        private val chain: DataSource.Factory,
+        private val downloads: CacheDownloads?,
+    ) : MediaSource.Factory {
 
         /** Settings replayed onto each per-item factory; written as the engine is built, read on loads. */
         private val settings = CopyOnWriteArrayList<(MediaSource.Factory) -> Unit>()
@@ -402,7 +411,8 @@ internal object TransferChain {
 
         override fun createMediaSource(mediaItem: MediaItem): MediaSource {
             val identity = ContentIdentity.of(mediaItem)
-            val factory: MediaSource.Factory = when (packagingOf(mediaItem)) {
+            val packaging = packagingOf(mediaItem)
+            val factory: MediaSource.Factory = when (packaging) {
                 Packaging.HLS -> {
                     val manifests = chain.stampedWith(identity, LoadKind.MANIFEST)
                     val media = chain.stampedWith(identity, LoadKind.MEDIA)
@@ -433,7 +443,16 @@ internal object TransferChain {
                 Packaging.UNCLASSIFIED -> DefaultMediaSourceFactory(chain.stampedWith(identity, LoadKind.UNCLASSIFIED))
             }
             settings.forEach { it(factory) }
-            return factory.createMediaSource(mediaItem)
+            val adaptive = packaging == Packaging.HLS || packaging == Packaging.DASH
+            return factory.createMediaSource(if (adaptive) narrowedToDownload(mediaItem, identity) else mediaItem)
+        }
+
+        /** [item], narrowed to the tracks its content's download holds, or [item] itself when there is none. */
+        private fun narrowedToDownload(item: MediaItem, identity: ContentIdentity?): MediaItem {
+            val local = item.localConfiguration
+            if (downloads == null || identity == null || local == null || local.streamKeys.isNotEmpty()) return item
+            val tracks = downloads.downloadedTracks(identity.contentId, local.uri)
+            return if (tracks.isEmpty()) item else item.buildUpon().setStreamKeys(tracks).build()
         }
 
         /**

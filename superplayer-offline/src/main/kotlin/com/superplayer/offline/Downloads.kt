@@ -20,18 +20,29 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.C
+import androidx.media3.common.MediaItem
 import androidx.media3.datasource.DataSource
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.RenderersFactory
 import androidx.media3.exoplayer.offline.DefaultDownloaderFactory
 import androidx.media3.exoplayer.offline.Download
+import androidx.media3.exoplayer.offline.DownloadHelper
 import androidx.media3.exoplayer.offline.DownloadManager
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.Downloader
 import androidx.media3.exoplayer.offline.DownloaderFactory
+import androidx.media3.exoplayer.util.ReleasableExecutor
 import com.superplayer.core.CacheDownloads
 import com.superplayer.core.ContentCache
 import com.superplayer.core.DownloadEnvironment
 import com.superplayer.core.MediaRequest
+import com.superplayer.core.PlaybackConditions
+import com.superplayer.core.PlaybackProfile
+import com.superplayer.core.StaticProfilePolicy
 import com.superplayer.core.TransferChain
+import com.superplayer.core.currentNetworkTransportOf
+import com.superplayer.core.deviceConstraintsOf
+import java.io.IOException
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicInteger
@@ -55,11 +66,13 @@ import java.util.concurrent.atomic.AtomicInteger
  *   against the budget, as `ContentKeyedCache.pin` says.
  * - **Everything happens on the thread the store was built on**, which must have a `Looper` — the main
  *   thread, normally. Listeners are called there too.
+ * - **A download is what the viewer will watch, not the whole ladder.** One video rendition, the highest
+ *   under the profile's `DownloadSelectionPolicy` and the device's display that its decoders can play; the
+ *   audio languages and subtitles [enqueue] was told; and nothing else the manifest lists (rule 12). A
+ *   player of the download is narrowed to the same tracks, so it plays what is on disk.
  *
- * **Live content is not yet refused** at enqueue, as ADR-0013 rule 8 requires: telling live from on-demand
- * needs the manifest, which no ticket after this one has yet been cut to fetch before enqueueing. Not yet
- * here either, each with its ticket: the rendition and languages a download takes (#241 — today it is
- * what Media3's downloader fetches by default, every rendition the manifest lists); resuming across
+ * **Live content is not yet refused** at enqueue, as ADR-0013 rule 8 requires (#251). Not yet
+ * here either, each with its ticket: resuming across
  * process death and stopping rather than failing on a lost network (#242); the conditions downloads run
  * under and the `WorkManager` scheduling behind them (#243 — today the store runs whenever the device has
  * a network, as Media3's own default requirement says); a full disk (#244); protected content (#245);
@@ -68,9 +81,10 @@ import java.util.concurrent.atomic.AtomicInteger
  * Released by [release], before the cache it writes into.
  */
 public class Downloads internal constructor(
-    context: Context,
+    private val context: Context,
     private val cache: CacheDownloads,
     environment: DownloadEnvironment?,
+    private val profile: PlaybackProfile,
 ) {
 
     /**
@@ -80,6 +94,14 @@ public class Downloads internal constructor(
     public class Builder(private val context: Context, private val cache: ContentCache) {
 
         private var environment: DownloadEnvironment? = null
+
+        private var profile: PlaybackProfile = PlaybackProfile.VIDEO_ON_DEMAND
+
+        /**
+         * The kind of playback the downloads are for, which decides the rendition each one takes: its
+         * `PlaybackDecision.download` ceiling. [PlaybackProfile.VIDEO_ON_DEMAND] unless set.
+         */
+        public fun setProfile(profile: PlaybackProfile): Builder = apply { this.profile = profile }
 
         /**
          * Loads over [environment] rather than the device's network: `superplayer-testkit`'s transport and
@@ -92,7 +114,7 @@ public class Downloads internal constructor(
             val downloads = requireNotNull(cache.downloads) {
                 "This cache cannot be downloaded into: open one with superplayer-cache's CachePolicy.contentKeyed"
             }
-            return Downloads(context.applicationContext, downloads, environment)
+            return Downloads(context.applicationContext, downloads, environment, profile)
         }
     }
 
@@ -106,6 +128,8 @@ public class Downloads internal constructor(
     // Built once: every download's writer is over the one chain (ADR-0013 rule 6).
     private val upstream: DataSource.Factory = TransferChain.downloadChain(context, environment)
 
+    private val renderers: RenderersFactory = environment?.renderersFactory ?: DefaultRenderersFactory(context)
+
     // Media3's default runs a segment load on the downloading thread itself.
     private val loadExecutor: Executor = environment?.loadExecutor ?: Executor(Runnable::run)
 
@@ -116,16 +140,76 @@ public class Downloads internal constructor(
         resumeDownloads()
     }
 
+    /** Downloads whose manifest is being read to choose their tracks, before the manager holds them, by content id. */
+    private val selecting = LinkedHashMap<String, DownloadHelper>()
+
+    /** Downloads whose tracks could not be chosen, held until removed or enqueued again, by content id. */
+    private val unselectable = LinkedHashMap<String, DownloadItem>()
+
     private var released = false
 
     /**
-     * Downloads [request]'s content: its first source, which is the one a player opens. A request already
-     * downloaded or downloading under the same `contentId` is downloaded again over what is held, which
-     * fetches only what is missing.
+     * Downloads [request]'s content: its first source, which is the one a player opens.
+     *
+     * What is downloaded is chosen from the manifest first (ADR-0013 rule 12): one video rendition, under
+     * the profile's ceiling; the audio in each of [audioLanguages] the content carries, or the audio a player
+     * would choose where it carries none of them; and the subtitles in each of [subtitleLanguages] it
+     * carries. Languages are BCP 47 tags, such as `en` or `pt-BR`; one the content does not carry is
+     * skipped. The item is [DownloadState.QUEUED] while the manifest is read, and [DownloadState.FAILED]
+     * if it cannot be.
+     *
+     * A request already downloaded or downloading under the same `contentId` is chosen and downloaded again
+     * over what is held, which fetches only what is missing.
      */
-    public fun enqueue(request: MediaRequest) {
+    @JvmOverloads
+    public fun enqueue(
+        request: MediaRequest,
+        audioLanguages: List<String> = emptyList(),
+        subtitleLanguages: List<String> = emptyList(),
+    ) {
         checkUsable()
-        manager.addDownload(DownloadRequest.Builder(request.contentId, request.sources.first()).build())
+        val contentId = request.contentId
+        selecting.remove(contentId)?.release()
+        unselectable -= contentId
+        // Consulted once, now, with what is observed now: bytes written at one rendition are not chosen again.
+        val decision = StaticProfilePolicy(profile).decide(PlaybackConditions(transport = currentNetworkTransportOf(context)))
+        val selection = DownloadSelection(
+            decision.download,
+            deviceConstraintsOf(context).displayShortEdgePx,
+            audioLanguages.toList(),
+            subtitleLanguages.toList(),
+        )
+        val helper = DownloadHelper.Factory()
+            // The manifest is read over the one chain, as the download itself is (rule 6).
+            .setDataSourceFactory(upstream)
+            // The device's own renderers, whose decoders are the device's refusal (ADR-0009 rule 2).
+            .setRenderersFactory(renderers)
+            .setTrackSelectionParameters(selection.parameters)
+            .setLoadExecutor { ReleasableExecutor.from(loadExecutor) {} }
+            .create(MediaItem.fromUri(request.sources.first()))
+        selecting[contentId] = helper
+        report(DownloadItem(contentId, DownloadState.QUEUED, bytesDownloaded = 0, percentDownloaded = null))
+        helper.prepare(
+            object : DownloadHelper.Callback {
+                override fun onPrepared(helper: DownloadHelper, tracksInfoAvailable: Boolean) {
+                    if (released || selecting[contentId] !== helper) return
+                    selecting -= contentId
+                    selection.applyTo(helper)
+                    val chosen = helper.getDownloadRequest(contentId, null)
+                    helper.release()
+                    manager.addDownload(chosen)
+                }
+
+                override fun onPrepareError(helper: DownloadHelper, e: IOException) {
+                    if (released || selecting[contentId] !== helper) return
+                    selecting -= contentId
+                    helper.release()
+                    val failed = DownloadItem(contentId, DownloadState.FAILED, bytesDownloaded = 0, percentDownloaded = null)
+                    unselectable[contentId] = failed
+                    report(failed)
+                }
+            },
+        )
     }
 
     /**
@@ -136,7 +220,7 @@ public class Downloads internal constructor(
         checkUsable()
         val download = manager.currentDownloads.firstOrNull { it.request.id == contentId }
             ?: manager.downloadIndex.getDownload(contentId)
-        return download?.toItem()
+        return download?.toItem() ?: beforeTheManager(contentId)
     }
 
     /** Every download this store holds, in the order they were enqueued. Reads the cache's database on the calling thread. */
@@ -147,7 +231,9 @@ public class Downloads internal constructor(
         manager.downloadIndex.getDownloads().use { cursor ->
             while (cursor.moveToNext()) all += current[cursor.download.request.id] ?: cursor.download
         }
-        return all.sortedBy { it.startTimeMs }.map { it.toItem() }
+        val held = all.sortedBy { it.startTimeMs }.map { it.toItem() }
+        val heldIds = held.mapTo(HashSet()) { it.contentId }
+        return held + (selecting.keys + unselectable.keys).filter { it !in heldIds }.mapNotNull(::beforeTheManager)
     }
 
     /**
@@ -156,6 +242,14 @@ public class Downloads internal constructor(
      */
     public fun remove(contentId: String) {
         checkUsable()
+        val choosing = selecting.remove(contentId)
+        choosing?.release()
+        val failed = unselectable.remove(contentId)
+        // Nothing reached the manager, so nothing was written and nothing is pinned: forgetting it is the removal.
+        if ((choosing != null || failed != null) && manager.currentDownloads.none { it.request.id == contentId }) {
+            reported -= contentId
+            listeners.forEach { it.onDownloadRemoved(contentId) }
+        }
         manager.removeDownload(contentId)
     }
 
@@ -178,6 +272,8 @@ public class Downloads internal constructor(
         released = true
         handler.removeCallbacksAndMessages(null)
         listeners.clear()
+        selecting.values.forEach(DownloadHelper::release)
+        selecting.clear()
         manager.release()
     }
 
@@ -185,6 +281,10 @@ public class Downloads internal constructor(
         check(!released) { "The download store has been released" }
         check(Looper.myLooper() == handler.looper) { "A download store is used on the thread it was built on" }
     }
+
+    /** A download the manager does not hold yet, or never will: its tracks being chosen, or failing to be. */
+    private fun beforeTheManager(contentId: String): DownloadItem? = unselectable[contentId]
+        ?: if (contentId in selecting) DownloadItem(contentId, DownloadState.QUEUED, bytesDownloaded = 0, percentDownloaded = null) else null
 
     private fun report(item: DownloadItem) {
         if (released || reported[item.contentId] == item) return

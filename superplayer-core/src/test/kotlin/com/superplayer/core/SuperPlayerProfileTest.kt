@@ -93,6 +93,7 @@ class SuperPlayerProfileTest {
                 segment = RetryBudget(maxRetries = 5, initialBackoffMs = 500, maxBackoffMs = 8_000),
                 licence = BEFORE_THE_FIRST_FRAME,
             ),
+            download = DownloadSelectionPolicy(maxVideoBitrateBps = TrackSelectionPolicy.UNLIMITED, maxVideoHeightPx = 1_080),
         )
     }
 
@@ -138,6 +139,7 @@ class SuperPlayerProfileTest {
             ),
             preload = PreloadPolicy(itemsAhead = 2, itemsBehind = 1, depth = PreloadDepth.DecoderWarmed(durationMs = 1_000)),
             retry = RetryPolicy(manifest = FEED_BUDGET, segment = FEED_BUDGET, licence = FEED_BUDGET),
+            download = DownloadSelectionPolicy(maxVideoBitrateBps = TrackSelectionPolicy.UNLIMITED, maxVideoHeightPx = 720),
         )
     }
 
@@ -162,6 +164,7 @@ class SuperPlayerProfileTest {
                 segment = DATA_SAVER_BUDGET,
                 licence = BEFORE_THE_FIRST_FRAME,
             ),
+            download = DownloadSelectionPolicy(maxVideoBitrateBps = 800_000, maxVideoHeightPx = 480),
         )
     }
 
@@ -316,12 +319,13 @@ class SuperPlayerProfileTest {
         trackSelection: TrackSelectionPolicy,
         preload: PreloadPolicy = PreloadPolicy.NONE,
         retry: RetryPolicy = RetryPolicy.MEDIA3_DEFAULT,
+        download: DownloadSelectionPolicy = DownloadSelectionPolicy.UNLIMITED,
     ) {
         val player = harness.buildPlayer(profile)
 
         assertThat(player.profile).isEqualTo(profile)
         assertThat(player.playbackDecision)
-            .isEqualTo(PlaybackDecision(buffer, trackSelection, preload = preload, retry = retry))
+            .isEqualTo(PlaybackDecision(buffer, trackSelection, preload = preload, retry = retry, download = download))
 
         val parameters = player.trackSelectionParameters
         assertThat(parameters.maxVideoBitrate).isEqualTo(trackSelection.maxVideoBitrateBps)

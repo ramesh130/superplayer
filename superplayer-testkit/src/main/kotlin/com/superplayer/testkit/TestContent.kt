@@ -18,6 +18,7 @@ package com.superplayer.testkit
 
 import com.superplayer.testmedia.HostileManifests
 import com.superplayer.testmedia.HostileStream
+import com.superplayer.testmedia.SyntheticDashChoice
 import com.superplayer.testmedia.SyntheticDashStream
 import com.superplayer.testmedia.SyntheticHlsStream
 import com.superplayer.testmedia.WidevineProtection
@@ -397,6 +398,26 @@ public class TestContent private constructor(
             protocol = Protocol.DASH,
             sourceUri = SyntheticDashStream.MANIFEST_URI,
             resources = SyntheticDashStream.resources(segmentCount, mirrorHost),
+        )
+
+        /**
+         * A real DASH stream offering a choice: two renditions of every one of [audioLanguages], and a
+         * WebVTT subtitle file for every one of [subtitleLanguages], each at a path of its own —
+         * `SyntheticDashChoice` names the paths — so what a download or a player fetched can be counted
+         * per rendition and per language. The media is [dash]'s under every rendition.
+         */
+        @JvmStatic
+        public fun dashWithChoice(
+            audioLanguages: List<String>,
+            subtitleLanguages: List<String> = emptyList(),
+            segmentCount: Int = DEFAULT_SEGMENT_COUNT,
+        ): TestContent = TestContent(
+            rungs = emptyList(),
+            durationMs = SyntheticDashChoice.durationMs(segmentCount),
+            live = false,
+            protocol = Protocol.DASH,
+            sourceUri = SyntheticDashChoice.MANIFEST_URI,
+            resources = SyntheticDashChoice.resources(segmentCount, audioLanguages, subtitleLanguages),
         )
 
         /**

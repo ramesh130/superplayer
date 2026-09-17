@@ -142,6 +142,11 @@ public enum class DecisionTrigger {
  * attached it is decided and ignored, and [SuperPlayer.playbackDecision] still says what was decided
  * (ADR-0011 rule 11) — the same contract [preload] has on a player outside a pool. It defaults to
  * [RetryPolicy.MEDIA3_DEFAULT], so a policy written before it existed asks for Media3's own budgets.
+ *
+ * [download] is read by a `superplayer-offline` download store, once per item as it is enqueued, and by
+ * nothing else: a player decides it and ignores it (ADR-0013 rule 12). It defaults to
+ * [DownloadSelectionPolicy.UNLIMITED], so a policy written before it existed downloads the highest
+ * rendition the device can play.
  */
 public data class PlaybackDecision
 @JvmOverloads
@@ -151,7 +156,37 @@ constructor(
     public val liveLatency: LiveLatencyPolicy? = null,
     public val preload: PreloadPolicy = PreloadPolicy.NONE,
     public val retry: RetryPolicy = RetryPolicy.MEDIA3_DEFAULT,
+    public val download: DownloadSelectionPolicy = DownloadSelectionPolicy.UNLIMITED,
 )
+
+/**
+ * The ceiling a download's video rendition is chosen under — the fifth half of a [PlaybackDecision]
+ * (ADR-0013 rule 12).
+ *
+ * A ceiling and then a choice, where [TrackSelectionPolicy] is a ceiling only: a download fetches **one**
+ * rendition, the highest under this ceiling that the device can play, because bytes written at one
+ * rendition cannot adapt later and every further rendition is storage spent on pictures nobody sees.
+ * Which one is right differs by profile and device, which is what makes it policy; which audio
+ * languages and subtitles are downloaded is the viewer's, and is not here.
+ */
+public data class DownloadSelectionPolicy(
+    /** Ceiling on the downloaded video rendition's declared bitrate in bits per second, or [UNLIMITED]. */
+    public val maxVideoBitrateBps: Int,
+    /** Ceiling on the downloaded video rendition's height in pixels, or [UNLIMITED], for [TrackSelectionPolicy.maxVideoHeightPx]'s reason. */
+    public val maxVideoHeightPx: Int,
+) {
+    init {
+        require(maxVideoBitrateBps > 0) { "maxVideoBitrateBps must be positive, was $maxVideoBitrateBps" }
+        require(maxVideoHeightPx > 0) { "maxVideoHeightPx must be positive, was $maxVideoHeightPx" }
+    }
+
+    public companion object {
+        /** No ceiling: the highest rendition the device can play, which every policy decides unless it says otherwise. */
+        @JvmField
+        public val UNLIMITED: DownloadSelectionPolicy =
+            DownloadSelectionPolicy(TrackSelectionPolicy.UNLIMITED, TrackSelectionPolicy.UNLIMITED)
+    }
+}
 
 /**
  * How many times a failed load is asked for again, and how long to wait between asks — the fourth

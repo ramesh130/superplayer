@@ -579,6 +579,16 @@ the seam above until #239. What stands in for each piece, and what each stand-in
   `FaultScript` addresses a download's requests and `networkRequests(environment)` counts them exactly
   as for a player. This is the player seam's twin rather than a second seam: nothing new is
   configurable, and a consumer's store never has one.
+- **The renderers are the player's too.** A download chooses its tracks against renderer capabilities
+  (ADR-0013 rule 12), and Robolectric reports an empty codec list, so real renderers would say no
+  synthetic track can be played and a download would choose nothing. The environment instead carries
+  the stand-in renderers a `buildPlayer` player plays through, plus Media3's own text renderer, because
+  a download has to be able to choose subtitles that a harness player never renders (#241). So a harness
+  download selects what a harness player could play. That has two limits. Nothing here shows a device's
+  decoders refusing a rendition. And the synthetic streams are audio-only, so no video ladder is cut by a
+  ceiling: `DownloadSelectionParametersTest` reads the ceiling handed to Media3 instead of counting a cut.
+  Media3's download helper also polls for a failed manifest on its own thread's system clock, which
+  Robolectric moves only when a test tells it to.
 - **The loading thread is the harness's.** Segment loads run on one thread the environment owns,
   counted into the same wait a player's loads are, so segments are fetched in manifest order on every
   run and `advanceUntil(environment, …)` knows when a load has finished. One thread is a determinism

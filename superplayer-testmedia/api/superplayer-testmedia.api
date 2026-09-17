@@ -70,6 +70,17 @@ public final class com/superplayer/testmedia/HostileStream$Validity : java/lang/
 	public static fun values ()[Lcom/superplayer/testmedia/HostileStream$Validity;
 }
 
+public final class com/superplayer/testmedia/SyntheticDashChoice {
+	public static final field HIGHER_BITRATE_BPS I
+	public static final field INSTANCE Lcom/superplayer/testmedia/SyntheticDashChoice;
+	public static final field LOWER_BITRATE_BPS I
+	public static final field MANIFEST_URI Ljava/lang/String;
+	public static final fun audioRenditionPath (Ljava/lang/String;I)Ljava/lang/String;
+	public final fun durationMs (I)J
+	public static final fun resources (ILjava/util/List;Ljava/util/List;)Ljava/util/Map;
+	public static final fun subtitleUri (Ljava/lang/String;)Ljava/lang/String;
+}
+
 public final class com/superplayer/testmedia/SyntheticDashStream {
 	public static final field DECLARED_BITRATE_BPS I
 	public static final field DECLARED_CHANNEL_COUNT I

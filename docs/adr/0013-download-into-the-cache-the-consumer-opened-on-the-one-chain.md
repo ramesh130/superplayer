@@ -254,6 +254,27 @@ Fifteen rules follow, and they are binding.
     `contentId` does, and no condition changes the right answer, so they travel on the enqueue call and
     no policy sees them. The rest of the ladder, and every language not asked for, is not downloaded.
 
+    *Addendum (2026-09-17, #241).* Four things this rule left unsaid, decided where it was built:
+
+    - **One rendition, the highest under both ceilings.** A ceiling on its own would download every
+      rung beneath it; a download takes only the top one, because bytes written cannot adapt later and
+      each further rung is storage spent on pictures nobody sees. The device's display is a ceiling on
+      height, and the device's decoders are the renderer capabilities Media3's selector already reads.
+    - **A declared language the content does not carry is skipped, never refused.** Refusing would fail
+      a whole item over one of several preferences. Media3's selector treats a language as a preference
+      and would select a different track in its place, so languages are filtered against what the
+      manifest offers before they are handed on, and nothing is taken for a language that was skipped.
+    - **With no declared audio language carried, the download takes the audio a player would choose.**
+      That covers nothing declared as well as nothing matching. It is one track, never every language.
+      This is the one place the rule's last sentence gives way: a download with no audio is not the
+      content the viewer will watch, while one in an undeclared language is at worst the language the
+      content is mostly watched in. Subtitles have no such exception: with none carried, none are taken.
+    - **A player of the download is narrowed to what was downloaded.** The download's tracks travel on
+      the item as Media3's stream keys, laid on by the one media source factory every path builds
+      through. Otherwise a player's own preference, such as the device's language or a rung the network
+      estimate allows, would select a track that is not on disk and fetch it. A cache no store was opened
+      over answers the question from its in-memory pins without a read (rule 15).
+
 ### The licence follows the download
 
 13. **A protected download acquires its offline licence after its manifest and before its first media

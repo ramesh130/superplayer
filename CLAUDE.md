@@ -693,8 +693,21 @@ is a database write; nothing is written before then, which is rule 7's reason. *
 answers a manifest** — for pinned content whose manifest it holds whole, and only then (rule 8,
 `ContentKeyedCacheLayer.isDownloadedManifest`) — which is what makes `DownloadsTest`'s count of zero
 possible, while streamed content still fetches every manifest. And the store **resumes its own
-`DownloadManager`**, which Media3 builds paused, because there is no service yet (#246). Not built:
-rendition choice (#241), resumption and network loss (#242), `WorkManager` and constraints (#243 — the
+`DownloadManager`**, which Media3 builds paused, because there is no service yet (#246). Since #241 a download takes
+what a viewer will watch rather than the whole ladder (ADR-0013 rule 12 and its addendum). `enqueue(request,
+audioLanguages, subtitleLanguages)` first reads the manifest through Media3's `DownloadHelper`, over the one
+chain. It then takes one video rendition, the highest under `PlaybackDecision.download` (a
+`DownloadSelectionPolicy`, the fifth half, set per profile in `StaticProfilePolicy` and chosen with
+`Downloads.Builder.setProfile`) and under the display's shorter edge. It takes each declared language the
+content carries (`DownloadSelection`). A declared language the content lacks is skipped, and with no
+declared audio carried the audio a player would choose is taken instead. The item is `QUEUED` while the
+manifest is read, and `FAILED` if it cannot be. A player of the download is narrowed to the same tracks:
+core's `StampingMediaSourceFactory` lays the download's stream keys onto the item
+(`CacheDownloads.downloadedTracks`). Without that, the device's language would select a track that is not
+on disk. `DownloadSelectionTest` counts requests per rendition and per language on
+`TestContent.dashWithChoice`, and `DownloadEnvironment.renderersFactory` is why a harness download can
+choose at all. Not built:
+resumption and network loss (#242), `WorkManager` and constraints (#243 — the
 store runs under Media3's default requirement, any network), a full disk (#244), protected content (#245).
 `DownloadsPayNothingTest` counts rule 15 as platform registrations and the download index table.
 

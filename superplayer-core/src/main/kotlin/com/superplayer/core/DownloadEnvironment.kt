@@ -17,6 +17,7 @@
 package com.superplayer.core
 
 import androidx.media3.datasource.DataSource
+import androidx.media3.exoplayer.RenderersFactory
 import java.util.concurrent.Executor
 
 /**
@@ -49,4 +50,11 @@ public abstract class DownloadEnvironment internal constructor() {
      * has finished rather than only when its transfer closed (`HarnessLoadThreads`' argument).
      */
     internal abstract val loadExecutor: Executor
+
+    /**
+     * The renderers whose capabilities a download's tracks are chosen against (ADR-0013 rule 12), in place
+     * of the device's own: the same stand-ins a harness-built player plays through, so a download selects
+     * what that player could play rather than what a codec list Robolectric leaves empty would refuse.
+     */
+    internal abstract val renderersFactory: RenderersFactory
 }

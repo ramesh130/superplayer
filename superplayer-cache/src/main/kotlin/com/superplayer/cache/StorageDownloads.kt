@@ -16,9 +16,13 @@
 
 package com.superplayer.cache
 
+import android.net.Uri
+import androidx.media3.common.StreamKey
+import androidx.media3.database.VersionTable
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.exoplayer.offline.DefaultDownloadIndex
+import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.WritableDownloadIndex
 import com.superplayer.core.CacheDownloads
 
@@ -46,5 +50,21 @@ internal class StorageDownloads(private val storage: CacheStorage) : CacheDownlo
 
     override fun unpin(contentId: String) {
         storage.unpin(contentId)
+    }
+
+    override fun downloadedTracks(contentId: String, uri: Uri): List<StreamKey> {
+        // A download is pinned from before its first byte until its bytes are gone, so content that is
+        // not pinned holds no download and the question costs no read at all.
+        if (!storage.isPinned(contentId)) return emptyList()
+        // Pinned by a consumer rather than by a store: reading through the index would create its table,
+        // which a cache no store was opened over must not have (ADR-0013 rule 15). Media3's index names
+        // its table under the empty name when it is given none, as `downloadIndex` gives it none.
+        val readable = storage.index.readableDatabase
+        if (VersionTable.getVersion(readable, VersionTable.FEATURE_OFFLINE, "") == VersionTable.VERSION_UNSET) return emptyList()
+        val download = downloadIndex().getDownload(contentId) ?: return emptyList()
+        // A download being removed is bytes on their way out, and one from another source describes
+        // another manifest's tracks: neither narrows what this item plays.
+        if (download.state == Download.STATE_REMOVING || download.request.uri != uri) return emptyList()
+        return download.request.streamKeys
     }
 }

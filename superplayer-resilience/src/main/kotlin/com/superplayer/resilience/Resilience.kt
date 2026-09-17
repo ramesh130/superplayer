@@ -16,11 +16,15 @@
 
 package com.superplayer.resilience
 
+import androidx.media3.common.C
 import androidx.media3.datasource.DataSource
+import com.superplayer.core.DownloadResilienceExtension
 import com.superplayer.core.EngineConfiguration
 import com.superplayer.core.EngineResilienceExtension
 import com.superplayer.core.HeaderRefreshLayer
 import com.superplayer.core.PlaybackResilience
+import com.superplayer.core.RetryBudget
+import com.superplayer.core.SuperPlayerError
 import kotlin.random.Random
 
 /**
@@ -78,7 +82,9 @@ public object Resilience {
  * a lifetime is built inside [configureEngine], which runs once per player, and belongs to that
  * player alone.
  */
-internal class StandardResilience(private val headers: HeaderProvider?) : EngineResilienceExtension {
+internal class StandardResilience(private val headers: HeaderProvider?) :
+    EngineResilienceExtension,
+    DownloadResilienceExtension {
 
     override fun configureEngine(configuration: EngineConfiguration) {
         // A source of jitter per player rather than one for the process, so that two players that
@@ -104,6 +110,31 @@ internal class StandardResilience(private val headers: HeaderProvider?) : Engine
         // the decoders in hand are still the player's and are never copied to this side, but what
         // this player has already tried is a fact about this player.
         configuration.playerStateRungs = PlayerStateLadder(climb)
+    }
+
+    // A download's failure is rung 6's typed error with nothing climbed and nowhere reached: a download
+    // has no ladder and no playhead, and what it is is the classifier's as it is for a player.
+    override fun failureOf(error: Throwable): SuperPlayerError = TypedError.of(error, C.TIME_UNSET, rungsTried = emptyList())
+
+    // The one class that is the path to the origin rather than the origin or the content: the band's own
+    // fall-through for a transfer that failed with nothing narrowing it, a status included (ADR-0011 rule
+    // 2). A download stopped on one tries again later, which a 5xx that outlasts it costs retries rather
+    // than the viewer's progress; a segment the edge refused or lost is `Transient.CdnEdge` and fails.
+    override fun isNetworkLoss(error: Throwable): Boolean = ErrorClassifier.classify(error) == FailureClass.Transient.Network
+
+    override fun waitBeforeResumingMs(attempt: Int): Long = Backoff.delayMsFor(NETWORK_RESUMPTION, attempt, Random.Default)
+
+    private companion object {
+
+        /**
+         * How a download stopped for a lost network paces its attempts to resume: the jittered doubling
+         * every retry here draws (ADR-0011 rule 12), with no count that ends it, because a network that is gone is
+         * waited for rather than given up on (ADR-0013 rule 9). Two seconds first, which lets a blip — a
+         * handover, a tunnel — pass unnoticed; five minutes at most, which a network that stays down for
+         * an afternoon costs a dozen round trips an hour and a viewer who comes back into coverage waits
+         * at worst.
+         */
+        val NETWORK_RESUMPTION = RetryBudget(maxRetries = Int.MAX_VALUE, initialBackoffMs = 2_000, maxBackoffMs = 5 * 60_000)
     }
 }
 

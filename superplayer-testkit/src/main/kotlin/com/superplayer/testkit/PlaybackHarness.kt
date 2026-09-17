@@ -695,6 +695,24 @@ public class PlaybackHarness : ExternalResource() {
     }
 
     /**
+     * The network a download through [environment] loads over goes away: from now until [restoreNetwork],
+     * every request it opens fails to resolve its host, whatever the environment's `FaultScript` says, and
+     * a load already delivering bytes finishes.
+     *
+     * A stretch of the *transport*, not of the platform: the device's connectivity readings do not move,
+     * which is the case a store cannot see coming — a DNS outage, a captive portal, a tunnel the phone
+     * still calls connected. A lapsed platform condition is `DeviceStatement`'s to state.
+     */
+    public fun loseNetwork(environment: DownloadEnvironment) {
+        downloadFor(environment).injector.networkLost.set(true)
+    }
+
+    /** Ends the stretch [loseNetwork] began: requests through [environment] reach its origin again. */
+    public fun restoreNetwork(environment: DownloadEnvironment) {
+        downloadFor(environment).injector.networkLost.set(false)
+    }
+
+    /**
      * Puts `WorkManager` under its own test implementation, so a download store scheduled work can be
      * run by [runScheduledWork]. Call before anything schedules work. Needs `androidx.work:work-testing`
      * on the calling module's test classpath, which this module compiles against and does not carry.

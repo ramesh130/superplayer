@@ -434,7 +434,7 @@ internal object RecreateDecoder {
  */
 internal object TypedError {
 
-    fun of(error: PlaybackException, positionMs: Long, rungsTried: List<String>): SuperPlayerError {
+    fun of(error: Throwable, positionMs: Long, rungsTried: List<String>): SuperPlayerError {
         val failureClass = ErrorClassifier.classify(error)
         return SuperPlayerError(
             causeClass = failureClass.stableName,

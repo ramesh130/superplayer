@@ -212,6 +212,28 @@ Fifteen rules follow, and they are binding.
    report — a disk that cannot hold the next span — it raises a public core exception carrying the
    evidence, which the classifier maps (ADR-0011 rule 4's pattern). Which leaf is #244's.
 
+   *Addendum (2026-09-17, #242).* How a lost network is told from a failure, decided where it was built:
+
+   - **The store takes a `PlaybackResilience` to tell them apart**, per rule 14, and a store built without
+     one retries as Media3's download manager does and then fails, unnamed. A stop decided by reading
+     exception types in this module would be the second taxonomy ADR-0011 rule 1 forbids.
+   - **`Transient.Network` stops the item; every other class fails it, named.** That is the classifier's
+     fall-through for a transfer that failed with nothing narrowing it, so a 5xx the origin keeps
+     answering is waited out rather than failed, and reported as a lost network. That costs attempts, not
+     the viewer's progress, and it departs from rule 14 until rule 14's budgets are built, when an origin
+     that spends a segment's budget will fail named instead. A
+     segment the edge refused or lost is `Transient.CdnEdge`, and fails.
+   - **A download's requests are stamped with their `LoadKind`**, read off the request, because the class
+     of a refused segment depends on it and a download has no media source to stamp by kind. Media3's
+     segment downloader asks for every manifest, and no segment, as a compressible request.
+   - **A stopped download resumes on a timer, not on a platform callback.** The wait is jittered and
+     doubles from two seconds up to five minutes, with no count, and the backoff every retry draws
+     supplies it. A timer also catches a network the platform still reports as connected. Resuming when a
+     platform condition returns is #243's. A process that finds an item stopped this way tries it at once.
+   - **A resumed download reports progress from the bytes the cache holds.** Its state change is not
+     reported as downloading, because the progress it carries is the index's, and Media3 writes that on a
+     timer. The downloader's first progress report announces it instead.
+
 10. **Battery-not-low and storage-not-low are correctness too; the network requirement is unmetered by
     default and the viewer's to relax.** Draining a battery that is already low and filling a disk that
     is already short are wrong for every app, so no profile and no consumer may turn either off. The

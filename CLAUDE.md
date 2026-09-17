@@ -708,8 +708,18 @@ core's `StampingMediaSourceFactory` lays the download's stream keys onto the ite
 (`CacheDownloads.downloadedTracks`). Without that, the device's language would select a track that is not
 on disk. `DownloadSelectionTest` counts requests per rendition and per language on
 `TestContent.dashWithChoice`, and `DownloadEnvironment.renderersFactory` is why a harness download can
-choose at all. Not built:
-resumption and network loss (#242), `WorkManager` and constraints (#243 — the
+choose at all. Since #242 a download survives its process and its network (rule 9's addendum). A store
+reopened over a directory a dead process left resumes the unfinished items and fetches only what the cache
+lacks. A store built with `Downloads.Builder.setResilience` stops an item whose network went away
+(`DownloadStopReason.NETWORK_LOST`) and resumes it on a jittered, doubling wait. It fails anything else
+named, as `DownloadItem.failure`. Core's internal `DownloadResilienceExtension` is what it asks, and
+`TransferChain.downloadChain` stamps each request's `LoadKind`, so a lost segment is not mistaken for a lost
+network. Two things are easy to get wrong. A downloading state is announced by the downloader's first
+progress report and never by the state change, whose bytes are the index's stale ones. And
+`DownloadResumptionTest` moves Robolectric's `SystemClock` by hand while it waits for a resumption.
+`harness.loseNetwork(environment)` is the stretch. Rule 14's retry budgets and header refresh are not
+built. Not built:
+`WorkManager` and constraints (#243 — the
 store runs under Media3's default requirement, any network), a full disk (#244), protected content (#245).
 `DownloadsPayNothingTest` counts rule 15 as platform registrations and the download index table.
 

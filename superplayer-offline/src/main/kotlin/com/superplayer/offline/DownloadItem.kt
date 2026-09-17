@@ -16,6 +16,8 @@
 
 package com.superplayer.offline
 
+import com.superplayer.core.SuperPlayerError
+
 /**
  * One download as a store answers it: the content it is for, where it has got to, and how much of it
  * is on disk. A value — a store hands out a new one on every change rather than updating one in place —
@@ -34,24 +36,48 @@ public class DownloadItem internal constructor(
      * it is the share of segments fetched rather than of bytes, which is Media3's own measure.
      */
     public val percentDownloaded: Float?,
+    /** What holds a [DownloadState.STOPPED] item, and null in every other state. */
+    public val stopReason: DownloadStopReason? = null,
+    /**
+     * What a [DownloadState.FAILED] item failed with, as `ErrorClassifier` names it, and null in every other
+     * state. Null on a failed item too where the store was built without a resilience, which has nobody to
+     * ask (ADR-0013 rule 14), where the manifest could not be read, and where the failure happened in an
+     * earlier process, whose exception did not survive it.
+     */
+    public val failure: SuperPlayerError? = null,
 ) {
 
     override fun equals(other: Any?): Boolean = other is DownloadItem &&
         contentId == other.contentId &&
         state == other.state &&
         bytesDownloaded == other.bytesDownloaded &&
-        percentDownloaded == other.percentDownloaded
+        percentDownloaded == other.percentDownloaded &&
+        stopReason == other.stopReason &&
+        failure == other.failure
 
-    override fun hashCode(): Int = listOf(contentId, state, bytesDownloaded, percentDownloaded).hashCode()
+    override fun hashCode(): Int = listOf(contentId, state, bytesDownloaded, percentDownloaded, stopReason, failure).hashCode()
 
-    override fun toString(): String = "DownloadItem($contentId, $state, $bytesDownloaded bytes, $percentDownloaded%)"
+    override fun toString(): String = "DownloadItem($contentId, $state, $bytesDownloaded bytes, $percentDownloaded%" +
+        (stopReason?.let { ", stopped: $it" } ?: "") + (failure?.let { ", failed: ${it.causeClass}" } ?: "") + ")"
+}
+
+/** What holds a stopped download. */
+public enum class DownloadStopReason {
+
+    /**
+     * The network went away while it downloaded: every request failed to reach its origin. It keeps what it
+     * has, tries again on a widening, jittered wait, and resumes from the bytes it holds once a request gets
+     * through (ADR-0013 rule 9). Only a store built with a resilience tells a lost network from a failure.
+     */
+    NETWORK_LOST,
 }
 
 /**
  * Where a download has got to.
  *
- * What holds a [STOPPED] item and why a [FAILED] one failed are carried beside the state as the tickets
- * that can produce them arrive (#242, #243, #244); this ticket's store neither stops nor classifies.
+ * What holds a [STOPPED] item and why a [FAILED] one failed are carried beside the state, as
+ * [DownloadItem.stopReason] and [DownloadItem.failure]; the conditions a download waits for (#243) and a
+ * full disk (#244) add to them.
  */
 public enum class DownloadState {
 
@@ -80,7 +106,9 @@ public enum class DownloadState {
 public interface DownloadsListener {
 
     /**
-     * [item] changed: its state, or its progress by at least a whole percent. Consecutive calls for one
+     * [item] changed: its state, or its progress by at least a whole percent. A download is first reported
+     * [DownloadState.DOWNLOADING] with its first new bytes, whose progress counts what the cache already held,
+     * so a download that is started and stopped again before any arrive is never reported downloading. Consecutive calls for one
      * content id never carry an equal item, and a download's progress is reported in the order it was
      * made.
      */

@@ -3,16 +3,22 @@ public final class com/superplayer/testkit/DeviceStatement {
 	public static final field DEFAULT_DISPLAY_WIDTH_PX I
 	public static final field INSTANCE Lcom/superplayer/testkit/DeviceStatement;
 	public static final fun declareAppHeap (I)V
+	public static final fun declareAudioOutput ([I)V
 	public static final fun declareBatteryLow (Z)V
 	public static final fun declareDataSaverOn ()V
 	public static final fun declareDisplay (II)V
+	public static final fun declareDisplayDisconnected ()V
 	public static final fun declareDisplayHdrTypes ([I)V
+	public static final fun declareDisplayModes (Ljava/util/List;)V
+	public static final fun declareDisplayModes (Ljava/util/List;Lcom/superplayer/testkit/DisplayMode;)V
+	public static synthetic fun declareDisplayModes$default (Ljava/util/List;Lcom/superplayer/testkit/DisplayMode;ILjava/lang/Object;)V
 	public static final fun declareLowRamDevice ()V
 	public static final fun declareNetworkMetered (Z)V
 	public static final fun declareOfflineLicence (Ljava/lang/Long;Ljava/lang/Long;)V
 	public static final fun declareSecureVideoDecoder (Ljava/lang/String;I[Lkotlin/Pair;)V
 	public static final fun declareStorageFree (J)V
 	public static final fun declareStorageLow (Z)V
+	public static final fun declareTelevision ()V
 	public static final fun declareVideoDecoder (Ljava/lang/String;I[Lkotlin/Pair;)V
 	public static final fun declareVideoDecoder (Ljava/lang/String;[Lkotlin/Pair;)V
 	public static final fun declareWidevine ()V
@@ -24,6 +30,21 @@ public final class com/superplayer/testkit/DeviceStatement {
 	public static final fun declareWidevineProvisioningFailure (Lcom/superplayer/testkit/SecurityLevel;)V
 	public static synthetic fun declareWidevineProvisioningFailure$default (Lcom/superplayer/testkit/SecurityLevel;ILjava/lang/Object;)V
 	public static final fun signalKeyRotation ()V
+}
+
+public final class com/superplayer/testkit/DisplayMode {
+	public fun <init> (IIF)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()F
+	public final fun copy (IIF)Lcom/superplayer/testkit/DisplayMode;
+	public static synthetic fun copy$default (Lcom/superplayer/testkit/DisplayMode;IIFILjava/lang/Object;)Lcom/superplayer/testkit/DisplayMode;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHeightPx ()I
+	public final fun getRefreshRateHz ()F
+	public final fun getWidthPx ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class com/superplayer/testkit/FakeLicenceServer {
@@ -182,6 +203,7 @@ public final class com/superplayer/testkit/PlaybackHarness : org/junit/rules/Ext
 	public final fun restoreNetwork (Lcom/superplayer/core/DownloadEnvironment;)V
 	public final fun resumeRendering (Landroidx/media3/common/Player;)V
 	public final fun runScheduledWork ()I
+	public final fun scheduleDeviceChange (JLkotlin/jvm/functions/Function0;)V
 	public final fun settle (Landroidx/media3/common/Player;)V
 	public final fun stallRendering (Landroidx/media3/common/Player;)V
 	public final fun useScheduledWork ()V

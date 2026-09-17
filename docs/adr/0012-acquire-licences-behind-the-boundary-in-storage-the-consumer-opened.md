@@ -19,6 +19,8 @@
   rule 4, which adds a second friend shape beside this ADR's rule 4, and rule 13, which runs a
   download's licence exchange over a store's chain rather than a player's and makes releasing its
   licence part of its removal (rule 9's addendum and rule 10); each recorded at the rule it refines.
+  [ADR-0014](0014-match-the-display-and-watch-it-change-behind-one-output-slot.md) rule 3, an eighth friend of this ADR's rule 4 shape, and rules 5 and 13, which
+  place rule 12's display-capability change and the rest of secure surface discipline.
 - **Summary:** Decides Phase 6's shape before any of its code lands (#201). Protection is declared
   once per player, on the builder, and is fixed for the player's lifetime; the credential a licence
   request carries is the app's, through the one `HeaderProvider` the library has. Every Media3 type
@@ -185,6 +187,9 @@ Thirteen rules follow, and they are binding.
    [ADR-0013](0013-download-into-the-cache-the-consumer-opened-on-the-one-chain.md)
    rule 4: a seventh friend, `superplayer-offline`, is built from core's seam and from what other
    friends filled into it, filling no slot. The ceiling now admits exactly those two shapes.*
+
+   *Refined by [ADR-0014](0014-match-the-display-and-watch-it-change-behind-one-output-slot.md) rule 3: an eighth friend, `superplayer-tv`, fills one slot core
+   declared, `EngineConfiguration.videoOutput`. It is this rule's shape, so no shape is added.*
 
 ### One taxonomy, still
 
@@ -384,6 +389,11 @@ Thirteen rules follow, and they are binding.
     a `SurfaceView` on a secure path, `FLAG_SECURE`, and behaviour on a display-capability change —
     is correctness under ADR-0006 rule 1 and not a profile's to vary.
 
+    *Placed by ADR-0014 rule 13.* The `TextureView` refusal is core's, on the facade of a player
+    built with `setDrm`. `FLAG_SECURE` is the app's, set by the demo. A display-capability change
+    under a playing protected session is re-selected by `superplayer-tv` (ADR-0014 rule 5), and what
+    the new output may show stays the CDM's to enforce.
+
 ### Pay nothing
 
 13. **A player, a pool or a session built without `setDrm` allocates nothing for DRM, and a test
@@ -438,7 +448,8 @@ Phase 8's TV work owns the display-capability change rule 12 names as correctnes
 under a playing secure session is a condition in ADR-0009 rule 2's sense, and it arrives there.
 *The Phase 7 half is discharged by
 [ADR-0013](0013-download-into-the-cache-the-consumer-opened-on-the-one-chain.md)
-rules 1, 9 and 13.*
+rules 1, 9 and 13.* *The Phase 8 half is discharged by
+[ADR-0014](0014-match-the-display-and-watch-it-change-behind-one-output-slot.md) rules 5 and 13.*
 
 ## Alternatives considered
 

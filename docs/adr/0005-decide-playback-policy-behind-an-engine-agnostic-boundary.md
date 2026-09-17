@@ -8,7 +8,8 @@
   which rewords rules 3 and 4 without superseding this document.
 - **Refined by:**
   [ADR-0013](0013-download-into-the-cache-the-consumer-opened-on-the-one-chain.md),
-  which adds a fifth half of `PlaybackDecision`, recorded as an addendum at rule 2.
+  which adds a fifth half of `PlaybackDecision`, recorded as an addendum at rule 2; and
+  [ADR-0014](0014-match-the-display-and-watch-it-change-behind-one-output-slot.md), which adds a sixth, recorded there too.
 - **Summary:** All buffering and track-selection policy is decided behind one engine-agnostic
   `PlaybackPolicy` interface that maps observed conditions to a decision — no Media3 type crosses
   it. Phase 1 ships a static per-profile lookup, deliberately non-adaptive; the consumer names a
@@ -100,6 +101,14 @@ Four rules follow, and they are binding:
    The audio languages and subtitles are the consumer's argument rather than this rule's, because no
    observation changes which language a viewer asked for; the device refusals it is bounded by are
    ADR-0009 rule 2's constraints.
+
+   *Addendum (#265, ADR-0014 rule 7).* **Tunneling** is policy under this rule for the same reason.
+   It hands A/V synchronisation to the platform's hardware, which is cheaper on a low-end TV and
+   worse on a poor vendor implementation, and it costs the frame visibility telemetry reports. It is
+   a sixth half of `PlaybackDecision`, an `OutputPolicy`, defaulting to off. It is laid into the
+   engine only on a player built with `superplayer-tv`, and only from the construction decision,
+   because toggling it mid-playback re-enables both renderers. Frame-rate matching and surviving a
+   display or audio change are ADR-0006 rule 1's kind, not this rule's.
 3. **The consumer names a profile, not a number.** `SuperPlayer.Builder.setProfile` takes a
    `PlaybackProfile`; the constants behind it, and the rationale for each of them, live in the
    policy's per-profile table, which is internal and free to be retuned. Every constant that departs

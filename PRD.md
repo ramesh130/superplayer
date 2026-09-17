@@ -79,7 +79,7 @@ superplayer/
 ├─ superplayer-telemetry     # QoE collector (CTA-2066), CMCD emitter, pluggable sinks
 ├─ superplayer-offline       # DownloadManager wrapper, WorkManager constraints, battery policy
 ├─ superplayer-diagnostics   # MediaSourceDoctor, session trace bundle, on-device debug HUD
-├─ superplayer-tv            # Connected TV: display capability, Leanback + Compose-for-TV surfaces
+├─ superplayer-tv            # Connected TV: display capability, Compose-for-TV surfaces (ADR-0014)
 ├─ superplayer-ui            # Optional Compose player surface (thin; an app may bring its own)
 ├─ superplayer-testkit       # Fault injection, network shaping, fake manifests, golden traces
 ├─ superplayer-testmedia     # Synthetic HLS and DASH streams the other modules' tests play
@@ -409,7 +409,8 @@ These plug into the transfer chain of §2.4 rather than assembling one of their 
   and tunneled playback where supported.
 - HDMI hotplug and audio-capability change handling via the `AudioCapabilities` receiver —
   passthrough formats change underneath you when an AV receiver is powered on mid-playback.
-- D-pad-first controls, Leanback and Compose-for-TV surfaces, correct focus and seek-scrubbing.
+- D-pad-first controls on Compose for TV, correct focus and seek-scrubbing. Leanback is in
+  maintenance and is not built against (ADR-0014 rule 12).
 - An ethernet-transport ABR profile: a TV on ethernet should not behave like a phone on WiFi.
 
 ---
@@ -428,7 +429,7 @@ Each phase ends with something demonstrable and measured. Effort assumes one eng
 | **5 — Resilience** (2 wks) | Classifier, retry policy, fallback ladder, token refresh. | Every injected fault either recovers or produces a typed, actionable error. Zero unclassified errors. |
 | **6 — DRM** (3 wks) | Widevine online and offline, provisioning, security-level ladder, key rotation, secure surface. | Playback on L1 and L3 devices; offline license acquire → play offline → renew → release; all DRM errors typed. |
 | **7 — Offline downloads** (2 wks) | Download stack, `WorkManager` policy, license binding. | A download survives process death, network loss, and reboot; battery policy verified with a battery profiler. |
-| **8 — TV** (2–3 wks) | `superplayer-tv`, leanback demo. | Runs on a TV device and emulator; frame-rate matching verified; HDMI and audio-capability changes handled. |
+| **8 — TV** (2–3 wks) | `superplayer-tv`, Compose-for-TV demo. | Runs on a TV device and emulator; frame-rate matching verified; HDMI and audio-capability changes handled. |
 | **9 — Diagnostics + docs** (2 wks) | `MediaSourceDoctor`, trace bundle, debug HUD, docs, the ADR set. | Doctor correctly identifies each pathology in a curated set of deliberately broken manifests. |
 | **10 — Tuning** (open-ended) | Iterating the adaptive policy, the preload path and the profiles against the §6 matrix; the benchmark's device arm, for peak RSS and battery. | Measured improvement of the adaptive policy over the static profile on the shaped-network suite, with no regression on stable WiFi; p50 TTFF in the feed demo under a target this phase sets and argues; peak RSS and battery delta reported from a device. |
 

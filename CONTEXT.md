@@ -38,6 +38,18 @@ A fact about the device that does not change under a playing session and so boun
 eligible rather than being observed.
 _Avoid_: Capability (for the reading), limit
 
+**Display capability**:
+The display a playback is shown on, as a policy and the selection see it: the active mode's shorter
+edge and the HDR types it lists. An observation on a television, where a hotplug changes it; read
+once everywhere else. It carries no refresh rate.
+_Avoid_: Screen, display mode, resolution
+
+**Frame-rate matching**:
+Asking the display to run at a rate the content's frame rate divides, so that 24 fps content does not
+judder on a 60 Hz mode. Correctness on a player built with the TV module, with the seamless-or-not
+choice left to the viewer's own setting.
+_Avoid_: Refresh-rate switching, AFR, mode switching
+
 **Network transport**:
 The class of network a playback is on: WiFi, cellular with its generation, ethernet, or unknown.
 Distinct from the transfer chain's *transport slot*, which is the HTTP stack a chain sits over.

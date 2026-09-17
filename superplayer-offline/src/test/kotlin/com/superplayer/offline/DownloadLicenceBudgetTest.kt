@@ -322,7 +322,8 @@ class DownloadLicenceBudgetTest {
         // Long against the clock's step, so a wait of half of it is many passes and could not pass unnoticed.
         const val BACKOFF_BASE_MS = 400L
 
-        // Short against the shortest wait drawn here (200 ms, half of the base), so no retry is skipped past; and
+        // Short against the shortest wait drawn here (200 ms, half of the base), so no retry is skipped past and two
+        // asks never land in one step, where polling would read a wait of zero; and
         // Media3's own waits, a second more per retry, are reached in a few dozen passes on the store without one.
         const val LICENCE_CLOCK_STEP_MS = 25L
 

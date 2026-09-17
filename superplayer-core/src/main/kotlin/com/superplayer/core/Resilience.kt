@@ -240,8 +240,8 @@ internal interface DownloadResilienceExtension : PlaybackResilience {
     fun downloadHeaderRefresh(): HeaderRefreshLayer?
 
     /**
-     * The `LoadErrorHandlingPolicy` a store hands the session manager its licence exchanges run through, built
-     * once per store: a failed licence or provisioning request asked for again on [RetryPolicy.licence], after
+     * The `LoadErrorHandlingPolicy` a store hands the session manager its licence exchanges run through, asked
+     * for once by each store: a failed licence or provisioning request asked for again on [RetryPolicy.licence], after
      * rule 12's jittered wait, as a player's licence load is (ADR-0012 rule 2, #205, #260). It reads
      * [decisions] on every consultation, so the budget spent is the one the store's policy last decided.
      *

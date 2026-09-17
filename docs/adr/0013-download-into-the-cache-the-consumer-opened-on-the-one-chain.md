@@ -487,8 +487,8 @@ Fifteen rules follow, and they are binding.
       player of it ends with — core dresses the exception with the same code a refused player's session
       carries, so both are `Drm.LicenceExpired`.
 
-    Not built, each named where it would go. (The chain's credential and `RetryPolicy.licence`, once listed
-    here, were built by #260: rule 14's addendum for #260.) A key-set id the device no longer knows is not
+    Not built, each named where it would go. The licence chain's credential and `RetryPolicy.licence` were
+    listed here until #260 built them (rule 14's addendum for #260). A key-set id the device no longer knows is not
     dropped: it cannot yet be told from a release the network lost, so it stays owed, and keeps the
     schedule wanted. One licence is acquired per download, for the first protected format selected, so
     content whose tracks are licensed under separate keys is not yet supported. A store released while an
@@ -539,7 +539,8 @@ Fifteen rules follow, and they are binding.
       401 or 403 is repaired inside the transfer and costs no retry, and `superplayer-offline` still depends
       on core alone (rule 1). With no provider there is no layer: a player needs a pass-through only to make
       core stamp its requests, and a download's chain stamps them anyway.
-    - **Not built: a licence exchange's budget and credential.** Built by #260, below.
+    - **A licence exchange's budget and credential were left unbuilt here**, and #260 built them: the addendum
+      below.
 
     *Addendum (2026-09-17, #260).* A licence exchange spends the budget and gets the repair, as a player's does:
 

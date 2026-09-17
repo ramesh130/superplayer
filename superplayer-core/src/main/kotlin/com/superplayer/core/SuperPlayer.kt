@@ -1368,7 +1368,7 @@ public class SuperPlayer private constructor(
                 // Audio focus, becoming-noisy and the wake locks: platform rules rather than
                 // policy, which is why they are not a profile's to decide. See LifecycleBinding.kt.
                 .withLifecycleCorrectness()
-            val configuration = EngineConfiguration(engineBuilder)
+            val configuration = EngineConfiguration(engineBuilder, protectedPlayback = drm != null)
             // A policy that brings its own engine components fills the slots first; the test seam
             // runs after it so a test's engine configuration wins over the policy's exactly as it
             // wins over the profile's: the clock, the renderers, a meter a test reads through. A

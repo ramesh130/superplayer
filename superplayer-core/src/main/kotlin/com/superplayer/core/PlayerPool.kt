@@ -284,6 +284,7 @@ public class PlayerPool private constructor(
         private var policy: PlaybackPolicy? = null
         private var cache: ContentCache? = null
         private var resilience: PlaybackResilience? = null
+        private var drm: PlaybackDrm? = null
         private var telemetry: (() -> TelemetryCollector)? = null
         private var playerFactory: ((PooledEngine?) -> SuperPlayer)? = null
 
@@ -363,6 +364,24 @@ public class PlayerPool private constructor(
             apply { this.resilience = resilience }
 
         /**
+         * The protection every player in this pool acquires licences through — what
+         * [SuperPlayer.Builder.setDrm] takes, for each of them. ADR-0012 rule 1 fixes protection for a
+         * player's lifetime, and a pool owns its players' construction, so this is the only way a
+         * pooled feed can be of protected content.
+         *
+         * One object serves the whole pool, as the policy and the resilience do, and every player it
+         * builds is protected: a pool is a set of interchangeable players, and one that mixed
+         * protected and clear ones could hand a row either.
+         *
+         * It also moves the pool's **bound**. A device commonly declares several ordinary video
+         * decoders and exactly one secure one, so the number a feed of protected content runs out of
+         * is the secure limit — which `DeviceCapacity.kt` reads in the walk it already made
+         * (ADR-0012 rule 12). A pool built without this call is bounded by the plain limit exactly as
+         * before, and pays nothing else for DRM (rule 13).
+         */
+        public fun setDrm(drm: PlaybackDrm): Builder = apply { this.drm = drm }
+
+        /**
          * Measures every player this pool builds, each with the collector [collectorFactory] returns
          * for it — what [SuperPlayer.Builder.setTelemetry] takes, once per player.
          *
@@ -391,7 +410,8 @@ public class PlayerPool private constructor(
             apply { playerFactory = factory }
 
         public fun build(): PlayerPool {
-            val deviceCapacity = concurrentPlayerCapacityOf(context, feedCodecs)
+            val drm = drm
+            val deviceCapacity = concurrentPlayerCapacityOf(context, feedCodecs, protectedPlayback = drm != null)
             val maxSize = requestedMaxSize?.coerceAtMost(deviceCapacity) ?: deviceCapacity
             val profile = profile
             val policy = policy
@@ -404,6 +424,7 @@ public class PlayerPool private constructor(
                     .apply { policy?.let { setPolicy(it) } }
                     .apply { cache?.let { setCache(it) } }
                     .apply { resilience?.let { setResilience(it) } }
+                    .apply { drm?.let { setDrm(it) } }
                     .apply { telemetry?.let { setTelemetry(it()) } }
                     .setPooledEngine(pooled)
                     .build()

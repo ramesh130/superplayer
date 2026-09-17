@@ -101,6 +101,33 @@ class DeviceStatementTest {
     }
 
     @Test
+    fun aDeclaredSecureDecoderKeepsItsOwnProfilesAndLevels() {
+        // #211: the same separation for what a decoder can *sustain*, which is the reading a
+        // protected player's track selection asks. The two decoders share the MIME type — that is
+        // the device — so a declaration that let the plain decoder's ceiling answer for the secure
+        // one would make a protected ladder gated on a decoder it will never open.
+        DeviceStatement.declareVideoDecoder(
+            MediaFormat.MIMETYPE_VIDEO_AVC,
+            CodecProfileLevel.AVCProfileHigh to CodecProfileLevel.AVCLevel51,
+        )
+        DeviceStatement.declareSecureVideoDecoder(
+            MediaFormat.MIMETYPE_VIDEO_AVC,
+            maxSupportedInstances = 1,
+            CodecProfileLevel.AVCProfileMain to CodecProfileLevel.AVCLevel41,
+        )
+
+        val declared = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
+            .filter { !it.isEncoder && MediaFormat.MIMETYPE_VIDEO_AVC in it.supportedTypes }
+            .map { it.getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_AVC) }
+            .associate { capabilities ->
+                capabilities.isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_SecurePlayback) to
+                    capabilities.profileLevels.map { it.profile to it.level }
+            }
+        assertThat(declared[false]).containsExactly(CodecProfileLevel.AVCProfileHigh to CodecProfileLevel.AVCLevel51)
+        assertThat(declared[true]).containsExactly(CodecProfileLevel.AVCProfileMain to CodecProfileLevel.AVCLevel41)
+    }
+
+    @Test
     fun aDeclaredSecurityLevelIsWhatTheImplementationAnswers() {
         // The property a Widevine implementation answers `L1` or `L3` to. Nothing in the library
         // reads it yet — #208 and #211 are where it starts to matter — so it is asserted here, on

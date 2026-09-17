@@ -83,7 +83,29 @@ import com.google.common.base.Supplier
  * nothing else, and a component in one of these stands in for the engine part it replaces and
  * nothing else. Nothing here is a way to reach past the facade.
  */
-internal class EngineConfiguration(val engine: ExoPlayer.Builder) {
+internal class EngineConfiguration(
+    val engine: ExoPlayer.Builder,
+
+    /**
+     * Whether this player was built with `SuperPlayer.Builder.setDrm` — read here, once, before any
+     * extension runs, because protection is declared on the builder and fixed for the player's
+     * lifetime (ADR-0012 rule 1).
+     *
+     * A *fact about the player* rather than a slot, which is why it is a constructor parameter that
+     * core fills and nothing can write. What reads it is track selection: a protected player's rungs
+     * are judged against [DeviceConstraints.secureDecodableProfileLevels] rather than the plain
+     * decoder's, which is ADR-0012 rule 12's reader and `PRD.md` §3.1's answer to F4.
+     *
+     * The builder's own call and not `Format.drmInitData`, deliberately. A ladder is gated on what
+     * the *player* will decode with, and a player with `setDrm` opens a secure decoder for every rung
+     * whatever any one rung's initialization data says — an HLS variant playlist need not repeat the
+     * `EXT-X-KEY` its master declared, so a per-rung reading would gate half a ladder on the secure
+     * table and half on the plain one. It is also a *constraint* only this way: read once at
+     * construction and never observed, which is what ADR-0009 rule 2 requires of it, where a reading
+     * taken per format per evaluation would be an observation in all but name.
+     */
+    val protectedPlayback: Boolean,
+) {
 
     /** The data source the chain's layers are composed over, in place of the HTTP stack. */
     var transport: DataSource.Factory? = null

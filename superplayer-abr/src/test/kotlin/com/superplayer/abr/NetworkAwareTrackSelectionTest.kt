@@ -144,6 +144,78 @@ class NetworkAwareTrackSelectionTest {
         assertThat(NetworkAwareTrackSelection.Gate(undeclared, null, UNCAPPED).deviceRefuses(video(2_000_000, 720, codecs = "avc1.640033"))).isFalse()
     }
 
+    /**
+     * #211: on a protected player the table asked is the secure decoders', which is a different and
+     * commonly lower ceiling than the plain one pooled over the same MIME type.
+     *
+     * Both directions in one method, because a hand-built [DeviceConstraints] is not the platform's
+     * codec list and nothing here is cached; the playback-level pair that *is* has to be two tests.
+     */
+    @Test
+    fun aProtectedPlayerIsGatedOnTheSecureDecoderAndAnUnprotectedOneOnThePlainDecoder() {
+        // A device whose plain decoder reaches High at level 5.1 and whose secure decoder — the
+        // `.secure` sibling, same MIME type, which is why the two tables exist — stops at Main 4.1.
+        val device = DeviceConstraints(
+            displayShortEdgePx = null,
+            displayHdrTypes = null,
+            decodableProfileLevels = mapOf(
+                MimeTypes.VIDEO_H264 to listOf(
+                    DeviceConstraints.ProfileLevel(CodecProfileLevel.AVCProfileMain, CodecProfileLevel.AVCLevel51),
+                    DeviceConstraints.ProfileLevel(CodecProfileLevel.AVCProfileHigh, CodecProfileLevel.AVCLevel51),
+                ),
+            ),
+            secureDecodableProfileLevels = mapOf(
+                MimeTypes.VIDEO_H264 to listOf(DeviceConstraints.ProfileLevel(CodecProfileLevel.AVCProfileMain, CodecProfileLevel.AVCLevel41)),
+            ),
+        )
+        // ref: RFC 6381 §3.3 — avc1.PPCCLL: 4D = Main, 64 = High; 28 = level 4.0, 33 = level 5.1.
+        val mainRung = video(2_000_000, 720, codecs = "avc1.4D4028")
+        val highRung = video(6_000_000, 2_160, codecs = "avc1.640033")
+
+        val clear = NetworkAwareTrackSelection.Gate(device, null, UNCAPPED, protectedPlayback = false)
+        assertThat(clear.deviceRefuses(mainRung)).isFalse()
+        assertThat(clear.deviceRefuses(highRung)).isFalse()
+
+        // The control is the line above: the same device, the same rung, refused only because the
+        // decoder that will open it is the secure one. The fix is not "refuse everything" — the
+        // rung the secure decoder does reach is still allowed.
+        val protectedPlayer = NetworkAwareTrackSelection.Gate(device, null, UNCAPPED, protectedPlayback = true)
+        assertThat(protectedPlayer.deviceRefuses(mainRung)).isFalse()
+        assertThat(protectedPlayer.deviceRefuses(highRung)).isTrue()
+    }
+
+    /**
+     * And *unknown* refuses nothing on a protected player too, which is the direction the whole gate
+     * rests on: Robolectric's device reports an empty codec table, so a gate that read "no secure
+     * decoder declared" as "nothing decodable on protected memory" would refuse every rung of every
+     * ladder under test and fall back to the bottom one, which looks like a selection and is not.
+     */
+    @Test
+    fun aProtectedPlayerOnADeviceThatDeclaredNoSecureDecoderRefusesNothing() {
+        val rung = video(6_000_000, 2_160, codecs = "avc1.640033")
+        val plainOnly = DeviceConstraints(
+            displayShortEdgePx = null,
+            displayHdrTypes = null,
+            // A plain decoder that refuses the rung outright, so what is asserted is that the secure
+            // reading is the one taken rather than that nothing was asked.
+            decodableProfileLevels = mapOf(
+                MimeTypes.VIDEO_H264 to listOf(DeviceConstraints.ProfileLevel(CodecProfileLevel.AVCProfileMain, CodecProfileLevel.AVCLevel41)),
+            ),
+        )
+        assertThat(NetworkAwareTrackSelection.Gate(plainOnly, null, UNCAPPED, protectedPlayback = true).deviceRefuses(rung)).isFalse()
+        assertThat(NetworkAwareTrackSelection.Gate(DeviceConstraints.UNKNOWN, null, UNCAPPED, protectedPlayback = true).deviceRefuses(rung)).isFalse()
+
+        // A secure decoder that declared no profiles at all is unknown, not empty — as its plain
+        // counterpart is.
+        val undeclared = DeviceConstraints(
+            displayShortEdgePx = null,
+            displayHdrTypes = null,
+            decodableProfileLevels = emptyMap(),
+            secureDecodableProfileLevels = mapOf(MimeTypes.VIDEO_H264 to emptyList()),
+        )
+        assertThat(NetworkAwareTrackSelection.Gate(undeclared, null, UNCAPPED, protectedPlayback = true).deviceRefuses(rung)).isFalse()
+    }
+
     @Test
     fun aDolbyVisionRungIsDecodableThroughTheBaseLayerDecoderMedia3FallsBackTo() {
         fun gateFor(vararg declared: Pair<String, DeviceConstraints.ProfileLevel>) = NetworkAwareTrackSelection.Gate(

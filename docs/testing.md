@@ -617,7 +617,8 @@ the seam above until #239. What stands in for each piece, and what each stand-in
   `work-runtime` and `work-testing` itself.
 - **A reboot is not stated.** WorkManager's test implementation keeps its work in an in-memory
   database, so nothing persisted survives a simulated restart and there is no faithful stand-in under
-  `check`. #243 owns what reboot survival is asserted against, and #247 checks it on a device.
+  `check`. Under `check`, #243 asserts only that downloads are scheduled as persisted work under their
+  constraints; surviving a reboot is verified on a device, in #247, and nowhere else.
 
 `DownloadHarnessTest` is the worked example. There is no store yet, so what downloads is Media3's own
 `DownloadManager` over a `SimpleCache` in a temporary directory, and everything it asserts is a claim

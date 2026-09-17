@@ -874,7 +874,7 @@ public class PlaybackHarness : ExternalResource() {
      * it at. [TransportReplay] does the same for a network, off a trace; this takes the change itself,
      * so that every restatable declaration is scheduled one way rather than one way each.
      *
-     * [advanceTimeMs] stops the clocks at the moment, lets every player act on the time so far, makes
+     * [advanceTimeMs] stops the clocks at the moment, lets the player it is advancing act on the time so far, makes
      * the change, and settles the player it was advancing before going on — so both clocks read exactly
      * that moment in every callback the change causes. Device-wide, as the device is: every player in the
      * harness sees it, whichever one's advance crossed it. A change scheduled for now is made at the start

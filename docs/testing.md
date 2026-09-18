@@ -1032,6 +1032,15 @@ a playlist, and a `Cache-Control` rule that a device would meet and a fake origi
 themselves are the corpus's, which is a stronger fixture than a live stream for exactly the reason
 *The hostile manifest corpus* gives.
 
+A **postmortem** (#291) needs one more thing than a preflight: a session that really failed. `PostmortemTest`
+builds a player of the same corpus entry, drives it on `HostileObservation`'s budget and step — the observer
+itself cannot stand in, because it answers an outcome and keeps no player — and reads the classification off
+`player.classify(error)`, which is the door a consumer uses. The doctor then examines the same request over a
+`diagnosticEnvironment` of its own, which is what a support engineer really runs: a second fetch of the same
+bytes, never a replay of the session's. What that cannot show is a manifest a CDN has changed between the
+failure and the examination, which is the one way a real postmortem's findings and its classification can be
+about two different documents.
+
 `superplayer-testkit`'s own public API names **no Media3 type**, for the reason ADR-0001 rule 2 gives:
 a `Format` or a `Timeline` in one of its signatures would put Media3's opt-in marker on every test
 that named it. A test says what it wants — `TestContent.videoLadder()`, `harness.stallRendering(player)`

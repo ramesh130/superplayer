@@ -21,6 +21,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
+import com.superplayer.cache.CachePolicy
 import com.superplayer.core.DiagnosticEnvironment
 import com.superplayer.core.MediaRequest
 import com.superplayer.core.PlaybackResilience
@@ -35,6 +36,7 @@ import com.superplayer.testmedia.HostileManifests
 import com.superplayer.testmedia.HostileStream
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
@@ -59,6 +61,9 @@ class MediaSourceDoctorTest {
     @get:Rule
     val harness: PlaybackHarness = PlaybackHarness()
 
+    @get:Rule
+    val folder: TemporaryFolder = TemporaryFolder()
+
     private val context: Context get() = ApplicationProvider.getApplicationContext()
 
     @Test
@@ -79,7 +84,7 @@ class MediaSourceDoctorTest {
             // test module, and a copy that had drifted would fail here rather than in a report nobody reads.
             assertWithMessage("$entry").that(finding.pathology.id).isEqualTo(entry.id)
             assertWithMessage("$entry").that(finding.specCitation).isEqualTo(entry.spec)
-            assertWithMessage("$entry").that(finding.cause).contains("CODECS")
+            assertWithMessage("$entry").that(finding.cause).isEqualTo(entry.cause)
             assertWithMessage("$entry").that(finding.severity).isEqualTo(FindingSeverity.DEGRADED)
             // A binary pathology has no magnitude, as the corpus entry has none.
             assertWithMessage("$entry").that(finding.magnitude).isNull()
@@ -128,6 +133,45 @@ class MediaSourceDoctorTest {
     }
 
     @Test
+    fun aDoctorBuiltWithACacheTravelsItAndSaysSo() {
+        val entry = HostileManifests.hlsMissingCodecs()
+        val environment = harness.diagnosticEnvironment(TestContent.hostile(entry))
+        val cache = CachePolicy.contentKeyed(folder.newFolder(), CACHE_BUDGET_BYTES)
+
+        val report = MediaSourceDoctor.Builder(context)
+            .setEnvironment(environment)
+            .setCache(cache)
+            .build()
+            .examine(requestFor(entry))
+
+        assertThat(report.chain).containsExactly(ChainLayer.CONTENT_CACHE)
+        assertThat(report.findings.map { it.pathology }).containsExactly(Pathology.HLS_MISSING_CODECS)
+        // The manifest still leaves for the network, because a content cache answers media and not
+        // manifests (ADR-0010 rule 2's keying, `ContentKeyedCacheLayer`): what the slot changes for a
+        // doctor today is that a manifest a *download* pinned is read from disk, and a download store is
+        // phase 7, which ADR-0015 rule 1 keeps off this module's test classpath.
+        assertWithMessage("a cached doctor still fetches a streamed manifest")
+            .that(harness.networkRequests(environment)).hasSize(1)
+        cache.release()
+    }
+
+    @Test
+    fun aResilienceThatFillsNoSlotIsNotReportedAsALayer() {
+        val entry = HostileManifests.hlsMissingCodecs()
+        val environment = harness.diagnosticEnvironment(TestContent.hostile(entry))
+        // `PlaybackResilience` is a public interface, so a consumer can pass one of their own; such an
+        // object contributes no layer to any chain, on a player or here. The report says what the
+        // composition carries rather than which setter was called, or it would be the bug in the doctor
+        // that ADR-0015's *Consequences* asks the field to prevent.
+        val hollow = object : PlaybackResilience {}
+
+        val report = doctor(environment, resilience = hollow).examine(requestFor(entry))
+
+        assertThat(report.chain).isEmpty()
+        assertThat(report.findings.map { it.pathology }).containsExactly(Pathology.HLS_MISSING_CODECS)
+    }
+
+    @Test
     fun aManifestTheChainRefusesIsAFindingRatherThanAThrow() {
         val entry = HostileManifests.hlsMissingCodecs()
         val environment = harness.diagnosticEnvironment(
@@ -156,6 +200,26 @@ class MediaSourceDoctorTest {
         val surface = File(API_SURFACE).readText()
         assertWithMessage("$API_SURFACE, as `updateApiSurface` wrote it").that(surface).isNotEmpty()
         assertWithMessage(API_SURFACE).that(surface).doesNotContain("androidx/media3")
+    }
+
+    @Test
+    fun aRefusalIsReportedForAProtocolTheDoctorHasNoRuleFor() {
+        // Rule 7's bullet is unconditional, and nothing reads a DASH manifest yet (#287, #288). A manifest
+        // no player of this app can fetch must not come back looking like a healthy one, so the fetch
+        // happens whatever the protocol and the refusal is the finding.
+        val content = TestContent.dash()
+        val environment = harness.diagnosticEnvironment(
+            content,
+            faults = FaultScript.Builder().failWithHttpStatus(503, kind = ResourceKind.MANIFEST).build(),
+        )
+
+        val report = doctor(environment).examine(
+            MediaRequest.Builder(HEALTHY_CONTENT_ID).addSource(content.sourceUri).build(),
+        )
+
+        assertThat(report.findings.map { it.pathology }).containsExactly(Pathology.MANIFEST_UNREACHABLE)
+        assertThat(report.findings.single().magnitude).isEqualTo("HTTP 503")
+        assertWithMessage("the manifest was asked for").that(harness.networkRequests(environment)).hasSize(1)
     }
 
     /** A doctor as a consumer builds one, over the harness's transport rather than the device's network. */
@@ -189,6 +253,9 @@ class MediaSourceDoctorTest {
 
         /** The identity a healthy stream is asked about under: a content id, never a URL. */
         const val HEALTHY_CONTENT_ID = "film/healthy"
+
+        /** A budget no test comes near: what is being asserted is the slot, never an eviction. */
+        const val CACHE_BUDGET_BYTES = 64L * 1024 * 1024
 
         /** The tracked public API of this module, relative to the module directory a test runs in. */
         const val API_SURFACE = "api/superplayer-diagnostics.api"

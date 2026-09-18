@@ -58,24 +58,31 @@ import com.superplayer.core.TransferChain
  * thread, registers nothing with the platform and keeps nothing open between calls, which is why there is
  * nothing to release and why one may be constructed per question or kept for the life of a screen.
  *
- * One doctor may be asked from several threads at once. The per-examination state is the chain, which is
- * built inside [examine]; what is shared is the cache and the credential, which are shared by the players
- * that hold them too.
+ * One doctor may be asked from several threads at once, and holds one chain across them, as the players
+ * sharing that same cache and that same credential do.
  */
 public class MediaSourceDoctor private constructor(
-    private val context: Context,
-    private val cache: ContentCache?,
-    private val resilience: PlaybackResilience?,
-    private val environment: DiagnosticEnvironment?,
+    context: Context,
+    cache: ContentCache?,
+    resilience: PlaybackResilience?,
+    environment: DiagnosticEnvironment?,
 ) {
 
-    /** Which optional layers this doctor's chain carries, decided once and reported on every report. */
-    private val chain: Set<ChainLayer> = buildSet {
-        if (cache != null) add(ChainLayer.CONTENT_CACHE)
-        // Which slots this doctor's chain has, not what a fetch through them did: whether the resilience
-        // carries a `HeaderProvider` to repair a refusal with is the app's business and is behind the same
-        // internal seam the layer itself is. [ChainLayer.HEADER_REFRESH] says so.
-        if (resilience != null) add(ChainLayer.HEADER_REFRESH)
+    /**
+     * The chain every examination fetches over, composed once: the layer a credential is refreshed by
+     * holds the state of what it has already refreshed, so a doctor asked twice pays one refusal rather
+     * than two, exactly as a download store's does.
+     */
+    private val chain = TransferChain.diagnosticChain(context, environment, cache, resilience)
+
+    /**
+     * Which optional layers that chain really carries, read off the composition rather than off which
+     * setters were called: a `PlaybackResilience` a consumer wrote themselves contributes no layer, and a
+     * report that said otherwise would be the bug in the doctor the field exists to prevent.
+     */
+    private val layers: Set<ChainLayer> = buildSet {
+        if (chain.cacheComposed) add(ChainLayer.CONTENT_CACHE)
+        if (chain.headerRefreshComposed) add(ChainLayer.HEADER_REFRESH)
     }
 
     /**
@@ -90,10 +97,8 @@ public class MediaSourceDoctor private constructor(
      */
     public fun examine(request: MediaRequest): DiagnosticReport {
         val source = request.sources.first()
-        val findings = ManifestExamination(
-            TransferChain.diagnosticChain(context, request.contentId, environment, cache, resilience),
-        ).examine(source)
-        return DiagnosticReport(request.contentId, findings, chain)
+        val findings = ManifestExamination(chain.forContent(request.contentId)).examine(source)
+        return DiagnosticReport(request.contentId, findings, layers)
     }
 
     /**

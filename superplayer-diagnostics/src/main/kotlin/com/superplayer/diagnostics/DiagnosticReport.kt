@@ -139,13 +139,25 @@ public enum class FindingSeverity {
  * a defect should do it on a name the compiler knows. It grows as the doctor learns a pathology (#287 to
  * #289), and an entry is added with its citation and its cause together — a claim about a specification
  * without the citation is an opinion, which is the corpus's rule taken unchanged.
+ *
+ * **Two entries name a defect of the *fetch* rather than of a document, and have no corpus entry**:
+ * [MANIFEST_UNREACHABLE] and [MANIFEST_UNREADABLE], which ADR-0015 rule 7 asks for in place of an
+ * exception. Nothing in a corpus of streams can carry them, since each entry there serves its media
+ * perfectly, so the register of rule 12 scores the corpus against the entries that name a document and
+ * these two are named by tests of their own.
  */
 public enum class Pathology(
 
     /** The stable kebab-case name, protocol first: the corpus entry's id, and the join between the two. */
     public val id: String,
 
-    /** The clause this stretches or violates — RFC 8216 for HLS, ISO/IEC 23009-1 for DASH. */
+    /**
+     * The clause this stretches or violates — RFC 8216 for HLS, ISO/IEC 23009-1 for DASH.
+     *
+     * For the two entries that name a defect of the fetch, where no stream departed from anything, it is
+     * the clause that defines what went wrong instead: the status the server answered with, or the syntax
+     * the bytes were supposed to be in.
+     */
     public val specCitation: String,
 
     /** Which misconfiguration, encoder or packager produces this in the field, in plain language. */
@@ -173,6 +185,19 @@ public enum class Pathology(
         cause = "The manifest could not be fetched over the chain this app's players load through — an " +
             "origin or an edge that refused it, a credential it would not accept, or a host that did " +
             "not answer.",
+    ),
+
+    // spec: RFC 8216 §4 (the playlist grammar) and ISO/IEC 23009-1 §5.3 (the MPD's) — the bytes arrived
+    // and are not a document either grammar admits. Told apart from the entry above because "nothing came
+    // back" and "something came back that is not a manifest" send a support engineer to two different
+    // teams, and it is read off the *engine's own parser* rejecting them, so what the doctor calls
+    // unreadable is exactly what the player would have failed on (rule 6).
+    MANIFEST_UNREADABLE(
+        id = "manifest-unreadable",
+        specCitation = "RFC 8216 §4, ISO/IEC 23009-1 §5.3",
+        cause = "What arrived is not a manifest the parser this app's players run can read — a truncated " +
+            "or half-written document, an error or consent page served with a 200, or a packager that " +
+            "emitted something else entirely.",
     ),
 }
 

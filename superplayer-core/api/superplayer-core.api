@@ -114,6 +114,7 @@ public final class com/superplayer/core/LiveLatencyPolicy {
 }
 
 public final class com/superplayer/core/LiveWindowTooShortException : java/io/IOException {
+	public final fun getAvailabilityLagMs ()J
 	public final fun getAvailabilityTimeOffsetMs ()J
 	public final fun getManifestUri ()Ljava/lang/String;
 	public final fun getSegmentDurationMs ()J

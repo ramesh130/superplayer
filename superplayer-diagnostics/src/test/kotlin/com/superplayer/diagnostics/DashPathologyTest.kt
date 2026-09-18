@@ -127,6 +127,17 @@ class DashPathologyTest {
         // "the clock is wrong", because a support engineer acts on the direction.
         assertThat(finding.magnitude)
             .isEqualTo("availabilityStartTime 3596 s ahead of the manifest's own clock, so no segment is available yet")
+
+        // And what the doctor cannot see, **recorded rather than left to be discovered**. The corpus grades
+        // this pathology at three levels, and only the severe one is reported: at `BORDERLINE` the anchor is
+        // two seconds late on a stream that has been on air four, so it is still in the past and the MPD is
+        // character for character a healthy stream that started two seconds later. The rule's KDoc argues why
+        // that miss is taken deliberately — the alternative is holding the manifest against the device's
+        // clock, which flags every live stream on a phone set wrong. It is written down here because a
+        // reader of #290's register needs the gap to be a fact of the suite rather than a surprise, and
+        // because it is also why this entry's `BENIGN` row is not a real false-positive control.
+        val borderline = HostileManifests.dashAvailabilityStartTimeSkew(Severity.BORDERLINE)
+        assertWithMessage("$borderline — ${borderline.magnitude}").that(findings(borderline)).isEmpty()
     }
 
     @Test

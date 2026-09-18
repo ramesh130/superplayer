@@ -73,7 +73,7 @@ public class DiagnosticReport internal constructor(
 
     override fun toString(): String =
         "DiagnosticReport($contentId, over $chain, $findings" +
-            "${classification?.let { ", ended on ${it.causeClass}" }.orEmpty()})"
+            (classification?.let { ", ended on ${it.causeClass}" } ?: "") + ")"
 }
 
 /**

@@ -107,9 +107,11 @@ class PostmortemTest {
 
         val report = examine(entry, failure, faults = refusedSegments)
 
-        assertWithMessage("the session ended on something").that(report.classification).isNotNull()
-        assertWithMessage("a class, in the taxonomy's own words").that(report.classification?.causeClass)
-            .isNotEmpty()
+        // Named rather than merely non-null: a 500 is a status `ErrorClassifier` reads nothing into, so it
+        // falls through to the I/O band's own answer — the CDN being unwell. Asserting the class is what
+        // makes this the control it claims to be, since a silent report beside some *other* class would be
+        // a different scenario passing under this one's name.
+        assertThat(report.classification?.causeClass).isEqualTo("Transient.Network")
         assertWithMessage("nothing is wrong with this manifest, and the doctor says so")
             .that(report.findings).isEmpty()
     }
@@ -120,8 +122,7 @@ class PostmortemTest {
         // climb gracefully plays to the end on every recorded player (`HostileManifestLadderTest`), so
         // there is no failure to classify and the defect is still there to name.
         val entry = HostileManifests.hlsLadderGap()
-        val player = harness.buildPlayer(content = TestContent.hostile(entry), resilience = Resilience.standard())
-        playToAnEnd(player, entry)
+        val player = playedOut(entry, resilience = Resilience.standard())
         assertWithMessage("this entry plays: there is nothing to classify").that(player.playerError).isNull()
 
         val report = examine(entry, classification = null)
@@ -140,8 +141,7 @@ class PostmortemTest {
         // and a citation. It is the shape of postmortem this phase exists for, and its classification is
         // null for a reason that is not the absence of the resilience module.
         val entry = HostileManifests.dashAvailabilityStartTimeSkew()
-        val player = harness.buildPlayer(content = TestContent.hostile(entry), resilience = Resilience.standard())
-        playToAnEnd(player, entry)
+        val player = playedOut(entry, resilience = Resilience.standard())
         assertWithMessage("no load failed, so nothing was classified").that(player.playerError).isNull()
 
         val report = examine(entry, classification = player.playerError?.let(player::classify))
@@ -160,8 +160,7 @@ class PostmortemTest {
         // alone. The same content as the first test, which fails on this player too — core raises the
         // typed exception whether or not anything is there to classify it.
         val entry = HostileManifests.dashShortTimeShiftBufferDepth()
-        val player = harness.buildPlayer(content = TestContent.hostile(entry), resilience = null)
-        playToAnEnd(player, entry)
+        val player = playedOut(entry, resilience = null)
         val error = checkNotNull(player.playerError) { "this entry fails on a core-only player too" }
         assertWithMessage("a player with no resilience classifies nothing").that(player.classify(error)).isNull()
 
@@ -183,20 +182,30 @@ class PostmortemTest {
         resilience: PlaybackResilience?,
         faults: FaultScript = FaultScript.NONE,
     ): SuperPlayerError {
+        val player = playedOut(entry, resilience, faults)
+        try {
+            val error = checkNotNull(player.playerError) { "$entry was expected to fail and did not" }
+            return checkNotNull(player.classify(error)) { "$entry failed unclassified" }
+        } finally {
+            player.release()
+        }
+    }
+
+    /**
+     * Builds a player of [entry] and runs the session to wherever it gets: an error, the end of the media,
+     * or the observer's budget. The player is the caller's to read and to release, which is the whole
+     * reason `HostileObservation.observe` cannot stand in — it answers an outcome and keeps no player.
+     */
+    private fun playedOut(
+        entry: HostileStream,
+        resilience: PlaybackResilience?,
+        faults: FaultScript = FaultScript.NONE,
+    ): SuperPlayer {
         val player = harness.buildPlayer(
             content = TestContent.hostile(entry),
             resilience = resilience,
             faults = faults,
         )
-        playToAnEnd(player, entry)
-        val error = checkNotNull(player.playerError) { "$entry was expected to fail and did not" }
-        val classification = checkNotNull(player.classify(error)) { "$entry failed unclassified" }
-        player.release()
-        return classification
-    }
-
-    /** Runs a session to wherever it gets: an error, the end of the media, or the observer's budget. */
-    private fun playToAnEnd(player: SuperPlayer, entry: HostileStream) {
         player.setMediaRequest(requestFor(entry))
         player.prepare()
         player.play()
@@ -209,6 +218,7 @@ class PostmortemTest {
             harness.advanceTimeInStepsMs(player, HostileObservation.STEP_MS)
             advanced += HostileObservation.STEP_MS
         }
+        return player
     }
 
     /** The postmortem itself: the request the session was playing, and what it ended on. */

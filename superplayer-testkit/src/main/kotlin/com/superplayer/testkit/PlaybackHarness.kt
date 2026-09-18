@@ -251,9 +251,9 @@ public class PlaybackHarness : ExternalResource() {
      * run over both a comparison rather than two tests. See [ChainBottom] for what each can and
      * cannot be asked.
      *
-     * [httpStack] is that same consumer's bottom with the stack **named by the caller** rather than
-     * minted here, and it implies [ChainBottom.CONSUMERS_HTTP_TRANSPORT]. There is one reason to
-     * reach for it and it is ADR-0016 rule 13's: handing the one stack to a player and to a download
+     * [httpStack] names *which* client that consumer's bottom is, in place of the one minted here, and
+     * it is passed **beside** [ChainBottom.CONSUMERS_HTTP_TRANSPORT] rather than implying it. There is
+     * one reason to reach for it and it is ADR-0016 rule 13's: handing the one stack to a player and to a download
      * store is how the defect that rule prevents — a player on the app's client while its downloads
      * use the platform's — is stated as a *count* rather than as two separate readings. Pass
      * [consumersHttpStack] of the store's environment, and this player's bytes then travel that
@@ -287,12 +287,19 @@ public class PlaybackHarness : ExternalResource() {
         // path at all, so there is no transport for an `HttpTransport` to stand in for. Refused
         // outright rather than quietly served over the slot, because a player that silently used
         // the other bottom would pass a parity test without proving anything.
-        val chainBottom = if (httpStack != null) ChainBottom.CONSUMERS_HTTP_TRANSPORT else bottom
-        require(chainBottom == ChainBottom.HARNESS_TRANSPORT_SLOT || content.protocol != TestContent.Protocol.DESCRIBED) {
+        // Said rather than inferred, which is this harness's idiom wherever two arguments could
+        // disagree: a stack names *which* client the consumer's bottom is, and never *that* the bottom
+        // is the consumer's - because a caller who wrote the slot and handed over a stack has said two
+        // contradictory things, and quietly honouring one of them is the passing-for-the-wrong-reason
+        // this seam exists to make impossible.
+        require(httpStack == null || bottom == ChainBottom.CONSUMERS_HTTP_TRANSPORT) {
+            "A named httpStack is which client the consumer's bottom is: pass bottom = ChainBottom.CONSUMERS_HTTP_TRANSPORT with it."
+        }
+        require(bottom == ChainBottom.HARNESS_TRANSPORT_SLOT || content.protocol != TestContent.Protocol.DESCRIBED) {
             "Described content has no transport to reach through an HttpTransport: play " +
                 "TestContent.hls() or TestContent.dash() over ChainBottom.CONSUMERS_HTTP_TRANSPORT."
         }
-        return buildPlayerOver(composeTransport(content, faults, network), content, profile, telemetry, policy, cache, resilience, drm, pooled = null, output = output, bottom = chainBottom, httpStack = httpStack)
+        return buildPlayerOver(composeTransport(content, faults, network), content, profile, telemetry, policy, cache, resilience, drm, pooled = null, output = output, bottom = bottom, httpStack = httpStack)
     }
 
     /**
@@ -681,7 +688,7 @@ public class PlaybackHarness : ExternalResource() {
         val transport = composeTransport(content, faults, network)
         val environment = HarnessDownloadEnvironment(
             transport = transport.transfers.factory.takeIf { bottom == ChainBottom.HARNESS_TRANSPORT_SLOT },
-            httpStack = HttpStack.of(OriginHttpTransport(transport.transfers.factory)),
+            httpStack = lazy { HttpStack.of(OriginHttpTransport(transport.transfers.factory)) },
             injector = transport.injector,
             wait = transport.wait,
             loadExecutor = HarnessDownloadLoads(transport.wait),
@@ -828,7 +835,7 @@ public class PlaybackHarness : ExternalResource() {
         val environment = HarnessDiagnosticEnvironment(
             transport = transport.transfers.factory.takeIf { bottom == ChainBottom.HARNESS_TRANSPORT_SLOT },
             injector = transport.injector,
-            httpStack = HttpStack.of(OriginHttpTransport(transport.transfers.factory)),
+            httpStack = lazy { HttpStack.of(OriginHttpTransport(transport.transfers.factory)) },
         )
         diagnostics[environment] = environment
         return environment
@@ -852,12 +859,12 @@ public class PlaybackHarness : ExternalResource() {
      * rule 3) — so a test that means to observe a stack makes the environment for one.
      */
     public fun consumersHttpStack(environment: DownloadEnvironment): HttpStack =
-        downloadFor(environment).httpStack
+        downloadFor(environment).httpStack.value
 
     /** [consumersHttpStack]'s twin, for `MediaSourceDoctor.Builder.setHttpStack`. */
     public fun consumersHttpStack(environment: DiagnosticEnvironment): HttpStack =
         checkNotNull(diagnostics[environment]) { "This harness did not make that diagnostic environment" }
-            .httpStack
+            .httpStack.value
 
     private fun downloadFor(environment: DownloadEnvironment): HarnessDownloadEnvironment =
         checkNotNull(downloads[environment]) { "This harness did not make that download environment" }

@@ -120,7 +120,7 @@ class DownloadHttpStackTest {
         // The same stack, handed to a player of the same content. Its bytes travel the store's transport
         // because the object naming that transport is the one the app holds — which is the whole of what
         // "hold one and pass it to every entry point" buys.
-        val player = harness.buildPlayer(content = content, httpStack = stack)
+        val player = harness.buildPlayer(content = content, bottom = ChainBottom.CONSUMERS_HTTP_TRANSPORT, httpStack = stack)
         player.setMediaRequest(request(content))
         harness.playToReady(player)
         harness.advanceUntil(player, "the end of the content") { it.playbackState == Player.STATE_ENDED || it.playerError != null }

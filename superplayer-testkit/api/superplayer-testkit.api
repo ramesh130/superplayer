@@ -157,6 +157,19 @@ public final class com/superplayer/testkit/HostileOutcome : java/lang/Enum {
 	public static fun values ()[Lcom/superplayer/testkit/HostileOutcome;
 }
 
+public final class com/superplayer/testkit/HttpTransportConformance {
+	public fun <init> (Lcom/superplayer/core/HttpTransport;)V
+	public final fun verifyAll ()V
+	public final fun verifyByteRangeIsHonoured ()V
+	public final fun verifyCancelledRequestReturns ()V
+	public final fun verifyNoContentCodingIsAdded ()V
+	public final fun verifyRedirectedUriIsReported ()V
+	public final fun verifyStatusIsReportedRatherThanRaised ()V
+}
+
+public final class com/superplayer/testkit/HttpTransportConformanceException : java/lang/AssertionError {
+}
+
 public final class com/superplayer/testkit/NetworkProfile : java/lang/Enum {
 	public static final field CONGESTED_WIFI Lcom/superplayer/testkit/NetworkProfile;
 	public static final field Companion Lcom/superplayer/testkit/NetworkProfile$Companion;

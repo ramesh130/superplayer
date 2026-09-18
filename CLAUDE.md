@@ -250,8 +250,7 @@ through the transport slot or through an `HttpTransport` that reports a status a
 does, and `superplayer-resilience`'s `ConsumersTransportParityTest` runs the rung, the class and the
 counts over both and asserts they are equal; `BandwidthOraclePlaybackTest` does the same for the
 estimate and `ContentKeyedCachePlaybackTest` for the cache keys. Since #311 the rest of the
-**obligations** are discharged and tested (the mechanical half, rule 14's public conformance test in
-`superplayer-testkit`, is still open, and `HttpTransport`'s KDoc says so): the transport reports the URI it read from after a redirect
+**obligations** are discharged and tested: the transport reports the URI it read from after a redirect
 (rule 6) on a new `HttpResponse.uri`, defaulted to null and read as the requested one, which is what
 Media3 resolves a manifest's relative references against — so a transport that answers the address it
 was *asked* for sends the player to the old edge, which `TransportContractTest` shows as a stream
@@ -299,8 +298,23 @@ one bottom. Observing any of the three honestly needs the harness's transport sl
 wins over a stack (rule 3), so `downloadEnvironment`, `diagnosticEnvironment` and `buildPool` each take
 a `ChainBottom` and `PlaybackHarness.consumersHttpStack(environment)` is the matching stack;
 `buildPlayer` also takes a caller-named `httpStack`, which is what lets `DownloadHttpStackTest` state
-the defect the rule prevents as one count over one transport. Rule 14's conformance test is the one
-part of Phase 10 still open.
+the defect the rule prevents as one count over one transport.
+Since #312 rule 14's other half is shipped, and it is the one thing here written to be run **outside**
+this repository: `HttpTransportConformance`, public API of `superplayer-testkit`, five checks over the
+five obligations a transport carries — the range, the post-redirect URI, the identity coding, the
+status reported rather than raised, and the cancellation — each failure naming the rule, what the
+transport did and what the rule requires, because its reader is not the author of this code. Two
+decisions are its own. **The consumer supplies the transport and nothing else**: the origin is
+testkit's, an HTTP/1.1 server on the loopback interface started per check, which is the repository's
+one socket and is there because an HTTP client's obligations are claims about what goes on a wire and
+every other fake here stands in for a layer above the client. And it **names no test framework** — a
+broken obligation is an `HttpTransportConformanceException`, an `AssertionError`, so a consumer on
+JUnit 5 or Kotest runs the same checks as one on JUnit 4 and testkit's accidental transitive JUnit
+stays accidental. `HttpTransportConformanceTest` is what makes it worth shipping: a deliberately wrong
+transport **per obligation**, written over `HttpURLConnection` so each defect is a real client's
+misconfiguration, plus `HttpStack.default()` run through the same fifty lines an adopter writes and
+passing every check — because a contract the shipped stack cannot keep is a contract to change. What
+is still open in Phase 10 is the phase's docs (`docs/http-transport.md`) and its device exit.
 
 CMCD (CTA-5004) is emitted there today, and is on for every profile including `DATA_SAVER` —
 `CmcdBinding.kt` holds the per-profile table, the reasoning, and the `// spec:` citation for each

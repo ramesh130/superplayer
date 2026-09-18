@@ -29,6 +29,10 @@ dependencies {
     // The HLS playlist parser — the parser the player is about to run over the same bytes, so the doctor
     // and the player can never disagree about what a manifest *says* (rule 6).
     implementation(libs.media3.exoplayer.hls)
+    // `DashManifestParser` and the `DashManifest` it builds, for rule 6's other half: core's live-window
+    // judgement is asked over a manifest, so the doctor must hold one, and it must be the one the engine's
+    // own parser built.
+    implementation(libs.media3.exoplayer.dash)
 
     // The deterministic playback harness, which serves the corpus over the same transport a player of the
     // same content loads through and counts what left the chain — the only way rule 7's "over the chain a

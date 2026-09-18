@@ -69,6 +69,26 @@ internal object LiveWindowDepthCheck {
         // A document the engine's parser rejects is the engine's to report, with its own error.
         val manifest = runCatching { DashManifestParser().parse(uri, ByteArrayInputStream(body)) }.getOrNull()
             ?: return null
+        return tooShort(uri, manifest)
+    }
+
+    /**
+     * Whether [manifest]'s window is one no playhead fits inside, as the failure that says so by how much —
+     * or null where it holds one, or where nothing here can tell.
+     *
+     * **This is the judgement itself, split from the fetch above so that it can be asked a second time from
+     * a second place.** ADR-0015 rule 3's third seam is this function: `superplayer-diagnostics` reports the
+     * same defect before a player exists, and rule 6 makes a copy of the comparison a bug — the rule is not
+     * a constant but `depthUs > lag.us` over the longest availability lag any addressed segment declares, so
+     * a second definition is one nothing would keep in step. A caller that has already parsed with Media3's
+     * own parser passes the manifest; this file's own load parses and calls the same way.
+     *
+     * The `LiveWindowTooShortException` is the carrier rather than a value of its own, because it already
+     * holds exactly the three numbers the comparison was made from, and it is what a *player* of this
+     * manifest ends on. A caller that only wants to describe the defect reads those numbers and throws
+     * nothing.
+     */
+    fun tooShort(uri: Uri, manifest: DashManifest): LiveWindowTooShortException? {
         if (!manifest.dynamic || manifest.timeShiftBufferDepthMs == C.TIME_UNSET) return null
 
         val lag = longestAvailabilityLag(manifest) ?: return null

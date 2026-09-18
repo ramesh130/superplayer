@@ -44,6 +44,13 @@ public final class com/superplayer/diagnostics/MediaSourceDoctor$Builder {
 }
 
 public final class com/superplayer/diagnostics/Pathology : java/lang/Enum {
+	public static final field DASH_AVAILABILITY_START_TIME_SKEW Lcom/superplayer/diagnostics/Pathology;
+	public static final field DASH_LADDER_GAP Lcom/superplayer/diagnostics/Pathology;
+	public static final field DASH_MID_STREAM_LADDER_CHANGE Lcom/superplayer/diagnostics/Pathology;
+	public static final field DASH_MISSING_CODECS Lcom/superplayer/diagnostics/Pathology;
+	public static final field DASH_MISSING_TIME_SHIFT_BUFFER_DEPTH Lcom/superplayer/diagnostics/Pathology;
+	public static final field DASH_OVERSTATED_BITRATE Lcom/superplayer/diagnostics/Pathology;
+	public static final field DASH_SHORT_TIME_SHIFT_BUFFER_DEPTH Lcom/superplayer/diagnostics/Pathology;
 	public static final field HLS_AUDIO_GROUP_CODEC_MISMATCH Lcom/superplayer/diagnostics/Pathology;
 	public static final field HLS_DANGLING_AUDIO_GROUP Lcom/superplayer/diagnostics/Pathology;
 	public static final field HLS_DISCONTINUITY_WITHOUT_TIMELINE Lcom/superplayer/diagnostics/Pathology;

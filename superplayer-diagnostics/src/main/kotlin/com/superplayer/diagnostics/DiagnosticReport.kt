@@ -245,6 +245,85 @@ public enum class Pathology(
             "discontinuity sequence nor a program date time — the common case for server-side ads.",
     ),
 
+    // spec: ISO/IEC 23009-1 §5.3.5.2 — @bandwidth is required per Representation and nothing constrains the
+    // spacing between two of them; DASH-IF IOP §3.2.4's ladder guidance is a recommendation. So the DASH
+    // twin of HLS_LADDER_GAP is conforming for exactly the same reason, and is judged by the same rule over
+    // the same threshold (`LadderPathologies`), because a packager writes both manifests from one ladder
+    // definition and a doctor that graded them differently would be reporting on its own two minds.
+    DASH_LADDER_GAP(
+        id = "dash-ladder-gap",
+        specCitation = "ISO/IEC 23009-1 §5.3.5.2; DASH-IF IOP §3.2.4",
+        cause = "The same dropped middle rungs as its HLS counterpart, usually because the two " +
+            "manifests are generated from one ladder definition by one packager.",
+    ),
+
+    // spec: ISO/IEC 23009-1 §5.3.5.2 — @bandwidth is defined against a hypothetical constant-rate channel
+    // that delivers each segment in time, so a value above the real rate still satisfies it. The cost is
+    // HLS_OVERSTATED_BITRATE's: every bandwidth-based selection is made against a number above the truth.
+    DASH_OVERSTATED_BITRATE(
+        id = "dash-overstated-bitrate",
+        specCitation = "ISO/IEC 23009-1 §5.3.5.2",
+        cause = "The encoder's configured peak written through to @bandwidth, unchanged, by a " +
+            "packager that never measured a segment.",
+    ),
+
+    // spec: ISO/IEC 23009-1 §5.3.7.2 — @codecs is an optional common attribute, so an MPD without one
+    // validates; DASH-IF IOP §3.2.4 requires it precisely because without it the player has to fetch and
+    // sniff the initialization segment before it can decide whether it can play the Representation at all.
+    DASH_MISSING_CODECS(
+        id = "dash-missing-codecs",
+        specCitation = "ISO/IEC 23009-1 §5.3.7.2; DASH-IF IOP §3.2.4",
+        cause = "An MPD assembled from a transcoder's job description rather than from the " +
+            "written media — the job knows the bitrate and not the codec string.",
+    ),
+
+    // spec: ISO/IEC 23009-1 §5.3.2 — a Period is the unit across which the set of Representations may
+    // change, and §5.3.9.2's @presentationTimeOffset is what maps each Period's segments onto its own
+    // timeline. A second Period offering a ladder the first did not is therefore entirely conforming, and
+    // is what makes a player rebuild its track selection mid-stream and land wherever the new rungs are.
+    DASH_MID_STREAM_LADDER_CHANGE(
+        id = "dash-mid-stream-ladder-change",
+        specCitation = "ISO/IEC 23009-1 §5.3.2, §5.3.9.2",
+        cause = "A mid-roll ad break, or an encoder restarted mid-event onto a different " +
+            "profile — the second Period is whatever was running when it came back.",
+    ),
+
+    // spec: ISO/IEC 23009-1 §5.3.1.2 — for @type="dynamic", @availabilityStartTime is the anchor every
+    // segment's availability is computed from, and §5.3.9.5.3 makes a segment's availability start time
+    // that anchor plus its presentation time. Nothing requires the anchor to agree with the clock the same
+    // MPD publishes, so an anchor in the future conforms and says, correctly, that nothing is available
+    // yet. This is the one corpus entry the fallback ladder is recorded as unable to recover: nothing fails
+    // to load, so no rung is offered, and a player simply sits at a negative position.
+    DASH_AVAILABILITY_START_TIME_SKEW(
+        id = "dash-availability-start-time-skew",
+        specCitation = "ISO/IEC 23009-1 §5.3.1.2, §5.3.9.5.3",
+        cause = "A packager whose own clock or timezone offset is wrong: the MPD publishes a " +
+            "correct UTCTiming and an availabilityStartTime ahead of the stream's real start, so " +
+            "the origin is telling the client, consistently, that less has been published than has.",
+    ),
+
+    // spec: ISO/IEC 23009-1 §5.3.1.2 — @timeShiftBufferDepth is the guaranteed availability window for any
+    // segment, and any positive duration conforms; §5.3.9.5.3 makes a segment available only once it is
+    // complete, so a window no deeper than that lag has no position a playhead can sit at. Core already
+    // judges exactly this at playback time (`LiveWindowTooShortException`, issue #67), and the doctor asks
+    // core rather than restating the comparison — ADR-0015 rule 6.
+    DASH_SHORT_TIME_SHIFT_BUFFER_DEPTH(
+        id = "dash-short-time-shift-buffer-depth",
+        specCitation = "ISO/IEC 23009-1 §5.3.1.2",
+        cause = "A packager configured for the lowest possible latency, or a value in seconds " +
+            "written where the packager wanted minutes.",
+    ),
+
+    // spec: ISO/IEC 23009-1 §5.3.1.2 — @timeShiftBufferDepth is optional, and in its absence the window is
+    // infinite: every segment ever published is promised forever. Valid, and untrue of every live origin,
+    // so the window a client plans its seeks against is one the CDN will not keep.
+    DASH_MISSING_TIME_SHIFT_BUFFER_DEPTH(
+        id = "dash-missing-time-shift-buffer-depth",
+        specCitation = "ISO/IEC 23009-1 §5.3.1.2",
+        cause = "A live MPD produced by a VOD packaging template, which has no reason to emit the " +
+            "attribute at all.",
+    ),
+
     // spec: RFC 9110 §15 — the status class of the response is what the origin or the edge said about the
     // request. Not a defect of the document, because there is no document: it is the finding rule 7 asks
     // for in place of an exception, since "the doctor threw" is the least useful thing a support ticket

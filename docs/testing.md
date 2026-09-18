@@ -26,16 +26,22 @@ the one stamp everything downstream of a refused segment depends on.
 `TransportContractTest` keeps that same chain and that same origin for the three obligations
 ADR-0016 leaves on a consumer after its byte ranges and its statuses — the URI reported after a
 redirect (rule 6), the coding a transport must not negotiate for itself (rule 7) and what a cancelled
-request does instead of blocking (rule 10). Three of its tests open the adapter's `DataSource`
+request does instead of blocking (rule 10). Five of its tests open the adapter's `DataSource`
 without a player, because each is a claim about the *request* — the headers composed onto it, the URI
-a response reported, a `close` racing a `read` — and one of those three starts a thread of its own,
+a response reported, a `close` racing a `read` — and one of the five starts a thread of its own,
 which is what a loader thread is. The claims that are about playback are made through a real
 `SuperPlayer`. Nothing in `superplayer-testkit` can express a **3xx** at all (`FaultScript`'s status
 is in `400..599`), a `Content-Encoding`, or a body that does not return, so a transport that is the
 origin is again the only route. The gzip half of rule 7 is `superplayer-abr`'s
-`TransparentGzipEstimateTest`, which registers the oracle's own meter on the adapter and reads the
-estimate off a link whose byte count it knows: the cost of a transparently-decompressing client is a
-number this repository measures rather than a warning in a KDoc.
+`TransparentGzipEstimateTest`, and it **reads past the facade twice over**, recorded here rather than
+left to be found: it drives core's adapter with no player at all, and it reaches core's `internal`
+`HttpStack.factory` from a *later phase's* test source set, which the friendship
+`KotlinFriendModules.kt` grants that module for filling a policy slot also happens to allow. It is
+spent here because the claim has two ends and they are in two modules — the byte counts are core's
+adapter's and the estimate is `OracleBandwidthMeter`'s — and no public API joins them: the estimate a
+player exposes is a smoothed reading over a shaped link, which is a slower way of measuring something
+else. What is asserted is the cost of a transparently-decompressing client as a number rather than as
+a warning in a KDoc.
 
 `SuperPlayerCmcdTest` keeps that same chain and asserts on the *requests* travelling down it rather
 than on a state of the facade — the CMCD keys on a `DataSpec`, captured through the `TransferListener`
@@ -152,6 +158,13 @@ a DASH representation carries an index or an HLS segment an `EXT-X-BYTERANGE`, a
 streams carry neither; adding one would change the corpus every other module is recorded against, to
 observe something a single `open` states exactly.
 
+`ConsumersTransportEvidenceTest` is the third caller and is there for the *response* side of the same
+exchange. ADR-0016 rule 8 says a status a transport reports becomes an
+`InvalidResponseCodeException` carrying the status, the **headers** and the URI, and no fake origin
+in this repository can express a response header at all — a transport that is itself the origin is
+again the only place. Both classes share one `ServingTransport`, so what a test reads back is what
+one implementation received.
+
 `TransportContractTest` is the fourth caller and is the rest of that contract: rules 6, 7 and 10,
 each written as the difference between a transport that keeps it and one that does not, because every
 one of the three fails silently on a device and an assertion that only ever ran the correct transport
@@ -161,13 +174,6 @@ is not about a getter but about what Media3 resolves a manifest's relative refer
 test reads it off the addresses the *second* and third requests were made to. **Cancellation** is the
 one place a test here starts a thread, which is honest rather than exotic: a loader thread is a
 thread, and `close` cancelling an in-flight request is a claim about two of them.
-
-`ConsumersTransportEvidenceTest` is the third caller and is there for the *response* side of the same
-exchange. ADR-0016 rule 8 says a status a transport reports becomes an
-`InvalidResponseCodeException` carrying the status, the **headers** and the URI, and no fake origin
-in this repository can express a response header at all — a transport that is itself the origin is
-again the only place. Both classes share one `ServingTransport`, so what a test reads back is what
-one implementation received.
 
 ## Synthetic media, not fixtures
 

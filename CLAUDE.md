@@ -249,8 +249,9 @@ refused manifest with nothing failing to say so. What proves it is parity rather
 through the transport slot or through an `HttpTransport` that reports a status as a consumer's client
 does, and `superplayer-resilience`'s `ConsumersTransportParityTest` runs the rung, the class and the
 counts over both and asserts they are equal; `BandwidthOraclePlaybackTest` does the same for the
-estimate and `ContentKeyedCachePlaybackTest` for the cache keys. Since #311 the **rest of the
-contract** is discharged and tested: the transport reports the URI it read from after a redirect
+estimate and `ContentKeyedCachePlaybackTest` for the cache keys. Since #311 the rest of the
+**obligations** are discharged and tested (the mechanical half, rule 14's public conformance test in
+`superplayer-testkit`, is still open, and `HttpTransport`'s KDoc says so): the transport reports the URI it read from after a redirect
 (rule 6) on a new `HttpResponse.uri`, defaulted to null and read as the requested one, which is what
 Media3 resolves a manifest's relative references against — so a transport that answers the address it
 was *asked* for sends the player to the old edge, which `TransportContractTest` shows as a stream
@@ -263,7 +264,8 @@ until it is closed, on a seek and on a release. **There is deliberately no timeo
 uncancellable transport** and `HttpTransportDataSource.close`'s KDoc argues the three reasons: no
 number this repository can measure, a watchdog thread every consumer would pay for, and a bound that
 would turn a hang whose stack names the consumer's own `read` into a stall spending a retry budget.
-The other three entry points rule 13 names are still open tickets.
+The other three entry points rule 13 names, rules 11 and 12's other two
+factories, and that conformance test are still open tickets.
 
 CMCD (CTA-5004) is emitted there today, and is on for every profile including `DATA_SAVER` —
 `CmcdBinding.kt` holds the per-profile table, the reasoning, and the `// spec:` citation for each

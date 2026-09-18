@@ -64,16 +64,33 @@ internal class HttpTransportDataSource(
 
     private var dataSpec: DataSpec? = null
     private var response: HttpResponse? = null
+
+    /**
+     * The body being read, and the one field of this class another thread touches: [close] cancels
+     * an in-flight request (ADR-0016 rule 10), and Media3 calls it from the thread abandoning the
+     * load rather than from the one parked inside [read]. Volatile so that the reader sees the
+     * cancellation rather than a stale reference, and read into a local in [read] so that a close
+     * landing mid-call is a *typed* failure rather than the `IllegalStateException` a
+     * `checkNotNull` would raise — an untyped one would escape the `HttpDataSourceException`
+     * wrapping that ADR-0016 rule 8 and `ErrorClassifier` both read.
+     *
+     * Nothing else here is guarded, and nothing else needs to be: every other field is written by
+     * [open] before a reader exists and read by the thread that called it.
+     */
+    @Volatile
     private var stream: InputStream? = null
 
     /**
      * The URI the bytes are coming from — the one the transport reported after following whatever
      * redirects it followed, or the requested one where it reported none (ADR-0016 rule 6).
      *
-     * Held here rather than read off [response] on demand because [getUri] has to keep answering for
-     * the whole of an open transfer while [closeQuietly] lets go of the response the moment a
-     * request is refused, and the two would otherwise disagree at exactly the moment a failure is
-     * being diagnosed.
+     * Held here rather than read off [response] on demand because [closeQuietly] lets go of the
+     * response and [getUri] has to keep answering for the whole of the transfer either way.
+     *
+     * Assigned after the status and range checks, deliberately, so a **refused** open answers null —
+     * the same answer Media3's own stacks give, and the one that agrees with [getResponseHeaders],
+     * which [closeQuietly] has emptied by then. The URI a refusal is diagnosed from is the one on
+     * the `DataSpec` the typed exception carries, not this.
      */
     private var readFrom: Uri? = null
 
@@ -121,6 +138,12 @@ internal class HttpTransportDataSource(
             // repaired off `responseCode`, and `ErrorClassifier` decides what the failure *is* off
             // the same field. A status swallowed here would end sessions unclassified and repair
             // nothing, with nothing failing to say so.
+            //
+            // The `DataSpec` is the one handed down, never a fresh one and never one re-addressed at
+            // a redirect's target: `ErrorClassifier` reads `LoadKind` off it, and rebuilding it
+            // would reclassify every refused segment as a refused manifest. So a refusal at an edge
+            // a redirect landed on is reported against the address the chain asked for, which is
+            // also what Media3's own stacks report.
             closeQuietly()
             throw HttpDataSource.InvalidResponseCodeException(
                 response.status,
@@ -161,6 +184,9 @@ internal class HttpTransportDataSource(
         // Where the bytes are really coming from (ADR-0016 rule 6). A transport that followed no
         // redirect says nothing and is taken at the requested URI, which is the same answer Media3's
         // own stacks give for an exchange that did not move.
+        // spec: RFC 9110 §15.4 — a 3xx names a different URI to take the request to.
+        // spec: RFC 3986 §5.1.3 — a relative reference inside a document resolves against the URI
+        // the document was *retrieved* from, which is why this and not the requested one.
         readFrom = response.uri ?: dataSpec.uri
 
         opened = true
@@ -176,8 +202,16 @@ internal class HttpTransportDataSource(
         } else {
             minOf(length.toLong(), bytesRemaining).toInt()
         }
+        // Taken once: a close from another thread may null it between here and the read below, and
+        // this is the reference that request was opened on either way.
+        val body = stream ?: throw HttpDataSource.HttpDataSourceException(
+            "The request was cancelled while a read was in flight",
+            checkNotNull(dataSpec),
+            PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
+            HttpDataSource.HttpDataSourceException.TYPE_READ,
+        )
         val read = try {
-            checkNotNull(stream).read(buffer, offset, wanted)
+            body.read(buffer, offset, wanted)
         } catch (e: IOException) {
             throw HttpDataSource.HttpDataSourceException.createForIOException(
                 e,
@@ -236,9 +270,11 @@ internal class HttpTransportDataSource(
      * as a load that failed slowly: `RetryingLoadErrors` spends a budget on it, the ladder climbs, a
      * session ends classified as a transfer failure, and the actual cause — a `read` that does not
      * return — is nowhere in the evidence. Left unbounded it is a hang whose stack trace names the
-     * consumer's own `InputStream.read` on the frame below ours, which is the diagnosis. The
-     * conformance test ADR-0016 rule 14 asks for is where this is meant to be caught, on a
-     * developer's machine, rather than by a timeout on a viewer's device.
+     * consumer's own `InputStream.read` on the frame below ours, which is the diagnosis. Where this
+     * is *meant* to be caught is the public conformance test ADR-0016 rule 14 asks
+     * `superplayer-testkit` for, on a developer's machine rather than by a timeout on a viewer's
+     * device — and that test is **not written yet**, which is the honest weakness of this argument's
+     * third leg and is said here rather than left for a reader to discover.
      */
     override fun close() {
         closeQuietly()
@@ -279,7 +315,11 @@ internal class HttpTransportDataSource(
         /** // spec: RFC 9110 §15.3.7. */
         const val HTTP_PARTIAL_CONTENT = 206
 
-        /** // spec: RFC 9110 §8.6. */
+        /**
+         * Lower-cased, because it is only ever *looked up* and the lookup is case-insensitive;
+         * [ACCEPT_ENCODING] beside it is title-cased because it is *composed* and goes out on the
+         * wire spelled as written. // spec: RFC 9110 §8.6.
+         */
         const val CONTENT_LENGTH = "content-length"
 
         /** // spec: RFC 9110 §12.5.3. */

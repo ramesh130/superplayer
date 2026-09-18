@@ -49,6 +49,11 @@ dependencies {
     // one that mints a credential and repairs a refused one is this module's — which is what makes "the
     // header refresh a player would meet" (rule 7) a fetch a test can count rather than a claim.
     testImplementation(project(":superplayer-resilience"))
+    // Tests only, a phase 6 module under a phase 9 one: the seventh redaction rule is asserted against a
+    // session that really acquired a licence and really held a DRM session, and the only thing that
+    // builds a `PlaybackDrm` is this module — a vacuous redaction test being the one outcome #292's
+    // centre has to avoid.
+    testImplementation(project(":superplayer-drm"))
 
     testImplementation(libs.media3.test.utils.robolectric)
     testImplementation(libs.robolectric)

@@ -77,11 +77,18 @@ import java.io.IOException
  *    accident. Time is milliseconds since [attach].
  * 5. **No device identity.** Nothing about the device, build, account or network is recorded.
  * 6. **No DRM payload.** A license request or response appears as `load ... drm` and nothing more.
- *
- * A seventh rule is written and not yet carried here: ADR-0015 rule 10 admits a device, codec and DRM
- * capability snapshot to Phase 9's trace *bundle* — what the device can do, never what the device is —
- * and #292 states it beside these six in the change that adds the snapshot. Nothing in this recorder
- * holds such a snapshot today, which is why the rule reads as six.
+ * 7. **No device identity, and a capability is admitted only where the library itself branches on
+ *    it.** ADR-0015 rule 10, written for the Phase 9 *bundle* and stated here because it is one rule
+ *    set rather than two: a snapshot may carry what the device can **do** — the decoder table the
+ *    selection gate refuses rungs against, the display it re-reads, the heap budget and low-RAM
+ *    reading the pool and the preload window are bounded by, the platform API level, and the
+ *    security level a session was delivered at — and never what the device **is**: no `Build` string,
+ *    no decoder *component* name, no DRM identifier, no display id or name, nothing of the network.
+ *    Nothing in this recorder holds such a snapshot; `superplayer-diagnostics`'s `SessionBundle` is
+ *    where the rule is carried out, over a snapshot core reads and hands over whole, and where it is
+ *    tested. The rule is stated here so that the six a trace obeys and the seventh a bundle obeys are
+ *    read together — a bundle is this artifact one layer richer, not a second format with rules of
+ *    its own.
  *
  * `SessionTraceRecorderTest` drives a session whose source URL carries a token and whose failure
  * message names it, and asserts none of it reaches the trace.
@@ -196,7 +203,8 @@ public class SessionTraceRecorder : TelemetrySink {
             loadEventInfo: LoadEventInfo,
             mediaLoadData: MediaLoadData,
         ) {
-            load(eventTime, Phase.COMPLETED, mediaLoadData)
+            load(eventTime, Phase.COMPLETED, mediaLoadData, durationMs = loadEventInfo.loadDurationMs)
+            bandwidthSample(eventTime, loadEventInfo)
         }
 
         override fun onLoadCanceled(
@@ -204,7 +212,7 @@ public class SessionTraceRecorder : TelemetrySink {
             loadEventInfo: LoadEventInfo,
             mediaLoadData: MediaLoadData,
         ) {
-            load(eventTime, Phase.CANCELED, mediaLoadData)
+            load(eventTime, Phase.CANCELED, mediaLoadData, durationMs = loadEventInfo.loadDurationMs)
         }
 
         override fun onLoadError(
@@ -218,7 +226,31 @@ public class SessionTraceRecorder : TelemetrySink {
             val cause = (error as? HttpDataSource.InvalidResponseCodeException)
                 ?.let { "http=${it.responseCode}" }
                 ?: "cause=${error.javaClass.simpleName}"
-            load(eventTime, Phase.ERROR, mediaLoadData, " $cause")
+            load(eventTime, Phase.ERROR, mediaLoadData, " $cause", durationMs = loadEventInfo.loadDurationMs)
+        }
+
+        /**
+         * The bandwidth sample a finished transfer *is*: its own throughput, in bits per second.
+         *
+         * `PRD.md` §3.6 asks a bundle for bandwidth samples, and these are the samples rather than
+         * the estimate. Media3's meter reports an estimate too, through `onBandwidthEstimate`, and it
+         * is deliberately **not** recorded: the meter measures on Media3's default clock rather than
+         * on the engine's, so under a harness that shapes a network on a fake clock the estimate
+         * reads how fast the *host* ran — which `docs/testing.md` says is not golden material, and a
+         * trace whose lines move with the machine is worth less than no lines. A rate computed from
+         * the load's own bytes over its own duration is on the one clock every other time here is on.
+         * It is also the quantity a meter smooths rather than a smoothing of it, which is the more
+         * useful of the two in a bug report: a reader sees the dropout rather than the average that
+         * hid it.
+         *
+         * No byte count is printed — rule 4's "nothing that varies between runs" keeps those out —
+         * and the `+ms` column already says when the transfer finished. A transfer with no measurable
+         * duration has no rate, and a sample is not invented for it.
+         */
+        private fun bandwidthSample(eventTime: AnalyticsListener.EventTime, info: LoadEventInfo) {
+            if (info.loadDurationMs <= 0 || info.bytesLoaded <= 0) return
+            val bitsPerSecond = info.bytesLoaded * BITS_PER_BYTE * MILLIS_PER_SECOND / info.loadDurationMs
+            record(eventTime.realtimeMs, Kind.BANDWIDTH, "", "bitrateBps=$bitsPerSecond")
         }
 
         override fun onPlayerError(eventTime: AnalyticsListener.EventTime, error: PlaybackException) {
@@ -226,7 +258,13 @@ public class SessionTraceRecorder : TelemetrySink {
         }
 
         // Rule 1: a load is named by what it is, not by where it came from.
-        private fun load(eventTime: AnalyticsListener.EventTime, phase: Phase, data: MediaLoadData, suffix: String = "") {
+        private fun load(
+            eventTime: AnalyticsListener.EventTime,
+            phase: Phase,
+            data: MediaLoadData,
+            suffix: String = "",
+            durationMs: Long? = null,
+        ) {
             val dataType = dataType(data.dataType)
             val trackType = trackType(data.trackType)
             val resource = buildString {
@@ -251,7 +289,12 @@ public class SessionTraceRecorder : TelemetrySink {
                 if (data.mediaStartTimeMs == C.TIME_UNSET) 0L else data.mediaStartTimeMs,
                 phase.ordinal,
             )
-            record(eventTime.realtimeMs, Kind.LOAD, key, "${phase.token} $resource$suffix")
+            // The timing `PRD.md` §3.6 asks a bundle for, and a field appended rather than inserted
+            // (ADR-0015 rule 9): how long the transfer took, as Media3 measured it, on the phases that
+            // have one. A start has none, and a completed load carries no HTTP status because Media3's
+            // analytics report one only on a refusal — where rule 3 already prints it.
+            val timing = durationMs?.let { " durationMs=$it" }.orEmpty()
+            record(eventTime.realtimeMs, Kind.LOAD, key, "${phase.token} $resource$suffix$timing")
         }
     }
 
@@ -345,6 +388,7 @@ public class SessionTraceRecorder : TelemetrySink {
         TRACKS("tracks"),
         DISCONTINUITY("discontinuity"),
         LOAD("load"),
+        BANDWIDTH("bandwidth"),
         ERROR("error"),
         TELEMETRY("telemetry"),
     }
@@ -360,6 +404,16 @@ public class SessionTraceRecorder : TelemetrySink {
     private class Entry(val timeMs: Long, val kind: Kind, val key: String, val text: String, val sequence: Long)
 
     private companion object {
+        /**
+         * The two conversions a bytes-over-milliseconds rate takes to reach bits per second.
+         *
+         * `val` rather than `const val`, as [URI_SHAPED] is: a `const` in a private companion is
+         * still a public static field on the class and would show up in the tracked API surface
+         * (`docs/api-surface.md`), which is not a thing a consumer should be reading.
+         */
+        val BITS_PER_BYTE = 8L
+        val MILLIS_PER_SECOND = 1000L
+
         fun selectedBitrate(tracks: Tracks, trackType: Int): String {
             val format = tracks.groups
                 .filter { it.type == trackType }

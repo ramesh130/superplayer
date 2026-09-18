@@ -75,3 +75,23 @@ public final class com/superplayer/diagnostics/Pathology : java/lang/Enum {
 	public static fun values ()[Lcom/superplayer/diagnostics/Pathology;
 }
 
+public final class com/superplayer/diagnostics/SessionBundle {
+	public static final field Companion Lcom/superplayer/diagnostics/SessionBundle$Companion;
+	public static final field FORMAT_HEADER Ljava/lang/String;
+	public static final field FORMAT_VERSION I
+	public final fun format ()Ljava/lang/String;
+	public final fun getLines ()Ljava/util/List;
+	public final fun getTimed ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/diagnostics/SessionBundle$Builder {
+	public fun <init> (Landroid/content/Context;)V
+	public final fun build ()Lcom/superplayer/diagnostics/SessionBundle;
+	public final fun setPlayer (Lcom/superplayer/core/SuperPlayer;)Lcom/superplayer/diagnostics/SessionBundle$Builder;
+	public final fun setTrace (Lcom/superplayer/telemetry/SessionTrace;)Lcom/superplayer/diagnostics/SessionBundle$Builder;
+}
+
+public final class com/superplayer/diagnostics/SessionBundle$Companion {
+}
+

@@ -392,6 +392,18 @@ Thirteen rules follow, and they are binding.
       plus an API level plus a display size is a device model spelled differently.
     - **What this rule does not claim.** It bounds each field, not the aggregate. Consequences says
       so plainly, because a reader of a bundle deserves to know what they are attaching.
+    - **#292's addendum: what the first snapshot carries, and the two admissions it declines.** The
+      list above is a ceiling rather than a schedule, and the change that built the snapshot took the
+      readership test literally. Carried: the per-MIME video decoder table (secure declared, instance
+      limit, highest profile and level, tunneling declared), the display's short edge and `HdrType`s,
+      the heap budget in megabytes, the low-RAM reading, the API level, and the level a session's
+      licences were *delivered* at. Declined, each because nothing in this library reads it: **the
+      audio output's declared encodings**, which Media3's own `AudioCapabilitiesReceiver` reads inside
+      the engine (ADR-0014 rule 6 leaves that to Media3), so admitting them would mean writing a
+      platform reader for a bundle alone — the shape this rule's test refuses; and **the security
+      level the device reports**, which is `superplayer-drm`'s to ask and which rule 3 therefore keeps
+      off the seam list, leaving the delivered level as the fact a bundle states. Either comes in with
+      the first reader that branches on it, and no change to this rule is needed for that.
 
 ### Compose in a second library module
 

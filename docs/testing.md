@@ -1233,7 +1233,10 @@ line in a fixed order — and holds it to a committed file, so a change in behav
 names still appears in review, as a diff. "This change also moves the first segment load a step
 later on 3G" is a sentence a diff can say and a test suite cannot. The goldens live in
 `superplayer-telemetry/src/test/golden/`, one whole session each, played by `GoldenTraceTest` through
-the harness: each protocol on demand, and each over a shaped network.
+the harness: each protocol on demand, and each over a shaped network. Since #292 there are goldens in
+a second module — `superplayer-diagnostics/src/test/golden/`, played by `SessionBundleGoldenTraceTest`
+— which pin the *bundle* that trace becomes one layer out, header lines and capability snapshot
+included. One command regenerates both, because the task is wired into every module.
 
 The recorder is `superplayer-telemetry`'s `SessionTraceRecorder`, a `TelemetrySink` that also reads
 Media3's analytics, and the artifact is a `SessionTrace`. It lives in the telemetry module rather
@@ -1247,12 +1250,20 @@ format's specification; two of its rules matter to a test author:
   Arrival order is a fact about the host, and the trace records none of those.
 - **A trace is redacted by construction.** No URL, header, exception message, session id, wall-clock
   time or device identifier can reach a line, because the recorder never holds them; the class
-  documentation lists the six rules — ADR-0015 rule 10 writes the seventh, for the capability
-  snapshot Phase 9's *bundle* adds, and #292 states it there beside them — and
+  documentation lists **seven** rules — the seventh ADR-0015 rule 10's, for the capability snapshot
+  Phase 9's *bundle* adds, stated there beside the six a trace obeys and carried out in
+  `superplayer-diagnostics`'s `SessionBundle` — and
   `SessionTraceRecorderTest` plays a session through a signed
   URL that fails, and shows none of it in the trace. That is what makes a trace captured on a device
   attachable to a bug report — and a device trace's one normalisation is `withoutTimings()`, which
   drops the millisecond column and keeps the order it decided.
+  `SessionBundleRedactionTest` is the same claim at bundle scale and is the one test in this
+  repository whose *setup* is the subject: one session that really carries signed URLs on a CDN host
+  of its own, a credential in an `Authorization` header repaired inside the transfer that met a
+  refusal, a licence acquired from the harness's server, a session id on every request as CMCD's
+  `sid`, and a host that stops resolving so the failure's message names it — each asserted **present**
+  before the matching `doesNotContain` runs, because a redaction test over a session that never had
+  the material passes against any implementation at all.
 
 The contract is `docs/api-surface.md`'s, deliberately. Nothing regenerates a golden implicitly.
 A golden test in check mode — the default, and what `check` runs — fails on any difference with the
@@ -1295,7 +1306,16 @@ Adding a golden is a test method in a class whose name contains `GoldenTrace` �
 `updateGoldenTraces` selects what to run — that plays a session and passes the formatted trace to
 `GoldenFile.check(name, text)`; the update command creates the file, and the review of that first
 commit is the review of the behaviour. The seam for `superplayer-diagnostics` is the same artifact
-one layer richer, which is why `SessionTrace` says how a kind is added without a second format.
+one layer richer, which is why `SessionTrace` says how a kind is added without a second format, and
+`docs/session-bundle.md` is what a reader of the richer artifact is given.
+
+One thing #292 found where the rule above bites: **Media3's own bandwidth estimate is not golden
+material.** Its meter measures on Media3's default clock rather than on the engine's, so under a
+harness that shapes a network on a fake clock the estimate reads how fast the host ran — two runs on
+this machine differed by a factor of three hundred. The `bandwidth` lines a trace carries are
+therefore the *samples* rather than the estimate: each finished transfer's own bytes over its own
+duration, both on the engine's clock. A device trace loses nothing by it, and a bundle gains the
+dropout the average would have hidden.
 
 ### The QoE regression gate
 

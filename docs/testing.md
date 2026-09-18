@@ -980,6 +980,28 @@ asks for tunneling only on a player with an output. Core's tests play no video b
 playback shows it. `superplayer-tv`'s `TunneledPlaybackTest` shows it applied at the renderer, its controls
 included.
 
+`superplayer-diagnostics` is the ninth friend, and the first bounded by a **closed list** rather than by
+a slot (ADR-0015 rule 3): a doctor fills nothing, and what it reaches is `TransferChain.diagnosticChain`
+— ADR-0013 rule 4's second shape unchanged — plus, when #288 and #292 land, `LiveWindowDepthCheck`'s
+judgement and one function returning the capability snapshot. A fourth seam needs that rule amended by
+name. Its `MediaSourceDoctorTest` examines corpus entries through a real `MediaSourceDoctor` over
+`PlaybackHarness.diagnosticEnvironment`, and nothing it asserts reads past the facade: a report is the
+whole of the doctor's output, and the count of what left the chain is the harness's.
+
+The environment is `DownloadEnvironment`'s twin and is there for the same reason (#286). A doctor fetches
+over the chain a *player* of that request would load through, so a test has to be able to give it that
+player's transport, and the harness is phase 2 while the diagnostics module is phase 9 — so the type both
+can name is core's public `DiagnosticEnvironment`, with an internal transport and an internal constructor,
+handed to `MediaSourceDoctor.Builder` through a setter internal to that module. It carries a transport and
+nothing else: a doctor builds no engine, chooses no track, acquires no licence and runs its one fetch on the
+thread that asked, so there is no renderer, no `MediaDrm` and no load executor for a harness to own.
+`networkRequests(environment)` counts what left it, exactly as for a player.
+
+What it cannot show is what any Robolectric test cannot: a real CDN's headers, an intermediary that rewrites
+a playlist, and a `Cache-Control` rule that a device would meet and a fake origin does not. The pathologies
+themselves are the corpus's, which is a stronger fixture than a live stream for exactly the reason
+*The hostile manifest corpus* gives.
+
 `superplayer-testkit`'s own public API names **no Media3 type**, for the reason ADR-0001 rule 2 gives:
 a `Format` or a `Timeline` in one of its signatures would put Media3's opt-in marker on every test
 that named it. A test says what it wants — `TestContent.videoLadder()`, `harness.stallRendering(player)`

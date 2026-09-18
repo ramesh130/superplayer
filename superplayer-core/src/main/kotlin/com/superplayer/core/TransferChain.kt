@@ -372,6 +372,57 @@ internal object TransferChain {
     }
 
     /**
+     * The chain a doctor's manifest fetch travels for the content [contentId] names: the transport —
+     * [environment]'s under a test, the platform's HTTP stack otherwise — with the header-refresh layer
+     * [resilience] contributes composed innermost, the cache slot over that, and every request stamped
+     * as a manifest of that content.
+     *
+     * ADR-0015 rule 7: a doctor fetches over the chain a *player* of that request would load through and
+     * never over an HTTP stack of its own, so the token the app's `HeaderProvider` mints, the refresh a
+     * 401 or 403 triggers and the `ContentCache` the consumer opened are the ones that player would meet.
+     * A doctor with neither is the doctor of a player with neither, and its answer is that player's:
+     * the consequence ADR-0015 states, that two apps can be told different things about one manifest,
+     * is the point rather than a defect.
+     *
+     * Three things a player's chain has are deliberately not here.
+     * - **The two live layers.** [LivePlaylistRevalidation] and [LiveWindowDepthCheck] end a transfer
+     *   with a typed exception, which is right for a player — it is the only way it can say what is
+     *   wrong — and wrong for a doctor, whose whole output is a finding. A layer that failed the fetch
+     *   would turn the defect being examined into a refusal to examine it, so the doctor reports
+     *   those defects instead (ADR-0015 rule 6, #288) by asking the same judgement about the manifest
+     *   it fetched.
+     * - **The load-error policy.** A doctor runs no Media3 loader and asks for a manifest exactly once;
+     *   there is no `LoadErrorHandlingPolicy` to consult and no budget to spend, and a refusal is a
+     *   finding rather than a retry (rule 7).
+     * - **CMCD and the bandwidth meter**, which are a *playback*'s and are not composed here at all:
+     *   `mediaSourceFactory` is where a `sid` is attached, and nothing here registers a
+     *   `TransferListener`, so a fetch no viewer waited for seeds no estimate (ADR-0009 rule 8) and puts
+     *   no row in a CDN's log that joins to no session (ADR-0008 rule 6). `downloadChain` took the same
+     *   two exclusions for the same reason (ADR-0013 rule 5).
+     *
+     * The stamp sits above both slots, as an item's factory's does on a player, so the cache reads the
+     * content id and the header-refresh layer reads the kind. Every request a doctor opens is a manifest:
+     * it downloads no segment (rule 7), and reading a media playlist the multivariant one names is still
+     * reading a manifest.
+     *
+     * [resilience] is asked for its layer through core rather than by the module, because
+     * [HeaderRefreshSource] is internal and `superplayer-diagnostics` reaches the closed list of three
+     * seams ADR-0015 rule 3 draws and nothing else — of which this function is the first.
+     */
+    fun diagnosticChain(
+        context: Context,
+        contentId: String,
+        environment: DiagnosticEnvironment? = null,
+        cache: ContentCache? = null,
+        resilience: PlaybackResilience? = null,
+    ): DataSource.Factory {
+        val transport = environment?.transport ?: DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory())
+        val refreshed = (resilience as? HeaderRefreshSource)?.headerRefreshLayer()?.over(transport) ?: transport
+        val cached = cache?.layer?.over(refreshed) ?: refreshed
+        return cached.stampedWith(ContentIdentity(contentId), LoadKind.MANIFEST)
+    }
+
+    /**
      * The chain itself — see the composition order above for what wraps what — over [refreshed],
      * which is the transport with the header-refresh slot already composed onto it, and with
      * [cache]'s layer in the cache slot when there is one. One call is one player's chain: the

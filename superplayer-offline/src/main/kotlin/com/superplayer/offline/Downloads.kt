@@ -260,7 +260,7 @@ public class Downloads internal constructor(
 
     // The store's one header-refresh layer, under its downloads and its licence exchanges alike (rule 14): the
     // credential it repairs is the store's, as a player's one layer serves its licence and its media.
-    private val headerRefresh: HeaderRefreshLayer? = resilience?.downloadHeaderRefresh()
+    private val headerRefresh: HeaderRefreshLayer? = resilience?.headerRefreshLayer()
 
     // Built once: every download's writer is over the one chain (ADR-0013 rule 6), with that layer innermost.
     private val upstream: DataSource.Factory = TransferChain.downloadChain(context, environment, headerRefresh)

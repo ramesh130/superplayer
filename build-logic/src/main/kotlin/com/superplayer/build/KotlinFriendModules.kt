@@ -93,6 +93,30 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
  * have carried it instead. The friendship and the slot arrived together (#268). A ninth that is neither
  * shape still needs an ADR of its own.
  *
+ * ## The ninth, and the first bounded by a list rather than by a slot
+ *
+ * ADR-0015 rule 3 is that ADR, for `superplayer-diagnostics`, and it is the ninth because the shape above
+ * covers part of it and not the whole. One of the three seams it reaches is the seventh's shape unchanged:
+ * `TransferChain.diagnosticChain` composes a doctor's fetch at the one place a chain is assembled, filling
+ * no slot, exactly as a download store composes its own. The other two are not that shape and the ADR says
+ * so rather than pretending otherwise — one core-internal function returning the capability snapshot a
+ * bundle prints (#292), and `LiveWindowDepthCheck`'s judgement, so that a doctor reports the defect core
+ * already detects by asking the same code the same question rather than by keeping a second copy of a rule
+ * that is not a constant (#288).
+ *
+ * Reaching a reader and reaching a judgement is what the ceiling above calls "reaching a helper", and what
+ * it says wants a public API or a test source set instead. What the ADR puts in their place is not a
+ * general friendship but a **closed list of three**: each is a whole answer rather than a helper, each is
+ * argued in the ADR, and **a fourth needs that rule amended by name in the change that takes it**. The list
+ * is what stands in for the slot every earlier friendship named. The ceiling itself does not move: a tenth
+ * of either established shape needs no ADR, and a tenth of neither still needs one.
+ *
+ * What was weighed against it, since the alternative is what makes the admission honest rather than
+ * convenient. Publishing the readers wholesale would put Media3's `@UnstableApi` vocabulary — and a device's
+ * decoder table — into core's public API for the benefit of one debug module, which ADR-0001 rule 2 refuses.
+ * Restating the live-window rule in this module would make "too short" two definitions that nothing keeps in
+ * step, against ADR-0011 rule 1's argument in the shape Phase 9 takes it.
+ *
  * ## Why it is not the second seam `docs/testing.md` warns about
  *
  * That warning is about *widening what is configurable*. Nothing is widened here: the same one

@@ -192,6 +192,10 @@ internal class HttpTransportDataSource(
             opened = false
             transferEnded()
         }
+        // Forgotten last, so that [transferEnded] is reported for the request it belonged to. A
+        // closed source answers null from [getUri], which is what Media3's own stacks do and what
+        // keeps it from disagreeing with [getResponseHeaders], already emptied above.
+        dataSpec = null
     }
 
     /**

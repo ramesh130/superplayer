@@ -1586,10 +1586,11 @@ public class SuperPlayer private constructor(
          * allocated, which is ADR-0016 rule 14 and is counted rather than asserted about. Fixed for
          * the player's lifetime, like the cache: the chain is composed as the engine is built.
          *
-         * A player is one of four things that compose a chain, and the other three take a stack of
-         * their own (`PlayerPool.Builder`, `Downloads.Builder`, `MediaSourceDoctor.Builder`, rule
-         * 13) — a player loading over the app's client while its downloads use the platform's is
-         * the defect the seam exists to prevent.
+         * A player is one of four things that compose a chain, and ADR-0016 rule 13 has the other
+         * three — `PlayerPool.Builder`, `Downloads.Builder` and `MediaSourceDoctor.Builder` — take
+         * a stack of their own too, because a player loading over the app's client while its
+         * downloads use the platform's is the defect the seam exists to prevent. Until they do,
+         * those three keep the stack that shipped before whatever this call is handed.
          */
         public fun setHttpStack(stack: HttpStack): Builder = apply { this.httpStack = stack }
 

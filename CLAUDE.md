@@ -229,8 +229,9 @@ harness's transport slot, then the stack, then Media3's own `DefaultHttpDataSour
 the slot substitutes for the network itself and a stack for the client over a real one). What a
 consumer supplies is an `HttpTransport` — open a request for a URI with headers and an optional byte
 range, answer a status, the response headers and a stream — taken as `HttpStack.of(transport)` through
-`SuperPlayer.Builder.setHttpStack`, with `HttpStack` core's tenth type with an internal constructor
-(`ContentCache`'s idiom, rule 11). The adapter is internal, is the repository's first `BaseDataSource`
+`SuperPlayer.Builder.setHttpStack`, with `HttpStack` a public shell with an internal constructor
+(`ContentCache`'s idiom rather than `PlaybackResilience`'s marker interface, because it carries
+transport state rather than being a behavioural seam a friend module fills — rule 11). The adapter is internal, is the repository's first `BaseDataSource`
 subclass because it is the *bottom* of the chain rather than a layer with an upstream, and reports
 `isNetwork = true` so the cache-hit exclusion still means what it says (rule 9). The obligations are in
 `HttpTransport`'s KDoc, each with what getting it wrong costs, because every one of them fails

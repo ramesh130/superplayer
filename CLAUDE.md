@@ -224,7 +224,21 @@ about them: measurement is a propagated `TransferListener`, so a layer that drop
 blinds ABR silently, and cache hits stay out of the estimate through Media3's `isNetwork` flag rather
 than through chain position — ADR-0002's argument arriving through a different door. CMCD attaches to
 the `MediaSource.Factory`, which is why the seam owns that too. Which HTTP stack sits at the bottom is
-ADR-0004's open question, and it plugs in at one named line.
+the *consumer's* since #309, and it plugs in at one named line: `resolveTransport`, whose order is the
+harness's transport slot, then the stack, then Media3's own `DefaultHttpDataSource` (ADR-0016 rule 3 —
+the slot substitutes for the network itself and a stack for the client over a real one). What a
+consumer supplies is an `HttpTransport` — open a request for a URI with headers and an optional byte
+range, answer a status, the response headers and a stream — taken as `HttpStack.of(transport)` through
+`SuperPlayer.Builder.setHttpStack`, with `HttpStack` core's tenth type with an internal constructor
+(`ContentCache`'s idiom, rule 11). The adapter is internal, is the repository's first `BaseDataSource`
+subclass because it is the *bottom* of the chain rather than a layer with an upstream, and reports
+`isNetwork = true` so the cache-hit exclusion still means what it says (rule 9). The obligations are in
+`HttpTransport`'s KDoc, each with what getting it wrong costs, because every one of them fails
+silently; ranges are the one #309 wrote, and a range from a non-zero offset answered 200 is refused at
+`open` rather than read past. `SuperPlayerHttpStackTest` is the only test that can see any of it: its
+own transport *is* the origin, which is the only way a 206 with `Content-Range` exists anywhere in this
+repository, and `docs/testing.md`'s *The one player that keeps its own transport* says why. The other
+three entry points rule 13 names, and the rest of the contract, are still open tickets.
 
 CMCD (CTA-5004) is emitted there today, and is on for every profile including `DATA_SAVER` —
 `CmcdBinding.kt` holds the per-profile table, the reasoning, and the `// spec:` citation for each

@@ -1,0 +1,303 @@
+/*
+ * Copyright 2026 The SuperPlayer Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.superplayer.core
+
+import android.net.Uri
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.HttpDataSource
+import androidx.media3.test.utils.robolectric.ShadowMediaCodecConfig
+import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.common.truth.Truth.assertThat
+import com.superplayer.testmedia.SyntheticDashStream
+import com.superplayer.testmedia.SyntheticHlsStream
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import java.io.ByteArrayInputStream
+import java.util.concurrent.CopyOnWriteArrayList
+
+/**
+ * Phase 10's tracer bullet: HLS and DASH played over an [HttpTransport] a *consumer* wrote.
+ *
+ * ## Why the test transport is the origin
+ *
+ * Every other playback test in this repository substitutes Media3's `FakeDataSource` exactly where
+ * the HTTP stack goes (`docs/testing.md`), which makes this seam invisible to all of them — the
+ * substitution replaces the thing under test. So this class builds its players on the real transfer
+ * chain, as [SuperPlayerTransferChainTest] does, and puts the synthetic streams behind an
+ * [HttpTransport] that serves them from memory under `https:` URIs.
+ *
+ * That is not a shortcut, it is the only route. Nothing in `superplayer-testkit` can express a
+ * **206** — `FaultScript.failWithHttpStatus` takes a status in `400..599`, and the fake origins
+ * serve a `DataSpec`'s slice, which is a length-aware read rather than a protocol-level partial
+ * response. A transport that *is* the origin controls both sides of the exchange, so a range can be
+ * answered as the protocol answers one and asserted as what the wire carried rather than as "it
+ * played".
+ *
+ * ## Where it reads past the facade, and why
+ *
+ * Two of the five tests open the adapter's `DataSource` directly, through the internal member on an
+ * [HttpStack] a consumer holds. `docs/testing.md`'s rule is that nothing asserts past the facade
+ * about *playback*, and these assert about a range request, which no playback here can produce:
+ * Media3 asks for a byte range when a DASH representation carries an index or an HLS segment an
+ * `EXT-X-BYTERANGE`, and the synthetic streams — a `SegmentList` of whole segments, a playlist of
+ * whole segments — carry neither. Adding one to `superplayer-testmedia` to reach the assertion
+ * through a player would change the corpus every other module's tests are recorded against, to
+ * observe something one call states exactly.
+ */
+@RunWith(AndroidJUnit4::class)
+class SuperPlayerHttpStackTest {
+
+    /** Robolectric has no real codecs; the renderer pipeline runs against shadow ones. */
+    @get:Rule
+    val shadowMediaCodecConfig: ShadowMediaCodecConfig =
+        ShadowMediaCodecConfig.withAllDefaultSupportedCodecs()
+
+    @get:Rule
+    val harness: SuperPlayerHarness = SuperPlayerHarness()
+
+    @Test
+    fun hlsPlaysOverATransportTheConsumerWrote() {
+        val transport = ServingTransport(hlsOverHttps())
+        val player = harness.buildPlayerOnItsOwnTransferChain(httpStack = HttpStack.of(transport))
+
+        player.setMediaItem(MediaItem.fromUri(httpsFor(SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI)))
+        player.prepare()
+        TestPlayerRunHelper.advance(player).untilState(Player.STATE_READY)
+
+        assertThat(player.playerError).isNull()
+        assertThat(player.duration).isEqualTo(SyntheticHlsStream.DURATION_MS)
+        // Ready means the multivariant playlist, the media playlist and the segment all arrived, and
+        // every one of them came out of the consumer's transport: nothing else served an `https:`
+        // URI on this player.
+        assertThat(transport.paths()).containsExactly("/master.m3u8", "/media.m3u8", "/segment0.aac")
+    }
+
+    @Test
+    fun dashPlaysOverATransportTheConsumerWrote() {
+        val transport = ServingTransport(dashOverHttps())
+        val player = harness.buildPlayerOnItsOwnTransferChain(httpStack = HttpStack.of(transport))
+
+        player.setMediaItem(MediaItem.fromUri(httpsFor(SyntheticDashStream.MANIFEST_URI)))
+        player.prepare()
+        TestPlayerRunHelper.advance(player).untilState(Player.STATE_READY)
+
+        assertThat(player.playerError).isNull()
+        assertThat(player.duration).isEqualTo(SyntheticDashStream.DURATION_MS)
+        // The MPD, the initialization segment and the media segment — the second protocol over the
+        // same fifty lines of consumer code, which is the whole claim of the ticket.
+        assertThat(transport.paths())
+            .containsExactly("/dash/manifest.mpd", "/dash/init.mp4", "/dash/segment0.m4s")
+    }
+
+    /**
+     * ADR-0016 rule 5, on the wire rather than by inference: a request for part of a resource is
+     * asked for as a `Range` header, answered **206** with `Content-Range`, and the bytes that come
+     * back are the bytes asked for.
+     *
+     * // spec: RFC 9110 §14.2 — a `Range` a server honours answers 206 Partial Content.
+     */
+    @Test
+    fun aByteRangeIsAskedForAsARangeAndAnsweredAsPartialContent() {
+        val resources = hlsOverHttps()
+        val transport = ServingTransport(resources)
+        val uri = segmentUriIn(resources)
+        val segment = resources.getValue(uri)
+
+        val source = HttpStack.of(transport).factory.createDataSource()
+        val offset = 10L
+        val length = 20L
+        val announced = source.open(
+            DataSpec.Builder().setUri(uri).setPosition(offset).setLength(length).build(),
+        )
+
+        val read = ByteArray(length.toInt())
+        var filled = 0
+        while (filled < read.size) {
+            val n = source.read(read, filled, read.size - filled)
+            check(n > 0) { "The range ended after $filled of ${read.size} bytes" }
+            filled += n
+        }
+        source.close()
+
+        val asked = transport.requests.single()
+        assertThat(asked.rangeHeaderValue).isEqualTo("bytes=10-29")
+        assertThat(asked.status).isEqualTo(206)
+        assertThat(asked.responseHeaders["Content-Range"])
+            .containsExactly("bytes 10-29/${segment.size}")
+        assertThat(announced).isEqualTo(length)
+        assertThat(read).isEqualTo(segment.copyOfRange(offset.toInt(), (offset + length).toInt()))
+    }
+
+    /**
+     * The other half of rule 5, and the reason it is worth a test: a transport that answers 200 and
+     * the whole resource to a range asked from byte ten is refused rather than read past.
+     *
+     * Silently skipping the bytes is what would make such a transport look merely slow — the viewer
+     * pays for every resource whole and the bandwidth estimate describes a link nobody is on. Here
+     * it fails at `open`, which is where a broken implementation is cheapest to find.
+     */
+    @Test
+    fun aTransportThatIgnoresARangeIsRefusedRatherThanReadPast() {
+        val resources = hlsOverHttps()
+        val transport = ServingTransport(resources, honourRanges = false)
+        val uri = segmentUriIn(resources)
+
+        val source = HttpStack.of(transport).factory.createDataSource()
+        val failure = runCatching {
+            source.open(DataSpec.Builder().setUri(uri).setPosition(10).setLength(20).build())
+        }.exceptionOrNull()
+
+        assertThat(failure).isInstanceOf(HttpDataSource.HttpDataSourceException::class.java)
+        assertThat(failure).hasMessageThat().contains("not 206")
+        assertThat(transport.requests.single().status).isEqualTo(200)
+    }
+
+    /**
+     * ADR-0016 rule 3: the harness's transport slot wins over a stack a consumer set, because the
+     * two substitute for different things — the slot for the *network itself*, the stack for the
+     * HTTP client over a real one.
+     *
+     * Counted rather than described: the stream is served from `fake:` URIs no real data source
+     * could open, so reaching `STATE_READY` is only possible through the slot, and the consumer's
+     * transport is asked nothing at all.
+     */
+    @Test
+    fun theHarnessesTransportSlotWinsOverAStackAConsumerSet() {
+        val transport = ServingTransport(hlsOverHttps())
+        val player = harness.buildPlayer(httpStack = HttpStack.of(transport))
+
+        player.setMediaItem(MediaItem.fromUri(SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI))
+        player.prepare()
+        TestPlayerRunHelper.advance(player).untilState(Player.STATE_READY)
+
+        assertThat(player.playerError).isNull()
+        assertThat(transport.requests).isEmpty()
+    }
+
+    /**
+     * ADR-0016 rule 14, counted: a player built without `setHttpStack` resolves to exactly the
+     * factory composed before this seam existed, and asks no consumer transport anything.
+     *
+     * The count is taken on one `https:` URI played two ways. With a stack, every request is the
+     * transport's and the player is ready; without one, the transport is asked nothing and the
+     * request goes to Media3's own `DefaultHttpDataSource` — which, on a host under a TLD the
+     * protocol guarantees will never resolve (// spec: RFC 6761 §6.2, `.test`), can only fail. A
+     * player that reached `READY` without a stack would mean something in this change had started
+     * answering `https:` on its own, and a player that failed *with* one would mean the stack was
+     * not reached; both halves are asserted so the counter is shown to see what it counts.
+     */
+    @Test
+    fun aPlayerBuiltWithoutAnHttpStackAsksNoConsumerTransportAndKeepsMediaThreesOwn() {
+        val uri = httpsFor(SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI)
+
+        val unused = ServingTransport(hlsOverHttps())
+        val without = harness.buildPlayerOnItsOwnTransferChain()
+        without.setMediaItem(MediaItem.fromUri(uri))
+        without.prepare()
+        TestPlayerRunHelper.advance(without).untilPlayerError()
+
+        assertThat(unused.requests).isEmpty()
+        assertThat(without.playerError).isNotNull()
+
+        val serving = ServingTransport(hlsOverHttps())
+        val with = harness.buildPlayerOnItsOwnTransferChain(httpStack = HttpStack.of(serving))
+        with.setMediaItem(MediaItem.fromUri(uri))
+        with.prepare()
+        TestPlayerRunHelper.advance(with).untilState(Player.STATE_READY)
+
+        assertThat(with.playerError).isNull()
+        assertThat(serving.requests).isNotEmpty()
+    }
+
+    /** One exchange as the transport saw it, which is where both sides of a range are visible. */
+    private class Exchange(
+        val uri: Uri,
+        val rangeHeaderValue: String?,
+        val status: Int,
+        val responseHeaders: Map<String, List<String>>,
+    )
+
+    /**
+     * A consumer's [HttpTransport], written the way the KDoc's example is written, over a map in
+     * memory instead of a client.
+     *
+     * [honourRanges] false is the broken implementation ADR-0016 rule 5 names: it reads the `Range`
+     * and answers 200 with the whole resource anyway.
+     */
+    private class ServingTransport(
+        private val resources: Map<String, ByteArray>,
+        private val honourRanges: Boolean = true,
+    ) : HttpTransport {
+
+        /** Written from the engine's loader threads, read from the test's. */
+        val requests: MutableList<Exchange> = CopyOnWriteArrayList()
+
+        fun paths(): List<String> = requests.map { it.uri.path.orEmpty() }
+
+        override fun open(request: HttpRequest): HttpResponse {
+            val bytes = resources[request.uri.toString()]
+                ?: return record(request, 404, emptyMap(), ByteArray(0))
+            val range = request.range?.takeIf { honourRanges }
+            if (range == null) {
+                return record(request, 200, mapOf("Content-Length" to listOf(bytes.size.toString())), bytes)
+            }
+            val last = range.length?.let { range.offset + it - 1 } ?: (bytes.size - 1L)
+            val slice = bytes.copyOfRange(range.offset.toInt(), (last + 1).toInt())
+            val headers = mapOf(
+                "Content-Length" to listOf(slice.size.toString()),
+                // spec: RFC 9110 §14.4 — `Content-Range: bytes <first>-<last>/<complete-length>`.
+                "Content-Range" to listOf("bytes ${range.offset}-$last/${bytes.size}"),
+            )
+            return record(request, 206, headers, slice)
+        }
+
+        private fun record(
+            request: HttpRequest,
+            status: Int,
+            headers: Map<String, List<String>>,
+            body: ByteArray,
+        ): HttpResponse {
+            requests += Exchange(request.uri, request.range?.headerValue(), status, headers)
+            return HttpResponse(status, headers, ByteArrayInputStream(body))
+        }
+    }
+
+    private companion object {
+
+        /**
+         * The synthetic streams live at `fake:` URIs, which no real chain resolves and which is the
+         * point of them; served over a consumer's transport they need a scheme `DefaultDataSource`
+         * hands on rather than answers itself, and every reference inside either document is
+         * relative, so rewriting the scheme is the whole of the move.
+         */
+        fun httpsFor(fakeUri: String): String = fakeUri.replaceFirst("fake://", "https://")
+
+        fun hlsOverHttps(): Map<String, ByteArray> =
+            SyntheticHlsStream.resources().mapKeys { (uri, _) -> httpsFor(uri) }
+
+        /** The one media segment of [hlsOverHttps], which is the only resource a range test needs. */
+        fun segmentUriIn(resources: Map<String, ByteArray>): String =
+            resources.keys.single { it.endsWith(SyntheticHlsStream.SEGMENT_SUFFIX) }
+
+        fun dashOverHttps(): Map<String, ByteArray> =
+            SyntheticDashStream.resources().mapKeys { (uri, _) -> httpsFor(uri) }
+    }
+}

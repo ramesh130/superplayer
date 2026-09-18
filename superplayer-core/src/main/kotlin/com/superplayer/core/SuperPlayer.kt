@@ -1386,6 +1386,7 @@ public class SuperPlayer private constructor(
         private var resilience: PlaybackResilience? = null
         private var drm: PlaybackDrm? = null
         private var output: PlaybackOutput? = null
+        private var httpStack: HttpStack? = null
         private var pooledEngine: PooledEngine? = null
 
         /**
@@ -1564,6 +1565,35 @@ public class SuperPlayer private constructor(
         public fun setOutput(output: PlaybackOutput): Builder = apply { this.output = output }
 
         /**
+         * Loads this player's media over [stack]: the HTTP client the bytes below `MediaSource`
+         * travel on.
+         *
+         * ```kotlin
+         * val player = SuperPlayer.Builder(context)
+         *     .setHttpStack(HttpStack.of(OkHttpTransport(app.okHttpClient)))
+         *     .build()
+         * ```
+         *
+         * What a consumer supplies is an [HttpTransport] — open a request, answer a status, headers
+         * and a byte stream — and never a Media3 `DataSource.Factory`, which ADR-0001 rule 2 keeps
+         * out of public API and which would put every obligation in [HttpTransport]'s KDoc on the
+         * far side of the boundary (ADR-0016 rules 2 and 4). Everything above the bytes is adapted
+         * behind it: the transfer a bandwidth estimate is derived from, and the typed failure the
+         * fallback ladder and the classifier read.
+         *
+         * Leave it unset and the player loads over exactly the stack that shipped before — Media3's
+         * `DefaultHttpDataSource` under a `DefaultDataSource` — with nothing of this seam
+         * allocated, which is ADR-0016 rule 14 and is counted rather than asserted about. Fixed for
+         * the player's lifetime, like the cache: the chain is composed as the engine is built.
+         *
+         * A player is one of four things that compose a chain, and the other three take a stack of
+         * their own (`PlayerPool.Builder`, `Downloads.Builder`, `MediaSourceDoctor.Builder`, rule
+         * 13) — a player loading over the app's client while its downloads use the platform's is
+         * the defect the seam exists to prevent.
+         */
+        public fun setHttpStack(stack: HttpStack): Builder = apply { this.httpStack = stack }
+
+        /**
          * The single seam through which tests reach the engine's construction.
          *
          * A test that must run without a device or a network has to substitute Media3's fake clock
@@ -1715,6 +1745,7 @@ public class SuperPlayer private constructor(
                     cmcd,
                     measurementSession,
                     configuration.transport,
+                    httpStack,
                     configuration.loadExecutor,
                     cache,
                     configuration.headerRefresh,

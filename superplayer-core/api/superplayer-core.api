@@ -124,11 +124,22 @@ public final class com/superplayer/core/HttpResponse {
 
 public abstract class com/superplayer/core/HttpStack {
 	public static final field Companion Lcom/superplayer/core/HttpStack$Companion;
+	public static final field HTTP_ENGINE_MIN_API_LEVEL I
+	public static final fun default ()Lcom/superplayer/core/HttpStack;
+	public static final fun httpEngine ()Lcom/superplayer/core/HttpStack;
 	public static final fun of (Lcom/superplayer/core/HttpTransport;)Lcom/superplayer/core/HttpStack;
 }
 
 public final class com/superplayer/core/HttpStack$Companion {
+	public final fun default ()Lcom/superplayer/core/HttpStack;
+	public final fun httpEngine ()Lcom/superplayer/core/HttpStack;
 	public final fun of (Lcom/superplayer/core/HttpTransport;)Lcom/superplayer/core/HttpStack;
+}
+
+public final class com/superplayer/core/HttpStackUnsupportedException : java/lang/UnsupportedOperationException {
+	public final fun getDeviceApiLevel ()I
+	public final fun getRequiredApiLevel ()I
+	public final fun getStack ()Ljava/lang/String;
 }
 
 public abstract interface class com/superplayer/core/HttpTransport {

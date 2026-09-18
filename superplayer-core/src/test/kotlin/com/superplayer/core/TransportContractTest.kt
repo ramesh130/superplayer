@@ -144,7 +144,7 @@ class TransportContractTest {
     fun theAdapterReportsTheUriTheBytesCameFrom() {
         val transport = redirectingTransport(reportsFinalUri = true)
 
-        val source = HttpStack.of(transport).factory.createDataSource()
+        val source = HttpStack.of(transport).testDataSource()
         source.open(DataSpec.Builder().setUri(REQUESTED_PLAYLIST).build())
         val whileOpen = source.uri
         source.close()
@@ -162,7 +162,7 @@ class TransportContractTest {
         val resources = ServingTransport.hlsOverHttps()
         val uri = ServingTransport.httpsFor(SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI)
 
-        val source = HttpStack.of(ServingTransport(resources)).factory.createDataSource()
+        val source = HttpStack.of(ServingTransport(resources)).testDataSource()
         source.open(DataSpec.Builder().setUri(uri).build())
         val whileOpen = source.uri
         source.close()
@@ -186,7 +186,7 @@ class TransportContractTest {
             refusals = mapOf(uri to ServingTransport.Refusal(FORBIDDEN)),
         )
 
-        val source = HttpStack.of(transport).factory.createDataSource()
+        val source = HttpStack.of(transport).testDataSource()
         val failure = runCatching {
             source.open(DataSpec.Builder().setUri(uri).build())
         }.exceptionOrNull()
@@ -215,7 +215,7 @@ class TransportContractTest {
         val transport = ServingTransport(resources)
         val uri = ServingTransport.httpsFor(SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI)
 
-        val source = HttpStack.of(transport).factory.createDataSource()
+        val source = HttpStack.of(transport).testDataSource()
         source.open(
             DataSpec.Builder()
                 .setUri(uri)
@@ -245,7 +245,7 @@ class TransportContractTest {
         val transport = ServingTransport(resources)
         val uri = ServingTransport.httpsFor(SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI)
 
-        val source = HttpStack.of(transport).factory.createDataSource()
+        val source = HttpStack.of(transport).testDataSource()
         source.open(
             DataSpec.Builder()
                 .setUri(uri)
@@ -296,7 +296,7 @@ class TransportContractTest {
     fun closingAnInFlightRequestReturnsRatherThanWaitingForTheOrigin() {
         val body = StallingBody()
         val transport = StallingTransport(ServingTransport(ServingTransport.hlsOverHttps()), body)
-        val source = HttpStack.of(transport).factory.createDataSource()
+        val source = HttpStack.of(transport).testDataSource()
         val uri = ServingTransport.segmentUriIn(ServingTransport.hlsOverHttps())
         val finished = CountDownLatch(1)
 

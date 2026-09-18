@@ -264,8 +264,26 @@ until it is closed, on a seek and on a release. **There is deliberately no timeo
 uncancellable transport** and `HttpTransportDataSource.close`'s KDoc argues the three reasons: no
 number this repository can measure, a watchdog thread every consumer would pay for, and a bound that
 would turn a hang whose stack names the consumer's own `read` into a stall spending a retry budget.
-The other three entry points rule 13 names, rules 11 and 12's other two
-factories, and that conformance test are still open tickets.
+Since #313 `HttpStack`'s set is complete (rules 11 and 12): `HttpStack.default()` names what
+always shipped, and the unstated path *resolves through it* rather than through a second line, so
+"the default is what `default()` is" holds by construction; and `HttpStack.httpEngine()` is Media3's
+`HttpEngineDataSource` over the platform's `android.net.http.HttpEngine`, which core builds itself and
+which costs no dependency and no licence question. It needs **API 34**, and below that `build()`
+**refuses**: the public `HttpStackUnsupportedException` names the stack and both levels. It is the
+repository's first typed refusal at construction and the first exception here that is not an
+`IOException` — an `UnsupportedOperationException`, because a configuration that cannot be honoured is
+not a load that went wrong, and because Kotlin emits no `throws` clause, so an `IOException` out of
+`build()` is one a Java consumer cannot name in a `catch` at all. It carries no `FailureClass` and
+reaches no classifier: there is no rung for "this device is API 33". A stack is now *asked* for its
+factory at the one resolution point rather than holding one, because only the platform's needs a
+`Context` and a level. **Nothing under `check` can play over `HttpEngine`** — the platform class has no
+Robolectric shadow and looks for a Cronet implementation a JVM does not have — so `HttpStackSelectionTest`
+asserts the refusal below the floor and, above it, that the platform's own complaint is what stops the
+build, which is the proof the selection was not silently substituted; `docs/testing.md`'s *The platform's
+HTTP engine* records the gap and #316 is the device ticket. That class is also the repository's first
+user of `@Config(sdk = [...])`, which is the mechanism `robolectric.properties` has always pointed at and
+is deliberately not a `DeviceStatement`.
+The other three entry points rule 13 names and that conformance test are still open tickets.
 
 CMCD (CTA-5004) is emitted there today, and is on for every profile including `DATA_SAVER` —
 `CmcdBinding.kt` holds the per-profile table, the reasoning, and the `// spec:` citation for each

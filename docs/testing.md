@@ -218,7 +218,10 @@ Phase 9 adds a **third** reading of the same corpus, and it is not a fourth tabl
 reports at `SEVERE`, and the test that forces them — checked against `HostileManifests.graded()` so
 that a pathology added there fails it. It records the doctor and moves no row of the two tables above,
 because naming a defect is not recovering from it: `dash-availability-start-time-skew` is named there
-and stands in `CANNOT_RECOVER` here (ADR-0015 rules 4 and 12).
+and stands in `CANNOT_RECOVER` here (ADR-0015 rules 4 and 12). What each entry's defect *means* — the
+citation, the cause, the threshold and what to change — is `docs/media-source-doctor.md`, written for
+a reader outside this repository, and a defect added to either the corpus or the doctor's vocabulary
+fails `DoctorDocumentTest` until that document names it.
 
 Live DASH entries need two things the on-demand ones do not, and both exist so an entry records its
 own defect rather than the harness's limits. They carry a `UTCTiming` element, because without one

@@ -60,7 +60,10 @@ function returning the capability snapshot and the judgements a doctor must shar
 which reach past it and are admitted by name. #286 took the friendship, and the first seam with it;
 the capability snapshot is #292's, `LiveWindowDepthCheck`'s judgement was #288's, and #289 added a
 **fourth**, `LivePlaylistRevalidation`'s, by amending that rule by name — which is what any further
-seam needs, in the change that reaches it.
+seam needs, in the change that reaches it. What the module *produces* is documented for readers who
+have never seen this repository, which is #295's half of the phase: `docs/media-source-doctor.md` is
+every pathology with its citation, its cause and what to change, `docs/session-bundle.md` is the
+bundle's format and `docs/reading-a-session-bundle.md` how to get an answer out of one.
 
 `superplayer-testmedia` is the one module that depends on nothing, and that is what it is for. Its
 synthetic HLS and DASH streams are played by `superplayer-core`'s tests *and* by

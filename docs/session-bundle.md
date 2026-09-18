@@ -3,7 +3,10 @@
 What a SuperPlayer session trace bundle contains, line by line, and what it deliberately does not.
 
 This is the document someone reads when a bundle lands on a bug report and they have never seen this
-repository. It describes the artifact, not the library: everything below can be read with a text
+repository. It is the **format reference**;
+[`docs/reading-a-session-bundle.md`](reading-a-session-bundle.md) is the guide on top of it — which
+questions a bundle settles, what the timings are measured between, and what to ask for where it is
+silent. It describes the artifact, not the library: everything below can be read with a text
 editor and `grep`, and nothing in it requires the reader to know Kotlin, Media3 or Android.
 
 A bundle is produced on the viewer's own device by the app that played the content

@@ -1008,6 +1008,23 @@ sourcing and is what leaves the estimate as the one half of that row telemetry a
 and a non-debuggable application as the guard's; `docs/testing.md`'s *The debug HUD* says what it can and
 cannot show, including the one assertion that reads past the public API. The demo's `DebugHudScreen` is
 the recipe a consumer copies.
+Since #295 the phase's **docs half** is written, and `PRD.md` Part 4 asks for it by name ("Diagnostics
++ docs") rather than leaving it to be assumed. Three documents, each for a reader with no copy of this
+repository. `docs/media-source-doctor.md` is the doctor's manual: all twenty defects — the eighteen
+corpus pathologies and the two of the fetch — each with what it means, what produces it, what to change
+on the packager or the CDN, and its citation, plus the table of which thresholds are *published* bounds
+(TN2224's step, DASH-IF's segment tolerance, AAC's bit reservoir) and which are derived, said as
+honestly as the source says it; it also states what the doctor cannot see, gap by gap, and that it
+**names defects and repairs nothing**. `docs/reading-a-session-bundle.md` is the prose guide *on top of*
+`docs/session-bundle.md` rather than a second description of the grammar: what the timings are measured
+between (`+<ms>` from the recorder attaching, never the viewer's tap), three readings that answer most
+tickets, and a table of what a bundle cannot say beside what to ask for instead. And `docs/adr/README.md`
+is the ADR index the set has gone fifteen records without — one decision per line, with the reading
+order and the rule that an addendum is read at the rule rather than in a summary. `docs/README.md` is
+the index of the documents themselves, linked from the binding rules below, and
+`DoctorDocumentTest` is the mechanical half: every `Pathology`'s id and citation must appear in the
+doctor's document, so a twenty-first defect fails the build rather than going undocumented. Nothing here
+claims #293's Perfetto trace points or #296's exit, both of which are still open and need a device.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,
@@ -1166,6 +1183,10 @@ nothing about the verification depends on the instance surviving.
 ## Binding rules
 
 Style preferences these are not. A change violating one is not accepted, whatever its merit.
+
+The list below is the working set; [`docs/adr/README.md`](docs/adr/README.md) is the full ADR index,
+one decision per record, and [`docs/README.md`](docs/README.md) indexes every document in the
+repository.
 
 - **Clean-room discipline** — `CONTRIBUTING.md`. No proprietary material, no mirroring a commercial
   SDK's API shape, and a public `// spec:` or `// ref:` citation on every non-obvious algorithm.

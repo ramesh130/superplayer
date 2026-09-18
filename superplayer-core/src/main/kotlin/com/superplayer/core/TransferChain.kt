@@ -85,8 +85,9 @@ import java.util.concurrent.CopyOnWriteArrayList
  *                    triggers are a single transfer to everything above (ADR-0011 rule 13).
  *   transport        DefaultDataSource over DefaultHttpDataSource — file:, asset:, content:,
  *                    rawresource: and data: locally, HTTP and HTTPS remotely. Which HTTP stack
- *                    sits here is a public question ADR-0004 leaves open; it plugs in at this
- *                    line and nowhere else.
+ *                    sits here is a consumer's to answer, through the SuperPlayer type ADR-0004
+ *                    and ADR-0016 decide; it plugs in at [resolveTransport] and nowhere else,
+ *                    for this chain and for the other three alike (ADR-0016 rule 1).
  * ```
  *
  * Two of the four phases are missing from that list, and their absence is the useful part of this
@@ -198,13 +199,11 @@ import java.util.concurrent.CopyOnWriteArrayList
  *
  * ## What is assembled today
  *
- * The transport, which is deliberately the same thing `ExoPlayer.Builder` would have installed by
- * itself: `DefaultDataSource.Factory(context)` is defined as `DefaultDataSource.Factory(context,
- * DefaultHttpDataSource.Factory())`, and `DefaultMediaSourceFactory(context)` as
- * `DefaultMediaSourceFactory(DefaultDataSource.Factory(context))` over a `DefaultExtractorsFactory`,
- * which is what the builder's default supplier constructs. The HTTP factory is named rather than
- * left implicit because it is the line ADR-0004 will replace, and a line that is not written down is
- * a line that has to be found first.
+ * The transport, resolved by [resolveTransport] — the one place any of the four chains names an HTTP
+ * data source factory, and where that function's KDoc carries the argument. It is deliberately the
+ * same thing `ExoPlayer.Builder` would have installed by itself, and `DefaultMediaSourceFactory(context)`
+ * is likewise `DefaultMediaSourceFactory(DefaultDataSource.Factory(context))` over a
+ * `DefaultExtractorsFactory`, which is what the builder's default supplier constructs.
  *
  * Above it, one layer of SuperPlayer's own: [LivePlaylistRevalidation]. It changes no request of a
  * playlist that advances on time, so for healthy content the chain still behaves exactly as Media3's
@@ -272,7 +271,7 @@ internal object TransferChain {
         exoMediaDrm: ExoMediaDrm.Provider? = null,
         deliveredProtection: DeliveredProtection = DeliveredProtection(),
     ): MediaSource.Factory {
-        val bottom = transport ?: DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory())
+        val bottom = resolveTransport(context, transport)
         // Header refresh first, so it is the innermost wrapper: a request it repairs and re-opens is
         // one transfer to the cache slot and to everything above it.
         val refreshed = headerRefresh?.over(bottom) ?: bottom
@@ -344,7 +343,7 @@ internal object TransferChain {
         environment: DownloadEnvironment? = null,
         headerRefresh: HeaderRefreshLayer? = null,
     ): DataSource.Factory {
-        val transport = environment?.transport ?: DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory())
+        val transport = resolveTransport(context, environment?.transport)
         val refreshed = headerRefresh?.over(transport) ?: transport
         return DataSource.Factory { DownloadStampingDataSource(refreshed.createDataSource()) }
     }
@@ -367,7 +366,7 @@ internal object TransferChain {
         environment: DownloadEnvironment? = null,
         headerRefresh: HeaderRefreshLayer? = null,
     ): DataSource.Factory {
-        val transport = environment?.transport ?: DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory())
+        val transport = resolveTransport(context, environment?.transport)
         return (headerRefresh?.over(transport) ?: transport).stampedWith(identity = null, kind = LoadKind.LICENCE)
     }
 
@@ -417,7 +416,7 @@ internal object TransferChain {
         cache: ContentCache? = null,
         resilience: PlaybackResilience? = null,
     ): DiagnosticChain {
-        val transport = environment?.transport ?: DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory())
+        val transport = resolveTransport(context, environment?.transport)
         val headerRefresh = (resilience as? HeaderRefreshSource)?.headerRefreshLayer()
         val refreshed = headerRefresh?.over(transport) ?: transport
         val cacheLayer = cache?.layer
@@ -472,6 +471,46 @@ internal object TransferChain {
         fun forSegmentsOf(contentId: String): DataSource.Factory =
             composed.stampedWith(ContentIdentity(contentId), LoadKind.MEDIA)
     }
+
+    /**
+     * The bottom of a chain: what moves the bytes, under every layer this object composes.
+     *
+     * **This is the one place in the repository that names an HTTP data source factory**, and
+     * ADR-0016 rule 1 is why it is one function rather than one line per chain. Four chains resolve
+     * their bottom — a player's [mediaSourceFactory], a store's [downloadChain] and
+     * [downloadLicenceChain], and a doctor's [diagnosticChain] — and until now each named the
+     * transport itself, because Phase 1 wrote the first and Phases 6, 7 and 9 copied it as their
+     * chains arrived. Nothing was wrong with that while the answer was always `Default`. It becomes
+     * a defect the moment the answer is a *consumer's*: a fifth chain added by a later phase must
+     * get the consumer's transport by construction rather than by its author remembering, and a
+     * player loading over the app's client while its downloads use the platform's is exactly the
+     * defect the seam exists to prevent.
+     *
+     * What it resolves to today is deliberately the same thing `ExoPlayer.Builder` would have
+     * installed by itself: `DefaultDataSource.Factory(context)` is defined as
+     * `DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory())`, which is what the
+     * builder's default supplier constructs. The HTTP factory is named here rather than left
+     * implicit because it is the line ADR-0016 replaces, and a line that is not written down is a
+     * line that has to be found first. `DefaultDataSource` is the part above it that stays whatever
+     * the HTTP stack becomes: `file:`, `asset:`, `content:`, `rawresource:` and `data:` are the
+     * platform's to answer and are no consumer's business, and it is what delegates the remaining
+     * two schemes — `http:` and `https:` — to the factory handed in.
+     *
+     * [testTransport] is the already-resolved override the caller read from its own slot, passed in
+     * rather than reached for, because the four callers keep it in two different places: a player's
+     * comes from `EngineConfiguration.transport` and the other three from their environment's.
+     *
+     * **The resolution order is the test slot, then the consumer's stack, then the default**
+     * (ADR-0016 rule 3), and the middle rung has no parameter yet because it has no caller yet —
+     * `HttpStack` arrives with #309 and plugs in here. The two are not the same thing and that is
+     * why the test slot wins: [testTransport] substitutes for the *network itself* and is a test's,
+     * while a stack substitutes for the HTTP *client over a real network* and is a consumer's. A
+     * test of a consumer's own stack therefore drives it directly rather than through this slot.
+     */
+    private fun resolveTransport(
+        context: Context,
+        testTransport: DataSource.Factory?,
+    ): DataSource.Factory = testTransport ?: DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory())
 
     /**
      * The chain itself — see the composition order above for what wraps what — over [refreshed],

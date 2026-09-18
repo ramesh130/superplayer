@@ -91,6 +91,26 @@ The rules that follow from this, binding on whoever implements it:
    this record was open, which is the second time in one page that enumerating transports was wrong.
    An interface the consumer implements has no list to be wrong about, and it is why Cronet's licence
    and Ktor's alpha stop being this project's problem: neither artifact is ever resolved here.
+
+   *Addendum (2026-09-18, #315) — what "names" means, since a document now does.* This rule binds the
+   **dependency graph**: no OkHttp, Cronet or Ktor artifact is resolved, no type of one is imported or
+   appears in a signature, and no build file names a coordinate of one. It does not bind prose —
+   neither a comment's nor a document's, and `HttpTransport`'s own KDoc and
+   `HttpTransportDataSource`'s have named OkHttp since #309, because the mechanism they explain is a
+   real client's behaviour and cannot be explained without one. #315 is where that reading is written
+   down rather than where it starts. What made it worth writing down is
+   [`docs/http-transport.md`](../http-transport.md), whose worked adapter is written over OkHttp and
+   is the thing an adopter copies. The obligations it documents are on code this project does not ship, so a client that
+   exists only in the abstract cannot show what a real one does on its own initiative: negotiate gzip,
+   throw on a refusal, follow a redirect and say nothing about it. Naming one resolves no artifact,
+   answers no licence question and adds no byte to anyone's APK, which is the whole of what the rule
+   protects. Two limits come with it. The example is therefore **compiled by nothing here**, which
+   that document states plainly rather than implying otherwise; what an adopter runs instead is
+   `HttpTransportConformance` against their own implementation, which is executable and is the check
+   that matters. And naming a client is not endorsing it: the interface is written for a client this
+   project has never heard of, and the document says so before it says OkHttp. This is a widening of
+   one sentence's reading, not of the rule — the prohibition on the dependency graph is unchanged and
+   is what `docs/modules.md`'s "core depends on Media3 and nothing else" continues to enforce.
 3. **The consumer supplies the transport, not a client and not a flag.** Not `OKHTTP`, and — since
    the amendment — not `okHttp(callFactory)` either. The consumer implements one SuperPlayer
    interface over whatever client they have and passes that.

@@ -313,9 +313,27 @@ JUnit 5 or Kotest runs the same checks as one on JUnit 4 and testkit's accidenta
 stays accidental. `HttpTransportConformanceTest` is what makes it worth shipping: a deliberately wrong
 transport **per obligation**, written over `HttpURLConnection` so each defect is a real client's
 misconfiguration, plus `HttpStack.default()` run through the same fifty lines an adopter writes and
-passing every check — because a contract the shipped stack cannot keep is a contract to change. What
-is still open in Phase 10 is the phase's docs (#315, `docs/http-transport.md`) and its device exit
-(#316).
+passing every check — because a contract the shipped stack cannot keep is a contract to change.
+Since #315 the phase's **docs half** is written, and `PRD.md` Part 4 asks for it by name the way it
+asked for Phase 9's. `docs/http-transport.md` is the manual for the one reader this library has whose
+code it cannot see: whether to be here at all (the default costs nothing, and a shared credential is
+`HeaderProvider`'s rather than a reason to bring a client), the interface's four values, a **worked
+adapter** end to end with each obligation commented where it is discharged, the five obligations as a
+checklist each with **what it costs to get wrong** and its citation, the table of what is *ours* —
+retries, the ladder, credentials, the cache, downloads, measurement, CMCD, classification — because a
+transport that reimplements one starts fighting the library, how to run `HttpTransportConformance`
+against their own implementation, and what choosing a stack does **not** do (no metric's meaning, so
+`SCHEMA_VERSION` stays 2; no cache key; no retry). Two decisions are its own. The adapter is written
+over **OkHttp** by name, which ADR-0004 rule 2 gained an addendum for: the rule binds the *dependency
+graph* and not prose — no artifact is resolved, no type imported — and `HttpTransport`'s KDoc had
+named the client since #309 for the same reason, that half the care is about what a real client does
+on its own initiative. And it therefore **compiles nowhere**, which the document says plainly rather
+than implying otherwise; what an adopter runs instead is the suite, which is executable and is the
+check that matters. `TransportDocumentTest` is the mechanical half, in `DoctorDocumentTest`'s shape:
+every check on `HttpTransportConformance`, read off the class and ordered by `verifyAll`'s own body,
+needs its own section naming its rule and carrying the citations that check's **KDoc** carries — read
+per section, and read out of the source rather than copied into the test. What is still open in
+Phase 10 is its device exit (#316).
 
 CMCD (CTA-5004) is emitted there today, and is on for every profile including `DATA_SAVER` —
 `CmcdBinding.kt` holds the per-profile table, the reasoning, and the `// spec:` citation for each

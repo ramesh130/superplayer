@@ -78,11 +78,19 @@ internal class ManifestExamination(
      * and — for a stream whose source is a multivariant playlist — the media playlists it named, which are
      * where the segments a token has to cover are declared. A media playlist reached directly is its own,
      * and is the shape a single-rendition live stream is usually published in.
+     *
+     * **HLS only**, and the branch is the whole of that limit. Nothing the rules read is protocol-specific —
+     * a token is in a URI and an allowed origin in a header — but a [Pathology] is named for the corpus
+     * entry it is scored against (ADR-0015 rule 12) and all three delivery entries are HLS, so reporting one
+     * of them over an MPD would be reporting an id nothing in the register can match.
+     * [DeliveryPathologies] says the same thing from the other side, and a DASH delivery entry is what would
+     * lift the rules rather than copy them.
      */
     private fun delivery(source: Uri, manifest: ParsedManifest): List<Finding> {
         val playlists = when (manifest) {
             is ParsedManifest.Media -> mapOf(source to manifest.playlist)
-            else -> mediaPlaylists
+            is ParsedManifest.Multivariant -> mediaPlaylists
+            is ParsedManifest.Dash, ParsedManifest.Opaque -> return emptyList()
         }
         return DeliveryPathologies.inResponses(responses.values) +
             playlists.flatMap { (uri, playlist) ->
@@ -180,7 +188,9 @@ internal class ManifestExamination(
      * so naming which of them is wrong needs the second one. What is asked for is [PROBE_BYTES] — enough
      * that the request is answered, and a range a CDN serves from its edge without touching an origin — and
      * even that is never read: the source is opened for its headers and closed. So the cost is one round
-     * trip rather than a segment, which is what keeps a preflight from costing what a start costs.
+     * trip rather than a segment, which is what keeps a preflight from costing what a start costs. One
+     * media playlist can spend one probe, so a ten-rung ladder all of whose playlists are misconfigured
+     * costs ten headers and still no media.
      *
      * It travels [segmentChain], the same chain stamped as media, because the stamp is what tells a refused
      * segment from a refused manifest everywhere else in this library.

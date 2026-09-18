@@ -54,7 +54,8 @@ internal object DeliveryPathologies {
      * [source] is the URI the app handed the doctor — the one a signing step is applied to — and
      * [playlistUri] the one this playlist was actually read from, which is where its segments resolve
      * against. [segmentHeaders] answers the headers of a segment, or null where that transfer was refused;
-     * it is called at most once, and only by a rule that already has something to attribute.
+     * it is called at most once per media playlist, and only by a rule that already has something to
+     * attribute — a stream whose playlists are all cached correctly never opens a segment's transfer at all.
      */
     fun inDelivery(
         source: Uri,
@@ -78,11 +79,15 @@ internal object DeliveryPathologies {
      * a player meets this defect as a playlist that stopped advancing, while a doctor can say *which of the
      * two responses is misconfigured*, which is the whole of the fix.
      *
-     * **The playlist is the wrong one, always.** A media segment is immutable once published, so caching it
-     * for a long time is correct and caching it for none is merely wasteful; a live media playlist is the one
-     * document in the stream that changes, so a lifetime longer than its own update bound is what turns a
-     * live stream into a frozen one. The magnitude names both, because a support engineer changes a cache
-     * rule and needs to know which path it is on.
+     * **The playlist is the wrong one, always, and the segment's reading is the evidence rather than the
+     * test.** A media segment is immutable once published, so caching it for a long time is correct and
+     * caching it for none is merely wasteful; a live media playlist is the one document in the stream that
+     * changes, so a lifetime longer than its own update bound is what turns a live stream into a frozen one.
+     * Nothing therefore *branches* on what the segments said — a playlist held past its bound is
+     * misconfigured whether its segments are held for ten minutes, for none, or answered nothing at all —
+     * and what the reading changes is the sentence. Three are possible and each sends a support engineer
+     * somewhere different: the pair is backwards (the classic, one cache rule applied to a whole path), both
+     * are held (a lifetime set once for everything under it), or the segment declined to say.
      *
      * [FindingSeverity.BLOCKING]: the client reloads a playlist that cannot change, and playback ends —
      * on a player with `superplayer-core` the session fails with a `StaleLivePlaylistException` naming this
@@ -109,7 +114,10 @@ internal object DeliveryPathologies {
         return Finding(
             Pathology.HLS_CACHED_LIVE_PLAYLIST,
             FindingSeverity.BLOCKING,
-            magnitude = if (served == null) held else "$held, while its segments are served \"$served\"",
+            magnitude = when (served) {
+                null -> "$held; its segments said nothing about caching"
+                else -> "$held, while its segments are served \"$served\""
+            },
         )
     }
 
@@ -128,6 +136,11 @@ internal object DeliveryPathologies {
      *
      * The magnitude counts the segments, because "the manifest is signed and its segments are not" is the
      * sentence, and the count is what says it was the whole rendition rather than one stray line.
+     *
+     * **A playlist where even one segment is signed is passed over**, deliberately: a rendition half of whose
+     * URIs carry a credential is a signing step that is running and partly wrong, which is a different report
+     * from one that never reached the media at all, and reporting it under this id would make the magnitude's
+     * whole-rendition claim untrue. Conservative, and named here rather than left to be discovered.
      */
     private fun tokenScopedToManifest(source: Uri, playlist: HlsMediaPlaylist): Finding? {
         if (expirySecondsOf(source) == null) return null
@@ -159,6 +172,13 @@ internal object DeliveryPathologies {
      * Live playlists are passed over, and that is the rule rather than a gap: a live stream has no end to
      * cover, so every finite token expires inside it and reporting that would flag every signed live URL
      * there is.
+     *
+     * **Why this one may be [FindingSeverity.BLOCKING] on a magnitude where `HlsPathologies`' defects may
+     * not.** That file's rule is that no *document* defect is blocking on the strength of a number, because
+     * every one of those playlists plays — a gap is a rung nobody climbs, an overstatement a decision made on
+     * a lie. A token shorter than the content is not a degree of anything: at that value the media stops
+     * arriving part-way through, for every viewer, and no rung of the ladder reaches it. The magnitude is
+     * what decides *whether* the stream ends, not how well it plays, which is the difference.
      */
     private fun tokenExpiringInWindow(source: Uri, playlist: HlsMediaPlaylist): Finding? {
         if (!playlist.hasEndTag) return null
@@ -194,6 +214,14 @@ internal object DeliveryPathologies {
      * an app and a browser alike, so this is the finding that matters most on a stream that plays perfectly
      * on the device the report was taken from. No magnitude: a configuration refuses the request or it does
      * not.
+     *
+     * **It reads the manifest responses and not the media's**, which is a named gap. The doctor fetches
+     * manifests; a segment's response is seen only where [inDelivery]'s cache rule spent its one probe, so
+     * reading it here would make the CORS answer depend on whether an unrelated rule happened to fire — a
+     * stream reported one way today and another after its cache rule was fixed. A manifest path and a media
+     * path really can be configured differently, and a stream whose manifests are clean and whose segments
+     * are not is therefore reported as clean. Closing it means fetching a segment for CORS's own sake, which
+     * is ADR-0015 rule 7's bullet and a decision of its own rather than a line here.
      */
     fun inResponses(responses: Collection<Map<String, List<String>>>): List<Finding> {
         val refuses = responses.any { headers ->
@@ -215,7 +243,16 @@ internal object DeliveryPathologies {
     private fun expirySecondsOf(uri: Uri): Long? =
         runCatching { uri.getQueryParameter(EXPIRES) }.getOrNull()?.toLongOrNull()
 
-    /** A header by name, case-insensitively as HTTP names are, with its values joined. */
+    /**
+     * A header by name, case-insensitively as HTTP names are (// spec: RFC 9110 §5.1), with its values
+     * joined.
+     *
+     * The same three lines as `LivePlaylistRevalidation`'s own private helper, and deliberately not a fifth
+     * seam. ADR-0015 rule 6 is about a *judgement* having one definition — what "held too long" means is
+     * core's, and seam 4 is how this file asks it rather than restating it. Which header a map holds under a
+     * differently-cased key is the specification's own answer and nobody's judgement: there is nothing here
+     * that could drift out of step with core, because RFC 9110 decides it for both.
+     */
     private fun Map<String, List<String>>.header(name: String): String? =
         entries.firstOrNull { name.equals(it.key, ignoreCase = true) }?.value?.joinToString(", ")
 
@@ -229,7 +266,21 @@ internal object DeliveryPathologies {
     /** spec: WHATWG Fetch §3.2.4 — `Access-Control-Allow-Credentials` has exactly this one true value. */
     private const val ALLOWED = "true"
 
-    /** The query parameter a signed URL states its own expiry in. See [tokenExpiringInWindow]. */
+    /**
+     * The query parameter a signed URL states its own expiry in, and this file's whole definition of "signed
+     * at all" — [tokenScopedToManifest] asks whether it is present and [tokenExpiringInWindow] what it says.
+     *
+     * ref: RFC 3986 §3.4 is cited for the mechanism and covers only that a URI has a query component. The
+     * *spelling* has no standard behind it, and `CONTRIBUTING.md` rule 4 refuses "it is what everyone does"
+     * as a citation, so what stands in its place is the derivation and its limit, both stated here. The
+     * derivation: an expiry that an intermediary can enforce without a round trip to the signer has to be
+     * readable in the clear, which makes it a query parameter with a plain name and a plain value, and
+     * seconds since the epoch is the form a time takes when it must survive a URL. The limit: this is matched
+     * **exactly and in lower case** (`Uri.getQueryParameter` is case-sensitive), so a URL signed under any
+     * other spelling, or one whose expiry is inside an opaque blob, is invisible to both rules and is
+     * reported as nothing rather than as healthy. A doctor that guessed at a list of names would be
+     * reproducing particular CDNs' schemes, which is the thing those rules forbid.
+     */
     private const val EXPIRES = "expires"
 
     /**

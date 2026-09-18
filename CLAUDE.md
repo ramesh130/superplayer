@@ -849,7 +849,8 @@ where the defect has one. It is core's **ninth** Kotlin friend and the first bou
 **closed list** of seams rather than by a slot — three as the ADR first decided and four since #289 — of
 which the first is `TransferChain.diagnosticChain`; a fifth needs that rule amended by name. The fetch travels the
 chain a *player* of that request would load through — the transport, the header-refresh layer a resilience
-fills and the cache slot, every request stamped `LoadKind.MANIFEST` under that content's identity — and
+fills and the cache slot, every request stamped under that content's identity and as the kind it is
+(`LoadKind.MANIFEST`, bar #289's one headers-only segment probe) — and
 deliberately not the two live layers, the load-error policy, CMCD or a meter, which
 `TransferChain.diagnosticChain`'s KDoc argues one at a time. It parses with the parsers the engine would
 run, so the doctor and the player never disagree about what a manifest *says*. A manifest the chain refuses
@@ -906,7 +907,8 @@ segments or expiring inside the content, and a CORS configuration that refuses a
 rules are `DeliveryPathologies`, and what makes them possible is that ADR-0015 rule 7 has the doctor fetch
 over the chain a player would load through — a header is a fact about a transfer, so none of the three could
 have been found by a parse, which `DeliveryPathologyTest` shows by diagnosing one entry's bytes twice, with
-its declared headers served and withheld (`TestContent.servedWithNoDeclaredHeaders()`). Two decisions are
+its declared headers served and withheld (`TestContent.servedWithResponseHeaders(...)`, which also serves
+a *correct* configuration on healthy content, the control that matters more). Two decisions are
 this ticket's. The cache rule asks **core's own judgement** — `LivePlaylistRevalidation` grew
 `cachedPastTheUpdateBoundSeconds`, ADR-0015 rule 3's **fourth** seam, added by amending that rule — and then
 names *which* of the two responses is wrong, always the playlist, because a segment is immutable and a live
@@ -914,10 +916,11 @@ playlist is the one document that changes. Naming the other party needs the othe
 **#289 addendum**: the doctor may open **one** segment's transfer for its headers and close it without
 reading a byte, asking for one byte so it is a request rather than a download, and only a rule that already
 has a defect to attribute may spend it — a correctly delivered stream still costs playlists alone, which
-`namingTheWrongSideCostsOneSegmentsHeadersAndNoMedia` counts. The token rules read a signed URL's query
-(RFC 3986 §3.4), which is the part of the convention every CDN's scheme shares and the only part stated,
-since a signing scheme is nobody's standard; the lifetime is graded against the content's own duration,
-doubled for the pauses a viewer takes. The CORS rule reports **one** configuration, a wildcard allowed
+`namingTheWrongSideCostsOneSegmentsHeadersAndNoMedia` counts. The token rules read a lowercase `expires`
+query parameter (RFC 3986 §3.4) — a signing scheme is nobody's standard, so the derivation and the gap it
+leaves are both written down where the constant is: a URL signed under another spelling is invisible to
+both rules, and saying so is what keeps "it is what everyone does" out of a citation. The lifetime is
+graded against the content's own duration, doubled for the pauses a viewer takes. The CORS rule reports **one** configuration, a wildcard allowed
 origin beside allowed credentials (WHATWG Fetch §3.3.5, §4.10), which the protocol refuses by construction
 and which is therefore the one reading that needs no knowledge of who is asking; an origin silent about CORS
 is not a misconfiguration, which is what keeps the rule off every native-only CDN. The corpus gained

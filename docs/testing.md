@@ -229,7 +229,10 @@ corpus, and the test checks that it plays on, which is what makes a failing live
    extend them, so that the next entry can reuse the extension.
 2. A `// spec:` comment above it citing the clause it stretches or violates — RFC 8216 for HLS,
    ISO/IEC 23009-1 or DASH-IF IOP for DASH — with the argument for why the document is still legal.
-   The same citation goes in `spec`.
+   The same citation goes in `spec`. A *delivery* entry stretches no clause of either protocol,
+   because its document is the good stream's: it cites what the defect is a departure from instead —
+   the HTTP, URI or CORS clause, under `// ref:` where the convention has no standard behind it (a
+   signed URL) — and the same argument is owed, for why the delivery is still legal.
 3. A `cause`: the misconfiguration, encoder or packager that produces it in the field, in plain
    language. It is the sentence the doctor will show a user, and it is much easier to write now.
 4. A `validity`. `MALFORMED` when the document breaks a MUST, whether or not Media3 happens to reject
@@ -257,9 +260,10 @@ carries the
 defect as `declaredResponseHeaders` and reproduces the *consequence* in its bytes — for the cache
 rule, a live playlist that never changes. `TestContent.hostile` hands the headers to the harness,
 which serves them on top of the bytes, so the player reads both. The entry must still say which of
-the two its recorded row measures. `TestContent.servedWithNoDeclaredHeaders()` is the control such an
-entry needs: the same bytes at the same URIs with the headers withheld, which is the only way to show
-that a finding came from the transfer rather than from the document.
+the two its recorded row measures. `TestContent.servedWithResponseHeaders(...)` is the pair of controls
+such an entry needs: the same bytes at the same URIs with the headers withheld, which is the only way
+to show that a finding came from the transfer rather than from the document, and healthy content served
+with a *correct* configuration of the same protocol, which is the false positive that matters.
 
 The third shape a *delivery* defect takes is neither the bytes nor the headers but **where the stream
 is published**: a signed URL carries its credential in the URI's query, so the token entries are the

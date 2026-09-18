@@ -75,6 +75,38 @@ class DeliveryPathologyTest {
     }
 
     @Test
+    fun theSegmentsReadingIsTheEvidenceAndNeverTheTest() {
+        // The playlist is the wrong party whatever the segments say, so the same entry served with *one*
+        // cache rule over everything — the lifetime a CDN sets once for a whole path — is the same defect.
+        // What moves is the sentence, and nothing else: a rule that only fired on a disagreement would call
+        // this stream healthy, and a rule that reported a disagreement here would be inventing one.
+        val entry = HostileManifests.hlsCachedLivePlaylist()
+        val heldThroughout = TestContent.hostile(entry)
+            .servedWithResponseHeaders(mapOf("Cache-Control" to "public, max-age=600"))
+
+        val finding = examine(entry, heldThroughout).single { it.pathology == Pathology.HLS_CACHED_LIVE_PLAYLIST }
+
+        assertThat(finding.severity).isEqualTo(FindingSeverity.BLOCKING)
+        assertThat(finding.magnitude)
+            .isEqualTo(
+                "the playlist, not its segments: held for 600 s against a 2 s target duration, " +
+                    "while its segments are served \"public, max-age=600\""
+            )
+    }
+
+    @Test
+    fun aLivePlaylistNoCacheRuleIsHoldingIsNotAFinding() {
+        // The control that matters for the cache rule, and the one the on-demand case cannot stand in for:
+        // a playlist with no `EXT-X-ENDLIST`, which is where the rule *can* fire, served with a lifetime
+        // inside the bound RFC 8216 §6.2.1 sets. Every correctly configured live stream looks like this.
+        val entry = HostileManifests.hlsCachedLivePlaylist()
+        val cachedBriefly = TestContent.hostile(entry)
+            .servedWithResponseHeaders(mapOf("Cache-Control" to "public, max-age=1"))
+
+        assertThat(examine(entry, cachedBriefly)).isEmpty()
+    }
+
+    @Test
     fun aHeaderIsAFactAboutATransferAndNotAboutADocument() {
         // The same entry, the same bytes, at the same URIs, over the same transport — and the response
         // headers withheld. Nothing a parser can read tells the two apart, and the doctor reports the defect
@@ -144,7 +176,11 @@ class DeliveryPathologyTest {
         )
         // Half a viewing left: no viewer reaches the end of the content however promptly they start.
         assertThat(severe.severity).isEqualTo(FindingSeverity.BLOCKING)
-        assertThat(severe.magnitude).isEqualTo("4 s of token left over 8 s of content")
+        // The content's own duration is pinned; what is left of the token is not, deliberately. The corpus
+        // mints the expiry against the wall clock when the entry is built and the rule reads that clock again
+        // at the examination, so a second crossed between the two moves the first number by one and nothing
+        // is wrong. Pinning it would be a test that fails for the time of day.
+        assertThat(severe.magnitude).endsWith("of token left over 8 s of content")
 
         // One and a half viewings: the content plays through and a viewer who pauses loses it, which is
         // where a reasonable threshold could fall either way — reported, and reported as the lesser reading.
@@ -180,16 +216,35 @@ class DeliveryPathologyTest {
 
     @Test
     fun anOriginThatSaysNothingAboutCorsIsNotAFinding() {
-        // The control for the CORS rule, and the one that matters most: almost every origin serving a native
-        // player emits no CORS headers whatever, and every one of them is correct. What is reported is an
-        // origin that speaks the protocol and contradicts it, never one that is silent.
-        val environment = harness.diagnosticEnvironment(TestContent.hls())
+        // The first control for the CORS rule: almost every origin serving a native player emits no CORS
+        // headers whatever, and every one of them is correct.
+        val content = TestContent.hls()
+        val environment = harness.diagnosticEnvironment(content)
 
         val report = MediaSourceDoctor.Builder(context).setEnvironment(environment).build()
-            .examine(MediaRequest.Builder(HEALTHY_CONTENT_ID).addSource(TestContent.hls().sourceUri).build())
+            .examine(MediaRequest.Builder(HEALTHY_CONTENT_ID).addSource(content.sourceUri).build())
 
         assertThat(report.findings.map { it.pathology })
             .doesNotContain(Pathology.HLS_CORS_REFUSES_CREDENTIALS)
+    }
+
+    @Test
+    fun anOriginThatSpeaksCorsCorrectlyIsNotAFinding() {
+        // The second, and the one that says the rule reads its values rather than reacting to the protocol
+        // being spoken at all: a named allowed origin beside allowed credentials is exactly what the CORS
+        // check asks for, and it is a configuration a real CDN serving a web player emits every day.
+        val content = TestContent.hls().servedWithResponseHeaders(
+            mapOf(
+                "Access-Control-Allow-Origin" to "https://app.example.test",
+                "Access-Control-Allow-Credentials" to "true",
+            ),
+        )
+        val environment = harness.diagnosticEnvironment(content)
+
+        val report = MediaSourceDoctor.Builder(context).setEnvironment(environment).build()
+            .examine(MediaRequest.Builder(HEALTHY_CONTENT_ID).addSource(content.sourceUri).build())
+
+        assertThat(report.findings).isEmpty()
     }
 
     /** The one finding of [pathology] [entry] produces, with the corpus's own words asserted on it. */
@@ -210,7 +265,7 @@ class DeliveryPathologyTest {
 
     /** The same entry with its declared response headers withheld: the bytes alone, and nothing else moved. */
     private fun findingsOverBareBytes(entry: HostileStream): List<Pathology> =
-        examine(entry, TestContent.hostile(entry).servedWithNoDeclaredHeaders()).map { it.pathology }
+        examine(entry, TestContent.hostile(entry).servedWithResponseHeaders(emptyMap())).map { it.pathology }
 
     private fun examine(entry: HostileStream, content: TestContent): List<Finding> {
         val environment = harness.diagnosticEnvironment(content)

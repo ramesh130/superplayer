@@ -196,9 +196,10 @@ Thirteen rules follow, and they are binding.
 
    *Refined by
    [ADR-0015](0015-name-a-pathology-over-the-players-own-chain-and-redact-the-bundle-by-construction.md)
-   rule 3: a ninth friend, `superplayer-diagnostics`, reaching a **closed list of three** named
-   seams. One is ADR-0013 rule 4's shape — a chain built from core's seam, filling no slot. The other
-   two are a reader and a judgement, which is nearer the "reaching a helper" this rule refuses, and
+   rule 3: a ninth friend, `superplayer-diagnostics`, reaching a **closed list** of named
+   seams — three as first decided, four since #289 amended that rule under its own amendment clause.
+   One is ADR-0013 rule 4's shape — a chain built from core's seam, filling no slot. The others
+   are a reader and two judgements, which is nearer the "reaching a helper" this rule refuses, and
    the ADR says so rather than stretching a shape over them. The ceiling worked as written: something
    that was not plainly one of the two shapes produced an ADR, and what that ADR grants is bounded by
    the list rather than granted generally. No shape is added, and the ceiling does not move.*

@@ -928,6 +928,21 @@ is not a misconfiguration, which is what keeps the rule off every native-only CD
 only, because a defect of a transfer is protocol-independent and a DASH twin would be a second copy of one
 fact — and all three play to the end on every recorded player, which is the honest record: a `FakeDataSet`
 cannot refuse an unsigned URI and no native player reads a CORS header.
+Since #290 the phase has its exit criterion as a test: `CorpusRegisterTest` is the register ADR-0015
+rule 12 asks for, in `FallbackRungCoverageTest`'s shape — per corpus entry, the findings the doctor
+reports at `SEVERE` with the severity each carries, and the test that forces them, checked against
+`HostileManifests.graded()` rather than a list of its own, so a nineteenth pathology fails it with a
+message saying what to add. Both halves are one file, because a doctor that flags everything scores
+perfectly on the first: every `BENIGN` grade and each healthy stream is asserted silent **per entry**
+rather than in aggregate, and each `SEVERE` reading is an equality, so an unexpected finding on
+hostile content fails too. Three entries read more than one way and the register is where that is
+visible — `hls-ladder-gap` and `dash-ladder-gap` also overstate their top rung, and
+`dash-mid-stream-ladder-change` carries the gap and the overstatement inside its second Period. One
+row carries a caveat rather than a clean pass: `dash-availability-start-time-skew`'s `BENIGN` is no
+false-positive control, because below `SEVERE` its anchor is in the past and the MPD is a healthy
+stream that started later. The corpus and ladder recordings are untouched — what a player does with
+an entry and what the doctor says about it are two readings (rule 4). Scoring the vocabulary from the
+other side found `MANIFEST_UNREADABLE` forced by no test, which `MediaSourceDoctorTest` now does.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,

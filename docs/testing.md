@@ -213,6 +213,13 @@ second table, `GRADED`: a row per pathology and a column per severity. Reading a
 *cliff*, the level at which an entry stops playing cleanly. A `BENIGN` cell that does not play cleanly
 is a finding about the player, because the content is ordinary.
 
+Phase 9 adds a **third** reading of the same corpus, and it is not a fourth table: `CorpusRegisterTest`
+(in `superplayer-diagnostics`) is what `MediaSourceDoctor` *says* about each entry — the findings it
+reports at `SEVERE`, and the test that forces them — checked against `HostileManifests.graded()` so
+that a pathology added there fails it. It records the doctor and moves no row of the two tables above,
+because naming a defect is not recovering from it: `dash-availability-start-time-skew` is named there
+and stands in `CANNOT_RECOVER` here (ADR-0015 rules 4 and 12).
+
 Live DASH entries need two things the on-demand ones do not, and both exist so an entry records its
 own defect rather than the harness's limits. They carry a `UTCTiming` element, because without one
 Media3 asks an NTP server for the time, and under Robolectric that call never resolves. And they

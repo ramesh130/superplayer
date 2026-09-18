@@ -67,6 +67,17 @@ internal class HttpTransportDataSource(
     private var stream: InputStream? = null
 
     /**
+     * The URI the bytes are coming from — the one the transport reported after following whatever
+     * redirects it followed, or the requested one where it reported none (ADR-0016 rule 6).
+     *
+     * Held here rather than read off [response] on demand because [getUri] has to keep answering for
+     * the whole of an open transfer while [closeQuietly] lets go of the response the moment a
+     * request is refused, and the two would otherwise disagree at exactly the moment a failure is
+     * being diagnosed.
+     */
+    private var readFrom: Uri? = null
+
+    /**
      * How many bytes are still to come, or [C.LENGTH_UNSET] where the response did not say. Unset is
      * not "none": a chunked response has no length and is read until the stream ends.
      */
@@ -78,13 +89,14 @@ internal class HttpTransportDataSource(
     override fun open(dataSpec: DataSpec): Long {
         this.dataSpec = dataSpec
         bytesRemaining = C.LENGTH_UNSET.toLong()
+        readFrom = null
         transferInitializing(dataSpec)
 
         val range = rangeOf(dataSpec)
         val request = HttpRequest(
             uri = dataSpec.uri,
             method = methodOf(dataSpec),
-            headers = dataSpec.httpRequestHeaders,
+            headers = requestHeadersFor(dataSpec),
             body = dataSpec.httpBody,
             range = range,
         )
@@ -146,6 +158,11 @@ internal class HttpTransportDataSource(
             contentLengthOf(response) ?: C.LENGTH_UNSET.toLong()
         }
 
+        // Where the bytes are really coming from (ADR-0016 rule 6). A transport that followed no
+        // redirect says nothing and is taken at the requested URI, which is the same answer Media3's
+        // own stacks give for an exchange that did not move.
+        readFrom = response.uri ?: dataSpec.uri
+
         opened = true
         transferStarted(dataSpec)
         return bytesRemaining
@@ -177,15 +194,52 @@ internal class HttpTransportDataSource(
     }
 
     /**
-     * The URI the bytes came from.
+     * The URI the bytes came from: the post-redirect one where the transport reported one, and the
+     * requested one otherwise (ADR-0016 rule 6).
      *
-     * The requested one today: following a redirect and saying where it ended is ADR-0016 rule 6's,
-     * and an [HttpTransport] has no way to say it yet.
+     * What reads it is not diagnostics. Media3's `ParsingLoadable` parses a manifest against
+     * `getUri()`, and a manifest's references are relative, so this answer is the base every media
+     * playlist, every `BaseURL` and every segment of a redirected document resolves against. The
+     * requested URI returned here for a document served from somewhere else is a stream that will
+     * not start, with nothing on the wire to say why.
      */
-    override fun getUri(): Uri? = dataSpec?.uri
+    override fun getUri(): Uri? = readFrom
 
     override fun getResponseHeaders(): Map<String, List<String>> = response?.headers ?: emptyMap()
 
+    /**
+     * Lets the request go, whether it was read out or abandoned part-way — and abandoning one is the
+     * ordinary case, not the exceptional one (ADR-0016 rule 10). Media3 closes a `DataSource` to
+     * give up a load on a seek, on a track switch and on release, and [closeQuietly] closing the
+     * body is what cancels the call underneath.
+     *
+     * ## Why there is no timeout around it, which is a decision and not an omission
+     *
+     * A transport whose body blocks until the origin finishes rather than returning when it is
+     * closed holds a loader thread, and the cost is real: a seek that waits for the segment being
+     * left behind, and a release that does not complete while a dead screen's buffers are still
+     * held. Bounding it here was considered and refused, for three reasons.
+     *
+     * The number does not exist. A bound would be a duration in this file, and this repository's
+     * rule is that a constant carries its reason where it is chosen; the only reason available for
+     * this one would be that it felt long enough, measured against no network, no device and no
+     * origin. A wrong bound is worse than none, because it fires on the slow links this library
+     * exists to play well on.
+     *
+     * Enforcing it would cost everybody. A blocking read cannot be timed out from the thread that is
+     * inside it, so a bound means a watchdog thread — one per player, or one per process holding a
+     * registry of transfers in flight — allocated for every consumer to insure against a bug in one
+     * of them. ADR-0016 rule 14's "a consumer who names none pays nothing" is counted by a test, and
+     * this would be the first thing the seam charged everyone for.
+     *
+     * And it would hide the thing worth seeing. Cancelled-then-timed-out arrives at the layers above
+     * as a load that failed slowly: `RetryingLoadErrors` spends a budget on it, the ladder climbs, a
+     * session ends classified as a transfer failure, and the actual cause — a `read` that does not
+     * return — is nowhere in the evidence. Left unbounded it is a hang whose stack trace names the
+     * consumer's own `InputStream.read` on the frame below ours, which is the diagnosis. The
+     * conformance test ADR-0016 rule 14 asks for is where this is meant to be caught, on a
+     * developer's machine, rather than by a timeout on a viewer's device.
+     */
     override fun close() {
         closeQuietly()
         if (opened) {
@@ -196,6 +250,7 @@ internal class HttpTransportDataSource(
         // closed source answers null from [getUri], which is what Media3's own stacks do and what
         // keeps it from disagreeing with [getResponseHeaders], already emptied above.
         dataSpec = null
+        readFrom = null
     }
 
     /**
@@ -226,6 +281,39 @@ internal class HttpTransportDataSource(
 
         /** // spec: RFC 9110 §8.6. */
         const val CONTENT_LENGTH = "content-length"
+
+        /** // spec: RFC 9110 §12.5.3. */
+        const val ACCEPT_ENCODING = "Accept-Encoding"
+
+        /**
+         * // spec: RFC 9110 §8.4.1 — `identity` is the "no transformation" coding, and asking for it
+         * is how a request says it wants the bytes the resource is made of.
+         */
+        const val IDENTITY = "identity"
+
+        /**
+         * What the transport is asked to send: what the chain composed, plus the content coding the
+         * chain wants (ADR-0016 rule 7 — *the chain* says so, and this is the chain's bottom).
+         *
+         * Asking for `identity` explicitly is not belt-and-braces, it is the mechanism: an HTTP
+         * client adds transparent compression only where the caller named no `Accept-Encoding` of
+         * its own — OkHttp's rule, and the reason Media3's own `DefaultHttpDataSource` sends the
+         * same header — so naming one is what switches a whole class of client back off. What it
+         * buys is measurement: the bytes a decompressing client hands back are not the bytes the
+         * link moved, and every throughput sample taken from them overstates the network by the
+         * compression ratio (ADR-0009 rule 8, and ADR-0002's argument through a third door).
+         *
+         * A coding the chain named itself wins, in whatever case it spelled the header
+         * (// spec: RFC 9110 §5.1 — field names are case-insensitive). Nothing in this library
+         * composes one today; a layer that starts to — a consumer's `HeaderProvider` reaching an
+         * origin that requires it — is making a decision about its own transfer, and having it
+         * silently overwritten from down here is the harder failure to find of the two.
+         */
+        fun requestHeadersFor(dataSpec: DataSpec): Map<String, String> {
+            val composed = dataSpec.httpRequestHeaders
+            if (composed.keys.any { it.equals(ACCEPT_ENCODING, ignoreCase = true) }) return composed
+            return composed + (ACCEPT_ENCODING to IDENTITY)
+        }
 
         /**
          * The range [dataSpec] asks for, or null where it wants the resource whole.

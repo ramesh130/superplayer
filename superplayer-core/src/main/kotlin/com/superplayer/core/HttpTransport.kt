@@ -47,12 +47,6 @@ import java.io.InputStream
  * Each of these fails **silently**. None of them throws, logs, or shows up as an error on a device,
  * which is why each is written down with its cost rather than as an instruction.
  *
- * **The list is not yet the whole contract.** ADR-0016 names three more obligations that fail the
- * same way and that nothing here yet acts on — the URI a transport reports after following a
- * redirect (rule 6), the content coding it must not add on its own (rule 7), and what a cancelled
- * request must do rather than block (rule 10). They arrive here, with their costs, in the change
- * that makes the library act on them.
- *
  * **A byte range must be honoured** (ADR-0016 rule 5). A request carrying a [HttpRequest.range] asks
  * for part of a resource, and an implementation composes it as a `Range: bytes=…` header and expects
  * the origin to answer **206** with `Content-Range`.
@@ -79,6 +73,40 @@ import java.io.InputStream
  * that hands back a body and drops the headers costs nobody their playback and everybody the
  * explanation, which is the shape of defect this whole list is about.
  *
+ * **A redirect that was followed must be reported** ([HttpResponse.uri], ADR-0016 rule 6). An
+ * implementation does not *decide* whether to follow a redirect — it follows them, as Media3's own
+ * stacks do — and then says where it ended, because `DataSource.getUri()` is what the chain above
+ * reads. What reads it is not diagnostics: a manifest's references are relative, and Media3 resolves
+ * every one of them against the URI the document was read from. A transport that answers the
+ * requested URI for a playlist a CDN redirected therefore sends the player looking for its media
+ * playlists and its segments under the *old* address — and what a viewer sees is content that will
+ * not start, on a stream whose every byte was served correctly. Every layer above gets the same
+ * wrong answer for free: the cache key, the diagnostic report, the session bundle.
+ *
+ * **No content coding of the transport's own** (ADR-0016 rule 7). Send [HttpRequest.headers] and
+ * nothing else; in particular do not let a client negotiate compression on its own behalf. Core asks
+ * for `Accept-Encoding: identity` on every request for exactly this reason, and a client that
+ * overrides it to `gzip` and transparently decompresses the answer is **the one configuration a
+ * consumer must switch off**.
+ * // spec: RFC 9110 §12.5.3 (`Accept-Encoding`), §8.4 (`Content-Encoding`).
+ * Nothing fails when it is left on. What happens instead is that the bytes core counts are the
+ * *decompressed* ones while the bytes the link moved are the compressed ones, so every throughput
+ * sample overstates the link by the compression ratio, and the estimate ABR selects a rendition
+ * against describes a network nobody is on — a ladder climbed above what the link can carry, and a
+ * rebuffer whose cause is in no log. This is ADR-0002's argument arriving through a third door, and
+ * it is the failure that shows up as a bandwidth estimate nobody can explain rather than as an
+ * error. (It is also why it costs the same whether or not the body is media: a manifest gzips well.)
+ *
+ * **A cancelled request returns rather than blocking** (ADR-0016 rule 10). Core closes
+ * [HttpResponse.body] to abandon a load — Media3 does that on a seek, on a track switch and on
+ * release — and on every client this library knows of, closing the response is what cancels the
+ * call. An implementation whose stream instead blocks until the origin finishes holds a loader
+ * thread for the length of a transfer nobody wants: a seek that does not respond until the segment
+ * being left behind has finished arriving, and, at the end, a **stalled release** — a player object
+ * and its buffers held by a thread waiting for bytes belonging to a screen the viewer has left.
+ * Core deliberately puts no timeout around it; `HttpTransportDataSource.close`'s KDoc argues why,
+ * and the short of it is that a bound would turn a diagnosable hang into an unattributable stall.
+ *
  * ## The lifecycle
  *
  * One [HttpTransport] serves every request a player opens, concurrently: manifests, playlists and
@@ -87,6 +115,11 @@ import java.io.InputStream
  * [HttpResponse.body] when it is done with a response, including when it abandons one part-read.
  *
  * ## An implementation, whole
+ *
+ * The client it is built over is configured once, and the two settings that matter are the ones this
+ * example does not show because they are OkHttp's defaults done right: redirects followed
+ * (`followRedirects(true)`, whose result `response.request.url` then reports), and no transparent
+ * compression, which an explicit `Accept-Encoding` — core sends one — is what switches off.
  *
  * ```kotlin
  * class OkHttpTransport(private val client: OkHttpClient) : HttpTransport {
@@ -100,6 +133,7 @@ import java.io.InputStream
  *             status = response.code,
  *             headers = response.headers.toMultimap(),
  *             body = response.body!!.byteStream(),
+ *             uri = Uri.parse(response.request.url.toString()),
  *         )
  *     }
  * }
@@ -141,8 +175,11 @@ public class HttpRequest(
     public val method: HttpMethod,
     /**
      * The headers to send, and the whole of them: what a layer above composed — a credential a
-     * `HeaderProvider` minted, CMCD keys, a content coding the chain asked for. An implementation
-     * sends these and adds nothing of its own beyond what its protocol requires.
+     * `HeaderProvider` minted, CMCD keys, and the `Accept-Encoding: identity` core puts on every
+     * request under ADR-0016 rule 7. An implementation sends these and adds nothing of its own
+     * beyond what its protocol requires, and **overrides none of them**: the content coding is the
+     * one a client is most likely to override on its own initiative, and see this interface's KDoc
+     * for what that costs.
      *
      * One value per name, unlike [HttpResponse.headers]: nothing in this library composes a request
      * header twice, and a map that admitted it would ask every implementer to decide an ordering
@@ -210,4 +247,13 @@ public class HttpResponse(
      * response part-read; an implementation does not close it itself.
      */
     public val body: InputStream,
+    /**
+     * Where the bytes were actually read from, after any redirect the client followed — null where
+     * nothing redirected, which core reads as [HttpRequest.uri].
+     *
+     * Nullable and defaulted rather than required, because a transport that followed no redirect has
+     * nothing to add and an obligation to echo the request back would be ceremony. What it must not
+     * do is stay silent about one it *did* follow; see [HttpTransport]'s KDoc for what that costs.
+     */
+    public val uri: Uri? = null,
 )

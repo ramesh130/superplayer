@@ -38,11 +38,18 @@ import java.util.concurrent.CopyOnWriteArrayList
  * [refusals] is what the rest of ADR-0016 rule 8 needs — a status *reported* for a named resource,
  * with the response headers a real CDN would send with it. Reported and not thrown, because that is
  * the whole obligation the rule puts on a consumer: the number is theirs and the evidence is ours.
+ *
+ * [redirects] is ADR-0016 rule 6's, and [reportsFinalUri] false is the broken implementation that
+ * rule names: a transport that followed the redirect and then answers the address it was *asked*
+ * for. Both halves belong to the same origin because the defect is only visible as the difference
+ * between them.
  */
 internal class ServingTransport(
     private val resources: Map<String, ByteArray>,
     private val honourRanges: Boolean = true,
     private val refusals: Map<String, Refusal> = emptyMap(),
+    private val redirects: Map<String, String> = emptyMap(),
+    private val reportsFinalUri: Boolean = true,
 ) : HttpTransport {
 
     /** What a refused resource answers: a status and the headers that came with it. */
@@ -63,12 +70,23 @@ internal class ServingTransport(
     fun paths(): List<String> = requests.map { it.uri.path.orEmpty() }
 
     override fun open(request: HttpRequest): HttpResponse {
-        val address = request.uri.toString()
-        refusals[address]?.let { return record(request, it.status, it.headers, ByteArray(0)) }
-        val bytes = resources[address] ?: return record(request, NOT_FOUND, emptyMap(), ByteArray(0))
+        val requested = request.uri.toString()
+        // A redirect followed, as a client follows one: the response is the target's, and where it
+        // ended is reported unless this transport is the one that forgets to (ADR-0016 rule 6).
+        val address = redirects[requested] ?: requested
+        val finalUri = Uri.parse(address).takeIf { address != requested && reportsFinalUri }
+        refusals[address]?.let { return record(request, it.status, it.headers, ByteArray(0), finalUri) }
+        val bytes = resources[address]
+            ?: return record(request, NOT_FOUND, emptyMap(), ByteArray(0), finalUri)
         val range = request.range?.takeIf { honourRanges }
         if (range == null) {
-            return record(request, OK, mapOf("Content-Length" to listOf(bytes.size.toString())), bytes)
+            return record(
+                request,
+                OK,
+                mapOf("Content-Length" to listOf(bytes.size.toString())),
+                bytes,
+                finalUri,
+            )
         }
         val last = range.length?.let { range.offset + it - 1 } ?: (bytes.size - 1L)
         val slice = bytes.copyOfRange(range.offset.toInt(), (last + 1).toInt())
@@ -77,7 +95,7 @@ internal class ServingTransport(
             // spec: RFC 9110 §14.4 — `Content-Range: bytes <first>-<last>/<complete-length>`.
             "Content-Range" to listOf("bytes ${range.offset}-$last/${bytes.size}"),
         )
-        return record(request, PARTIAL_CONTENT, headers, slice)
+        return record(request, PARTIAL_CONTENT, headers, slice, finalUri)
     }
 
     private fun record(
@@ -85,9 +103,10 @@ internal class ServingTransport(
         status: Int,
         headers: Map<String, List<String>>,
         body: ByteArray,
+        finalUri: Uri?,
     ): HttpResponse {
         requests += Exchange(request.uri, request.headers, request.range?.headerValue(), status, headers)
-        return HttpResponse(status, headers, ByteArrayInputStream(body))
+        return HttpResponse(status, headers, ByteArrayInputStream(body), finalUri)
     }
 
     companion object {
@@ -109,8 +128,20 @@ internal class ServingTransport(
          */
         fun httpsFor(fakeUri: String): String = fakeUri.replaceFirst("fake://", "https://")
 
-        fun hlsOverHttps(): Map<String, ByteArray> =
-            SyntheticHlsStream.resources().mapKeys { (uri, _) -> httpsFor(uri) }
+        fun hlsOverHttps(segmentCount: Int = 1): Map<String, ByteArray> =
+            SyntheticHlsStream.resources(segmentCount).mapKeys { (uri, _) -> httpsFor(uri) }
+
+        /**
+         * The same stream served from [base] instead — a second address for one piece of content,
+         * which is what a redirect to an edge points at.
+         *
+         * The last path segment is the whole of the move: the synthetic stream's resources are flat
+         * under one base and every reference inside its documents is relative, so a document read
+         * from [base] names its neighbours there without a byte of it changing. That is exactly the
+         * property ADR-0016 rule 6 is about, which is why the test needs no second corpus.
+         */
+        fun hlsUnder(base: String): Map<String, ByteArray> =
+            SyntheticHlsStream.resources().mapKeys { (uri, _) -> base + uri.substringAfterLast('/') }
 
         fun dashOverHttps(): Map<String, ByteArray> =
             SyntheticDashStream.resources().mapKeys { (uri, _) -> httpsFor(uri) }

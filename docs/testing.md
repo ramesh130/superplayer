@@ -175,6 +175,31 @@ test reads it off the addresses the *second* and third requests were made to. **
 one place a test here starts a thread, which is honest rather than exotic: a loader thread is a
 thread, and `close` cancelling an in-flight request is a claim about two of them.
 
+### The platform's HTTP engine, and the API level a test states
+
+`HttpStack.httpEngine()` is the other stack core builds itself (#313), and **nothing under `check`
+can play a byte over it.** `android.net.http.HttpEngine` is a platform class with no Robolectric
+shadow, and its own `Builder.build()` looks for the Cronet implementation the *system* ships; inside
+a JVM it finds none and raises `Expected Cronet version number …, actual version number null`. No
+`DeviceStatement` changes that, and the only way to make it "play" here would be to write a stand-in
+HTTP engine and then assert that our own stand-in works. So the gap is recorded rather than faked,
+exactly as *What is not covered here* records the secure surface: **a real HTTP/3 session over the
+platform's engine is #316's, on a device.**
+
+What `HttpStackSelectionTest` can state offline is the part that fails silently, which is the
+selection being *substituted* rather than the bytes being slow. Below the floor `build()` raises the
+typed `HttpStackUnsupportedException`; above it, the platform's own refusal is the evidence that the
+engine was genuinely asked for, because a stack quietly exchanged for `DefaultHttpDataSource` would
+have produced a working player and said nothing at all.
+
+That class is also **the repository's first user of `@Config(sdk = [...])`**, which
+`superplayer-core/src/test/resources/robolectric.properties` has pointed at since it was written.
+An API level is deliberately not a `DeviceStatement`: that type states what a device *can do* —
+decoders, display, heap, protection — while a platform level is `Build.VERSION.SDK_INT`, which
+Robolectric's own annotation already sets, and a second way to say it would be a second thing to keep
+true. Each module's properties file pins the level for everything in it, so only a test that needs a
+*different* one says anything, and only the refusing arm here does.
+
 ## Synthetic media, not fixtures
 
 Streams are generated in Kotlin rather than checked in as binaries. `SyntheticHlsStream` writes a

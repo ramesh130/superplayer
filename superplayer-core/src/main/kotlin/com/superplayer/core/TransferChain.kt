@@ -25,7 +25,6 @@ import androidx.media3.common.util.Util
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.TransferListener
 import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.dash.DefaultDashChunkSource
@@ -489,12 +488,13 @@ internal object TransferChain {
      * player loading over the app's client while its downloads use the platform's is exactly the
      * defect the seam exists to prevent.
      *
-     * What it resolves to today is deliberately the same thing `ExoPlayer.Builder` would have
-     * installed by itself: `DefaultDataSource.Factory(context)` is defined as
+     * What it resolves to with no [stack] is deliberately the same thing `ExoPlayer.Builder` would
+     * have installed by itself: `DefaultDataSource.Factory(context)` is defined as
      * `DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory())`, which is what the
-     * builder's default supplier constructs. The HTTP factory is named here rather than left
-     * implicit because it is the line ADR-0016 replaces, and a line that is not written down is a
-     * line that has to be found first. `DefaultDataSource` is the part above it that stays whatever
+     * builder's default supplier constructs. That factory is not named here, though: the unstated
+     * case resolves through [HttpStack.default] like any other selection, so `default()` and saying
+     * nothing are the same object graph rather than two lines that have to stay in step (#313).
+     * `DefaultDataSource` is the part above it that stays whatever
      * the HTTP stack becomes: `file:`, `asset:`, `content:`, `rawresource:` and `data:` are the
      * platform's to answer and are no consumer's business, and it is what delegates the remaining
      * two schemes — `http:` and `https:` — to the factory handed in.
@@ -522,8 +522,16 @@ internal object TransferChain {
         context: Context,
         testTransport: DataSource.Factory?,
         stack: HttpStack?,
-    ): DataSource.Factory =
-        testTransport ?: DefaultDataSource.Factory(context, stack?.factory ?: DefaultHttpDataSource.Factory())
+    ): DataSource.Factory {
+        // ADR-0016 rule 12: a selection that cannot be honoured is reported, not silently dropped —
+        // and it is reported *here*, which is inside `build()`, rather than at the first segment.
+        // Asked before the slot below it on purpose: whether this device can honour the stack a
+        // consumer named is a fact about the device and the selection, and a harness that replaced
+        // the network is the last place that fact should become invisible.
+        stack?.refuseUnlessHonourable()
+        return testTransport
+            ?: DefaultDataSource.Factory(context, (stack ?: HttpStack.default()).httpFactory(context))
+    }
 
     /**
      * The chain itself — see the composition order above for what wraps what — over [refreshed],

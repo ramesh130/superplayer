@@ -126,7 +126,7 @@ class SuperPlayerHttpStackTest {
         val uri = ServingTransport.segmentUriIn(resources)
         val segment = resources.getValue(uri)
 
-        val source = HttpStack.of(transport).factory.createDataSource()
+        val source = HttpStack.of(transport).testDataSource()
         val offset = 10L
         val length = 20L
         val announced = source.open(
@@ -165,7 +165,7 @@ class SuperPlayerHttpStackTest {
         val transport = ServingTransport(resources, honourRanges = false)
         val uri = ServingTransport.segmentUriIn(resources)
 
-        val source = HttpStack.of(transport).factory.createDataSource()
+        val source = HttpStack.of(transport).testDataSource()
         val failure = runCatching {
             source.open(DataSpec.Builder().setUri(uri).setPosition(10).setLength(20).build())
         }.exceptionOrNull()

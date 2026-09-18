@@ -17,6 +17,8 @@
 package com.superplayer.core
 
 import android.net.Uri
+import androidx.media3.datasource.DataSource
+import androidx.test.core.app.ApplicationProvider
 import com.superplayer.testmedia.SyntheticDashStream
 import com.superplayer.testmedia.SyntheticHlsStream
 import java.io.ByteArrayInputStream
@@ -151,3 +153,14 @@ internal class ServingTransport(
             resources.keys.single { it.endsWith(SyntheticHlsStream.SEGMENT_SUFFIX) }
     }
 }
+
+/**
+ * The adapter's own `DataSource`, for the handful of assertions that are about one HTTP exchange
+ * rather than about playback (each of them argued where it is made).
+ *
+ * The chain asks a stack for its factory rather than holding one, because the platform's stack needs
+ * a `Context` and an API level (`HttpStack.httpFactory`, #313); a test asking the same question needs
+ * the same context, and this is the one line that supplies it.
+ */
+internal fun HttpStack.testDataSource(): DataSource =
+    httpFactory(ApplicationProvider.getApplicationContext()).createDataSource()

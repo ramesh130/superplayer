@@ -21,6 +21,7 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.media.MediaCodecInfo
 import android.media.MediaCodecList
+import android.os.Build
 
 /**
  * The one place a device is asked how many players it can afford to have alive at once — and, since
@@ -92,7 +93,7 @@ internal fun concurrentPlayerCapacityOf(
  * still walks it once per build — a pool's, or a selector's — for the reason the file's KDoc gives
  * against a cache.
  */
-internal class DecoderTable(
+private class DecoderTable(
     /**
      * What every declared video decoder reports, the secure ones **included**, pooled by MIME type as
      * it always was — not "the plain decoders". The un-merge is one-sided deliberately: what a player
@@ -209,7 +210,7 @@ internal class DecoderTable(
  * ref: https://developer.android.com/reference/android/media/MediaCodecInfo.CodecCapabilities#getMaxSupportedInstances()
  * ref: https://developer.android.com/reference/android/media/MediaCodecInfo.CodecProfileLevel
  */
-internal fun readDecoderTable(): DecoderTable {
+private fun readDecoderTable(): DecoderTable {
     val codecs = try {
         MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
     } catch (e: RuntimeException) {
@@ -300,7 +301,7 @@ internal fun readDecoderTable(): DecoderTable {
 }
 
 /** What a device that answered nothing reports, for either kind of decoder. */
-internal fun emptyTally(): DecoderTable.Tally = DecoderTable.Tally(emptyMap(), emptyMap())
+private fun emptyTally(): DecoderTable.Tally = DecoderTable.Tally(emptyMap(), emptyMap())
 
 /**
  * How many players this app's heap affords, at [HEAP_BYTES_PER_PLAYER] each.
@@ -394,7 +395,7 @@ internal fun heapBudgetBytesOf(context: Context): Long? {
  */
 private const val HEAP_BYTES_PER_PLAYER: Long = 32L * 1024L * 1024L
 
-internal const val BYTES_PER_MEGABYTE: Long = 1024L * 1024L
+private const val BYTES_PER_MEGABYTE: Long = 1024L * 1024L
 
 /** The floor, and the answer wherever a device reports nothing usable. */
 private const val MINIMUM_CAPACITY: Int = 1
@@ -550,3 +551,38 @@ internal fun deviceConstraintsOf(): DeviceConstraints {
 }
 
 private const val VIDEO_MIME_PREFIX = "video/"
+
+/**
+ * [CapabilitySnapshot] read from the platform now — ADR-0015 rule 3's second seam, and the **one**
+ * function `superplayer-diagnostics` reaches for a device.
+ *
+ * Here rather than in `CapabilitySnapshot.kt` so that [readDecoderTable], [DecoderTable] and its
+ * tallies stay private to this file: that module is a Kotlin friend of core and can see anything
+ * `internal`, so a reader it could reach on its own would be a reader the seam did not hand it, which
+ * is the rule's "a reader the snapshot does not carry is a reader the module does not see".
+ *
+ * One walk of the codec list and one reading of the display, for the reason this file's KDoc gives
+ * against caching either: a test states a different device per test, and a snapshot fixed by
+ * whichever test ran first would describe the wrong one.
+ */
+internal fun capabilitySnapshotOf(context: Context): CapabilitySnapshot {
+    val decoders = readDecoderTable()
+    return CapabilitySnapshot(
+        apiLevel = Build.VERSION.SDK_INT,
+        lowRamDevice = isLowRamDeviceOf(context),
+        heapBudgetMb = heapBudgetBytesOf(context)?.let { it / BYTES_PER_MEGABYTE },
+        videoDecoders = decoders.mimeTypes.sorted().map { mimeType ->
+            CapabilitySnapshot.VideoDecoderCapability(
+                mimeType = mimeType,
+                secure = decoders.secureMimeTypes?.contains(mimeType),
+                maxInstances = decoders.all.instancesPerMimeType[mimeType],
+                // The profile decides and the level breaks the tie within it, which is the ordering
+                // `VideoDecoderCapability.highestProfileLevel` argues for.
+                highestProfileLevel = decoders.all.profileLevels[mimeType]
+                    ?.maxWithOrNull(compareBy({ it.profile }, { it.level })),
+                tunneling = mimeType in decoders.tunnelingMimeTypes,
+            )
+        },
+        display = displayCapabilityOf(context),
+    )
+}

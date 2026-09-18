@@ -16,9 +16,6 @@
 
 package com.superplayer.core
 
-import android.content.Context
-import android.os.Build
-
 /**
  * What this device can **do**, as a value: the capabilities this library itself branches on, read
  * once and handed over whole.
@@ -101,49 +98,22 @@ internal class CapabilitySnapshot(
         val maxInstances: Int?,
 
         /**
-         * The highest profile declared for it, and the highest level declared *at that profile*, or
-         * null for either where none was declared.
+         * The highest profile declared for it at the highest level declared *at that profile*, or
+         * null where none was declared.
          *
-         * The highest profile first, because a profile is the feature set and a level is a bound
-         * within it: a device declaring High at level 4.0 and Baseline at 5.1 reaches High 4.0, and
-         * reporting "High" beside "5.1" would name a combination it does not have.
+         * One value rather than two numbers, because the pair is the fact: a device declaring High at
+         * level 4.0 and Baseline at 5.1 reaches High 4.0, and a snapshot carrying the highest of each
+         * separately could report "High" beside "5.1" — a combination it does not have. The profile
+         * decides first, because a profile is the feature set and a level is a bound within it.
          */
-        val highestProfile: Int?,
-        /** See [highestProfile]. */
-        val highestLevel: Int?,
+        val highestProfileLevel: DeviceConstraints.ProfileLevel?,
 
         /** Whether a decoder for it declares `FEATURE_TunneledPlayback` (ADR-0014 rule 7's other half). */
         val tunneling: Boolean,
     )
 }
 
-/**
- * [CapabilitySnapshot] read from the platform now — ADR-0015 rule 3's second seam, and the **one**
- * function `superplayer-diagnostics` reaches for a device.
- *
- * One walk of the codec list and one reading of the display, for the reason `DeviceCapacity.kt` gives
- * against caching either: a test states a different device per test, and a snapshot fixed by whichever
- * test ran first would describe the wrong one.
- */
-internal fun capabilitySnapshotOf(context: Context): CapabilitySnapshot {
-    val decoders = readDecoderTable()
-    return CapabilitySnapshot(
-        apiLevel = Build.VERSION.SDK_INT,
-        lowRamDevice = isLowRamDeviceOf(context),
-        heapBudgetMb = heapBudgetBytesOf(context)?.let { it / BYTES_PER_MEGABYTE },
-        videoDecoders = decoders.mimeTypes.sorted().map { mimeType ->
-            val highest = decoders.all.profileLevels[mimeType]?.maxWithOrNull(
-                compareBy({ it.profile }, { it.level }),
-            )
-            CapabilitySnapshot.VideoDecoderCapability(
-                mimeType = mimeType,
-                secure = decoders.secureMimeTypes?.contains(mimeType),
-                maxInstances = decoders.all.instancesPerMimeType[mimeType],
-                highestProfile = highest?.profile,
-                highestLevel = highest?.level,
-                tunneling = mimeType in decoders.tunnelingMimeTypes,
-            )
-        },
-        display = displayCapabilityOf(context),
-    )
-}
+// `capabilitySnapshotOf`, the one function that builds this, is in `DeviceCapacity.kt` beside the
+// decoder walk it reads. It is there rather than here so that the walk, its table and the tallies
+// stay **private to that file**: this module's ninth Kotlin friend can see anything `internal`, and
+// a reader it could reach directly is a reader rule 3's second seam did not hand it.

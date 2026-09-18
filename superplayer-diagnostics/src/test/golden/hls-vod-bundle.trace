@@ -4,7 +4,7 @@ timings relative-ms
 +0 capability device apiLevel=35 lowRam=false heapBudgetMb=192
 +0 capability decoder mime=video/avc secure=false instances=6 profile=8 level=2048 tunneling=false
 +0 capability decoder mime=video/hevc secure=true instances=1 profile=8 level=2048 tunneling=false
-+0 capability display shortEdgePx=2160 hdr=unknown
++0 capability display shortEdgePx=2160 hdr=HDR10,HLG
 +0 capability protection deliveredSecurityLevel=not-negotiated
 +0 item id=series/expanse/s01e01 reason=PLAYLIST_CHANGED
 +0 state BUFFERING

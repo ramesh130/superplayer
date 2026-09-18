@@ -84,6 +84,9 @@ class SessionBundleGoldenTraceTest {
         DeviceStatement.declareVideoDecoder(H264, DECODER_INSTANCES, HIGH_PROFILE to LEVEL_4)
         DeviceStatement.declareSecureVideoDecoder(HEVC, SECURE_DECODER_INSTANCES, HIGH_PROFILE to LEVEL_4)
         DeviceStatement.declareAppHeap(HEAP_MB)
+        // A panel that answered, so the golden pins a populated `hdr=` field rather than the
+        // `unknown` an undeclared display prints — the two are different facts and the format says so.
+        DeviceStatement.declareDisplayHdrTypes(HDR10, HLG)
     }
 
     private fun play(content: TestContent, network: ThroughputTrace? = null): String {
@@ -123,6 +126,10 @@ class SessionBundleGoldenTraceTest {
         /** `AVCProfileHigh` and `AVCLevel4`, as `MediaCodecInfo.CodecProfileLevel` numbers them. */
         const val HIGH_PROFILE = 8
         const val LEVEL_4 = 2048
+
+        /** `Display.HdrCapabilities.HDR_TYPE_HDR10` and `HDR_TYPE_HLG`, as the platform numbers them. */
+        const val HDR10 = 2
+        const val HLG = 3
 
         const val DECODER_INSTANCES = 6
         const val SECURE_DECODER_INSTANCES = 1

@@ -273,8 +273,9 @@ internal class HttpTransportDataSource(
      * consumer's own `InputStream.read` on the frame below ours, which is the diagnosis. Where this
      * is *meant* to be caught is the public conformance test ADR-0016 rule 14 asks
      * `superplayer-testkit` for, on a developer's machine rather than by a timeout on a viewer's
-     * device — and that test is **not written yet**, which is the honest weakness of this argument's
-     * third leg and is said here rather than left for a reader to discover.
+     * device — and since #312 that test exists and is `HttpTransportConformance`, whose
+     * `verifyCancelledRequestReturns` is this argument's third leg made executable. What it still
+     * cannot do is make a consumer run it, which the record's *Consequences* says in as many words.
      */
     override fun close() {
         closeQuietly()

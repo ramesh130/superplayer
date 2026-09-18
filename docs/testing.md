@@ -5,7 +5,10 @@ the JVM, against Media3's own fakes. No device, no network, no assertion that re
 facade. This is not a default that happened to stick — it is the constraint the first slice of the
 library was built to satisfy, and it holds for everything added afterwards.
 
-There are six documented exceptions, and all of them are still tests with no device and no network.
+There are seven documented exceptions. Six of them are still tests with no device and no network; the
+seventh binds a server socket on the **loopback** interface and reaches nothing off the host, for the
+reason *The conformance test a consumer runs* gives — an HTTP client's obligations are about what it
+puts on a wire, and there is no wire in any other fake here.
 
 `SuperPlayerTransferChainTest` keeps the HTTP stack `SuperPlayer.Builder` puts at the bottom of its
 chain instead of substituting a fake data source for it, and reads a `file:` URI. "The one player that keeps its own transfer
@@ -42,6 +45,13 @@ adapter's and the estimate is `OracleBandwidthMeter`'s — and no public API joi
 player exposes is a smoothed reading over a shaped link, which is a slower way of measuring something
 else. What is asserted is the cost of a transparently-decompressing client as a number rather than as
 a warning in a KDoc.
+
+`HttpTransportConformance` is the seventh, and it is the only one a *consumer* runs rather than a
+maintainer: `superplayer-testkit` public API, five checks, one per obligation ADR-0016 leaves on a
+transport. It stands up an HTTP/1.1 origin on the loopback interface, because those obligations are
+claims about what a client puts on a wire and every other fake in this repository stands in for a
+layer above the client. `HttpTransportConformanceTest` is what makes it worth shipping — the section
+below carries that argument.
 
 `SuperPlayerCmcdTest` keeps that same chain and asserts on the *requests* travelling down it rather
 than on a state of the facade — the CMCD keys on a `DataSpec`, captured through the `TransferListener`
@@ -199,6 +209,60 @@ decoders, display, heap, protection — while a platform level is `Build.VERSION
 Robolectric's own annotation already sets, and a second way to say it would be a second thing to keep
 true. Each module's properties file pins the level for everything in it, so only a test that needs a
 *different* one says anything, and only the refusing arm here does.
+
+### The conformance test a consumer runs
+
+`HttpTransportConformance` is the one thing in this repository written to be executed **outside** it
+(ADR-0016 rule 14). A consumer writes fifty lines of `HttpTransport` over the client their app already
+ships, calls `HttpTransportConformance(theirTransport).verifyAll()` from their own test source set, and
+is told which obligation they broke. It is public API of `superplayer-testkit`, tracked in that
+module's `api/` file like everything else there.
+
+**Why it exists rather than a paragraph of KDoc.** Each of the five obligations fails *silently*: a
+client that gzips on its own behalf produces a bandwidth estimate nobody can explain, one that drops a
+byte range produces what reads as a corrupt stream, one that raises on a 403 produces sessions that end
+unclassified, one that reports the address it asked for rather than the one it was redirected to sends a
+player to the old edge for every segment, and one whose close abandons nothing holds a loader thread
+across a seek and a player past release. This is the bet *Golden traces* and `FallbackRungCoverageTest`
+already make — a rule nothing executes is a rule that goes stale — with one thing added: the code the
+rules bind is code this repository cannot see, so the test is the only form in which they can travel to
+the person who has to satisfy them.
+
+**Two decisions are worth knowing before changing it.**
+
+*The consumer supplies the transport and nothing else.* The origin is testkit's, started per check and
+shut down after it: a hand-written HTTP/1.1 server on `127.0.0.1` at an ephemeral port, which honours a
+`Range` with a 206 and a `Content-Range`, redirects one address to another, offers gzip to a client that
+asks for it, refuses one address with a 403 and a `WWW-Authenticate`, and stalls a fourth after one byte.
+The alternative — "point it at an origin you control" — asks every adopter to stand up a server that
+misbehaves in five specific ways before they can check anything, and then measures that server as much
+as their client. This is the **one socket in the repository**, and it is here because none of the five
+readings exist without both ends of a real exchange: the checks read what the transport put on the wire
+as well as what it handed back.
+
+*It names no test framework.* `superplayer-testkit` declares no JUnit of its own — `PlaybackHarness`
+compiles against `org.junit.rules.ExternalResource` only because JUnit arrives transitively through
+Media3's Robolectric test utilities — and a second entry point leaning on that accident would make it
+load-bearing. A broken obligation is an `HttpTransportConformanceException`, which is an
+`AssertionError`: every framework renders one as a failed assertion, so a consumer on JUnit 5, Kotest or
+an instrumentation runner runs the same checks as one on JUnit 4. The message is the deliverable and its
+shape is fixed — the rule, then **what this transport did**, then **what the rule requires** — because
+the person reading it has no copy of this repository.
+
+**What scores it.** `HttpTransportConformanceTest`, from both sides. A check nothing has ever failed is
+a check that does not work, so there is a deliberately wrong transport **per obligation**
+(`PlatformClientTransport`, written over `HttpURLConnection` so that each defect is a *configuration* of
+a real client rather than a stub's invention) and each is driven against the check meant to catch it —
+per obligation and not in aggregate, since five checks with four proofs is the way this ticket looks
+finished without being it. And the suite is run against `HttpStack.default()` through
+`DefaultStackTransport`, which must pass every check: a contract the stack we ship cannot keep is a
+contract to change rather than one to hold an adopter to. The control between the two is
+`PlatformClientTransport` with no defect at all.
+
+**What it cannot show.** Whether a consumer runs it, which ADR-0016's *Consequences* already records as
+the mitigation's limit. And anything about TLS, proxies, HTTP/2 or HTTP/3: the origin speaks HTTP/1.1 in
+plaintext, so a client that refuses plaintext or pins a host is one to relax for this test. Adding a
+sixth check means adding a wrong transport for it in the same change.
 
 ## Synthetic media, not fixtures
 

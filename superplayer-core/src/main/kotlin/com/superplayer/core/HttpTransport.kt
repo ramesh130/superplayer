@@ -109,11 +109,13 @@ import java.io.InputStream
  * Core deliberately puts no timeout around it; `HttpTransportDataSource.close`'s KDoc argues why,
  * and the short of it is that a bound would turn a diagnosable hang into an unattributable stall.
  *
- * **The list is now complete, and the mechanical half of it is not.** Every obligation ADR-0016
- * puts on an implementation is above. What is still missing is rule 14's public **conformance
- * test** — a `superplayer-testkit` one an adopter can run against their own transport — so until it
- * lands, each of these is carried to an implementer by this KDoc alone, which the record itself
- * calls the arrangement that "gets implemented wrongly once per adopter".
+ * **The list is complete, and so is the mechanical half of it.** Every obligation ADR-0016 puts on
+ * an implementation is above, and every one of them is also a check an adopter can *run*:
+ * `superplayer-testkit`'s public `HttpTransportConformance`, which is rule 14's conformance test —
+ * one method per obligation, over an origin it stands up itself, each failure naming the rule, what
+ * the transport did and what the rule requires. Read this list to understand an obligation; run
+ * that suite to find out whether your client keeps it, because every defect here is silent and
+ * this KDoc alone is the arrangement the record calls "implemented wrongly once per adopter".
  *
  * ## The lifecycle
  *

@@ -5,11 +5,17 @@ the JVM, against Media3's own fakes. No device, no network, no assertion that re
 facade. This is not a default that happened to stick — it is the constraint the first slice of the
 library was built to satisfy, and it holds for everything added afterwards.
 
-There are three documented exceptions, and all of them are still tests with no device and no network.
+There are four documented exceptions, and all of them are still tests with no device and no network.
 
 `SuperPlayerTransferChainTest` keeps the HTTP stack `SuperPlayer.Builder` puts at the bottom of its
 chain instead of substituting a fake data source for it, and reads a `file:` URI. "The one player that keeps its own transfer
 chain" below says why that is necessary rather than merely convenient.
+
+`SuperPlayerHttpStackTest` keeps that same chain and puts a consumer's `HttpTransport` at the bottom
+of it, because Phase 10's seam is the one layer a substituted fake data source *replaces* rather than
+sits above. Two of its tests also open the adapter's `DataSource` without a player, to state a byte
+range no synthetic stream here can provoke. "The one player that keeps its own transfer chain" below
+carries the whole argument.
 
 `SuperPlayerCmcdTest` keeps that same chain and asserts on the *requests* travelling down it rather
 than on a state of the facade — the CMCD keys on a `DataSpec`, captured through the `TransferListener`

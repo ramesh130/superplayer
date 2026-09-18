@@ -47,6 +47,12 @@ import java.io.InputStream
  * Each of these fails **silently**. None of them throws, logs, or shows up as an error on a device,
  * which is why each is written down with its cost rather than as an instruction.
  *
+ * **The list is not yet the whole contract.** ADR-0016 names three more obligations that fail the
+ * same way and that nothing here yet acts on — the URI a transport reports after following a
+ * redirect (rule 6), the content coding it must not add on its own (rule 7), and what a cancelled
+ * request must do rather than block (rule 10). They arrive here, with their costs, in the change
+ * that makes the library act on them.
+ *
  * **A byte range must be honoured** (ADR-0016 rule 5). A request carrying a [HttpRequest.range] asks
  * for part of a resource, and an implementation composes it as a `Range: bytes=…` header and expects
  * the origin to answer **206** with `Content-Range`.
@@ -119,12 +125,21 @@ public interface HttpTransport {
 public class HttpRequest(
     /** Where to fetch from, absolute and `http:` or `https:`. */
     public val uri: Uri,
-    /** `GET` for every load of media; `POST` carries a [body], which is how a licence is acquired. */
+    /**
+     * `GET` for every load of media; `POST` carries a [body], which is how a licence is acquired.
+     * [HttpMethod.HEAD] is in the vocabulary because Media3 has three and a translation that was
+     * total over two would quietly turn the third into a `GET`; nothing in this library issues one
+     * today.
+     */
     public val method: HttpMethod,
     /**
      * The headers to send, and the whole of them: what a layer above composed — a credential a
      * `HeaderProvider` minted, CMCD keys, a content coding the chain asked for. An implementation
      * sends these and adds nothing of its own beyond what its protocol requires.
+     *
+     * One value per name, unlike [HttpResponse.headers]: nothing in this library composes a request
+     * header twice, and a map that admitted it would ask every implementer to decide an ordering
+     * that no caller here would ever exercise.
      */
     public val headers: Map<String, String>,
     /** The request body for a [HttpMethod.POST], or null for a request that carries none. */

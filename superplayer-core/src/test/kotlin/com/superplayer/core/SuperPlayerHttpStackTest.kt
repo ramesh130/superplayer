@@ -29,8 +29,10 @@ import com.superplayer.testmedia.SyntheticDashStream
 import com.superplayer.testmedia.SyntheticHlsStream
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import java.io.ByteArrayInputStream
+import java.net.MalformedURLException
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
@@ -72,6 +74,10 @@ class SuperPlayerHttpStackTest {
 
     @get:Rule
     val harness: SuperPlayerHarness = SuperPlayerHarness()
+
+    /** Where the one `file:` stream of the pay-nothing count is written, and what removes it. */
+    @get:Rule
+    val streamDirectory: TemporaryFolder = TemporaryFolder()
 
     @Test
     fun hlsPlaysOverATransportTheConsumerWrote() {
@@ -194,37 +200,52 @@ class SuperPlayerHttpStackTest {
 
     /**
      * ADR-0016 rule 14, counted: a player built without `setHttpStack` resolves to exactly the
-     * factory composed before this seam existed, and asks no consumer transport anything.
+     * factory composed before this seam existed — `DefaultDataSource.Factory(context,
+     * DefaultHttpDataSource.Factory())`, both halves — and nothing of the consumer's is reached.
      *
-     * The count is taken on one `https:` URI played two ways. With a stack, every request is the
-     * transport's and the player is ready; without one, the transport is asked nothing and the
-     * request goes to Media3's own `DefaultHttpDataSource` — which, on a host under a TLD the
-     * protocol guarantees will never resolve (// spec: RFC 6761 §6.2, `.test`), can only fail. A
-     * player that reached `READY` without a stack would mean something in this change had started
-     * answering `https:` on its own, and a player that failed *with* one would mean the stack was
-     * not reached; both halves are asserted so the counter is shown to see what it counts.
+     * Naming that factory is what the count has to do, and "the player did not play" would not do
+     * it: a bottom that resolved *nothing* would fail the same way. So each half is named by
+     * something only it can answer, and neither question touches a network.
+     *
+     * The **`DefaultDataSource`** half is named by a `file:` URI, which no HTTP stack of any kind
+     * serves and which this player plays to `STATE_READY`.
+     *
+     * The **`DefaultHttpDataSource`** half is named by the exception the same player ends on for a
+     * URI whose scheme `DefaultDataSource` answers itself for none of: it hands the request to
+     * whatever base factory it was built with, and Media3's own builds a `java.net.URL` from the
+     * URI, which raises `MalformedURLException` for a protocol the JVM has no handler for. Nothing
+     * else in this chain calls `URL`, so that exception can have come from nowhere else, and a
+     * bottom that resolved nothing would have named an unsupported scheme instead. The synthetic
+     * streams' own `fake:` URIs are exactly such a scheme, which is why the probe needs no
+     * vocabulary of its own — and why it costs no socket, no DNS query and no wall-clock second.
+     *
+     * The same URI handed to a player *with* a stack is the counter shown to see what it counts:
+     * the consumer's transport is asked for all three resources and the player is ready.
      */
     @Test
     fun aPlayerBuiltWithoutAnHttpStackAsksNoConsumerTransportAndKeepsMediaThreesOwn() {
-        val uri = httpsFor(SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI)
+        val local = harness.buildPlayerOnItsOwnTransferChain()
+        local.setMediaItem(MediaItem.fromUri(SyntheticHlsStream.writeTo(streamDirectory.root)))
+        local.prepare()
+        TestPlayerRunHelper.advance(local).untilState(Player.STATE_READY)
+        assertThat(local.playerError).isNull()
 
-        val unused = ServingTransport(hlsOverHttps())
+        val uri = SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI
         val without = harness.buildPlayerOnItsOwnTransferChain()
         without.setMediaItem(MediaItem.fromUri(uri))
         without.prepare()
         TestPlayerRunHelper.advance(without).untilPlayerError()
 
-        assertThat(unused.requests).isEmpty()
-        assertThat(without.playerError).isNotNull()
+        assertThat(causesOf(without.playerError)).contains(MalformedURLException::class.java)
 
-        val serving = ServingTransport(hlsOverHttps())
+        val serving = ServingTransport(SyntheticHlsStream.resources())
         val with = harness.buildPlayerOnItsOwnTransferChain(httpStack = HttpStack.of(serving))
         with.setMediaItem(MediaItem.fromUri(uri))
         with.prepare()
         TestPlayerRunHelper.advance(with).untilState(Player.STATE_READY)
 
         assertThat(with.playerError).isNull()
-        assertThat(serving.requests).isNotEmpty()
+        assertThat(serving.paths()).containsExactly("/master.m3u8", "/media.m3u8", "/segment0.aac")
     }
 
     /** One exchange as the transport saw it, which is where both sides of a range are visible. */
@@ -296,6 +317,12 @@ class SuperPlayerHttpStackTest {
         /** The one media segment of [hlsOverHttps], which is the only resource a range test needs. */
         fun segmentUriIn(resources: Map<String, ByteArray>): String =
             resources.keys.single { it.endsWith(SyntheticHlsStream.SEGMENT_SUFFIX) }
+
+        /** Every class on a failure's cause chain, which is where the stack that raised it is named. */
+        fun causesOf(error: Throwable?): List<Class<*>> =
+            generateSequence(error) { it.cause.takeIf { cause -> cause !== it } }
+                .map { it.javaClass }
+                .toList()
 
         fun dashOverHttps(): Map<String, ByteArray> =
             SyntheticDashStream.resources().mapKeys { (uri, _) -> httpsFor(uri) }

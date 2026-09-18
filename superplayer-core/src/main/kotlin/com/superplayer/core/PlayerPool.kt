@@ -440,6 +440,13 @@ public class PlayerPool private constructor(
             apply { playerFactory = factory }
 
         public fun build(): PlayerPool {
+            // ADR-0016 rule 12 is owed to `build()`, and a pool is the one entry point that would not pay
+            // it on its own: the other three compose a chain as they are built, while a pool builds no
+            // player until a row asks for one, so a stack this device cannot honour would escape from
+            // `acquire()` — a call whose documented failure is answering null at the bound. Asked here,
+            // and once, because a stack is fixed for the pool's life and every player it builds is the
+            // same answer.
+            httpStack?.refuseUnlessHonourable()
             val drm = drm
             val deviceCapacity = concurrentPlayerCapacityOf(context, feedCodecs, protectedPlayback = drm != null)
             val maxSize = requestedMaxSize?.coerceAtMost(deviceCapacity) ?: deviceCapacity

@@ -124,6 +124,36 @@ class HttpStackSelectionTest {
     }
 
     /**
+     * And it is **every** entry point's `build()`, not only a player's (ADR-0016 rules 12 and 13).
+     *
+     * A pool is the one of the four that would not pay the rule by composing a chain, because it
+     * builds no player until a row asks for one: unless it asks the question itself, a stack this
+     * device cannot honour escapes later, out of `acquire()` — a call whose documented failure is
+     * answering null at the bound, which is a very long way from "this device is API 33". So the
+     * refusal is asked for here and asserted as the pool's, with no player ever acquired.
+     *
+     * The store's and the doctor's are not repeated: each composes its chain in its own constructor,
+     * so `build()` is where the resolution already happens and `theRefusalIsBuildsAndNotTheFirstLoads`
+     * is the same claim about the same call.
+     */
+    @Test
+    @Config(sdk = [33])
+    fun aPoolRefusesAStackTheDeviceCannotHonourWhenItIsBuiltRatherThanWhenARowAsks() {
+        var built: PlayerPool? = null
+        val refusal = runCatching {
+            built = PlayerPool.Builder(ApplicationProvider.getApplicationContext())
+                .setHttpStack(HttpStack.httpEngine())
+                .build()
+        }.exceptionOrNull()
+
+        // Released rather than leaked, for the case where the assertion below is the one that fails.
+        built?.release()
+
+        assertThat(built).isNull()
+        assertThat(refusal).isInstanceOf(HttpStackUnsupportedException::class.java)
+    }
+
+    /**
      * The refusal is a fact about the device and the selection, so **a harness cannot hide it**.
      *
      * `buildPlayer` fills the engine configurator's transport slot, which ADR-0016 rule 3 makes the

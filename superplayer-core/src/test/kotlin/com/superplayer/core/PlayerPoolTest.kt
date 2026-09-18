@@ -716,6 +716,10 @@ class PlayerPoolTest {
      * The layer is the cache's own and is handed to every player, the way a feed's one cache is: the
      * count below is of chains it filled, not of caches, because there is only ever the one.
      */
+    private class RecordingContentCache : ContentCache(RecordingCacheLayer()) {
+
+        fun filledChains(): List<DataSource.Factory> = (layer as RecordingCacheLayer).filled.toList()
+    }
 
     /**
      * An [HttpStack] that answers Media3's own client and counts how many chains asked it for one.
@@ -734,11 +738,6 @@ class PlayerPoolTest {
             asked++
             return DefaultHttpDataSource.Factory()
         }
-    }
-
-    private class RecordingContentCache : ContentCache(RecordingCacheLayer()) {
-
-        fun filledChains(): List<DataSource.Factory> = (layer as RecordingCacheLayer).filled.toList()
     }
 
     private class RecordingCacheLayer : CacheLayer {

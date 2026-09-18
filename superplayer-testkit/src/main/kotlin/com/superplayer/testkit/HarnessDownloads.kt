@@ -36,8 +36,13 @@ import java.util.concurrent.atomic.AtomicInteger
 internal class HarnessDownloadEnvironment(
     override val transport: DataSource.Factory?,
     val injector: FaultInjectingDataSource.Factory,
-    /** The same origin behind an `HttpTransport`, for a store built over [ChainBottom.CONSUMERS_HTTP_TRANSPORT]. */
-    val httpStack: HttpStack,
+    /**
+     * The same origin behind an `HttpTransport`, for a store built over [ChainBottom.CONSUMERS_HTTP_TRANSPORT].
+     *
+     * Lazily, because an environment over the transport slot never hands it out, and one that allocated
+     * a stack anyway would be the inverse of the "pays nothing" discipline these modules count.
+     */
+    val httpStack: Lazy<HttpStack>,
     val wait: HarnessClockWait,
     override val loadExecutor: HarnessDownloadLoads,
     override val renderersFactory: RenderersFactory,

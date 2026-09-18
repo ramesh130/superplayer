@@ -77,6 +77,12 @@ public abstract class HttpStack internal constructor() {
      * slot, so that whether a selection can be honoured stays a fact about the device and the
      * selection rather than one a harness could hide by replacing the network.
      *
+     * `PlayerPool.Builder.build()` asks it a second time, and that is not a duplicated check: a pool
+     * composes no chain until a row asks for a player, so the resolution point would raise this out
+     * of `acquire()` rather than out of `build()`, which is the wrong call for rule 12 to fail. The
+     * other two entry points rule 13 names compose their chain in their own constructor, so `build()`
+     * is already where they ask.
+     *
      * The one way past it is `EngineConfiguration.mediaSourceFactory`, which replaces the whole
      * loading path and therefore never reaches `TransferChain` at all. That is a test's seam and no
      * consumer's, and a caller who has supplied their own loading path has supplied their own

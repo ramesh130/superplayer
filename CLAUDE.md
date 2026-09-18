@@ -1108,6 +1108,26 @@ Style preferences these are not. A change violating one is not accepted, whateve
   player's surface a `SurfaceView`, with Leanback rejected; #213's `TextureView` refusal is core's,
   `FLAG_SECURE` the app's, and its display-change half this module's; and a player built without
   `setOutput` registers and allocates nothing for it, which a test counts.
+- **[ADR-0015](docs/adr/0015-name-a-pathology-over-the-players-own-chain-and-redact-the-bundle-by-construction.md)** —
+  decides Phase 9's shape: `superplayer-diagnostics` depends on core and telemetry and is core's
+  ninth Kotlin friend — built from core's seam, filling no engine slot, ADR-0013 rule 4's second
+  shape — over a **closed list of three** internal seams, two of which reach past that shape and are
+  admitted by name, with a fourth reachable only by amending that rule in the change that reaches
+  it;
+  a **pathology is not a failure**, so a finding carries a cause, a `// spec:` citation, a severity
+  and a magnitude and carries no `FailureClass`, `ErrorClassifier` stays the one place a failure
+  acquires a meaning, and a postmortem prints the classification it *read* beside the findings
+  without either being expressed in the other; the doctor fetches over the chain a player of that
+  request would load through and parses with the parsers that player would run, reporting to no
+  meter and emitting no CMCD, which is ADR-0002's argument through a different door; preflight and
+  postmortem are one report and one API; the bundle is the session trace one layer richer, adding
+  kinds rather than a second grammar, and its capability snapshot is admitted by a **seventh
+  redaction rule** — what the device can do, never what the device is, with every `Build` string and
+  every decoder component name refused; the HUD makes this the second library module to carry
+  Compose, placed by the app and guarded so a release build shows nothing; the doctor is scored
+  against the curated corpus with false positives counted, so a flagged `BENIGN` entry fails the
+  build; and an app that opens neither doctor nor HUD registers and allocates nothing, which a test
+  counts.
 - **[`docs/api-surface.md`](docs/api-surface.md)** — every published module's public API is tracked
   in `<module>/api/<module>.api` and validated by `check`. Changing it means running
   `./gradlew updateApiSurface` and committing the diff in the same change. A leaked `@UnstableApi`

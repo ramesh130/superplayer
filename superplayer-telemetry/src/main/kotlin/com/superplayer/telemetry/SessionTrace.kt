@@ -49,7 +49,10 @@ package com.superplayer.telemetry
  * adds *kinds*; it does not reorder an existing kind's fields, and [FORMAT_VERSION] moves when a
  * line's meaning changes, on the same rule as `TelemetryEvent.SCHEMA_VERSION`. Whatever a capability
  * snapshot records will need its own redaction rule before it is added, since a device model is
- * exactly the kind of identifier this format keeps out.
+ * exactly the kind of identifier this format keeps out. That rule is written: ADR-0015 rule 10 is the
+ * seventh, admitting what the device can *do* — the capabilities this library itself branches on —
+ * and refusing what the device *is*, every `Build` string and every decoder component name included.
+ * #292 obeys it, states it beside [SessionTraceRecorder]'s six, and tests it.
  */
 public class SessionTrace internal constructor(
     /** Every fact, one per element, in trace order, without the header. */

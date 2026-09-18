@@ -194,6 +194,15 @@ Thirteen rules follow, and they are binding.
    rule 3: an eighth friend, `superplayer-tv`, fills one slot core
    declared, `EngineConfiguration.videoOutput`. It is this rule's shape, so no shape is added.*
 
+   *Refined by
+   [ADR-0015](0015-name-a-pathology-over-the-players-own-chain-and-redact-the-bundle-by-construction.md)
+   rule 3: a ninth friend, `superplayer-diagnostics`, reaching a **closed list of three** named
+   seams. One is ADR-0013 rule 4's shape — a chain built from core's seam, filling no slot. The other
+   two are a reader and a judgement, which is nearer the "reaching a helper" this rule refuses, and
+   the ADR says so rather than stretching a shape over them. The ceiling worked as written: something
+   that was not plainly one of the two shapes produced an ADR, and what that ADR grants is bounded by
+   the list rather than granted generally. No shape is added, and the ceiling does not move.*
+
 ### One taxonomy, still
 
 5. **`superplayer-drm` classifies nothing.** ADR-0011 rule 1 stands unchanged: a failure acquires a

@@ -1186,7 +1186,9 @@ format's specification; two of its rules matter to a test author:
   Arrival order is a fact about the host, and the trace records none of those.
 - **A trace is redacted by construction.** No URL, header, exception message, session id, wall-clock
   time or device identifier can reach a line, because the recorder never holds them; the class
-  documentation lists the six rules and `SessionTraceRecorderTest` plays a session through a signed
+  documentation lists the six rules — ADR-0015 rule 10 writes the seventh, for the capability
+  snapshot Phase 9's *bundle* adds, and #292 states it there beside them — and
+  `SessionTraceRecorderTest` plays a session through a signed
   URL that fails, and shows none of it in the trace. That is what makes a trace captured on a device
   attachable to a bug report — and a device trace's one normalisation is `withoutTimings()`, which
   drops the millisecond column and keeps the order it decided.

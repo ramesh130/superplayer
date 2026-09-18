@@ -145,6 +145,11 @@ class SuperPlayerHarness : ExternalResource() {
      * one has to be a test of the real chain. A [buildPlayer] takes it too, and there it is the
      * losing half of the resolution order ADR-0016 rule 3 fixes, which is a claim of its own.
      *
+     * [resilience] goes through the public `setResilience`, as a consumer's would, and is here for
+     * one reason: a filled slot is what makes core stamp each request with its `LoadKind`, and the
+     * stamp is what a refusal has to carry for `ErrorClassifier` to tell a refused segment from a
+     * refused manifest (ADR-0016 rule 8, ADR-0011 rule 14).
+     *
      * Kept separate from [buildPlayer] rather than offered as a flag, because it is the exception:
      * every other test wants the fake data source, and a test that reaches for this one is
      * specifically about what SuperPlayer installs underneath.
@@ -155,6 +160,7 @@ class SuperPlayerHarness : ExternalResource() {
         telemetry: TelemetryCollector? = null,
         policy: PlaybackPolicy? = null,
         httpStack: HttpStack? = null,
+        resilience: PlaybackResilience? = null,
         alsoConfigureEngine: (ExoPlayer.Builder) -> Unit = {},
     ): SuperPlayer {
         val clock = FakeClock(/* isAutoAdvancing= */ true)
@@ -166,6 +172,7 @@ class SuperPlayerHarness : ExternalResource() {
                 .apply { telemetry?.let { setTelemetry(it) } }
                 .apply { policy?.let { setPolicy(it) } }
                 .apply { httpStack?.let { setHttpStack(it) } }
+                .apply { resilience?.let { setResilience(it) } }
                 .setEngineConfigurator { configuration ->
                     configuration.engine.useHarnessClock(clock)
                     // Whatever a test needs *besides* the chain — the bandwidth meter a CMCD test

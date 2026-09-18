@@ -236,9 +236,20 @@ subclass because it is the *bottom* of the chain rather than a layer with an ups
 `isNetwork = true` so the cache-hit exclusion still means what it says (rule 9). The obligations are in
 `HttpTransport`'s KDoc, each with what getting it wrong costs, because every one of them fails
 silently; ranges are the one #309 wrote, and a range from a non-zero offset answered 200 is refused at
-`open` rather than read past. `SuperPlayerHttpStackTest` is the only test that can see any of it: its
-own transport *is* the origin, which is the only way a 206 with `Content-Range` exists anywhere in this
-repository, and `docs/testing.md`'s *The one player that keeps its own transport* says why. The other
+`open` rather than read past. `SuperPlayerHttpStackTest` and `ConsumersTransportEvidenceTest` share one
+`ServingTransport` that *is* the origin, which is the only way a 206 with `Content-Range` or a
+response header on a refusal exists anywhere in this repository, and `docs/testing.md`'s *The one
+player that keeps its own transport* says why. Since #310 the **evidence** a failure carries is held to
+the same standard as the bytes (rule 8, the record's most load-bearing rule): a non-2xx a transport
+*reports* becomes an `InvalidResponseCodeException` carrying the status, the response headers and the
+**stamped** `DataSpec` — the one the chain handed down, never a fresh one, because `ErrorClassifier`
+reads `LoadKind` off it and an adapter that rebuilt it would reclassify every refused segment as a
+refused manifest with nothing failing to say so. What proves it is parity rather than inspection:
+`PlaybackHarness.buildPlayer` takes a `ChainBottom`, which reaches the harness's own origin either
+through the transport slot or through an `HttpTransport` that reports a status as a consumer's client
+does, and `superplayer-resilience`'s `ConsumersTransportParityTest` runs the rung, the class and the
+counts over both and asserts they are equal; `BandwidthOraclePlaybackTest` does the same for the
+estimate and `ContentKeyedCachePlaybackTest` for the cache keys. The other
 three entry points rule 13 names, and the rest of the contract, are still open tickets.
 
 CMCD (CTA-5004) is emitted there today, and is on for every profile including `DATA_SAVER` —

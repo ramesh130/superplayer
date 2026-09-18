@@ -32,6 +32,7 @@ import com.superplayer.core.SuperPlayer
 import com.superplayer.core.TelemetryEvent
 import com.superplayer.core.TelemetrySink
 import com.superplayer.telemetry.QoeCollector
+import com.superplayer.testkit.ChainBottom
 import com.superplayer.testkit.FaultScript
 import com.superplayer.testkit.NetworkProfile
 import com.superplayer.testkit.PlaybackHarness
@@ -316,6 +317,55 @@ class ContentKeyedCachePlaybackTest {
         assertThat(entriesByContent(smaller)["episode:two"]).isEqualTo(onePlay.entries)
         assertWithMessage("segments fetched playing kept content").that(segmentsFetched(play(smaller, "episode:two"))).isEqualTo(0)
         assertWithMessage("segments fetched playing evicted content").that(segmentsFetched(play(smaller, "episode:one"))).isGreaterThan(0)
+    }
+
+    /**
+     * The cache is untouched by an HTTP client a consumer wrote (ADR-0016 rule 8's other half, and
+     * #310's last acceptance criterion).
+     *
+     * A cache keys on the content id and the URI *path* — never the host, the query or Media3's own
+     * `DataSpec` key — so which client fetched the bytes cannot be part of an entry's identity.
+     * Asserted as an equality of the whole key set rather than as "it played twice": a bottom that
+     * reworded a request on its way out would fill a second set of entries, every replay would be a
+     * miss, and the only symptom would be a cache that never seemed to help.
+     *
+     * The warm replay is the other acceptance criterion in the same session. Every segment is a hit,
+     * and **not one segment reaches the transport** — which is what a cache hit staying out of the
+     * bandwidth estimate (ADR-0009 rule 8) looks like from below: nothing to sample, because the
+     * request never got this far. What does reach it reports `isNetwork = true`, which
+     * `superplayer-abr`'s `BandwidthOraclePlaybackTest` counts.
+     */
+    @Test
+    fun theSameContentBehindAConsumersTransportIsTheSameCacheEntry() {
+        val overTheSlot = openCache()
+        val first = harness.buildPlayer(content = content, cache = overTheSlot)
+        first.setMediaRequest(request(CONTENT_ID, content.sourceUri))
+        playToEnd(first)
+
+        val overATransport = openCache()
+        val cold = harness.buildPlayer(
+            content = content,
+            cache = overATransport,
+            bottom = ChainBottom.CONSUMERS_HTTP_TRANSPORT,
+        )
+        cold.setMediaRequest(request(CONTENT_ID, content.sourceUri))
+        playToEnd(cold)
+
+        assertWithMessage("hits on the cold play over a consumer's transport")
+            .that(overATransport.hitCount).isEqualTo(0)
+        assertWithMessage("the entries a consumer's transport filled")
+            .that(overATransport.keys().toSet()).isEqualTo(overTheSlot.keys().toSet())
+
+        val warm = harness.buildPlayer(
+            content = content,
+            cache = overATransport,
+            bottom = ChainBottom.CONSUMERS_HTTP_TRANSPORT,
+        )
+        warm.setMediaRequest(request(CONTENT_ID, content.sourceUri))
+        playToEnd(warm)
+
+        assertWithMessage("hits on the warm replay").that(overATransport.hitCount).isAtLeast(SEGMENTS.toLong())
+        assertWithMessage("segments that reached the consumer's transport").that(segmentsFetched(warm)).isEqualTo(0)
     }
 
     private fun openCache(maxBytes: Long = MAX_BYTES): ContentKeyedCache =

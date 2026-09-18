@@ -72,6 +72,13 @@ import java.io.InputStream
  * classification downstream of it — nothing would fail, sessions would simply end unclassified
  * (ADR-0016 rule 8, ADR-0011 rule 1).
  *
+ * **The response headers come back with it** ([HttpResponse.headers]), on a refusal as much as on a
+ * 200. They are the second of the three things core's adapter puts on the typed failure, and they
+ * are what a refusal is diagnosed from after the fact: the `WWW-Authenticate` challenge that says
+ * which credential a 401 wanted, the `Cache-Control` a stale playlist was served under. A client
+ * that hands back a body and drops the headers costs nobody their playback and everybody the
+ * explanation, which is the shape of defect this whole list is about.
+ *
  * ## The lifecycle
  *
  * One [HttpTransport] serves every request a player opens, concurrently: manifests, playlists and

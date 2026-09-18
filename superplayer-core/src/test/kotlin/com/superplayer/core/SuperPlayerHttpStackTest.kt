@@ -16,7 +16,6 @@
 
 package com.superplayer.core
 
-import android.net.Uri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.datasource.DataSpec
@@ -31,9 +30,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
-import java.io.ByteArrayInputStream
 import java.net.MalformedURLException
-import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * Phase 10's tracer bullet: HLS and DASH played over an [HttpTransport] a *consumer* wrote.
@@ -81,10 +78,10 @@ class SuperPlayerHttpStackTest {
 
     @Test
     fun hlsPlaysOverATransportTheConsumerWrote() {
-        val transport = ServingTransport(hlsOverHttps())
+        val transport = ServingTransport(ServingTransport.hlsOverHttps())
         val player = harness.buildPlayerOnItsOwnTransferChain(httpStack = HttpStack.of(transport))
 
-        player.setMediaItem(MediaItem.fromUri(httpsFor(SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI)))
+        player.setMediaItem(MediaItem.fromUri(ServingTransport.httpsFor(SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI)))
         player.prepare()
         TestPlayerRunHelper.advance(player).untilState(Player.STATE_READY)
 
@@ -98,10 +95,10 @@ class SuperPlayerHttpStackTest {
 
     @Test
     fun dashPlaysOverATransportTheConsumerWrote() {
-        val transport = ServingTransport(dashOverHttps())
+        val transport = ServingTransport(ServingTransport.dashOverHttps())
         val player = harness.buildPlayerOnItsOwnTransferChain(httpStack = HttpStack.of(transport))
 
-        player.setMediaItem(MediaItem.fromUri(httpsFor(SyntheticDashStream.MANIFEST_URI)))
+        player.setMediaItem(MediaItem.fromUri(ServingTransport.httpsFor(SyntheticDashStream.MANIFEST_URI)))
         player.prepare()
         TestPlayerRunHelper.advance(player).untilState(Player.STATE_READY)
 
@@ -122,9 +119,9 @@ class SuperPlayerHttpStackTest {
      */
     @Test
     fun aByteRangeIsAskedForAsARangeAndAnsweredAsPartialContent() {
-        val resources = hlsOverHttps()
+        val resources = ServingTransport.hlsOverHttps()
         val transport = ServingTransport(resources)
-        val uri = segmentUriIn(resources)
+        val uri = ServingTransport.segmentUriIn(resources)
         val segment = resources.getValue(uri)
 
         val source = HttpStack.of(transport).factory.createDataSource()
@@ -162,9 +159,9 @@ class SuperPlayerHttpStackTest {
      */
     @Test
     fun aTransportThatIgnoresARangeIsRefusedRatherThanReadPast() {
-        val resources = hlsOverHttps()
+        val resources = ServingTransport.hlsOverHttps()
         val transport = ServingTransport(resources, honourRanges = false)
-        val uri = segmentUriIn(resources)
+        val uri = ServingTransport.segmentUriIn(resources)
 
         val source = HttpStack.of(transport).factory.createDataSource()
         val failure = runCatching {
@@ -187,7 +184,7 @@ class SuperPlayerHttpStackTest {
      */
     @Test
     fun theHarnessesTransportSlotWinsOverAStackAConsumerSet() {
-        val transport = ServingTransport(hlsOverHttps())
+        val transport = ServingTransport(ServingTransport.hlsOverHttps())
         val player = harness.buildPlayer(httpStack = HttpStack.of(transport))
 
         player.setMediaItem(MediaItem.fromUri(SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI))
@@ -248,83 +245,12 @@ class SuperPlayerHttpStackTest {
         assertThat(serving.paths()).containsExactly("/master.m3u8", "/media.m3u8", "/segment0.aac")
     }
 
-    /** One exchange as the transport saw it, which is where both sides of a range are visible. */
-    private class Exchange(
-        val uri: Uri,
-        val rangeHeaderValue: String?,
-        val status: Int,
-        val responseHeaders: Map<String, List<String>>,
-    )
-
-    /**
-     * A consumer's [HttpTransport], written the way the KDoc's example is written, over a map in
-     * memory instead of a client.
-     *
-     * [honourRanges] false is the broken implementation ADR-0016 rule 5 names: it reads the `Range`
-     * and answers 200 with the whole resource anyway.
-     */
-    private class ServingTransport(
-        private val resources: Map<String, ByteArray>,
-        private val honourRanges: Boolean = true,
-    ) : HttpTransport {
-
-        /** Written from the engine's loader threads, read from the test's. */
-        val requests: MutableList<Exchange> = CopyOnWriteArrayList()
-
-        fun paths(): List<String> = requests.map { it.uri.path.orEmpty() }
-
-        override fun open(request: HttpRequest): HttpResponse {
-            val bytes = resources[request.uri.toString()]
-                ?: return record(request, 404, emptyMap(), ByteArray(0))
-            val range = request.range?.takeIf { honourRanges }
-            if (range == null) {
-                return record(request, 200, mapOf("Content-Length" to listOf(bytes.size.toString())), bytes)
-            }
-            val last = range.length?.let { range.offset + it - 1 } ?: (bytes.size - 1L)
-            val slice = bytes.copyOfRange(range.offset.toInt(), (last + 1).toInt())
-            val headers = mapOf(
-                "Content-Length" to listOf(slice.size.toString()),
-                // spec: RFC 9110 §14.4 — `Content-Range: bytes <first>-<last>/<complete-length>`.
-                "Content-Range" to listOf("bytes ${range.offset}-$last/${bytes.size}"),
-            )
-            return record(request, 206, headers, slice)
-        }
-
-        private fun record(
-            request: HttpRequest,
-            status: Int,
-            headers: Map<String, List<String>>,
-            body: ByteArray,
-        ): HttpResponse {
-            requests += Exchange(request.uri, request.range?.headerValue(), status, headers)
-            return HttpResponse(status, headers, ByteArrayInputStream(body))
-        }
-    }
-
     private companion object {
-
-        /**
-         * The synthetic streams live at `fake:` URIs, which no real chain resolves and which is the
-         * point of them; served over a consumer's transport they need a scheme `DefaultDataSource`
-         * hands on rather than answers itself, and every reference inside either document is
-         * relative, so rewriting the scheme is the whole of the move.
-         */
-        fun httpsFor(fakeUri: String): String = fakeUri.replaceFirst("fake://", "https://")
-
-        fun hlsOverHttps(): Map<String, ByteArray> =
-            SyntheticHlsStream.resources().mapKeys { (uri, _) -> httpsFor(uri) }
-
-        /** The one media segment of [hlsOverHttps], which is the only resource a range test needs. */
-        fun segmentUriIn(resources: Map<String, ByteArray>): String =
-            resources.keys.single { it.endsWith(SyntheticHlsStream.SEGMENT_SUFFIX) }
 
         /** Every class on a failure's cause chain, which is where the stack that raised it is named. */
         fun causesOf(error: Throwable?): List<Class<*>> =
             generateSequence(error) { it.cause.takeIf { cause -> cause !== it } }
                 .map { it.javaClass }
                 .toList()
-
-        fun dashOverHttps(): Map<String, ByteArray> =
-            SyntheticDashStream.resources().mapKeys { (uri, _) -> httpsFor(uri) }
     }
 }

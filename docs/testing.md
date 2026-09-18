@@ -132,6 +132,13 @@ a DASH representation carries an index or an HLS segment an `EXT-X-BYTERANGE`, a
 streams carry neither; adding one would change the corpus every other module is recorded against, to
 observe something a single `open` states exactly.
 
+`ConsumersTransportEvidenceTest` is the third caller and is there for the *response* side of the same
+exchange. ADR-0016 rule 8 says a status a transport reports becomes an
+`InvalidResponseCodeException` carrying the status, the **headers** and the URI, and no fake origin
+in this repository can express a response header at all — a transport that is itself the origin is
+again the only place. Both classes share one `ServingTransport`, so what a test reads back is what
+one implementation received.
+
 ## Synthetic media, not fixtures
 
 Streams are generated in Kotlin rather than checked in as binaries. `SyntheticHlsStream` writes a
@@ -341,6 +348,30 @@ This is the one seam rather than a second: the same configurator, offering a nar
 "replace the loading path". Described content, which Media3's fakes synthesize without any
 `DataSource`, still replaces the path whole because it has no transport to stand in for, and it is
 the one kind of test player with no chain above its fakes.
+
+### The same origin, reached the other way
+
+`PlaybackHarness.buildPlayer` takes a `ChainBottom`, and the second entry —
+`CONSUMERS_HTTP_TRANSPORT` — leaves the transport slot **empty** and reaches the same origin through
+an `HttpTransport` chosen with `SuperPlayer.Builder.setHttpStack`. Empty rather than filled because a
+filled slot wins over a stack (ADR-0016 rule 3), and a player whose stack resolved nothing would pass
+every test for the wrong reason.
+
+Everything else is the one composition above: the same fake origin, the same `FaultScript`, the same
+`ThroughputTrace`, the same clock. Only the last step of the journey differs, which is what lets a
+test body run over `ChainBottom.entries` and assert that the two answers are *equal* — the claim
+#310 exists to make, since ADR-0016 rule 8 puts the typed failure on our side of a boundary a
+consumer's client sits below. The stand-in transport does the one thing that makes it a consumer's:
+it **reports** the status of a refusal on an `HttpResponse` rather than raising it, so the
+`InvalidResponseCodeException` the ladder and the classifier read can only have been built by core's
+adapter.
+
+Two things it cannot be asked. Described content has no transport to stand in for, so it is refused
+at `buildPlayer` rather than quietly served over the slot. And a fault *below* the response — a name
+that will not resolve, a handshake that fails — arrives as the `IOException` a real client raises
+rather than as the error code the injector chose, because a status is the only thing an
+`HttpTransport` can report (rule 4): the two bottoms agree about statuses, and a parity test compares
+statuses.
 
 ## Why assertions stop at the facade
 

@@ -69,9 +69,9 @@ bundle's format and `docs/reading-a-session-bundle.md` how to get an answer out 
 an interface the *consumer* implements over their own client, so there is no `superplayer-net-okhttp`
 or sibling in the table above and no tenth Kotlin friendship — ADR-0004's *Consequences* records the
 cross-module visibility question that shape would have raised, and why removing the module closes it
-rather than answering it. The conformance test a consumer runs against their own transport lives in
-`superplayer-testkit`, which is phase 2 and depends on core alone, so it reaches nothing later than
-itself.
+rather than answering it. The conformance test a consumer runs against their own transport is
+`superplayer-testkit`'s public `HttpTransportConformance` (#312), and that module is phase 2 and
+depends on core alone, so it reaches nothing later than itself.
 
 `superplayer-testmedia` is the one module that depends on nothing, and that is what it is for. Its
 synthetic HLS and DASH streams are played by `superplayer-core`'s tests *and* by

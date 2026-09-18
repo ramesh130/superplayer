@@ -17,11 +17,11 @@
 package com.superplayer.benchmark
 
 /**
- * Phase 10's exit criterion for the adaptive policy, decided by one rule fixed before the matrix ran.
+ * Phase 11's exit criterion for the adaptive policy, decided by one rule fixed before the matrix ran.
  *
  * `PRD.md`'s phase table: **measured improvement of the adaptive policy over the static profile on
  * the shaped-network suite, with no regression on stable WiFi.** Issue #103 wrote it as Phase 3's;
- * the roadmap has since moved it to Phase 10, tuning, so that no functional phase waits on a number
+ * the roadmap has since moved it to Phase 11, tuning, so that no functional phase waits on a number
  * moving. Every report from Phase 3 on still opens with the verdict, because a report that measures
  * the policy should say where it stands. The words need a rule before they are a
  * criterion, and writing it down after seeing the numbers would be choosing it, so it is here:

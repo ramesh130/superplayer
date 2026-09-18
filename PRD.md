@@ -431,18 +431,19 @@ Each phase ends with something demonstrable and measured. Effort assumes one eng
 | **7 — Offline downloads** (2 wks) | Download stack, `WorkManager` policy, license binding. | A download survives process death, network loss, and reboot; battery policy verified with a battery profiler. |
 | **8 — TV** (2–3 wks) | `superplayer-tv`, Compose-for-TV demo. | Runs on a TV device and emulator; frame-rate matching verified; HDMI and audio-capability changes handled. |
 | **9 — Diagnostics + docs** (2 wks) | `MediaSourceDoctor`, trace bundle, debug HUD, docs, the ADR set. | Doctor correctly identifies each pathology in a curated set of deliberately broken manifests. |
-| **10 — Tuning** (open-ended) | Iterating the adaptive policy, the preload path and the profiles against the §6 matrix; the benchmark's device arm, for peak RSS and battery. | Measured improvement of the adaptive policy over the static profile on the shaped-network suite, with no regression on stable WiFi; p50 TTFF in the feed demo under a target this phase sets and argues; peak RSS and battery delta reported from a device. |
+| **10 — HTTP stack** (1–2 wks) | ADR-0004 implemented: `HttpStack` on the builder, an `HttpTransport` the consumer implements over whatever client the app already has, adapted to Media3 behind the boundary, and the platform's `HttpEngine` beside the default. One composition point for the playback, download, licence and doctor chains. | A consumer's own HTTP client carries all four chains; bandwidth estimation, CMCD, cache keying and every rung of the fallback ladder behave identically over it, each verified by a test rather than asserted in a comment; a stack that cannot be honoured fails at `build()` with a typed error rather than falling back silently. |
+| **11 — Tuning** (open-ended) | Iterating the adaptive policy, the preload path and the profiles against the §6 matrix; the benchmark's device arm, for peak RSS and battery. | Measured improvement of the adaptive policy over the static profile on the shaped-network suite, with no regression on stable WiFi; p50 TTFF in the feed demo under a target this phase sets and argues; peak RSS and battery delta reported from a device. |
 
 Roughly five months at a sustainable part-time pace, before tuning. Phases 0–5 (about three months)
 constitute a complete, coherent library on their own.
 
-**Function before tuning.** Phases 0–9 end on behaviour that is built, tested and *measured*; none
+**Function before tuning.** Phases 0–10 end on behaviour that is built, tested and *measured*; none
 ends on a number having moved in the right direction. Moving a benchmark number is iterative and
 its outcome is not known in advance — a policy change fixes one cell and costs another, and each
-attempt is a full matrix run — so it is Phase 10's alone, and no earlier phase waits on it. The
+attempt is a full matrix run — so it is Phase 11's alone, and no earlier phase waits on it. The
 measurement is not deferred with it: the harness, the report and the QoE gate stay in the phases
-that build them, so Phase 10 starts from committed reports rather than from nothing, and a
-functional phase's report is a finding for Phase 10 rather than a reason to retune before
+that build them, so Phase 11 starts from committed reports rather than from nothing, and a
+functional phase's report is a finding for Phase 11 rather than a reason to retune before
 committing it.
 
 ---
@@ -497,7 +498,7 @@ argues the case explicitly and produces a superseding ADR.
 
 1. **Measurement before tuning.** Telemetry and the benchmark harness are Phase 2, ahead of ABR in
    Phase 3. Tuning without a harness is guessing, and the phase order says so out loud. The same
-   order puts tuning itself last: Phase 10 moves the numbers the earlier phases measure.
+   order puts tuning itself last: Phase 11 moves the numbers the earlier phases measure.
 2. **Composition over forking**, using public extension points only, with a documented compatibility
    strategy for Media3 upgrades. The library is meant to be maintained, not only shipped.
 3. **Solve the problem at the layer that owns it** (§2.3). Where a popular approach works around a

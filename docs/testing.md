@@ -779,7 +779,7 @@ the seam above until #239. What stands in for each piece, and what each stand-in
   downloader hands them over, as Media3's default executor runs them, counted into the same wait a
   player's loads are, so a download's segments are fetched in manifest order on every run and
   `advanceUntil(environment, …)` knows when a load has finished. It cannot show what parallel segment
-  fetching does within one item, which is a throughput question for Phase 10. Two items in one store
+  fetching does within one item, which is a throughput question for Phase 11. Two items in one store
   load on two threads, as in an app. A thread shared by the environment was the earlier shape, and it
   coupled them: a load queued behind another item's delayed one kept the clock still, and an item that
   failed waited for its queued next segment behind the other item's held load (#244). `DownloadManager`'s

@@ -17,7 +17,7 @@
   own `FORMAT_VERSION` (rule 9), which is where `SessionTrace`'s KDoc already sent it.
   [ADR-0013](0013-download-into-the-cache-the-consumer-opened-on-the-one-chain.md) rule 4's friend
   ceiling, which gains a **ninth** friendship: its second shape — a later phase built *from* core's
-  seam, filling no slot — for one of the three seams, and, for the other two, an admission that
+  seam, filling no slot — for one of the seams, and, for the others, an admission that
   ceiling expressly asks an ADR for, bounded by a closed list rather than granted generally (rule 3).
   Recorded as an addendum at that rule, and the ceiling itself does not move.
   [ADR-0002](0002-no-local-http-proxy.md), which is not amended at all: rule 7 is its argument
@@ -30,9 +30,10 @@
 - **Summary:** Decides Phase 9's shape before any of its code lands (#284, #285).
   `superplayer-diagnostics` depends on `superplayer-core` and `superplayer-telemetry` and reaches
   core as its **ninth** Kotlin friend, mostly of the shape `superplayer-offline` already has: built
-  from core's seam, filling no engine slot, and reaching a **closed list of three** internal seams
-  and nothing else — a list rule 3 argues rather than assumes, because two of the three are past what
-  that shape covers. A **pathology is not a failure**: a defect of a stream carries a cause and a spec
+  from core's seam, filling no engine slot, and reaching a **closed list** of internal seams
+  and nothing else — three as decided here, four since #289 amended rule 3 to take a fourth — a list
+  rule 3 argues rather than assumes, because all but the first are past what that shape covers.
+  A **pathology is not a failure**: a defect of a stream carries a cause and a spec
   citation, a failure carries a `FailureClass`, `ErrorClassifier` stays the one place a failure
   acquires a meaning, and a postmortem prints the two side by side without either being expressed in
   the other. The doctor fetches over the chain a *player* of that request would load through, and
@@ -137,8 +138,8 @@ in the call at all.
 
 **`superplayer-diagnostics` declares `superplayer-core` and `superplayer-telemetry` and reaches core
 as its ninth Kotlin friend — built from core's seam, filling no slot, ADR-0013 rule 4's second
-shape — over a closed list of three internal seams, two of which that shape does not cover and which
-rule 3 admits by name and bounds. A pathology is a defect of a stream and
+shape — over a closed list of internal seams, all but the first of which that shape does not cover and
+which rule 3 admits by name, bounds, and grows only by being amended. A pathology is a defect of a stream and
 carries a cause and a spec citation; a failure is `ErrorClassifier`'s and carries a `FailureClass`;
 the module keeps no second taxonomy and a postmortem prints both without expressing either in the
 other. The doctor fetches over the chain a player of that request would load through, and parses with
@@ -189,7 +190,8 @@ Thirteen rules follow, and they are binding.
      change that renames it, rather than drifting from it.
 
 3. **`superplayer-diagnostics` is core's ninth Kotlin friend, and what it may reach is a closed list
-   of three seams — one of ADR-0013 rule 4's second shape, and two this rule admits by name.** It
+   of seams — one of ADR-0013 rule 4's second shape, and the rest admitted by name here. Three as
+   first decided; four since #289.** It
    fills no `EngineConfiguration` slot: there is nothing about a player that it configures, and a
    report is not a decision the engine honours. Like `superplayer-offline` it is instead *built from*
    the seam. The list is exhaustive:
@@ -204,10 +206,19 @@ Thirteen rules follow, and they are binding.
       `QoeCollector` does.
    3. **`LiveWindowDepthCheck`'s judgement**, so that rule 6 can be obeyed by calling it rather than
       by restating `depthUs > lag.us` in a second file.
+   4. **`LivePlaylistRevalidation`'s judgement** — `cachedPastTheUpdateBoundSeconds(cacheControl,
+      targetDurationMs)`, the one that decides whether a served `Cache-Control` lets a shared cache
+      keep a live playlist past RFC 8216 §6.2.1's update bound. **Added by #289**, under this rule's
+      own amendment clause and for exactly the reason seam 3 exists: the doctor reports that defect
+      before a player exists, from the headers a manifest arrived with, and rule 6 makes a copy of
+      the comparison a bug. It is a whole answer of the same shape as seam 3 — one function
+      returning the judgement, and returning the *lifetime* rather than a boolean only because a
+      report prints the number it judged on — and the alternative was two definitions of "held too
+      long", of which one would be behind within a release. The list is four and is still closed.
 
-   **A fourth seam needs this rule amended in the change that takes it**, by name, with the reason.
+   **A fifth seam needs this rule amended in the change that takes it**, by name, with the reason.
    That is what "whatever this ADR decides to expose deliberately" (#285) comes to: not a public API
-   and not an open friendship, but an enumerated three, each of which a later worker can check
+   and not an open friendship, but an enumerated list, each entry of which a later worker can check
    themselves against.
 
    **What the closed list is for, stated plainly.** Seam 1 is ADR-0013 rule 4's second shape
@@ -296,6 +307,18 @@ Thirteen rules follow, and they are binding.
    - **Manifests only, and never media.** The doctor reads manifests and playlists. It downloads no
      segment: the pathologies are declarations, and fetching media to check one would make a
      preflight cost what a start costs.
+
+     **#289's addendum: never media *bytes*, and one segment's headers where naming the party at
+     fault needs them.** Two of the defects this rule's own paragraph lists — a `Cache-Control` the
+     CDN and the origin disagree about above all — are disagreements *between two responses*, so
+     saying which of the two is misconfigured cannot be done from one of them. The doctor may
+     therefore open the transfer of a **single** segment of a single rendition, read its headers and
+     close it without reading a byte, asking for one byte so that the request is a request rather
+     than a download. The cost is one round trip and no media, which is the bound the bullet above is
+     protecting; what it is not is a second HTTP stack, since the probe travels the same chain,
+     stamped `LoadKind.MEDIA` because that is what it is. Two limits keep it honest and are in
+     `DeliveryPathologies`: the probe is spent only by a rule that **already has a defect to
+     attribute**, so a correctly delivered stream pays nothing for it, and it is never spent twice.
    - **It is measured by nothing.** The chain it composes reports to no bandwidth meter and emits no
      CMCD. A doctor's fetch is not a viewing: an estimate seeded from it would be ADR-0009 rule 8's
      memory polluted by a transfer no viewer waited for, and a CMCD `sid` on it would put a row in

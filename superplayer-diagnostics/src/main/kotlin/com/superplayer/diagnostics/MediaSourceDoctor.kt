@@ -97,7 +97,10 @@ public class MediaSourceDoctor private constructor(
      */
     public fun examine(request: MediaRequest): DiagnosticReport {
         val source = request.sources.first()
-        val findings = ManifestExamination(chain.forContent(request.contentId)).examine(source)
+        val findings = ManifestExamination(
+            chain.forContent(request.contentId),
+            chain.forSegmentsOf(request.contentId),
+        ).examine(source)
         return DiagnosticReport(request.contentId, findings, layers)
     }
 

@@ -280,6 +280,7 @@ public final class com/superplayer/testkit/TestContent {
 	public static final fun protectedHls (I)Lcom/superplayer/testkit/TestContent;
 	public static final fun protectedLiveHls ()Lcom/superplayer/testkit/TestContent;
 	public final fun servedFrom (Ljava/lang/String;)Lcom/superplayer/testkit/TestContent;
+	public final fun servedWithNoDeclaredHeaders ()Lcom/superplayer/testkit/TestContent;
 	public static final fun video (IJ)Lcom/superplayer/testkit/TestContent;
 	public static final fun videoLadder (Ljava/util/List;J)Lcom/superplayer/testkit/TestContent;
 	public static final fun videoWithAudio (IJ)Lcom/superplayer/testkit/TestContent;

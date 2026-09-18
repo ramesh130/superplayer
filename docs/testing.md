@@ -165,7 +165,9 @@ one test that plays through the real transfer chain.
 `HostileManifests`, also in `superplayer-testmedia`, is the other half of synthetic media:
 valid-but-hostile HLS and DASH — ladder gaps, overstated bitrates, missing codecs, audio-group
 mismatches, ragged segment durations, bare discontinuities, clock skew, short and missing time-shift
-windows, a mid-stream ladder change, and a live playlist served cacheable — the pathologies `PRD.md`
+windows, a mid-stream ladder change, a live playlist served cacheable, a token scoped to the manifest
+and not to its segments, a token that expires inside the content, and a CORS configuration that
+refuses a credentialed request — the pathologies `PRD.md`
 §3.6 lists for `MediaSourceDoctor` to diagnose in Phase 9. It is generated for the reason the good
 streams are, and for one more: a checked-in broken manifest is inert, while a generated one is a
 builder call. Every defect that applies to both protocols is generated for both, and every defect
@@ -250,11 +252,22 @@ corpus, and the test checks that it plays on, which is what makes a failing live
    row is surprising.
 
 A defect that lives outside the manifest cannot be applied by `FakeDataSet`, which serves bytes and
-reports no response headers. That covers the `Cache-Control` mismatch. Such an entry carries the
+reports no response headers. That covers the `Cache-Control` mismatch and the CORS one. Such an entry
+carries the
 defect as `declaredResponseHeaders` and reproduces the *consequence* in its bytes — for the cache
 rule, a live playlist that never changes. `TestContent.hostile` hands the headers to the harness,
 which serves them on top of the bytes, so the player reads both. The entry must still say which of
-the two its recorded row measures.
+the two its recorded row measures. `TestContent.servedWithNoDeclaredHeaders()` is the control such an
+entry needs: the same bytes at the same URIs with the headers withheld, which is the only way to show
+that a finding came from the transfer rather than from the document.
+
+The third shape a *delivery* defect takes is neither the bytes nor the headers but **where the stream
+is published**: a signed URL carries its credential in the URI's query, so the token entries are the
+good stream's documents served at a signed address (`hlsStream`'s `sourceName` and `mediaName`).
+Everything else keeps the plain names. All three delivery entries are HLS and are deliberately not
+generated for both protocols, which is the one documented exception to the rule above: nothing about
+a token or an allowed origin is read from a playlist or an MPD, so a DASH twin would be a second copy
+of one fact with no second reading to make of it.
 
 The *cause* — an origin that keeps publishing behind a cache that does not pass the new versions on —
 cannot be carried by fixed bytes at all. It is played instead by `LivePlaylistRevalidationTest`, over

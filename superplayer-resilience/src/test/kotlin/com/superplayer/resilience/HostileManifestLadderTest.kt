@@ -141,6 +141,14 @@ class HostileManifestLadderTest {
             // `StaleLivePlaylistException` that reaches rung 6 carries the intermediary cache the
             // served `max-age=600` points at (issue #66).
             "hls-cached-live-playlist" to HostileOutcome.FAILS_TYPED,
+            // The three delivery entries (#289), agreeing with the core-only table exactly, which is one
+            // more count of ADR-0011 rule 14. A ladder climbs when a *load* fails, and none of these three
+            // fails one here: a `FakeDataSet` cannot refuse an unsigned URI and no player reads a CORS
+            // header, so what is wrong with each is a fact about a CDN that would have enforced it. That
+            // is `MediaSourceDoctor`'s to name (`DeliveryPathologyTest`) and no rung's to repair.
+            "hls-token-scoped-to-manifest" to HostileOutcome.PLAYS_TO_END,
+            "hls-token-expiring-in-window" to HostileOutcome.PLAYS_TO_END,
+            "hls-cors-refuses-credentials" to HostileOutcome.PLAYS_TO_END,
             "dash-ladder-gap" to HostileOutcome.PLAYS_TO_END,
             "dash-overstated-bitrate" to HostileOutcome.PLAYS_TO_END,
             "dash-missing-codecs" to HostileOutcome.PLAYS_TO_END,

@@ -185,6 +185,32 @@ public class TestContent private constructor(
         )
     }
 
+    /**
+     * This content with its declared response headers withheld: the same bytes, from an origin that reports
+     * nothing.
+     *
+     * The control for a *delivery* pathology, and the only way to write one honestly. A defect carried as
+     * [HostileStream.declaredResponseHeaders] — a live playlist served cacheable, a CORS configuration that
+     * refuses a credentialed request — is invisible to any parse, so the claim "this finding came from the
+     * transfer and not from the document" can only be made by diagnosing the identical document twice. Both
+     * readings are of one [TestContent], which is what stops the control from being a second stream that
+     * differs in some other way too.
+     *
+     * Nothing else changes: the same resources, at the same URIs, over the same transport.
+     */
+    public fun servedWithNoDeclaredHeaders(): TestContent = TestContent(
+        rungs = rungs,
+        durationMs = durationMs,
+        live = live,
+        protocol = protocol,
+        sourceUri = sourceUri,
+        resources = resources,
+        responseHeaders = emptyMap(),
+        publication = publication,
+        protected = protected,
+        withAudio = withAudio,
+    )
+
     private fun onHost(uri: String, host: String): String {
         val parsed = java.net.URI(uri)
         return java.net.URI(parsed.scheme, parsed.userInfo, host, parsed.port, parsed.path, parsed.query, parsed.fragment)

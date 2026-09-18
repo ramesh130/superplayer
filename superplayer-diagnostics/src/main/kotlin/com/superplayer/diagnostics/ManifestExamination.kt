@@ -21,7 +21,9 @@ import androidx.media3.common.C
 import androidx.media3.common.ParserException
 import androidx.media3.common.util.Util
 import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
+import androidx.media3.datasource.TransferListener
 import androidx.media3.exoplayer.dash.manifest.DashManifest
 import androidx.media3.exoplayer.dash.manifest.DashManifestParser
 import androidx.media3.exoplayer.hls.playlist.HlsMediaPlaylist
@@ -45,7 +47,16 @@ import java.io.IOException
  * the manifest *says* before they disagree about what it means; a doctor with a parser of its own would be
  * diagnosing a document the player never saw.
  */
-internal class ManifestExamination(private val chain: DataSource.Factory) {
+internal class ManifestExamination(
+    private val chain: DataSource.Factory,
+    private val segmentChain: DataSource.Factory,
+) {
+
+    /** The headers each manifest arrived with, which is all [DeliveryPathologies] has to read. */
+    private val responses = mutableMapOf<Uri, Map<String, List<String>>>()
+
+    /** Every media playlist this examination managed to read, keyed by the URI it read it from. */
+    private val mediaPlaylists = mutableMapOf<Uri, HlsMediaPlaylist>()
 
     /**
      * What is wrong with the manifest at [source], or an empty list where nothing this doctor knows is.
@@ -57,7 +68,26 @@ internal class ManifestExamination(private val chain: DataSource.Factory) {
      */
     fun examine(source: Uri): List<Finding> = when (val fetched = fetch(source)) {
         is Fetched.Refused -> listOf(fetched.finding)
-        is Fetched.Read -> worstPerPathology(rulesOver(fetched.manifest))
+        is Fetched.Read -> worstPerPathology(rulesOver(fetched.manifest) + delivery(source, fetched.manifest))
+    }
+
+    /**
+     * What the *delivery* of this stream got wrong, read after the documents rather than beside them.
+     *
+     * After, because the rules need what the fetching produced: the headers every response arrived with,
+     * and — for a stream whose source is a multivariant playlist — the media playlists it named, which are
+     * where the segments a token has to cover are declared. A media playlist reached directly is its own,
+     * and is the shape a single-rendition live stream is usually published in.
+     */
+    private fun delivery(source: Uri, manifest: ParsedManifest): List<Finding> {
+        val playlists = when (manifest) {
+            is ParsedManifest.Media -> mapOf(source to manifest.playlist)
+            else -> mediaPlaylists
+        }
+        return DeliveryPathologies.inResponses(responses.values) +
+            playlists.flatMap { (uri, playlist) ->
+                DeliveryPathologies.inDelivery(source, uri, playlist, responses[uri].orEmpty(), ::probeSegment)
+            }
     }
 
     /** The rules that apply to whichever kind of document [manifest] turned out to be. */
@@ -80,7 +110,8 @@ internal class ManifestExamination(private val chain: DataSource.Factory) {
      * playing; a doctor is asked once, off the playback path, about the whole stream, and a defect in a rung
      * nobody started on is a defect every viewer whose link climbs to it will meet. It stays within
      * ADR-0015 rule 7 because all of it is manifests: no segment is fetched, so a preflight over a ten-rung
-     * ladder costs eleven playlists and no media.
+     * ladder costs eleven playlists and no media — bar the one headers-only probe [probeSegment] explains,
+     * which is a request and not a download.
      *
      * A media playlist that cannot be fetched or read is its own finding and does not stop the others: the
      * useful report on a stream with one broken rendition names the broken rendition *and* what else is
@@ -88,7 +119,6 @@ internal class ManifestExamination(private val chain: DataSource.Factory) {
      */
     private fun examineHls(multivariant: HlsMultivariantPlaylist): List<Finding> {
         val findings = HlsPathologies.inMultivariant(multivariant).toMutableList()
-        val mediaPlaylists = mutableMapOf<Uri, HlsMediaPlaylist>()
         val named = multivariant.variants.map { it.url } + multivariant.audios.mapNotNull { it.url }
         named.distinct().forEach { url ->
             when (val fetched = fetch(url)) {
@@ -118,7 +148,10 @@ internal class ManifestExamination(private val chain: DataSource.Factory) {
     private fun fetch(source: Uri): Fetched = try {
         // Media3's own fetch-and-parse, used rather than reimplemented for rule 6's reason: it opens
         // the chain, reads to the end and closes, which is what a player's loader does with a manifest.
-        Fetched.Read(ParsingLoadable.load(chain.createDataSource(), parserFor(source), source, C.DATA_TYPE_MANIFEST))
+        // The recorder above it keeps what the response arrived with, because a delivery defect is a fact
+        // about the transfer and the headers are gone by the time the load has closed the source.
+        val recorder = HeaderRecordingDataSource(chain.createDataSource(), responses::put)
+        Fetched.Read(ParsingLoadable.load(recorder, parserFor(source), source, C.DATA_TYPE_MANIFEST))
     } catch (rejected: ParserException) {
         // Before the refusal below, because Media3's parse failure *is* an `IOException`: what arrived
         // and what did not are two different reports, and telling them apart is the first thing a
@@ -137,6 +170,34 @@ internal class ManifestExamination(private val chain: DataSource.Factory) {
      */
     private fun unreadable(): Finding =
         Finding(Pathology.MANIFEST_UNREADABLE, FindingSeverity.BLOCKING, magnitude = null)
+
+    /**
+     * The headers one segment is served with, read without reading a byte of it — or null where the
+     * transfer was refused, which is a fact this rule reports nothing about.
+     *
+     * **This is the one request a doctor opens that is not a manifest**, and ADR-0015 rule 7's #289
+     * addendum is what admits it: a `Cache-Control` disagreement is a disagreement between two responses,
+     * so naming which of them is wrong needs the second one. What is asked for is [PROBE_BYTES] — enough
+     * that the request is answered, and a range a CDN serves from its edge without touching an origin — and
+     * even that is never read: the source is opened for its headers and closed. So the cost is one round
+     * trip rather than a segment, which is what keeps a preflight from costing what a start costs.
+     *
+     * It travels [segmentChain], the same chain stamped as media, because the stamp is what tells a refused
+     * segment from a refused manifest everywhere else in this library.
+     */
+    private fun probeSegment(segment: Uri): Map<String, List<String>>? {
+        val source = segmentChain.createDataSource()
+        return try {
+            source.open(DataSpec.Builder().setUri(segment).setLength(PROBE_BYTES).build())
+            source.responseHeaders
+        } catch (refused: IOException) {
+            null
+        } finally {
+            // A close after a refused open is Media3's own contract, and one that throws has nothing left
+            // to say: the answer is already the headers or their absence.
+            runCatching { source.close() }
+        }
+    }
 
     /** What one fetch came back with: a document to read rules over, or the finding that replaces it. */
     private sealed interface Fetched {
@@ -216,4 +277,49 @@ internal class ManifestExamination(private val chain: DataSource.Factory) {
         FindingSeverity.BLOCKING,
         magnitude = (refused as? InvalidResponseCodeException)?.let { "HTTP ${it.responseCode}" },
     )
+
+    /**
+     * [upstream], with the headers of every response it opens handed to [onResponse] as it opens it.
+     *
+     * A wrapper rather than a read after the load, because a source reports the headers of the transfer it
+     * currently holds: `ParsingLoadable.load` closes the source it was given, and a closed source has none.
+     * Transparent in every other respect, the transfer listener included, which is the upstream's.
+     */
+    private class HeaderRecordingDataSource(
+        private val upstream: DataSource,
+        private val onResponse: (Uri, Map<String, List<String>>) -> Unit,
+    ) : DataSource {
+
+        override fun addTransferListener(transferListener: TransferListener) {
+            upstream.addTransferListener(transferListener)
+        }
+
+        override fun open(dataSpec: DataSpec): Long {
+            val length = upstream.open(dataSpec)
+            onResponse(dataSpec.uri, upstream.responseHeaders)
+            return length
+        }
+
+        override fun read(buffer: ByteArray, offset: Int, length: Int): Int = upstream.read(buffer, offset, length)
+
+        override fun getUri(): Uri? = upstream.uri
+
+        override fun getResponseHeaders(): Map<String, List<String>> = upstream.responseHeaders
+
+        override fun close() = upstream.close()
+    }
+
+    private companion object {
+
+        /**
+         * How much of a segment [probeSegment] asks for: one byte.
+         *
+         * A request rather than a download. An open with no length reads as "send me all of it" to every
+         * cache and origin between here and the media, and a doctor that opened one and closed it would be
+         * paying a segment's bandwidth for a header. One byte is the smallest range that is still a request
+         * an origin answers, and its response carries the same `Cache-Control` the whole segment's does,
+         * because a caching directive is a property of the resource rather than of the range.
+         */
+        const val PROBE_BYTES = 1L
+    }
 }

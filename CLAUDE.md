@@ -846,8 +846,8 @@ this content are built with, and `examine(request)` takes the same `MediaRequest
 answers a `DiagnosticReport` — a list of `Finding`s, each a `Pathology` (its stable id, the `// spec:`
 citation and the plain-language cause, all three the corpus's words), a `FindingSeverity` and a magnitude
 where the defect has one. It is core's **ninth** Kotlin friend and the first bounded by ADR-0015 rule 3's
-**closed list of three** seams rather than by a slot; of the three it takes the first,
-`TransferChain.diagnosticChain`, and a fourth seam needs that rule amended by name. The fetch travels the
+**closed list** of seams rather than by a slot — three as the ADR first decided and four since #289 — of
+which the first is `TransferChain.diagnosticChain`; a fifth needs that rule amended by name. The fetch travels the
 chain a *player* of that request would load through — the transport, the header-refresh layer a resilience
 fills and the cache slot, every request stamped `LoadKind.MANIFEST` under that content's identity — and
 deliberately not the two live layers, the load-error policy, CMCD or a meter, which
@@ -859,7 +859,7 @@ is the least useful thing a support ticket can say. A **pathology is not a failu
 `PlaybackHarness.diagnosticEnvironment` — `DownloadEnvironment`'s twin, carrying a transport and nothing
 else — with the healthy stream as its own control, and `DiagnosticsPayNothingTest` counts rule 13.
 Since #287 it names **every HLS entry of the corpus but `hls-cached-live-playlist`**, whose defect is a
-response header rather than a document and which is #289's; the rules are `HlsPathologies`, one function per
+response header rather than a document and which was #289's; the rules are `HlsPathologies`, one function per
 defect with its threshold and its reason beside it, while `ManifestExamination` owns the fetching alone: a
 ladder gap, an overstated rung, an audio group declared as a format its segments cannot carry, a variant
 pointing at a group that is not there, ragged segment durations and a splice with nothing to place its
@@ -900,6 +900,31 @@ entry fails to load and no rung is ever offered — the difference between namin
 what this phase is for. `DashPathologyTest` is the vocabulary, with the `BENIGN` grades, the healthy dynamic
 manifest (`HostileManifests.dashLiveBaseline()`, the control no other control can be) and the healthy static
 one in methods of their own.
+Since #289 it names the three **delivery** pathologies, the defects that are in no document at all: a
+`Cache-Control` the playlist and its segments disagree about, a token scoped to the manifest and not to its
+segments or expiring inside the content, and a CORS configuration that refuses a credentialed request. The
+rules are `DeliveryPathologies`, and what makes them possible is that ADR-0015 rule 7 has the doctor fetch
+over the chain a player would load through — a header is a fact about a transfer, so none of the three could
+have been found by a parse, which `DeliveryPathologyTest` shows by diagnosing one entry's bytes twice, with
+its declared headers served and withheld (`TestContent.servedWithNoDeclaredHeaders()`). Two decisions are
+this ticket's. The cache rule asks **core's own judgement** — `LivePlaylistRevalidation` grew
+`cachedPastTheUpdateBoundSeconds`, ADR-0015 rule 3's **fourth** seam, added by amending that rule — and then
+names *which* of the two responses is wrong, always the playlist, because a segment is immutable and a live
+playlist is the one document that changes. Naming the other party needs the other party, so rule 7 gained a
+**#289 addendum**: the doctor may open **one** segment's transfer for its headers and close it without
+reading a byte, asking for one byte so it is a request rather than a download, and only a rule that already
+has a defect to attribute may spend it — a correctly delivered stream still costs playlists alone, which
+`namingTheWrongSideCostsOneSegmentsHeadersAndNoMedia` counts. The token rules read a signed URL's query
+(RFC 3986 §3.4), which is the part of the convention every CDN's scheme shares and the only part stated,
+since a signing scheme is nobody's standard; the lifetime is graded against the content's own duration,
+doubled for the pauses a viewer takes. The CORS rule reports **one** configuration, a wildcard allowed
+origin beside allowed credentials (WHATWG Fetch §3.3.5, §4.10), which the protocol refuses by construction
+and which is therefore the one reading that needs no knowledge of who is asking; an origin silent about CORS
+is not a misconfiguration, which is what keeps the rule off every native-only CDN. The corpus gained
+`hls-token-scoped-to-manifest`, `hls-token-expiring-in-window` and `hls-cors-refuses-credentials` — HLS
+only, because a defect of a transfer is protocol-independent and a DASH twin would be a second copy of one
+fact — and all three play to the end on every recorded player, which is the honest record: a `FakeDataSet`
+cannot refuse an unsigned URI and no native player reads a CORS header.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,
@@ -1172,9 +1197,9 @@ Style preferences these are not. A change violating one is not accepted, whateve
 - **[ADR-0015](docs/adr/0015-name-a-pathology-over-the-players-own-chain-and-redact-the-bundle-by-construction.md)** —
   decides Phase 9's shape: `superplayer-diagnostics` depends on core and telemetry and is core's
   ninth Kotlin friend — built from core's seam, filling no engine slot, ADR-0013 rule 4's second
-  shape — over a **closed list of three** internal seams, two of which reach past that shape and are
-  admitted by name, with a fourth reachable only by amending that rule in the change that reaches
-  it;
+  shape — over a **closed list** of internal seams, all but the first reaching past that shape and
+  admitted by name, three as first decided and four since #289, with the next reachable only by
+  amending that rule in the change that reaches it;
   a **pathology is not a failure**, so a finding carries a cause, a `// spec:` citation, a severity
   and a magnitude and carries no `FailureClass`, `ErrorClassifier` stays the one place a failure
   acquires a meaning, and a postmortem prints the classification it *read* beside the findings

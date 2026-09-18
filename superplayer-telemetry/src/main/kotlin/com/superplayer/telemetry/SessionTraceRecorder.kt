@@ -79,7 +79,10 @@ import java.io.IOException
  * 6. **No DRM payload.** A license request or response appears as `load ... drm` and nothing more.
  * 7. **No device identity, and a capability is admitted only where the library itself branches on
  *    it.** ADR-0015 rule 10, written for the Phase 9 *bundle* and stated here because it is one rule
- *    set rather than two: a snapshot may carry what the device can **do** — the decoder table the
+ *    set rather than two. Its first clause repeats rule 5 deliberately, because the two say it of
+ *    different artifacts: rule 5 of a trace, which records nothing of a device at all, and this of a
+ *    snapshot, which records a device's *capabilities* and must still refuse its identity. A snapshot
+ *    may carry what the device can **do** — the decoder table the
  *    selection gate refuses rungs against, the display it re-reads, the heap budget and low-RAM
  *    reading the pool and the preload window are bounded by, the platform API level, and the
  *    security level a session was delivered at — and never what the device **is**: no `Build` string,
@@ -246,6 +249,11 @@ public class SessionTraceRecorder : TelemetrySink {
          * No byte count is printed — rule 4's "nothing that varies between runs" keeps those out —
          * and the `+ms` column already says when the transfer finished. A transfer with no measurable
          * duration has no rate, and a sample is not invented for it.
+         *
+         * **Completed loads only.** A canceled transfer has bytes and a duration too, and both are
+         * facts about the player's decision to stop wanting the object rather than about the link: a
+         * fraction of a segment over a span that includes the cancellation is a rate no CDN served.
+         * Its `load canceled` line still carries its `durationMs`, which is the honest half.
          */
         private fun bandwidthSample(eventTime: AnalyticsListener.EventTime, info: LoadEventInfo) {
             if (info.loadDurationMs <= 0 || info.bytesLoaded <= 0) return
@@ -388,6 +396,10 @@ public class SessionTraceRecorder : TelemetrySink {
         TRACKS("tracks"),
         DISCONTINUITY("discontinuity"),
         LOAD("load"),
+
+        // After LOAD, because a sample is a fact about the transfer that just finished and reads as a
+        // continuation of the line above it. Appending it at the end of the enum instead would have
+        // put a throughput reading after the error a session ended on.
         BANDWIDTH("bandwidth"),
         ERROR("error"),
         TELEMETRY("telemetry"),

@@ -18,6 +18,7 @@ package com.superplayer.diagnostics
 
 import android.content.Context
 import com.superplayer.core.CapabilitySnapshot
+import com.superplayer.core.DisplayCapability
 import com.superplayer.core.SuperPlayer
 import com.superplayer.core.capabilitySnapshotOf
 import com.superplayer.telemetry.SessionTrace
@@ -151,24 +152,44 @@ public class SessionBundle internal constructor(
  * different fact from "none", and a bug report that confused them would send a reader after the
  * wrong device.
  */
-private fun capabilityLines(snapshot: CapabilitySnapshot, deliveredSecurityLevel: String?): List<String> {
-    val lines = mutableListOf<String>()
-    lines += "device apiLevel=${snapshot.apiLevel} lowRam=${snapshot.lowRamDevice} " +
-        "heapBudgetMb=${snapshot.heapBudgetMb ?: UNKNOWN}"
-    snapshot.videoDecoders.forEach { decoder ->
-        lines += "decoder mime=${decoder.mimeType} secure=${decoder.secure ?: UNKNOWN} " +
-            "instances=${decoder.maxInstances ?: UNKNOWN} " +
-            "profile=${decoder.highestProfile ?: UNKNOWN} level=${decoder.highestLevel ?: UNKNOWN} " +
-            "tunneling=${decoder.tunneling}"
+private fun capabilityLines(snapshot: CapabilitySnapshot, deliveredSecurityLevel: String?): List<String> =
+    buildList {
+        add(
+            "device apiLevel=${snapshot.apiLevel} lowRam=${snapshot.lowRamDevice} " +
+                "heapBudgetMb=${snapshot.heapBudgetMb.orUnknown()}",
+        )
+        snapshot.videoDecoders.forEach { add(decoderLine(it)) }
+        add("display shortEdgePx=${snapshot.display.shortEdgePx.orUnknown()} hdr=${hdrField(snapshot.display)}")
+        // The protection half, and the only line of the snapshot that is not core's to read. Null is
+        // the session that negotiated nothing — an unprotected one, or one the device honoured at the
+        // level it reported — a third answer beside a level and an unknown, so it prints as itself.
+        add("protection deliveredSecurityLevel=${deliveredSecurityLevel ?: NOT_NEGOTIATED}")
     }
-    lines += "display shortEdgePx=${snapshot.display.shortEdgePx ?: UNKNOWN} " +
-        "hdr=${snapshot.display.hdrTypes?.map { it.name }?.sorted()?.joinToString(",")?.ifEmpty { NONE } ?: UNKNOWN}"
-    // The protection half, and the only line of the snapshot that is not core's to read. Null is the
-    // session that negotiated nothing — an unprotected one, or one the device honoured at the level it
-    // reported — which is a third answer beside a level and an unknown, so it prints as itself.
-    lines += "protection deliveredSecurityLevel=${deliveredSecurityLevel ?: NOT_NEGOTIATED}"
-    return lines
+
+/** One video MIME type's line; `docs/session-bundle.md` is what a reader makes of each field. */
+private fun decoderLine(decoder: CapabilitySnapshot.VideoDecoderCapability): String =
+    "decoder mime=${decoder.mimeType} secure=${decoder.secure.orUnknown()} " +
+        "instances=${decoder.maxInstances.orUnknown()} " +
+        "profile=${decoder.highestProfileLevel?.profile.orUnknown()} " +
+        "level=${decoder.highestProfileLevel?.level.orUnknown()} " +
+        "tunneling=${decoder.tunneling}"
+
+/**
+ * The display's HDR field, where the three answers are three different words.
+ *
+ * A display that listed its formats prints them, comma-separated and sorted so the line is stable; a
+ * display that listed *none* prints [NONE]; and a display the platform said nothing about prints
+ * [UNKNOWN]. Collapsing the last two is the mistake this spells out to avoid: "this panel cannot show
+ * HDR10" and "we could not ask" send a reader of a bug report to two different places.
+ */
+private fun hdrField(display: DisplayCapability): String {
+    val types = display.hdrTypes ?: return UNKNOWN
+    if (types.isEmpty()) return NONE
+    return types.map { it.name }.sorted().joinToString(",")
 }
+
+/** The value, or [UNKNOWN] where the platform did not answer. */
+private fun Any?.orUnknown(): String = this?.toString() ?: UNKNOWN
 
 /** What the platform did not say, as against [NONE], which is what it said it has none of. */
 private const val UNKNOWN = "unknown"

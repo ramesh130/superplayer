@@ -62,5 +62,8 @@ dependencies {
 // A doctor is built from core's seam rather than filling a slot of it: `TransferChain.diagnosticChain` and
 // `DiagnosticEnvironment`'s transport, internal to core because they are Media3 `@UnstableApi` vocabulary.
 // This module is core's ninth Kotlin friend (ADR-0015 rule 3), and it is the one friendship bounded by a
-// closed list of three seams rather than by a slot; `KotlinFriendModules.kt` carries that argument.
+// closed list of four seams rather than by a slot — three as that rule first decided, a fourth added by
+// #289, and a fifth needing the rule amended by name; `KotlinFriendModules.kt` carries that argument.
+// Being a friend is what makes core's `internal` visible here, which is why #292's capability snapshot is
+// one function that *returns* the snapshot and the readers under it stay private to their own file.
 declareKotlinFriendModule(":superplayer-core")

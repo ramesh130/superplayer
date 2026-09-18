@@ -99,11 +99,20 @@ class SessionBundleRedactionTest {
             // `SessionEnded` the recorder has too — `LicenceTelemetryTest`'s reason.
             telemetry = QoeCollector(TelemetrySink.composite(recorder, TelemetrySink { events += it })),
             faults = FaultScript.Builder()
-                // Two faults, and one session: a credential the CDN refuses once, so a refresh has
-                // to repair it, and then a name that will not resolve, so the session ends on an
-                // exception whose message is the host (`FaultInjectingDataSource` synthesizes the
-                // `UnknownHostException` a real resolver failure arrives in).
+                // Three faults, and one session: a credential the CDN refuses once, so a refresh has
+                // to repair it; an edge that answers 502 once, so the bundle carries a load error
+                // with an HTTP status on it (`PRD.md` §3.6 asks for the status, and only a refusal
+                // Media3's analytics report one for can put it there); and then a name that will not
+                // resolve, so the session ends on an exception whose message is the host
+                // (`FaultInjectingDataSource` synthesizes the `UnknownHostException` a real resolver
+                // failure arrives in).
                 .expireTokenAtSegment(FAULTED_SEGMENT, refreshable = true)
+                .failWithHttpStatus(
+                    FaultScript.HTTP_SERVER_ERROR,
+                    kind = ResourceKind.MEDIA_SEGMENT,
+                    index = REFUSED_SEGMENT,
+                    firstAttempts = 1,
+                )
                 .failDnsResolution(kind = ResourceKind.MEDIA_SEGMENT, index = FATAL_SEGMENT)
                 .build(),
             resilience = Resilience.standard(headers = provider),
@@ -135,6 +144,9 @@ class SessionBundleRedactionTest {
         // And the session id was on the wire, as CMCD's `sid` on every request (ADR-0008 rule 6).
         val sessionId = sessionId()
         assertThat(requests.any { request -> request.headers.values.any { it.contains(sessionId) } }).isTrue()
+        // The signed artwork URL is really held by the session rather than only written above: it is
+        // on the item the player is playing, which is where a `MediaRequest`'s artwork travels.
+        assertThat(player.currentMediaItem?.mediaMetadata?.artworkUri?.toString()).isEqualTo(SIGNED_ARTWORK_URI)
 
         // The fatal half of the same session: the name stops resolving, every rung is spent, and the
         // session ends on a failure whose exception message names the host it could not resolve.
@@ -161,6 +173,9 @@ class SessionBundleRedactionTest {
         assertThat(text).contains("outcome=ACQUIRED_FROM_SERVER")
         assertThat(text).contains("load completed media")
         assertThat(text).contains("durationMs=")
+        // The status the 502 refusal put on a load line, which is the half of "load events with their
+        // timings and HTTP status" that only a refusal can demonstrate.
+        assertThat(text).contains("http=${FaultScript.HTTP_SERVER_ERROR}")
         assertThat(text).containsMatch("telemetry (StartupFailed|MidStreamFailed)")
 
         // Rule 1: no URL, host, path, query or token. Not the CDN, not the address a segment was
@@ -183,15 +198,19 @@ class SessionBundleRedactionTest {
         // `doesNotContain` over the whole of it would pass on a bundle that printed half.
         failureText.lines().filter { it.isNotBlank() }.forEach { assertThat(text).doesNotContain(it) }
 
-        // Rule 4: no session id and no wall clock.
+        // Rule 4: no session id and no wall clock. The clock half is asserted as the *shape* of one
+        // rather than as one reading of the host's: a leak from a different millisecond than this
+        // assertion's would evade an equality, and every time in the format is declared relative.
         assertThat(text).doesNotContain(sessionId)
-        assertThat(text).doesNotContain(System.currentTimeMillis().toString())
+        assertThat(text.lines()).contains("timings relative-ms")
         assertThat(WALL_CLOCK_SHAPED.containsMatchIn(text)).isFalse()
 
         // Rule 5 and rule 7's refusals: nothing of what the device *is*. Every `Build` string ADR-0015
         // rule 10 names, and every decoder component name — the field rule 10 calls the one a snapshot
         // is most tempted by, on a device that declares real ones.
-        buildStrings().forEach { assertThat(text).doesNotContain(it) }
+        val buildStrings = buildStrings()
+        assertThat(buildStrings).isNotEmpty()
+        buildStrings.forEach { assertThat(text).doesNotContain(it) }
         val componentNames = videoDecoderComponentNames()
         assertThat(componentNames).isNotEmpty()
         componentNames.forEach { assertThat(text).doesNotContain(it) }
@@ -226,6 +245,45 @@ class SessionBundleRedactionTest {
         // rule 11's ladder never engaged. What matters here is that the field is a word and not a
         // device identifier whichever way it reads.
         assertThat(text).contains("capability protection deliveredSecurityLevel=not-negotiated")
+    }
+
+    @Test
+    fun theProtectionLineCarriesTheLevelASessionWasDeliveredAt() {
+        // Rule 10's protection field, exercised rather than assumed. Every other case here reads
+        // `not-negotiated`, because a device that honours what it reports negotiates nothing — so
+        // this states the device the ladder exists for (`superplayer-drm`'s `SecurityLevelTest`): a
+        // Widevine implementation reporting `L1` beside a codec table with an ordinary decoder and no
+        // secure one, against a server whose operator has published `L3` as permitted.
+        DeviceStatement.declareVideoDecoder(H264)
+        DeviceStatement.declareWidevine()
+
+        val content = TestContent.protectedDash()
+        val recorder = SessionTraceRecorder()
+        val player = harness.buildPlayer(
+            content = content,
+            telemetry = QoeCollector(TelemetrySink.composite(recorder, TelemetrySink { events += it })),
+            drm = Drm.widevine(
+                WidevineConfig(FakeLicenceServer.LICENCE_URI, setOf(WidevineConfig.SECURITY_LEVEL_L3)),
+            ),
+        )
+        recorder.attach(player)
+        player.setMediaRequest(MediaRequest.Builder(CONTENT_ID).addSource(content.sourceUri).build())
+        harness.playToReady(player)
+
+        // The level really was lowered, so the line below is a reading and not a default.
+        assertThat(player.deliveredSecurityLevel).isEqualTo(WidevineConfig.SECURITY_LEVEL_L3)
+
+        val text = SessionBundle.Builder(ApplicationProvider.getApplicationContext())
+            .setTrace(recorder.trace())
+            .setPlayer(player)
+            .build()
+            .format()
+
+        assertThat(text).contains(
+            "capability protection deliveredSecurityLevel=${WidevineConfig.SECURITY_LEVEL_L3}",
+        )
+        // A level is what the device can *do*; what it *is* stays out, on this session as on the other.
+        buildStrings().forEach { assertThat(text).doesNotContain(it) }
     }
 
     /** The one session id every event of the first session belongs to. */
@@ -320,6 +378,9 @@ class SessionBundleRedactionTest {
 
         /** The segment whose credential the CDN refuses once, so a refresh has to repair it. */
         const val FAULTED_SEGMENT = 1
+
+        /** The segment the edge refuses once with a 502, so a load line carries an HTTP status. */
+        const val REFUSED_SEGMENT = 2
 
         /** The segment whose host stops resolving, and which nothing can repair. */
         const val FATAL_SEGMENT = 3

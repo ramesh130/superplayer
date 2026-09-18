@@ -32,8 +32,16 @@ import java.io.File
  * `CorpusRegisterTest`'s model, narrowed to what a document can be held to. It asserts nothing about
  * playback and nothing about prose — what a section *says* is review's business, and a test that
  * graded wording would be a test nobody could keep passing. What it holds is the two facts a reader
- * navigates by: that every defect has a section of its own, in the enum's own order, and that the
- * citation beside it is the citation the code carries.
+ * navigates by: that every defect has a section of its own, in the enum's own order, and that *that
+ * section* carries the citation the code carries.
+ *
+ * The citation is read **per section** rather than over the whole document, which is
+ * `CorpusRegisterTest`'s "exactly rather than contains" taken at its word: four pathologies cite
+ * RFC 8216 §4.3.4.2 and two cite ISO/IEC 23009-1 §5.3.1.2, so a document-wide search would let a
+ * section lose its own citation and still pass on a sibling's.
+ *
+ * What it does **not** hold is the corpus: a pathology the corpus carries and the doctor cannot yet
+ * name has no entry here to fail on, and is `CorpusRegisterTest`'s to catch.
  */
 class DoctorDocumentTest {
 
@@ -51,21 +59,44 @@ class DoctorDocumentTest {
     }
 
     @Test
-    fun everyPathologyIsDocumentedWithTheCitationTheCodeCarries() {
+    fun everyPathologysOwnSectionCarriesTheCitationTheCodeCarries() {
         // One citation, in two places, and neither is allowed to drift: a document citing a clause
         // the code does not is a reader sent to the wrong paragraph of the wrong specification.
-        val text = document().readText()
+        val sections = sections()
         Pathology.entries.forEach { pathology ->
+            val section = sections[pathology.id]
+            assertWithMessage("${pathology.id} has no section in $DOCUMENT").that(section).isNotNull()
             assertWithMessage(
-                "${pathology.id}'s section in $DOCUMENT must carry its own `specCitation`, verbatim: " +
-                    "\"${pathology.specCitation}\".",
-            ).that(text).contains(pathology.specCitation)
+                "${pathology.id}'s own section in $DOCUMENT must carry its `specCitation`, verbatim: " +
+                    "\"${pathology.specCitation}\". A sibling section citing the same clause does not " +
+                    "count — several pathologies share one.",
+            ).that(section).contains(pathology.specCitation)
         }
     }
 
     /** The ids the document gives a section of their own, in the order it gives them. */
     private fun documentedIds(): List<String> = document().readLines()
         .mapNotNull { SECTION.matchEntire(it.trim())?.groupValues?.get(1) }
+
+    /**
+     * The document's defect sections, keyed by the id each is headed with.
+     *
+     * A section runs from its own heading to the next heading of any level, which is what makes the
+     * citation assertion above a reading of one section rather than of the file.
+     */
+    private fun sections(): Map<String, String> {
+        val sections = mutableMapOf<String, StringBuilder>()
+        var current: StringBuilder? = null
+        document().readLines().forEach { line ->
+            val id = SECTION.matchEntire(line.trim())?.groupValues?.get(1)
+            when {
+                id != null -> current = StringBuilder().also { sections[id] = it }
+                line.trimStart().startsWith("#") -> current = null
+                else -> current?.appendLine(line)
+            }
+        }
+        return sections.mapValues { (_, text) -> text.toString() }
+    }
 
     private fun document(): File = File(DOCUMENT).also {
         check(it.isFile) { "No document at ${it.absolutePath}" }

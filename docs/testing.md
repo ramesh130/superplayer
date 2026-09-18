@@ -220,8 +220,9 @@ that a pathology added there fails it. It records the doctor and moves no row of
 because naming a defect is not recovering from it: `dash-availability-start-time-skew` is named there
 and stands in `CANNOT_RECOVER` here (ADR-0015 rules 4 and 12). What each entry's defect *means* — the
 citation, the cause, the threshold and what to change — is `docs/media-source-doctor.md`, written for
-a reader outside this repository, and a defect added to either the corpus or the doctor's vocabulary
-fails `DoctorDocumentTest` until that document names it.
+a reader outside this repository. A `Pathology` added to the doctor's vocabulary fails
+`DoctorDocumentTest` until that document gives it a section carrying its citation; a corpus entry
+added with no pathology fails `CorpusRegisterTest` instead, which is the other half of the pair.
 
 Live DASH entries need two things the on-demand ones do not, and both exist so an entry records its
 own defect rather than the harness's limits. They carry a `UTCTiming` element, because without one
@@ -269,6 +270,11 @@ corpus, and the test checks that it plays on, which is what makes a failing live
    deliberate; what the failure asks for is a row, including a row with no findings and the reason
    the doctor cannot yet name it (ADR-0015 rule 12). A defect the doctor can name that no corpus
    entry carries goes in `UNGRADABLE` instead, with the test that forces it.
+8. A `#### `<id>`` section in `docs/media-source-doctor.md`, in the group and the position the
+   `Pathology` enum puts it in, carrying that pathology's `specCitation` verbatim and saying what the
+   defect means, what produces it and what to change. `DoctorDocumentTest` fails without it. This
+   step is owed for **every** entry of the doctor's vocabulary and not only for a corpus one: the two
+   defects of the *fetch* that no corpus can carry each have a section too.
 
 A defect that lives outside the manifest cannot be applied by `FakeDataSet`, which serves bytes and
 reports no response headers. That covers the `Cache-Control` mismatch and the CORS one. Such an entry
@@ -1345,7 +1351,8 @@ Adding a golden is a test method in a class whose name contains `GoldenTrace` �
 `GoldenFile.check(name, text)`; the update command creates the file, and the review of that first
 commit is the review of the behaviour. The seam for `superplayer-diagnostics` is the same artifact
 one layer richer, which is why `SessionTrace` says how a kind is added without a second format, and
-`docs/session-bundle.md` is what a reader of the richer artifact is given.
+`docs/session-bundle.md` is what a reader of the richer artifact is given, with
+`docs/reading-a-session-bundle.md` beside it for the reader who has to get an answer out of one.
 
 One thing #292 found where the rule above bites: **Media3's own bandwidth estimate is not golden
 material.** Its meter measures on Media3's default clock rather than on the engine's, so under a

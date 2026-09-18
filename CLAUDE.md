@@ -852,13 +852,28 @@ chain a *player* of that request would load through — the transport, the heade
 fills and the cache slot, every request stamped `LoadKind.MANIFEST` under that content's identity — and
 deliberately not the two live layers, the load-error policy, CMCD or a meter, which
 `TransferChain.diagnosticChain`'s KDoc argues one at a time. It parses with the parsers the engine would
-run, so the doctor and the player never disagree about what a manifest *says*. What it names today is
-`hls-missing-codecs`, `DEGRADED`, read off Media3's parsed variants; a manifest the chain refuses is a
-`MANIFEST_UNREACHABLE` finding carrying the status rather than an exception, because "the doctor threw" is
-the least useful thing a support ticket can say. A **pathology is not a failure**: a finding carries no
-`FailureClass` and this module classifies nothing. `MediaSourceDoctorTest` drives it over
+run, so the doctor and the player never disagree about what a manifest *says*. A manifest the chain refuses
+is a `MANIFEST_UNREACHABLE` finding carrying the status rather than an exception, because "the doctor threw"
+is the least useful thing a support ticket can say. A **pathology is not a failure**: a finding carries no
+`FailureClass` and this module classifies nothing. `MediaSourceDoctorTest` drives that shape over
 `PlaybackHarness.diagnosticEnvironment` — `DownloadEnvironment`'s twin, carrying a transport and nothing
 else — with the healthy stream as its own control, and `DiagnosticsPayNothingTest` counts rule 13.
+Since #287 it names the corpus's **whole HLS set**, and the rules are `HlsPathologies`, one function per
+defect with its threshold and its reason beside it, while `ManifestExamination` owns the fetching alone: a
+ladder gap, an overstated rung, an audio group declared as a format its segments cannot carry, a variant
+pointing at a group that is not there, ragged segment durations and a splice with nothing to place its
+timeline. A doctor now fetches **every media playlist the multivariant one names**, because durations and
+splices live there and a defect in a rung nobody started on is one a climbing viewer meets; all of it is
+manifests, so a preflight still costs no media. **A graded defect's severity is a reading of its
+magnitude** — the corpus's `BENIGN` is not a finding at all, its `BORDERLINE` is `ADVISORY` and its `SEVERE`
+`DEGRADED` — which is what `FindingSeverity` is per finding for, and `Finding.magnitude` stays a `String`
+because nothing branches on it. The one `BLOCKING` HLS finding is the dangling audio group, and it is
+blocking because the document is malformed rather than because a number is large. Two thresholds are
+published bounds (Apple TN2224's 2× ladder step, DASH-IF IOP's ±50% segment tolerance), two are derived at
+the constant that carries them, and the bitrate ceiling is AAC's own bit reservoir — which is why a 48×
+ladder's top rung is named twice, both readings being true of the playlist. `HlsPathologyTest` is the
+vocabulary, with the `BENIGN` grades and a healthy two-rung ladder as false-positive controls in methods of
+their own.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,

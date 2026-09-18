@@ -22,13 +22,18 @@ import androidx.media3.common.ParserException
 import androidx.media3.common.util.Util
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
+import androidx.media3.exoplayer.hls.playlist.HlsMediaPlaylist
 import androidx.media3.exoplayer.hls.playlist.HlsMultivariantPlaylist
 import androidx.media3.exoplayer.hls.playlist.HlsPlaylistParser
 import androidx.media3.exoplayer.upstream.ParsingLoadable
 import java.io.IOException
 
 /**
- * One manifest, fetched over [chain] and read for the defects the doctor can name.
+ * One stream's manifests, fetched over [chain] and read for the defects the doctor can name.
+ *
+ * This class owns the *fetching* and [HlsPathologies] owns the *judgement*, so that a rule can be read
+ * against the clause it cites without reading a transport, and so that what travels the chain is decided in
+ * one place (ADR-0015 rule 7).
  *
  * Internal because every type it deals in is Media3's and every one of them `@UnstableApi`: ADR-0015
  * rule 2 keeps all of it behind [MediaSourceDoctor]'s public surface, which names no Media3 type at all.
@@ -40,21 +45,95 @@ import java.io.IOException
  */
 internal class ManifestExamination(private val chain: DataSource.Factory) {
 
-    /** What is wrong with the manifest at [source], or an empty list where nothing this doctor knows is. */
-    fun examine(source: Uri): List<Finding> {
-        val parsed = try {
-            // Media3's own fetch-and-parse, used rather than reimplemented for rule 6's reason: it opens
-            // the chain, reads to the end and closes, which is what a player's loader does with a manifest.
-            ParsingLoadable.load(chain.createDataSource(), parserFor(source), source, C.DATA_TYPE_MANIFEST)
-        } catch (rejected: ParserException) {
-            // Before the refusal below, because Media3's parse failure *is* an `IOException`: what arrived
-            // and what did not are two different reports, and telling them apart is the first thing a
-            // support engineer does.
-            return listOf(Finding(Pathology.MANIFEST_UNREADABLE, FindingSeverity.BLOCKING, magnitude = null))
-        } catch (refused: IOException) {
-            return listOf(unreachable(refused))
+    /**
+     * What is wrong with the manifest at [source], or an empty list where nothing this doctor knows is.
+     *
+     * At most one finding per [Pathology]: a defect is a fact about the stream, and a ladder examined
+     * through four renditions is one ladder. Where several renditions carry the same defect the one
+     * reported is the worst of them, so a report is read as "this is how bad this is" rather than as a
+     * count of where it was seen.
+     */
+    fun examine(source: Uri): List<Finding> = when (val fetched = fetch(source)) {
+        is Fetched.Refused -> listOf(fetched.finding)
+        is Fetched.Read -> worstPerPathology(examine(fetched.playlist))
+    }
+
+    /** The rules that apply to whichever kind of document [source] turned out to be. */
+    private fun examine(playlist: Any): List<Finding> = when (playlist) {
+        is HlsMultivariantPlaylist -> examineHls(playlist)
+
+        // A request whose source is a media playlist rather than a multivariant one: legal HLS, and the
+        // shape a single-rendition live stream is usually published in.
+        is HlsMediaPlaylist -> HlsPathologies.inMediaPlaylist(playlist)
+
+        else -> emptyList()
+    }
+
+    /**
+     * A multivariant playlist and **every media playlist it names**, variants and audio renditions alike.
+     *
+     * More fetches than a player makes, deliberately. A player reads the playlist of the rendition it is
+     * playing; a doctor is asked once, off the playback path, about the whole stream, and a defect in a rung
+     * nobody started on is a defect every viewer whose link climbs to it will meet. It stays within
+     * ADR-0015 rule 7 because all of it is manifests: no segment is fetched, so a preflight over a ten-rung
+     * ladder costs eleven playlists and no media.
+     *
+     * A media playlist that cannot be fetched or read is its own finding and does not stop the others: the
+     * useful report on a stream with one broken rendition names the broken rendition *and* what else is
+     * wrong.
+     */
+    private fun examineHls(multivariant: HlsMultivariantPlaylist): List<Finding> {
+        val findings = HlsPathologies.inMultivariant(multivariant).toMutableList()
+        val renditionPlaylists = mutableMapOf<Uri, HlsMediaPlaylist>()
+        val named = multivariant.variants.map { it.url } + multivariant.audios.mapNotNull { it.url }
+        named.distinct().forEach { url ->
+            when (val fetched = fetch(url)) {
+                is Fetched.Refused -> findings += fetched.finding
+
+                is Fetched.Read -> {
+                    val media = fetched.playlist as? HlsMediaPlaylist
+                    if (media == null) {
+                        // A multivariant playlist where a media playlist belongs: it parsed, so it is not
+                        // unreachable, and it is not the document the tag said it would be.
+                        findings += Finding(Pathology.MANIFEST_UNREADABLE, FindingSeverity.BLOCKING, magnitude = null)
+                    } else {
+                        renditionPlaylists[url] = media
+                        findings += HlsPathologies.inMediaPlaylist(media)
+                    }
+                }
+            }
         }
-        return (parsed as? HlsMultivariantPlaylist)?.let(::examineHlsMultivariant).orEmpty()
+        multivariant.audios.forEach { rendition ->
+            findings += listOfNotNull(HlsPathologies.inAudioGroup(rendition, renditionPlaylists[rendition.url]))
+        }
+        return findings
+    }
+
+    /** One finding per pathology, at the highest severity any rendition showed it at. */
+    private fun worstPerPathology(findings: List<Finding>): List<Finding> = findings
+        .groupBy { it.pathology }
+        .map { (_, sameDefect) -> sameDefect.maxBy { it.severity.ordinal } }
+
+    /** [source]'s bytes, parsed — or the finding that says why they are not. */
+    private fun fetch(source: Uri): Fetched = try {
+        // Media3's own fetch-and-parse, used rather than reimplemented for rule 6's reason: it opens
+        // the chain, reads to the end and closes, which is what a player's loader does with a manifest.
+        Fetched.Read(ParsingLoadable.load(chain.createDataSource(), parserFor(source), source, C.DATA_TYPE_MANIFEST))
+    } catch (rejected: ParserException) {
+        // Before the refusal below, because Media3's parse failure *is* an `IOException`: what arrived
+        // and what did not are two different reports, and telling them apart is the first thing a
+        // support engineer does.
+        Fetched.Refused(Finding(Pathology.MANIFEST_UNREADABLE, FindingSeverity.BLOCKING, magnitude = null))
+    } catch (refused: IOException) {
+        Fetched.Refused(unreachable(refused))
+    }
+
+    /** What one fetch came back with: a document to read rules over, or the finding that replaces it. */
+    private sealed interface Fetched {
+
+        class Read(val playlist: Any) : Fetched
+
+        class Refused(val finding: Finding) : Fetched
     }
 
     /**
@@ -66,7 +145,7 @@ internal class ManifestExamination(private val chain: DataSource.Factory) {
      * **The manifest is fetched whatever the protocol**, even where no rule reads it yet, because whether
      * it can be fetched at all is a finding of its own and rule 7's bullet is unconditional: a DASH
      * manifest no player of this app can reach must not come back looking like a healthy one. What the
-     * discarding parser skips is the *reading*, which is #287's and #288's to add; it still pulls the whole
+     * discarding parser skips is the *reading*, which is #288's to add for DASH; it still pulls the whole
      * body, so a truncated or refused transfer is met here exactly as a player would meet it.
      */
     private fun parserFor(source: Uri): ParsingLoadable.Parser<Any> =
@@ -88,32 +167,4 @@ internal class ManifestExamination(private val chain: DataSource.Factory) {
         FindingSeverity.BLOCKING,
         magnitude = (refused as? InvalidResponseCodeException)?.let { "HTTP ${it.responseCode}" },
     )
-
-    /**
-     * A playlist with any variant that declares no `CODECS`, as one finding.
-     *
-     * One finding rather than one per variant: the defect is of the playlist — a packager or a template
-     * that does not write the attribute at all — so a report with a line per rung would be one fact printed
-     * four times.
-     *
-     * spec: RFC 8216 §4.3.4.2 — "Every EXT-X-STREAM-INF tag SHOULD include a CODECS attribute", and its
-     * value "MUST be all of the parameters of the format" (RFC 6381). A SHOULD, so a playlist without one
-     * is valid and a parser reports the absence as no codec string at all rather than as an error — which
-     * is why this is read off the parsed variant rather than by re-reading the text.
-     *
-     * [FindingSeverity.DEGRADED] rather than advisory: the absence costs something measurable on every
-     * start. A player that cannot tell from the playlist whether it can decode a rendition has to fetch a
-     * segment of it to find out, so a capability check becomes a download and a rendition it cannot decode
-     * becomes a stall instead of a rung it never chose. It is not blocking, because content whose single
-     * rung the device can decode plays perfectly.
-     *
-     * No magnitude, for the reason the corpus entry has none: the attribute is present or it is not, and
-     * there is no milder absence. How *many* variants are missing it is a count of the playlist rather
-     * than a reading of how far the defect is pushed, and a report that printed one in the magnitude
-     * column would be saying a binary defect came in degrees.
-     */
-    private fun examineHlsMultivariant(playlist: HlsMultivariantPlaylist): List<Finding> {
-        if (playlist.variants.none { it.format.codecs == null }) return emptyList()
-        return listOf(Finding(Pathology.HLS_MISSING_CODECS, FindingSeverity.DEGRADED, magnitude = null))
-    }
 }

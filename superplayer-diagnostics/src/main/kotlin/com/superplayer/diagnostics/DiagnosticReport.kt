@@ -164,6 +164,29 @@ public enum class Pathology(
     public val cause: String,
 ) {
 
+    // spec: RFC 8216 §4.3.4.2 — BANDWIDTH "represents the peak segment bit rate of the Variant Stream", and
+    // nothing in the RFC constrains how far apart two variants' rates may be. A ladder with a step no
+    // client can climb gracefully is therefore legal and unplayable in between: the selector has a rung it
+    // wastes and a rung it cannot sustain. `HlsPathologies.ladderGap` argues the step the doctor calls a gap.
+    HLS_LADDER_GAP(
+        id = "hls-ladder-gap",
+        specCitation = "RFC 8216 §4.3.4.2",
+        cause = "A ladder whose middle rungs were dropped to save encoding cost, or a profile " +
+            "template that was only ever tested on wifi and on 3G.",
+    ),
+
+    // spec: RFC 8216 §4.3.4.2 — BANDWIDTH "represents the peak segment bit rate of the Variant Stream". A
+    // value above the real rate is false, and no MUST requires it to be accurate, so the playlist is valid
+    // to the letter and a lie in fact. Every ABR estimator compares its throughput estimate against this
+    // number, so an overstated rung is one a player refuses on a link that would carry it easily.
+    // `HlsPathologies.overstatedBitrate` argues what the doctor can read without transferring media.
+    HLS_OVERSTATED_BITRATE(
+        id = "hls-overstated-bitrate",
+        specCitation = "RFC 8216 §4.3.4.2",
+        cause = "A packager that writes the encoder's configured *peak* rate rather than the " +
+            "measured one, or a ladder whose bitrates were copied from a different mezzanine.",
+    ),
+
     // spec: RFC 8216 §4.3.4.2 — "Every EXT-X-STREAM-INF tag SHOULD include a CODECS attribute". A SHOULD,
     // so a playlist without one is valid; what its absence costs is that the player cannot know whether it
     // can decode a rendition until it has fetched a segment of it, which turns a capability check into a
@@ -173,6 +196,53 @@ public enum class Pathology(
         specCitation = "RFC 8216 §4.3.4.2",
         cause = "A hand-written or templated multivariant playlist — the CODECS string is the one " +
             "attribute a human cannot produce without reading RFC 6381, so it is the one left out.",
+    ),
+
+    // spec: RFC 8216 §4.3.4.1 and §4.3.4.2 — CODECS lists formats "where each format specifies a media
+    // sample type that is present in one or more Renditions specified by the Variant Stream", and the AUDIO
+    // attribute names the group those Renditions are in. A group whose media is not the format declared for
+    // it breaks no MUST, because no parser can check it; a player that filters renditions, or configures its
+    // output, from the declared codec does so for media it will not receive.
+    HLS_AUDIO_GROUP_CODEC_MISMATCH(
+        id = "hls-audio-group-codec-mismatch",
+        specCitation = "RFC 8216 §4.3.4.1, §4.3.4.2",
+        cause = "An encoder ladder migrated from HE-AAC to AAC-LC without the manifest template " +
+            "being updated — the audio group still advertises what last year's profile produced.",
+    ),
+
+    // spec: RFC 8216 §4.3.4.2 — the AUDIO attribute's "value MUST match the value of the GROUP-ID attribute
+    // of an EXT-X-MEDIA tag elsewhere in the Multivariant Playlist". A playlist with no such tag is
+    // **malformed** rather than hostile, and a lenient parser — Media3's is one — plays it anyway, which is
+    // exactly what makes it a doctor's to flag rather than the engine's to fail on.
+    HLS_DANGLING_AUDIO_GROUP(
+        id = "hls-dangling-audio-group",
+        specCitation = "RFC 8216 §4.3.4.2",
+        cause = "A packaging job whose audio rendition failed after the variant lines were " +
+            "written, leaving the AUDIO reference behind with nothing to point at.",
+    ),
+
+    // spec: RFC 8216 §4.3.2.1 — EXTINF durations need only be accurate enough "to avoid perceptible error
+    // when segment durations are accumulated" — and §4.3.3.1, which binds each to the target duration.
+    // Nothing in the RFC requires segments to be of *similar* length, so a ragged playlist tells the truth
+    // and is still hostile: a buffer counted in segments holds wildly different amounts of media from one
+    // moment to the next. `HlsPathologies.raggedSegmentDurations` argues the spread the doctor calls ragged.
+    HLS_INCONSISTENT_SEGMENT_DURATIONS(
+        id = "hls-inconsistent-segment-durations",
+        specCitation = "RFC 8216 §4.3.2.1, §4.3.3.1",
+        cause = "Segmentation driven by scene-change keyframes rather than by a fixed GOP, or an " +
+            "ad-insertion pass that split one segment and left its neighbours alone.",
+    ),
+
+    // spec: RFC 8216 §4.3.2.3 — the EXT-X-DISCONTINUITY tag "MUST be present if there is a change in ...
+    // timestamp sequence", so a playlist carrying one is valid. What is missing is the metadata that would
+    // place the new timeline: EXT-X-PROGRAM-DATE-TIME (§4.3.2.6) and EXT-X-DISCONTINUITY-SEQUENCE (§4.3.3.3,
+    // which in its absence "SHALL be considered to be 0"), both optional, leaving a client the sum of the
+    // EXTINF durations and nothing else.
+    HLS_DISCONTINUITY_WITHOUT_TIMELINE(
+        id = "hls-discontinuity-without-timeline",
+        specCitation = "RFC 8216 §4.3.2.3",
+        cause = "Mid-roll ad insertion by a stitcher that marks the splice and emits neither a " +
+            "discontinuity sequence nor a program date time — the common case for server-side ads.",
     ),
 
     // spec: RFC 9110 §15 — the status class of the response is what the origin or the edge said about the

@@ -89,10 +89,14 @@ class MediaSourceDoctorTest {
             // A binary pathology has no magnitude, as the corpus entry has none.
             assertWithMessage("$entry").that(finding.magnitude).isNull()
 
-            // One request, and it is the multivariant playlist: a doctor reads declarations and downloads no
-            // segment, so a preflight does not cost what a start costs (rule 7).
-            assertWithMessage("$entry").that(harness.networkRequests(environment).map { it.uri })
-                .containsExactly(entry.sourceUri)
+            // Playlists and nothing else: a doctor reads declarations and downloads no segment, so a
+            // preflight does not cost what a start costs (rule 7). The multivariant playlist is asked for
+            // first and this entry's one variant's media playlist after it, because #287's rules read
+            // segment durations and splices, which only a media playlist carries.
+            val asked = harness.networkRequests(environment).map { it.uri }
+            assertWithMessage("$entry").that(asked.first()).isEqualTo(entry.sourceUri)
+            assertWithMessage("$entry — playlists only").that(asked.filter { it.endsWith(".m3u8") }).isEqualTo(asked)
+            assertWithMessage("$entry").that(asked).hasSize(2)
         }
     }
 
@@ -106,8 +110,10 @@ class MediaSourceDoctorTest {
         )
 
         assertThat(report.findings).isEmpty()
+        // The multivariant playlist and the media playlist it names: a doctor examines the whole stream
+        // rather than the rung a player would have started on, and this one has a single rung.
         assertWithMessage("a healthy manifest is still fetched and read").that(harness.networkRequests(environment))
-            .hasSize(1)
+            .hasSize(2)
     }
 
     @Test
@@ -126,9 +132,12 @@ class MediaSourceDoctorTest {
         val report = doctor(environment, resilience = Resilience.standard(headers = provider)).examine(requestFor(entry))
 
         assertThat(report.findings.map { it.pathology }).containsExactly(Pathology.HLS_MISSING_CODECS)
-        assertWithMessage("the refusal and the repaired ask, one transfer to everything above")
-            .that(harness.networkRequests(environment)).hasSize(2)
-        assertWithMessage("the app's credential was minted for the doctor's own fetch").that(provider.calls()).isEqualTo(1)
+        // Two playlists, each refused once and each repaired inside the transfer that met the refusal: the
+        // fault is armed at every manifest, and the media playlist is a manifest of the doctor's like the
+        // multivariant one. A credential minted per refusal is the layer's own behaviour, not a retry.
+        assertWithMessage("the refusal and the repaired ask, one transfer to everything above, per playlist")
+            .that(harness.networkRequests(environment)).hasSize(4)
+        assertWithMessage("the app's credential was minted for the doctor's own fetch").that(provider.calls()).isEqualTo(2)
         assertThat(report.chain).containsExactly(ChainLayer.HEADER_REFRESH)
     }
 
@@ -151,7 +160,7 @@ class MediaSourceDoctorTest {
         // doctor today is that a manifest a *download* pinned is read from disk, and a download store is
         // phase 7, which ADR-0015 rule 1 keeps off this module's test classpath.
         assertWithMessage("a cached doctor still fetches a streamed manifest")
-            .that(harness.networkRequests(environment)).hasSize(1)
+            .that(harness.networkRequests(environment)).hasSize(2)
         cache.release()
     }
 

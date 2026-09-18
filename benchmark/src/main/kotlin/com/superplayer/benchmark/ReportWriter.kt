@@ -79,7 +79,7 @@ internal object ReportWriter {
         appendLine("## Exit criterion")
         appendLine()
         appendLine(
-            "Phase 10's exit criterion (tuning) is *measured improvement of the adaptive policy over " +
+            "Phase 11's exit criterion (tuning) is *measured improvement of the adaptive policy over " +
                 "the static profile on the shaped-network suite, with no regression on stable WiFi*. " +
                 "It is not a functional phase's criterion, and this verdict gates no earlier phase. " +
                 "It is judged against " +
@@ -95,7 +95,7 @@ internal object ReportWriter {
             val failing = judgement.networks.filterNot { it.met }.joinToString { it.network.label }
             appendLine(
                 "**Not met.** The criterion fails on: $failing. The cells that decided it are listed " +
-                    "below, and each is a finding for Phase 10 rather than a reason to retune " +
+                    "below, and each is a finding for Phase 11 rather than a reason to retune " +
                     "before committing this report.",
             )
         }
@@ -315,7 +315,7 @@ internal object ReportWriter {
                 "SuperPlayer is neutral or worse — a benchmark table with no losses in it is a " +
                 "marketing document and will be read as one.* A loss against " +
                 "${Arm.STOCK_NAIVE_TUNING.label} is stated as plainly as any other: it is a cell where " +
-                "configuring by intuition did as well, and a finding for Phase 10.",
+                "configuring by intuition did as well, and a finding for Phase 11.",
         )
         appendLine()
 

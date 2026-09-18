@@ -52,7 +52,7 @@ internal class HarnessDownloadEnvironment(
  * was the earlier shape, and it coupled two items that are independent in an app: a load queued behind another
  * item's delayed one could not act on the time that passed, and an item that failed waited for its queued next
  * segment to be cancelled behind the other item's held load (#244). Parallel segment fetching within one item is
- * a throughput question for Phase 10, not a behaviour a Phase 7 test asserts on.
+ * a throughput question for Phase 11, not a behaviour a Phase 7 test asserts on.
  */
 internal class HarnessDownloadLoads(private val wait: HarnessClockWait) : Executor {
 

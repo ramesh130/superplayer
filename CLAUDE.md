@@ -1058,10 +1058,10 @@ filter, and a difference inside two standard errors is neutral rather than a sma
 `benchmark/README.md` is the manual, including why it sits outside `docs/testing.md`'s rules rather
 than against them. `benchmark/baseline/` is the frozen Phase 1 report Phase 3 was graded against, and
 `benchmark/phase3/` is the Phase 3 report (issue #103) — the current reference, the one
-`bench --baseline` writes, and where Phase 10 starts from. Its opening section is
+`bench --baseline` writes, and where Phase 11 starts from. Its opening section is
 `ExitCriterion`'s verdict: adaptive against the static profile, a QoE win and no QoE loss on each
 shaped profile, and nothing worse on stable WiFi, by the two-standard-error rule. **That verdict is
-Phase 10's exit criterion, not Phase 3's**: `PRD.md` Part 4 puts every "a number moved" criterion —
+Phase 11's exit criterion, not Phase 3's**: `PRD.md` Part 4 puts every "a number moved" criterion —
 this one, the feed demo's p50 TTFF target, peak RSS and battery — in a tuning phase after the
 functional ones, so a "Not met" is a finding to park there rather than work that blocks the next
 phase. Peak
@@ -1325,6 +1325,24 @@ repository.
   against the curated corpus with false positives counted, so a flagged `BENIGN` entry fails the
   build; and an app that opens neither doctor nor HUD registers and allocates nothing, which a test
   counts.
+- **[ADR-0004](docs/adr/0004-select-the-http-stack-through-a-superplayer-type.md)** and
+  **[ADR-0016](docs/adr/0016-take-the-consumers-transport-through-one-superplayer-interface-and-adapt-it-to-media3.md)** —
+  decide Phase 10's shape, the bottom of the chain: HTTP-stack selection is a SuperPlayer type that
+  no Media3 type crosses, and what a consumer supplies is an implementation of `HttpTransport` —
+  open a request, answer a status, headers and a byte stream, cancel — over whatever client their
+  app already has, never a `DataSource.Factory` (ADR-0001 rule 2) and never a module of ours per
+  named client, so core stays Media3-only and nothing in this repository names OkHttp, Cronet or
+  Ktor. The four chains resolve their bottom at **one** composition point, and all four entry points
+  that compose one take the stack, because a player loading over the app's client while its
+  downloads use the platform's is the defect the seam exists to prevent. Everything above the bytes
+  is adapted behind the boundary and is not the consumer's to get right: the Media3 `DataSource`,
+  `TransferListener` reporting with `isNetwork` (ADR-0009 rule 8), and the
+  `InvalidResponseCodeException` that rung 1's credential repair and `ErrorClassifier` both read —
+  which is what makes ADR-0011 rule 1 survive a transport we did not write. Byte ranges, the
+  post-redirect URI and identity content coding are contract rather than advice, carried to the
+  implementer by a conformance test in `superplayer-testkit` rather than by KDoc alone; a stack that
+  cannot be honoured fails at `build()` with a typed error; and a consumer who names none pays
+  nothing, which a test counts.
 - **[`docs/api-surface.md`](docs/api-surface.md)** — every published module's public API is tracked
   in `<module>/api/<module>.api` and validated by `check`. Changing it means running
   `./gradlew updateApiSurface` and committing the diff in the same change. A leaked `@UnstableApi`

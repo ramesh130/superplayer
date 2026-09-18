@@ -20,7 +20,7 @@ rules are.
 | [0001 — Compose on Media3, do not fork it](0001-compose-dont-fork.md) | Depend on Media3 as an ordinary versioned library and extend it only through its public extension points; wrap every `@UnstableApi` type behind SuperPlayer's own, with one named exception (`player.exoPlayer`), and pin one Media3 version in one place. |
 | [0002 — No local HTTP proxy for startup latency](0002-no-local-http-proxy.md) | Never run a local HTTP proxy or rewrite manifests to fake a fast start: it corrupts bandwidth estimation and breaks ABR, licence binding, CMCD and CDN tokens. Pursue startup through caching, preload and selection parameters instead. |
 | [0003 — Implement `Player` by delegation, never extend a Media3 base class](0003-implement-player-by-delegation.md) | The facade implements `Player` by Kotlin delegation rather than extending `ForwardingPlayer` or any other Media3 base, because every one of them is `@UnstableApi`; a contract test guards against delegation silently skipping Java `default` members. |
-| [0004 — Select the HTTP stack through a SuperPlayer-owned type](0004-select-the-http-stack-through-a-superplayer-type.md) *(Proposed)* | No HTTP-stack selection API ships until a phase needs one; when it does, the choice is a SuperPlayer type and every transport beyond Media3's default arrives as an optional module, so core's dependency graph stays Media3-only. |
+| [0004 — Select the HTTP stack through a SuperPlayer-owned type](0004-select-the-http-stack-through-a-superplayer-type.md) | No HTTP-stack selection API ships until a phase needs one; when it does, the choice is a SuperPlayer type that no Media3 type crosses, and core's dependency graph stays Media3-only. Accepted at Phase 10, with rules 2 and 3 amended at the rules: the transport arrives as an interface the consumer implements rather than as an optional module per named client. |
 | [0005 — Decide playback policy behind an engine-agnostic boundary, and ship a static one](0005-decide-playback-policy-behind-an-engine-agnostic-boundary.md) | All buffering and track-selection policy is decided behind one `PlaybackPolicy` interface that no Media3 type crosses; the consumer names a use-case profile rather than tuning numbers, and the first implementation is a static per-profile lookup. |
 | [0006 — Turn Android's lifecycle rules on by default, and hand back the state that outlives a player](0006-own-the-platform-rules-and-hand-back-the-state.md) | Audio focus, becoming-noisy, and wake and Wi-Fi locks are on for every player because they are correctness rather than policy; state that outlives a player travels as a `PlaybackSnapshot` the consumer stores, and SuperPlayer persists nothing itself. |
 | [0007 — Publish the player as a session, own the service, and resolve content by id](0007-publish-the-player-as-a-session-and-resolve-content-by-id.md) | A session is something a consumer chooses to create rather than something every player gets; a `PlaybackSession` shares its player's lifetime, and content named from outside the app arrives as a bare id resolved back into a `MediaRequest`. |
@@ -32,10 +32,13 @@ rules are.
 | [0013 — Download into the cache the consumer opened, on the one chain, under constraints that are correctness](0013-download-into-the-cache-the-consumer-opened-on-the-one-chain.md) | `superplayer-offline` depends on core alone and takes every collaborator as a core type; a download writes into the consumer's cache under the keys a player reads, pinned from enqueue to removal, over the chain core assembles; unmetered is the default the viewer may relax, and battery, storage and scheduling are the module's own. |
 | [0014 — Match the display, watch it change, and reach the engine through one output slot](0014-match-the-display-and-watch-it-change-behind-one-output-slot.md) | `superplayer-tv` is core's eighth Kotlin friend through one `videoOutput` slot; frame-rate matching and re-selecting on a display or audio-capability change are correctness on every player built with it, tunneling is policy, and the display becomes a live reading the selection gate re-reads. |
 | [0015 — Name a pathology over the player's own chain, and redact the bundle by construction](0015-name-a-pathology-over-the-players-own-chain-and-redact-the-bundle-by-construction.md) | `superplayer-diagnostics` is core's ninth Kotlin friend, bounded by a closed list of seams; a pathology is a defect of a stream and never a failure class, the doctor fetches over the chain a player of that request would load through and downloads no segment, a bundle is the session trace one layer richer with a capability snapshot redacted by construction, and the doctor is scored against the curated corpus with false positives counting as heavily as misses. |
+| [0016 — Take the consumer's transport through one SuperPlayer interface, and adapt it to Media3 ourselves](0016-take-the-consumers-transport-through-one-superplayer-interface-and-adapt-it-to-media3.md) | A consumer who needs their own HTTP client implements one bytes-only `HttpTransport` and passes it as an `HttpStack`; no per-transport module ships and nothing here names OkHttp, Cronet or Ktor, while the Media3 `DataSource`, the `TransferListener` bookkeeping and the typed response code the classifier reads are all adapted behind the boundary, for all four chains at one composition point. |
 
-Each record states its own status in its header, and the index above marks the one that is not
-**Accepted**: 0004 is **Proposed** and ships no API until a phase needs one. Nothing has been
-superseded.
+Each record states its own status in its header. **All sixteen are Accepted**, and nothing has been
+superseded. 0004 was the one exception until 2026-09-18: it was **Proposed**, deliberately, and shipped
+no API for nine phases on the grounds that shipping the wrong shape costs more than shipping nothing.
+Phase 10 is the trigger it named, and it was accepted with two of its five rules amended — the shape
+it guessed at was not the shape that arrived, which is the outcome a Proposed record exists to allow.
 
 ## How they relate
 
@@ -59,6 +62,8 @@ The one-liners above are an index, not an authority.
   definitions it decided the shape of.
 - **Diagnosing a stream:** 0015, with [`docs/media-source-doctor.md`](../media-source-doctor.md) and
   [`docs/session-bundle.md`](../session-bundle.md) as what it produced.
+- **The bottom of the chain:** 0004 for why nothing shipped for nine phases, then 0016 for what
+  eventually did.
 
 The domain vocabulary these records share is `CONTEXT.md` at the repository root; the phases and the
 problem inventory they are cut from are `PRD.md`'s.

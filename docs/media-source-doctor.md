@@ -27,8 +27,9 @@ carries no failure class, no category, no retryability and no fallback rung, bec
 no session at all — the stream plays, and something about it is worse than it should be. What a
 failed session ended on is `superplayer-resilience`'s `FailureClass`, which the library's own
 fallback ladder acts on; the doctor holds no taxonomy with which to recompute one. When a report
-carries both, they are printed side by side and neither is mapped onto the other (rule 5). See
-*Reading a postmortem* below.
+carries both, they are printed side by side and neither is mapped onto the other (rule 5) — see
+*Reading a postmortem* below. The reasons behind that separation are ADR-0015's; what it means for a
+reader is that a report's findings are facts about the stream and nothing else.
 
 Two further limits are worth knowing before reading a report:
 
@@ -112,10 +113,12 @@ never comes back looking like a healthy one — and read by nothing.
 
 ## The defects
 
-Twenty in all: eleven HLS, seven DASH, and two that name a defect of the *fetch* rather than of a
-document. Eighteen of them — everything but the two fetch defects — have a matching entry in this
-library's curated hostile-manifest corpus, and `docs/testing.md`'s *The hostile manifest corpus*
-section is what keeps the two in step.
+Grouped as the vocabulary groups them: HLS, then DASH, then the two that name a defect of the
+*fetch* rather than of a document. Every defect but those two has a matching entry in this library's
+curated hostile-manifest corpus (`docs/testing.md`'s *The hostile manifest corpus*), and two tests
+are what keep the three lists in step: `CorpusRegisterTest` scores the doctor against every corpus
+entry — for misses and for false positives alike — and `DoctorDocumentTest` fails the build if a
+defect the doctor can name has no section below carrying its citation.
 
 ### Where the numbers come from
 
@@ -172,10 +175,13 @@ playlist is valid and the number is false. Every ABR estimator compares its thro
 against it, so an overstated rung is one a player refuses on a link that would carry it easily.
 
 **Read from declarations only, and narrowly.** The doctor weighs no media, so it bounds only a rung
-it can bound from the manifest: one whose codec string names an audio format and no video, and which
-declares no picture. **A rendition carrying video is not checked at all**, because a video codec's
-rate depends on a resolution, a frame rate and a profile neither manifest need declare, and a guess
-would be a false positive.
+it can bound from the manifest: one whose codec string names **AAC** (`mp4a.40.<n>`) and no video,
+and which declares no picture. **A rendition carrying video is not checked at all**, because a video
+codec's rate depends on a resolution, a frame rate and a profile neither manifest need declare, and a
+guess would be a false positive; an audio rung in any other codec is not checked either, because the
+ceiling below is AAC's own. Where the manifest declares no channel count — which HLS often cannot —
+the ceiling is taken at **stereo**, since assuming more would raise it on every undeclared rung and
+let a real overstatement through.
 
 **What causes it.** A packager that writes the encoder's configured *peak* rather than the measured
 rate, or a ladder whose bitrates were copied from a different mezzanine.
@@ -315,8 +321,8 @@ the headers-only segment probe, and it spends it only once it already has the de
 On-demand playlists are passed over: an `EXT-X-ENDLIST` says the document will not change again, so a
 long `max-age` on one is correct.
 
-**What causes it.** One CDN cache rule applied to the whole path. A surprising share of "live stream
-freezes" tickets are this.
+**What causes it.** One CDN cache rule applied to the whole path. This project's own observation,
+recorded in the corpus entry: a surprising share of "live stream freezes" tickets are this.
 
 **What to change.** Give the live media playlist its own rule, with a lifetime no longer than its
 target duration (or `no-cache` with revalidation), and leave the segments held for as long as you
@@ -366,6 +372,11 @@ other spelling, or whose expiry is inside an opaque blob, is invisible to this r
 Live playlists are passed over, and that is the rule rather than a gap: a live stream has no end to
 cover, so every finite token expires inside it.
 
+**How much life is left is read against the device's clock**, unlike the DASH clock rule below, and
+it has to be: an expiry is a fact about the world rather than about the document, and there is no
+second party to hold it against. So a doctor run on a device whose clock is wrong can report this
+defect on a healthy URL, or miss it on a doomed one.
+
 **What causes it.** A signing service whose lifetime was set from how long a *request* takes rather
 than from how long a *viewing* lasts.
 
@@ -385,8 +396,10 @@ wrong without knowing which origin is asking — and the one defect here a nativ
 since one CDN configuration serves an app and a browser alike. On a stream that plays perfectly on
 the device the report was taken from, this is the finding that matters most.
 
-**A response that says nothing about CORS is not a misconfiguration.** Most origins serving native
-players emit no CORS headers at all and are entirely correct.
+**A response that says nothing about CORS is not a misconfiguration**, and the rule is written that
+way deliberately: on this project's reading, an origin serving native players commonly emits no CORS
+headers at all and is entirely correct, so flagging silence would be a false positive on most of the
+streams a doctor ever sees.
 
 **It reads the manifest responses and not the media's**, which is a named gap: a manifest path and a
 media path really can be configured differently, so a stream whose manifests are clean and whose
@@ -470,7 +483,8 @@ restarted encoder offers the rungs the main content does.
 #### `dash-availability-start-time-skew`
 
 - **Citation:** ISO/IEC 23009-1 §5.3.1.2, §5.3.9.5.3
-- **Severity:** `BLOCKING`, ungraded. Magnitude names the direction and the amount.
+- **Severity:** `BLOCKING`, ungraded. Magnitude names how far ahead of the manifest's own clock the
+  anchor sits; only the forward direction is ever reported, for the reason below.
 
 **What it means.** A dynamic MPD's `@availabilityStartTime` is at or after the time the same MPD says
 it is. The anchor is what every segment's availability is computed from, and nothing requires it to
@@ -553,8 +567,9 @@ doctor threw" is the least useful thing a support ticket can say (ADR-0015 rule 
 
 **What it means.** The manifest could not be fetched over the chain this app's players load through:
 an origin or an edge that refused it, a credential it would not accept, or a host that did not
-answer. The commonest report of all, and the status is why it is worth two words — "refused with 403"
-and "no host answered" send a support engineer to two different teams.
+answer. On this project's own experience the commonest report of all, and the status is why it is
+worth two words — "refused with 403" and "no host answered" send a support engineer to two different
+teams.
 
 The status is the only part of a refusal the report carries. **No message**, because the message of
 most such exceptions carries the failing URL and the token in its query.
@@ -614,12 +629,15 @@ Stated rather than left to be discovered:
 - **Anything that needs media weighed.** No segment is downloaded, so a rung whose real rate differs
   from its declaration is invisible unless the declaration contradicts its own codec string, and a
   video rung's rate is never bounded at all.
-- **Delivery defects on DASH.** The three delivery rules are HLS-named, because a defect's id is the
-  corpus entry it is scored against and all three of those entries are HLS. Nothing in the rules is
+- **Delivery defects on DASH.** The four delivery rules are HLS-named, because a defect's id is the
+  corpus entry it is scored against and all four of those entries are HLS. Nothing in the rules is
   protocol-specific — a token lives in a URI and an allowed origin in a header — so a DASH stream with
   a CORS misconfiguration is a gap this document names rather than covers.
 - **CORS on the media path.** Only manifest responses are read; see `hls-cors-refuses-credentials`.
 - **A signing scheme spelled differently.** Only a lower-case `expires` query parameter is read.
+- **A token's remaining life on a device whose clock is wrong.** The two token rules read the
+  device's clock; see `hls-token-expiring-in-window`.
+- **An audio rung in a codec other than AAC.** See `hls-overstated-bitrate`.
 - **A clock skew smaller than the time a live stream has been on air.** See
   `dash-availability-start-time-skew`.
 - **Anything about the sources after the first.** Only the first entry of `MediaRequest.sources` is
@@ -630,11 +648,10 @@ Stated rather than left to be discovered:
 The doctor answers a question about a *stream*. Two other artifacts answer questions about a
 *session*:
 
-- **The debug HUD** — `DebugHud(player, telemetry)`, an overlay the app places over its own surface,
-  which renders nothing unless the application is debuggable. Six rows, of which the one worth the
-  HUD is the throughput estimate beside the rung that was selected and the policy ceiling in force:
-  a stall with a healthy estimate and a low rung is a different defect from a stall with a collapsed
-  estimate, and in a vocabulary that reports only what was selected the two are indistinguishable.
+- **The debug HUD** — `DebugHud(player, telemetry)`, an overlay the app places over its own surface
+  while the thing is playing in front of a developer, and which renders nothing unless the
+  application is debuggable. Its rows and what each can and cannot show are `DebugHud`'s own
+  documentation and `docs/testing.md`'s *The debug HUD*.
 - **The session bundle** — one session as one text artifact a bug report can carry.
   [`docs/session-bundle.md`](session-bundle.md) is its format and
   [`docs/reading-a-session-bundle.md`](reading-a-session-bundle.md) is how to read one.

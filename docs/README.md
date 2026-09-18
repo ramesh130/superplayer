@@ -1,7 +1,7 @@
 # SuperPlayer documentation
 
-Every document in this repository, and which reader each is for. Nothing here is a summary of
-another document: each is the authority on its own subject, and where two touch, the more specific
+Every document under `docs/`, and which reader each is for; the repository root's own four are
+listed below. Nothing here is a summary of another document: each is the authority on its own subject, and where two touch, the more specific
 one says so.
 
 ## If you are reading a stream or a session
@@ -17,16 +17,17 @@ one says so.
 
 | Document | For |
 | --- | --- |
-| [`adr/README.md`](adr/README.md) | The fifteen architecture decision records, each decision in a line — **why the library is shaped as it is**, and the rules a change is held to |
+| [`adr/README.md`](adr/README.md) | The architecture decision records, each decision in a line — **why the library is shaped as it is**, and the rules a change is held to |
 | [`modules.md`](modules.md) | The module table, the phases, and the rule that dependencies point inward |
 | [`testing.md`](testing.md) | How this library is tested: Robolectric, Media3's own fakes, no device and no network, and what each stand-in cannot show |
 | [`api-surface.md`](api-surface.md) | How the public API of every published module is tracked and validated |
 | [`throughput-traces.md`](throughput-traces.md) | The network-trace format the test harness replays, and how a public dataset comes in |
 
-The repository root carries three more: `CONTEXT.md` is the vocabulary the code, the ADRs and the
+The repository root carries four more: `CONTEXT.md` is the vocabulary the code, the ADRs and the
 issues share; `CONTRIBUTING.md` is the clean-room discipline and the citation rule every non-obvious
-algorithm is held to; and `PRD.md` is the problem inventory and the phase table the issues are cut
-from.
+algorithm is held to; `PRD.md` is the problem inventory and the phase table the issues are cut from;
+and `CLAUDE.md` is the orientation for someone — or something — about to change the library, with
+`THIRD_PARTY.md` beside them as the dependency register.
 
 ## Measurement outside `check`
 

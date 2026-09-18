@@ -9,29 +9,19 @@ it, and it does not restate the grammar: where a field's meaning is in question,
 authority, and where a *number's* meaning is in question,
 [`docs/telemetry-schema.md`](telemetry-schema.md) is.
 
-A bundle is plain text. Everything below can be done with a text editor and `grep`, and none of it
-requires knowing Kotlin, Media3 or Android.
+A bundle is plain text, and **reading** one takes nothing but a text editor and `grep` — no Kotlin,
+no Media3, no Android. The one section here that does assume the library is *Getting one*, at the
+end, which is the app developer's half rather than the reader's.
 
 ---
 
-## The three lines at the top
+## Check the third line before measuring anything
 
-Read them first, because two of them change what the rest of the file means.
-
-```
-superplayer-session-bundle v1
-superplayer-session-trace v1
-timings relative-ms
-```
-
-The first two are format versions, and a version moves only when a line's **meaning** changes — a
-new kind or a new field does not move one. So a bundle whose second line reads `v1` can be read
-against this document and `docs/session-bundle.md` even if it carries kinds neither mentions.
-
-The third line is the one to check before measuring anything. `timings relative-ms` means every fact
-carries its `+<ms>` column. **`timings omitted` means the column has been dropped**, which is the one
-normalisation applied to some traces, and a bundle in that state can be read for *what happened and
-in what order* but not for *how long anything took*. Do not infer durations from line order.
+Of the three header lines `docs/session-bundle.md` describes, the third is the one that changes what
+the rest of the file can be used for. `timings relative-ms` means every fact carries its `+<ms>`
+column. **`timings omitted` means the column has been dropped**, and a bundle in that state can be
+read for *what happened and in what order* but not for *how long anything took*. Do not infer
+durations from line order.
 
 ## What the times are measured between
 
@@ -53,8 +43,7 @@ Three consequences worth having in mind:
 - **Every fact sits at the moment it happened**, not at the moment the recorder heard of it — engine
   facts carry the engine's own timestamp for the event. So two lines in the same millisecond really
   were in the same millisecond, and their order on the page is the format's fixed rank rather than a
-  race. Ordering is `docs/session-bundle.md`'s *Ordering* section: **arrival order is not a fact this
-  format records.**
+  race — see `docs/session-bundle.md`'s *Ordering*, which is what that costs you and what it buys.
 
 ## Three readings that answer most tickets
 
@@ -107,16 +96,15 @@ transfers were doing on either side of it:
 grep '^\+[0-9]* telemetry' bundle.txt
 ```
 
-Every one of those lines is an event of SuperPlayer's own telemetry schema, printed as its name and
-its fields, and **what each number means is
-[`docs/telemetry-schema.md`](telemetry-schema.md)** — the same definitions a data pipeline is held
-to, so a line here and a row in a warehouse are the same measurement. In particular: rebuffer ratio
-has a stated denominator, time to first frame has a stated start boundary, and neither is a number to
-re-derive by hand off the `state` lines.
+Every one of those lines is an event of SuperPlayer's own telemetry schema, and **what each number
+means is [`docs/telemetry-schema.md`](telemetry-schema.md)**. Two consequences for a reader in a
+hurry: rebuffer ratio has a stated denominator and time to first frame a stated start boundary, so
+neither is a number to re-derive by hand off the `state` lines; and the definitions there are the
+ones a data pipeline is held to, so a disagreement between a bundle and a dashboard is a real
+disagreement rather than two conventions.
 
-**Check `SessionEnded droppedEventCount` before trusting any of it.** Telemetry delivery is bounded
-and lossy under pressure by design; a non-zero count means this bundle's `telemetry` lines are
-incomplete, and it is the only honest way to say so.
+**Check `SessionEnded droppedEventCount` before trusting any of it** — a non-zero count means these
+`telemetry` lines are incomplete, for the reason `docs/session-bundle.md` gives under that field.
 
 ## Two facts about a failure, and why there are two
 
@@ -131,15 +119,16 @@ mapped onto each other; see *Reading a postmortem* in
 
 ## What the device was
 
-The `capability` lines, all stamped `+0`, describe the whole session rather than a moment in it, and
+The `capability` lines — stamped `+0` on a timed bundle and bare on one whose column was dropped —
+describe the whole session rather than a moment in it, and
 they are usually what settles "is it just this handset?": the API level, whether the platform calls
 it a low-memory device, the heap the app was allowed, the video decoders it declares with their
 instance counts and profile levels, the display's short edge and HDR formats, and the security level
 protected content was delivered at.
 
-Read `unknown` and `none` as the different facts they are: `unknown` means the platform did not
-answer, `none` that it answered and has none of them. Confusing the two sends a reader after the
-wrong device.
+One trap: the words that are not values. `unknown` and `none` are different facts, and so is the
+security level's `not-negotiated`; `docs/session-bundle.md` says what each means, and confusing the
+first two sends a reader after the wrong device.
 
 ## What a bundle cannot tell you, and what to ask for instead
 
@@ -154,14 +143,12 @@ each of them.
 | Which handset, which build | what the device can *do* | nothing — this is the redaction working as intended |
 | What the viewer saw | dropped-frame counts | a screen recording, which is the app's to take |
 
-**Why the redaction is by construction rather than by stripping.** The recorder never holds a URL, a
-header, a message, a session id, a wall-clock time, a device identity or DRM material, so a bundle
-cannot leak one by omission of a filter. That is what makes a bundle attachable to a ticket without
-review, and it is
+None of those absences is a filter that could be misconfigured: the recorder never holds the things
+a bundle does not print, which is
 [ADR-0015](adr/0015-name-a-pathology-over-the-players-own-chain-and-redact-the-bundle-by-construction.md)
-rules 9 and 10. One honest caveat, which `docs/session-bundle.md` states and this document repeats
-because it is the reader's to weigh: **each field is bounded, not the aggregate.** An API level
-beside a display size beside a decoder table is still a coarse description of a class of devices.
+rules 9 and 10 and is why a bundle is attachable to a ticket without review. Before attaching one,
+read `docs/session-bundle.md`'s caveat on the capability lines: each field is bounded, the aggregate
+is not.
 
 ## Getting one
 
@@ -183,12 +170,9 @@ bugReport.attach(bundle.format())
 A trace taken before the delivery queue has drained lacks the tail of the telemetry, which is why
 `SessionEnded` — the last event a session emits — is the signal to take it.
 
-## Renderings
-
-The facts are recorded once, in this one format. Anything else — JSON, a Perfetto trace — is a
-*rendering* of these lines rather than a second recording of the same session, because two authored
-formats would be two implementations of the redaction rules above, one of which would be behind
-within a release.
+There is no second format to ask for, either: `docs/session-bundle.md`'s *Renderings* is why any
+JSON or Perfetto form of a session is a rendering of these same lines rather than a recording of its
+own.
 
 ## Further reading
 

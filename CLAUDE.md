@@ -1022,8 +1022,15 @@ tickets, and a table of what a bundle cannot say beside what to ask for instead.
 is the ADR index the set has gone fifteen records without — one decision per line, with the reading
 order and the rule that an addendum is read at the rule rather than in a summary. `docs/README.md` is
 the index of the documents themselves, linked from the binding rules below, and
-`DoctorDocumentTest` is the mechanical half: every `Pathology`'s id and citation must appear in the
-doctor's document, so a twenty-first defect fails the build rather than going undocumented. Nothing here
+`DoctorDocumentTest` is the mechanical half: every `Pathology` needs a section of its own in the
+doctor's document, in the enum's order, carrying **that section's** own citation verbatim — read per
+section rather than over the file, because four pathologies cite RFC 8216 §4.3.4.2 — so a
+twenty-first defect fails the build rather than going undocumented. `docs/testing.md`'s *Adding a
+pathology* gains the step. Two things the code and the earlier units' prose disagree about, with the
+code right: there are **four** HLS delivery pathologies scored against corpus entries, not the three
+`DeliveryPathologies`' and `HostileManifests`' KDocs still count (the fourth is #289's expiry entry);
+and `overstatedBitrate` bounds an **AAC** rung specifically rather than any audio-only one, since the
+ceiling is AAC's reservoir. Nothing here
 claims #293's Perfetto trace points or #296's exit, both of which are still open and need a device.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and

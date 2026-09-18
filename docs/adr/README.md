@@ -1,7 +1,6 @@
 # Architecture decision records
 
-Why SuperPlayer is shaped as it is: fifteen records, each one decision, each with its own numbered
-rules.
+Why SuperPlayer is shaped as it is: one record per decision, each with its own numbered rules.
 
 An ADR here is not a design note. **Its rules bind**, and `CLAUDE.md`'s *Binding rules* section is
 the list of the ones a change is held to: a change that contradicts a rule says so explicitly and
@@ -34,16 +33,18 @@ rules are.
 | [0014 — Match the display, watch it change, and reach the engine through one output slot](0014-match-the-display-and-watch-it-change-behind-one-output-slot.md) | `superplayer-tv` is core's eighth Kotlin friend through one `videoOutput` slot; frame-rate matching and re-selecting on a display or audio-capability change are correctness on every player built with it, tunneling is policy, and the display becomes a live reading the selection gate re-reads. |
 | [0015 — Name a pathology over the player's own chain, and redact the bundle by construction](0015-name-a-pathology-over-the-players-own-chain-and-redact-the-bundle-by-construction.md) | `superplayer-diagnostics` is core's ninth Kotlin friend, bounded by a closed list of seams; a pathology is a defect of a stream and never a failure class, the doctor fetches over the chain a player of that request would load through and downloads no segment, a bundle is the session trace one layer richer with a capability snapshot redacted by construction, and the doctor is scored against the curated corpus with false positives counting as heavily as misses. |
 
-Every record but 0004 is **Accepted**; 0004 is **Proposed** and ships no API until a phase needs one.
-Nothing here has been superseded.
+Each record states its own status in its header, and the index above marks the one that is not
+**Accepted**: 0004 is **Proposed** and ships no API until a phase needs one. Nothing has been
+superseded.
 
 ## How they relate
 
 The set is not flat. A later record that changes an earlier one's scope names it in a **Refines** or
 **Extends** header and records the change as an *addendum at the rule it touches*, in the earlier
-document, so a reader of a rule sees what has happened to it without reading the whole set. A record
-amended after it was accepted carries an **Amended** header saying when, by which issue, and at
-which rules — ADR-0003 and ADR-0011 are the two so far.
+document, so a reader of a rule sees what has happened to it without reading the whole set. Some
+records also carry an **Amended** header saying when, by which issue and at which rules, and some
+record an amendment at the rule alone — ADR-0015's rule 3, amended by #289 to take a fourth seam, is
+one, and its header says nothing about it.
 
 Consequently: **read a rule where it lives**, addenda included, rather than trusting a summary of it.
 The one-liners above are an index, not an authority.

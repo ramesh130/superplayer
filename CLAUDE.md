@@ -249,8 +249,21 @@ refused manifest with nothing failing to say so. What proves it is parity rather
 through the transport slot or through an `HttpTransport` that reports a status as a consumer's client
 does, and `superplayer-resilience`'s `ConsumersTransportParityTest` runs the rung, the class and the
 counts over both and asserts they are equal; `BandwidthOraclePlaybackTest` does the same for the
-estimate and `ContentKeyedCachePlaybackTest` for the cache keys. The other
-three entry points rule 13 names, and the rest of the contract, are still open tickets.
+estimate and `ContentKeyedCachePlaybackTest` for the cache keys. Since #311 the **rest of the
+contract** is discharged and tested: the transport reports the URI it read from after a redirect
+(rule 6) on a new `HttpResponse.uri`, defaulted to null and read as the requested one, which is what
+Media3 resolves a manifest's relative references against — so a transport that answers the address it
+was *asked* for sends the player to the old edge, which `TransportContractTest` shows as a stream
+that will not start. Core composes `Accept-Encoding: identity` onto every request and a coding the
+chain named itself wins (rule 7), because naming one is what switches off a client's transparent
+compression; what that costs is a *number*, and `superplayer-abr`'s `TransparentGzipEstimateTest` is
+it — one link, two clients, the gunzipping one's estimate overstating its own link by the compression
+ratio. And `close()` cancels rather than drains (rule 10), forced over a body that answers nothing
+until it is closed, on a seek and on a release. **There is deliberately no timeout around an
+uncancellable transport** and `HttpTransportDataSource.close`'s KDoc argues the three reasons: no
+number this repository can measure, a watchdog thread every consumer would pay for, and a bound that
+would turn a hang whose stack names the consumer's own `read` into a stall spending a retry budget.
+The other three entry points rule 13 names are still open tickets.
 
 CMCD (CTA-5004) is emitted there today, and is on for every profile including `DATA_SAVER` —
 `CmcdBinding.kt` holds the per-profile table, the reasoning, and the `// spec:` citation for each

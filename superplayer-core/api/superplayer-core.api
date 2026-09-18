@@ -114,10 +114,12 @@ public final class com/superplayer/core/HttpRequest {
 }
 
 public final class com/superplayer/core/HttpResponse {
-	public fun <init> (ILjava/util/Map;Ljava/io/InputStream;)V
+	public fun <init> (ILjava/util/Map;Ljava/io/InputStream;Landroid/net/Uri;)V
+	public synthetic fun <init> (ILjava/util/Map;Ljava/io/InputStream;Landroid/net/Uri;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getBody ()Ljava/io/InputStream;
 	public final fun getHeaders ()Ljava/util/Map;
 	public final fun getStatus ()I
+	public final fun getUri ()Landroid/net/Uri;
 }
 
 public abstract class com/superplayer/core/HttpStack {

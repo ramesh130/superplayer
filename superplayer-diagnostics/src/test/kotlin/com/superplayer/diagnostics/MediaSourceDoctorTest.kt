@@ -200,6 +200,29 @@ class MediaSourceDoctorTest {
     }
 
     @Test
+    fun aManifestTheParserCannotReadIsToldApartFromOneThatDidNotArrive() {
+        // The other half of rule 7's "a finding rather than a throw", and the one #290's register found
+        // unforced: bytes that arrive and are not a manifest. Truncated to nothing, because that is the
+        // shortest way to say "something came back and it is not a playlist" over a transport that serves
+        // only what the corpus wrote — a half-written document, an error page served with a 200, and a
+        // packager that emitted something else entirely all reach the parser the same way.
+        val entry = HostileManifests.hlsMissingCodecs()
+        val environment = harness.diagnosticEnvironment(
+            TestContent.hostile(entry),
+            faults = FaultScript.Builder().truncateAfterBytes(0, kind = ResourceKind.MANIFEST).build(),
+        )
+
+        val report = doctor(environment).examine(requestFor(entry))
+
+        val finding = report.findings.single()
+        assertThat(finding.pathology).isEqualTo(Pathology.MANIFEST_UNREADABLE)
+        assertThat(finding.severity).isEqualTo(FindingSeverity.BLOCKING)
+        // Nothing to grade, and in particular not the parser's own message: it quotes the line it choked
+        // on, which for a playlist is a URL and the token in its query (`SessionTraceRecorder`'s rule 1).
+        assertThat(finding.magnitude).isNull()
+    }
+
+    @Test
     fun thePublicApiNamesNoMedia3TypeAtAll() {
         // ADR-0015 rule 2, which is stronger than ADR-0001 rule 2 and is therefore asserted rather than left
         // to `verifyNoUnstableMedia3InPublicApi`: that check passes a *stable* Media3 type, and the claim

@@ -206,13 +206,18 @@ class MediaSourceDoctorTest {
         // shortest way to say "something came back and it is not a playlist" over a transport that serves
         // only what the corpus wrote — a half-written document, an error page served with a 200, and a
         // packager that emitted something else entirely all reach the parser the same way.
-        val entry = HostileManifests.hlsMissingCodecs()
+        // The healthy stream, deliberately: what is wrong is the transfer and not the document, so a corpus
+        // entry underneath would suggest the defect was the corpus's when nothing of it survives the
+        // truncation.
+        val content = TestContent.hls()
         val environment = harness.diagnosticEnvironment(
-            TestContent.hostile(entry),
+            content,
             faults = FaultScript.Builder().truncateAfterBytes(0, kind = ResourceKind.MANIFEST).build(),
         )
 
-        val report = doctor(environment).examine(requestFor(entry))
+        val report = doctor(environment).examine(
+            MediaRequest.Builder(HEALTHY_CONTENT_ID).addSource(content.sourceUri).build(),
+        )
 
         val finding = report.findings.single()
         assertThat(finding.pathology).isEqualTo(Pathology.MANIFEST_UNREADABLE)

@@ -260,6 +260,12 @@ corpus, and the test checks that it plays on, which is what makes a failing live
    `HostileManifestLadderTest.WITH_LADDER` — three tables, because an entry recorded on one player
    and not the other is an entry whose ladder behaviour nobody looked at. Add a comment wherever a
    row is surprising.
+7. Its row in `superplayer-diagnostics`' `CorpusRegisterTest.REGISTER` — a fourth table, and the one
+   about the doctor rather than about a player: the findings reported at `SEVERE` and the test that
+   forces them. Adding the entry without it fails `everyCorpusPathologyIsRegistered`, which is
+   deliberate; what the failure asks for is a row, including a row with no findings and the reason
+   the doctor cannot yet name it (ADR-0015 rule 12). A defect the doctor can name that no corpus
+   entry carries goes in `UNGRADABLE` instead, with the test that forces it.
 
 A defect that lives outside the manifest cannot be applied by `FakeDataSet`, which serves bytes and
 reports no response headers. That covers the `Cache-Control` mismatch and the CORS one. Such an entry

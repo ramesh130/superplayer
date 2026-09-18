@@ -64,6 +64,13 @@ import java.io.File
  * corpus's own words for the same entry, and copying them here would be a second copy to keep in step —
  * two of them (the token rules') are minted against the wall clock and could not be pinned in any case.
  *
+ * It also records **no `BORDERLINE` reading**, bar the one the caveat below turns on, and that is a
+ * deliberate limit rather than an omission: rule 12 scores the severe grade and the benign one, because
+ * those are the two a doctor is right or wrong about, while `BORDERLINE` is by the corpus's own definition
+ * where a reasonable threshold may fall either way. Each middle grade is pinned where its threshold is
+ * argued — in the per-protocol tests above — so that moving a threshold is reviewed beside its reason
+ * rather than as a row of a table.
+ *
  * Like its model it also checks the *names*: a register entry that names a test which no longer exists, or
  * which is no longer a `@Test`, fails [everyNamedTestExistsAndIsATest]. That is what stops a pathology from
  * quietly stopping being forced under a rename.
@@ -90,12 +97,12 @@ class CorpusRegisterTest {
         // pathology added to `HostileManifests` fail rather than go unnoticed.
         val curated = HostileManifests.graded().map { it.id }.distinct()
         assertWithMessage(
-            "Every pathology in `HostileManifests.graded()` needs a row in CorpusRegisterTest.REGISTER: " +
-                "the findings the doctor reports for it at SEVERE, and the test that forces them. If the " +
-                "doctor cannot yet name it, add the row with an empty finding set and a comment saying why " +
-                "(ADR-0015 rule 12: an entry the doctor cannot name is recorded, not removed) — and note " +
-                "that its `SEVERE` row will then fail `everySevereEntryIsNamedByTheDoctor`, which is the " +
-                "phase's exit criterion telling you the truth.",
+            "Every pathology in `HostileManifests.graded()` needs a row in CorpusRegisterTest.REGISTER, in " +
+                "the corpus's own order: the findings the doctor reports for it at SEVERE, and the test " +
+                "that forces them. If the doctor cannot yet name it, add the row with no findings and a " +
+                "`cannotYetName` saying why — ADR-0015 rule 12 admits an entry the doctor cannot name as " +
+                "recorded rather than removed, and `aRowThatNamesNothingSaysWhyRatherThanPassingQuietly` " +
+                "is what keeps that from being the quiet way to relax this gate.",
         ).that(REGISTER.keys).containsExactlyElementsIn(curated).inOrder()
     }
 
@@ -108,7 +115,9 @@ class CorpusRegisterTest {
         assertWithMessage(
             "A pathology the doctor can name is either scored against a corpus entry — add the corpus " +
                 "entry and its REGISTER row — or is a defect of the fetch that no stream can carry, in " +
-                "which case add it to UNGRADABLE with the test that forces it.",
+                "which case add it to UNGRADABLE with the test that forces it. The two already there " +
+                "are excused as: " +
+                UNGRADABLE.entries.joinToString("; ") { (pathology, it) -> "${pathology.id} — ${it.whyNotInTheCorpus}" },
         ).that(scored + UNGRADABLE.keys).containsExactlyElementsIn(Pathology.entries)
         // Disjoint, so that "scored against the corpus" and "cannot be" stay two answers rather than one
         // row hedging between them.
@@ -126,6 +135,23 @@ class CorpusRegisterTest {
             val found = findings(entry).associate { it.pathology to it.severity }
             assertWithMessage("$entry — ${entry.magnitude}")
                 .that(found).containsExactlyEntriesIn(reading!!.findings)
+        }
+    }
+
+    @Test
+    fun aRowThatNamesNothingSaysWhyRatherThanPassingQuietly() {
+        // The guard on rule 12's one exception, and the reason it is a field rather than a comment: an
+        // empty finding set agrees with an empty report, so a row added with no findings and nothing said
+        // would pass both gates above and relax the exit criterion in the act of appearing to record it.
+        // A reason is therefore required of such a row and forbidden of any other, so that "the doctor
+        // cannot name this yet" is a claim someone made rather than a silence.
+        REGISTER.forEach { (id, reading) ->
+            assertWithMessage(
+                "$id names no finding, so its row needs `cannotYetName` saying why the doctor cannot name " +
+                    "it (ADR-0015 rule 12: recorded, not removed) — or the doctor needs a rule for it.",
+            ).that(reading.findings.isEmpty() && reading.cannotYetName == null).isFalse()
+            assertWithMessage("$id names findings, so `cannotYetName` is not true of it")
+                .that(reading.findings.isNotEmpty() && reading.cannotYetName != null).isFalse()
         }
     }
 
@@ -152,7 +178,11 @@ class CorpusRegisterTest {
         // healthy (`hls-inconsistent-segment-durations` is exactly that, and its `BENIGN` row is a control).
         // What it catches is a row whose caveat has been fixed by a later rule and left standing.
         val caveated = REGISTER.filterValues { it.benignCaveat != null }
-        assertThat(caveated).isNotEmpty()
+        assertWithMessage(
+            "No row carries a benignCaveat any more, so this test asserts nothing: if a later rule made " +
+                "every BENIGN row a real control, delete this method with the last caveat rather than " +
+                "leaving it passing vacuously.",
+        ).that(caveated).isNotEmpty()
         caveated.forEach { (id, reading) ->
             val borderline = gradeOf(id, Severity.BORDERLINE)
             assertWithMessage("$id's BENIGN row is recorded as no control: ${reading.benignCaveat}")
@@ -166,10 +196,7 @@ class CorpusRegisterTest {
         // The third false-positive control and the widest: content with no pathology at all, in the four
         // shapes the suite has one of. Per stream, for the same reason as the benign sweep.
         HEALTHY.forEach { (what, content) ->
-            val environment = harness.diagnosticEnvironment(content)
-            val report = MediaSourceDoctor.Builder(context).setEnvironment(environment).build()
-                .examine(MediaRequest.Builder(HEALTHY_CONTENT_ID).addSource(content.sourceUri).build())
-            assertWithMessage(what).that(report.findings).isEmpty()
+            assertWithMessage(what).that(findings(content, HEALTHY_CONTENT_ID)).isEmpty()
         }
     }
 
@@ -185,14 +212,22 @@ class CorpusRegisterTest {
     }
 
     /** The corpus's entry for [id] at [severity], which a graded pathology has and a binary one does not. */
-    private fun gradeOf(id: String, severity: Severity): HostileStream =
-        HostileManifests.graded().single { it.id == id && it.severity == severity }
+    private fun gradeOf(id: String, severity: Severity): HostileStream {
+        val graded = HostileManifests.graded().filter { it.id == id && it.severity == severity }
+        assertWithMessage("$id has no $severity grade — a row carrying a benignCaveat is a graded pathology")
+            .that(graded).hasSize(1)
+        return graded.single()
+    }
 
     /** What a doctor an app would build says about [entry], over the harness's transport. */
-    private fun findings(entry: HostileStream): List<Finding> {
-        val environment = harness.diagnosticEnvironment(TestContent.hostile(entry))
+    private fun findings(entry: HostileStream): List<Finding> =
+        findings(TestContent.hostile(entry), entry.id)
+
+    /** The same, for content asked about under [contentId] — a doctor as a consumer builds one. */
+    private fun findings(content: TestContent, contentId: String): List<Finding> {
+        val environment = harness.diagnosticEnvironment(content)
         return MediaSourceDoctor.Builder(context).setEnvironment(environment).build()
-            .examine(MediaRequest.Builder(entry.id).addSource(entry.sourceUri).build())
+            .examine(MediaRequest.Builder(contentId).addSource(content.sourceUri).build())
             .findings
     }
 
@@ -230,11 +265,18 @@ class CorpusRegisterTest {
      *   citation, the cause and the magnitude, which this register deliberately does not copy.
      * @param benignCaveat why this entry's `BENIGN` row is **not** a real false-positive control, or null
      *   where it is one. Prose, because the reason is a fact about the document rather than a value.
+     * @param cannotYetName why the doctor names nothing for this entry, for the exception ADR-0015 rule 12
+     *   admits — "an entry the doctor cannot yet name is recorded, not removed". Required of a row with no
+     *   findings and forbidden of a row with some, which is
+     *   [aRowThatNamesNothingSaysWhyRatherThanPassingQuietly]: without it an empty finding set and an empty
+     *   report agree, and the exit criterion would be relaxed by the one edit that looks like recording it.
+     *   No row carries it today.
      */
     private class Reading(
         val findings: Map<Pathology, FindingSeverity>,
         val forcedBy: TestMethod,
         val benignCaveat: String? = null,
+        val cannotYetName: String? = null,
     )
 
     /** A pathology no corpus of streams can carry, and the test that forces it instead. */
@@ -254,9 +296,10 @@ class CorpusRegisterTest {
          */
         val REGISTER: Map<String, Reading> = linkedMapOf(
             // Two findings, and both are true of the document: a step of 48 puts the top rung at 6144 kbps,
-            // which is also more stereo AAC than the codec can carry. The corpus composes nothing — this is
-            // one defect that reads two ways — and `aPlaylistCarryingMoreThanOnePathologyReportsAllOfThem`
-            // is where that is argued.
+            // which is also more stereo AAC than the codec can carry (the ceiling and its ISO/IEC 14496-3
+            // derivation are `LadderPathologies`', where the constant is chosen). The corpus composes
+            // nothing — this is one defect that reads two ways — and
+            // `aPlaylistCarryingMoreThanOnePathologyReportsAllOfThem` is where that is argued.
             "hls-ladder-gap" to Reading(
                 findings = mapOf(
                     Pathology.HLS_LADDER_GAP to FindingSeverity.DEGRADED,

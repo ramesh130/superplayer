@@ -39,20 +39,20 @@ package com.superplayer.telemetry
  *   lists the rules and never holds the redacted material at all, so there is nothing to strip.
  *
  * The kinds, in rank order, are `item`, `state`, `playing`, `tracks`, `discontinuity`, `load`,
- * `error` — engine facts, from Media3's analytics — and then `telemetry`, one line per
+ * `bandwidth`, `error` — engine facts, from Media3's analytics — and then `telemetry`, one line per
  * `com.superplayer.core.TelemetryEvent` the recorder was handed as a sink. A telemetry line prints
  * the event's own fields, so a changed number in `docs/telemetry-schema.md` is a changed line here.
  *
- * The seam for `superplayer-diagnostics` (`PRD.md` §3.6, phase 9): its session trace bundle is this
- * artifact one layer richer — bandwidth samples, a capability snapshot, a Perfetto-compatible
- * export beside it — and the grammar is meant to take that without a second format. A richer trace
- * adds *kinds*; it does not reorder an existing kind's fields, and [FORMAT_VERSION] moves when a
- * line's meaning changes, on the same rule as `TelemetryEvent.SCHEMA_VERSION`. Whatever a capability
- * snapshot records will need its own redaction rule before it is added, since a device model is
- * exactly the kind of identifier this format keeps out. That rule is written: ADR-0015 rule 10 is the
- * seventh, admitting what the device can *do* — the capabilities this library itself branches on —
- * and refusing what the device *is*, every `Build` string and every decoder component name included.
- * #292 obeys it, states it beside [SessionTraceRecorder]'s six, and tests it.
+ * The seam for `superplayer-diagnostics` (`PRD.md` §3.6, phase 9) is taken: its `SessionBundle` is
+ * this artifact one layer richer, in this grammar rather than a second one (ADR-0015 rule 9). Two of
+ * the three layers are here — the `bandwidth` kind, and the `durationMs` a finished load carries —
+ * because only a recorder attached to the engine can observe them, and the third, the capability
+ * snapshot, is the bundle's own `capability` kind under the seventh redaction rule
+ * [SessionTraceRecorder] states beside its six. A richer trace adds *kinds* and appends *fields*; it
+ * does not reorder an existing kind's, and [FORMAT_VERSION] moves when a line's meaning changes, on
+ * the same rule as `TelemetryEvent.SCHEMA_VERSION` — so it did **not** move for any of that, and
+ * `docs/session-bundle.md` is where the bundle's grammar is written down for a reader who has never
+ * seen this repository.
  */
 public class SessionTrace internal constructor(
     /** Every fact, one per element, in trace order, without the header. */

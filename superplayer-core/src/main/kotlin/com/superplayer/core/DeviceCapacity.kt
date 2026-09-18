@@ -92,7 +92,7 @@ internal fun concurrentPlayerCapacityOf(
  * still walks it once per build — a pool's, or a selector's — for the reason the file's KDoc gives
  * against a cache.
  */
-private class DecoderTable(
+internal class DecoderTable(
     /**
      * What every declared video decoder reports, the secure ones **included**, pooled by MIME type as
      * it always was — not "the plain decoders". The un-merge is one-sided deliberately: what a player
@@ -112,6 +112,28 @@ private class DecoderTable(
     val secure: Tally,
     /** [DeviceConstraints.secureDecodableMimeTypes]; null when the walk found no video decoder at all. */
     val secureMimeTypes: Set<String>?,
+    /**
+     * The video MIME types a decoder declaring `FEATURE_TunneledPlayback` was seen for.
+     *
+     * Read on the walk that was already being made, and read by nothing in this file: it is
+     * [CapabilitySnapshot]'s, one of the readings ADR-0015 rule 10 admits to a diagnostics bundle.
+     * It is admitted because this library *does* branch on tunneling — `PlaybackDecision.output` asks
+     * for it and `EngineBinding.kt` lays it on the selector (ADR-0014 rule 7) — while whether it
+     * happened depends on the decoder declaring it, which is the fact a "tunneling was asked for and
+     * nothing tunneled" report needs and the one nothing else here records.
+     *
+     * ref: https://developer.android.com/reference/android/media/MediaCodecInfo.CodecCapabilities#FEATURE_TunneledPlayback
+     */
+    val tunnelingMimeTypes: Set<String>,
+    /**
+     * Every video MIME type a decoder was declared for, whatever it went on to report.
+     *
+     * [CapabilitySnapshot]'s too, and for the reason the readings above are kept apart: a decoder that
+     * declared no profile and no instance limit is still a decoder the device has, and a snapshot that
+     * listed only the MIME types some other reading happened to fill would be reporting the readings
+     * rather than the device.
+     */
+    val mimeTypes: Set<String>,
 ) {
     /** One kind of decoder's readings, keyed by video MIME type (lowercased). */
     class Tally(
@@ -187,7 +209,7 @@ private class DecoderTable(
  * ref: https://developer.android.com/reference/android/media/MediaCodecInfo.CodecCapabilities#getMaxSupportedInstances()
  * ref: https://developer.android.com/reference/android/media/MediaCodecInfo.CodecProfileLevel
  */
-private fun readDecoderTable(): DecoderTable {
+internal fun readDecoderTable(): DecoderTable {
     val codecs = try {
         MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
     } catch (e: RuntimeException) {
@@ -195,7 +217,13 @@ private fun readDecoderTable(): DecoderTable {
         // file rather than anything an app can fix. A pool that crashed on such a device would be
         // strictly worse than one that ran a single player on it, and the selector reads the same
         // failure as "unknown" rather than "none".
-        return DecoderTable(all = emptyTally(), secure = emptyTally(), secureMimeTypes = null)
+        return DecoderTable(
+            all = emptyTally(),
+            secure = emptyTally(),
+            secureMimeTypes = null,
+            tunnelingMimeTypes = emptySet(),
+            mimeTypes = emptySet(),
+        )
     }
 
     val bestPerMimeType = mutableMapOf<String, Int>()
@@ -208,6 +236,8 @@ private fun readDecoderTable(): DecoderTable {
     // at all" below: those are the two readings [DeviceConstraints] must never confuse.
     val videoMimeTypes = mutableSetOf<String>()
     val secureMimeTypes = mutableSetOf<String>()
+    // [DecoderTable.tunnelingMimeTypes]'s reading, taken here because the walk is already being made.
+    val tunnelingMimeTypes = mutableSetOf<String>()
     for (codec in codecs) {
         if (codec.isEncoder) continue
         for (mimeType in codec.supportedTypes) {
@@ -234,6 +264,13 @@ private fun readDecoderTable(): DecoderTable {
             // https://developer.android.com/reference/android/media/MediaCodecInfo.CodecCapabilities#FEATURE_SecurePlayback
             val isSecure = capabilities.isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_SecurePlayback)
             if (isSecure) secureMimeTypes += format
+            // ref: `MediaCodecInfo.CodecCapabilities.FEATURE_TunneledPlayback` (`tunneled-playback`)
+            // is what a decoder able to run a tunneled session declares, and Media3 asks it the same
+            // way when it answers `TUNNELING_SUPPORTED` for a renderer.
+            // https://developer.android.com/reference/android/media/MediaCodecInfo.CodecCapabilities#FEATURE_TunneledPlayback
+            if (capabilities.isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_TunneledPlayback)) {
+                tunnelingMimeTypes += format
+            }
 
             val instances = capabilities.maxSupportedInstances
             if (instances > 0) {
@@ -257,11 +294,13 @@ private fun readDecoderTable(): DecoderTable {
         // that answered and has none, which is a fact a session may be refused over, and a device
         // that answered nothing must refuse nothing (the [DeviceConstraints] KDoc's direction).
         secureMimeTypes = if (videoMimeTypes.isEmpty()) null else secureMimeTypes,
+        tunnelingMimeTypes = tunnelingMimeTypes,
+        mimeTypes = videoMimeTypes,
     )
 }
 
 /** What a device that answered nothing reports, for either kind of decoder. */
-private fun emptyTally(): DecoderTable.Tally = DecoderTable.Tally(emptyMap(), emptyMap())
+internal fun emptyTally(): DecoderTable.Tally = DecoderTable.Tally(emptyMap(), emptyMap())
 
 /**
  * How many players this app's heap affords, at [HEAP_BYTES_PER_PLAYER] each.
@@ -355,7 +394,7 @@ internal fun heapBudgetBytesOf(context: Context): Long? {
  */
 private const val HEAP_BYTES_PER_PLAYER: Long = 32L * 1024L * 1024L
 
-private const val BYTES_PER_MEGABYTE: Long = 1024L * 1024L
+internal const val BYTES_PER_MEGABYTE: Long = 1024L * 1024L
 
 /** The floor, and the answer wherever a device reports nothing usable. */
 private const val MINIMUM_CAPACITY: Int = 1

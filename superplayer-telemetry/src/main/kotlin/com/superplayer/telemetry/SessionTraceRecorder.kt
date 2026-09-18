@@ -78,6 +78,11 @@ import java.io.IOException
  * 5. **No device identity.** Nothing about the device, build, account or network is recorded.
  * 6. **No DRM payload.** A license request or response appears as `load ... drm` and nothing more.
  *
+ * A seventh rule is written and not yet carried here: ADR-0015 rule 10 admits a device, codec and DRM
+ * capability snapshot to Phase 9's trace *bundle* — what the device can do, never what the device is —
+ * and #292 states it beside these six in the change that adds the snapshot. Nothing in this recorder
+ * holds such a snapshot today, which is why the rule reads as six.
+ *
  * `SessionTraceRecorderTest` drives a session whose source URL carries a token and whose failure
  * message names it, and asserts none of it reaches the trace.
  *

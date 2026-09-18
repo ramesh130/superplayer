@@ -147,6 +147,20 @@ Fourteen rules follow, and they are binding.
    asks the classifier, the ladder asks the classifier, and telemetry reports what the classifier
    said. A second `when` over `errorCode` anywhere in the repository is a bug against this rule.
 
+   *Addendum (2026-09-18, #285).* This rule is about *failures*, and Phase 9 needs the word narrowed
+   rather than the rule widened. A **pathology** — a defect of a manifest, found by
+   `superplayer-diagnostics`' doctor — is not a failure and acquires no class here.
+   [ADR-0015](0015-name-a-pathology-over-the-players-own-chain-and-redact-the-bundle-by-construction.md)
+   rules 4 to 6 settle it: a finding carries a cause, a `// spec:` citation, a severity and a
+   magnitude, and it carries no `FailureClass`, no `FailureCategory`, no `isRetryable` and no
+   `FallbackRung`, because this rule's own test is what acting on a class needs and a stream that
+   played to the end answers none of those three questions. No class is added, renamed or given a
+   pathology field, and the diagnostics module contains no `when` over an error code — it reads the
+   classification off core's public `SuperPlayerError`, as `QoeCollector` does under rule 3. A
+   postmortem prints the classification and the findings side by side in two fields that keep their
+   own vocabularies, and a report in which the two disagree is information rather than a defect. Rule
+   2's totality is therefore still a claim about `PlaybackException`s alone.
+
 2. **The classifier is total, and the taxonomy has no unknown class.** For every `PlaybackException`
    the engine can deliver the classifier returns a class and never throws; where no evidence
    narrows a failure, the engine's error-code band alone decides the branch — an I/O failure with

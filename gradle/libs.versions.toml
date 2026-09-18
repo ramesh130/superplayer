@@ -37,7 +37,11 @@ robolectric = "4.16"
 androidxWork = "2.11.2"
 
 # --- Jetpack Compose: the demo app, and `superplayer-tv`'s D-pad controls (ADR-0014 rule 12) ---
-# No other library module has a Compose dependency. The BOM pins every `androidx.compose.*`
+# Exactly two library modules may carry a Compose dependency: `superplayer-tv`, which does, and
+# `superplayer-diagnostics`, which will when #294 lands its debug HUD. No others. Both are admitted
+# for one reason — what they ship is a surface the *app* places in its own layout — and the ADRs
+# carry the argument rather than this comment: ADR-0014 rules 12 and 13, and ADR-0015 rule 11, which
+# also says why neither is split into an artifact of its own. The BOM pins every `androidx.compose.*`
 # artifact, so the individual Compose libraries below carry no version of their own and cannot
 # drift apart from each other.
 composeBom = "2026.08.00"

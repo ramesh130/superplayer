@@ -99,6 +99,18 @@ Six rules follow, and they are binding.
    public API. Core hands the built player to a collector it knows only through its own interface,
    and the collector registers — see the resolution below.
 
+   *Addendum (2026-09-18, #285).* The split gains a third reader and no second derivation.
+   [ADR-0015](0015-name-a-pathology-over-the-players-own-chain-and-redact-the-bundle-by-construction.md)
+   rules 1, 9 and 10 build Phase 9's trace bundle in `superplayer-diagnostics`, a later module, *over*
+   the `SessionTrace` this module already records: the bundle declares `superplayer-telemetry` and
+   adds kinds to that format rather than recording the session again, because a second recorder is
+   exactly the drift this rule puts one collector in one module to prevent. Rule 5's versioning rule
+   is applied unchanged to `SessionTrace.FORMAT_VERSION` — it moves when a line's meaning changes and
+   not when a kind is added — which is where `SessionTrace`'s own KDoc already sent it. The one new
+   constraint is a redaction rule rather than a measurement one: a device, codec and DRM capability
+   snapshot is admitted by ADR-0015 rule 10, the seventh rule beside `SessionTraceRecorder`'s six,
+   and #292 carries it in that KDoc.
+
 3. **Delivery is at-most-once and bounded, and the loss is counted.** The queue between collection
    and delivery has a stated bound; past it, events are dropped rather than queued; the drop count is
    reported to the sink as part of the session-end event. **Session end is the one event the bound

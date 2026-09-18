@@ -270,13 +270,15 @@ always shipped, and the unstated path *resolves through it* rather than through 
 `HttpEngineDataSource` over the platform's `android.net.http.HttpEngine`, which core builds itself and
 which costs no dependency and no licence question. It needs **API 34**, and below that `build()`
 **refuses**: the public `HttpStackUnsupportedException` names the stack and both levels. It is the
-repository's first typed refusal at construction and the first exception here that is not an
-`IOException` — an `UnsupportedOperationException`, because a configuration that cannot be honoured is
-not a load that went wrong, and because Kotlin emits no `throws` clause, so an `IOException` out of
-`build()` is one a Java consumer cannot name in a `catch` at all. It carries no `FailureClass` and
+repository's first typed refusal at construction, and an `UnsupportedOperationException` rather than
+core's other two shapes: the five that travel a transfer are `IOException`s because each is a load
+that went wrong, `SuperPlayerError` is a plain `Exception` because it is a session that ended, and
+this is a configuration that cannot be honoured before either exists. Kotlin emits no `throws`
+clause, so an `IOException` out of `build()` is one a Java consumer cannot name in a `catch` at all. It carries no `FailureClass` and
 reaches no classifier: there is no rung for "this device is API 33". A stack is now *asked* for its
 factory at the one resolution point rather than holding one, because only the platform's needs a
-`Context` and a level. **Nothing under `check` can play over `HttpEngine`** — the platform class has no
+`Context` and a level (Java reaches `default()` as `defaultStack()`, since `default` is a reserved
+word there). **Nothing under `check` can play over `HttpEngine`** — the platform class has no
 Robolectric shadow and looks for a Cronet implementation a JVM does not have — so `HttpStackSelectionTest`
 asserts the refusal below the floor and, above it, that the platform's own complaint is what stops the
 build, which is the proof the selection was not silently substituted; `docs/testing.md`'s *The platform's

@@ -40,13 +40,19 @@ package com.superplayer.core
  *
  * ## Why it is not an `IOException` and carries no `FailureClass`
  *
- * The five public exceptions core raised before this one are all `IOException`s, because all five
- * describe a *load* that went wrong. This one describes a *configuration* that cannot be honoured,
- * before any byte is asked for, and the difference is mechanical as well as conceptual: Kotlin emits
- * no `throws` clause, so an `IOException` raised out of `build()` is one a Java consumer cannot name
- * in a `catch` at all — javac rejects the clause as unreachable. `UnsupportedOperationException` is
- * the parent because that is what this is, in `java.lang`'s own words: the operation asked for is
- * not supported here.
+ * Core raised two shapes of public throwable before this one, and this is neither. The five that
+ * travel a transfer — [StaleLivePlaylistException], [LiveWindowTooShortException],
+ * [SecurityDowngradeRefusedException], [OfflineLicenceExpiredException] and [StorageFullException] —
+ * are `IOException`s, because each describes a *load* that went wrong. [SuperPlayerError] is a plain
+ * `Exception`, because it describes a *session* that ended (ADR-0011 rule 3). This describes a
+ * *configuration* that cannot be honoured, before any byte is asked for and before there is a player
+ * to end anything.
+ *
+ * The difference is mechanical as well as conceptual, and the mechanical half settles it: Kotlin
+ * emits no `throws` clause, so an `IOException` raised out of `build()` is one a Java consumer cannot
+ * name in a `catch` at all — javac rejects the clause as unreachable.
+ * `UnsupportedOperationException` is the parent because that is what this is, in `java.lang`'s own
+ * words: the operation asked for is not supported here.
  *
  * It is deliberately **not** classifiable. `superplayer-resilience`'s `ErrorClassifier` is total over
  * the failures a *player* surfaces, and every answer it gives is ultimately about which rung of the

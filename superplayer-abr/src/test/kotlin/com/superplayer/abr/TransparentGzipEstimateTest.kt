@@ -128,8 +128,8 @@ class TransparentGzipEstimateTest {
         val clock = FakeClock(/* initialTimeMs= */ 0, /* isAutoAdvancing= */ false)
         val meter = OracleBandwidthMeter(clock, EstimateMemory(), NetworkTransport.Wifi)
         val source: DataSource = HttpStack.of(transport)
-            // The chain asks a stack for its factory rather than holding one, because the platform's
-            // stack needs a Context and an API level (HttpStack.httpFactory, #313).
+            // Core's own tests reach this through a `testDataSource()` helper, which a test source
+            // set cannot publish to another module; the seam is the same one (#313).
             .httpFactory(ApplicationProvider.getApplicationContext())
             .createDataSource()
         source.addTransferListener(meter)

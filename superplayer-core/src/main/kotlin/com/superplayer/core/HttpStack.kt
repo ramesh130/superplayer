@@ -76,6 +76,11 @@ public abstract class HttpStack internal constructor() {
      * there since before `minSdk`. The chain asks this **before** it consults a test's transport
      * slot, so that whether a selection can be honoured stays a fact about the device and the
      * selection rather than one a harness could hide by replacing the network.
+     *
+     * The one way past it is `EngineConfiguration.mediaSourceFactory`, which replaces the whole
+     * loading path and therefore never reaches `TransferChain` at all. That is a test's seam and no
+     * consumer's, and a caller who has supplied their own loading path has supplied their own
+     * transport with it, so there is nothing left for a stack to say.
      */
     internal open fun refuseUnlessHonourable() {}
 
@@ -85,9 +90,15 @@ public abstract class HttpStack internal constructor() {
          * The Android release `android.net.http.HttpEngine` arrived in, and therefore the floor
          * [httpEngine] refuses below.
          *
-         * // ref: android.net.http.HttpEngine is `@FlaggedApi`-free public API added in Android 14
-         * (API 34, `UPSIDE_DOWN_CAKE`); there is no support-library backport of it, which is the
-         * whole reason this is a refusal rather than a compatibility shim.
+         * // ref: `android.net.http.HttpEngine` is platform public API added in Android 14
+         * (API 34, `UPSIDE_DOWN_CAKE`). There is no support-library backport of it — an app cannot
+         * carry it the way it carries an AndroidX class — which is why a device below the floor is
+         * refused rather than shimmed.
+         *
+         * The floor is stated as an API level and not as an SDK-extension version, although the
+         * class also reaches some Android 12 and 13 devices through the Connectivity mainline
+         * module: ADR-0016 rule 12 and #313 name API 34, so the narrower promise is the one kept,
+         * and the reason is argued where the refusal is raised.
          */
         public const val HTTP_ENGINE_MIN_API_LEVEL: Int = Build.VERSION_CODES.UPSIDE_DOWN_CAKE
 
@@ -99,8 +110,15 @@ public abstract class HttpStack internal constructor() {
          * and "which stack am I on" is a question a bug report has to be able to answer. A player
          * built with this is indistinguishable from one built with no stack at all — not merely
          * equivalent to it, the same object graph, because the unstated path resolves through here.
+         *
+         * **Java calls this `HttpStack.defaultStack()`.** `default` is a reserved word in Java, so
+         * `HttpStack.default()` does not parse there and a `@JvmStatic` with no alias would be a
+         * public method Java could not invoke at all. The Kotlin name is ADR-0016 rule 11's and is
+         * kept; the alias is the whole of the accommodation, and it is here rather than in a release
+         * note because the two names are one method and a reader of either has to find the other.
          */
         @JvmStatic
+        @JvmName("defaultStack")
         public fun default(): HttpStack = DefaultStack
 
         /**
@@ -118,11 +136,20 @@ public abstract class HttpStack internal constructor() {
          * substituting [default] (rule 12). An app that supports older devices selects it behind its
          * own `Build.VERSION.SDK_INT` check and passes [default] otherwise.
          *
-         * Hold **one** and pass it to every entry point that composes a chain — the player's
-         * builder, the pool's, the store's and the doctor's (rule 13). Each call here is a separate
-         * stack and therefore a separate `HttpEngine`, and the platform's engine is a process-sized
-         * object meant to be shared: an app that calls this four times gets four of them, with four
-         * sets of connections and four caches.
+         * Hold **one** and pass it to every entry point that composes a chain. Today that is
+         * `SuperPlayer.Builder` alone; rule 13 names four, and the pool's, the store's and the
+         * doctor's arrive with #314. Each call here is a separate stack and therefore a separate
+         * `HttpEngine`, and the platform's engine is a process-sized object meant to be shared: an
+         * app that calls this once per screen gets one of them per screen, with a set of connections
+         * and a cache each.
+         *
+         * Nothing shuts the engine down, deliberately. `HttpEngine.shutdown()` exists, and there is
+         * no honest moment to call it from here: an [HttpStack] has no lifetime of its own — it is a
+         * value a consumer holds and hands to however many builders they like — and core would have
+         * to reference-count the chains built from it to know when the last one had finished, which
+         * it does for no other stack and which a consumer's own [HttpTransport] is likewise trusted
+         * to outlive. So the engine lives for the process, which is what the platform's own object
+         * is shaped for, and an app that wants it gone releases the process.
          */
         @JvmStatic
         public fun httpEngine(): HttpStack = HttpEngineStack()
@@ -206,6 +233,11 @@ private class HttpEngineStack : HttpStack() {
     // as the floor, and widening it is a change to what a consumer is promised rather than a lint
     // accommodation. It would also make the refusal harder to read, since "your device is API 33"
     // explains itself and "your Connectivity module is older than extension 7" does not.
+    // Synchronized because the four entry points rule 13 names are four `build()` calls a consumer
+    // may make from wherever they like, and two racing here would each build an engine while only
+    // one of them was kept — a process-sized object and its connections leaked for the life of the
+    // app. It is contended once per stack at most.
+    @Synchronized
     @SuppressLint("NewApi")
     @RequiresApi(HTTP_ENGINE_MIN_API_LEVEL)
     override fun httpFactory(context: Context): DataSource.Factory {

@@ -81,8 +81,11 @@ class DiagnosticsPayNothingTest {
 
         doctor.examine(requestFor(content))
 
-        assertWithMessage("and asking one fetches exactly the manifest it was asked about")
-            .that(harness.networkRequests(environment)).hasSize(1)
+        // The multivariant playlist it was asked about and the media playlist that one names, and no
+        // segment: what a doctor costs is manifests, and it costs them only once it is asked (rule 7).
+        assertWithMessage("and asking one fetches the playlists of the content it was asked about")
+            .that(harness.networkRequests(environment).map { it.uri })
+            .containsExactly(content.sourceUri, content.sourceUri.replace("master.m3u8", "media.m3u8"))
     }
 
     @Test

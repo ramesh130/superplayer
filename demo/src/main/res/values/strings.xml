@@ -45,6 +45,11 @@
     <!-- The downloads screen. Each row says what holds its download, because "stopped" alone does not tell a
          viewer whether to find Wi-Fi, a charger or some space. -->
     <string name="screen_downloads">Downloads</string>
+    <string name="screen_hud">HUD</string>
+    <!-- Shown in place of the overlay where the build is not debuggable, so a missing HUD reads as a
+         guard rather than as a defect. -->
+    <string name="hud_release_build">The debug HUD shows nothing: this build is not debuggable.</string>
+    <string name="hud_action_play_pause">Play / pause</string>
     <string name="downloads_channel_name">Downloads</string>
     <string name="downloads_row_state">%1$s \u00b7 %2$d MB</string>
     <string name="downloads_state_none">Not downloaded</string>

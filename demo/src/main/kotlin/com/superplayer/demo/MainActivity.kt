@@ -421,6 +421,8 @@ private fun DemoApp(launch: DemoLaunch) {
                     // Its own player too, on the downloads' cache: the service's player has none, and a
                     // download played on it would be fetched again.
                     DemoScreen.DOWNLOADS -> DownloadsScreen(modifier = Modifier.weight(1f))
+
+                    DemoScreen.HUD -> DebugHudScreen(modifier = Modifier.weight(1f))
                 }
             }
         }
@@ -435,7 +437,9 @@ private fun DemoApp(launch: DemoLaunch) {
  * different kinds of choice, which they are not: both are one value the screen remembers.
  */
 @Composable
-private fun <T> OptionPicker(
+// `internal` rather than private to this file: [DebugHudScreen] picks a stream with the same control,
+// and two pickers that looked alike and behaved differently is exactly what one demo should not show.
+internal fun <T> OptionPicker(
     options: List<T>,
     selected: T,
     labelRes: (T) -> Int,
@@ -615,16 +619,19 @@ private data class Status(val stream: DemoStream, val startedAtMs: Long)
 /**
  * Which screen the demo is showing.
  *
- * Three, because SuperPlayer makes different kinds of promise and they are not visible on the same
+ * Four, because SuperPlayer makes different kinds of promise and they are not visible on the same
  * screen. One player played correctly — profiles, resume, background, a notification — is
  * [DemoScreen.PLAYER]. How many players may exist at once is [DemoScreen.FEED], and the only way to
  * see that is to scroll past the number. Content that plays with no network at all is
- * [DemoScreen.DOWNLOADS].
+ * [DemoScreen.DOWNLOADS]. And what a developer can *see* of a player while it plays is
+ * [DemoScreen.HUD] — the one screen whose subject is the library's own observability rather than its
+ * playback, and the one that shows nothing at all in a release build.
  */
 private enum class DemoScreen(val labelRes: Int) {
     PLAYER(R.string.screen_player),
     FEED(R.string.screen_feed),
     DOWNLOADS(R.string.screen_downloads),
+    HUD(R.string.screen_hud),
 }
 
 /**

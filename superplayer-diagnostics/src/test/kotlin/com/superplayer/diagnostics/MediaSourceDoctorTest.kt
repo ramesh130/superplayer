@@ -228,15 +228,25 @@ class MediaSourceDoctorTest {
     }
 
     @Test
-    fun thePublicApiNamesNoMedia3TypeAtAll() {
+    fun thePublicApiNamesNoMedia3TypeButTheHudsOneAllowedPlayer() {
         // ADR-0015 rule 2, which is stronger than ADR-0001 rule 2 and is therefore asserted rather than left
         // to `verifyNoUnstableMedia3InPublicApi`: that check passes a *stable* Media3 type, and the claim
-        // here is that a consumer of the doctor names none of them. The one exception the rule allows is the
-        // HUD's composables (#294), which take a `Player`; this reading moves when that arrives, and moving
-        // it is the point at which someone has to read the rule again.
+        // here is that a consumer of this module names none of them — with exactly one exception the rule
+        // names, the HUD's composables, which take a `Player` (#294).
+        //
+        // So the reading is the exception rather than the absence, and it is bounded twice over: the only
+        // Media3 type in the surface is `Player`, and the only declarations that name it are the HUD's. A
+        // second type, or a `Player` on the doctor or the bundle, fails here — which is the point at which
+        // someone has to read rule 2 again rather than widen a `doesNotContain`.
         val surface = File(API_SURFACE).readText()
         assertWithMessage("$API_SURFACE, as `updateApiSurface` wrote it").that(surface).isNotEmpty()
-        assertWithMessage(API_SURFACE).that(surface).doesNotContain("androidx/media3")
+
+        val media3Types = MEDIA3_TYPE.findAll(surface).map { it.value }.toSet()
+        assertWithMessage(API_SURFACE).that(media3Types).containsExactly("androidx/media3/common/Player")
+
+        val naming = surface.lines().filter { it.contains("androidx/media3") }
+        assertWithMessage("every line naming a Media3 type is the HUD's").that(naming).isNotEmpty()
+        assertWithMessage(API_SURFACE).that(naming.filterNot { it.contains("fun DebugHud (") }).isEmpty()
     }
 
     @Test
@@ -287,6 +297,8 @@ class MediaSourceDoctorTest {
     }
 
     private companion object {
+        /** Every Media3 type named anywhere in the tracked surface, by its JVM name. */
+        val MEDIA3_TYPE = Regex("""androidx/media3/[A-Za-z0-9/$]+""")
 
         /** The identity a healthy stream is asked about under: a content id, never a URL. */
         const val HEALTHY_CONTENT_ID = "film/healthy"

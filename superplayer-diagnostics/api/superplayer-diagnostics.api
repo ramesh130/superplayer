@@ -6,7 +6,19 @@ public final class com/superplayer/diagnostics/ChainLayer : java/lang/Enum {
 	public static fun values ()[Lcom/superplayer/diagnostics/ChainLayer;
 }
 
+public final class com/superplayer/diagnostics/DebugHudKt {
+	public static final fun DebugHud (Landroidx/media3/common/Player;Lcom/superplayer/diagnostics/DebugHudTelemetry;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
+	public static final fun isDebugHudAvailable (Landroid/content/Context;)Z
+}
+
+public final class com/superplayer/diagnostics/DebugHudTelemetry : com/superplayer/core/TelemetrySink {
+	public static final field $stable I
+	public fun <init> ()V
+	public fun onEvent (Lcom/superplayer/core/TelemetryEvent;)V
+}
+
 public final class com/superplayer/diagnostics/DiagnosticReport {
+	public static final field $stable I
 	public final fun getChain ()Ljava/util/Set;
 	public final fun getClassification ()Lcom/superplayer/core/SuperPlayerError;
 	public final fun getContentId ()Ljava/lang/String;
@@ -15,6 +27,7 @@ public final class com/superplayer/diagnostics/DiagnosticReport {
 }
 
 public final class com/superplayer/diagnostics/Finding {
+	public static final field $stable I
 	public final fun getCause ()Ljava/lang/String;
 	public final fun getMagnitude ()Ljava/lang/String;
 	public final fun getPathology ()Lcom/superplayer/diagnostics/Pathology;
@@ -33,6 +46,7 @@ public final class com/superplayer/diagnostics/FindingSeverity : java/lang/Enum 
 }
 
 public final class com/superplayer/diagnostics/MediaSourceDoctor {
+	public static final field $stable I
 	public synthetic fun <init> (Landroid/content/Context;Lcom/superplayer/core/ContentCache;Lcom/superplayer/core/PlaybackResilience;Lcom/superplayer/core/DiagnosticEnvironment;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun examine (Lcom/superplayer/core/MediaRequest;)Lcom/superplayer/diagnostics/DiagnosticReport;
 	public final fun examine (Lcom/superplayer/core/MediaRequest;Lcom/superplayer/core/SuperPlayerError;)Lcom/superplayer/diagnostics/DiagnosticReport;
@@ -40,6 +54,7 @@ public final class com/superplayer/diagnostics/MediaSourceDoctor {
 }
 
 public final class com/superplayer/diagnostics/MediaSourceDoctor$Builder {
+	public static final field $stable I
 	public fun <init> (Landroid/content/Context;)V
 	public final fun build ()Lcom/superplayer/diagnostics/MediaSourceDoctor;
 	public final fun setCache (Lcom/superplayer/core/ContentCache;)Lcom/superplayer/diagnostics/MediaSourceDoctor$Builder;
@@ -76,6 +91,7 @@ public final class com/superplayer/diagnostics/Pathology : java/lang/Enum {
 }
 
 public final class com/superplayer/diagnostics/SessionBundle {
+	public static final field $stable I
 	public static final field Companion Lcom/superplayer/diagnostics/SessionBundle$Companion;
 	public static final field FORMAT_HEADER Ljava/lang/String;
 	public static final field FORMAT_VERSION I
@@ -86,6 +102,7 @@ public final class com/superplayer/diagnostics/SessionBundle {
 }
 
 public final class com/superplayer/diagnostics/SessionBundle$Builder {
+	public static final field $stable I
 	public fun <init> (Landroid/content/Context;)V
 	public final fun build ()Lcom/superplayer/diagnostics/SessionBundle;
 	public final fun setPlayer (Lcom/superplayer/core/SuperPlayer;)Lcom/superplayer/diagnostics/SessionBundle$Builder;

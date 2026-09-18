@@ -341,6 +341,29 @@ public sealed class TelemetryEvent {
         public val bufferedDurationMs: Long,
         /** Whether the position was advancing at the sample instant. */
         public val playing: Boolean,
+        /**
+         * The throughput estimate the engine's bandwidth meter last reported, in bits per second,
+         * or null where it has reported none yet.
+         *
+         * Carried beside [videoBitrateBps] deliberately, and that adjacency is the whole reason the
+         * field exists (`#294`): a stall with a healthy estimate and a low rung is a different
+         * defect from a stall with a collapsed estimate — the first is selection or a ceiling, the
+         * second is the link — and the two are indistinguishable in a vocabulary that reports only
+         * what was selected. Two numbers in one sample is what makes the comparison a reading rather
+         * than a join across events measured at different instants.
+         *
+         * The estimate rather than a sample: what arrives here is the meter's smoothed answer, which
+         * is also the number selection acts on, so a reader comparing it against the rung sees the
+         * input the engine had. A transfer's own rate — the unsmoothed quantity — is
+         * `superplayer-telemetry`'s `SessionTrace`, and its KDoc says why the two are different
+         * artifacts.
+         *
+         * Null on a player whose meter has reported nothing: before the first transfer finishes, and
+         * on a session of content already wholly cached. A meter's own reporting thresholds are the
+         * engine's, and this field reports what it was told rather than inventing a reading between
+         * reports.
+         */
+        public val throughputEstimateBps: Int? = null,
     ) : TelemetryEvent()
 
     /**

@@ -218,6 +218,18 @@ internal class StockTelemetry(private val sink: (TelemetryEvent) -> Unit) {
             )
         }
 
+        // Mirrors `QoeCollector.onBandwidthEstimate`: the meter's smoothed estimate, kept for the
+        // next periodic sample to carry beside the rung that was selected (`#294`).
+        override fun onBandwidthEstimate(
+            eventTime: AnalyticsListener.EventTime,
+            totalLoadTimeMs: Int,
+            totalBytesLoaded: Long,
+            bitrateEstimate: Long,
+        ) {
+            val session = openSession ?: return
+            session.throughputEstimateBps = bitrateEstimate.coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
+        }
+
         override fun onDroppedVideoFrames(
             eventTime: AnalyticsListener.EventTime,
             droppedFrames: Int,
@@ -443,6 +455,7 @@ internal class StockTelemetry(private val sink: (TelemetryEvent) -> Unit) {
                 bufferedDurationMs = (attached.bufferedPosition - attached.currentPosition)
                     .coerceAtLeast(0),
                 playing = attached.isPlaying,
+                throughputEstimateBps = session.throughputEstimateBps,
             ),
         )
         // Live content only, decided by what the timeline says rather than by any configuration: a
@@ -483,6 +496,7 @@ internal class StockTelemetry(private val sink: (TelemetryEvent) -> Unit) {
     ) {
         var firstFrameRenderedAtMs: Long? = null
         var videoBitrateBps: Int? = null
+        var throughputEstimateBps: Int? = null
         var rebufferStartedAtMs: Long? = null
         var rebufferSeekInduced: Boolean = false
         var seekRequestedAtMs: Long? = null

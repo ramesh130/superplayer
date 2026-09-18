@@ -18,6 +18,7 @@ public final class com/superplayer/testmedia/HostileManifests {
 	public final fun graded ()Ljava/util/List;
 	public final fun hlsAudioGroupCodecMismatch ()Lcom/superplayer/testmedia/HostileStream;
 	public final fun hlsCachedLivePlaylist ()Lcom/superplayer/testmedia/HostileStream;
+	public final fun hlsCorsRefusesCredentials ()Lcom/superplayer/testmedia/HostileStream;
 	public final fun hlsDanglingAudioGroup ()Lcom/superplayer/testmedia/HostileStream;
 	public final fun hlsDiscontinuityWithoutTimeline ()Lcom/superplayer/testmedia/HostileStream;
 	public final fun hlsInconsistentSegmentDurations (Lcom/superplayer/testmedia/HostileStream$Severity;)Lcom/superplayer/testmedia/HostileStream;
@@ -27,6 +28,9 @@ public final class com/superplayer/testmedia/HostileManifests {
 	public final fun hlsMissingCodecs ()Lcom/superplayer/testmedia/HostileStream;
 	public final fun hlsOverstatedBitrate (Lcom/superplayer/testmedia/HostileStream$Severity;)Lcom/superplayer/testmedia/HostileStream;
 	public static synthetic fun hlsOverstatedBitrate$default (Lcom/superplayer/testmedia/HostileManifests;Lcom/superplayer/testmedia/HostileStream$Severity;ILjava/lang/Object;)Lcom/superplayer/testmedia/HostileStream;
+	public final fun hlsTokenExpiringInWindow (Lcom/superplayer/testmedia/HostileStream$Severity;)Lcom/superplayer/testmedia/HostileStream;
+	public static synthetic fun hlsTokenExpiringInWindow$default (Lcom/superplayer/testmedia/HostileManifests;Lcom/superplayer/testmedia/HostileStream$Severity;ILjava/lang/Object;)Lcom/superplayer/testmedia/HostileStream;
+	public final fun hlsTokenScopedToManifest ()Lcom/superplayer/testmedia/HostileStream;
 }
 
 public final class com/superplayer/testmedia/HostileStream {

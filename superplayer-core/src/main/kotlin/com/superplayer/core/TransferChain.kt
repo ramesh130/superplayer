@@ -457,6 +457,19 @@ internal object TransferChain {
          */
         fun forContent(contentId: String): DataSource.Factory =
             composed.stampedWith(ContentIdentity(contentId), LoadKind.MANIFEST)
+
+        /**
+         * This chain with every request stamped as media of [contentId].
+         *
+         * The one thing a doctor opens that is not a manifest: the headers-only probe of a single segment
+         * that ADR-0015 rule 7's #289 addendum admits, which reads no media and exists so that a
+         * `Cache-Control` disagreement can name *which* of the two parties is wrong. It is stamped for what
+         * it is, because the stamp is what tells a refused segment from a refused manifest everywhere else
+         * in this library, and a probe wearing a manifest's stamp would be the one request in the chain
+         * lying about itself.
+         */
+        fun forSegmentsOf(contentId: String): DataSource.Factory =
+            composed.stampedWith(ContentIdentity(contentId), LoadKind.MEDIA)
     }
 
     /**

@@ -114,6 +114,11 @@ class HostileManifestCorpusTest {
             "hls-dangling-audio-group",
             "hls-discontinuity-without-timeline",
             "hls-cached-live-playlist",
+            // The two delivery pathologies that are present or absent: a segment carries a credential or
+            // it does not, and a CORS configuration refuses a credentialed request or it does not. Their
+            // entries say so. The third, `hls-token-expiring-in-window`, has a lifetime and is graded.
+            "hls-token-scoped-to-manifest",
+            "hls-cors-refuses-credentials",
             "dash-missing-codecs",
             "dash-missing-time-shift-buffer-depth",
         )
@@ -173,11 +178,11 @@ class HostileManifestCorpusTest {
     }
 
     @Test
-    fun theCacheControlPathologyIsCarriedAsDeclaredHeaders() {
-        // The one entry whose defect is not in the bytes: `FakeDataSource` reports no response
-        // headers, so the corpus declares them and the harness serves them on top. Asserted rather
-        // than left to a reader, because the alternative to this test is a pathology that looks
-        // covered and exercises nothing.
+    fun theDeliveryPathologiesAreCarriedAsDeclaredHeaders() {
+        // The entries whose defect is not in the bytes: `FakeDataSource` reports no response headers,
+        // so the corpus declares them and the harness serves them on top. Asserted rather than left
+        // to a reader, because the alternative to this test is a pathology that looks covered and
+        // exercises nothing.
         val stream = HostileManifests.hlsCachedLivePlaylist()
         val headers = stream.declaredResponseHeaders
 
@@ -187,6 +192,30 @@ class HostileManifestCorpusTest {
         assertThat(playlist.value["Cache-Control"]).isEqualTo("public, max-age=600")
         assertThat(segments).hasSize(HostileManifests.SEGMENT_COUNT)
         segments.forEach { assertThat(it.value["Cache-Control"]).isEqualTo("no-store") }
+
+        // The CORS entry declares its pair on every resource it serves, because a CORS configuration is
+        // a property of the origin rather than of one path (#289).
+        val cors = HostileManifests.hlsCorsRefusesCredentials()
+        assertThat(cors.declaredResponseHeaders).hasSize(cors.resources().size)
+        cors.declaredResponseHeaders.values.forEach { declared ->
+            assertThat(declared["Access-Control-Allow-Origin"]).isEqualTo("*")
+            assertThat(declared["Access-Control-Allow-Credentials"]).isEqualTo("true")
+        }
+    }
+
+    @Test
+    fun theTokenPathologiesAreCarriedInTheUrisTheyArePublishedAt() {
+        // The other shape a delivery defect takes, and the one no header can carry: a signed URL's
+        // credential travels in its query component, so what the corpus changes is where the stream is
+        // published rather than what it says. Asserted for the same reason as the headers above.
+        val scoped = HostileManifests.hlsTokenScopedToManifest()
+        assertWithMessage("scoped to the manifest: nothing below it is signed")
+            .that(scoped.resources().keys.filter { it.contains(SIGNED) })
+            .containsExactly(scoped.sourceUri)
+
+        // The lifetime entry signs everything, so that only its expiry is wrong.
+        val expiring = HostileManifests.hlsTokenExpiringInWindow()
+        assertThat(expiring.resources().keys.filterNot { it.contains(SIGNED) }).isEmpty()
     }
 
     @Test
@@ -229,6 +258,9 @@ class HostileManifestCorpusTest {
          */
         const val OBSERVATION_MS = HostileObservation.OBSERVATION_MS
 
+        /** What a signed URI carries in its query, as the two token entries publish one. */
+        const val SIGNED = "expires="
+
         /**
          * What each entry does today, as of the change that added it. Every id in
          * [HostileManifests.all] appears exactly once, and a change to any value is a behaviour
@@ -269,6 +301,15 @@ class HostileManifestCorpusTest {
             // past a reload would find the layer's history expired and Media3's not. This row once read `FAILS` on loaded runners, on a harness that
             // counted open transfers only (issue #105).
             "hls-cached-live-playlist" to Outcome.FAILS_TYPED,
+            // The three delivery entries (#289) play through here, and that is the record rather than a
+            // disappointment. A `FakeDataSet` serves every URI it is given and cannot refuse an unsigned
+            // one, and no native player reads a CORS header at all — so what these entries carry is the
+            // *shape* a doctor reads, and `MediaSourceDoctor` is where each is named
+            // (`DeliveryPathologyTest`). A row that moved would mean a player had started enforcing
+            // something, which is not what any of the three is about.
+            "hls-token-scoped-to-manifest" to Outcome.PLAYS_TO_END,
+            "hls-token-expiring-in-window" to Outcome.PLAYS_TO_END,
+            "hls-cors-refuses-credentials" to Outcome.PLAYS_TO_END,
             "dash-ladder-gap" to Outcome.PLAYS_TO_END,
             "dash-overstated-bitrate" to Outcome.PLAYS_TO_END,
             "dash-missing-codecs" to Outcome.PLAYS_TO_END,
@@ -308,6 +349,12 @@ class HostileManifestCorpusTest {
             "hls-inconsistent-segment-durations" to graded(Outcome.PLAYS_TO_END, Outcome.PLAYS_TO_END, Outcome.PLAYS_TO_END),
             "hls-discontinuity-without-timeline" to binary(Outcome.PLAYS_TO_END),
             "hls-cached-live-playlist" to binary(Outcome.FAILS_TYPED),
+            // Flat across every level for [RECORDED]'s reason: a token's lifetime is a fact about a CDN
+            // that enforces it, and nothing here enforces one, so the severity a doctor grades on is
+            // invisible to a player. A flat row is the honest record of that.
+            "hls-token-scoped-to-manifest" to binary(Outcome.PLAYS_TO_END),
+            "hls-token-expiring-in-window" to graded(Outcome.PLAYS_TO_END, Outcome.PLAYS_TO_END, Outcome.PLAYS_TO_END),
+            "hls-cors-refuses-credentials" to binary(Outcome.PLAYS_TO_END),
             "dash-ladder-gap" to graded(Outcome.PLAYS_TO_END, Outcome.PLAYS_TO_END, Outcome.PLAYS_TO_END),
             "dash-overstated-bitrate" to graded(Outcome.PLAYS_TO_END, Outcome.PLAYS_TO_END, Outcome.PLAYS_TO_END),
             "dash-missing-codecs" to binary(Outcome.PLAYS_TO_END),

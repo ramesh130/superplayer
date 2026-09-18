@@ -145,7 +145,7 @@ internal class LivePlaylistRevalidation(private val clock: Clock) {
 
         val cacheControl = headers.header(CACHE_CONTROL)
         tracked.cacheEvidence = tracked.cacheEvidence ||
-            outlivesTheUpdateBound(cacheControl, playlist.targetDurationMs) ||
+            cachedPastTheUpdateBoundSeconds(cacheControl, playlist.targetDurationMs) != null ||
             (bypassedCaches && (headers.header(AGE)?.trim()?.toLongOrNull() ?: 0L) > 0L)
         if (bypassedCaches) tracked.unansweredBypasses++
 
@@ -435,19 +435,30 @@ internal class LivePlaylistRevalidation(private val clock: Clock) {
         private const val DELIVERY_DIRECTIVE_PREFIX = "_HLS_"
 
         /**
-         * Whether [cacheControl] lets a shared cache keep a playlist past the point it is late.
+         * How long a shared cache may keep a playlist that is already late, in seconds — or null
+         * where [cacheControl] keeps it no longer than the update bound allows.
          *
          * spec: RFC 9111 §5.2.2.10 — `s-maxage` overrides `max-age` for a shared cache, which is
          * what a CDN is; §5.2.2.4 and §5.2.2.5 — `no-cache` and `no-store` mean nothing is served
          * from a store unvalidated, whatever the lifetime says.
+         *
+         * **This is the judgement itself, and it is ADR-0015 rule 3's fourth seam** (amended there by
+         * #289): `superplayer-diagnostics` reports the same defect *before* a player exists, from the
+         * headers a manifest arrived with, and rule 6 makes a copy of the comparison a bug. What is
+         * being compared is not a constant but the served lifetime against
+         * [UPDATE_BOUND_TARGET_DURATIONS] target durations — RFC 8216 §6.2.1's bound on how long a
+         * server may go without publishing new media — so a second definition is one nothing would
+         * keep in step. The lifetime comes back rather than a boolean because a doctor prints the
+         * number it judged on, and core's own caller below only asks whether there is one.
          */
-        private fun outlivesTheUpdateBound(cacheControl: String?, targetDurationMs: Long): Boolean {
-            val directives = cacheControl?.split(',')?.map { it.trim().lowercase() } ?: return false
-            if (directives.any { it == "no-cache" || it == "no-store" }) return false
+        internal fun cachedPastTheUpdateBoundSeconds(cacheControl: String?, targetDurationMs: Long): Long? {
+            val directives = cacheControl?.split(',')?.map { it.trim().lowercase() } ?: return null
+            if (directives.any { it == "no-cache" || it == "no-store" }) return null
             fun seconds(name: String) =
                 directives.firstOrNull { it.startsWith("$name=") }?.substringAfter('=')?.trim('"')?.toLongOrNull()
-            val lifetimeSeconds = seconds("s-maxage") ?: seconds("max-age") ?: return false
-            return lifetimeSeconds * MILLIS_PER_SECOND > UPDATE_BOUND_TARGET_DURATIONS * targetDurationMs
+            val lifetimeSeconds = seconds("s-maxage") ?: seconds("max-age") ?: return null
+            return lifetimeSeconds
+                .takeIf { it * MILLIS_PER_SECOND > UPDATE_BOUND_TARGET_DURATIONS * targetDurationMs }
         }
 
         /** A header by name, case-insensitively as HTTP names are, with its values joined. */

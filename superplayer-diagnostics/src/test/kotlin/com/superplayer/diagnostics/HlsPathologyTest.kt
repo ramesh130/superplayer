@@ -158,7 +158,15 @@ class HlsPathologyTest {
         val benign = HostileManifests.graded()
             .filter { it.protocol == HostileStream.Protocol.HLS && it.severity == Severity.BENIGN }
         assertWithMessage("the corpus's graded HLS entries").that(benign.map { it.id })
-            .containsExactly("hls-ladder-gap", "hls-overstated-bitrate", "hls-inconsistent-segment-durations")
+            .containsExactly(
+                "hls-ladder-gap",
+                "hls-overstated-bitrate",
+                "hls-inconsistent-segment-durations",
+                // A delivery pathology (#289), graded like any other and swept here like any other: what
+                // makes this list worth pinning is that it is every graded HLS entry, whatever a doctor
+                // reads to judge it. `DeliveryPathologyTest` is where its own readings are asserted.
+                "hls-token-expiring-in-window",
+            )
 
         benign.forEach { entry ->
             assertWithMessage("$entry — ${entry.magnitude}").that(findings(entry)).isEmpty()

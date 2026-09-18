@@ -79,7 +79,20 @@ import kotlin.math.ceil
  *
  * Each entry is built on demand because the live DASH manifests are anchored to the wall clock at
  * the moment they are generated: an `availabilityStartTime` a known distance from the stream's real
- * start has to be measured from *now*, not from whenever this class happened to load.
+ * start has to be measured from *now*, not from whenever this class happened to load. Since #289 the
+ * signed-URL entries are anchored the same way and for the same reason: a token that expires a known
+ * distance into the content has to be minted now.
+ *
+ * ## Where a defect is not in the document
+ *
+ * Three entries are *delivery* pathologies: a live playlist served cacheable, a token scoped to the
+ * manifest and not to the segments, and a CORS configuration that refuses a credentialed request.
+ * Their documents are the good stream's, and what is wrong is the response headers they arrive with
+ * ([HostileStream.declaredResponseHeaders], served by testkit's harness) or the URI they are published
+ * at. They are HLS only, and deliberately: a defect of a transfer is protocol-independent — nothing
+ * about a token or an allowed origin is read from a playlist or an MPD — so a DASH twin would be a
+ * second copy of one fact with no second reading to make of it, which is the opposite of the reason
+ * the ladder and codec defects are generated for both.
  */
 public object HostileManifests {
 
@@ -122,6 +135,9 @@ public object HostileManifests {
         Severity.entries.map { hlsInconsistentSegmentDurations(it) },
         listOf(hlsDiscontinuityWithoutTimeline()),
         listOf(hlsCachedLivePlaylist()),
+        listOf(hlsTokenScopedToManifest()),
+        Severity.entries.map { hlsTokenExpiringInWindow(it) },
+        listOf(hlsCorsRefusesCredentials()),
         Severity.entries.map { dashLadderGap(it) },
         Severity.entries.map { dashOverstatedBitrate(it) },
         listOf(dashMissingCodecs()),
@@ -375,6 +391,104 @@ public object HostileManifests {
 
                 else -> emptyMap()
             }
+        },
+    )
+
+    // ref: a signed URL is a CDN convention rather than a standard, and this corpus states it from
+    // first principles rather than from any vendor's scheme, which is what `CONTRIBUTING.md`'s
+    // clean-room rules ask. What every such scheme has in common, and all this entry uses, is RFC 3986
+    // §3.4: the credential travels in the *query component* of the URI, so it belongs to that one URI
+    // and to no other — and RFC 3986 §5.3, which is why it does not travel to the segments: a relative
+    // reference in a playlist is resolved against the base URI's *path*, and the query is not part of
+    // it. Sign the entry URL, name the segments relatively, and every segment is addressed without a
+    // credential. That the CDN then refuses them is RFC 9110 §15.5.4 (403).
+    //
+    // A legal document, served legally: the playlist says nothing about credentials and every URI in
+    // it resolves. What is wrong is the *delivery* — the scope of the token that was minted — which is
+    // why this entry's bytes are the good stream's untouched and its defect is in the address it is
+    // published at. The segments here are served to anyone who asks, because a `FakeDataSet` cannot
+    // refuse one; what the entry carries is the shape a doctor reads, and the refusal it would meet in
+    // the field is what its `cause` names.
+    //
+    // Single severity, although a token has a lifetime, because *scope* has none: the segments carry
+    // a credential or they do not. The lifetime is the next entry's, graded there.
+    public fun hlsTokenScopedToManifest(): HostileStream = hlsStream(
+        id = "hls-token-scoped-to-manifest",
+        validity = HostileStream.Validity.VALID_BUT_HOSTILE,
+        spec = "RFC 3986 §3.4, §5.3; RFC 9110 §15.5.4",
+        cause = "A signing step applied to the URL the app was handed and to nothing below it — " +
+            "the manifest is signed, its segments are addressed relatively and reach the CDN with " +
+            "no credential at all, so the stream opens and then serves nothing.",
+        multivariant = hlsMultivariantPlaylist(listOf(HlsVariant())),
+        sourceName = MULTIVARIANT_PLAYLIST_NAME + signature(LONG_TOKEN_LIFETIME_SECONDS),
+    )
+
+    // ref: the same convention as [hlsTokenScopedToManifest], and the other half of it. A token states
+    // its own expiry in the clear — that is what lets an intermediary refuse an expired request without
+    // a round trip to the signer — and RFC 3986 §3.4 is again the whole of the mechanism: the expiry is
+    // a query parameter, here `expires`, in seconds since the epoch. Every URI of this stream carries
+    // the same token, so its scope is right and only its *lifetime* is wrong.
+    //
+    // The window a token has to cover is not the content's duration but a viewing of it, and this
+    // corpus grades against the content because that is the only number the stream itself states. The
+    // levels are therefore multiples of the content's own duration, which is the derivation
+    // `CONTRIBUTING.md`'s clean-room rules accept where no document speaks.
+    public fun hlsTokenExpiringInWindow(severity: Severity = Severity.SEVERE): HostileStream {
+        val lifetimeSeconds = tokenLifetimeSeconds(severity)
+        val token = signature(lifetimeSeconds)
+        return hlsStream(
+            id = "hls-token-expiring-in-window",
+            validity = HostileStream.Validity.VALID_BUT_HOSTILE,
+            spec = "RFC 3986 §3.4; RFC 9110 §15.5.4",
+            cause = "A signing service whose lifetime was set from how long a request takes rather " +
+                "than from how long a viewing lasts — every URL is signed, and the signature dies " +
+                "part-way through the content, so playback stops where the token ran out.",
+            severity = severity,
+            magnitude = tokenLifetimeMagnitude(lifetimeSeconds),
+            multivariant = hlsMultivariantPlaylist(
+                listOf(HlsVariant(playlist = SyntheticHlsStream.MEDIA_PLAYLIST_NAME + token)),
+            ),
+            media = hlsMediaPlaylist(
+                durationsSeconds = goodHlsDurations(),
+                segmentName = { index -> SyntheticHlsStream.segmentName(index) + token },
+            ),
+            segments = goodHlsSegments().mapKeys { (name, _) -> name + token },
+            sourceName = MULTIVARIANT_PLAYLIST_NAME + token,
+            mediaName = SyntheticHlsStream.MEDIA_PLAYLIST_NAME + token,
+        )
+    }
+
+    // spec: WHATWG Fetch §3.3.5 (CORS protocol and credentials) — a response whose
+    // `Access-Control-Allow-Origin` is `*` fails the CORS check of §4.10 whenever the request's
+    // credentials mode is "include", whatever `Access-Control-Allow-Credentials` says. The two headers
+    // together are therefore a refusal *by construction*: they are what an origin emits when it means
+    // to allow everyone, and they are the one CORS configuration that can be called wrong without
+    // knowing which origin is asking.
+    //
+    // Nothing about the document is wrong, and on a native player nothing happens at all — which is
+    // the point of carrying it here rather than in a web test. One CDN configuration serves an app and
+    // a browser alike, and the response that plays on the phone is the response that refuses the web
+    // player, silently, for as long as nobody runs one.
+    //
+    // As with [hlsCachedLivePlaylist], the defect is not in the bytes: the headers are declared on the
+    // stream and served by testkit's harness on top of them, because `FakeDataSource` reports none.
+    //
+    // Single severity: a CORS configuration refuses the request or it does not. A milder form would
+    // have to be a different configuration rather than a smaller number.
+    public fun hlsCorsRefusesCredentials(): HostileStream = hlsStream(
+        id = "hls-cors-refuses-credentials",
+        validity = HostileStream.Validity.VALID_BUT_HOSTILE,
+        spec = "WHATWG Fetch §3.3.5, §4.10",
+        cause = "An origin configured to \"allow everyone\" — a wildcard allowed origin emitted " +
+            "beside allowed credentials — which is the one pair the CORS protocol refuses outright, " +
+            "so every credentialed player of this stream is turned away and the native app never " +
+            "notices.",
+        multivariant = hlsMultivariantPlaylist(listOf(HlsVariant())),
+        declaredResponseHeaders = {
+            mapOf(
+                "Access-Control-Allow-Origin" to "*",
+                "Access-Control-Allow-Credentials" to "true",
+            )
         },
     )
 
@@ -732,6 +846,52 @@ public object HostileManifests {
     }
 
     /**
+     * How long [hlsTokenExpiringInWindow]'s token lives, in seconds from the moment the entry is built.
+     *
+     * Graded in multiples of the content's own duration, because that is the only window the stream
+     * itself states and a threshold derived from the content is one that holds for content of any
+     * length. No document speaks to it — a signed URL's lifetime is a CDN's setting — so each level is
+     * argued from first principles, which is what `CONTRIBUTING.md`'s clean-room rules accept.
+     */
+    private fun tokenLifetimeSeconds(severity: Severity): Long = when (severity) {
+        // A day, which is what a token minted for a catalogue page and reused for playback looks like,
+        // and what most signing services default to. It covers the content many times over: a doctor
+        // that flags this flags a correctly signed URL.
+        Severity.BENIGN -> LONG_TOKEN_LIFETIME_SECONDS
+
+        // One and a half viewings. The content plays through with the token still alive, and a viewer
+        // who pauses for as long again does not — which is exactly where a reasonable threshold could
+        // fall either way, since whether a pause is part of the window a token must cover is a
+        // judgement rather than a fact about the stream.
+        Severity.BORDERLINE -> (1.5 * contentDurationSeconds()).toLong()
+
+        // Half a viewing: the token dies in the middle of the content, so no viewer reaches the end
+        // however promptly they start. The value [all] carries.
+        Severity.SEVERE -> (0.5 * contentDurationSeconds()).toLong()
+    }
+
+    /** [lifetimeSeconds] against the content it has to cover, in words a report can print. */
+    private fun tokenLifetimeMagnitude(lifetimeSeconds: Long): String =
+        "a token good for ${decimal(lifetimeSeconds.toDouble())} s over " +
+            "${decimal(contentDurationSeconds())} s of content"
+
+    /**
+     * A signed URL's query, as [hlsTokenScopedToManifest] and [hlsTokenExpiringInWindow] publish one.
+     *
+     * ref: RFC 3986 §3.4 — the credential is a query parameter, which is the only part of the
+     * convention every CDN's signing scheme shares and the only part this corpus states. `expires` is
+     * seconds since the epoch, in the clear, because an intermediary that could not read it would have
+     * to ask the signer before refusing. The signature itself is an opaque constant: nothing here
+     * verifies one, and a corpus that invented a real signing algorithm would be mirroring a commercial
+     * scheme for no test's benefit.
+     */
+    private fun signature(lifetimeSeconds: Long): String =
+        "?expires=${System.currentTimeMillis() / 1_000 + lifetimeSeconds}&signature=$TOKEN_SIGNATURE"
+
+    /** How much media an HLS entry carries, which is what a token has to cover. */
+    private fun contentDurationSeconds(): Double = SEGMENT_COUNT * SyntheticHlsStream.SEGMENT_DURATION_SECONDS
+
+    /**
      * [value] to at most two decimal places and with no trailing zeros — `1.43`, `2`, `3600` — for a
      * magnitude a report prints.
      */
@@ -749,6 +909,10 @@ public object HostileManifests {
      * that lives entirely in the multivariant playlist says nothing about the media one. [segments]
      * likewise defaults to the good stream's own; [extraFiles] is anything else an entry serves — a
      * second rung's playlist and segments.
+     *
+     * [sourceName] and [mediaName] are what the playlists are *published at*, which the delivery entries
+     * are the only ones to change: a signed URL is the good stream's bytes at a URI carrying a token, so
+     * the defect is in the address rather than in the document. Everything else keeps the plain names.
      */
     private fun hlsStream(
         id: String,
@@ -763,16 +927,18 @@ public object HostileManifests {
         extraFiles: Map<String, ByteArray> = emptyMap(),
         durationMs: Long = SyntheticHlsStream.durationMs(SEGMENT_COUNT),
         declaredResponseHeaders: (String) -> Map<String, String> = { emptyMap() },
+        sourceName: String = MULTIVARIANT_PLAYLIST_NAME,
+        mediaName: String = SyntheticHlsStream.MEDIA_PLAYLIST_NAME,
     ): HostileStream {
         val files = buildMap {
-            put(MULTIVARIANT_PLAYLIST_NAME, multivariant.toByteArray())
-            put(SyntheticHlsStream.MEDIA_PLAYLIST_NAME, media.toByteArray())
+            put(sourceName, multivariant.toByteArray())
+            put(mediaName, media.toByteArray())
             putAll(segments)
             putAll(extraFiles)
         }
         return hostileStream(
             id, HostileStream.Protocol.HLS, validity, spec, cause, severity, magnitude,
-            sourceName = MULTIVARIANT_PLAYLIST_NAME,
+            sourceName = sourceName,
             durationMs = durationMs,
             files = files,
             declaredResponseHeaders = declaredResponseHeaders,
@@ -1198,6 +1364,12 @@ public object HostileManifests {
     private fun highDashSegments(indices: IntRange, factor: Int): Map<String, ByteArray> = indices.associate {
         highDashSegmentName(it) to SyntheticDashStream.mediaSegment(it, sizeScale = factor)
     }
+
+    /** A day, the lifetime a signed URL is minted with where nothing has gone wrong. */
+    private const val LONG_TOKEN_LIFETIME_SECONDS = 24L * 60 * 60
+
+    /** Opaque, and deliberately not a real signature: nothing in this corpus verifies one. */
+    private const val TOKEN_SIGNATURE = "corpus"
 
     private const val MULTIVARIANT_PLAYLIST_NAME = "master.m3u8"
 

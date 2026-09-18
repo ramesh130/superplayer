@@ -245,6 +245,62 @@ public enum class Pathology(
             "discontinuity sequence nor a program date time — the common case for server-side ads.",
     ),
 
+    // spec: RFC 8216 §6.2.1 — a server MUST publish a new version of a live Media Playlist, carrying at
+    // least one new segment, within 1.5 target durations — and RFC 9111 §5.2.2.1, which is what an
+    // intermediary obeys instead. A `max-age` longer than that bound lets a shared cache answer with a
+    // version of the playlist that is already late, and every actor conforms: HTTP caching has nothing to
+    // say about what a playlist means. The comparison is core's own (`LivePlaylistRevalidation`), asked
+    // rather than restated (ADR-0015 rules 3 and 6), which is how the doctor's reading before playback and
+    // the failure a player ends on cannot drift apart.
+    HLS_CACHED_LIVE_PLAYLIST(
+        id = "hls-cached-live-playlist",
+        specCitation = "RFC 8216 §6.2.1, §6.3.4; RFC 9111 §5.2.2.1",
+        cause = "One CDN cache rule applied to the whole path. The live media playlist is then " +
+            "held for ten minutes while the segments are never held at all, so the client reloads " +
+            "a playlist that cannot change and the stream appears to freeze about thirty seconds " +
+            "in — a surprising share of \"live stream freezes\" tickets are this.",
+    ),
+
+    // ref: RFC 3986 §3.4 — a signed URL carries its credential in the *query component*, so it belongs to
+    // that one URI; §5.3 — a relative reference in a playlist is resolved against the base URI's path, and
+    // the query is not part of it, so a segment named relatively is addressed with no credential at all.
+    // That the CDN then refuses it is RFC 9110 §15.5.4 (403). A signing scheme is a CDN convention rather
+    // than a standard, and this is the part of it every scheme shares, stated from first principles.
+    HLS_TOKEN_SCOPED_TO_MANIFEST(
+        id = "hls-token-scoped-to-manifest",
+        specCitation = "RFC 3986 §3.4, §5.3; RFC 9110 §15.5.4",
+        cause = "A signing step applied to the URL the app was handed and to nothing below it — " +
+            "the manifest is signed, its segments are addressed relatively and reach the CDN with " +
+            "no credential at all, so the stream opens and then serves nothing.",
+    ),
+
+    // ref: RFC 3986 §3.4 again — a signed URL states its own expiry in the clear, so that an intermediary
+    // can refuse an expired request without asking the signer. A token whose expiry falls inside the
+    // content it was minted for is valid when playback starts and refused (RFC 9110 §15.5.4) part-way
+    // through, which is a failure no rung of the fallback ladder can repair: every source of one piece of
+    // content is signed by the same service and dies at the same instant.
+    HLS_TOKEN_EXPIRING_IN_WINDOW(
+        id = "hls-token-expiring-in-window",
+        specCitation = "RFC 3986 §3.4; RFC 9110 §15.5.4",
+        cause = "A signing service whose lifetime was set from how long a request takes rather " +
+            "than from how long a viewing lasts — every URL is signed, and the signature dies " +
+            "part-way through the content, so playback stops where the token ran out.",
+    ),
+
+    // spec: WHATWG Fetch §3.3.5 (CORS protocol and credentials) — an `Access-Control-Allow-Origin` of `*`
+    // fails §4.10's CORS check whenever the request's credentials mode is "include", whatever
+    // `Access-Control-Allow-Credentials` says. The pair is therefore a refusal by construction, and the one
+    // CORS configuration that can be called wrong without knowing which origin is asking. Nothing about the
+    // document is wrong and a native player never notices, which is why it needs a doctor to be seen at all.
+    HLS_CORS_REFUSES_CREDENTIALS(
+        id = "hls-cors-refuses-credentials",
+        specCitation = "WHATWG Fetch §3.3.5, §4.10",
+        cause = "An origin configured to \"allow everyone\" — a wildcard allowed origin emitted " +
+            "beside allowed credentials — which is the one pair the CORS protocol refuses outright, " +
+            "so every credentialed player of this stream is turned away and the native app never " +
+            "notices.",
+    ),
+
     // spec: ISO/IEC 23009-1 §5.3.5.2 — @bandwidth is required per Representation and nothing constrains the
     // spacing between two of them; DASH-IF IOP §3.2.4's ladder guidance is a recommendation. So the DASH
     // twin of HLS_LADDER_GAP is conforming for exactly the same reason, and is judged by the same rule over

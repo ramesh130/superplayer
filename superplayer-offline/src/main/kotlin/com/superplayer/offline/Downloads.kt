@@ -44,6 +44,7 @@ import com.superplayer.core.DownloadDrmExtension
 import com.superplayer.core.DownloadEnvironment
 import com.superplayer.core.DownloadResilienceExtension
 import com.superplayer.core.HeaderRefreshLayer
+import com.superplayer.core.HttpStack
 import com.superplayer.core.LicenceStore
 import com.superplayer.core.MediaRequest
 import com.superplayer.core.OfflineLicenceExpiredException
@@ -156,6 +157,7 @@ public class Downloads internal constructor(
     drm: DownloadDrmExtension?,
     licenceStore: LicenceStore?,
     private val service: Class<out DownloadsService>?,
+    httpStack: HttpStack?,
 ) {
 
     /**
@@ -177,6 +179,8 @@ public class Downloads internal constructor(
         private var licenceStore: LicenceStore? = null
 
         private var service: Class<out DownloadsService>? = null
+
+        private var httpStack: HttpStack? = null
 
         /**
          * The kind of playback the downloads are for, which decides the rendition each one takes — its
@@ -226,6 +230,22 @@ public class Downloads internal constructor(
         public fun setService(service: Class<out DownloadsService>): Builder = apply { this.service = service }
 
         /**
+         * The HTTP client this store's downloads travel over — what `SuperPlayer.Builder.setHttpStack`
+         * takes, normally the same object the players of this content are built with (ADR-0016 rule 13).
+         *
+         * **It carries the licence exchanges too**, and that is the whole of why the store takes a stack
+         * rather than the two chains taking one each: a download's bytes and the offline licence that
+         * unlocks them are separate chains for ADR-0013 rules 13 and 14's reason — a licence is not media
+         * and its kind is read differently — but they are one store's transport, and a store whose
+         * licences travelled a different HTTP client than its segments would be a new way to fail an
+         * entitlement. It is the shape the header-refresh layer already has here, for the same reason.
+         *
+         * Without one, a store downloads over the stack that shipped before this seam — Media3's
+         * `DefaultHttpDataSource` — and allocates nothing for it (rule 14).
+         */
+        public fun setHttpStack(stack: HttpStack): Builder = apply { this.httpStack = stack }
+
+        /**
          * Loads over [environment] rather than the device's network: `superplayer-testkit`'s transport and
          * loading thread, for this module's own tests. Internal, so no consumer can reach it.
          */
@@ -247,6 +267,7 @@ public class Downloads internal constructor(
                 drm as? DownloadDrmExtension,
                 licenceStore,
                 service,
+                httpStack,
             )
         }
     }
@@ -263,7 +284,7 @@ public class Downloads internal constructor(
     private val headerRefresh: HeaderRefreshLayer? = resilience?.headerRefreshLayer()
 
     // Built once: every download's writer is over the one chain (ADR-0013 rule 6), with that layer innermost.
-    private val upstream: DataSource.Factory = TransferChain.downloadChain(context, environment, headerRefresh)
+    private val upstream: DataSource.Factory = TransferChain.downloadChain(context, environment, headerRefresh, httpStack)
 
     private val renderers: RenderersFactory = environment?.renderersFactory ?: DefaultRenderersFactory(context)
 
@@ -299,6 +320,10 @@ public class Downloads internal constructor(
             environment,
             headerRefresh,
             resilience?.downloadLicenceErrors(decisions),
+            // The store's one stack, as the layer above it is the store's one layer: a licence that
+            // travelled a different HTTP client than the segments it unlocks would be a new way to fail
+            // an entitlement (ADR-0016 rule 13).
+            httpStack,
         )
     }
 

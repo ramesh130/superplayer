@@ -322,8 +322,9 @@ internal object TransferChain {
     }
 
     /**
-     * The chain a download loads through: the transport — [environment]'s under a test, the platform's
-     * HTTP stack otherwise — with [headerRefresh] over it where the store's resilience has one.
+     * The chain a download loads through: the transport — [environment]'s under a test, the [stack] the
+     * store was built with otherwise, and the platform's where it was built with none ([resolveTransport])
+     * — with [headerRefresh] over it where the store's resilience has one.
      *
      * ADR-0013 rule 6: a download travels the one chain, less what is a *playback's*. No CMCD, because
      * a download is not a playback session and has no `sid` to join; no bandwidth meter, because nothing
@@ -344,8 +345,9 @@ internal object TransferChain {
         context: Context,
         environment: DownloadEnvironment? = null,
         headerRefresh: HeaderRefreshLayer? = null,
+        stack: HttpStack? = null,
     ): DataSource.Factory {
-        val transport = resolveTransport(context, environment?.transport, stack = null)
+        val transport = resolveTransport(context, environment?.transport, stack)
         val refreshed = headerRefresh?.over(transport) ?: transport
         return DataSource.Factory { DownloadStampingDataSource(refreshed.createDataSource()) }
     }
@@ -358,7 +360,10 @@ internal object TransferChain {
      * Beside [downloadChain] rather than through it, because that chain reads a request's kind off Media3's
      * segment downloader, which composes no licence request. [headerRefresh] is the same layer the store's
      * [downloadChain] is composed with, as a player's licence and media travel one layer: the credential it
-     * repairs is the store's, and a repair met on a licence serves the segments after it (#260). It sits under
+     * repairs is the store's, and a repair met on a licence serves the segments after it (#260). [stack] is
+     * the store's one stack for the same reason and by the same argument, since a licence exchange that
+     * travelled a different HTTP client than the segments it unlocks would be a new way to fail an
+     * entitlement (ADR-0016 rule 13, #314). It sits under
      * the stamp, so it tells a refused entitlement from a refused segment as a player's layer does. The
      * `RetryPolicy.licence` budget is not the chain's: Media3 asks the session manager's own policy
      * ([DownloadResilienceExtension.downloadLicenceErrors]).
@@ -367,19 +372,24 @@ internal object TransferChain {
         context: Context,
         environment: DownloadEnvironment? = null,
         headerRefresh: HeaderRefreshLayer? = null,
+        stack: HttpStack? = null,
     ): DataSource.Factory {
-        val transport = resolveTransport(context, environment?.transport, stack = null)
+        val transport = resolveTransport(context, environment?.transport, stack)
         return (headerRefresh?.over(transport) ?: transport).stampedWith(identity = null, kind = LoadKind.LICENCE)
     }
 
     /**
-     * The chain a doctor's manifest fetch travels: the transport — [environment]'s under a test, the
-     * platform's HTTP stack otherwise — with the header-refresh layer [resilience] contributes composed
+     * The chain a doctor's manifest fetch travels: the transport — [environment]'s under a test, the [stack]
+     * the doctor was built with otherwise, and the platform's where it was built with none
+     * ([resolveTransport]) — with the header-refresh layer [resilience] contributes composed
      * innermost and the cache slot over that, ready to be stamped per content examined.
      *
      * ADR-0015 rule 7: a doctor fetches over the chain a *player* of that request would load through and
      * never over an HTTP stack of its own, so the token the app's `HeaderProvider` mints, the refresh a
      * 401 or 403 triggers and the `ContentCache` the consumer opened are the ones that player would meet.
+     * [stack] is in that list for the same reason and was added to it by ADR-0016 rule 13: a doctor fetching
+     * over a different HTTP client than the players it answers for would still produce findings, just not
+     * the ones those players' chain produces, which is the promise made false *quietly* (#314).
      * A doctor with neither is the doctor of a player with neither, and its answer is that player's:
      * the consequence ADR-0015 states, that two apps can be told different things about one manifest,
      * is the point rather than a defect.
@@ -417,8 +427,9 @@ internal object TransferChain {
         environment: DiagnosticEnvironment? = null,
         cache: ContentCache? = null,
         resilience: PlaybackResilience? = null,
+        stack: HttpStack? = null,
     ): DiagnosticChain {
-        val transport = resolveTransport(context, environment?.transport, stack = null)
+        val transport = resolveTransport(context, environment?.transport, stack)
         val headerRefresh = (resilience as? HeaderRefreshSource)?.headerRefreshLayer()
         val refreshed = headerRefresh?.over(transport) ?: transport
         val cacheLayer = cache?.layer
@@ -515,8 +526,12 @@ internal object TransferChain {
      * `file:`, `asset:`, `content:`, `rawresource:` and `data:` stay the platform's whatever a
      * consumer supplies, because none of them is an HTTP client's business.
      *
-     * [stack] is a player's today. The three chains below it are still resolved with none, which is
-     * ADR-0016 rule 13's remaining three entry points and #314's work.
+     * [stack] reaches here from all four of ADR-0016 rule 13's entry points — `SuperPlayer.Builder`,
+     * `PlayerPool.Builder`, `Downloads.Builder` and `MediaSourceDoctor.Builder` — because a player
+     * loading over the app's client while its downloads use the platform's is precisely the defect
+     * this function was extracted to make impossible (#314). A store's two chains are handed the one
+     * stack, as they are handed the one header-refresh layer, because a licence that travelled a
+     * different HTTP client than the segments it decrypts would be a new way to fail an entitlement.
      */
     private fun resolveTransport(
         context: Context,

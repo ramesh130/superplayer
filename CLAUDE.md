@@ -285,7 +285,22 @@ build, which is the proof the selection was not silently substituted; `docs/test
 HTTP engine* records the gap and #316 is the device ticket. That class is also the repository's first
 user of `@Config(sdk = [...])`, which is the mechanism `robolectric.properties` has always pointed at and
 is deliberately not a `DeviceStatement`.
-The other three entry points rule 13 names and that conformance test are still open tickets.
+Since #314 **all four** entry points rule 13 names take a stack: `PlayerPool.Builder.setHttpStack`
+threads one into every player a feed builds, so a `PreloadCoordinator`'s warm sources travel it too
+(ADR-0010 rule 6); `Downloads.Builder.setHttpStack` carries **both** of a store's chains, its segments'
+and its offline licence exchanges', because a licence that travelled a different client than the
+segments it unlocks would be a new way to fail an entitlement; and `MediaSourceDoctor.Builder.setHttpStack`
+is on the list deliberately rather than for symmetry, since ADR-0015 rule 7's promise is that a doctor
+fetches over the chain a *player* would load through and a stack it did not share would make that
+promise false quietly. A stack is **not inherited** — an app hands the one object to each entry point
+it opens — and a doctor's stack is deliberately **not** a `ChainLayer` on its report, which that
+enum's KDoc argues: that field says which optional layers were composed, and every chain has exactly
+one bottom. Observing any of the three honestly needs the harness's transport slot *empty*, since it
+wins over a stack (rule 3), so `downloadEnvironment`, `diagnosticEnvironment` and `buildPool` each take
+a `ChainBottom` and `PlaybackHarness.consumersHttpStack(environment)` is the matching stack;
+`buildPlayer` also takes a caller-named `httpStack`, which is what lets `DownloadHttpStackTest` state
+the defect the rule prevents as one count over one transport. Rule 14's conformance test is the one
+part of Phase 10 still open.
 
 CMCD (CTA-5004) is emitted there today, and is on for every profile including `DATA_SAVER` —
 `CmcdBinding.kt` holds the per-profile table, the reasoning, and the `// spec:` citation for each

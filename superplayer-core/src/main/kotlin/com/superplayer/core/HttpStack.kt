@@ -136,9 +136,9 @@ public abstract class HttpStack internal constructor() {
          * substituting [default] (rule 12). An app that supports older devices selects it behind its
          * own `Build.VERSION.SDK_INT` check and passes [default] otherwise.
          *
-         * Hold **one** and pass it to every entry point that composes a chain. Today that is
-         * `SuperPlayer.Builder` alone; rule 13 names four, and the pool's, the store's and the
-         * doctor's arrive with #314. Each call here is a separate stack and therefore a separate
+         * Hold **one** and pass it to every entry point that composes a chain — rule 13's four:
+         * `SuperPlayer.Builder`, `PlayerPool.Builder`, `Downloads.Builder` and
+         * `MediaSourceDoctor.Builder`. Each call here is a separate stack and therefore a separate
          * `HttpEngine`, and the platform's engine is a process-sized object meant to be shared: an
          * app that calls this once per screen gets one of them per screen, with a set of connections
          * and a cache each.

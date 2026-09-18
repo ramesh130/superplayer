@@ -20,6 +20,7 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.RenderersFactory
 import androidx.media3.exoplayer.drm.ExoMediaDrm
 import com.superplayer.core.DownloadEnvironment
+import com.superplayer.core.HttpStack
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executor
 import java.util.concurrent.RejectedExecutionException
@@ -33,8 +34,10 @@ import java.util.concurrent.atomic.AtomicInteger
  * whether its loads have caught up — exactly as a player's are.
  */
 internal class HarnessDownloadEnvironment(
-    override val transport: DataSource.Factory,
+    override val transport: DataSource.Factory?,
     val injector: FaultInjectingDataSource.Factory,
+    /** The same origin behind an `HttpTransport`, for a store built over [ChainBottom.CONSUMERS_HTTP_TRANSPORT]. */
+    val httpStack: HttpStack,
     val wait: HarnessClockWait,
     override val loadExecutor: HarnessDownloadLoads,
     override val renderersFactory: RenderersFactory,

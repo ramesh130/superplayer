@@ -19,6 +19,7 @@ package com.superplayer.diagnostics
 import android.content.Context
 import com.superplayer.core.ContentCache
 import com.superplayer.core.DiagnosticEnvironment
+import com.superplayer.core.HttpStack
 import com.superplayer.core.MediaRequest
 import com.superplayer.core.PlaybackResilience
 import com.superplayer.core.SuperPlayerError
@@ -70,6 +71,7 @@ public class MediaSourceDoctor private constructor(
     cache: ContentCache?,
     resilience: PlaybackResilience?,
     environment: DiagnosticEnvironment?,
+    httpStack: HttpStack?,
 ) {
 
     /**
@@ -77,7 +79,7 @@ public class MediaSourceDoctor private constructor(
      * holds the state of what it has already refreshed, so a doctor asked twice pays one refusal rather
      * than two, exactly as a download store's does.
      */
-    private val chain = TransferChain.diagnosticChain(context, environment, cache, resilience)
+    private val chain = TransferChain.diagnosticChain(context, environment, cache, resilience, httpStack)
 
     /**
      * Which optional layers that chain really carries, read off the composition rather than off which
@@ -142,6 +144,7 @@ public class MediaSourceDoctor private constructor(
         private var cache: ContentCache? = null
         private var resilience: PlaybackResilience? = null
         private var environment: DiagnosticEnvironment? = null
+        private var httpStack: HttpStack? = null
 
         /** The cache the players of this content are built with, so a manifest on disk is read from disk. */
         public fun setCache(cache: ContentCache): Builder = apply { this.cache = cache }
@@ -151,6 +154,26 @@ public class MediaSourceDoctor private constructor(
          * the refresh a 401 or 403 triggers are the ones those players carry.
          */
         public fun setResilience(resilience: PlaybackResilience): Builder = apply { this.resilience = resilience }
+
+        /**
+         * The HTTP client the players of this content load over — what `SuperPlayer.Builder.setHttpStack`
+         * takes, and the same object (ADR-0016 rule 13).
+         *
+         * A doctor is on this list deliberately rather than for symmetry. Rule 7's whole promise is that
+         * the fetch travels the chain a *player* of this request would load through, and a client is part
+         * of that chain: an app's own stack may carry an interceptor that signs the request, a proxy
+         * configuration, a pinned certificate or a connection pool the CDN has already routed. A doctor
+         * that did not share it would still answer findings — just not the ones those players' chain
+         * produces, which is the promise made false quietly, and the failure mode the seam exists to stop.
+         *
+         * It is **not** reported on [DiagnosticReport.chain], and [ChainLayer] says why: what that field
+         * lists is the optional layers a chain either carries or does not, while a transport is there in
+         * every chain and a stack only changes which client moved the bytes.
+         *
+         * Without one, a doctor fetches over the stack that shipped before this seam — Media3's
+         * `DefaultHttpDataSource` — which is the right one for the app whose players say nothing either.
+         */
+        public fun setHttpStack(stack: HttpStack): Builder = apply { this.httpStack = stack }
 
         /**
          * Where this doctor's fetch travels, when that is not the device's own network: a
@@ -163,6 +186,6 @@ public class MediaSourceDoctor private constructor(
             apply { this.environment = environment }
 
         public fun build(): MediaSourceDoctor =
-            MediaSourceDoctor(context.applicationContext, cache, resilience, environment)
+            MediaSourceDoctor(context.applicationContext, cache, resilience, environment, httpStack)
     }
 }

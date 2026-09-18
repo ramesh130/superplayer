@@ -27,6 +27,7 @@ import com.superplayer.core.DeliveredProtection
 import com.superplayer.core.DownloadDrmExtension
 import com.superplayer.core.DownloadEnvironment
 import com.superplayer.core.HeaderRefreshLayer
+import com.superplayer.core.HttpStack
 import com.superplayer.core.LicenceContext
 import com.superplayer.core.LicenceStanding
 import com.superplayer.core.LicenceStore
@@ -51,13 +52,15 @@ internal class DownloadLicences(
     private val environment: DownloadEnvironment?,
     private val headerRefresh: HeaderRefreshLayer?,
     private val loadErrors: LoadErrorHandlingPolicy?,
+    private val httpStack: HttpStack?,
 ) {
 
     private val store = store.licences
 
     // One chain for every exchange, as a download has one chain for its bytes (rule 6), composed when first asked,
-    // with the store's header-refresh layer under the stamp where its resilience has a provider (rule 14).
-    private val transport by lazy { TransferChain.downloadLicenceChain(context, environment, headerRefresh) }
+    // with the store's header-refresh layer under the stamp where its resilience has a provider (rule 14) and over
+    // the store's own HTTP stack, which is the same one its segments travel (ADR-0016 rule 13).
+    private val transport by lazy { TransferChain.downloadLicenceChain(context, environment, headerRefresh, httpStack) }
 
     // Read once, when first asked: a store that downloads nothing protected walks no codec list.
     private val device by lazy { deviceConstraintsOf() }

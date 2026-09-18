@@ -43,6 +43,11 @@ public abstract class DiagnosticEnvironment internal constructor() {
     /**
      * What sits at the bottom of a doctor's chain in place of the HTTP stack: the harness's origin and
      * fault injector, the same composition a harness-built player of the same content loads through.
+     *
+     * **Null where the harness put that same origin behind an `HttpTransport` instead**, for
+     * [DownloadEnvironment.transport]'s reason: this slot wins over a consumer's stack (ADR-0016 rule 3),
+     * so a doctor handed both would resolve its bottom here and a test of
+     * `MediaSourceDoctor.Builder.setHttpStack` would pass without the stack having carried a byte (#314).
      */
-    internal abstract val transport: DataSource.Factory
+    internal abstract val transport: DataSource.Factory?
 }

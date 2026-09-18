@@ -42,8 +42,15 @@ public abstract class DownloadEnvironment internal constructor() {
     /**
      * What sits at the bottom of a download's chain in place of the HTTP stack: the harness's origin,
      * fault injector and shaper, the same composition a harness-built player loads through.
+     *
+     * **Null where the harness put that same origin behind an `HttpTransport` instead**, which is how a
+     * test of `Downloads.Builder.setHttpStack` is written honestly: this slot wins over a consumer's stack
+     * (ADR-0016 rule 3), so a store handed both would resolve its bottom here and a stack that never
+     * resolved anything would pass such a test for the wrong reason. `PlaybackHarness.downloadEnvironment`
+     * takes a `ChainBottom` and leaves this empty for the consumer's, exactly as `buildPlayer` leaves
+     * `EngineConfiguration.transport` empty for a player's (#310, #314).
      */
-    internal abstract val transport: DataSource.Factory
+    internal abstract val transport: DataSource.Factory?
 
     /**
      * Where a download's segment loads run: handed to Media3's downloader factory in place of the

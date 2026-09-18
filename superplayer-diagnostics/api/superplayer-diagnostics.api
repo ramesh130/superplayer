@@ -47,7 +47,7 @@ public final class com/superplayer/diagnostics/FindingSeverity : java/lang/Enum 
 
 public final class com/superplayer/diagnostics/MediaSourceDoctor {
 	public static final field $stable I
-	public synthetic fun <init> (Landroid/content/Context;Lcom/superplayer/core/ContentCache;Lcom/superplayer/core/PlaybackResilience;Lcom/superplayer/core/DiagnosticEnvironment;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Landroid/content/Context;Lcom/superplayer/core/ContentCache;Lcom/superplayer/core/PlaybackResilience;Lcom/superplayer/core/DiagnosticEnvironment;Lcom/superplayer/core/HttpStack;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun examine (Lcom/superplayer/core/MediaRequest;)Lcom/superplayer/diagnostics/DiagnosticReport;
 	public final fun examine (Lcom/superplayer/core/MediaRequest;Lcom/superplayer/core/SuperPlayerError;)Lcom/superplayer/diagnostics/DiagnosticReport;
 	public static synthetic fun examine$default (Lcom/superplayer/diagnostics/MediaSourceDoctor;Lcom/superplayer/core/MediaRequest;Lcom/superplayer/core/SuperPlayerError;ILjava/lang/Object;)Lcom/superplayer/diagnostics/DiagnosticReport;
@@ -58,6 +58,7 @@ public final class com/superplayer/diagnostics/MediaSourceDoctor$Builder {
 	public fun <init> (Landroid/content/Context;)V
 	public final fun build ()Lcom/superplayer/diagnostics/MediaSourceDoctor;
 	public final fun setCache (Lcom/superplayer/core/ContentCache;)Lcom/superplayer/diagnostics/MediaSourceDoctor$Builder;
+	public final fun setHttpStack (Lcom/superplayer/core/HttpStack;)Lcom/superplayer/diagnostics/MediaSourceDoctor$Builder;
 	public final fun setResilience (Lcom/superplayer/core/PlaybackResilience;)Lcom/superplayer/diagnostics/MediaSourceDoctor$Builder;
 }
 

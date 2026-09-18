@@ -99,7 +99,9 @@ internal class OriginHttpTransport(private val origin: DataSource.Factory) : Htt
      * exactly that case. // spec: RFC 9110 §8.6.
      *
      * `Content-Range`'s complete length is `*`, which the grammar allows for a sender that does not
-     * know the whole resource's size — and this one does not, because it asked for a slice.
+     * know the whole resource's size — and this one does not, because it asked for a slice. It is
+     * omitted altogether where the source announced no length, because `last-pos` is *not* optional
+     * in `byte-range-resp` and a header that cannot state the range is a header not to send.
      * // spec: RFC 9110 §14.4.
      */
     private fun headersFor(
@@ -112,13 +114,9 @@ internal class OriginHttpTransport(private val origin: DataSource.Factory) : Htt
         if (announcedLength != C.LENGTH_UNSET.toLong()) {
             headers[CONTENT_LENGTH] = listOf(announcedLength.toString())
         }
-        if (ranged) {
-            val last = if (announcedLength == C.LENGTH_UNSET.toLong()) {
-                null
-            } else {
-                dataSpec.position + announcedLength - 1
-            }
-            headers[CONTENT_RANGE] = listOf("bytes ${dataSpec.position}-${last ?: ""}/*")
+        if (ranged && announcedLength != C.LENGTH_UNSET.toLong()) {
+            val last = dataSpec.position + announcedLength - 1
+            headers[CONTENT_RANGE] = listOf("bytes ${dataSpec.position}-$last/*")
         }
         return headers
     }

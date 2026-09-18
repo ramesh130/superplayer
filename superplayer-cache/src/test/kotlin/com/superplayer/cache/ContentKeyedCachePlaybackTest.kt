@@ -210,6 +210,54 @@ class ContentKeyedCachePlaybackTest {
     }
 
     /**
+     * The cache-hit exclusion still means what it says over an HTTP client a consumer wrote —
+     * ADR-0009 rule 8, and #310's other half of the estimate criterion.
+     *
+     * [aWarmReplayLeavesTheThroughputEstimateWhereTheColdPlayLeftIt] over the other bottom, and it is
+     * a separate question from "the cache answered" because of *how* the exclusion works. A hit is
+     * not a request that stopped short of the network: `CacheDataSource` reads it through a local
+     * file, which is a `TransferListener` report like any other and is dropped only because it says
+     * `isNetwork = false`. So the thing a consumer's transport could break is the *other* side of
+     * that flag — an adapter reporting `false` would take every real fetch out of the estimate too,
+     * and one reporting nothing at all would leave it at its cold default. The cold play moving the
+     * estimate is what shows both halves are live before the replay is asked to leave it alone.
+     */
+    @Test
+    fun aWarmReplayOverAConsumersTransportLeavesTheEstimateWhereItWas() {
+        val cache = openCache()
+        val player = harness.buildPlayer(
+            content = content,
+            network = NetworkProfile.STABLE_WIFI.trace,
+            policy = adaptivePolicy(),
+            cache = cache,
+            bottom = ChainBottom.CONSUMERS_HTTP_TRANSPORT,
+        )
+        val observer = BandwidthOracle.Builder(context).build()
+        try {
+            val untouched = observer.currentEstimate()
+            player.setMediaRequest(request(CONTENT_ID, content.sourceUri))
+            playToEnd(player)
+            val afterColdPlay = observer.currentEstimate()
+            assertThat(segmentsFetched(player)).isEqualTo(SEGMENTS)
+            assertWithMessage("a cold play over a consumer's transport is samples")
+                .that(afterColdPlay).isNotEqualTo(untouched)
+
+            player.setMediaRequest(request(CONTENT_ID, content.sourceUri))
+            playToEnd(player)
+
+            assertWithMessage("hits on the warm replay").that(cache.hitCount).isAtLeast(SEGMENTS.toLong())
+            val afterWarmReplay = observer.currentEstimate()
+            // Every number the estimate is made of is where the cold play left it; only the newest
+            // sample's age has moved, and only grown, because a sample taken on a hit would have
+            // reset it.
+            assertThat(afterWarmReplay.copy(newestSampleAgeMs = afterColdPlay.newestSampleAgeMs)).isEqualTo(afterColdPlay)
+            assertThat(afterWarmReplay.newestSampleAgeMs).isGreaterThan(afterColdPlay.newestSampleAgeMs)
+        } finally {
+            observer.release()
+        }
+    }
+
+    /**
      * The cache sits below live-playlist revalidation and never holds a playlist: a live stream behind
      * an intermediary that freezes its playlist for ten minutes still plays on by reloading past it,
      * with the content cache in the chain, and the cache holds segments and no playlist afterwards.
@@ -329,11 +377,11 @@ class ContentKeyedCachePlaybackTest {
      * reworded a request on its way out would fill a second set of entries, every replay would be a
      * miss, and the only symptom would be a cache that never seemed to help.
      *
-     * The warm replay is the other acceptance criterion in the same session. Every segment is a hit,
-     * and **not one segment reaches the transport** — which is what a cache hit staying out of the
-     * bandwidth estimate (ADR-0009 rule 8) looks like from below: nothing to sample, because the
-     * request never got this far. What does reach it reports `isNetwork = true`, which
-     * `superplayer-abr`'s `BandwidthOraclePlaybackTest` counts.
+     * The warm replay is here to show the entries are read back and not merely written: every
+     * segment is a hit and none is fetched again. What a hit does to the *estimate* is a separate
+     * question and a separate test — [aWarmReplayOverAConsumersTransportLeavesTheEstimateWhereItWas]
+     * — because the mechanism is not "the request never got this far": a hit is read through a local
+     * file that reports `isNetwork = false`, which is a transfer the meter sees and drops.
      */
     @Test
     fun theSameContentBehindAConsumersTransportIsTheSameCacheEntry() {

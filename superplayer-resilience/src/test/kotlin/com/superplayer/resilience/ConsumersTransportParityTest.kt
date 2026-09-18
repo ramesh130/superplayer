@@ -52,13 +52,18 @@ import java.util.concurrent.CopyOnWriteArrayList
  * same claims asked again with the last step of the journey replaced. Each one reuses that test's
  * own control rather than inventing a second one, and says which.
  *
+ * Totality — `PRD.md` Part 4's "zero unclassified errors" over a transport we did not write, across
+ * every *kind* of fault rather than every status — is [FaultSweepTest]'s, beside its own sweep and
+ * off its own enumeration.
+ *
  * ## Why a parameter rather than a second file
  *
  * `PlaybackHarness.buildPlayer` takes a [ChainBottom], and everything else about a player it builds
  * is the same either way: one origin, one [FaultScript], one clock. So a body run over
- * `ChainBottom.entries` *is* the comparison, and a sixth entry added later fails here rather than
- * being silently unproven. Copying each of the four tests instead would have made the interesting
- * half — that the two answers are equal — invisible.
+ * `ChainBottom.entries` *is* the comparison, and a third entry added later is asked the same
+ * questions rather than being silently unproven — which is why every test here iterates the entries
+ * instead of naming them. Copying each of the four tests instead would have made the interesting
+ * half — that the answers are equal — invisible.
  *
  * ## What is being prevented
  *
@@ -236,9 +241,13 @@ class ConsumersTransportParityTest {
     fun everyStatusEndsOnTheSameClassOverEitherBottom() {
         for (status in REFUSALS) {
             val refusal = refusing(status, ResourceKind.MEDIA_SEGMENT)
-            assertWithMessage("the class $status ended on")
-                .that(endsOn(refusal, ChainBottom.CONSUMERS_HTTP_TRANSPORT).causeClass)
-                .isEqualTo(endsOn(refusal, ChainBottom.HARNESS_TRANSPORT_SLOT).causeClass)
+            // Every entry against the same reference, so a third bottom is compared here too.
+            val reference = endsOn(refusal, ChainBottom.HARNESS_TRANSPORT_SLOT).causeClass
+            for (bottom in ChainBottom.entries) {
+                assertWithMessage("the class $status ended on over $bottom")
+                    .that(endsOn(refusal, bottom).causeClass)
+                    .isEqualTo(reference)
+            }
         }
     }
 

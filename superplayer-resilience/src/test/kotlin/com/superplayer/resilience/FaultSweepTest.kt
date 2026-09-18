@@ -23,6 +23,7 @@ import com.google.common.truth.Truth.assertWithMessage
 import com.superplayer.core.MediaRequest
 import com.superplayer.core.SuperPlayer
 import com.superplayer.core.SuperPlayerError
+import com.superplayer.testkit.ChainBottom
 import com.superplayer.testkit.FaultScript
 import com.superplayer.testkit.PlaybackHarness
 import com.superplayer.testkit.ResourceKind
@@ -116,6 +117,33 @@ class FaultSweepTest {
         }
     }
 
+    /**
+     * The same criterion over an HTTP client a consumer wrote: **no kind of fault ends a session
+     * unclassified there either** (ADR-0016 rule 8, #310).
+     *
+     * The kinds come from [faultKinds], so the reflection check below covers this sweep too and a
+     * kind added later is asked of both bottoms rather than only of the default one. One protocol
+     * rather than two, because what differs between the bottoms is the last step of the transfer and
+     * not the parser above it, and the two-protocol half is the table above.
+     *
+     * The assertion is the outcome and deliberately **not** the class, which is where this stops
+     * short of the parity `ConsumersTransportParityTest` states. A status a transport reports is
+     * core's to type and must come out the same; a fault *below* the response — a name that will not
+     * resolve, a handshake that fails — reaches core as the `IOException` a real client raises rather
+     * than as the error code the harness's injector chose, because a status is the only thing an
+     * `HttpTransport` can report (ADR-0016 rule 4). Those may be named differently and must still be
+     * named.
+     */
+    @Test
+    fun everyInjectedFaultOverAConsumersTransportAlsoRecoversOrEndsInANamedClass() {
+        faultKinds().forEach { (kind, script) ->
+            val ending = observe(Protocol.HLS, script, ChainBottom.CONSUMERS_HTTP_TRANSPORT)
+            assertWithMessage("$kind over a consumer's transport")
+                .that(ending.outcome)
+                .isAnyOf(Outcome.RECOVERED, Outcome.ENDED_TYPED)
+        }
+    }
+
     @Test
     fun everyFaultKindTheHarnessCanInjectIsSwept() {
         // The enumeration, so a kind added later is visibly missing rather than silently unswept.
@@ -145,12 +173,16 @@ class FaultSweepTest {
      * and each is the subject of its own rung's test; handing them to the sweep would hide which
      * faults the library survives on its own.
      */
-    private fun observe(protocol: Protocol, script: FaultScript): Ending {
+    private fun observe(
+        protocol: Protocol,
+        script: FaultScript,
+        bottom: ChainBottom = ChainBottom.HARNESS_TRANSPORT_SLOT,
+    ): Ending {
         val content = when (protocol) {
             Protocol.HLS -> TestContent.hls(segmentCount = SEGMENTS)
             Protocol.DASH -> TestContent.dash(segmentCount = SEGMENTS)
         }
-        val player = harness.buildPlayer(content = content, faults = script, resilience = Resilience.standard())
+        val player = harness.buildPlayer(content = content, faults = script, resilience = Resilience.standard(), bottom = bottom)
         player.setMediaRequest(MediaRequest.Builder(CONTENT).addSource(content.sourceUri).build())
         player.prepare()
         player.play()

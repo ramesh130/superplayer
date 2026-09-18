@@ -41,7 +41,9 @@ import java.net.MalformedURLException
  * the HTTP stack goes (`docs/testing.md`), which makes this seam invisible to all of them — the
  * substitution replaces the thing under test. So this class builds its players on the real transfer
  * chain, as [SuperPlayerTransferChainTest] does, and puts the synthetic streams behind an
- * [HttpTransport] that serves them from memory under `https:` URIs.
+ * [HttpTransport] that serves them from memory under `https:` URIs — [ServingTransport], shared with
+ * [ConsumersTransportEvidenceTest], which asks the same origin for the *response* side of an
+ * exchange.
  *
  * That is not a shortcut, it is the only route. Nothing in `superplayer-testkit` can express a
  * **206** — `FaultScript.failWithHttpStatus` takes a status in `400..599`, and the fake origins

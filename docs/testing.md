@@ -5,7 +5,7 @@ the JVM, against Media3's own fakes. No device, no network, no assertion that re
 facade. This is not a default that happened to stick — it is the constraint the first slice of the
 library was built to satisfy, and it holds for everything added afterwards.
 
-There are four documented exceptions, and all of them are still tests with no device and no network.
+There are five documented exceptions, and all of them are still tests with no device and no network.
 
 `SuperPlayerTransferChainTest` keeps the HTTP stack `SuperPlayer.Builder` puts at the bottom of its
 chain instead of substituting a fake data source for it, and reads a `file:` URI. "The one player that keeps its own transfer
@@ -16,6 +16,12 @@ of it, because Phase 10's seam is the one layer a substituted fake data source *
 sits above. Two of its tests also open the adapter's `DataSource` without a player, to state a byte
 range no synthetic stream here can provoke. "The one player that keeps its own transfer chain" below
 carries the whole argument.
+
+`ConsumersTransportEvidenceTest` keeps that same chain and the same transport for the *response* side
+of an exchange: ADR-0016 rule 8 puts the status, the response headers and the URI of a refusal on
+core's adapter, and no fake origin here can express a response header at all. It also reads core's
+own internal `LoadKind` off the `DataSpec` a refusal carries, which is a core unit test's to do and is
+the one stamp everything downstream of a refused segment depends on.
 
 `SuperPlayerCmcdTest` keeps that same chain and asserts on the *requests* travelling down it rather
 than on a state of the facade — the CMCD keys on a `DataSpec`, captured through the `TransferListener`

@@ -286,6 +286,7 @@ public class PlayerPool private constructor(
         private var resilience: PlaybackResilience? = null
         private var drm: PlaybackDrm? = null
         private var output: PlaybackOutput? = null
+        private var httpStack: HttpStack? = null
         private var telemetry: (() -> TelemetryCollector)? = null
         private var playerFactory: ((PooledEngine?) -> SuperPlayer)? = null
 
@@ -391,6 +392,26 @@ public class PlayerPool private constructor(
         public fun setOutput(output: PlaybackOutput): Builder = apply { this.output = output }
 
         /**
+         * The HTTP client every player in this pool loads its bytes over — what
+         * [SuperPlayer.Builder.setHttpStack] takes, for each of them.
+         *
+         * One object serves the whole pool, as the policy, the resilience and the protection do: the
+         * players are interchangeable, and a pool that gave one row the app's client and the next the
+         * platform's would make a feed's bandwidth estimates describe two different networks.
+         *
+         * It reaches the rows a `PreloadCoordinator` warms as well, and not by a second route: a
+         * coordinator builds its sources from the `MediaSource.Factory` the pool's first player was
+         * composed with (ADR-0010 rule 6), so a prefetch travels the bottom this call chose exactly as
+         * the playback that follows it does.
+         *
+         * Leave it unset and every pooled player loads over the stack that shipped before this seam —
+         * Media3's `DefaultHttpDataSource` — with nothing of it allocated, which is ADR-0016 rule 14
+         * and is counted rather than asserted about. Fixed for each player's lifetime, like the cache:
+         * a chain is composed as an engine is built, and a recycled player keeps the one it has.
+         */
+        public fun setHttpStack(stack: HttpStack): Builder = apply { this.httpStack = stack }
+
+        /**
          * Measures every player this pool builds, each with the collector [collectorFactory] returns
          * for it — what [SuperPlayer.Builder.setTelemetry] takes, once per player.
          *
@@ -427,6 +448,7 @@ public class PlayerPool private constructor(
             val cache = cache
             val resilience = resilience
             val telemetry = telemetry
+            val httpStack = httpStack
             val factory = playerFactory ?: { pooled ->
                 SuperPlayer.Builder(context)
                     .setProfile(profile)
@@ -435,6 +457,7 @@ public class PlayerPool private constructor(
                     .apply { resilience?.let { setResilience(it) } }
                     .apply { drm?.let { setDrm(it) } }
                     .apply { output?.let { setOutput(it) } }
+                    .apply { httpStack?.let { setHttpStack(it) } }
                     .apply { telemetry?.let { setTelemetry(it()) } }
                     .setPooledEngine(pooled)
                     .build()

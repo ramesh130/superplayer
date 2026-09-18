@@ -434,6 +434,25 @@ rather than as the error code the injector chose, because a status is the only t
 `HttpTransport` can report (rule 4): the two bottoms agree about statuses, and a parity test compares
 statuses.
 
+Since #314 the same choice is on `buildPool`, `downloadEnvironment` and `diagnosticEnvironment`,
+because ADR-0016 rule 13 has all four entry points that compose a chain take a stack and the other
+three are reached through those. On an environment it empties the environment's own transport, for
+the reason the player's slot is emptied, and `PlaybackHarness.consumersHttpStack(environment)` is the
+matching stack to hand to `Downloads.Builder.setHttpStack` or
+`MediaSourceDoctor.Builder.setHttpStack`. One consequence is worth knowing before writing such a
+test: with the slot empty and no stack named, a store's or a doctor's fetch resolves Media3's own
+`DefaultHttpDataSource`, which cannot serve the synthetic streams' `fake:` URIs — which is what makes
+the count of *zero* on the consumer's transport a real reading, and is how each module's
+pay-nothing test shows its counter. A download that fails that way waits between attempts on a
+delayed message, so such a test moves Robolectric's `SystemClock` as `DownloadRetryBudgetTest` does.
+
+`buildPlayer` also takes an `httpStack` the caller names, which implies that same bottom. There is
+one reason to reach for it and it is rule 13's: handing the **one** stack to a player and to a
+download store is how "a player on the app's client while its downloads use the platform's" becomes a
+count rather than two readings (`DownloadHttpStackTest`). Such a player's bytes travel the
+environment's origin, so what left is `networkRequests(environment)` and the player's own origin is
+never opened.
+
 ## Why assertions stop at the facade
 
 A test that reached for `player.exoPlayer` and asserted on it would be testing Media3, which Media3

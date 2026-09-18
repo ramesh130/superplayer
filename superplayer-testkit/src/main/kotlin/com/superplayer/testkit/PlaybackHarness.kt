@@ -250,6 +250,15 @@ public class PlaybackHarness : ExternalResource() {
      * origin, [faults], [network], the clock — is the same either way, which is what makes a body
      * run over both a comparison rather than two tests. See [ChainBottom] for what each can and
      * cannot be asked.
+     *
+     * [httpStack] is that same consumer's bottom with the stack **named by the caller** rather than
+     * minted here, and it implies [ChainBottom.CONSUMERS_HTTP_TRANSPORT]. There is one reason to
+     * reach for it and it is ADR-0016 rule 13's: handing the one stack to a player and to a download
+     * store is how the defect that rule prevents — a player on the app's client while its downloads
+     * use the platform's — is stated as a *count* rather than as two separate readings. Pass
+     * [consumersHttpStack] of the store's environment, and this player's bytes then travel that
+     * environment's origin, so what left is [networkRequests] of the environment and this player's
+     * own origin is never opened.
      */
     public fun buildPlayer(
         content: TestContent = TestContent.video(),
@@ -263,6 +272,7 @@ public class PlaybackHarness : ExternalResource() {
         drm: PlaybackDrm? = null,
         output: PlaybackOutput? = null,
         bottom: ChainBottom = ChainBottom.HARNESS_TRANSPORT_SLOT,
+        httpStack: HttpStack? = null,
     ): SuperPlayer {
         // Protected content needs a `DrmSessionManagerProvider` on the media source factory, and on a
         // SuperPlayer that provider comes from the DRM slot ADR-0012 rule 3 puts on core's engine
@@ -277,11 +287,12 @@ public class PlaybackHarness : ExternalResource() {
         // path at all, so there is no transport for an `HttpTransport` to stand in for. Refused
         // outright rather than quietly served over the slot, because a player that silently used
         // the other bottom would pass a parity test without proving anything.
-        require(bottom == ChainBottom.HARNESS_TRANSPORT_SLOT || content.protocol != TestContent.Protocol.DESCRIBED) {
+        val chainBottom = if (httpStack != null) ChainBottom.CONSUMERS_HTTP_TRANSPORT else bottom
+        require(chainBottom == ChainBottom.HARNESS_TRANSPORT_SLOT || content.protocol != TestContent.Protocol.DESCRIBED) {
             "Described content has no transport to reach through an HttpTransport: play " +
                 "TestContent.hls() or TestContent.dash() over ChainBottom.CONSUMERS_HTTP_TRANSPORT."
         }
-        return buildPlayerOver(composeTransport(content, faults, network), content, profile, telemetry, policy, cache, resilience, drm, pooled = null, output = output, bottom = bottom)
+        return buildPlayerOver(composeTransport(content, faults, network), content, profile, telemetry, policy, cache, resilience, drm, pooled = null, output = output, bottom = chainBottom, httpStack = httpStack)
     }
 
     /**
@@ -300,6 +311,7 @@ public class PlaybackHarness : ExternalResource() {
         pooled: PooledEngine?,
         output: PlaybackOutput? = null,
         bottom: ChainBottom = ChainBottom.HARNESS_TRANSPORT_SLOT,
+        httpStack: HttpStack? = null,
     ): SuperPlayer {
         var built: ControllableVideoRenderer? = null
         val transfers = transport.transfers
@@ -315,7 +327,7 @@ public class PlaybackHarness : ExternalResource() {
             // The consumer's half of the bottom, chosen exactly as a consumer chooses it. The
             // transport slot is left empty below when this is set, because a filled slot wins
             // (ADR-0016 rule 3) and a stack that resolved nothing would be invisible.
-            .apply { if (overAConsumersTransport) setHttpStack(HttpStack.of(OriginHttpTransport(transfers.factory))) }
+            .apply { if (overAConsumersTransport) setHttpStack(httpStack ?: HttpStack.of(OriginHttpTransport(transfers.factory))) }
             .setPooledEngine(pooled)
             .setEngineConfigurator { configuration ->
                 // The slots rather than the engine builder, so a pool can hand the same clock and
@@ -650,18 +662,26 @@ public class PlaybackHarness : ExternalResource() {
      * in for and what it cannot show.
      *
      * Described content has no transport to download over and is refused.
+     *
+     * [bottom] chooses how a download's bytes make the last step, as it does for a player: through the
+     * environment's transport slot, or through an `HttpTransport` a consumer wrote — which is
+     * [consumersHttpStack], to be handed to `Downloads.Builder.setHttpStack`. Over the consumer's, the
+     * slot is left **empty**, because a filled slot wins over a stack (ADR-0016 rule 3) and a store whose
+     * stack never resolved anything would pass such a test for the wrong reason.
      */
     public fun downloadEnvironment(
         content: TestContent = TestContent.hls(),
         faults: FaultScript = FaultScript.NONE,
         network: ThroughputTrace? = null,
+        bottom: ChainBottom = ChainBottom.HARNESS_TRANSPORT_SLOT,
     ): DownloadEnvironment {
         require(content.protocol != TestContent.Protocol.DESCRIBED) {
             "Described content is a timeline rather than a stream, so there is nothing to download: use TestContent.hls() or dash()"
         }
         val transport = composeTransport(content, faults, network)
         val environment = HarnessDownloadEnvironment(
-            transport = transport.transfers.factory,
+            transport = transport.transfers.factory.takeIf { bottom == ChainBottom.HARNESS_TRANSPORT_SLOT },
+            httpStack = HttpStack.of(OriginHttpTransport(transport.transfers.factory)),
             injector = transport.injector,
             wait = transport.wait,
             loadExecutor = HarnessDownloadLoads(transport.wait),
@@ -799,14 +819,16 @@ public class PlaybackHarness : ExternalResource() {
     public fun diagnosticEnvironment(
         content: TestContent = TestContent.hls(),
         faults: FaultScript = FaultScript.NONE,
+        bottom: ChainBottom = ChainBottom.HARNESS_TRANSPORT_SLOT,
     ): DiagnosticEnvironment {
         require(content.protocol != TestContent.Protocol.DESCRIBED) {
             "Described content is a timeline rather than a stream, so there is no manifest to examine: use TestContent.hls() or dash()"
         }
         val transport = composeTransport(content, faults, network = null)
         val environment = HarnessDiagnosticEnvironment(
-            transport = transport.transfers.factory,
+            transport = transport.transfers.factory.takeIf { bottom == ChainBottom.HARNESS_TRANSPORT_SLOT },
             injector = transport.injector,
+            httpStack = HttpStack.of(OriginHttpTransport(transport.transfers.factory)),
         )
         diagnostics[environment] = environment
         return environment
@@ -819,6 +841,23 @@ public class PlaybackHarness : ExternalResource() {
     public fun networkRequests(environment: DiagnosticEnvironment): List<NetworkRequest> =
         checkNotNull(diagnostics[environment]) { "This harness did not make that diagnostic environment" }
             .injector.addresses.requests
+
+    /**
+     * This environment's origin wearing the interface a consumer writes, for
+     * `Downloads.Builder.setHttpStack` — the consumer's half of [ChainBottom.CONSUMERS_HTTP_TRANSPORT].
+     *
+     * The same origin, the same [FaultScript], the same [ThroughputTrace] and the same clock as the slot
+     * serves; what changes is only the last step of the journey. Handing it to a store built over an
+     * environment made with [ChainBottom.HARNESS_TRANSPORT_SLOT] proves nothing — the slot wins (ADR-0016
+     * rule 3) — so a test that means to observe a stack makes the environment for one.
+     */
+    public fun consumersHttpStack(environment: DownloadEnvironment): HttpStack =
+        downloadFor(environment).httpStack
+
+    /** [consumersHttpStack]'s twin, for `MediaSourceDoctor.Builder.setHttpStack`. */
+    public fun consumersHttpStack(environment: DiagnosticEnvironment): HttpStack =
+        checkNotNull(diagnostics[environment]) { "This harness did not make that diagnostic environment" }
+            .httpStack
 
     private fun downloadFor(environment: DownloadEnvironment): HarnessDownloadEnvironment =
         checkNotNull(downloads[environment]) { "This harness did not make that download environment" }
@@ -874,6 +913,13 @@ public class PlaybackHarness : ExternalResource() {
      * `PlayerPool.Builder.setResilience` does too — but it reaches them through the factory below,
      * so setting it on the builder here would be a call the substituted factory makes dead.
      * `PlayerPoolTest` is where that builder call is covered.
+     *
+     * [bottom] is the same choice [buildPlayer] offers, applied to every player the pool builds, and it is
+     * **not** `PlayerPool.Builder.setHttpStack` for cache's and resilience's reason — that call is
+     * `PlayerPoolTest`'s. What it is for is the half of ADR-0016 rule 13 no per-player test can reach: a
+     * `PreloadCoordinator` attached to this pool builds its sources from the shared chain the pool's first
+     * player was composed with (ADR-0010 rule 6), so over a consumer's transport every prefetch a scroll
+     * makes is observable there as a request the consumer's own client carried.
      */
     public fun buildPool(
         maxSize: Int? = null,
@@ -884,6 +930,7 @@ public class PlaybackHarness : ExternalResource() {
         cache: ContentCache? = null,
         policy: PlaybackPolicy? = null,
         resilience: PlaybackResilience? = null,
+        bottom: ChainBottom = ChainBottom.HARNESS_TRANSPORT_SLOT,
     ): PlayerPool {
         val transport = composeTransport(content, FaultScript.NONE, network)
         val built = mutableListOf<SuperPlayer>()
@@ -894,7 +941,7 @@ public class PlaybackHarness : ExternalResource() {
                 policy?.let { setPolicy(it) }
             }
             .setPlayerFactory { pooled ->
-                buildPlayerOver(transport, content, profile ?: PlaybackProfile.SHORT_FORM, telemetry(), policy, cache, resilience, drm = null, pooled)
+                buildPlayerOver(transport, content, profile ?: PlaybackProfile.SHORT_FORM, telemetry(), policy, cache, resilience, drm = null, pooled, bottom = bottom)
                     .also { built += it }
             }
             .build()

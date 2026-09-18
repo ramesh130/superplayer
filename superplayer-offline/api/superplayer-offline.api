@@ -72,6 +72,7 @@ public final class com/superplayer/offline/Downloads$Builder {
 	public fun <init> (Landroid/content/Context;Lcom/superplayer/core/ContentCache;)V
 	public final fun build ()Lcom/superplayer/offline/Downloads;
 	public final fun setDrm (Lcom/superplayer/core/PlaybackDrm;Lcom/superplayer/core/LicenceStore;)Lcom/superplayer/offline/Downloads$Builder;
+	public final fun setHttpStack (Lcom/superplayer/core/HttpStack;)Lcom/superplayer/offline/Downloads$Builder;
 	public final fun setPolicy (Lcom/superplayer/core/PlaybackPolicy;)Lcom/superplayer/offline/Downloads$Builder;
 	public final fun setProfile (Lcom/superplayer/core/PlaybackProfile;)Lcom/superplayer/offline/Downloads$Builder;
 	public final fun setResilience (Lcom/superplayer/core/PlaybackResilience;)Lcom/superplayer/offline/Downloads$Builder;

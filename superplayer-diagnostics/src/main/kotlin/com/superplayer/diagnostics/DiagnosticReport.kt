@@ -434,6 +434,15 @@ public enum class Pathology(
  * one doctor against another, and the layers a player has and a doctor deliberately has not —  the two
  * live checks, the load-error policy, CMCD, the bandwidth meter — are `TransferChain.diagnosticChain`'s
  * to explain rather than a report's to advertise.
+ *
+ * The **HTTP stack** `MediaSourceDoctor.Builder.setHttpStack` takes is on the transport's side of that
+ * line and gets no entry here, which is a decision rather than an omission (#314). This field answers
+ * "was the layer composed", and it exists because a setter being called does not settle that — a
+ * `PlaybackResilience` a consumer wrote themselves contributes no layer. A stack has no such gap: every
+ * chain has exactly one bottom, a stack that was named is the one resolved, and one that this device
+ * cannot honour is refused at `build()` with an `HttpStackUnsupportedException` rather than silently
+ * swapped (ADR-0016 rule 12). An entry saying "this chain had a transport" would be true of every report
+ * ever printed.
  */
 public enum class ChainLayer {
 

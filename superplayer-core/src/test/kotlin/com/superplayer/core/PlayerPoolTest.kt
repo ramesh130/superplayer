@@ -16,6 +16,7 @@
 
 package com.superplayer.core
 
+import android.content.Context
 import android.graphics.SurfaceTexture
 import android.os.Looper
 import android.view.Surface
@@ -25,6 +26,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.util.Size
 import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import androidx.media3.test.utils.robolectric.ShadowMediaCodecConfig
@@ -298,6 +300,55 @@ class PlayerPoolTest {
             assertThat(ContentIdentity.of(checkNotNull(player.currentMediaItem))).isNull()
         } finally {
             uncachedPool.release()
+        }
+    }
+
+    /**
+     * ADR-0016 rule 13 for a pool (#314): the stack a consumer named is the bottom of **every** player the
+     * pool builds, and a pool told about none reaches it not at all (rule 14).
+     *
+     * Counted as what the stack was *asked for* rather than as bytes, and the shape is
+     * [aPoolWithACacheComposesItIntoEveryPlayerItBuildsAndOneWithoutComposesNone]'s for
+     * [aPoolWithACacheComposesItIntoEveryPlayerItBuildsAndOneWithoutComposesNone]'s reason: this test goes
+     * through `PlayerPool.Builder`'s **real** player factory, so there is no harness clock under these
+     * players and no synthetic stream to play. A chain asks its stack for a client once, as it is composed,
+     * which is exactly the reading the rule is about — one per player built, and none where the pool was
+     * told nothing.
+     *
+     * That a player really loads over the stack it was given is `SuperPlayerHttpStackTest`'s, and that a
+     * `PreloadCoordinator`'s prefetches travel the pool's shared bottom is
+     * `superplayer-preload`'s `PreloadCoordinatorHttpStackTest`.
+     */
+    @Test
+    fun aPoolWithAnHttpStackComposesEveryPlayersChainOverItAndOneWithoutReachesItNotAtAll() {
+        val stack = RecordingHttpStack()
+        val pool = PlayerPool.Builder(ApplicationProvider.getApplicationContext())
+            .setMaxSize(2)
+            .setHttpStack(stack)
+            .build()
+        try {
+            checkNotNull(pool.acquire())
+            val second = checkNotNull(pool.acquire())
+            assertThat(stack.asked).isEqualTo(2)
+
+            // A recycled player keeps the chain it was built with rather than being composed again, as it
+            // keeps its cache: recycling ends an item, and the chain below it is the player's for its life.
+            pool.recycle(second)
+            checkNotNull(pool.acquire())
+            assertThat(stack.asked).isEqualTo(2)
+        } finally {
+            pool.release()
+        }
+
+        // The counter shown seeing nothing, so the count above is known to be counting: the same object,
+        // handed to no pool, is asked for nothing by the players that pool builds.
+        val askedBefore = stack.asked
+        val unstacked = PlayerPool.Builder(ApplicationProvider.getApplicationContext()).setMaxSize(1).build()
+        try {
+            checkNotNull(unstacked.acquire())
+            assertThat(stack.asked).isEqualTo(askedBefore)
+        } finally {
+            unstacked.release()
         }
     }
 
@@ -665,6 +716,26 @@ class PlayerPoolTest {
      * The layer is the cache's own and is handed to every player, the way a feed's one cache is: the
      * count below is of chains it filled, not of caches, because there is only ever the one.
      */
+
+    /**
+     * An [HttpStack] that answers Media3's own client and counts how many chains asked it for one.
+     *
+     * A stack is asked once per chain composed, which is once per player, so the count *is* the number of
+     * players whose bottom this stack resolved. Media3's own factory rather than a refusing one because a
+     * player here is built and never prepared: nothing opens a data source, and a stand-in that threw would
+     * be a trap for the next test that plays one.
+     */
+    private class RecordingHttpStack : HttpStack() {
+
+        var asked = 0
+            private set
+
+        override fun httpFactory(context: Context): DataSource.Factory {
+            asked++
+            return DefaultHttpDataSource.Factory()
+        }
+    }
+
     private class RecordingContentCache : ContentCache(RecordingCacheLayer()) {
 
         fun filledChains(): List<DataSource.Factory> = (layer as RecordingCacheLayer).filled.toList()

@@ -444,6 +444,7 @@ public final class com/superplayer/core/PlayerPool$Builder {
 	public final fun setCache (Lcom/superplayer/core/ContentCache;)Lcom/superplayer/core/PlayerPool$Builder;
 	public final fun setDrm (Lcom/superplayer/core/PlaybackDrm;)Lcom/superplayer/core/PlayerPool$Builder;
 	public final fun setFeedCodecs ([Lcom/superplayer/core/VideoCodec;)Lcom/superplayer/core/PlayerPool$Builder;
+	public final fun setHttpStack (Lcom/superplayer/core/HttpStack;)Lcom/superplayer/core/PlayerPool$Builder;
 	public final fun setMaxSize (I)Lcom/superplayer/core/PlayerPool$Builder;
 	public final fun setOutput (Lcom/superplayer/core/PlaybackOutput;)Lcom/superplayer/core/PlayerPool$Builder;
 	public final fun setPolicy (Lcom/superplayer/core/PlaybackPolicy;)Lcom/superplayer/core/PlayerPool$Builder;

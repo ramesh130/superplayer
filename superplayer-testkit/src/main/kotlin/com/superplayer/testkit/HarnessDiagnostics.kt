@@ -18,6 +18,7 @@ package com.superplayer.testkit
 
 import androidx.media3.datasource.DataSource
 import com.superplayer.core.DiagnosticEnvironment
+import com.superplayer.core.HttpStack
 
 /**
  * The [DiagnosticEnvironment] a [PlaybackHarness] hands a doctor: the transport a harness-built player
@@ -28,6 +29,8 @@ import com.superplayer.core.DiagnosticEnvironment
  * the test thread is what a held load holds, and a test that injects a delay moves the clock itself.
  */
 internal class HarnessDiagnosticEnvironment(
-    override val transport: DataSource.Factory,
+    override val transport: DataSource.Factory?,
     val injector: FaultInjectingDataSource.Factory,
+    /** The same origin behind an `HttpTransport`, for a doctor built over [ChainBottom.CONSUMERS_HTTP_TRANSPORT]. */
+    val httpStack: HttpStack,
 ) : DiagnosticEnvironment()

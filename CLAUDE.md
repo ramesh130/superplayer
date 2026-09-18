@@ -842,8 +842,8 @@ when focus leaves. A hold accelerates on held time, not on repeats. On a `SuperP
 the engine's scrubbing mode on (rule 12). Focus returns to the last focused control when `visible` comes
 back. Two things are easy to get wrong. A composable lambda that captures nothing becomes a public
 `ComposableSingletons` class with hashed names, which `docs/api-surface.md` explains. And the scrub tests
-step Compose's clock by hand, because the commit is a timeout. `TvPlaybackControlsTest` is the library's
-one Compose UI test and `ScrubTest` holds the curve.
+step Compose's clock by hand, because the commit is a timeout. `TvPlaybackControlsTest` is one of the
+library's two Compose UI tests — the other is #294's `DebugHudTest` — and `ScrubTest` holds the curve.
 
 `superplayer-diagnostics` has the first of Phase 9, the tracer bullet (#286): the doctor names one
 pathology. `MediaSourceDoctor.Builder(context).build()` takes the cache and the resilience the players of
@@ -1002,9 +1002,12 @@ is null under the harness on a plain player and reachable only on a shaped netwo
 where the field's emission is asserted and `QoeMetricsTest` asserts the null. A `const val` in an
 `internal` companion still reaches the tracked API surface. And the module's *existing* types each
 gained a `$stable` line the moment the Compose compiler was applied to it (`docs/api-surface.md`).
-`DebugHudTest` is the module's one Compose UI test, with the stock player as its degradation control
-and a non-debuggable application as the guard's, and the demo's `DebugHudScreen` is the recipe a
-consumer copies.
+The selected rung is the **player's** own current track and not telemetry's, which is rule 11's own
+sourcing and is what leaves the estimate as the one half of that row telemetry alone can answer.
+`DebugHudTest` is the library's second Compose UI test, with the stock player as its degradation control
+and a non-debuggable application as the guard's; `docs/testing.md`'s *The debug HUD* says what it can and
+cannot show, including the one assertion that reads past the public API. The demo's `DebugHudScreen` is
+the recipe a consumer copies.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,

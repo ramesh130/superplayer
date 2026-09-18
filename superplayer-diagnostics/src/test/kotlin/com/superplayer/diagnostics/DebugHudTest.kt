@@ -39,8 +39,9 @@ import com.superplayer.core.PlaybackProfile
 import com.superplayer.core.SuperPlayer
 import com.superplayer.core.TelemetryEvent
 import com.superplayer.core.TrackSelectionPolicy
-import com.superplayer.core.TrackSwitchDirection
+import com.superplayer.testkit.FaultScript
 import com.superplayer.testkit.PlaybackHarness
+import com.superplayer.testkit.ResourceKind
 import com.superplayer.testkit.TestContent
 import org.junit.Before
 import org.junit.Rule
@@ -102,18 +103,19 @@ class DebugHudTest {
     fun theHudShowsTheBufferTheRenditionTheDroppedFramesAndTheEstimateBesideTheSelectedRung() {
         val player = playingSuperPlayer()
         val telemetry = DebugHudTelemetry()
-        telemetry.onEvent(trackSwitched(toBitrateBps = SELECTED_BPS))
         telemetry.onEvent(framesDropped(7))
-        telemetry.onEvent(stateSampled(videoBitrateBps = SELECTED_BPS, estimateBps = ESTIMATE_BPS))
+        telemetry.onEvent(stateSampled(estimateBps = ESTIMATE_BPS))
 
         show(player, telemetry)
 
         row(LABEL_SOURCE).hasValue("SuperPlayer, telemetry attached")
-        row(LABEL_BITRATE).hasValue("800 kbps")
+        // The rung the *player* selected, which is where it comes from (ADR-0015 rule 11) — the
+        // content's own declared bitrate, and not a number any event carried.
+        row(LABEL_BITRATE).hasValue("$SELECTED_KBPS kbps")
         row(LABEL_DROPPED).hasValue("7")
         // The line worth the HUD: a healthy estimate, a rung well under it, and the ceiling that
         // allowed it — all three on one row, which is the comparison the issue asks for.
-        row(LABEL_ESTIMATE).hasValue("4000 kbps estimated, 800 kbps selected, unlimited ceiling")
+        row(LABEL_ESTIMATE).hasValue("4000 kbps estimated, $SELECTED_KBPS kbps selected, unlimited ceiling")
         row(LABEL_FAILURES).hasValue(HUD_NONE)
         // Read off the player rather than off any event: a buffer and a position are the player's own
         // facts, which is why this row is the one a stock player answers too. The seconds are not
@@ -137,11 +139,15 @@ class DebugHudTest {
         show(player, telemetry = null)
 
         row(LABEL_SOURCE).hasValue("Player, no telemetry")
-        row(LABEL_BITRATE).hasValue(HUD_UNAVAILABLE)
+        // The rung is the player's own, so a stock player answers it — which is the difference between
+        // degrading to what it can read and refusing what it was not built for.
+        row(LABEL_BITRATE).hasValue("$SELECTED_KBPS kbps")
         row(LABEL_DROPPED).hasValue(HUD_UNAVAILABLE)
-        // Not even the ceiling: a stock player has no `PlaybackDecision`, and the row says that
-        // rather than showing Media3's own selection parameters as though a policy had decided them.
-        row(LABEL_ESTIMATE).hasValue("$HUD_UNAVAILABLE estimated, $HUD_UNAVAILABLE selected, $HUD_UNAVAILABLE ceiling")
+        // The estimate is the half only telemetry can answer, and the ceiling the half only a
+        // `SuperPlayer` has: the row says so rather than showing Media3's own selection parameters as
+        // though a policy had decided them.
+        row(LABEL_ESTIMATE)
+            .hasValue("$HUD_UNAVAILABLE estimated, $SELECTED_KBPS kbps selected, $HUD_UNAVAILABLE ceiling")
         row(LABEL_BUFFER).hasBufferedSeconds()
         row(LABEL_FAILURES).hasValue(HUD_NONE)
     }
@@ -158,12 +164,9 @@ class DebugHudTest {
         compose.onAllNodesWithContentDescription(HUD_DESCRIPTION).assertCountEquals(0)
     }
 
-    /**
-     * The failure log keeps the newest failures and no more of them, and the error the player
-     * delivered is shown beside them rather than merged into them.
-     */
+    /** The failure log keeps the newest failures, both facts of each, and no more than four lines. */
     @Test
-    fun theFailureLogKeepsTheNewestFailuresAndTheOneThePlayerDelivered() {
+    fun theFailureLogKeepsTheNewestFailuresAndBothFactsOfEach() {
         val telemetry = DebugHudTelemetry()
         // Five failures into a log that holds four, so the oldest has to be gone and the newest first.
         listOf("Transient.Network", "Content.SegmentGap", "Device.DecoderInit", "Drm.SystemError", "Fatal.Unsupported")
@@ -171,7 +174,39 @@ class DebugHudTest {
 
         show(playingSuperPlayer(), telemetry)
 
-        row(LABEL_FAILURES).hasValue("Fatal.Unsupported, Drm.SystemError, Device.DecoderInit, Content.SegmentGap")
+        // Each line is the classification *and* the code, because they are two facts and neither is
+        // expressed in the other (ADR-0011 rule 3, ADR-0015 rule 5).
+        row(LABEL_FAILURES).hasValue(
+            "Fatal.Unsupported $CODE, Drm.SystemError $CODE, Device.DecoderInit $CODE, Content.SegmentGap $CODE",
+        )
+    }
+
+    /**
+     * The error the player itself delivered leads the failure row, and takes one of the four lines
+     * rather than a fifth.
+     *
+     * The other half of the degradation claim: `playerError` is a `Player`'s own fact, so it is what a
+     * stock player's failure row shows, and on a `SuperPlayer` it is the one rung 6 delivered. It is
+     * shown beside the classified lines and merged into none of them, which is why the count matters —
+     * a row of five lines would be a bound that argued four and rendered otherwise.
+     */
+    @Test
+    fun theErrorThePlayerDeliveredLeadsTheRowAndTakesOneOfItsFourLines() {
+        val telemetry = DebugHudTelemetry()
+        listOf("Transient.Network", "Content.SegmentGap", "Device.DecoderInit", "Drm.SystemError")
+            .forEach { telemetry.onEvent(midStreamFailed(it)) }
+
+        show(failedPlayer(), telemetry)
+
+        val lines = row(LABEL_FAILURES).value().split(", ")
+        assertThat(lines).hasSize(4)
+        assertThat(lines.first()).startsWith("delivered ERROR_CODE_")
+        // The oldest classified line is what the delivered error displaced, and the newest three stay.
+        assertThat(lines.drop(1)).containsExactly(
+            "Drm.SystemError $CODE",
+            "Device.DecoderInit $CODE",
+            "Content.SegmentGap $CODE",
+        ).inOrder()
     }
 
     /**
@@ -188,12 +223,23 @@ class DebugHudTest {
         row(LABEL_FAILURES).hasValue("ERROR_CODE_IO_BAD_HTTP_STATUS")
     }
 
+    /** A failure the engine raised no code for at all falls back to the bucket, never to an empty row. */
+    @Test
+    fun aFailureWithNeitherAClassificationNorACodeIsShownAsItsCategory() {
+        val telemetry = DebugHudTelemetry()
+        telemetry.onEvent(midStreamFailed(classification = null, code = null))
+
+        show(playingSuperPlayer(), telemetry)
+
+        row(LABEL_FAILURES).hasValue(FailureCategory.NETWORK.name)
+    }
+
     /** A new session starts the readings over, which is what a recycled pooled player does. */
     @Test
     fun aNewSessionStartsTheReadingsOver() {
         val telemetry = DebugHudTelemetry()
         telemetry.onEvent(framesDropped(12))
-        telemetry.onEvent(trackSwitched(toBitrateBps = SELECTED_BPS))
+        telemetry.onEvent(stateSampled(estimateBps = ESTIMATE_BPS))
         telemetry.onEvent(midStreamFailed("Transient.Network"))
 
         assertThat(telemetry.reading().droppedFrames).isEqualTo(12)
@@ -216,6 +262,29 @@ class DebugHudTest {
         return player
     }
 
+    /**
+     * A real `SuperPlayer` whose load the CDN refused outright, so `playerError` is populated.
+     *
+     * The manifest rather than a segment, because a refusal there ends the session before a frame and
+     * therefore before the test has to wait for anything: what is wanted is only a delivered error.
+     */
+    private fun failedPlayer(): SuperPlayer {
+        val content = TestContent.hls()
+        val player = harness.buildPlayer(
+            content = content,
+            faults = FaultScript.Builder().failWithHttpStatus(500, kind = ResourceKind.MANIFEST).build(),
+        )
+        player.setMediaRequest(MediaRequest.Builder(CONTENT_ID).addSource(content.sourceUri).build())
+        player.prepare()
+        var advanced = 0L
+        while (player.playerError == null && advanced < FAILURE_WAIT_MS) {
+            harness.advanceTimeInStepsMs(player, FAILURE_STEP_MS)
+            advanced += FAILURE_STEP_MS
+        }
+        checkNotNull(player.playerError) { "the refused manifest was expected to end the session" }
+        return player
+    }
+
     /** The row labelled [label], found by the label a reader sees rather than by its position. */
     private fun row(label: String): HudRow = HudRow(label)
 
@@ -225,6 +294,9 @@ class DebugHudTest {
         fun hasValue(expected: String) {
             node.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, expected))
         }
+
+        /** The row's reading, as a screen reader would announce it. */
+        fun value(): String = node.fetchSemanticsNode().config[SemanticsProperties.StateDescription]
 
         /** The buffer row: `<n>s ahead of <n>s`, with something really buffered ahead. */
         fun hasBufferedSeconds() {
@@ -250,16 +322,6 @@ class DebugHudTest {
         ),
     )
 
-    private fun trackSwitched(toBitrateBps: Int) = TelemetryEvent.TrackSwitched(
-        sessionId = SESSION_ID,
-        contentId = CONTENT_ID,
-        timestampMs = 0,
-        monotonicTimeMs = 0,
-        fromBitrateBps = null,
-        toBitrateBps = toBitrateBps,
-        direction = TrackSwitchDirection.INITIAL,
-    )
-
     private fun framesDropped(count: Int) = TelemetryEvent.VideoFramesDropped(
         sessionId = SESSION_ID,
         contentId = CONTENT_ID,
@@ -270,13 +332,13 @@ class DebugHudTest {
         elapsedPlayingMs = 1_000,
     )
 
-    private fun stateSampled(videoBitrateBps: Int, estimateBps: Int) = TelemetryEvent.PlaybackStateSampled(
+    private fun stateSampled(estimateBps: Int) = TelemetryEvent.PlaybackStateSampled(
         sessionId = SESSION_ID,
         contentId = CONTENT_ID,
         timestampMs = 0,
         monotonicTimeMs = 0,
         samplingIntervalMs = 10_000,
-        videoBitrateBps = videoBitrateBps,
+        videoBitrateBps = TestContent.DEFAULT_BITRATE_BPS,
         bufferedDurationMs = 5_000,
         playing = true,
         throughputEstimateBps = estimateBps,
@@ -301,9 +363,18 @@ class DebugHudTest {
         const val CONTENT_ID = "demo:hud"
         const val SESSION_ID = "session-hud"
 
-        /** A rung well under the estimate below, so the comparison the estimate row makes is visible. */
-        const val SELECTED_BPS = 800_000
+        /** The rung the harness's content declares, in the kilobits the HUD prints it in. */
+        const val SELECTED_KBPS = TestContent.DEFAULT_BITRATE_BPS / 1_000
+
+        /** Well above the rung, so what the estimate row is a comparison *of* is visible in it. */
         const val ESTIMATE_BPS = 4_000_000
+
+        /** The code every hand-built failure here carries, so a line's two halves are both visible. */
+        const val CODE = "ERROR_CODE_IO_UNSPECIFIED"
+
+        /** Long enough for a refused manifest to end a session, in the load-sized steps the engine takes. */
+        const val FAILURE_STEP_MS = 250L
+        const val FAILURE_WAIT_MS = 10_000L
 
         /** The buffer row's shape, whose first group is the media buffered ahead of the playhead. */
         val BUFFER_ROW = Regex("""([0-9.]+)s ahead of [0-9.]+s""")

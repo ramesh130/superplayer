@@ -43,10 +43,13 @@ from the pinned version, because annotations move between releases.
 A module compiled with the Compose compiler — `superplayer-tv` and, since `#294`'s debug HUD,
 `superplayer-diagnostics` — carries two kinds of
 generated member in its surface. Every class gets a `public static final field $stable`, the compiler's
-stability record, and that line in the tracked file is expected. It is expected on **every** class of
-such a module and not only on the composables' own types, which is why applying the Compose compiler to
-a module that already had a tracked surface moves that file: `superplayer-diagnostics`' doctor, report
-and bundle each gained a `$stable` line in the change that added the HUD, and none of them changed.
+stability record, and that line in the tracked file is expected. It is expected on **every class the
+compiler has to record stability for** and not only on the composables' own types — which is why
+applying the Compose compiler to a module that already had a tracked surface moves that file:
+`superplayer-diagnostics`' doctor, report, finding and bundle each gained a `$stable` line in the
+change that added the HUD, and none of them changed. An enum and a companion object gain no line,
+being stable already, so a diff that adds `$stable` to some of a module's types and not others is the
+compiler agreeing with itself rather than something to look into.
 A composable lambda that captures nothing
 is hoisted into a public `ComposableSingletons$<File>Kt` class whose member names are hashes of the source,
 so any edit to that file would move the tracked surface. Both modules' composables avoid it by passing

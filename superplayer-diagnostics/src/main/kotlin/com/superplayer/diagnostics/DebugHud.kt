@@ -41,6 +41,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.Player
 import com.superplayer.core.PlaybackFailure
 import com.superplayer.core.SuperPlayer
@@ -93,9 +95,11 @@ import kotlinx.coroutines.delay
  * [player] is a Media3 `Player`, ADR-0015 rule 2's one named exception, exactly as
  * `superplayer-tv`'s `TvPlaybackControls` is: `Player` is stable, and it is the only supertype a
  * stock `ExoPlayer` and a [SuperPlayer] share. So a stock player shows the rows it can answer — the
- * buffer, the position, its own `playerError` — and reads `unavailable` on the rest, while a
- * [SuperPlayer] with a collector attached answers all six. A missing reading is named as missing;
- * nothing here throws, and nothing is invented to fill a row.
+ * rendition it selected, the buffer, the position, its own `playerError` — and reads `unavailable` on
+ * the rest, while a [SuperPlayer] with a collector attached answers all six. The estimate is the one
+ * half of the row worth the HUD that only telemetry can answer, which is why the rung beside it is
+ * read off the player: see `selectedVideoBitrateBps`. A missing reading is named as missing; nothing
+ * here throws, and nothing is invented to fill a row.
  *
  * ## Debug builds only, and what that guarantees
  *
@@ -227,11 +231,15 @@ public class DebugHudTelemetry : TelemetrySink {
 }
 
 /**
- * How many failures the HUD keeps, newest first: four.
+ * How many failures the HUD keeps and shows, newest first: four.
  *
  * An overlay lies over the content a developer is also trying to watch, and four lines of failure is
  * about as much as can be read at a glance without the HUD becoming the screen. A session that failed
  * more than four times has a problem the first four describe.
+ *
+ * It bounds the *row* and not only the sink's memory, which is why `hudFacts` applies it again after
+ * adding the delivered error: a constant that argued four lines and rendered five would be arguing
+ * about something else.
  *
  * A file-level constant rather than one on [DebugHudTelemetry]'s companion: a `const val` inside even
  * an `internal` companion is emitted as a public static field, and the tracked API surface would then
@@ -239,9 +247,16 @@ public class DebugHudTelemetry : TelemetrySink {
  */
 private const val MAX_RECENT_FAILURES: Int = 4
 
-/** What [DebugHudTelemetry] has heard, as an immutable value the UI thread can read. */
+/**
+ * What [DebugHudTelemetry] has heard, as an immutable value the UI thread can read.
+ *
+ * It does **not** carry the selected rung, although the vocabulary reports it twice over
+ * (`TrackSwitched`, and every sample's `videoBitrateBps`). That number is the player's own and is read
+ * from it — ADR-0015 rule 11's sourcing, and `selectedVideoBitrateBps`' reason. Keeping a second copy
+ * here would be a reading that could disagree with the player on the one row where the comparison is
+ * the point, and it would leave a stock player showing `unavailable` for a rung it knows.
+ */
 internal data class HudTelemetryReading(
-    val selectedBitrateBps: Int? = null,
     val throughputEstimateBps: Int? = null,
     val droppedFrames: Int = 0,
     /** Newest first, at most four — see `MAX_RECENT_FAILURES`, which argues the number. */
@@ -253,15 +268,11 @@ internal data class HudTelemetryReading(
         // rather than the odd one.
         is TelemetryEvent.SessionStarted -> HudTelemetryReading()
 
-        is TelemetryEvent.TrackSwitched -> copy(selectedBitrateBps = event.toBitrateBps)
-
-        is TelemetryEvent.PlaybackStateSampled -> copy(
-            // A sample's own nulls do not blank a row: the field is null before the meter has
-            // reported or before a rendition was chosen, and a row that emptied every ten seconds
-            // and refilled would read as a fault in the HUD rather than an absence of a reading.
-            selectedBitrateBps = event.videoBitrateBps ?: selectedBitrateBps,
-            throughputEstimateBps = event.throughputEstimateBps ?: throughputEstimateBps,
-        )
+        // A sample's own null does not blank the row: the field is null before the meter has reported,
+        // and a row that emptied every ten seconds and refilled would read as a fault in the HUD
+        // rather than as an absence of a reading.
+        is TelemetryEvent.PlaybackStateSampled ->
+            copy(throughputEstimateBps = event.throughputEstimateBps ?: throughputEstimateBps)
 
         // Media3 reports dropped frames per interval, so the HUD's number is the session's running
         // total — the quantity a developer is asking about, since one interval's count means nothing
@@ -287,7 +298,10 @@ internal data class HudTelemetryReading(
      * line is the code alone, which is the honest reading rather than a gap.
      */
     private fun describe(failure: PlaybackFailure): String =
-        listOfNotNull(failure.classification, failure.code, failure.category.name).first()
+        listOfNotNull(failure.classification, failure.code).joinToString(" ")
+            // Neither, on a failure Media3 raised no code for: the bucket is the only thing left to
+            // print, and an empty row would be the one reading that says nothing.
+            .ifEmpty { failure.category.name }
 }
 
 /** Every reading the HUD shows, taken at one instant on the UI thread. */
@@ -355,22 +369,55 @@ internal data class HudFacts(
 internal fun hudFacts(player: Player, telemetry: DebugHudTelemetry?): HudFacts {
     val reading = telemetry?.reading()
     val superPlayer = player as? SuperPlayer
-    // The engine's own fatal error, shown beside the telemetry failures rather than merged with
-    // them: on a stock player it is the only failure there is, and on a `SuperPlayer` it is the one
-    // rung 6 delivered, which the classified line beside it describes. Nothing here merges two
-    // vocabularies (ADR-0015 rule 4's spirit); a reader sees both and can tell they are one event.
+    // The engine's own fatal error, first in the failure list and never merged into a classified line
+    // beside it: on a stock player it is the only failure there is, and on a `SuperPlayer` it is the
+    // one rung 6 delivered. Two vocabularies are shown and neither is expressed in the other
+    // (ADR-0015 rule 4's spirit); a reader sees both and can tell they are one event.
     val playerError = player.playerError?.errorCodeName?.let { "delivered $it" }
     return HudFacts(
         superPlayer = superPlayer != null,
         telemetryAttached = telemetry != null,
         bufferedDurationMs = (player.bufferedPosition - player.currentPosition).coerceAtLeast(0),
         positionMs = player.currentPosition.coerceAtLeast(0),
-        selectedBitrateBps = reading?.selectedBitrateBps,
+        selectedBitrateBps = selectedVideoBitrateBps(player),
         throughputEstimateBps = reading?.throughputEstimateBps,
         ceilingBitrateBps = superPlayer?.playbackDecision?.trackSelection?.maxVideoBitrateBps,
         droppedFrames = reading?.droppedFrames,
-        failures = (reading?.failures ?: emptyList()) + listOfNotNull(playerError),
+        // Bounded here and not only in the sink, so the row a viewer sees is the length
+        // `MAX_RECENT_FAILURES` argues: the delivered error takes a line like any other.
+        failures = (listOfNotNull(playerError) + (reading?.failures ?: emptyList()))
+            .take(MAX_RECENT_FAILURES),
     )
+}
+
+/**
+ * The declared bitrate of the video track the player has selected, or null where it has selected
+ * none — audio-only content, and any player before its first selection.
+ *
+ * Read from the **player** rather than from telemetry, which is ADR-0015 rule 11's own sourcing: "the
+ * selected rung is the `Player`'s own current track". It is also what makes the row worth anything on
+ * a stock `ExoPlayer`, which has no collector to hear a `TrackSwitched` from — leaving the *estimate*
+ * as the one half of that comparison telemetry alone can answer, and it is the half no `Player` getter
+ * publishes. `Tracks` and `Format` are stable
+ * Media3 types and neither appears in a signature here (ADR-0001 rule 2).
+ *
+ * The peak where the format declares one, as `QoeCollector` reports it, so the two numbers a reader
+ * may see side by side are the same quantity: a peak and an average of one rendition differ by enough
+ * to look like two rungs.
+ */
+private fun selectedVideoBitrateBps(player: Player): Int? {
+    if (!player.isCommandAvailable(Player.COMMAND_GET_TRACKS)) return null
+    player.currentTracks.groups.forEach { group ->
+        if (group.type != C.TRACK_TYPE_VIDEO) return@forEach
+        for (index in 0 until group.length) {
+            if (!group.isTrackSelected(index)) continue
+            val format = group.getTrackFormat(index)
+            val declared = format.peakBitrate.takeIf { it != Format.NO_VALUE }
+                ?: format.bitrate.takeIf { it != Format.NO_VALUE }
+            if (declared != null) return declared
+        }
+    }
+    return null
 }
 
 /**
@@ -418,5 +465,10 @@ private val LabelWidth = 72.dp
 // 11sp: small, because this covers the content, and above the 10sp floor below which a monospace
 // digit stops being legible on a dense phone display. Monospace so a number that changes width does
 // not shift the row, which is the whole reason a HUD is read as a column of figures.
+// The colours are the pair and not two choices: a mid grey label beside a white value, so the eye
+// reads down the values column and the labels recede once a reader knows the six by their order.
+// Both are light on the near-opaque dark background above, which is the combination that keeps a
+// readable contrast over video of any brightness — the reason that background is near-opaque rather
+// than a tint.
 private val LabelStyle = TextStyle(color = Color(0xFF9E9E9E), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
 private val ValueStyle = TextStyle(color = Color.White, fontSize = 11.sp, fontFamily = FontFamily.Monospace)

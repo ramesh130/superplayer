@@ -353,12 +353,14 @@ class QoeMetricsTest {
         assertThat(sample.playing).isTrue()
         assertThat(sample.videoBitrateBps).isEqualTo(TestContent.DEFAULT_BITRATE_BPS)
         // The estimate is null on this player, and that is the field's own rule rather than a gap in
-        // the collector: Media3's `DefaultBandwidthMeter` reports an estimate only once a transfer has
-        // moved half a megabyte or run for two seconds, and a synthetic segment on a fast host reaches
-        // neither threshold — so nothing was reported, and the sample says so instead of inventing a
-        // reading between reports. Where the field *is* reachable is a player whose meter samples every
-        // transfer, which is `superplayer-abr`'s: `BandwidthOraclePlaybackTest` asserts it there, for
-        // the reason `superplayer-drm`'s `LicenceTelemetryTest` asserts a phase 2 metric in phase 6.
+        // the collector: Media3's own meter adds a sample, and therefore reports one, only once a
+        // transfer has run for `ELAPSED_MILLIS_FOR_ESTIMATE` or moved `BYTES_TRANSFERRED_FOR_ESTIMATE`,
+        // and a synthetic segment on a fast host reaches neither — so nothing was reported, and the
+        // sample says so instead of inventing a reading between reports. Where the field *is* reachable
+        // is a player whose meter samples every transfer, which is `superplayer-abr`'s:
+        // `BandwidthOraclePlaybackTest` asserts it there, for the reason `superplayer-drm`'s
+        // `LicenceTelemetryTest` asserts a phase 2 metric in phase 6.
+        // ref: https://github.com/androidx/media/blob/1.11.0/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/upstream/DefaultBandwidthMeter.java
         assertThat(sample.throughputEstimateBps).isNull()
         // A live-latency sample of zero from on-demand content is a number a dashboard would happily
         // average; the absence of the event is what stops that.

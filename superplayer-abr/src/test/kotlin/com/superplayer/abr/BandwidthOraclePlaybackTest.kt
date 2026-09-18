@@ -264,10 +264,10 @@ class BandwidthOraclePlaybackTest {
      *
      * A phase 3 test of a phase 2 metric, for the reason `superplayer-drm`'s `LicenceTelemetryTest`
      * is a phase 6 test of one: this is the only kind of player under which the field is reachable at
-     * all. `QoeCollector` reads Media3's `onBandwidthEstimate`, and Media3's own `DefaultBandwidthMeter`
-     * reports on thresholds — half a megabyte, or two seconds of transfer — that a synthetic segment
-     * on a fast host never reaches, so a plain player's samples carry null and the collector's own
-     * test says so rather than asserting a number the harness cannot make. The oracle's meter samples
+     * all. `QoeCollector` reads Media3's `onBandwidthEstimate`, and Media3's own meter reports on
+     * thresholds a synthetic segment on a fast host never reaches, so a plain player's samples carry
+     * null — which the collector's own test asserts, with the citation for the two constants that
+     * decide it — rather than asserting a number the harness cannot make. The oracle's meter samples
      * every transfer and dispatches each one (`OracleBandwidthMeter`), which is what makes this
      * assertable here.
      *

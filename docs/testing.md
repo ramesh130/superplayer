@@ -486,8 +486,8 @@ What each stand-in cannot show:
 - **Media3's API 29 to 32 television path is not stated.** It reads
   `AudioTrack.isDirectPlaybackSupported` against a player's own audio attributes rather than the
   device's, and the pinned runtime is 35.
-- **The controls are driven by key events, not seen.** `TvPlaybackControlsTest` is the library's one
-  Compose UI test (#272). It hosts `TvPlaybackControls` in Compose's test rule under Robolectric, over a
+- **The controls are driven by key events, not seen.** `TvPlaybackControlsTest` is one of the library's
+  two Compose UI tests (#272; the other is the debug HUD's, below). It hosts `TvPlaybackControls` in Compose's test rule under Robolectric, over a
   player this harness built, and presses D-pad keys with `performKeyInput`. Which control has focus and
   the position the seek bar shows are read from semantics, and seeks are counted by a `Player.Listener`,
   as a consumer's listener would hear them. The scrub tests turn Compose's clock to manual
@@ -497,6 +497,41 @@ What each stand-in cannot show:
   distance does not depend on the rate is `ScrubTest`'s. That test reads past the facade, into the internal
   `Scrub`, because no key injection can vary a repeat rate. Nothing is drawn to a
   screen, so how the focus indication looks from across a room is a device's (#274).
+
+## The debug HUD
+
+`superplayer-diagnostics`' `DebugHudTest` is the library's second Compose UI test (#294). It composes
+`DebugHud` in Compose's test rule under Robolectric, over a player this harness built, and reads the
+overlay back the way a viewer's accessibility services read it: each row carries its label as a content
+description and its reading as a state description, so an assertion names the row and its value. Nothing
+is drawn to a screen, and how the overlay reads over moving video is a device's.
+
+Three things it can show and one it cannot.
+
+- **The player's half is real.** The buffer, the position, the rung the player selected and the error it
+  delivered are read off a player that really played, or — for the delivered error — one whose manifest
+  the transport really refused.
+- **The telemetry half is fed through the sink's own front door.** `DebugHudTelemetry` is a public
+  `TelemetrySink`, so calling `onEvent` with `TelemetryEvent` values is driving the HUD through exactly
+  the published API a consumer's `QoeCollector` drives it through, and it is not a read past the facade.
+  What a real collector would add is asynchrony — delivery is a bounded queue on a thread of its own
+  (ADR-0008 rule 4) — and a Compose test whose assertions waited on that queue would be timing rather
+  than reading.
+- **The guard has a control.** Robolectric's application is not debuggable, which is a release build as
+  far as `isDebugHudAvailable` is concerned, so the HUD's own tests state the flag and the guard's test
+  clears it and asserts that no node composes at all.
+- **One test reads past the public API, and this is where that is recorded.**
+  `aNewSessionStartsTheReadingsOver` asserts on `DebugHudTelemetry.reading()` and the internal
+  `HudTelemetryReading`, because what it is about is the sink forgetting a session's readings — a claim
+  about the absence of every row at once, which the rendered rows can only show one `unavailable` at a
+  time and could not distinguish from a reading that was never taken.
+
+What no test here can show is the field the HUD's own line depends on arriving from a real meter.
+Media3's own bandwidth meter reports on thresholds a synthetic segment on a fast host never reaches, so
+`PlaybackStateSampled.throughputEstimateBps` is null on a plain harness player — which `QoeMetricsTest`
+asserts as the field's rule, with the citation — and it is reachable only on a player whose meter samples
+every transfer, `superplayer-abr`'s. `BandwidthOraclePlaybackTest` is where the emission is asserted, over
+a replayed trace so the value can be bounded by the link rather than by how fast the host ran.
 
 ## A Widevine device and a licence server
 

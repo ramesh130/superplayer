@@ -31,4 +31,14 @@
     -->
     <uses-permission android:name="android.permission.BROADCAST_STICKY" />
 
+    <!--
+      Install-time as well, and the only one of the three that is about a socket. HttpTransportConformance
+      binds an HTTP/1.1 origin on the loopback interface and a consumer's transport connects to it, and
+      the platform gates both the bind and the connect on this permission — invisibly here, since
+      Robolectric enforces none and neither ServerSocket nor URL carries a @RequiresPermission for lint to
+      read, but not on the instrumentation runner that class is also written to be called from. Test
+      support only, never in a shipped app.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
 </manifest>

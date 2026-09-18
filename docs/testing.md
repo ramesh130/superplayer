@@ -46,11 +46,11 @@ player exposes is a smoothed reading over a shaped link, which is a slower way o
 else. What is asserted is the cost of a transparently-decompressing client as a number rather than as
 a warning in a KDoc.
 
-`HttpTransportConformance` is the seventh, and it is the only one a *consumer* runs rather than a
-maintainer: `superplayer-testkit` public API, five checks, one per obligation ADR-0016 leaves on a
-transport. It stands up an HTTP/1.1 origin on the loopback interface, because those obligations are
-claims about what a client puts on a wire and every other fake in this repository stands in for a
-layer above the client. `HttpTransportConformanceTest` is what makes it worth shipping — the section
+`HttpTransportConformance` is the exception #312 added, and the only one a *consumer* runs rather
+than a maintainer: `superplayer-testkit` public API, five checks, one per obligation ADR-0016
+leaves on a transport. It stands up an HTTP/1.1 origin on the loopback interface, because those
+obligations are claims about what a client puts on a wire and every other fake in this repository
+stands in for a layer above the client. `HttpTransportConformanceTest` is what makes it worth shipping — the section
 below carries that argument.
 
 `SuperPlayerCmcdTest` keeps that same chain and asserts on the *requests* travelling down it rather
@@ -262,7 +262,10 @@ contract to change rather than one to hold an adopter to. The control between th
 **What it cannot show.** Whether a consumer runs it, which ADR-0016's *Consequences* already records as
 the mitigation's limit. And anything about TLS, proxies, HTTP/2 or HTTP/3: the origin speaks HTTP/1.1 in
 plaintext, so a client that refuses plaintext or pins a host is one to relax for this test. Adding a
-sixth check means adding a wrong transport for it in the same change.
+sixth check means adding a wrong transport for it in the same change, and that is a *register* rather
+than an instruction: `everyCheckHasAWrongTransportAndEveryWrongTransportHasACheck` reads the checks
+off the class and pairs them with `PlatformClientTransport.Defect`, in `FallbackRungCoverageTest`'s
+shape and for its reason, so a check with nothing to fail it fails the build instead.
 
 ## Synthetic media, not fixtures
 

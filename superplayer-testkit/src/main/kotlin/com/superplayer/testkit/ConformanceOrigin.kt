@@ -90,6 +90,16 @@ internal class ConformanceOrigin : AutoCloseable {
 
     fun receivedFor(path: String): List<Received> = exchanges.filter { it.path == path }
 
+    /**
+     * What the transport put on the wire for [path]: the value of [name] on the last request this
+     * origin answered there, or null where it sent none.
+     *
+     * The origin's own reading rather than the check's, because "what this transport did" is the
+     * half of a failure message only this end of the exchange can answer.
+     */
+    fun headerSentFor(path: String, name: String): String? =
+        receivedFor(path).lastOrNull()?.header(name)
+
     override fun close() {
         running = false
         closeQuietly(server)

@@ -314,7 +314,8 @@ stays accidental. `HttpTransportConformanceTest` is what makes it worth shipping
 transport **per obligation**, written over `HttpURLConnection` so each defect is a real client's
 misconfiguration, plus `HttpStack.default()` run through the same fifty lines an adopter writes and
 passing every check — because a contract the shipped stack cannot keep is a contract to change. What
-is still open in Phase 10 is the phase's docs (`docs/http-transport.md`) and its device exit.
+is still open in Phase 10 is the phase's docs (#315, `docs/http-transport.md`) and its device exit
+(#316).
 
 CMCD (CTA-5004) is emitted there today, and is on for every profile including `DATA_SAVER` —
 `CmcdBinding.kt` holds the per-profile table, the reasoning, and the `// spec:` citation for each
@@ -1440,7 +1441,10 @@ repository.
 - **[`docs/testing.md`](docs/testing.md)** — tests drive the library through its public API under
   Robolectric, against Media3's own fakes, with no device and no network. Nothing asserts past the
   facade, and `player.exoPlayer` is an escape hatch for consumers rather than a way in for tests.
-  The rule binds every change, not only the one that introduced it.
+  The rule binds every change, not only the one that introduced it. It has one carve-out, argued in
+  that document's *The conformance test a consumer runs*: `HttpTransportConformance` binds a server
+  socket on the **loopback** interface and reaches nothing off the host, because an HTTP client's
+  obligations are claims about what it puts on a wire.
 - Every dependency version lives in `gradle/libs.versions.toml`; the library and demo builds read
   that one file.
 - A new dependency arrives with its `THIRD_PARTY.md` row in the same change.

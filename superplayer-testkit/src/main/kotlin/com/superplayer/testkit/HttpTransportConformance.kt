@@ -110,7 +110,7 @@ public class HttpTransportConformance(private val transport: HttpTransport) {
         val range = HttpRange(ConformanceOrigin.RANGE_OFFSET, ConformanceOrigin.RANGE_LENGTH)
         val response = open(origin, ConformanceOrigin.RESOURCE_PATH, range = range)
         val body = drain(response, RULE_5)
-        val sent = origin.receivedFor(ConformanceOrigin.RESOURCE_PATH).lastOrNull()?.header("Range")
+        val sent = origin.headerSentFor(ConformanceOrigin.RESOURCE_PATH, "Range")
         if (sent != range.headerValue()) {
             refuse(
                 RULE_5,
@@ -156,6 +156,9 @@ public class HttpTransportConformance(private val transport: HttpTransport) {
     /**
      * **ADR-0016 rule 6** — a redirect is followed and the address it ended at is reported on
      * [HttpResponse.uri], because Media3 resolves a manifest's relative references against it.
+     * // spec: RFC 9110 §15.4.3 (302 and its `Location`), §10.2.2 — and RFC 3986 §5.1.3, which is
+     * why the *base* matters: a relative reference inside the document is resolved against the URI
+     * it was retrieved from.
      */
     public fun verifyRedirectedUriIsReported(): Unit = withOrigin { origin ->
         val requested = origin.baseUri + ConformanceOrigin.REDIRECT_PATH
@@ -192,8 +195,7 @@ public class HttpTransportConformance(private val transport: HttpTransport) {
     public fun verifyNoContentCodingIsAdded(): Unit = withOrigin { origin ->
         val response = open(origin, ConformanceOrigin.RESOURCE_PATH)
         val body = drain(response, RULE_7)
-        val asked = origin.receivedFor(ConformanceOrigin.RESOURCE_PATH).lastOrNull()
-            ?.header(ACCEPT_ENCODING)
+        val asked = origin.headerSentFor(ConformanceOrigin.RESOURCE_PATH, ACCEPT_ENCODING)
         if (asked != IDENTITY) {
             refuse(
                 RULE_7,
@@ -226,6 +228,8 @@ public class HttpTransportConformance(private val transport: HttpTransport) {
      * **ADR-0016 rule 8** — a refusal the origin answered is *reported* as a number with its
      * response headers, never raised, because the typed failure the fallback ladder and
      * `ErrorClassifier` read is core's to build from it.
+     * // spec: RFC 9110 §15.5.4 (403) and §11.6.1 (`WWW-Authenticate`) — a refusal is a response
+     * like any other, and the challenge that came with it is part of it.
      */
     public fun verifyStatusIsReportedRatherThanRaised(): Unit = withOrigin { origin ->
         val response = try {
@@ -303,7 +307,19 @@ public class HttpTransportConformance(private val transport: HttpTransport) {
                     "incrementally rather than buffered whole",
             )
         }
-        opening.get()?.let { throw it }
+        opening.get()?.let { failure ->
+            // Read before the close below, so anything captured here happened while the response
+            // was being opened or first read — never the cancellation this check is about. It
+            // becomes a refusal rather than being rethrown, because the message's shape is what
+            // this class delivers and a bare exception out of the suite is the one thing a reader
+            // cannot act on.
+            refuse(
+                RULE_10,
+                "raised ${failure.javaClass.name} (${failure.message}) opening a response the " +
+                    "origin had begun to answer",
+                "a response for an address that answers, so that there is a transfer to cancel",
+            )
+        }
         val stream = body.get() ?: refuse(
             RULE_10,
             "returned no body to close",
@@ -344,7 +360,10 @@ public class HttpTransportConformance(private val transport: HttpTransport) {
     /** The body, read to its end and closed, which is what core does with one it keeps. */
     private fun drain(response: HttpResponse, rule: String): ByteArray = try {
         response.body.use { it.readBytes() }
-    } catch (failure: IOException) {
+    } catch (failure: Exception) {
+        // Any exception and not only an `IOException`: a client that raises something of its own
+        // mid-body is exactly the case this suite exists to name, and rethrowing it would lose the
+        // rule it broke.
         refuse(
             rule,
             "raised ${failure.javaClass.name} (${failure.message}) while its body was being read",

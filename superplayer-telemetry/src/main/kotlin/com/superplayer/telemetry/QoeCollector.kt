@@ -340,6 +340,32 @@ public class QoeCollector internal constructor(
             endLicenceAcquisition(LicenceOutcome.REFUSED)
         }
 
+        /**
+         * The meter's smoothed throughput estimate, kept for the next periodic sample to carry.
+         *
+         * Not an event of its own: the meter reports on its own cadence, which is per transfer and is
+         * the engine's business, and a vocabulary that emitted one event per report would emit at a
+         * rate a segment size decides. The sample already has a stated cadence and already carries
+         * the rung that was selected, and the estimate is only interesting beside it (`#294`).
+         *
+         * Read from Media3's own callback rather than from `superplayer-abr`'s `BandwidthOracle`,
+         * because this collector must derive the same number on a player that has no adaptive policy:
+         * the oracle's meter reports through this callback too, so one reading covers both.
+         */
+        override fun onBandwidthEstimate(
+            eventTime: AnalyticsListener.EventTime,
+            totalLoadTimeMs: Int,
+            totalBytesLoaded: Long,
+            bitrateEstimate: Long,
+        ) {
+            val session = openSession ?: return
+            // Media3's estimate is a `long` and this vocabulary's bitrates are `Int`, as
+            // `videoBitrateBps` is, so the two can be compared without a widening at every call
+            // site. Coerced rather than truncated: an estimate above two gigabits a second is a link
+            // no ladder has a rung for, and reporting the ceiling is honest where wrapping is not.
+            session.throughputEstimateBps = bitrateEstimate.coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
+        }
+
         override fun onDroppedVideoFrames(
             eventTime: AnalyticsListener.EventTime,
             droppedFrames: Int,
@@ -646,6 +672,7 @@ public class QoeCollector internal constructor(
                 bufferedDurationMs = (attached.bufferedPosition - attached.currentPosition)
                     .coerceAtLeast(0),
                 playing = attached.isPlaying,
+                throughputEstimateBps = session.throughputEstimateBps,
             ),
         )
         // Live content only. A sample of zero from on-demand content is a number a dashboard would
@@ -710,6 +737,15 @@ public class QoeCollector internal constructor(
 
         /** The declared peak bitrate playing, or null before the first rendition is chosen. */
         var videoBitrateBps: Int? = null
+
+        /**
+         * The meter's last reported throughput estimate, or null before it has reported one.
+         *
+         * Per session rather than per collector, for the same reason every other reading here is: a
+         * recycled pooled player starts the next session with no estimate reported *to that session*,
+         * and a sample carrying the previous content's number would be a reading nothing measured.
+         */
+        var throughputEstimateBps: Int? = null
 
         /** When the open stall began, or null when playback is not stalled. */
         var rebufferStartedAtMs: Long? = null

@@ -24,6 +24,7 @@ import androidx.media3.datasource.TransferListener
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.BandwidthMeter
+import androidx.media3.test.utils.robolectric.RobolectricUtil.runMainLooperUntil
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
@@ -37,7 +38,10 @@ import com.superplayer.core.PlaybackConditions
 import com.superplayer.core.PlaybackDecision
 import com.superplayer.core.PlaybackPolicy
 import com.superplayer.core.PlaybackProfile
+import com.superplayer.core.TelemetryEvent
+import com.superplayer.core.TelemetrySink
 import com.superplayer.core.TrackSelectionPolicy
+import com.superplayer.telemetry.QoeCollector
 import com.superplayer.testkit.NetworkProfile
 import com.superplayer.testkit.PlaybackHarness
 import com.superplayer.testkit.TestContent
@@ -47,6 +51,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.util.Collections
 
 /**
  * The oracle under a real player, on the harness's clock, over a replayed network.
@@ -253,6 +258,59 @@ class BandwidthOraclePlaybackTest {
 
     private fun build(): BandwidthOracle = BandwidthOracle.Builder(context).build().also { oracles += it }
 
+    /**
+     * The estimate reaches `docs/telemetry-schema.md`'s periodic sample, beside the rung it was spent
+     * on — `TelemetryEvent.PlaybackStateSampled.throughputEstimateBps`, the field `#294`'s HUD reads.
+     *
+     * A phase 3 test of a phase 2 metric, for the reason `superplayer-drm`'s `LicenceTelemetryTest`
+     * is a phase 6 test of one: this is the only kind of player under which the field is reachable at
+     * all. `QoeCollector` reads Media3's `onBandwidthEstimate`, and Media3's own `DefaultBandwidthMeter`
+     * reports on thresholds — half a megabyte, or two seconds of transfer — that a synthetic segment
+     * on a fast host never reaches, so a plain player's samples carry null and the collector's own
+     * test says so rather than asserting a number the harness cannot make. The oracle's meter samples
+     * every transfer and dispatches each one (`OracleBandwidthMeter`), which is what makes this
+     * assertable here.
+     *
+     * The network is a replayed trace rather than the default, and that is load-bearing twice over:
+     * an unshaped transfer finishes inside a millisecond, which is no measurable duration and
+     * therefore no sample in any meter, and a trace also bounds the value, so the estimate can be
+     * asserted against the link it was measured on instead of against how fast this host ran.
+     */
+    @Test
+    fun theEstimateReachesTheTelemetrySampleBesideTheRungItWasSpentOn() {
+        val events = Collections.synchronizedList(mutableListOf<TelemetryEvent>())
+        val player = harness.buildPlayer(
+            content = TestContent.videoLadder(durationMs = LONG_CONTENT_MS),
+            network = NetworkProfile.STABLE_WIFI.trace,
+            policy = AdaptivePolicy.forProfile(context, PlaybackProfile.VIDEO_ON_DEMAND),
+            telemetry = QoeCollector(TelemetrySink { events += it }),
+        )
+        player.setMediaRequest(request())
+        harness.playToReady(player)
+
+        // Past one sampling cadence, which the event carries rather than this test knowing it: the
+        // samples are ten seconds apart, so a span twice that has at least one in it.
+        harness.advanceTimeInStepsMs(player, 2 * SAMPLE_CADENCE_MS)
+        runMainLooperUntil { sampleWithAnEstimate(events) != null }
+
+        val sample = requireNotNull(sampleWithAnEstimate(events))
+        // A rate the replayed link could really have served: over nothing, and no faster than the
+        // trace's own 20 Mbit/s. That is as far as a value can be pinned here, and it is far enough
+        // to catch the two ways plumbing goes wrong — a unit mistake, and a field wired to the rung.
+        assertThat(sample.throughputEstimateBps!!).isGreaterThan(0)
+        assertThat(sample.throughputEstimateBps!!.toLong()).isAtMost(STABLE_WIFI_BPS)
+        assertThat(sample.videoBitrateBps).isNotNull()
+        assertThat(sample.samplingIntervalMs).isEqualTo(SAMPLE_CADENCE_MS)
+        harness.release(player)
+    }
+
+    /** Externally synchronized: the delivery thread appends while this reads (ADR-0008 rule 4). */
+    private fun sampleWithAnEstimate(events: List<TelemetryEvent>): TelemetryEvent.PlaybackStateSampled? =
+        synchronized(events) {
+            events.filterIsInstance<TelemetryEvent.PlaybackStateSampled>()
+                .firstOrNull { it.throughputEstimateBps != null }
+        }
+
     private fun request(): MediaRequest = MediaRequest.Builder(CONTENT).addSource(SOURCE).build()
 
     /**
@@ -356,6 +414,15 @@ class BandwidthOraclePlaybackTest {
         const val SOURCE = "fake://superplayer.test/never-fetched"
         const val LONG_CONTENT_MS = 180_000L
         const val SEGMENTS = 4
+
+        /**
+         * The cadence of `docs/telemetry-schema.md`'s periodic events, ten seconds.
+         *
+         * Written out rather than read from the collector, whose constant is internal to its own
+         * module, and asserted against the sample's own `samplingIntervalMs` so a change of the
+         * default fails this test rather than making it wait forever.
+         */
+        const val SAMPLE_CADENCE_MS = 10_000L
 
         /** The harness's own load step, so the handover lands on a step boundary. */
         const val STEP_MS = 250L

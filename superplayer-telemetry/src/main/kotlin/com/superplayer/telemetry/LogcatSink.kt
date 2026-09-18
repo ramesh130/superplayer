@@ -145,7 +145,10 @@ public object LogcatSink : TelemetrySink {
             is TelemetryEvent.PlaybackStateSampled -> info(
                 "evt=state_sample $common intervalMs=${event.samplingIntervalMs} " +
                     "bitrateBps=${event.videoBitrateBps} bufferedMs=${event.bufferedDurationMs} " +
-                    "playing=${event.playing}",
+                    // Beside the rung on one line deliberately: the comparison a reader wants from a
+                    // logcat is the same one the HUD shows (`#294`), and two greps for two lines is
+                    // how a reader ends up joining them by timestamp instead.
+                    "playing=${event.playing} estimateBps=${event.throughputEstimateBps}",
             )
 
             // INFO even when the outcome is a refusal: what a refused licence *means* arrives on the

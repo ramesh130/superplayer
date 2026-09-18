@@ -219,6 +219,10 @@ dependencies {
     // bring it, and nothing in the demo calls it.
     implementation("com.superplayer:superplayer-tv:${libs.versions.superplayer.get()}")
     implementation("com.superplayer:superplayer-abr:${libs.versions.superplayer.get()}")
+    // The debug HUD the fourth screen shows (ADR-0015 rule 11), which is the second published module
+    // to carry Compose — so this dependency is also how the demo build catches a POM that failed to
+    // declare it, an adopter's first failure being the one this build exists to have here instead.
+    implementation("com.superplayer:superplayer-diagnostics:${libs.versions.superplayer.get()}")
     implementation(libs.media3.ui)
     // For `androidx.annotation.OptIn`, the form of opt-in that works on Media3's Java
     // `@UnstableApi` marker — see MainActivity.showBufferingSpinner. Named here rather than

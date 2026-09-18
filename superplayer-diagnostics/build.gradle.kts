@@ -2,6 +2,11 @@ import com.superplayer.build.declareKotlinFriendModule
 
 plugins {
     id("superplayer.android.library")
+    // The debug HUD is composables (ADR-0015 rule 11). The Compose compiler is a Kotlin compiler
+    // plugin released with Kotlin, so its version is the catalog's Kotlin version. It is applied here
+    // rather than in the convention plugin because this and `superplayer-tv` are the only two library
+    // modules with composables, and each ships a surface the *app* places in its own layout.
+    alias(libs.plugins.kotlin.compose)
 }
 
 // MediaSourceDoctor, session trace bundle, on-device debug HUD (ADR-0015)
@@ -18,6 +23,13 @@ dependencies {
     // the module rather than by the issue that first reads it — rule 1 fixes the classpath, and a
     // postmortem that could not name a trace would be free to record one of its own.
     api(project(":superplayer-telemetry"))
+
+    // The HUD: Compose foundation alone, which carries the text, layout and background an overlay of
+    // figures needs. `api`, because `DebugHud`'s signature names Compose's `Modifier`. Deliberately no
+    // Material and no `tv-material`: a HUD lying over a consumer's own video surface must take the
+    // app's screen as it finds it, and a theme dependency would make the library choose one.
+    api(platform(libs.androidx.compose.bom))
+    api(libs.androidx.compose.foundation)
 
     // `DataSource`, `DataSpec` and the `InvalidResponseCodeException` a refused manifest arrives as: the
     // vocabulary of the chain core assembles, every type of it `@UnstableApi`, which is why none appears
@@ -54,6 +66,12 @@ dependencies {
     // builds a `PlaybackDrm` is this module — a vacuous redaction test being the one outcome #292's
     // centre has to avoid.
     testImplementation(project(":superplayer-drm"))
+
+    // Compose's UI test rule, which composes the HUD under Robolectric and reads the rows back as a
+    // viewer's accessibility services would, and the manifest that declares the empty activity the
+    // rule hosts them in.
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    testImplementation(libs.androidx.compose.ui.test.manifest)
 
     testImplementation(libs.media3.test.utils.robolectric)
     testImplementation(libs.robolectric)

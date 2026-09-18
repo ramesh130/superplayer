@@ -40,12 +40,18 @@ Whether a Media3 type is annotated is read off the pinned Media3 on the module's
 classpath, not from a list maintained by hand — ADR-0001 is explicit that per-class status must come
 from the pinned version, because annotations move between releases.
 
-A module compiled with the Compose compiler, which today is `superplayer-tv` alone, carries two kinds of
+A module compiled with the Compose compiler — `superplayer-tv` and, since `#294`'s debug HUD,
+`superplayer-diagnostics` — carries two kinds of
 generated member in its surface. Every class gets a `public static final field $stable`, the compiler's
-stability record, and that line in the tracked file is expected. A composable lambda that captures nothing
+stability record, and that line in the tracked file is expected. It is expected on **every** class of
+such a module and not only on the composables' own types, which is why applying the Compose compiler to
+a module that already had a tracked surface moves that file: `superplayer-diagnostics`' doctor, report
+and bundle each gained a `$stable` line in the change that added the HUD, and none of them changed.
+A composable lambda that captures nothing
 is hoisted into a public `ComposableSingletons$<File>Kt` class whose member names are hashes of the source,
-so any edit to that file would move the tracked surface. The module's composables avoid it by passing
-their content lambdas something to capture, and a `ComposableSingletons` class appearing in a diff is a
+so any edit to that file would move the tracked surface. Both modules' composables avoid it by passing
+their content lambdas something to capture — or, as the HUD does, by having no content lambda at all —
+and a `ComposableSingletons` class appearing in a diff is a
 lambda that lost its capture.
 
 ## Explicit API mode, one step earlier

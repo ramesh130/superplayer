@@ -372,6 +372,39 @@ reader of old data should know: `classification` for that failure used to be `De
 | --- | --- | --- |
 | `Device.DecoderTransient` (only when rung 5 did not rescue it) | `Device.DecoderInit` | The audio output would not open a track for an encoded format (AC-3, E-AC-3, DTS and the like) it had been carrying. An init failure for decoded PCM stays `Device.DecoderInit` |
 
+**Version 2 stands — the sample carries the throughput estimate beside the rung (`#294`).**
+`PlaybackStateSampled` gained a `throughputEstimateBps`: the smoothed estimate the engine's bandwidth
+meter last reported, in bits per second, or null where it has reported none. **`SCHEMA_VERSION` does
+not move**, and that is the deliberate answer rather than an oversight — it is an addition of shape,
+exactly as `SessionEnded.securityLevel` was: no existing field's definition changes, no denominator
+moves, no exclusion narrows, and a pipeline that ignores it computes what it computed before
+([ADR-0008][adr8] rule 5).
+
+Why it is on the *sample* rather than an event of its own: a meter reports per transfer, at a rate a
+segment size decides, and an event per report would be a stream whose volume is a fact about the
+content's packaging. The sample already has a stated cadence — and, more to the point, it already
+carries `videoBitrateBps`. The two fields being on **one event at one instant** is the whole reason
+this one exists. A stall with a healthy estimate and a low rung is a different defect from a stall
+with a collapsed estimate: the first is selection, a ceiling or a device refusal, the second is the
+link. Read from separate events, the comparison is a join between two instants; read from one sample,
+it is a subtraction. `superplayer-diagnostics`' debug HUD shows exactly that line, and a warehouse
+query can now ask the same question of a fleet.
+
+It is the meter's *estimate* and not a transfer's own rate. The estimate is the number selection acts
+on, so a reader comparing it against the rung sees the input the engine had. The unsmoothed quantity —
+each transfer's own throughput — is `superplayer-telemetry`'s `SessionTrace`, which records it as a
+`bandwidth` kind and whose KDoc says why the two are different artifacts.
+
+| Now reported | Was reported as | What it is |
+| --- | --- | --- |
+| `PlaybackStateSampled.throughputEstimateBps` | nothing — no event carried an estimate | The meter's smoothed throughput at the sample instant, beside the rendition it was being spent on. Null until the meter has reported: before the first transfer finishes, on content served wholly from the cache, and on any player whose meter reports on thresholds a session never reaches |
+
+One thing a reader of a *test* fixture should know, since it is the same fact in small: Media3's own
+`DefaultBandwidthMeter` reports only once a transfer has moved half a megabyte or run for two seconds,
+so short objects over a fast link produce samples with a null estimate. That is the field's rule
+working, not a gap. `superplayer-abr`'s meter samples every transfer and reports each one, so a player
+built with `AdaptivePolicy` fills the field from its first segment.
+
 **A sink must tolerate a new event type.** `TelemetryEvent` is sealed, so a `when` over it can be
 exhaustive without an `else` — and such a `when` fails to compile when a later version adds an event.
 An `else` branch is the forward-compatible spelling; take the exhaustive one only if being told about
@@ -396,7 +429,7 @@ additions is what you want.
 | `SeekCompleted` | Playback resumes at the target | `toPositionMs`, `seekLatencyMs` |
 | `LicenceAcquisitionEnded` | A DRM licence acquisition finishes | `durationMs`, `outcome`, `securityLevel` |
 | `LiveLatencySampled` | Every 10 s, live content only | `liveLatencyMs`, `targetLiveLatencyMs` |
-| `PlaybackStateSampled` | Every 10 s | `samplingIntervalMs`, `videoBitrateBps`, `bufferedDurationMs`, `playing` |
+| `PlaybackStateSampled` | Every 10 s | `samplingIntervalMs`, `videoBitrateBps`, `bufferedDurationMs`, `playing`, `throughputEstimateBps` |
 | `VideoFramesDropped` | Every 10 s, while video renders | `droppedFrames`, `repeatedFrames`, `elapsedPlayingMs` |
 
 **The sampling interval is 10 seconds**, and the three periodic events share it. It is stated here

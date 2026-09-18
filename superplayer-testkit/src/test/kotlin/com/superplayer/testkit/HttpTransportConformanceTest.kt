@@ -22,6 +22,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.lang.reflect.Modifier
 
 /**
  * Scores [HttpTransportConformance] itself, from both sides.
@@ -122,6 +123,40 @@ class HttpTransportConformanceTest {
         val refusal = refusalFrom(PlatformClientTransport.Defect.IGNORES_RANGE) { it.verifyAll() }
 
         assertThat(refusal).contains("ADR-0016 rule 5")
+    }
+
+    /**
+     * The register: every check has a wrong transport that fails it, and every wrong transport has a
+     * check that catches it.
+     *
+     * `FallbackRungCoverageTest`'s and `CorpusRegisterTest`'s shape, for their reason. The seven
+     * methods above are the proof; this is what makes a **sixth** obligation — a `verify` method
+     * added with no [PlatformClientTransport.Defect] beside it, or a defect nothing drives — fail
+     * the build rather than go unnoticed, which is the way a suite like this quietly stops being
+     * non-vacuous. The pairing is written out rather than derived from a name, because a name is
+     * exactly what a rename would take with it.
+     */
+    @Test
+    fun everyCheckHasAWrongTransportAndEveryWrongTransportHasACheck() {
+        val register = mapOf(
+            "verifyByteRangeIsHonoured" to PlatformClientTransport.Defect.IGNORES_RANGE,
+            "verifyRedirectedUriIsReported" to PlatformClientTransport.Defect.REPORTS_THE_REQUESTED_URI,
+            "verifyNoContentCodingIsAdded" to PlatformClientTransport.Defect.NEGOTIATES_GZIP,
+            "verifyStatusIsReportedRatherThanRaised" to PlatformClientTransport.Defect.RAISES_ON_A_REFUSAL,
+            "verifyCancelledRequestReturns" to PlatformClientTransport.Defect.BLOCKS_PAST_CLOSE,
+        )
+        // Read off the class rather than listed here, so that a check added to it is a check this
+        // register is missing. Public and non-synthetic, because each check's own `withOrigin`
+        // lambda compiles to a method carrying its name; `verifyAll` is excluded by name, since it
+        // is the five above run in order rather than a sixth obligation.
+        val checks = HttpTransportConformance::class.java.declaredMethods
+            .filter { Modifier.isPublic(it.modifiers) && !it.isSynthetic }
+            .map { it.name }
+            .filter { it.startsWith("verify") && it != "verifyAll" }
+            .toSet()
+
+        assertThat(register.keys).isEqualTo(checks)
+        assertThat(register.values.toSet()).isEqualTo(PlatformClientTransport.Defect.entries.toSet())
     }
 
     private fun refusalFrom(

@@ -858,7 +858,8 @@ is the least useful thing a support ticket can say. A **pathology is not a failu
 `FailureClass` and this module classifies nothing. `MediaSourceDoctorTest` drives that shape over
 `PlaybackHarness.diagnosticEnvironment` — `DownloadEnvironment`'s twin, carrying a transport and nothing
 else — with the healthy stream as its own control, and `DiagnosticsPayNothingTest` counts rule 13.
-Since #287 it names the corpus's **whole HLS set**, and the rules are `HlsPathologies`, one function per
+Since #287 it names **every HLS entry of the corpus but `hls-cached-live-playlist`**, whose defect is a
+response header rather than a document and which is #289's; the rules are `HlsPathologies`, one function per
 defect with its threshold and its reason beside it, while `ManifestExamination` owns the fetching alone: a
 ladder gap, an overstated rung, an audio group declared as a format its segments cannot carry, a variant
 pointing at a group that is not there, ragged segment durations and a splice with nothing to place its
@@ -868,10 +869,11 @@ manifests, so a preflight still costs no media. **A graded defect's severity is 
 magnitude** — the corpus's `BENIGN` is not a finding at all, its `BORDERLINE` is `ADVISORY` and its `SEVERE`
 `DEGRADED` — which is what `FindingSeverity` is per finding for, and `Finding.magnitude` stays a `String`
 because nothing branches on it. The one `BLOCKING` HLS finding is the dangling audio group, and it is
-blocking because the document is malformed rather than because a number is large. Two thresholds are
-published bounds (Apple TN2224's 2× ladder step, DASH-IF IOP's ±50% segment tolerance), two are derived at
-the constant that carries them, and the bitrate ceiling is AAC's own bit reservoir — which is why a 48×
-ladder's top rung is named twice, both readings being true of the playlist. `HlsPathologyTest` is the
+blocking because the document is malformed rather than because a number is large. Every constant carries its
+source or its derivation where it is chosen: Apple TN2224's 2× ladder step and DASH-IF IOP's ±50% segment
+tolerance are published bounds, the escalation thresholds are derived, and the bitrate ceiling is AAC's own
+bit reservoir (ISO/IEC 14496-3) — which is why a 48× ladder's top rung is named twice, both readings being
+true of the playlist and #290's register having to expect two. `HlsPathologyTest` is the
 vocabulary, with the `BENIGN` grades and a healthy two-rung ladder as false-positive controls in methods of
 their own.
 

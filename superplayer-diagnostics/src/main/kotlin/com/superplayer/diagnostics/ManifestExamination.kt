@@ -55,18 +55,18 @@ internal class ManifestExamination(private val chain: DataSource.Factory) {
      */
     fun examine(source: Uri): List<Finding> = when (val fetched = fetch(source)) {
         is Fetched.Refused -> listOf(fetched.finding)
-        is Fetched.Read -> worstPerPathology(examine(fetched.playlist))
+        is Fetched.Read -> worstPerPathology(rulesOver(fetched.manifest))
     }
 
-    /** The rules that apply to whichever kind of document [source] turned out to be. */
-    private fun examine(playlist: Any): List<Finding> = when (playlist) {
-        is HlsMultivariantPlaylist -> examineHls(playlist)
+    /** The rules that apply to whichever kind of document [manifest] turned out to be. */
+    private fun rulesOver(manifest: ParsedManifest): List<Finding> = when (manifest) {
+        is ParsedManifest.Multivariant -> examineHls(manifest.playlist)
 
         // A request whose source is a media playlist rather than a multivariant one: legal HLS, and the
         // shape a single-rendition live stream is usually published in.
-        is HlsMediaPlaylist -> HlsPathologies.inMediaPlaylist(playlist)
+        is ParsedManifest.Media -> HlsPathologies.inMediaPlaylist(manifest.playlist)
 
-        else -> emptyList()
+        ParsedManifest.Opaque -> emptyList()
     }
 
     /**
@@ -84,35 +84,31 @@ internal class ManifestExamination(private val chain: DataSource.Factory) {
      */
     private fun examineHls(multivariant: HlsMultivariantPlaylist): List<Finding> {
         val findings = HlsPathologies.inMultivariant(multivariant).toMutableList()
-        val renditionPlaylists = mutableMapOf<Uri, HlsMediaPlaylist>()
+        val mediaPlaylists = mutableMapOf<Uri, HlsMediaPlaylist>()
         val named = multivariant.variants.map { it.url } + multivariant.audios.mapNotNull { it.url }
         named.distinct().forEach { url ->
             when (val fetched = fetch(url)) {
                 is Fetched.Refused -> findings += fetched.finding
 
-                is Fetched.Read -> {
-                    val media = fetched.playlist as? HlsMediaPlaylist
-                    if (media == null) {
-                        // A multivariant playlist where a media playlist belongs: it parsed, so it is not
-                        // unreachable, and it is not the document the tag said it would be.
-                        findings += Finding(Pathology.MANIFEST_UNREADABLE, FindingSeverity.BLOCKING, magnitude = null)
-                    } else {
-                        renditionPlaylists[url] = media
-                        findings += HlsPathologies.inMediaPlaylist(media)
+                is Fetched.Read -> when (val manifest = fetched.manifest) {
+                    is ParsedManifest.Media -> {
+                        mediaPlaylists[url] = manifest.playlist
+                        findings += HlsPathologies.inMediaPlaylist(manifest.playlist)
                     }
+
+                    // A multivariant playlist, or something else entirely, where a media playlist belongs:
+                    // it parsed, so it is not unreachable, and it is not the document the tag said it was.
+                    else -> findings += unreadable()
                 }
             }
         }
-        multivariant.audios.forEach { rendition ->
-            findings += listOfNotNull(HlsPathologies.inAudioGroup(rendition, renditionPlaylists[rendition.url]))
-        }
-        return findings
+        return findings + HlsPathologies.inAudioGroups(multivariant, mediaPlaylists)
     }
 
     /** One finding per pathology, at the highest severity any rendition showed it at. */
     private fun worstPerPathology(findings: List<Finding>): List<Finding> = findings
         .groupBy { it.pathology }
-        .map { (_, sameDefect) -> sameDefect.maxBy { it.severity.ordinal } }
+        .map { (_, sameDefect) -> sameDefect.maxBy { it.severity } }
 
     /** [source]'s bytes, parsed — or the finding that says why they are not. */
     private fun fetch(source: Uri): Fetched = try {
@@ -123,17 +119,45 @@ internal class ManifestExamination(private val chain: DataSource.Factory) {
         // Before the refusal below, because Media3's parse failure *is* an `IOException`: what arrived
         // and what did not are two different reports, and telling them apart is the first thing a
         // support engineer does.
-        Fetched.Refused(Finding(Pathology.MANIFEST_UNREADABLE, FindingSeverity.BLOCKING, magnitude = null))
+        Fetched.Refused(unreadable())
     } catch (refused: IOException) {
         Fetched.Refused(unreachable(refused))
     }
 
+    /**
+     * Bytes that arrived and are not the document they were asked for.
+     *
+     * Blocking, and no magnitude: there is nothing to play and nothing to grade. What is *not* carried is
+     * the parser's own message, which may quote the line it choked on and therefore a URL and its token
+     * (`SessionTraceRecorder`'s rule 1).
+     */
+    private fun unreadable(): Finding =
+        Finding(Pathology.MANIFEST_UNREADABLE, FindingSeverity.BLOCKING, magnitude = null)
+
     /** What one fetch came back with: a document to read rules over, or the finding that replaces it. */
     private sealed interface Fetched {
 
-        class Read(val playlist: Any) : Fetched
+        class Read(val manifest: ParsedManifest) : Fetched
 
         class Refused(val finding: Finding) : Fetched
+    }
+
+    /**
+     * A document this doctor has parsed, as the kind of document it turned out to be.
+     *
+     * Named rather than left as the parser's own type, so that what a manifest *is* is decided once, at the
+     * parse, and every reader afterwards branches on a closed set. A protocol whose reading a later issue
+     * adds (#288's DASH) becomes one more case here and a case in [rulesOver], rather than another cast at
+     * every place a parsed document is held.
+     */
+    private sealed interface ParsedManifest {
+
+        class Multivariant(val playlist: HlsMultivariantPlaylist) : ParsedManifest
+
+        class Media(val playlist: HlsMediaPlaylist) : ParsedManifest
+
+        /** Fetched whole and read by no rule yet: what the protocols this doctor has no rules for parse to. */
+        data object Opaque : ParsedManifest
     }
 
     /**
@@ -148,10 +172,20 @@ internal class ManifestExamination(private val chain: DataSource.Factory) {
      * discarding parser skips is the *reading*, which is #288's to add for DASH; it still pulls the whole
      * body, so a truncated or refused transfer is met here exactly as a player would meet it.
      */
-    private fun parserFor(source: Uri): ParsingLoadable.Parser<Any> =
+    private fun parserFor(source: Uri): ParsingLoadable.Parser<ParsedManifest> =
         when (Util.inferContentType(source)) {
-            C.CONTENT_TYPE_HLS -> ParsingLoadable.Parser { uri, stream -> HlsPlaylistParser().parse(uri, stream) }
-            else -> ParsingLoadable.Parser { _, stream -> stream.readBytes().size }
+            C.CONTENT_TYPE_HLS -> ParsingLoadable.Parser { uri, stream ->
+                when (val playlist = HlsPlaylistParser().parse(uri, stream)) {
+                    is HlsMultivariantPlaylist -> ParsedManifest.Multivariant(playlist)
+                    is HlsMediaPlaylist -> ParsedManifest.Media(playlist)
+                    else -> ParsedManifest.Opaque
+                }
+            }
+
+            else -> ParsingLoadable.Parser { _, stream ->
+                stream.readBytes()
+                ParsedManifest.Opaque
+            }
         }
 
     /**

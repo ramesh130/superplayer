@@ -120,12 +120,13 @@ class HlsPathologyTest {
         assertThat(severe.magnitude).isEqualTo("segments 0.5 s to 10 s long, a 20× spread")
 
         // The corpus's borderline spread is exactly three — half the nominal beside one and a half times it,
-        // which is the widest pair the published tolerance admits — so the doctor is entitled to call it
-        // either way. What it may not do is grade it above the severe one.
+        // which is the widest pair the published tolerance admits, and which its own comment calls "within
+        // the letter of the tolerance". The doctor is entitled to call that either way, and this is which
+        // way it calls it: the threshold is strict, so a playlist that conforms exactly is not flagged.
+        // Pinned rather than left open, because "either way" is a licence for the threshold and not for the
+        // test, and the answer moving is something a reader of #290's register needs to see.
         val borderline = HostileManifests.hlsInconsistentSegmentDurations(Severity.BORDERLINE)
-        val reported = findings(borderline).singleOrNull { it.pathology == Pathology.HLS_INCONSISTENT_SEGMENT_DURATIONS }
-        assertWithMessage("$borderline").that(reported?.severity ?: FindingSeverity.ADVISORY)
-            .isNotEqualTo(FindingSeverity.BLOCKING)
+        assertWithMessage("$borderline — ${borderline.magnitude}").that(findings(borderline)).isEmpty()
     }
 
     @Test

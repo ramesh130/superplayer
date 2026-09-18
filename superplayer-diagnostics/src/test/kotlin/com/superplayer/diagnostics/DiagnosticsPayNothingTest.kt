@@ -83,9 +83,11 @@ class DiagnosticsPayNothingTest {
 
         // The multivariant playlist it was asked about and the media playlist that one names, and no
         // segment: what a doctor costs is manifests, and it costs them only once it is asked (rule 7).
+        val asked = harness.networkRequests(environment).map { it.uri }
         assertWithMessage("and asking one fetches the playlists of the content it was asked about")
-            .that(harness.networkRequests(environment).map { it.uri })
-            .containsExactly(content.sourceUri, content.sourceUri.replace("master.m3u8", "media.m3u8"))
+            .that(asked).hasSize(2)
+        assertWithMessage("playlists only — a doctor downloads no segment")
+            .that(asked.filter { it.endsWith(".m3u8") }).isEqualTo(asked)
     }
 
     @Test

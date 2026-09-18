@@ -55,11 +55,12 @@ dependency, which is why it does not appear in the column above and why it is no
 measures.
 
 ADR-0015 rule 3 admits `superplayer-diagnostics` as the **ninth** and bounds it to a closed list of
-three internal seams: a doctor's chain, which is ADR-0013 rule 4's second shape unchanged, plus one
-function returning the capability snapshot and `LiveWindowDepthCheck`'s judgement, which reach past
-it and are admitted by name. #286 took the friendship, and the first of the three seams with it; the
-other two are #292's and #288's, and a fourth needs that rule amended by name in the change that
-reaches it.
+internal seams: a doctor's chain, which is ADR-0013 rule 4's second shape unchanged, plus one
+function returning the capability snapshot and the judgements a doctor must share rather than copy,
+which reach past it and are admitted by name. #286 took the friendship, and the first seam with it;
+the capability snapshot is #292's, `LiveWindowDepthCheck`'s judgement was #288's, and #289 added a
+**fourth**, `LivePlaylistRevalidation`'s, by amending that rule by name — which is what any further
+seam needs, in the change that reaches it.
 
 `superplayer-testmedia` is the one module that depends on nothing, and that is what it is for. Its
 synthetic HLS and DASH streams are played by `superplayer-core`'s tests *and* by

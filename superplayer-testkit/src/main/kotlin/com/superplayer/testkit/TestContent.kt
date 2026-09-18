@@ -186,26 +186,28 @@ public class TestContent private constructor(
     }
 
     /**
-     * This content with its declared response headers withheld: the same bytes, from an origin that reports
-     * nothing.
+     * This content served with exactly [headers] on every one of its resources, replacing whatever it
+     * declared — and with an empty map, served by an origin that reports no headers at all.
      *
-     * The control for a *delivery* pathology, and the only way to write one honestly. A defect carried as
+     * The control a *delivery* pathology needs, and the only way to write one honestly. A defect carried as
      * [HostileStream.declaredResponseHeaders] — a live playlist served cacheable, a CORS configuration that
      * refuses a credentialed request — is invisible to any parse, so the claim "this finding came from the
-     * transfer and not from the document" can only be made by diagnosing the identical document twice. Both
-     * readings are of one [TestContent], which is what stops the control from being a second stream that
-     * differs in some other way too.
+     * transfer and not from the document" can only be made by diagnosing the identical document twice, once
+     * with the headers and once without. The other control it needs is the opposite: an origin that speaks
+     * the same protocol *correctly*, which is a header on healthy content and has nowhere else to come from.
      *
-     * Nothing else changes: the same resources, at the same URIs, over the same transport.
+     * The headers go on every resource because that is what the configurations in question are: a cache rule
+     * is set on a path and a CORS policy on an origin, neither per file. Nothing else changes — the same
+     * resources, at the same URIs, over the same transport.
      */
-    public fun servedWithNoDeclaredHeaders(): TestContent = TestContent(
+    public fun servedWithResponseHeaders(headers: Map<String, String>): TestContent = TestContent(
         rungs = rungs,
         durationMs = durationMs,
         live = live,
         protocol = protocol,
         sourceUri = sourceUri,
         resources = resources,
-        responseHeaders = emptyMap(),
+        responseHeaders = if (headers.isEmpty()) emptyMap() else resources.keys.associateWith { headers },
         publication = publication,
         protected = protected,
         withAudio = withAudio,

@@ -318,7 +318,9 @@ Thirteen rules follow, and they are binding.
      protecting; what it is not is a second HTTP stack, since the probe travels the same chain,
      stamped `LoadKind.MEDIA` because that is what it is. Two limits keep it honest and are in
      `DeliveryPathologies`: the probe is spent only by a rule that **already has a defect to
-     attribute**, so a correctly delivered stream pays nothing for it, and it is never spent twice.
+     attribute**, so a correctly delivered stream pays nothing for it, and one media playlist may spend at
+     most one, so the bound grows with the number of *misconfigured* renditions and never with the
+     number of segments.
    - **It is measured by nothing.** The chain it composes reports to no bandwidth meter and emits no
      CMCD. A doctor's fetch is not a viewing: an estimate seeded from it would be ADR-0009 rule 8's
      memory polluted by a transfer no viewer waited for, and a CMCD `sid` on it would put a row in

@@ -405,8 +405,8 @@ internal object TransferChain {
      * content identity a request is stamped with, which is a wrapper above everything.
      *
      * [resilience] is asked for its layer through core rather than by the module, because
-     * [HeaderRefreshSource] is internal and `superplayer-diagnostics` reaches the closed list of three
-     * seams ADR-0015 rule 3 draws and nothing else — of which this function is the first. It is also why
+     * [HeaderRefreshSource] is internal and `superplayer-diagnostics` reaches the closed list of seams
+     * ADR-0015 rule 3 draws and nothing else — of which this function is the first. It is also why
      * what comes back is a whole answer rather than a factory: a report says which layers it travelled,
      * and only the composition knows, since a [PlaybackResilience] that is not a [HeaderRefreshSource]
      * contributes no layer at all.
@@ -451,9 +451,10 @@ internal object TransferChain {
          * This chain with every request stamped as a manifest of [contentId].
          *
          * The stamp sits above both slots, as an item's factory's does on a player, so the cache reads
-         * the content id and the header-refresh layer reads the kind. Every request a doctor opens is a
-         * manifest: it downloads no segment (rule 7), and reading a media playlist the multivariant one
-         * names is still reading a manifest.
+         * the content id and the header-refresh layer reads the kind. Nearly every request a doctor opens
+         * is a manifest: it downloads no segment (rule 7), and reading a media playlist the multivariant
+         * one names is still reading a manifest. The exception is [forSegmentsOf]'s headers-only probe,
+         * which rule 7's #289 addendum admits and which is stamped for what it is.
          */
         fun forContent(contentId: String): DataSource.Factory =
             composed.stampedWith(ContentIdentity(contentId), LoadKind.MANIFEST)

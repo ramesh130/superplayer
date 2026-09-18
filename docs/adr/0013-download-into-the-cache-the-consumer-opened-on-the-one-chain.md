@@ -176,16 +176,18 @@ Fifteen rules follow, and they are binding.
    *Addendum (2026-09-18, #285).* The second shape gains its second instance, and the ninth
    friendship reaches a little past it — which is why it has an ADR.
    [ADR-0015](0015-name-a-pathology-over-the-players-own-chain-and-redact-the-bundle-by-construction.md)
-   rule 3 admits `superplayer-diagnostics` as core's **ninth** friend over a **closed list of three**
-   named seams. The first is this shape exactly: it fills no slot, and it is built from core's seam —
+   rule 3 admits `superplayer-diagnostics` as core's **ninth** friend over a **closed list** of named
+   seams — three as first decided, four since #289 amended that rule to take a fourth. The first is
+   this shape exactly: it fills no slot, and it is built from core's seam —
    `TransferChain.diagnosticChain(...)` beside this rule's `downloadChain`, so that a doctor's fetch
-   is not the second chain `PRD.md` §2.4 forbids. The other two — one function returning the
-   capability snapshot a bundle may carry, and `LiveWindowDepthCheck`'s judgement, which a doctor
-   must share rather than copy — are nearer the "reaching a helper"
+   is not the second chain `PRD.md` §2.4 forbids. The others — one function returning the
+   capability snapshot a bundle may carry, and the two judgements a doctor must share rather than
+   copy, `LiveWindowDepthCheck`'s and, since #289, `LivePlaylistRevalidation`'s — are nearer the
+   "reaching a helper"
    `KotlinFriendModules.kt`'s ceiling refuses, and ADR-0015 says so plainly rather than stretching
    this shape over them. What makes them admissible is the list: each is a whole answer rather than a
-   helper, and a fourth seam may be reached only by amending ADR-0015 rule 3, by name, in the change
-   that reaches it. No earlier friendship carried such a bound — not even this rule's own, which
+   helper, and a further seam may be reached only by amending ADR-0015 rule 3, by name, in the change
+   that reaches it — which #289 did, and which is what that clause is for. No earlier friendship carried such a bound — not even this rule's own, which
    enumerates three reached things and fills nothing, but enumerates what the shape *is* rather than
    capping what may later be added to it. **The ceiling worked as intended** — something that is not
    plainly one of the two shapes produced an ADR — and it does not move: a tenth of either shape

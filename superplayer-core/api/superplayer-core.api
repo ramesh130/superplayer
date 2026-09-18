@@ -88,6 +88,51 @@ public final class com/superplayer/core/FailureCategory : java/lang/Enum {
 	public static fun values ()[Lcom/superplayer/core/FailureCategory;
 }
 
+public final class com/superplayer/core/HttpMethod : java/lang/Enum {
+	public static final field GET Lcom/superplayer/core/HttpMethod;
+	public static final field HEAD Lcom/superplayer/core/HttpMethod;
+	public static final field POST Lcom/superplayer/core/HttpMethod;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/core/HttpMethod;
+	public static fun values ()[Lcom/superplayer/core/HttpMethod;
+}
+
+public final class com/superplayer/core/HttpRange {
+	public fun <init> (JLjava/lang/Long;)V
+	public final fun getLength ()Ljava/lang/Long;
+	public final fun getOffset ()J
+	public final fun headerValue ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/HttpRequest {
+	public fun <init> (Landroid/net/Uri;Lcom/superplayer/core/HttpMethod;Ljava/util/Map;[BLcom/superplayer/core/HttpRange;)V
+	public final fun getBody ()[B
+	public final fun getHeaders ()Ljava/util/Map;
+	public final fun getMethod ()Lcom/superplayer/core/HttpMethod;
+	public final fun getRange ()Lcom/superplayer/core/HttpRange;
+	public final fun getUri ()Landroid/net/Uri;
+}
+
+public final class com/superplayer/core/HttpResponse {
+	public fun <init> (ILjava/util/Map;Ljava/io/InputStream;)V
+	public final fun getBody ()Ljava/io/InputStream;
+	public final fun getHeaders ()Ljava/util/Map;
+	public final fun getStatus ()I
+}
+
+public abstract class com/superplayer/core/HttpStack {
+	public static final field Companion Lcom/superplayer/core/HttpStack$Companion;
+	public static final fun of (Lcom/superplayer/core/HttpTransport;)Lcom/superplayer/core/HttpStack;
+}
+
+public final class com/superplayer/core/HttpStack$Companion {
+	public final fun of (Lcom/superplayer/core/HttpTransport;)Lcom/superplayer/core/HttpStack;
+}
+
+public abstract interface class com/superplayer/core/HttpTransport {
+	public abstract fun open (Lcom/superplayer/core/HttpRequest;)Lcom/superplayer/core/HttpResponse;
+}
+
 public final class com/superplayer/core/LicenceOutcome : java/lang/Enum {
 	public static final field ACQUIRED_FROM_SERVER Lcom/superplayer/core/LicenceOutcome;
 	public static final field REFUSED Lcom/superplayer/core/LicenceOutcome;
@@ -715,6 +760,7 @@ public final class com/superplayer/core/SuperPlayer$Builder {
 	public final fun setCache (Lcom/superplayer/core/ContentCache;)Lcom/superplayer/core/SuperPlayer$Builder;
 	public final fun setCmcdMode (Lcom/superplayer/core/CmcdMode;)Lcom/superplayer/core/SuperPlayer$Builder;
 	public final fun setDrm (Lcom/superplayer/core/PlaybackDrm;)Lcom/superplayer/core/SuperPlayer$Builder;
+	public final fun setHttpStack (Lcom/superplayer/core/HttpStack;)Lcom/superplayer/core/SuperPlayer$Builder;
 	public final fun setOutput (Lcom/superplayer/core/PlaybackOutput;)Lcom/superplayer/core/SuperPlayer$Builder;
 	public final fun setPolicy (Lcom/superplayer/core/PlaybackPolicy;)Lcom/superplayer/core/SuperPlayer$Builder;
 	public final fun setProfile (Lcom/superplayer/core/PlaybackProfile;)Lcom/superplayer/core/SuperPlayer$Builder;

@@ -240,7 +240,9 @@ internal object TransferChain {
      * the holder the `sid` is read from at prepare time. A disabled mode configures nothing at all.
      *
      * [transport] is what sits at the bottom of the chain in place of the HTTP stack — a test's fake
-     * data source, and nothing in production, where it is null. [loadExecutor] is where the loads
+     * data source, and nothing in production, where it is null. [httpStack] is the *consumer's*
+     * choice of HTTP client, from `SuperPlayer.Builder.setHttpStack`, and [resolveTransport] says
+     * why a test's slot wins over it rather than the other way round. [loadExecutor] is where the loads
      * over it run, for the same reason and with the same default: `EngineConfiguration` says why a
      * harness has to own that thread.
      *
@@ -263,6 +265,7 @@ internal object TransferChain {
         cmcdMode: CmcdMode,
         measurementSession: MeasurementSession,
         transport: DataSource.Factory? = null,
+        httpStack: HttpStack? = null,
         loadExecutor: Supplier<ReleasableExecutor>? = null,
         cache: ContentCache? = null,
         headerRefresh: HeaderRefreshLayer? = null,
@@ -271,7 +274,7 @@ internal object TransferChain {
         exoMediaDrm: ExoMediaDrm.Provider? = null,
         deliveredProtection: DeliveredProtection = DeliveredProtection(),
     ): MediaSource.Factory {
-        val bottom = resolveTransport(context, transport)
+        val bottom = resolveTransport(context, transport, httpStack)
         // Header refresh first, so it is the innermost wrapper: a request it repairs and re-opens is
         // one transfer to the cache slot and to everything above it.
         val refreshed = headerRefresh?.over(bottom) ?: bottom
@@ -343,7 +346,7 @@ internal object TransferChain {
         environment: DownloadEnvironment? = null,
         headerRefresh: HeaderRefreshLayer? = null,
     ): DataSource.Factory {
-        val transport = resolveTransport(context, environment?.transport)
+        val transport = resolveTransport(context, environment?.transport, stack = null)
         val refreshed = headerRefresh?.over(transport) ?: transport
         return DataSource.Factory { DownloadStampingDataSource(refreshed.createDataSource()) }
     }
@@ -366,7 +369,7 @@ internal object TransferChain {
         environment: DownloadEnvironment? = null,
         headerRefresh: HeaderRefreshLayer? = null,
     ): DataSource.Factory {
-        val transport = resolveTransport(context, environment?.transport)
+        val transport = resolveTransport(context, environment?.transport, stack = null)
         return (headerRefresh?.over(transport) ?: transport).stampedWith(identity = null, kind = LoadKind.LICENCE)
     }
 
@@ -416,7 +419,7 @@ internal object TransferChain {
         cache: ContentCache? = null,
         resilience: PlaybackResilience? = null,
     ): DiagnosticChain {
-        val transport = resolveTransport(context, environment?.transport)
+        val transport = resolveTransport(context, environment?.transport, stack = null)
         val headerRefresh = (resilience as? HeaderRefreshSource)?.headerRefreshLayer()
         val refreshed = headerRefresh?.over(transport) ?: transport
         val cacheLayer = cache?.layer
@@ -500,17 +503,27 @@ internal object TransferChain {
      * rather than reached for, because the four callers keep it in two different places: a player's
      * comes from `EngineConfiguration.transport` and the other three from their environment's.
      *
-     * **The resolution order is the test slot, then the consumer's stack, then the default**
-     * (ADR-0016 rule 3), and the middle rung has no parameter yet because it has no caller yet —
-     * `HttpStack` arrives with #309 and plugs in here. The two are not the same thing and that is
-     * why the test slot wins: [testTransport] substitutes for the *network itself* and is a test's,
-     * while a stack substitutes for the HTTP *client over a real network* and is a consumer's. A
-     * test of a consumer's own stack therefore drives it directly rather than through this slot.
+     * **The resolution order is [testTransport], then [stack], then the default** (ADR-0016 rule 3).
+     * The two overrides are not the same thing and that is why the test slot wins: [testTransport]
+     * substitutes for the *network itself* — a `FakeDataSource` serving bytes no socket carried — and
+     * is a test's, while a [stack] substitutes for the HTTP *client over a real network* and is a
+     * consumer's. A harness that let a stack displace its fake would stop being a test of the chain
+     * and start being a test of whatever client was set, which is why a test of a consumer's own
+     * transport drives [HttpTransport] directly rather than through this slot.
+     *
+     * What a [stack] replaces is the *HTTP* factory alone, never the `DefaultDataSource` over it:
+     * `file:`, `asset:`, `content:`, `rawresource:` and `data:` stay the platform's whatever a
+     * consumer supplies, because none of them is an HTTP client's business.
+     *
+     * [stack] is a player's today. The three chains below it are still resolved with none, which is
+     * ADR-0016 rule 13's remaining three entry points and #314's work.
      */
     private fun resolveTransport(
         context: Context,
         testTransport: DataSource.Factory?,
-    ): DataSource.Factory = testTransport ?: DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory())
+        stack: HttpStack?,
+    ): DataSource.Factory =
+        testTransport ?: DefaultDataSource.Factory(context, stack?.factory ?: DefaultHttpDataSource.Factory())
 
     /**
      * The chain itself — see the composition order above for what wraps what — over [refreshed],

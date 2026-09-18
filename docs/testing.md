@@ -103,9 +103,28 @@ own composition since issue #22 — and substitutes `FakeDataSource` only where 
 one layer none of them can see is that bottom one: whether the transport `build()` installs resolves
 anything at all. `buildPlayerOnItsOwnTransferChain` is the exception: it substitutes the clock and
 nothing else, and plays a `file:` URI written by `SyntheticHlsStream.writeTo` — the nearest thing to a
-network fetch a test with no network can ask for. `SuperPlayerTransferChainTest` is its only caller,
+network fetch a test with no network can ask for. `SuperPlayerTransferChainTest` is one of its two callers,
 and it also pins the other half: a transport installed through the engine configurator takes the HTTP
 stack's place, which is what keeps every test above working.
+
+The second caller is `SuperPlayerHttpStackTest`, and it is there for the same reason one layer down.
+Phase 10 lets a consumer supply the HTTP client at the bottom of that chain
+(`SuperPlayer.Builder.setHttpStack`), and a stack is invisible to every test that substitutes a fake
+data source *in its place*. So that class serves the synthetic streams from memory behind an
+`HttpTransport` of its own, under `https:` URIs, and a real `SuperPlayer` plays HLS and DASH through
+it. Two things it can state that no fake origin here can. A **byte range**: `FaultScript` cannot
+express a 206 at all — `failWithHttpStatus` takes a status in `400..599` — and the fake origins serve
+a `DataSpec`'s slice, which is a length-aware read rather than a partial-content *response*, so a
+transport that is itself the origin is the only place both sides of a range are visible. And the
+**resolution order** ADR-0016 rule 3 fixes: a transport set through the engine configurator still wins
+over a stack a consumer set, because the first substitutes for the network itself and the second for
+the client over a real one.
+
+Two of its tests open the adapter's `DataSource` directly rather than through a player, which is a
+documented exception to *Why assertions stop at the facade* below. Media3 asks for a byte range where
+a DASH representation carries an index or an HLS segment an `EXT-X-BYTERANGE`, and the synthetic
+streams carry neither; adding one would change the corpus every other module is recorded against, to
+observe something a single `open` states exactly.
 
 ## Synthetic media, not fixtures
 

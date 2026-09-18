@@ -94,6 +94,7 @@ class SuperPlayerHarness : ExternalResource() {
         resilience: PlaybackResilience? = null,
         drm: PlaybackDrm? = null,
         output: PlaybackOutput? = null,
+        httpStack: HttpStack? = null,
         alsoConfigure: (EngineConfiguration) -> Unit = {},
         alsoConfigureEngine: (ExoPlayer.Builder) -> Unit = {},
         pooled: PooledEngine? = null,
@@ -113,6 +114,7 @@ class SuperPlayerHarness : ExternalResource() {
                 .apply { resilience?.let { setResilience(it) } }
                 .apply { drm?.let { setDrm(it) } }
                 .apply { output?.let { setOutput(it) } }
+                .apply { httpStack?.let { setHttpStack(it) } }
                 .setPooledEngine(pooled)
                 .setEngineConfigurator { configuration ->
                     configuration.engine.useHarnessClock(clock)
@@ -138,6 +140,11 @@ class SuperPlayerHarness : ExternalResource() {
      * actually resolve — a `file:` URI, which `DefaultDataSource` serves — and that is what
      * [SyntheticHlsStream.writeTo] exists for.
      *
+     * [httpStack] is the one *consumer's* substitution that belongs here rather than in
+     * [buildPlayer]: a stack replaces the HTTP client at the bottom of this very chain, so a test of
+     * one has to be a test of the real chain. A [buildPlayer] takes it too, and there it is the
+     * losing half of the resolution order ADR-0016 rule 3 fixes, which is a claim of its own.
+     *
      * Kept separate from [buildPlayer] rather than offered as a flag, because it is the exception:
      * every other test wants the fake data source, and a test that reaches for this one is
      * specifically about what SuperPlayer installs underneath.
@@ -147,6 +154,7 @@ class SuperPlayerHarness : ExternalResource() {
         cmcdMode: CmcdMode? = null,
         telemetry: TelemetryCollector? = null,
         policy: PlaybackPolicy? = null,
+        httpStack: HttpStack? = null,
         alsoConfigureEngine: (ExoPlayer.Builder) -> Unit = {},
     ): SuperPlayer {
         val clock = FakeClock(/* isAutoAdvancing= */ true)
@@ -157,6 +165,7 @@ class SuperPlayerHarness : ExternalResource() {
                 .apply { cmcdMode?.let { setCmcdMode(it) } }
                 .apply { telemetry?.let { setTelemetry(it) } }
                 .apply { policy?.let { setPolicy(it) } }
+                .apply { httpStack?.let { setHttpStack(it) } }
                 .setEngineConfigurator { configuration ->
                     configuration.engine.useHarnessClock(clock)
                     // Whatever a test needs *besides* the chain — the bandwidth meter a CMCD test

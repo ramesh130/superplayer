@@ -21,6 +21,7 @@ import com.superplayer.core.ContentCache
 import com.superplayer.core.DiagnosticEnvironment
 import com.superplayer.core.MediaRequest
 import com.superplayer.core.PlaybackResilience
+import com.superplayer.core.SuperPlayerError
 import com.superplayer.core.TransferChain
 
 /**
@@ -35,6 +36,9 @@ import com.superplayer.core.TransferChain
  * A variant that declares no `CODECS` comes back as a [Finding] naming the defect, its severity, the
  * clause it departs from and the misconfiguration that produces it — rather than as a player that behaves
  * oddly ten minutes later.
+ *
+ * The same call, handed what a session ended on, is the *postmortem* — the report a support engineer reads
+ * after a failure is the report the app could have read before it (ADR-0015 rule 8). See [examine].
  *
  * ## What it fetches, and what it fetches over
  *
@@ -94,14 +98,36 @@ public class MediaSourceDoctor private constructor(
      *
      * A manifest the chain refuses is a [Pathology.MANIFEST_UNREACHABLE] finding rather than an exception
      * (ADR-0015 rule 7): "the doctor threw" is the least useful thing a support ticket can say.
+     *
+     * ## The postmortem of a session that failed
+     *
+     * [classification] is what a *failed* session ended on, and passing it is the whole of the difference
+     * between a preflight and a postmortem — one call, one report type (ADR-0015 rule 8). A support ticket
+     * reading "live stream freezes after 30 s" then comes back as a named defect with a citation beside the
+     * class of failure, rather than as the class alone:
+     *
+     * ```kotlin
+     * override fun onPlayerError(error: PlaybackException) {
+     *     // null on a player built without `superplayer-resilience` (ADR-0011 rule 14), which answers a
+     *     // report of findings and no classification — the existing behaviour, surfacing here.
+     *     val report = doctor.examine(request, player.classify(error))
+     * }
+     * ```
+     *
+     * The value is **read and never re-derived** (ADR-0015 rule 5): this module depends on no classifier
+     * and holds no taxonomy, so the only classification a report can carry is the one `ErrorClassifier`
+     * already made (ADR-0011 rule 1). It is carried onto [DiagnosticReport.classification] and read by
+     * nothing here — in particular the findings are the same findings the same request answers as a
+     * preflight, because what failed narrows, widens and reorders nothing about what the manifest says.
      */
-    public fun examine(request: MediaRequest): DiagnosticReport {
+    @JvmOverloads
+    public fun examine(request: MediaRequest, classification: SuperPlayerError? = null): DiagnosticReport {
         val source = request.sources.first()
         val findings = ManifestExamination(
             chain.forContent(request.contentId),
             chain.forSegmentsOf(request.contentId),
         ).examine(source)
-        return DiagnosticReport(request.contentId, findings, layers)
+        return DiagnosticReport(request.contentId, findings, layers, classification)
     }
 
     /**

@@ -197,10 +197,14 @@ class HttpStackSelectionTest {
         val statedHttp = harness.buildPlayerOnItsOwnTransferChain(httpStack = HttpStack.default())
         val unstatedHttp = harness.buildPlayerOnItsOwnTransferChain()
 
-        assertThat(causeClassesOfPlaying(statedHttp, SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI))
-            .isEqualTo(causeClassesOfPlaying(unstatedHttp, SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI))
-        assertThat(causeClassesOfPlaying(statedHttp, SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI))
-            .contains(MalformedURLException::class.java)
+        val statedCauses = causeClassesOfPlaying(statedHttp, SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI)
+        val unstatedCauses = causeClassesOfPlaying(unstatedHttp, SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI)
+
+        // Each player is driven exactly once: asking the same one twice would be reading a second
+        // failure back through a `prepare()` that had to clear the first, which is state this claim
+        // has no business depending on.
+        assertThat(statedCauses).isEqualTo(unstatedCauses)
+        assertThat(statedCauses).contains(MalformedURLException::class.java)
     }
 
     /** Builds a player over the real chain with the platform's stack, and answers what stopped it. */

@@ -218,6 +218,19 @@ ships, calls `HttpTransportConformance(theirTransport).verifyAll()` from their o
 is told which obligation they broke. It is public API of `superplayer-testkit`, tracked in that
 module's `api/` file like everything else there.
 
+The half of it that faces that consumer is [`http-transport.md`](http-transport.md) (#315): the
+worked adapter, the five obligations each with what it costs to get wrong, and the instructions for
+running this suite. That document is what a **test of a transport** looks like from the outside, and
+the pairing is deliberate — the obligations are on code this repository cannot see, so the prose
+carries the reasons and the suite carries the verdict. `TransportDocumentTest` holds them together,
+in `DoctorDocumentTest`'s shape: every check on `HttpTransportConformance` needs its own section in
+that document, in the order `verifyAll` runs them, naming its ADR-0016 rule and carrying the
+citations the check's own KDoc carries, so a sixth obligation fails the build rather than reaching
+nobody. What it deliberately does not hold is the document's worked adapter, which **nothing here
+compiles**: it is written over a client this repository takes no dependency on (ADR-0004 rule 2 and
+its 2026-09-18 addendum), and the document says so in as many words rather than implying a
+verification it does not have.
+
 **Why it exists rather than a paragraph of KDoc.** Each of the five obligations fails *silently*: a
 client that gzips on its own behalf produces a bandwidth estimate nobody can explain, one that drops a
 byte range produces what reads as a corrupt stream, one that raises on a 403 produces sessions that end

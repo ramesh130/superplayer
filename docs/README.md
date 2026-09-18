@@ -13,6 +13,12 @@ one says so.
 | [`reading-a-session-bundle.md`](reading-a-session-bundle.md) | A support or CDN engineer handed a bundle: which questions it settles, what the timings are measured between, and what to ask for where it is silent |
 | [`telemetry-schema.md`](telemetry-schema.md) | A data pipeline: what every metric means, with its CTA-2066 citation and every departure from it stated |
 
+## If you are building an app on it
+
+| Document | For |
+| --- | --- |
+| [`http-transport.md`](http-transport.md) | Someone putting their app's own HTTP client under the player: the worked adapter, the five obligations with what each costs to get wrong, what the library already does above the transport, and the conformance suite to run against your implementation |
+
 ## If you are changing the library
 
 | Document | For |

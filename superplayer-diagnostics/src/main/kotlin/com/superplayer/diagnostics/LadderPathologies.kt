@@ -19,8 +19,6 @@ package com.superplayer.diagnostics
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.util.Util
-import java.util.Locale
-import kotlin.math.roundToInt
 
 /**
  * What a ladder of declared renditions can get wrong, in either protocol's vocabulary.
@@ -215,19 +213,3 @@ internal object LadderPathologies {
     /** `mp4a.40.<objectType>`, RFC 6381 §3.3: the only codec string a rule here reads a number out of. */
     private val AAC_CODEC = Regex("""mp4a\.40\.(\d+)""")
 }
-
-// ------------------------------------------------------------------------------------------------
-// Magnitudes
-// ------------------------------------------------------------------------------------------------
-//
-// `Finding.magnitude` is words a report prints, so every rule file writes its numbers through these three
-// rather than each formatting its own — a report whose rows spell a rate two ways reads as two reports.
-
-/** [value] to one decimal place, with a trailing `.0` dropped: `48`, `1.4`, `20`. */
-internal fun decimal(value: Double): String = String.format(Locale.US, "%.1f", value).removeSuffix(".0")
-
-/** [bitsPerSecond] as the unit a ladder is discussed in. */
-internal fun kilobits(bitsPerSecond: Int): String = "${(bitsPerSecond / 1_000.0).roundToInt()} kbps"
-
-/** [durationUs] as seconds, the unit a segment, a window and a clock skew are all discussed in. */
-internal fun seconds(durationUs: Long): String = "${decimal(durationUs / 1_000_000.0)} s"

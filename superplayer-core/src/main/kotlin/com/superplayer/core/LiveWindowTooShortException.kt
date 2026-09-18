@@ -75,4 +75,16 @@ public class LiveWindowTooShortException internal constructor(
         "($segmentDurationMs ms segments, availabilityTimeOffset $availabilityTimeOffsetMs ms): every " +
         "segment leaves the window before a player can reach it. Likely a packager configured with a " +
         "window in seconds where it meant minutes.",
-)
+) {
+
+    /**
+     * How long after a segment's start it becomes fetchable: [segmentDurationMs] less
+     * [availabilityTimeOffsetMs], which is the number the window was held against.
+     *
+     * Carried rather than left to each reader to subtract. The comparison is `LiveWindowDepthCheck`'s and
+     * `superplayer-diagnostics` reports the same defect before a player exists (ADR-0015 rule 6), so the
+     * one place a reader could disagree with the judgement is in re-deriving what it was made from — and
+     * folding, say, a future `@availabilityTimeComplete` into the lag must move every reading at once.
+     */
+    public val availabilityLagMs: Long get() = segmentDurationMs - availabilityTimeOffsetMs
+}

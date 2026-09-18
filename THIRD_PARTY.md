@@ -13,8 +13,8 @@ of truth. This file records *what* is depended on and under *what license*.
 | --- | --- | --- |
 | `androidx.media3:media3-common` | Apache-2.0 | `superplayer-core` (api), `demo`, `benchmark` |
 | `androidx.media3:media3-exoplayer` | Apache-2.0 | `superplayer-core` (api), `superplayer-preload`, `benchmark` |
-| `androidx.media3:media3-exoplayer-hls` | Apache-2.0 | `superplayer-core`, `superplayer-testkit` |
-| `androidx.media3:media3-exoplayer-dash` | Apache-2.0 | `superplayer-core`, `superplayer-testkit` |
+| `androidx.media3:media3-exoplayer-hls` | Apache-2.0 | `superplayer-core`, `superplayer-testkit`, `superplayer-diagnostics` |
+| `androidx.media3:media3-exoplayer-dash` | Apache-2.0 | `superplayer-core`, `superplayer-testkit`, `superplayer-diagnostics` |
 | `androidx.media3:media3-datasource` | Apache-2.0 | `superplayer-core`, `superplayer-testkit`, `superplayer-cache` |
 | `androidx.media3:media3-database` | Apache-2.0 | `superplayer-cache` (the `DatabaseProvider` interface its cache index is kept through) |
 | `androidx.media3:media3-session` | Apache-2.0 | `superplayer-core` (api), `demo` |

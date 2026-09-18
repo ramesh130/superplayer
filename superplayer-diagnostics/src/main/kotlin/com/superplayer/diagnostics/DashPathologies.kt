@@ -92,6 +92,13 @@ internal object DashPathologies {
      * side of the boundary it is. A jump inside what an ordinary up-switch makes anyway costs the boundary
      * no more than adaptation already does.
      *
+     * **Compared within one track type and never across two**, which is [inLadders]' argument at the
+     * boundary rather than inside a Period: a client selects a video rendition to replace a video rendition,
+     * so an audio Period's rates held against a video Period's would be a jump nothing ever makes and a
+     * false positive on the commonest content there is. A type the neighbouring Period does not carry at all
+     * is passed over rather than read as an infinite move — a Period that drops its subtitles is not a
+     * ladder that moved, and what such a Period costs is not this rule's to say.
+     *
      * Graded by [LadderPathologies.severityOfStep], which is the static ladder's own pair of thresholds. The
      * arithmetic is the same question — how far apart two rungs a client must move between sit — and the
      * corpus grades this entry at the same three factors for that reason; what differs is only the moment
@@ -99,12 +106,18 @@ internal object DashPathologies {
      */
     private fun midStreamLadderChange(manifest: DashManifest): Finding? {
         val ladders = periods(manifest).map { period ->
-            LadderPathologies.declaredRates(
-                period.adaptationSets.flatMap { set -> set.representations.map { it.format } },
-            )
+            period.adaptationSets
+                .groupBy { it.type }
+                .mapValues { (_, sets) ->
+                    LadderPathologies.declaredRates(sets.flatMap { set -> set.representations.map { it.format } })
+                }
         }
         val widest = ladders.zipWithNext()
-            .mapNotNull { (before, after) -> widestMove(before, after) }
+            .flatMap { (before, after) ->
+                before.keys.intersect(after.keys).mapNotNull { type ->
+                    widestMove(before.getValue(type), after.getValue(type))
+                }
+            }
             .maxOrNull()
             ?: return null
         // A jump an ordinary up-switch makes anyway is not the defect, and `severityOfStep` is where that
@@ -125,10 +138,8 @@ internal object DashPathologies {
      * it, and a client meets both as the same re-selection. Null where neither side has a rate the other
      * lacks, which is a boundary that changes nothing.
      */
-    private fun widestMove(before: List<Int>, after: List<Int>): Double? {
-        val moves = movesFrom(before, after) + movesFrom(after, before)
-        return moves.maxOrNull()
-    }
+    private fun widestMove(before: List<Int>, after: List<Int>): Double? =
+        (movesFrom(before, after) + movesFrom(after, before)).maxOrNull()
 
     /** For each rate in [rungs] that [others] lacks, how many times the nearest rate in [others] it is. */
     private fun movesFrom(rungs: List<Int>, others: List<Int>): List<Double> {
@@ -227,12 +238,12 @@ internal object DashPathologies {
      */
     private fun shortTimeShiftBufferDepth(uri: Uri, manifest: DashManifest): Finding? {
         val tooShort = LiveWindowDepthCheck.tooShort(uri, manifest) ?: return null
-        val lagMs = tooShort.segmentDurationMs - tooShort.availabilityTimeOffsetMs
         return Finding(
             Pathology.DASH_SHORT_TIME_SHIFT_BUFFER_DEPTH,
             FindingSeverity.BLOCKING,
             magnitude = "timeShiftBufferDepth of ${seconds(Util.msToUs(tooShort.timeShiftBufferDepthMs))}, " +
-                "against the ${seconds(Util.msToUs(lagMs))} a segment takes to become available",
+                "against the ${seconds(Util.msToUs(tooShort.availabilityLagMs))} a segment takes " +
+                "to become available",
         )
     }
 

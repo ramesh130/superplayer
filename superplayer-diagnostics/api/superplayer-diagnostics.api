@@ -8,6 +8,7 @@ public final class com/superplayer/diagnostics/ChainLayer : java/lang/Enum {
 
 public final class com/superplayer/diagnostics/DiagnosticReport {
 	public final fun getChain ()Ljava/util/Set;
+	public final fun getClassification ()Lcom/superplayer/core/SuperPlayerError;
 	public final fun getContentId ()Ljava/lang/String;
 	public final fun getFindings ()Ljava/util/List;
 	public fun toString ()Ljava/lang/String;
@@ -34,6 +35,8 @@ public final class com/superplayer/diagnostics/FindingSeverity : java/lang/Enum 
 public final class com/superplayer/diagnostics/MediaSourceDoctor {
 	public synthetic fun <init> (Landroid/content/Context;Lcom/superplayer/core/ContentCache;Lcom/superplayer/core/PlaybackResilience;Lcom/superplayer/core/DiagnosticEnvironment;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun examine (Lcom/superplayer/core/MediaRequest;)Lcom/superplayer/diagnostics/DiagnosticReport;
+	public final fun examine (Lcom/superplayer/core/MediaRequest;Lcom/superplayer/core/SuperPlayerError;)Lcom/superplayer/diagnostics/DiagnosticReport;
+	public static synthetic fun examine$default (Lcom/superplayer/diagnostics/MediaSourceDoctor;Lcom/superplayer/core/MediaRequest;Lcom/superplayer/core/SuperPlayerError;ILjava/lang/Object;)Lcom/superplayer/diagnostics/DiagnosticReport;
 }
 
 public final class com/superplayer/diagnostics/MediaSourceDoctor$Builder {

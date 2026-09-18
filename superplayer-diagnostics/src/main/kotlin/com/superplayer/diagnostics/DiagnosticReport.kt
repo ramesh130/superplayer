@@ -16,6 +16,8 @@
 
 package com.superplayer.diagnostics
 
+import com.superplayer.core.SuperPlayerError
+
 /**
  * What a doctor found in one piece of content, and which chain it looked over.
  *
@@ -50,9 +52,28 @@ public class DiagnosticReport internal constructor(
      * difference it is rather than as a defect of the doctor.
      */
     public val chain: Set<ChainLayer>,
+
+    /**
+     * What ended the session this report is the postmortem of, or null where no session ended — which is
+     * every preflight, and is also a session that failed on a player built without `superplayer-resilience`.
+     *
+     * **Read, never re-derived** (ADR-0015 rule 5). It is exactly the `SuperPlayerError` handed to
+     * [MediaSourceDoctor.examine], which a consumer got from `player.classify(error)` or off the
+     * `PlaybackException` it arrived as the cause of. `ErrorClassifier` stays the single place a failure
+     * acquires a meaning (ADR-0011 rule 1), and this module holds no taxonomy with which to recompute one.
+     *
+     * **It keeps its own vocabulary, and [findings] keep theirs.** A `FailureClass` says what to do about a
+     * session that ended; a [Pathology] says what is wrong with a stream. Nothing here maps one onto the
+     * other: the two fields may disagree, and disagreement is the information a support engineer wants. A
+     * stream whose failure was the network's answers a classification and no finding; a stream that plays
+     * on but is misconfigured answers findings and no classification at all.
+     */
+    public val classification: SuperPlayerError?,
 ) {
 
-    override fun toString(): String = "DiagnosticReport($contentId, over $chain, $findings)"
+    override fun toString(): String =
+        "DiagnosticReport($contentId, over $chain, $findings" +
+            "${classification?.let { ", ended on ${it.causeClass}" }.orEmpty()})"
 }
 
 /**

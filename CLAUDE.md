@@ -943,6 +943,19 @@ false-positive control, because below `SEVERE` its anchor is in the past and the
 stream that started later. The corpus and ladder recordings are untouched — what a player does with
 an entry and what the doctor says about it are two readings (rule 4). Scoring the vocabulary from the
 other side found `MANIFEST_UNREADABLE` forced by no test, which `MediaSourceDoctorTest` now does.
+Since #291 the doctor also answers the **postmortem** half of `PRD.md` §3.6, and it is one argument rather
+than a second entry point (ADR-0015 rule 8): `examine(request, player.classify(error))` answers the same
+`DiagnosticReport` with `classification` populated — the `SuperPlayerError` the session ended on, **read**
+and never re-derived, since this module depends on no classifier and holds no taxonomy (rules 1 and 5). The
+two vocabularies stay apart: a `FailureClass` says what to do about a session that ended, a `Pathology` what
+is wrong with a stream, nothing maps either onto the other, and the findings are the ones the same request
+answers as a preflight. **Disagreement is the information**, so all four combinations are reachable and
+`PostmortemTest` holds a table of them: a short time-shift window is a `Content.ManifestInvalid` beside the
+named defect and its citation; a benign stream whose segments a CDN refused is a class and no finding; an
+unclimbable ladder that plays to the end is findings and no class; and a player with no resilience module
+classifies nothing and still gets the findings, which is ADR-0011 rule 14 surfacing rather than a new rule.
+`dash-availability-start-time-skew` is the shape the phase exists for — no load fails, so no rung is offered
+and there is nothing to classify, and the doctor names it anyway; `CANNOT_RECOVER` is untouched.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,

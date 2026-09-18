@@ -58,6 +58,7 @@ import com.superplayer.core.BufferPolicy
 import com.superplayer.core.ContentCache
 import com.superplayer.core.DiagnosticEnvironment
 import com.superplayer.core.DownloadEnvironment
+import com.superplayer.core.HttpStack
 import com.superplayer.core.PlaybackDrm
 import com.superplayer.core.PlaybackOutput
 import com.superplayer.core.PlaybackPolicy
@@ -243,6 +244,12 @@ public class PlaybackHarness : ExternalResource() {
      * [output], when set, is what `SuperPlayer.Builder.setOutput` takes. Every player this harness
      * builds is given a surface that records what is asked of the display, so what an output requests
      * is read back through [frameRateRequests]; the display it matches is [DeviceStatement]'s.
+     *
+     * [bottom] chooses how the bytes make the last step: through the transport slot, as every test
+     * here did before #310, or through an `HttpTransport` a consumer wrote. Everything else — the
+     * origin, [faults], [network], the clock — is the same either way, which is what makes a body
+     * run over both a comparison rather than two tests. See [ChainBottom] for what each can and
+     * cannot be asked.
      */
     public fun buildPlayer(
         content: TestContent = TestContent.video(),
@@ -255,6 +262,7 @@ public class PlaybackHarness : ExternalResource() {
         resilience: PlaybackResilience? = null,
         drm: PlaybackDrm? = null,
         output: PlaybackOutput? = null,
+        bottom: ChainBottom = ChainBottom.HARNESS_TRANSPORT_SLOT,
     ): SuperPlayer {
         // Protected content needs a `DrmSessionManagerProvider` on the media source factory, and on a
         // SuperPlayer that provider comes from the DRM slot ADR-0012 rule 3 puts on core's engine
@@ -265,7 +273,15 @@ public class PlaybackHarness : ExternalResource() {
             "Protected content needs a PlaybackDrm: pass `drm = Drm.widevine(...)`, whose licence " +
                 "server is FakeLicenceServer.LICENCE_URI, or play it through buildStockPlayer."
         }
-        return buildPlayerOver(composeTransport(content, faults, network), content, profile, telemetry, policy, cache, resilience, drm, pooled = null, output = output)
+        // Media3's fakes synthesize described content from a timeline with no `DataSource` in the
+        // path at all, so there is no transport for an `HttpTransport` to stand in for. Refused
+        // outright rather than quietly served over the slot, because a player that silently used
+        // the other bottom would pass a parity test without proving anything.
+        require(bottom == ChainBottom.HARNESS_TRANSPORT_SLOT || content.protocol != TestContent.Protocol.DESCRIBED) {
+            "Described content has no transport to reach through an HttpTransport: play " +
+                "TestContent.hls() or TestContent.dash() over ChainBottom.CONSUMERS_HTTP_TRANSPORT."
+        }
+        return buildPlayerOver(composeTransport(content, faults, network), content, profile, telemetry, policy, cache, resilience, drm, pooled = null, output = output, bottom = bottom)
     }
 
     /**
@@ -283,9 +299,11 @@ public class PlaybackHarness : ExternalResource() {
         drm: PlaybackDrm?,
         pooled: PooledEngine?,
         output: PlaybackOutput? = null,
+        bottom: ChainBottom = ChainBottom.HARNESS_TRANSPORT_SLOT,
     ): SuperPlayer {
         var built: ControllableVideoRenderer? = null
         val transfers = transport.transfers
+        val overAConsumersTransport = bottom == ChainBottom.CONSUMERS_HTTP_TRANSPORT
         val player = SuperPlayer.Builder(ApplicationProvider.getApplicationContext())
             .apply { profile?.let { setProfile(it) } }
             .apply { telemetry?.let { setTelemetry(it) } }
@@ -294,6 +312,10 @@ public class PlaybackHarness : ExternalResource() {
             .apply { resilience?.let { setResilience(it) } }
             .apply { drm?.let { setDrm(it) } }
             .apply { output?.let { setOutput(it) } }
+            // The consumer's half of the bottom, chosen exactly as a consumer chooses it. The
+            // transport slot is left empty below when this is set, because a filled slot wins
+            // (ADR-0016 rule 3) and a stack that resolved nothing would be invisible.
+            .apply { if (overAConsumersTransport) setHttpStack(HttpStack.of(OriginHttpTransport(transfers.factory))) }
             .setPooledEngine(pooled)
             .setEngineConfigurator { configuration ->
                 // The slots rather than the engine builder, so a pool can hand the same clock and
@@ -315,7 +337,10 @@ public class PlaybackHarness : ExternalResource() {
                 if (content.protocol == TestContent.Protocol.DESCRIBED) {
                     configuration.mediaSourceFactory = describedMediaSourceFactory(content, transfers)
                 } else {
-                    configuration.transport = transfers.factory
+                    // Left empty over a consumer's transport: the same origin is reached through
+                    // the `HttpStack` set above instead, so what differs between the two bottoms is
+                    // the last step of the journey and nothing else.
+                    if (!overAConsumersTransport) configuration.transport = transfers.factory
                     configuration.loadExecutor = transport.loadThreads
                 }
             }

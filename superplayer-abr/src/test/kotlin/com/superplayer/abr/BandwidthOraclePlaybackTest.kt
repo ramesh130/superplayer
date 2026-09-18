@@ -42,6 +42,7 @@ import com.superplayer.core.TelemetryEvent
 import com.superplayer.core.TelemetrySink
 import com.superplayer.core.TrackSelectionPolicy
 import com.superplayer.telemetry.QoeCollector
+import com.superplayer.testkit.ChainBottom
 import com.superplayer.testkit.NetworkProfile
 import com.superplayer.testkit.PlaybackHarness
 import com.superplayer.testkit.TestContent
@@ -187,6 +188,63 @@ class BandwidthOraclePlaybackTest {
         assertThat(oracle.currentEstimate().sampleCount).isGreaterThan(0)
         assertThat(player.playerError).isNull()
     }
+
+    /**
+     * The estimate is the same number over an HTTP client a consumer wrote — ADR-0016 rule 9, and
+     * ADR-0004 rule 5's "verified by a test rather than asserted in a comment", now with one place
+     * to be true rather than one per transport.
+     *
+     * The claim is not that measurement happens but that it happens *identically*, so this is
+     * [everyTransferThroughTheRealChainIsSampledExactlyOnce] run over both bottoms and compared:
+     * the same transfers, the same bytes and the same estimate. Two properties of core's adapter
+     * decide it, and each has a way of failing in silence. It extends Media3's `BaseDataSource`, so
+     * the `TransferListener` registration and the start/bytes/end bookkeeping are *inherited* — a
+     * bottom that dropped the registration would report nothing and leave every estimate pinned at
+     * its cold default with nothing in the logs. And it reports `isNetwork = true`, without which
+     * Media3's meter drops every transfer through it and the oracle's cache-hit exclusion (ADR-0009
+     * rule 8) would silently become an everything exclusion.
+     *
+     * The process-wide estimate memory is forgotten between the two halves, because a window is per
+     * transport and per process: the second player would otherwise continue the first's samples and
+     * the two readings would agree for a reason that has nothing to do with the bottom.
+     */
+    @Test
+    fun theEstimateIsTheSameNumberOverAConsumersTransport() {
+        val overTheSlot = sampleOneSession(ChainBottom.HARNESS_TRANSPORT_SLOT)
+        EstimateMemory.PROCESS.forget()
+        val overATransport = sampleOneSession(ChainBottom.CONSUMERS_HTTP_TRANSPORT)
+
+        val segments = SyntheticHlsStream.resources(SEGMENTS).filterKeys { it.endsWith(SyntheticHlsStream.SEGMENT_SUFFIX) }
+        // Sampled at all, and exactly once each: a registration that stopped at the adapter would
+        // count nothing, and one raised again below it would count twice.
+        assertThat(overATransport.transfers).isEqualTo(segments.size)
+        assertThat(overATransport.bytes).isEqualTo(segments.values.sumOf { it.size.toLong() })
+        // And the same, which is the part no inspection of the adapter can establish.
+        assertThat(overATransport.transfers).isEqualTo(overTheSlot.transfers)
+        assertThat(overATransport.bytes).isEqualTo(overTheSlot.bytes)
+        assertThat(overATransport.meanBps).isEqualTo(overTheSlot.meanBps)
+    }
+
+    /** What one whole session over [bottom] left in the oracle's meter and its estimate. */
+    private fun sampleOneSession(bottom: ChainBottom): Sampled {
+        val oracle = build()
+        val content = TestContent.hls(segmentCount = SEGMENTS)
+        val player = harness.buildPlayer(
+            content = content,
+            network = NetworkProfile.STABLE_WIFI.trace,
+            policy = OracleInstallingPolicy(oracle),
+            bottom = bottom,
+        )
+        player.setMediaRequest(MediaRequest.Builder(CONTENT).addSource(content.sourceUri).build())
+        harness.playToReady(player)
+        harness.advanceUntil(player, "the stream to end") { it.playbackState == Player.STATE_ENDED }
+
+        assertThat(player.playerError).isNull()
+        return Sampled(oracle.meter.countedTransfers, oracle.meter.countedBytes, oracle.currentEstimate().meanBps)
+    }
+
+    /** One session's measurement, as the two bottoms are compared on it. */
+    private class Sampled(val transfers: Int, val bytes: Long, val meanBps: Long)
 
     @Test
     fun thePolicyIsHandedTheSameEstimateTheEngineSelectsOn() {

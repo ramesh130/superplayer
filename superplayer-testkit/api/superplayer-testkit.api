@@ -1,3 +1,11 @@
+public final class com/superplayer/testkit/ChainBottom : java/lang/Enum {
+	public static final field CONSUMERS_HTTP_TRANSPORT Lcom/superplayer/testkit/ChainBottom;
+	public static final field HARNESS_TRANSPORT_SLOT Lcom/superplayer/testkit/ChainBottom;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/testkit/ChainBottom;
+	public static fun values ()[Lcom/superplayer/testkit/ChainBottom;
+}
+
 public final class com/superplayer/testkit/DeviceStatement {
 	public static final field DEFAULT_DISPLAY_HEIGHT_PX I
 	public static final field DEFAULT_DISPLAY_WIDTH_PX I
@@ -199,8 +207,8 @@ public final class com/superplayer/testkit/PlaybackHarness : org/junit/rules/Ext
 	public static synthetic fun advanceUntil$default (Lcom/superplayer/testkit/PlaybackHarness;Landroidx/media3/common/Player;Ljava/lang/String;JLkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public static synthetic fun advanceUntil$default (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/core/DownloadEnvironment;Ljava/lang/String;JLkotlin/jvm/functions/Function0;ILjava/lang/Object;)V
 	public final fun attachVideoOutput (Landroidx/media3/common/Player;)V
-	public final fun buildPlayer (Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;Lcom/superplayer/core/PlaybackPolicy;Lcom/superplayer/core/ContentCache;Lcom/superplayer/core/PlaybackResilience;Lcom/superplayer/core/PlaybackDrm;Lcom/superplayer/core/PlaybackOutput;)Lcom/superplayer/core/SuperPlayer;
-	public static synthetic fun buildPlayer$default (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;Lcom/superplayer/core/PlaybackPolicy;Lcom/superplayer/core/ContentCache;Lcom/superplayer/core/PlaybackResilience;Lcom/superplayer/core/PlaybackDrm;Lcom/superplayer/core/PlaybackOutput;ILjava/lang/Object;)Lcom/superplayer/core/SuperPlayer;
+	public final fun buildPlayer (Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;Lcom/superplayer/core/PlaybackPolicy;Lcom/superplayer/core/ContentCache;Lcom/superplayer/core/PlaybackResilience;Lcom/superplayer/core/PlaybackDrm;Lcom/superplayer/core/PlaybackOutput;Lcom/superplayer/testkit/ChainBottom;)Lcom/superplayer/core/SuperPlayer;
+	public static synthetic fun buildPlayer$default (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;Lcom/superplayer/core/PlaybackPolicy;Lcom/superplayer/core/ContentCache;Lcom/superplayer/core/PlaybackResilience;Lcom/superplayer/core/PlaybackDrm;Lcom/superplayer/core/PlaybackOutput;Lcom/superplayer/testkit/ChainBottom;ILjava/lang/Object;)Lcom/superplayer/core/SuperPlayer;
 	public final fun buildPool (Ljava/lang/Integer;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/testkit/TestContent;Lkotlin/jvm/functions/Function0;Lcom/superplayer/testkit/ThroughputTrace;Lcom/superplayer/core/ContentCache;Lcom/superplayer/core/PlaybackPolicy;Lcom/superplayer/core/PlaybackResilience;)Lcom/superplayer/core/PlayerPool;
 	public static synthetic fun buildPool$default (Lcom/superplayer/testkit/PlaybackHarness;Ljava/lang/Integer;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/testkit/TestContent;Lkotlin/jvm/functions/Function0;Lcom/superplayer/testkit/ThroughputTrace;Lcom/superplayer/core/ContentCache;Lcom/superplayer/core/PlaybackPolicy;Lcom/superplayer/core/PlaybackResilience;ILjava/lang/Object;)Lcom/superplayer/core/PlayerPool;
 	public final fun buildStockPlayer (Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;)Landroidx/media3/exoplayer/ExoPlayer;

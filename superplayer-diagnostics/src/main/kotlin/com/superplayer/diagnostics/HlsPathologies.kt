@@ -17,13 +17,8 @@
 package com.superplayer.diagnostics
 
 import android.net.Uri
-import androidx.media3.common.C
-import androidx.media3.common.Format
-import androidx.media3.common.util.Util
 import androidx.media3.exoplayer.hls.playlist.HlsMediaPlaylist
 import androidx.media3.exoplayer.hls.playlist.HlsMultivariantPlaylist
-import java.util.Locale
-import kotlin.math.roundToInt
 
 /**
  * What an HLS playlist can get wrong, one rule per defect, over the model Media3's own parser built.
@@ -40,6 +35,9 @@ import kotlin.math.roundToInt
  * means — "present, but within what real content does". So **every threshold below is a published bound
  * where a document states one, and a derivation where none does**, argued at the constant that carries it,
  * and each is chosen to sit above what conforming content produces rather than at the middle of the range.
+ * The three defects a `Representation` has in the same words — a ladder gap, an overstated rung, a rung
+ * with no codec string — are judged by [LadderPathologies] over the rungs found here, so that the number
+ * that separates advisory from degraded is one number rather than one per protocol.
  *
  * ## What a severity means here
  *
@@ -53,12 +51,17 @@ import kotlin.math.roundToInt
 internal object HlsPathologies {
 
     /** What a multivariant playlist declares about its ladder, its codecs and its groups. */
-    fun inMultivariant(playlist: HlsMultivariantPlaylist): List<Finding> = listOfNotNull(
-        missingCodecs(playlist),
-        ladderGap(playlist),
-        overstatedBitrate(playlist),
-        danglingAudioGroup(playlist),
-    )
+    fun inMultivariant(playlist: HlsMultivariantPlaylist): List<Finding> {
+        // The three an MPD gets wrong in the same words are [LadderPathologies]', judged over the rungs this
+        // playlist declares; what stays here is what only a multivariant playlist has.
+        val rungs = playlist.variants.map { it.format }
+        return listOfNotNull(
+            LadderPathologies.missingCodecs(rungs, Pathology.HLS_MISSING_CODECS),
+            LadderPathologies.gap(rungs, Pathology.HLS_LADDER_GAP),
+            LadderPathologies.overstatedBitrate(rungs, Pathology.HLS_OVERSTATED_BITRATE),
+            danglingAudioGroup(playlist),
+        )
+    }
 
     /** What one media playlist declares about its own segments. */
     fun inMediaPlaylist(playlist: HlsMediaPlaylist): List<Finding> = listOfNotNull(
@@ -77,120 +80,6 @@ internal object HlsPathologies {
         mediaPlaylists: Map<Uri, HlsMediaPlaylist>,
     ): List<Finding> = playlist.audios.mapNotNull { rendition ->
         audioGroupCodecMismatch(rendition, rendition.url?.let(mediaPlaylists::get))
-    }
-
-    /**
-     * A playlist with any variant that declares no `CODECS`, as one finding.
-     *
-     * One finding rather than one per variant: the defect is of the playlist — a packager or a template
-     * that does not write the attribute at all — so a report with a line per rung would be one fact printed
-     * four times. Every rule in this file answers once per playlist for the same reason.
-     *
-     * spec: RFC 8216 §4.3.4.2 — "Every EXT-X-STREAM-INF tag SHOULD include a CODECS attribute", and its
-     * value "MUST be all of the parameters of the format" (RFC 6381). A SHOULD, so a playlist without one
-     * is valid and a parser reports the absence as no codec string at all rather than as an error — which
-     * is why this is read off the parsed variant rather than by re-reading the text.
-     *
-     * [FindingSeverity.DEGRADED] rather than advisory: the absence costs something measurable on every
-     * start. A player that cannot tell from the playlist whether it can decode a rendition has to fetch a
-     * segment of it to find out, so a capability check becomes a download and a rendition it cannot decode
-     * becomes a stall instead of a rung it never chose. It is not blocking, because content whose single
-     * rung the device can decode plays perfectly.
-     *
-     * No magnitude, for the reason the corpus entry has none: the attribute is present or it is not, and
-     * there is no milder absence. How *many* variants are missing it is a count of the playlist rather
-     * than a reading of how far the defect is pushed, and a report that printed one in the magnitude
-     * column would be saying a binary defect came in degrees.
-     */
-    private fun missingCodecs(playlist: HlsMultivariantPlaylist): Finding? {
-        if (playlist.variants.none { it.format.codecs == null }) return null
-        return Finding(Pathology.HLS_MISSING_CODECS, FindingSeverity.DEGRADED, magnitude = null)
-    }
-
-    /**
-     * The widest step between two adjacent rungs of the declared ladder, where it is wider than a ladder
-     * built to the published guidance ever is.
-     *
-     * Read off `BANDWIDTH` alone, which is the only thing a multivariant playlist says about a rung's
-     * weight, and off the *distinct* declared rates sorted, because two variants at one rate (a second CDN,
-     * a second container) are one rung of the ladder and not a step of nothing.
-     *
-     * What the step costs, which is what the severities grade: a client whose throughput falls just short of
-     * the upper rung can only sustain the lower one, so it uses about `1 / step` of its link.
-     */
-    private fun ladderGap(playlist: HlsMultivariantPlaylist): Finding? {
-        val rungs = playlist.variants
-            .map { it.format.peakBitrate }
-            .filter { it != Format.NO_VALUE && it > 0 }
-            .distinct()
-            .sorted()
-        if (rungs.size < 2) return null
-        // The widest step and the two rungs that make it, so the magnitude names the gap rather than the
-        // ladder's endpoints — on a ladder of five those are two different pairs.
-        val widest = rungs.zipWithNext().maxBy { (lower, upper) -> upper.toDouble() / lower }
-        val step = widest.second.toDouble() / widest.first
-        if (step <= LADDER_STEP_WITHIN_GUIDANCE) return null
-        return Finding(
-            Pathology.HLS_LADDER_GAP,
-            if (step > LADDER_STEP_COSTING_MOST_OF_THE_LINK) FindingSeverity.DEGRADED else FindingSeverity.ADVISORY,
-            magnitude = "adjacent rungs ${decimal(step)}× apart, " +
-                "${kilobits(widest.first)} to ${kilobits(widest.second)}",
-        )
-    }
-
-    /**
-     * A rung whose declared `BANDWIDTH` is past what the format it declares can carry.
-     *
-     * **This is read from declarations and never from delivery** (ADR-0015 rule 7): the doctor downloads no
-     * segment, so it cannot weigh what a rung really sends, and a preflight that did would cost what a start
-     * costs. What it can do is hold the number against the codec the same playlist declares beside it — the
-     * corpus entry is "a declaration that disagrees with the media the manifest itself describes", and this
-     * is that disagreement read.
-     *
-     * The rule is therefore narrow on purpose, and applies only to a rung the doctor can bound: one whose
-     * `CODECS` names an audio format and no video format, and which declares no picture. A variant carrying
-     * video is not bounded here at all, because a video codec's rate depends on a resolution, a frame rate
-     * and a profile that a multivariant playlist need not declare, and a guess would be the false positive
-     * rule 12 punishes.
-     *
-     * Graded on how far past that ceiling the declaration sits, like every other defect here that has a
-     * magnitude, and never blocking, because the lower rungs still play. The two grades are different
-     * stories about the same number: just past a ceiling drawn at the most generous reading of the codec is
-     * a rung whose rate was rounded up from a multichannel or high-rate authoring the doctor cannot see, and
-     * that is advisory; a multiple past it is a number no encoder could have measured under any of those
-     * readings, and a selector then refuses the rung on links that would carry it easily.
-     */
-    private fun overstatedBitrate(playlist: HlsMultivariantPlaylist): Finding? {
-        val worst = playlist.variants
-            .mapNotNull { variant -> overstatement(variant.format) }
-            .maxByOrNull { it.factor }
-            ?: return null
-        return Finding(
-            Pathology.HLS_OVERSTATED_BITRATE,
-            if (worst.factor > OVERSTATEMENT_NO_AUTHORING_EXPLAINS) FindingSeverity.DEGRADED else FindingSeverity.ADVISORY,
-            magnitude = "declares ${kilobits(worst.declared)} where the format it names carries " +
-                "at most ${kilobits(worst.ceiling)}",
-        )
-    }
-
-    /** What one rung declares and what it could deliver, where the second is knowable and smaller. */
-    private class Overstatement(val declared: Int, val ceiling: Int) {
-
-        /** How many times what it could deliver it claims to: what the severities are read off. */
-        val factor: Double get() = declared.toDouble() / ceiling
-    }
-
-    /** [format]'s [Overstatement], or null where it declares no rate or none this file can bound. */
-    private fun overstatement(format: Format): Overstatement? {
-        val declared = format.peakBitrate.takeIf { it != Format.NO_VALUE } ?: return null
-        val codecs = format.codecs ?: return null
-        if (Util.getCodecsOfType(codecs, C.TRACK_TYPE_VIDEO) != null) return null
-        if (format.width != Format.NO_VALUE || format.height != Format.NO_VALUE) return null
-        val audio = Util.getCodecsOfType(codecs, C.TRACK_TYPE_AUDIO) ?: return null
-        if (aacObjectType(audio) == null) return null
-        val channels = format.channelCount.takeIf { it != Format.NO_VALUE } ?: ASSUMED_AUDIO_CHANNELS
-        val ceiling = MAX_AAC_BITS_PER_SECOND_PER_CHANNEL * channels
-        return if (declared > ceiling) Overstatement(declared, ceiling) else null
     }
 
     /**
@@ -219,7 +108,7 @@ internal object HlsPathologies {
         rendition: HlsMultivariantPlaylist.Rendition,
         itsPlaylist: HlsMediaPlaylist?,
     ): Finding? {
-        val objectType = rendition.format.codecs?.let(::aacObjectType) ?: return null
+        val objectType = rendition.format.codecs?.let(LadderPathologies::aacObjectType) ?: return null
         if (objectType <= HIGHEST_AAC_OBJECT_TYPE_ADTS_CAN_SIGNAL) return null
         val segments = itsPlaylist?.segments.orEmpty()
         if (segments.isEmpty() || segments.any { !isAdts(it.url) }) return null
@@ -308,53 +197,6 @@ internal object HlsPathologies {
     private fun isAdts(segmentUrl: String): Boolean =
         segmentUrl.substringBefore('#').substringBefore('?').endsWith(ADTS_SEGMENT_SUFFIX)
 
-    /** The AAC object type [codecs] names — `mp4a.40.<n>` (RFC 6381 §3.3) — or null where it names no AAC. */
-    private fun aacObjectType(codecs: String): Int? =
-        AAC_CODEC.matchEntire(codecs.trim())?.groupValues?.get(1)?.toIntOrNull()
-
-    private fun decimal(value: Double): String = String.format(Locale.US, "%.1f", value).removeSuffix(".0")
-
-    private fun kilobits(bitsPerSecond: Int): String = "${(bitsPerSecond / 1_000.0).roundToInt()} kbps"
-
-    private fun seconds(durationUs: Long): String = "${decimal(durationUs / 1_000_000.0)} s"
-
-    // ref: Apple Technical Note TN2224, "Best Practices for Creating and Deploying HTTP Live Streaming Media
-    // for Apple Devices" — "Adjacent bit rates should be a factor of 1.5 to 2 apart". The HLS Authoring
-    // Specification has since superseded the note and states no spacing, so this remains the one published
-    // number for a ladder's step, and nothing in it is specific to HLS. Two is its upper end, and the
-    // comparison is strict: a ladder built exactly to the guidance uses at least half of any link between
-    // two of its rungs and is not a gap, whatever a doctor would prefer.
-    private const val LADDER_STEP_WITHIN_GUIDANCE = 2.0
-
-    // Derived, because no document grades a gap once it is one. A client just short of the upper rung uses
-    // about `1 / step` of its link, so the question is how much of a link a step may waste before the
-    // ladder has stopped adapting. Eight is two whole rungs missing from a ladder built at the guidance's
-    // ceiling (2 × 2 × 2): past it, a client between the two rungs is held to under an eighth of what it
-    // could sustain, which is a rung that cannot be chosen rather than a ladder that is merely sparse.
-    private const val LADDER_STEP_COSTING_MOST_OF_THE_LINK = 8.0
-
-    // spec: ISO/IEC 14496-3 — AAC's bit reservoir bounds one raw data block to 6144 bits per channel, and a
-    // block carries 1024 samples, so a channel cannot exceed 6144 × sampleRate / 1024 bits per second. At
-    // 96 kHz, the highest sampling frequency the AAC sampling-frequency index admits, that is 576 kbps per
-    // channel. The highest rate, deliberately: a ceiling is only useful if content that conforms is under
-    // it, and a rendition authored at 44.1 or 48 kHz — which is all of them in practice — is then bounded
-    // twice over. Anything a playlist declares above this for an audio-only rung is a number no AAC encoder
-    // could have measured.
-    private const val MAX_AAC_BITS_PER_SECOND_PER_CHANNEL = 576_000
-
-    // Derived, because a ceiling this generous is only crossed deliberately. The ceiling already assumes the
-    // highest sampling rate AAC admits, so a rung just past it is one whose rate was rounded up from an
-    // authoring the playlist does not declare — more channels, say — and calling that degraded would be
-    // reading a packager's rounding as a lie. Twice it is past every such reading at once: no channel count
-    // or sampling rate a stereo-declared rendition could really have doubles its ceiling again.
-    private const val OVERSTATEMENT_NO_AUTHORING_EXPLAINS = 2.0
-
-    // spec: RFC 8216 §4.3.4.1 — an audio EXT-X-MEDIA tag SHOULD carry CHANNELS, and §4.3.4.2 gives
-    // EXT-X-STREAM-INF no way to state one at all, so the count is often simply absent. Two is what is
-    // assumed then: stereo is what an audio rendition that declares nothing is, and assuming more would
-    // raise the ceiling on every undeclared rung and let a real overstatement through.
-    private const val ASSUMED_AUDIO_CHANNELS = 2
-
     // spec: ISO/IEC 14496-3 — the ADTS fixed header's `profile` field is two bits holding
     // `audioObjectType - 1`, so an ADTS stream can signal object types 1 to 4 (Main, LC, SSR, LTP) and
     // nothing above. RFC 6381 §3.3's `mp4a.40.5` (HE-AAC) and `mp4a.40.29` (HE-AACv2) are therefore
@@ -379,7 +221,4 @@ internal object HlsPathologies {
     // the next rebuffer is one badly-timed segment away. Below that the raggedness is untidy and survivable,
     // which is the difference between advisory and degraded.
     private const val SEGMENT_SPREAD_EXHAUSTING_A_CUSHION = 10.0
-
-    /** `mp4a.40.<objectType>`, RFC 6381 §3.3: the only codec string this file reads a number out of. */
-    private val AAC_CODEC = Regex("""mp4a\.40\.(\d+)""")
 }

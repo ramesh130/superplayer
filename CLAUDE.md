@@ -876,6 +876,30 @@ bit reservoir (ISO/IEC 14496-3) — which is why a 48× ladder's top rung is nam
 true of the playlist and #290's register having to expect two. `HlsPathologyTest` is the
 vocabulary, with the `BENIGN` grades and a healthy two-rung ladder as false-positive controls in methods of
 their own.
+Since #288 it names **every DASH entry of the corpus**, and with them the live-window half `PRD.md` §3.6
+calls the cause of a surprising share of "live stream freezes after 30 s" tickets. The rules are
+`DashPathologies`, and the three defects an MPD has in a multivariant playlist's words — a ladder gap, an
+overstated rung, a rung with no codec string — moved to `LadderPathologies`, judged over the Media3
+`Format`s either parser built, so the number separating advisory from degraded is one number rather than one
+per protocol; a DASH ladder is asked per `AdaptationSet` of every Period. What is DASH's own is a ladder that
+changes at a Period boundary — graded by how far the re-selection can *jump*, on the static ladder's own
+thresholds, with a boundary that changes no rung reported as nothing — and the two live defects. A
+`timeShiftBufferDepth` too short is **core's judgement asked rather than restated**: `LiveWindowDepthCheck`
+grew `tooShort(uri, manifest)`, ADR-0015 rule 3's third seam, and the doctor turns the
+`LiveWindowTooShortException` it answers into a finding's words instead of throwing it, so the doctor and a
+player of the same stream cannot disagree about what "too short" is (rule 6). It is blocking and
+**ungraded**, because that judgement is a yes or a no and grading it would be a second threshold. An absent
+`timeShiftBufferDepth` is a separate finding, since core's judgement declines an unlimited window. A skewed
+`availabilityStartTime` is read against the manifest's **own** clock — its `UTCTiming` direct value, else
+`@publishTime`, never the device's — and reported with its direction and its amount; the cost, stated in the
+rule rather than papered over, is that a skew smaller than the time the stream has been on air is invisible,
+because such an MPD is character for character a healthy stream that started later. `dash-ladder-gap` is
+named twice for its HLS twin's reason. `dash-availability-start-time-skew` is **named and still not
+repaired**: `HostileManifestLadderTest`'s `CANNOT_RECOVER` record is untouched, because nothing about that
+entry fails to load and no rung is ever offered — the difference between naming a defect and rescuing one is
+what this phase is for. `DashPathologyTest` is the vocabulary, with the `BENIGN` grades, the healthy dynamic
+manifest (`HostileManifests.dashLiveBaseline()`, the control no other control can be) and the healthy static
+one in methods of their own.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,

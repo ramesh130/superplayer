@@ -22,6 +22,8 @@ import androidx.media3.common.ParserException
 import androidx.media3.common.util.Util
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
+import androidx.media3.exoplayer.dash.manifest.DashManifest
+import androidx.media3.exoplayer.dash.manifest.DashManifestParser
 import androidx.media3.exoplayer.hls.playlist.HlsMediaPlaylist
 import androidx.media3.exoplayer.hls.playlist.HlsMultivariantPlaylist
 import androidx.media3.exoplayer.hls.playlist.HlsPlaylistParser
@@ -65,6 +67,8 @@ internal class ManifestExamination(private val chain: DataSource.Factory) {
         // A request whose source is a media playlist rather than a multivariant one: legal HLS, and the
         // shape a single-rendition live stream is usually published in.
         is ParsedManifest.Media -> HlsPathologies.inMediaPlaylist(manifest.playlist)
+
+        is ParsedManifest.Dash -> DashPathologies.inManifest(manifest.uri, manifest.manifest)
 
         ParsedManifest.Opaque -> emptyList()
     }
@@ -156,6 +160,13 @@ internal class ManifestExamination(private val chain: DataSource.Factory) {
 
         class Media(val playlist: HlsMediaPlaylist) : ParsedManifest
 
+        /**
+         * An MPD, with the URI it was read from: core's live-window judgement is asked over the parsed
+         * manifest and names the document it judged, so the two travel together rather than the rules
+         * reaching back for a source the examination has moved past.
+         */
+        class Dash(val uri: Uri, val manifest: DashManifest) : ParsedManifest
+
         /** Fetched whole and read by no rule yet: what the protocols this doctor has no rules for parse to. */
         data object Opaque : ParsedManifest
     }
@@ -167,9 +178,9 @@ internal class ManifestExamination(private val chain: DataSource.Factory) {
      * doctor examines whatever that player would have built.
      *
      * **The manifest is fetched whatever the protocol**, even where no rule reads it yet, because whether
-     * it can be fetched at all is a finding of its own and rule 7's bullet is unconditional: a DASH
-     * manifest no player of this app can reach must not come back looking like a healthy one. What the
-     * discarding parser skips is the *reading*, which is #288's to add for DASH; it still pulls the whole
+     * it can be fetched at all is a finding of its own and rule 7's bullet is unconditional: a manifest no
+     * player of this app can reach must not come back looking like a healthy one. What the discarding parser
+     * skips is the *reading*, which the two protocols with rules no longer need; it still pulls the whole
      * body, so a truncated or refused transfer is met here exactly as a player would meet it.
      */
     private fun parserFor(source: Uri): ParsingLoadable.Parser<ParsedManifest> =
@@ -180,6 +191,10 @@ internal class ManifestExamination(private val chain: DataSource.Factory) {
                     is HlsMediaPlaylist -> ParsedManifest.Media(playlist)
                     else -> ParsedManifest.Opaque
                 }
+            }
+
+            C.CONTENT_TYPE_DASH -> ParsingLoadable.Parser { uri, stream ->
+                ParsedManifest.Dash(uri, DashManifestParser().parse(uri, stream))
             }
 
             else -> ParsingLoadable.Parser { _, stream ->

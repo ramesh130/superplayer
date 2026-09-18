@@ -759,10 +759,11 @@ public class PlaybackHarness : ExternalResource() {
      * [buildPlayer] player of the same content would load through — one origin, with [faults] injected into
      * it — with every request counted by this harness.
      *
-     * The same origin is the point, and it is the one thing a test of ADR-0015 rule 7 cannot assert any other
-     * way: a doctor is supposed to meet what a player of the same request meets, so a test examines through
-     * one environment and plays through a player built over the same [content], and what [networkRequests]
-     * reports for each is what left each. Each call is its own origin and its own count.
+     * It is the player seam's twin rather than a second seam, as a download's is: a doctor is supposed to
+     * meet what a player of the same request meets (ADR-0015 rule 7), and the composition here is
+     * [buildPlayer]'s own. Each call is its own origin and its own count, so a doctor and a player of the
+     * same [content] are two independent readings rather than one shared one — which is what an app has,
+     * since a doctor's fetch is not a viewing.
      *
      * No [ThroughputTrace]: a doctor's fetch is reported to no bandwidth meter (rule 7), so there is nothing
      * about it a replayed rate would be measuring. A fetch a test wants to make slow says so with

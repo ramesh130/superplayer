@@ -372,10 +372,9 @@ internal object TransferChain {
     }
 
     /**
-     * The chain a doctor's manifest fetch travels for the content [contentId] names: the transport —
-     * [environment]'s under a test, the platform's HTTP stack otherwise — with the header-refresh layer
-     * [resilience] contributes composed innermost, the cache slot over that, and every request stamped
-     * as a manifest of that content.
+     * The chain a doctor's manifest fetch travels: the transport — [environment]'s under a test, the
+     * platform's HTTP stack otherwise — with the header-refresh layer [resilience] contributes composed
+     * innermost and the cache slot over that, ready to be stamped per content examined.
      *
      * ADR-0015 rule 7: a doctor fetches over the chain a *player* of that request would load through and
      * never over an HTTP stack of its own, so the token the app's `HeaderProvider` mints, the refresh a
@@ -400,26 +399,64 @@ internal object TransferChain {
      *   no row in a CDN's log that joins to no session (ADR-0008 rule 6). `downloadChain` took the same
      *   two exclusions for the same reason (ADR-0013 rule 5).
      *
-     * The stamp sits above both slots, as an item's factory's does on a player, so the cache reads the
-     * content id and the header-refresh layer reads the kind. Every request a doctor opens is a manifest:
-     * it downloads no segment (rule 7), and reading a media playlist the multivariant one names is still
-     * reading a manifest.
+     * **Composed once per doctor, and stamped per examination** ([DiagnosticChain.forContent]). The
+     * layer holds the state of the credential it has refreshed, exactly as a store's does, so a doctor
+     * asked twice pays one refusal rather than two; what changes between two examinations is only the
+     * content identity a request is stamped with, which is a wrapper above everything.
      *
      * [resilience] is asked for its layer through core rather than by the module, because
      * [HeaderRefreshSource] is internal and `superplayer-diagnostics` reaches the closed list of three
-     * seams ADR-0015 rule 3 draws and nothing else — of which this function is the first.
+     * seams ADR-0015 rule 3 draws and nothing else — of which this function is the first. It is also why
+     * what comes back is a whole answer rather than a factory: a report says which layers it travelled,
+     * and only the composition knows, since a [PlaybackResilience] that is not a [HeaderRefreshSource]
+     * contributes no layer at all.
      */
     fun diagnosticChain(
         context: Context,
-        contentId: String,
         environment: DiagnosticEnvironment? = null,
         cache: ContentCache? = null,
         resilience: PlaybackResilience? = null,
-    ): DataSource.Factory {
+    ): DiagnosticChain {
         val transport = environment?.transport ?: DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory())
-        val refreshed = (resilience as? HeaderRefreshSource)?.headerRefreshLayer()?.over(transport) ?: transport
-        val cached = cache?.layer?.over(refreshed) ?: refreshed
-        return cached.stampedWith(ContentIdentity(contentId), LoadKind.MANIFEST)
+        val headerRefresh = (resilience as? HeaderRefreshSource)?.headerRefreshLayer()
+        val refreshed = headerRefresh?.over(transport) ?: transport
+        val cacheLayer = cache?.layer
+        return DiagnosticChain(
+            composed = cacheLayer?.over(refreshed) ?: refreshed,
+            cacheComposed = cacheLayer != null,
+            headerRefreshComposed = headerRefresh != null,
+        )
+    }
+
+    /**
+     * A doctor's composed chain, and which of the optional slots went into it.
+     *
+     * A whole answer rather than a bare factory, which is what ADR-0015 rule 3's closed list asks of the
+     * one seam it admits here: the report a doctor answers says which layers its fetch travelled
+     * (ADR-0015's *Consequences*), and the composition is the only thing that knows — a
+     * [PlaybackResilience] a consumer wrote themselves is not a [HeaderRefreshSource] and contributes no
+     * layer, so "the builder was called" is not the same question.
+     */
+    class DiagnosticChain(
+        private val composed: DataSource.Factory,
+
+        /** Whether the consumer's [ContentCache] put its layer in the chain. */
+        val cacheComposed: Boolean,
+
+        /** Whether the consumer's [PlaybackResilience] contributed a [HeaderRefreshLayer] to it. */
+        val headerRefreshComposed: Boolean,
+    ) {
+
+        /**
+         * This chain with every request stamped as a manifest of [contentId].
+         *
+         * The stamp sits above both slots, as an item's factory's does on a player, so the cache reads
+         * the content id and the header-refresh layer reads the kind. Every request a doctor opens is a
+         * manifest: it downloads no segment (rule 7), and reading a media playlist the multivariant one
+         * names is still reading a manifest.
+         */
+        fun forContent(contentId: String): DataSource.Factory =
+            composed.stampedWith(ContentIdentity(contentId), LoadKind.MANIFEST)
     }
 
     /**

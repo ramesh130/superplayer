@@ -37,6 +37,10 @@ dependencies {
     // The hostile corpus itself: the pathologies the doctor is scored against, with the `// spec:` citation
     // and the plain-language cause each was written with (ADR-0015 rule 12). Phase 1 on phase 9, tests only.
     testImplementation(project(":superplayer-testmedia"))
+    // Tests only, a phase 4 module under a phase 9 one: the doctor takes core's `ContentCache`, and the
+    // only thing that opens one is `superplayer-cache` — which is how "the cache a player would meet"
+    // (rule 7) is a slot a test really fills rather than a line nothing exercises.
+    testImplementation(project(":superplayer-cache"))
     // Tests only, a phase 5 module under a phase 9 one: the doctor takes core's `PlaybackResilience`, and the
     // one that mints a credential and repairs a refused one is this module's — which is what makes "the
     // header refresh a player would meet" (rule 7) a fetch a test can count rather than a claim.

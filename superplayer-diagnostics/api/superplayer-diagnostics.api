@@ -46,6 +46,7 @@ public final class com/superplayer/diagnostics/MediaSourceDoctor$Builder {
 public final class com/superplayer/diagnostics/Pathology : java/lang/Enum {
 	public static final field HLS_MISSING_CODECS Lcom/superplayer/diagnostics/Pathology;
 	public static final field MANIFEST_UNREACHABLE Lcom/superplayer/diagnostics/Pathology;
+	public static final field MANIFEST_UNREADABLE Lcom/superplayer/diagnostics/Pathology;
 	public final fun getCause ()Ljava/lang/String;
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public final fun getId ()Ljava/lang/String;

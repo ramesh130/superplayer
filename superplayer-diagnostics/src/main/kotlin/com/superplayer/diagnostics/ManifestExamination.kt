@@ -18,6 +18,7 @@ package com.superplayer.diagnostics
 
 import android.net.Uri
 import androidx.media3.common.C
+import androidx.media3.common.ParserException
 import androidx.media3.common.util.Util
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
@@ -41,24 +42,38 @@ internal class ManifestExamination(private val chain: DataSource.Factory) {
 
     /** What is wrong with the manifest at [source], or an empty list where nothing this doctor knows is. */
     fun examine(source: Uri): List<Finding> {
-        // The same reading the player makes of the same URI: `DefaultMediaSourceFactory` infers a source's
-        // type this way, so a doctor examines whatever that player would have built.
-        val parser = when (Util.inferContentType(source)) {
-            C.CONTENT_TYPE_HLS -> HlsPlaylistParser()
-
-            // DASH, SmoothStreaming and progressive content: nothing is named yet, and a doctor that has
-            // no rule for a protocol reports nothing rather than guessing (#287 to #289).
-            else -> return emptyList()
-        }
-        val playlist = try {
+        val parsed = try {
             // Media3's own fetch-and-parse, used rather than reimplemented for rule 6's reason: it opens
             // the chain, reads to the end and closes, which is what a player's loader does with a manifest.
-            ParsingLoadable.load(chain.createDataSource(), parser, source, C.DATA_TYPE_MANIFEST)
+            ParsingLoadable.load(chain.createDataSource(), parserFor(source), source, C.DATA_TYPE_MANIFEST)
+        } catch (rejected: ParserException) {
+            // Before the refusal below, because Media3's parse failure *is* an `IOException`: what arrived
+            // and what did not are two different reports, and telling them apart is the first thing a
+            // support engineer does.
+            return listOf(Finding(Pathology.MANIFEST_UNREADABLE, FindingSeverity.BLOCKING, magnitude = null))
         } catch (refused: IOException) {
             return listOf(unreachable(refused))
         }
-        return (playlist as? HlsMultivariantPlaylist)?.let(::examineHlsMultivariant).orEmpty()
+        return (parsed as? HlsMultivariantPlaylist)?.let(::examineHlsMultivariant).orEmpty()
     }
+
+    /**
+     * The parser the engine would run over [source]'s bytes, or one that reads and discards them.
+     *
+     * The reading is the player's own: `DefaultMediaSourceFactory` infers a source's type this way, so a
+     * doctor examines whatever that player would have built.
+     *
+     * **The manifest is fetched whatever the protocol**, even where no rule reads it yet, because whether
+     * it can be fetched at all is a finding of its own and rule 7's bullet is unconditional: a DASH
+     * manifest no player of this app can reach must not come back looking like a healthy one. What the
+     * discarding parser skips is the *reading*, which is #287's and #288's to add; it still pulls the whole
+     * body, so a truncated or refused transfer is met here exactly as a player would meet it.
+     */
+    private fun parserFor(source: Uri): ParsingLoadable.Parser<Any> =
+        when (Util.inferContentType(source)) {
+            C.CONTENT_TYPE_HLS -> ParsingLoadable.Parser { uri, stream -> HlsPlaylistParser().parse(uri, stream) }
+            else -> ParsingLoadable.Parser { _, stream -> stream.readBytes().size }
+        }
 
     /**
      * A manifest the chain would not deliver, as the finding rule 7 asks for.

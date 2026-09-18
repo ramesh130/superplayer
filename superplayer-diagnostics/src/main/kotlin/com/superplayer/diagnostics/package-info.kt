@@ -17,8 +17,14 @@
 /**
  * superplayer-diagnostics — MediaSourceDoctor, session trace bundle, on-device debug HUD
  *
- * Placeholder. This module is created empty and buildable so that the module boundary and
- * dependency direction are fixed and enforceable now, rather than negotiated once code
- * arrives (phase 9). It intentionally declares no public API yet.
+ * Phase 9, and so far the doctor alone: [com.superplayer.diagnostics.MediaSourceDoctor] takes the same
+ * `MediaRequest` a player adopts and answers a [com.superplayer.diagnostics.DiagnosticReport] of
+ * [com.superplayer.diagnostics.Finding]s — what is wrong with the stream, before a player is built.
+ *
+ * ADR-0015 decides the module's shape, and three of its rules are the ones to read before changing
+ * anything here: a **pathology is not a failure**, so nothing in this module classifies one (rule 4); the
+ * fetch travels the chain a *player* of that request would load through and the parsers that player would
+ * run (rules 6 and 7); and the public surface names **no** Media3 type at all, which is stronger than
+ * ADR-0001 rule 2 and is asserted rather than assumed (rule 2).
  */
 package com.superplayer.diagnostics

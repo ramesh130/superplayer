@@ -102,6 +102,28 @@ internal fun interface HeaderRefreshLayer {
 }
 
 /**
+ * Where a chain that is *not* a player's gets its [HeaderRefreshLayer] from.
+ *
+ * A player's slot is filled by [EngineResilienceExtension.configureEngine], because a player's layer
+ * belongs to the engine being built. Two other chains carry the same credential and build no engine: a
+ * download store's ([TransferChain.downloadChain], ADR-0013 rule 14) and a doctor's
+ * ([TransferChain.diagnosticChain], ADR-0015 rule 7). Each asks for the layer directly rather than for a
+ * configuration it has no engine to fill, and each gets its own instance, because the layer holds the
+ * state of the credential it has refreshed and a store's refresh is not a doctor's.
+ *
+ * The one implementation is `superplayer-resilience`'s, which is what makes both chains reachable from a
+ * module that depends on core alone.
+ */
+internal interface HeaderRefreshSource : PlaybackResilience {
+
+    /**
+     * A layer that repairs a refused 401 or 403 inside the transfer that met it, from the app's
+     * `HeaderProvider`; null where there is no provider to repair one with.
+     */
+    fun headerRefreshLayer(): HeaderRefreshLayer?
+}
+
+/**
  * The third slot, and the one that faces the other way: what core *asks* once every rung a load
  * error could answer has declined (ADR-0011 rule 5).
  *
@@ -207,7 +229,7 @@ internal interface PlayerStateRungs {
  *
  * Pure, and asked on whichever thread met the failure: the store's, or Media3's download thread.
  */
-internal interface DownloadResilienceExtension : PlaybackResilience {
+internal interface DownloadResilienceExtension : HeaderRefreshSource {
 
     /**
      * What [error] — the exception a download's loader failed with — is, as the typed error a store
@@ -232,12 +254,9 @@ internal interface DownloadResilienceExtension : PlaybackResilience {
      */
     fun waitBeforeRetryingMs(error: Throwable, retry: Int, policy: RetryPolicy): Long?
 
-    /**
-     * The layer a store composes closest to its transport, built once per store because the credential it
-     * refreshes is the store's: the app's `HeaderProvider` repairing a refused 401 or 403 inside the transfer
-     * that met it, as on a player. Null where there is no provider to repair one with.
-     */
-    fun downloadHeaderRefresh(): HeaderRefreshLayer?
+    // The layer that repairs a refused credential inside a download's transfer is
+    // [HeaderRefreshSource.headerRefreshLayer], inherited rather than declared here: a store was the first
+    // chain that is not a player's to need one and it is no longer the only one (ADR-0015 rule 7).
 
     /**
      * The `LoadErrorHandlingPolicy` a store hands the session manager its licence exchanges run through, asked

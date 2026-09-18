@@ -56,6 +56,7 @@ import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
 import androidx.test.core.app.ApplicationProvider
 import com.superplayer.core.BufferPolicy
 import com.superplayer.core.ContentCache
+import com.superplayer.core.DiagnosticEnvironment
 import com.superplayer.core.DownloadEnvironment
 import com.superplayer.core.PlaybackDrm
 import com.superplayer.core.PlaybackOutput
@@ -196,6 +197,9 @@ public class PlaybackHarness : ExternalResource() {
 
     /** Every download environment handed out, so [networkRequests] can answer for one and [after] stop its thread. */
     private val downloads = IdentityHashMap<DownloadEnvironment, HarnessDownloadEnvironment>()
+
+    /** Every diagnostic environment handed out, so [networkRequests] can answer for one. */
+    private val diagnostics = IdentityHashMap<DiagnosticEnvironment, HarnessDiagnosticEnvironment>()
 
     /** How many directories [processDeath] has copied, so each reopened one has a name of its own. */
     private var deaths = 0
@@ -749,6 +753,46 @@ public class PlaybackHarness : ExternalResource() {
      * makes it hold.
      */
     public fun runScheduledWork(): Int = ScheduledWork.runWhereConstraintsHold()
+
+    /**
+     * Where a doctor's fetch of [content] travels, for `MediaSourceDoctor.Builder` to take: the transport a
+     * [buildPlayer] player of the same content would load through — one origin, with [faults] injected into
+     * it — with every request counted by this harness.
+     *
+     * The same origin is the point, and it is the one thing a test of ADR-0015 rule 7 cannot assert any other
+     * way: a doctor is supposed to meet what a player of the same request meets, so a test examines through
+     * one environment and plays through a player built over the same [content], and what [networkRequests]
+     * reports for each is what left each. Each call is its own origin and its own count.
+     *
+     * No [ThroughputTrace]: a doctor's fetch is reported to no bandwidth meter (rule 7), so there is nothing
+     * about it a replayed rate would be measuring. A fetch a test wants to make slow says so with
+     * [FaultScript.Builder.addLatencyMs].
+     *
+     * Described content has no manifest to examine and is refused.
+     */
+    public fun diagnosticEnvironment(
+        content: TestContent = TestContent.hls(),
+        faults: FaultScript = FaultScript.NONE,
+    ): DiagnosticEnvironment {
+        require(content.protocol != TestContent.Protocol.DESCRIBED) {
+            "Described content is a timeline rather than a stream, so there is no manifest to examine: use TestContent.hls() or dash()"
+        }
+        val transport = composeTransport(content, faults, network = null)
+        val environment = HarnessDiagnosticEnvironment(
+            transport = transport.transfers.factory,
+            injector = transport.injector,
+        )
+        diagnostics[environment] = environment
+        return environment
+    }
+
+    /**
+     * Every request a doctor examining through [environment] has sent so far, repeats included, in the order
+     * opened — counted under every layer, as [networkRequests] counts a player's.
+     */
+    public fun networkRequests(environment: DiagnosticEnvironment): List<NetworkRequest> =
+        checkNotNull(diagnostics[environment]) { "This harness did not make that diagnostic environment" }
+            .injector.addresses.requests
 
     private fun downloadFor(environment: DownloadEnvironment): HarnessDownloadEnvironment =
         checkNotNull(downloads[environment]) { "This harness did not make that download environment" }

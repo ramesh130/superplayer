@@ -142,10 +142,10 @@ internal class StandardResilience(private val headers: HeaderProvider?) :
         return Backoff.delayMsFor(budget, retry, Random.Default)
     }
 
-    // One layer per store, for the reason a player gets one of its own: the credential it refreshes is the
-    // store's. None without a provider, where a player gets the pass-through only so core stamps its requests,
-    // which a download's chain does anyway.
-    override fun downloadHeaderRefresh(): HeaderRefreshLayer? = headers?.let { TokenRefreshLayer(it) }
+    // One layer per chain that asks — a store's, a doctor's — for the reason a player gets one of its own:
+    // the credential it refreshes is that chain's. None without a provider, where a player gets the
+    // pass-through only so core stamps its requests, which neither of those chains needs it for.
+    override fun headerRefreshLayer(): HeaderRefreshLayer? = headers?.let { TokenRefreshLayer(it) }
 
     // The very object a player's DRM slot is handed (#205), over the store's decision rather than a player's:
     // Media3 asks it about a licence load with `C.DATA_TYPE_DRM`, which `RetryBudgetKind` reads as the licence

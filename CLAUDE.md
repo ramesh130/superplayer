@@ -840,10 +840,30 @@ back. Two things are easy to get wrong. A composable lambda that captures nothin
 step Compose's clock by hand, because the commit is a timeout. `TvPlaybackControlsTest` is the library's
 one Compose UI test and `ScrubTest` holds the curve.
 
+`superplayer-diagnostics` has the first of Phase 9, the tracer bullet (#286): the doctor names one
+pathology. `MediaSourceDoctor.Builder(context).build()` takes the cache and the resilience the players of
+this content are built with, and `examine(request)` takes the same `MediaRequest` a player adopts and
+answers a `DiagnosticReport` — a list of `Finding`s, each a `Pathology` (its stable id, the `// spec:`
+citation and the plain-language cause, all three the corpus's words), a `FindingSeverity` and a magnitude
+where the defect has one. It is core's **ninth** Kotlin friend and the first bounded by ADR-0015 rule 3's
+**closed list of three** seams rather than by a slot; of the three it takes the first,
+`TransferChain.diagnosticChain`, and a fourth seam needs that rule amended by name. The fetch travels the
+chain a *player* of that request would load through — the transport, the header-refresh layer a resilience
+fills and the cache slot, every request stamped `LoadKind.MANIFEST` under that content's identity — and
+deliberately not the two live layers, the load-error policy, CMCD or a meter, which
+`TransferChain.diagnosticChain`'s KDoc argues one at a time. It parses with the parsers the engine would
+run, so the doctor and the player never disagree about what a manifest *says*. What it names today is
+`hls-missing-codecs`, `DEGRADED`, read off Media3's parsed variants; a manifest the chain refuses is a
+`MANIFEST_UNREACHABLE` finding carrying the status rather than an exception, because "the doctor threw" is
+the least useful thing a support ticket can say. A **pathology is not a failure**: a finding carries no
+`FailureClass` and this module classifies nothing. `MediaSourceDoctorTest` drives it over
+`PlaybackHarness.diagnosticEnvironment` — `DownloadEnvironment`'s twin, carrying a transport and nothing
+else — with the healthy stream as its own control, and `DiagnosticsPayNothingTest` counts rule 13.
+
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,
 `superplayer-abr`, `superplayer-cache`, `superplayer-preload`, `superplayer-resilience`,
-`superplayer-drm`, `superplayer-offline`, `superplayer-tv` and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
+`superplayer-drm`, `superplayer-offline`, `superplayer-tv`, `superplayer-diagnostics` and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
 requirements, and the phase table are what the issues are cut from.
 
 `benchmark/` is the fourth build and the phases' exit criteria: `PRD.md` §6's fixed matrix — six

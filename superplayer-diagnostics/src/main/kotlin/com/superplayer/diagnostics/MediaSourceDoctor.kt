@@ -1,0 +1,134 @@
+/*
+ * Copyright 2026 The SuperPlayer Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.superplayer.diagnostics
+
+import android.content.Context
+import com.superplayer.core.ContentCache
+import com.superplayer.core.DiagnosticEnvironment
+import com.superplayer.core.MediaRequest
+import com.superplayer.core.PlaybackResilience
+import com.superplayer.core.TransferChain
+
+/**
+ * What is wrong with this stream, in the words a support engineer needs, before a player is built.
+ *
+ * ```kotlin
+ * val doctor = MediaSourceDoctor.Builder(context).setCache(cache).setResilience(resilience).build()
+ * val report = doctor.examine(request)      // the same MediaRequest a player adopts
+ * report.findings.forEach { log(it.pathology.id, it.severity, it.specCitation, it.cause) }
+ * ```
+ *
+ * A variant that declares no `CODECS` comes back as a [Finding] naming the defect, its severity, the
+ * clause it departs from and the misconfiguration that produces it — rather than as a player that behaves
+ * oddly ten minutes later.
+ *
+ * ## What it fetches, and what it fetches over
+ *
+ * It reads manifests and playlists, and **downloads no segment**: the pathologies are declarations, and
+ * fetching media to check one would make a preflight cost what a start costs (ADR-0015 rule 7).
+ *
+ * The fetch travels the chain a *player* of that request would load through — `TransferChain`'s, with the
+ * [ContentCache] and the [PlaybackResilience] this doctor was built with in it — and never an HTTP stack of
+ * its own. That is ADR-0002's argument arriving through a different door: the defects a doctor is most
+ * often asked about, an expired token above all, are invisible to a stack that does not carry the app's
+ * credential. So a doctor is built with what the players it is answering for are built with, and the report
+ * says which of those layers it travelled ([DiagnosticReport.chain]).
+ *
+ * It is measured by nothing: the chain it composes reports to no bandwidth meter and emits no CMCD, because
+ * a doctor's fetch is not a viewing.
+ *
+ * ## Threading and lifetime
+ *
+ * [examine] **blocks the calling thread** for as long as the fetch takes, so it is called off the main
+ * thread, exactly as any other network read is. It is the whole of the object's activity: a doctor holds no
+ * thread, registers nothing with the platform and keeps nothing open between calls, which is why there is
+ * nothing to release and why one may be constructed per question or kept for the life of a screen.
+ *
+ * One doctor may be asked from several threads at once. The per-examination state is the chain, which is
+ * built inside [examine]; what is shared is the cache and the credential, which are shared by the players
+ * that hold them too.
+ */
+public class MediaSourceDoctor private constructor(
+    private val context: Context,
+    private val cache: ContentCache?,
+    private val resilience: PlaybackResilience?,
+    private val environment: DiagnosticEnvironment?,
+) {
+
+    /** Which optional layers this doctor's chain carries, decided once and reported on every report. */
+    private val chain: Set<ChainLayer> = buildSet {
+        if (cache != null) add(ChainLayer.CONTENT_CACHE)
+        // Which slots this doctor's chain has, not what a fetch through them did: whether the resilience
+        // carries a `HeaderProvider` to repair a refusal with is the app's business and is behind the same
+        // internal seam the layer itself is. [ChainLayer.HEADER_REFRESH] says so.
+        if (resilience != null) add(ChainLayer.HEADER_REFRESH)
+    }
+
+    /**
+     * Fetches [request]'s manifest over this doctor's chain and answers what is wrong with it.
+     *
+     * The first entry of [MediaRequest.sources] is examined, because it is the one a player plays; the rest
+     * are what rung 4 of the fallback ladder would reach for, and a stream nothing has fallen back to has
+     * not been asked to serve anything.
+     *
+     * A manifest the chain refuses is a [Pathology.MANIFEST_UNREACHABLE] finding rather than an exception
+     * (ADR-0015 rule 7): "the doctor threw" is the least useful thing a support ticket can say.
+     */
+    public fun examine(request: MediaRequest): DiagnosticReport {
+        val source = request.sources.first()
+        val findings = ManifestExamination(
+            TransferChain.diagnosticChain(context, request.contentId, environment, cache, resilience),
+        ).examine(source)
+        return DiagnosticReport(request.contentId, findings, chain)
+    }
+
+    /**
+     * Builds a [MediaSourceDoctor]. Media3's construction idiom — see ADR-0001 and CONTRIBUTING rule 3.
+     *
+     * A doctor is built with what the players it answers for are built with, because rule 7 makes its
+     * answer that player's answer. A doctor given neither is the doctor of a player given neither, and is
+     * the right one for an app that has neither.
+     */
+    public class Builder(private val context: Context) {
+
+        private var cache: ContentCache? = null
+        private var resilience: PlaybackResilience? = null
+        private var environment: DiagnosticEnvironment? = null
+
+        /** The cache the players of this content are built with, so a manifest on disk is read from disk. */
+        public fun setCache(cache: ContentCache): Builder = apply { this.cache = cache }
+
+        /**
+         * The resilience the players of this content are built with, so the credential the app mints and
+         * the refresh a 401 or 403 triggers are the ones those players carry.
+         */
+        public fun setResilience(resilience: PlaybackResilience): Builder = apply { this.resilience = resilience }
+
+        /**
+         * Where this doctor's fetch travels, when that is not the device's own network: a
+         * `PlaybackHarness.diagnosticEnvironment`, and nothing else can make one.
+         *
+         * Internal, as the download store's twin is: a consumer never has a [DiagnosticEnvironment], so the
+         * only code that can call this is this module's own tests.
+         */
+        internal fun setEnvironment(environment: DiagnosticEnvironment): Builder =
+            apply { this.environment = environment }
+
+        public fun build(): MediaSourceDoctor =
+            MediaSourceDoctor(context.applicationContext, cache, resilience, environment)
+    }
+}

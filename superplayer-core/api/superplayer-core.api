@@ -51,6 +51,9 @@ public final class com/superplayer/core/DecisionTrigger : java/lang/Enum {
 	public static fun values ()[Lcom/superplayer/core/DecisionTrigger;
 }
 
+public abstract class com/superplayer/core/DiagnosticEnvironment {
+}
+
 public abstract class com/superplayer/core/DownloadEnvironment {
 }
 

@@ -43,22 +43,23 @@ than to wave the dependency through.
 | `superplayer-drm` | 6 | WidevineSessionManager, provisioning, offline licenses, fallback ladder | core; testkit, resilience and telemetry (tests only) |
 | `superplayer-offline` | 7 | Downloads into the ContentCache the consumer opened, on the one chain: a store over Media3's download stack, WorkManager scheduling under unmetered, battery-not-low and storage-not-low, download track selection, and the licence bound to the download (ADR-0013) | core; testkit, testmedia, cache, drm and resilience (tests only) |
 | `superplayer-tv` | 8 | CTV behind one output slot: frame-rate matching, the display as a live reading, tunneling where the policy asks, and Compose-for-TV controls on a `SurfaceView` (ADR-0014) | core; testkit, testmedia, abr, drm, resilience and telemetry (tests only) |
-| `superplayer-diagnostics` | 9 | MediaSourceDoctor — a manifest's pathologies named over the chain a player of that request would load through, as one report for preflight and postmortem — the session trace bundle with its capability snapshot, and the on-device debug HUD (ADR-0015) | core today; core and telemetry once the bundle lands (ADR-0015 rule 1); testkit, testmedia, abr, cache, drm and resilience (tests only) |
+| `superplayer-diagnostics` | 9 | MediaSourceDoctor — a manifest's pathologies named over the chain a player of that request would load through, as one report for preflight and postmortem — the session trace bundle with its capability snapshot, and the on-device debug HUD (ADR-0015) | core and telemetry (ADR-0015 rule 1); testkit, testmedia, abr, cache, drm and resilience (tests only) |
 | `superplayer-ui` | — † | Optional Compose player surface | core |
 
 `superplayer-testkit`, `superplayer-abr`, `superplayer-cache`, `superplayer-preload`,
-`superplayer-resilience`, `superplayer-drm`, `superplayer-offline` and `superplayer-tv` also
-compile as Kotlin *friends* of core (`docs/testing.md`'s *Reaching that seam from another module*,
+`superplayer-resilience`, `superplayer-drm`, `superplayer-offline`, `superplayer-tv` and
+`superplayer-diagnostics` also compile as Kotlin *friends* of core (`docs/testing.md`'s *Reaching that seam from another module*,
 ADR-0009 rule 7, ADR-0010 rules 3 and 6, ADR-0011 rule 13, ADR-0012 rule 4, ADR-0013 rule 4, ADR-0014
-rule 3). A friend path is a compiler flag rather than a Gradle
+rule 3, ADR-0015 rule 3). A friend path is a compiler flag rather than a Gradle
 dependency, which is why it does not appear in the column above and why it is not what the rule
 measures.
 
 ADR-0015 rule 3 admits `superplayer-diagnostics` as the **ninth** and bounds it to a closed list of
 three internal seams: a doctor's chain, which is ADR-0013 rule 4's second shape unchanged, plus one
 function returning the capability snapshot and `LiveWindowDepthCheck`'s judgement, which reach past
-it and are admitted by name. #286 is the change that takes it, and until then the module is a friend
-of nothing.
+it and are admitted by name. #286 took the friendship, and the first of the three seams with it; the
+other two are #292's and #288's, and a fourth needs that rule amended by name in the change that
+reaches it.
 
 `superplayer-testmedia` is the one module that depends on nothing, and that is what it is for. Its
 synthetic HLS and DASH streams are played by `superplayer-core`'s tests *and* by

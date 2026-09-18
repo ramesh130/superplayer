@@ -63,7 +63,21 @@ import kotlin.random.Random
  *
  * The meter therefore reads the *same* number in both arms while the links are nothing alike, and
  * that is the whole defect: the broken link is the slower of the two and is described by the faster
- * one's estimate. Measured rather than argued, the overstatement is the compression ratio.
+ * one's estimate.
+ *
+ * Which assertion does the work is worth saying, because two of them look stronger than they are.
+ * The **measured** one is `honest.estimateBps == honest.trueLinkBps`: nothing here is mocked between
+ * the transport and the reading, so the number can only be right if the adapter reported the
+ * transfer, the meter counted its bytes, and a sample was really taken — a run in which none was
+ * would read `ColdDefaults`' Wi-Fi figure and fail. What is **declared** rather than measured is
+ * `bytesOnTheWire`: no deflated byte travels anywhere in this process, and it could not, because the
+ * defect is precisely that the deflated bytes are the ones core never sees. So the last two
+ * assertions restate a fact the fixture asserts of itself, and they earn their place by naming which
+ * of the two identical estimates is a description of its own link.
+ *
+ * Nothing in this repository can go further than that. A link that really carried fewer bytes in the
+ * same time needs a shaped network under a decompressing client, and `docs/throughput-traces.md`'s
+ * replay paces what the *chain* transfers, which is the inflated side of exactly this boundary.
  *
  * Each arm gets its own [EstimateMemory] rather than sharing the process's (ADR-0009 rule 8), which
  * is what keeps one arm's samples out of the other's window and needs no forgetting between them.
@@ -91,9 +105,11 @@ class TransparentGzipEstimateTest {
         assertThat(gunzipping.meterWasToldBytes).isEqualTo(plain.size.toLong())
         assertThat(gunzipping.estimateBps).isEqualTo(honest.estimateBps)
 
-        // The honest arm's estimate *is* its link. The gunzipping arm's is not, and the gap is the
-        // compression ratio — a ladder chosen for a link carrying that many more bits per second
-        // than this one has, which arrives at a viewer as a rebuffer with nothing in any log.
+        // The honest arm's estimate *is* its link, and this is the one line that could only pass
+        // over a real sample: a run that took none reads `ColdDefaults`' Wi-Fi figure instead. The
+        // gunzipping arm's is not its link, and the gap is the compression ratio — a ladder chosen
+        // for a link carrying that many more bits per second than this one has, which arrives at a
+        // viewer as a rebuffer with nothing in any log.
         assertThat(honest.estimateBps).isEqualTo(honest.trueLinkBps)
         assertThat(gunzipping.estimateBps).isGreaterThan(gunzipping.trueLinkBps)
         assertThat(gunzipping.estimateBps / gunzipping.trueLinkBps)

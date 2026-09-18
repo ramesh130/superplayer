@@ -20,6 +20,7 @@ import android.net.Uri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.test.utils.robolectric.RobolectricUtil
 import androidx.media3.test.utils.robolectric.ShadowMediaCodecConfig
 import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
@@ -58,7 +59,7 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * ## Where it reads past the facade, and why
  *
- * Three tests open the adapter's `DataSource` through the internal member on an [HttpStack], for
+ * Five tests open the adapter's `DataSource` through the internal member on an [HttpStack], for
  * `docs/testing.md`'s stated reason: each asserts about the *request* — the headers composed onto
  * it, the URI a response reported, a `close` racing a `read` — and none of those is a claim about
  * playback that a player could make instead. The claims that *are* about playback — a redirected
@@ -167,6 +168,32 @@ class TransportContractTest {
         source.close()
 
         assertThat(whileOpen).isEqualTo(Uri.parse(uri))
+    }
+
+    /**
+     * The third answer, and the one a refusal gets: **none**.
+     *
+     * A refused open lets go of the response before it throws, so the headers are already empty, and
+     * a URI still being answered beside them would be a source half open. Media3's own stacks answer
+     * null here too. What a refusal is diagnosed from is the `DataSpec` on the typed exception, which
+     * carries the address the chain asked for and the `LoadKind` stamp with it.
+     */
+    @Test
+    fun aRefusedRequestReportsNoUriAtAll() {
+        val uri = ServingTransport.httpsFor(SyntheticHlsStream.MULTIVARIANT_PLAYLIST_URI)
+        val transport = ServingTransport(
+            resources = ServingTransport.hlsOverHttps(),
+            refusals = mapOf(uri to ServingTransport.Refusal(FORBIDDEN)),
+        )
+
+        val source = HttpStack.of(transport).factory.createDataSource()
+        val failure = runCatching {
+            source.open(DataSpec.Builder().setUri(uri).build())
+        }.exceptionOrNull()
+
+        assertThat(failure).isInstanceOf(HttpDataSource.InvalidResponseCodeException::class.java)
+        assertThat(source.uri).isNull()
+        assertThat(source.responseHeaders).isEmpty()
     }
 
     // ADR-0016 rule 7 — content coding.
@@ -294,7 +321,12 @@ class TransportContractTest {
      * "While still waiting" is what makes it an abandonment rather than a finish, and it is why
      * [StallingBody] answers nothing: a close that reaches a body which never delivered a byte can
      * only have come from a load being let go. The player is asserted un-errored with it, so that a
-     * cancel is being counted and not a failure that happened to close the same response.
+     * cancel is being counted and not a failure that happened to close the same response, and the
+     * close count is asserted **zero before the seek**, so the seek is what caused it.
+     *
+     * What this cannot show is the *waiting* half: a body that could finish on its own would have to
+     * be raced against the close, and this one cannot finish, so "without waiting for it" holds here
+     * by construction rather than by assertion. `docs/testing.md` says the same.
      */
     @Test
     fun aSeekAbandonsAnInFlightLoadOverAConsumersTransport() {
@@ -303,6 +335,9 @@ class TransportContractTest {
 
         player.prepare()
         RobolectricUtil.runMainLooperUntil { body.entered.count == 0L }
+        // The control, and the reason the count below means anything: with a load in flight and no
+        // seek yet, nothing has closed it.
+        assertThat(body.closes.get()).isEqualTo(0)
         // Into the *last* segment, so the seek leaves the chunk being loaded behind: a seek landing
         // inside the chunk in flight is one Media3 rightly finishes rather than cancels, and would
         // be a test of nothing.
@@ -329,6 +364,7 @@ class TransportContractTest {
 
         player.prepare()
         RobolectricUtil.runMainLooperUntil { body.entered.count == 0L }
+        assertThat(body.closes.get()).isEqualTo(0)
         player.release()
 
         assertThat(body.closed.await(WAIT_SECONDS, TimeUnit.SECONDS)).isTrue()
@@ -437,6 +473,9 @@ class TransportContractTest {
 
         /** Where the redirect lands, and where every byte of the stream actually is. */
         const val EDGE_BASE = "https://superplayer.test/edge/v2/"
+
+        /** // spec: RFC 9110 §15.5.4 — the status a CDN refuses an unentitled request with. */
+        const val FORBIDDEN = 403
 
         /**
          * Long enough that a seek can land in a segment other than the one being loaded, which is

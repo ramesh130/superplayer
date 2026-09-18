@@ -80,8 +80,10 @@ import java.io.InputStream
  * every one of them against the URI the document was read from. A transport that answers the
  * requested URI for a playlist a CDN redirected therefore sends the player looking for its media
  * playlists and its segments under the *old* address — and what a viewer sees is content that will
- * not start, on a stream whose every byte was served correctly. Every layer above gets the same
- * wrong answer for free: the cache key, the diagnostic report, the session bundle.
+ * not start, on a stream whose every byte was served correctly. What it does *not* corrupt is the
+ * cache key, which `superplayer-cache` takes from the URI the layer above asked for rather than from
+ * this one — worth saying, because "everything downstream is wrong" is the easy claim to make here
+ * and it is not the true one. The damage is the resolution, and the resolution is enough.
  *
  * **No content coding of the transport's own** (ADR-0016 rule 7). Send [HttpRequest.headers] and
  * nothing else; in particular do not let a client negotiate compression on its own behalf. Core asks
@@ -106,6 +108,12 @@ import java.io.InputStream
  * and its buffers held by a thread waiting for bytes belonging to a screen the viewer has left.
  * Core deliberately puts no timeout around it; `HttpTransportDataSource.close`'s KDoc argues why,
  * and the short of it is that a bound would turn a diagnosable hang into an unattributable stall.
+ *
+ * **The list is now complete, and the mechanical half of it is not.** Every obligation ADR-0016
+ * puts on an implementation is above. What is still missing is rule 14's public **conformance
+ * test** — a `superplayer-testkit` one an adopter can run against their own transport — so until it
+ * lands, each of these is carried to an implementer by this KDoc alone, which the record itself
+ * calls the arrangement that "gets implemented wrongly once per adopter".
  *
  * ## The lifecycle
  *

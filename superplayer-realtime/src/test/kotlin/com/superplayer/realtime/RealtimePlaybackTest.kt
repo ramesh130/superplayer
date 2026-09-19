@@ -19,6 +19,7 @@ package com.superplayer.realtime
 import android.net.Uri
 import android.os.SystemClock
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.RenderersFactory
 import androidx.media3.test.utils.FakeClock
@@ -28,8 +29,10 @@ import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
 import com.superplayer.core.FrameSink
 import com.superplayer.core.FrameSource
+import com.superplayer.core.MalformedRealtimeBitstreamException
 import com.superplayer.core.MediaRequest
 import com.superplayer.core.RealtimeStreamNotSeekableException
+import com.superplayer.core.RealtimeTrack
 import com.superplayer.core.SuperPlayer
 import com.superplayer.core.UnsupportedRealtimeCodecException
 import org.junit.After
@@ -245,6 +248,96 @@ class RealtimePlaybackTest {
         assertThat(refusals).hasSize(1)
         assertThat(refusals.single().codec).isEqualTo("theora")
     }
+
+    /**
+     * A keyframe carrying its own parameter sets plays, and the track it plays as is configured with
+     * nothing out of band (ADR-0018 rule 4, #345).
+     *
+     * The bytes are #340's observed `avc3` keyframe — a start code, the encoder's SPS, and the next
+     * unit's start code — behind the `avc3.42c01e` string it observed them under. The claim is the
+     * one only a player can make: that this is the *self-describing* branch, so the `Format` the
+     * player exposes carries no initialization data at all, and the frames reach the renderer as
+     * handed over rather than through a conversion that has nothing to convert.
+     */
+    @Test
+    fun `a frame carrying in-band parameter sets plays with no codec-specific data`() {
+        val player = buildPlayer(
+            ScriptedFrameSource(
+                frames = 300,
+                codec = "avc3.42c01e",
+                configuration = RealtimeTrack.CodecConfiguration.InBand,
+                payload = { keyFrame -> if (keyFrame) ObservedBytes.AVC3_KEYFRAME else annexBH264(keyFrame = false) },
+            ),
+        )
+
+        player.setMediaRequest(realtimeRequest())
+        player.prepare()
+        player.play()
+        TestPlayerRunHelper.runUntilPlaybackState(player.exoPlayer, Player.STATE_READY)
+
+        assertThat(selectedFormat(player).initializationData).isEmpty()
+        val atReady = player.currentPosition
+        TestPlayerRunHelper.playUntilPosition(player.exoPlayer, /* mediaItemIndex = */ 0, /* positionMs = */ 2_000)
+        assertThat(player.currentPosition - atReady).isAtLeast(1_000)
+    }
+
+    /**
+     * The other branch of the same rule, end to end: an `avc1` track whose record is #340's `avcC`
+     * plays, configured from the record and with its length-prefixed samples converted.
+     *
+     * The `Format` carries the SPS and the PPS as two Annex-B entries, which is what
+     * `CodecConfigurationRecordsTest` checks byte for byte; what this adds is that a player built on
+     * it prepares and advances, so the conversion happens on the path a frame really takes.
+     */
+    @Test
+    fun `a track declaring an avcC plays configured from the record`() {
+        val player = buildPlayer(
+            ScriptedFrameSource(
+                frames = 300,
+                codec = "avc1.42c01e",
+                configuration = RealtimeTrack.CodecConfiguration.Record(ObservedBytes.AVCC),
+                payload = ::lengthPrefixedH264,
+            ),
+        )
+
+        player.setMediaRequest(realtimeRequest())
+        player.prepare()
+        player.play()
+        TestPlayerRunHelper.runUntilPlaybackState(player.exoPlayer, Player.STATE_READY)
+
+        assertThat(selectedFormat(player).initializationData).hasSize(2)
+        val atReady = player.currentPosition
+        TestPlayerRunHelper.playUntilPosition(player.exoPlayer, /* mediaItemIndex = */ 0, /* positionMs = */ 2_000)
+        assertThat(player.currentPosition - atReady).isAtLeast(1_000)
+    }
+
+    /**
+     * A transport whose configuration contradicts its own fourcc ends the session naming the
+     * contradiction, rather than configuring a decoder that renders nothing (#345).
+     */
+    @Test
+    fun `a record on a self-describing fourcc ends the session naming the contradiction`() {
+        val player = buildPlayer(
+            ScriptedFrameSource(
+                frames = 1,
+                codec = "avc3.42c01e",
+                configuration = RealtimeTrack.CodecConfiguration.Record(ObservedBytes.AVCC),
+            ),
+        )
+
+        player.setMediaRequest(realtimeRequest())
+        player.prepare()
+        val error: Throwable = TestPlayerRunHelper.runUntilError(player.exoPlayer)
+
+        val refusals =
+            generateSequence(error) { it.cause }.filterIsInstance<MalformedRealtimeBitstreamException>().toList()
+        assertThat(refusals).hasSize(1)
+        assertThat(refusals.single().codec).isEqualTo("avc3.42c01e")
+    }
+
+    /** The one track the player selected, read off the public `Player` API. */
+    private fun selectedFormat(player: SuperPlayer): Format =
+        player.currentTracks.groups.single().mediaTrackGroup.getFormat(0)
 
     private fun realtimeRequest(
         startPosition: MediaRequest.StartPosition = MediaRequest.StartPosition.Beginning,

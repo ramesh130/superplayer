@@ -1197,8 +1197,26 @@ codec-specific data on. And an SDP encoding name sets **no** `codecs` string, be
 vocabulary is RFC 6381's and a bare name states no profile. `RealtimeFormatsTest` drives it on string
 literals alone, #340's observed `avc1.42c01e` and `avc3.42c01e` among them, with an unmapped string,
 a malformed one and `mp4a.69` as the controls that keep it from being "map everything".
-What is still open in Phase 13 is the codec-specific-data conversion (#345), audio beside video
-(#346) and `FrameSourceConformance` (#347).
+Since #345 the **codec-specific data** is converted on this side rather than by the transport, and
+that moved the seam: `RealtimeTrack.codecSpecificData`, a list of Annex-B units, is now
+`codecConfiguration`, a sealed `CodecConfiguration` of `InBand` or `Record(bytes)` — the record
+**exactly as received**. The shape is the point (obligation 7's rewritten cost): every value of a
+byte list type-checked, so an `avcC` handed over where units were expected compiled and rendered
+nothing, while a *named* shape lets a fourcc that contradicts it be refused by name — the new public
+`MalformedRealtimeBitstreamException`, an `IOException` for `UnsupportedRealtimeCodecException`'s
+reason and not a fourth shape. `CodecConfigurationRecords` is the branch, keyed on the fourcc and
+never the container: `avc1`/`hvc1` parse their record into Annex-B parameter sets (two csd entries
+for AVC, one concatenated for HEVC), `avc3`/`hev1` are configured with nothing, and every other
+codec's record passes through unchanged, which is where #346's audio starts. The **NAL length size
+is read out of the record** and then *used*, on that track's samples, because a size read and not
+applied is a number nobody uses; a record's own parameter-set lengths are 16-bit by its grammar and
+conflating the two is the first way to read an `avcC` wrongly. Everything that does not hold
+together — a truncated record, a length field running past a frame, a `configurationVersion` that is
+not 1 (which is what an Annex-B blob handed over as a record reads as) — is refused rather than read
+past. `CodecConfigurationRecordsTest` is #340's observed bytes as fixtures, its `avcC` dump doubling
+as the truncation case; the `hvcC` is **synthesized and labelled so**, because #340's caveat 2 saw
+H.264 only. `ObservedBytes` is the one place those dumps live.
+What is still open in Phase 13 is audio beside video (#346) and `FrameSourceConformance` (#347).
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,

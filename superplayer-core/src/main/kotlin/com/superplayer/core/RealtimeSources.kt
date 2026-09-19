@@ -174,3 +174,47 @@ public class UnsupportedRealtimeCodecException internal constructor(
         "unrecognised string rather than guessing, because a codec decoded as the wrong one fails " +
         "silently.",
 )
+
+/**
+ * A realtime transport delivered bytes that are not the shape its own codec string says they are.
+ *
+ * Raised where SuperPlayer reads what the transport handed over and finds it cannot be what the
+ * fourcc claims: an `avcC` or `hvcC` record that does not parse or ends inside a parameter set, a
+ * [RealtimeTrack.CodecConfiguration.Record] on a self-describing fourcc (`avc3`, `hev1`) or
+ * [RealtimeTrack.CodecConfiguration.InBand] on one that carries a record (`avc1`, `hvc1`), or a
+ * length-prefixed sample whose length field runs past the end of the frame.
+ *
+ * ## Why a refusal rather than a best effort
+ *
+ * [UnsupportedRealtimeCodecException]'s argument, one layer in. That one refuses a codec nobody
+ * mapped; this one refuses bytes that *are* a mapped codec's and do not hold together. Reading a
+ * record up to the point it stops making sense, or a frame up to the byte the length field
+ * overran, configures a decoder that then renders nothing or renders corruption — the failure
+ * ADR-0018 rule 4 and [FrameSource]'s obligation 7 exist to prevent, and the one #340 observed is
+ * indistinguishable from a working stream until a viewer looks at it. [reason] says which of the
+ * cases above it was, because that is what tells a transport author whether the bug is in their
+ * publisher or in their adapter.
+ *
+ * ## Why an `IOException`
+ *
+ * [UnsupportedRealtimeCodecException]'s shape and for its reason — the first of the three described
+ * on [HttpStackUnsupportedException]: the transport was already subscribed, so a session exists and
+ * what went wrong is a delivery. It is deliberately **not** a fourth shape.
+ *
+ * It adds no `FailureClass`, for [UnsupportedRealtimeCodecException]'s reason.
+ *
+ * ## What to do instead
+ *
+ * Hand over the configuration record **as received**, under the shape the fourcc names — a record
+ * for `avc1` and `hvc1`, [RealtimeTrack.CodecConfiguration.InBand] for `avc3` and `hev1`. Nothing
+ * needs converting first: reading the record, including its NAL length field size, is this
+ * library's.
+ */
+public class MalformedRealtimeBitstreamException internal constructor(
+
+    /** The codec string the track was declared as, verbatim. */
+    public val codec: String,
+
+    /** What was wrong, in one clause, naming the offset or the count that did not add up. */
+    public val reason: String,
+) : IOException("Malformed realtime bitstream for codec \"$codec\": $reason.")

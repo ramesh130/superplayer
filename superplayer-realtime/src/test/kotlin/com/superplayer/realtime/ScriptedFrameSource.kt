@@ -36,6 +36,19 @@ internal class ScriptedFrameSource(
     private val endsAfterScript: Boolean = false,
     /** The codec the track is declared as; overridden by the test that hands over an unmappable one. */
     private val codec: String = DEFAULT_CODEC,
+    /**
+     * What the track says its parameter sets come in, which its fourcc decides (ADR-0018 rule 4).
+     * The default is the self-describing shape [DEFAULT_CODEC] requires.
+     */
+    private val configuration: RealtimeTrack.CodecConfiguration = RealtimeTrack.CodecConfiguration.InBand,
+    /**
+     * One frame's bytes, given whether it is a keyframe.
+     *
+     * A parameter because the two branches of rule 4 frame their samples differently — Annex-B for
+     * a self-describing stream, length-prefixed for one with a configuration record — and the
+     * default is the Annex-B one every other test in this module drives.
+     */
+    private val payload: (Boolean) -> ByteArray = ::annexBH264,
 ) : FrameSource {
 
     @Volatile
@@ -48,7 +61,7 @@ internal class ScriptedFrameSource(
 
     override fun subscribe(sink: FrameSink) {
         subscribed = true
-        sink.onTrack(RealtimeTrack(codec = codec))
+        sink.onTrack(RealtimeTrack(codec = codec, codecConfiguration = configuration))
         repeat(frames) { index ->
             sink.onFrame(
                 EncodedFrame(
@@ -56,7 +69,7 @@ internal class ScriptedFrameSource(
                     // subtracts the first frame's value, and a fake that started at zero would hide
                     // a missing subtraction.
                     timestampUs = TRANSPORT_EPOCH_US + index * FRAME_DURATION_US,
-                    payload = syntheticH264(keyFrame = index == 0),
+                    payload = payload(index == 0),
                     keyFrame = index == 0,
                 ),
             )
@@ -73,8 +86,9 @@ internal class ScriptedFrameSource(
     private companion object {
         /**
          * `avc3`, so the track carries no codec-specific data and the parameter sets are in band —
-         * the branch of ADR-0018 rule 4 that needs no conversion, which is #345's. The other branch
-         * is deliberately not exercised here.
+         * the branch of ADR-0018 rule 4 that needs no conversion. The other branch is a test's to
+         * ask for, by naming an `avc1` codec beside a [RealtimeTrack.CodecConfiguration.Record] and
+         * a length-prefixed [lengthPrefixedH264] payload.
          */
         const val DEFAULT_CODEC = "avc3.42E01E"
 
@@ -83,16 +97,31 @@ internal class ScriptedFrameSource(
 
         /** Arbitrary and non-zero, which is the whole point of it. */
         const val TRANSPORT_EPOCH_US = 987_654_321L
-
-        /**
-         * One Annex-B NAL unit of the right shape and no picture data.
-         *
-         * spec: ITU-T H.264 §7.3.1 — the NAL unit header's `nal_unit_type` is the low five bits of
-         * the byte after the start code: 5 is an IDR slice, 1 a non-IDR one.
-         */
-        fun syntheticH264(keyFrame: Boolean): ByteArray =
-            byteArrayOf(0, 0, 0, 1, if (keyFrame) 0x65.toByte() else 0x41.toByte()) + ByteArray(64)
     }
+}
+
+/**
+ * One NAL unit of the right shape and no picture data.
+ *
+ * spec: ITU-T H.264 §7.3.1 — the NAL unit header's `nal_unit_type` is the low five bits of its first
+ *   byte: 5 is an IDR slice, 1 a non-IDR one.
+ */
+private fun h264NalUnit(keyFrame: Boolean): ByteArray =
+    byteArrayOf(if (keyFrame) 0x65.toByte() else 0x41.toByte()) + ByteArray(64)
+
+/** One frame of a self-describing track: [h264NalUnit] behind an Annex-B start code. */
+internal fun annexBH264(keyFrame: Boolean): ByteArray = byteArrayOf(0, 0, 0, 1) + h264NalUnit(keyFrame)
+
+/**
+ * One frame of an `avc1` track: the same unit behind the four-byte length field #340's observed
+ * `avcC` declares, where a self-describing track would carry a start code.
+ *
+ * spec: ISO/IEC 14496-15 §5.3.3.1.2 — a sample of a track whose sample entry carries an `avcC` is a
+ *   run of NAL units each prefixed by its length, `lengthSizeMinusOne + 1` bytes wide.
+ */
+internal fun lengthPrefixedH264(keyFrame: Boolean): ByteArray {
+    val unit = h264NalUnit(keyFrame)
+    return byteArrayOf(0, 0, 0, unit.size.toByte()) + unit
 }
 
 /** A [FrameSource] whose subscription fails at once, as a relay that refuses one does. */

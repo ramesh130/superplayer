@@ -26,6 +26,7 @@ import com.superplayer.testkit.FrameSourceConformanceException
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import java.util.Locale
 
 /**
  * Holds this phase's own fake to the contract it defines (#347).
@@ -97,6 +98,12 @@ class ScriptedFrameSourceConformanceTest {
      */
     @Test
     fun theSuiteAcceptsEveryCodecFamilyTheTableMaps() {
+        // The table's own keys and not a third list: without this, a family added to
+        // `RealtimeFormats` and to neither the suite nor the row below would pass silently, which is
+        // the drift this test exists to catch. `FallbackRungCoverageTest` and `CorpusRegisterTest`
+        // read their authority the same way rather than restating it.
+        assertThat(MAPPED.map { it.substringBefore('.').lowercase(Locale.ROOT) }.toSet())
+            .isEqualTo(RealtimeFormats.mappedTokens)
         MAPPED.forEach { codec ->
             assertThat(RealtimeFormats.formatFor(codec).sampleMimeType).isNotNull()
             assertThat(refusalFor(codec)).isNull()

@@ -1253,12 +1253,17 @@ framework is named. It is testkit's **because** the seam is core's (#356): a pha
 nothing later than core. The one thing that differs from `HttpTransportConformance` is the subject:
 an HTTP client's obligations are claims about a wire and a `FrameSource`'s are claims about what it
 delivers **to a sink**, so this suite supplies a recording sink and **no socket** — `docs/testing.md`'s
-one loopback carve-out is not widened. Four obligations are named as *not* covered rather than
-half-checked: the precision a transport states (unenforceable by construction), a record that parses
-and belongs to another stream, a container the framing walk has never seen, and a delivery from
-several threads with a happens-before, which is what obligation 1 permits.
+one loopback carve-out is not widened. What it cannot reach is named rather than half-checked: the
+precision a transport states (unenforceable by construction), a record that parses and belongs to
+another stream, a container the framing walk has never seen, a track declared and never delivered and
+the shared epoch across tracks (both bounded by the player in media time instead), and a delivery
+from several threads with a happens-before, which is what obligation 1 permits.
 `FrameSourceConformanceTest` scores it in `HttpTransportConformanceTest`'s shape — a deliberately
-wrong publisher **per obligation**, a register holding the two sets equal — and
+wrong publisher **per obligation**, a register holding the two sets equal, with one departure from
+that precedent argued where it is made: a check maps to a *list* of defects, because obligation 8's
+two refusals cannot both fire and a single pairing would leave one forced by nothing. Its third
+positive control is a publisher that delivers **asynchronously** and joins its thread in `cancel`,
+because a fake that finishes inside `subscribe` satisfies obligation 9 by arithmetic. And
 `superplayer-realtime`'s `ScriptedFrameSourceConformanceTest` runs the reference fake through
 `verifyAll` in both of obligation 7's branches, and holds the suite's codec families to
 `RealtimeFormats`' table, which is written down twice because that table is a phase 13 module's

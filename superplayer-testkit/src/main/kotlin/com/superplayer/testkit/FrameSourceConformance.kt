@@ -73,8 +73,11 @@ import kotlin.concurrent.thread
  *
  * The consequence to know before you call it: point it at a stream your transport can really play,
  * live or recorded, publishing the tracks you ship. A few frames of each track is enough — nothing
- * below waits for more than [FRAMES_OBSERVED] — but a URI that delivers nothing is a URI this
- * reports as a transport that delivered nothing, because from here the two are the same thing.
+ * below waits for more than [FRAMES_OBSERVED]. A URI that never reaches [FrameSink.onTracks] is
+ * refused under obligation 2, because from here a transport that declared nothing and a stream that
+ * is not there are the same thing; a URI that declares its tracks and then delivers **no frames**
+ * passes every check below vacuously, since each one reads the frames that arrived. Point this at a
+ * stream that plays.
  *
  * ## What a failure is
  *
@@ -90,7 +93,7 @@ import kotlin.concurrent.thread
  *
  * ## What this cannot check, said plainly
  *
- * Three of the nine are beyond it, and naming them is worth more than a check that pretends:
+ * Four things are beyond it, and naming them is worth more than a check that pretends:
  *
  * - **Obligation 5, the precision you state**, is unenforceable by construction and says so where it
  *   is written: nothing here can tell a transport that truncated to milliseconds from a publisher
@@ -103,6 +106,10 @@ import kotlin.concurrent.thread
  * - **A configuration record that parses and belongs to a different stream** is invisible, which
  *   [RealtimeTrack.CodecConfiguration] already records. Nothing on this side can tell it from the
  *   right one.
+ * - **A track declared and never delivered** is invisible too, and so is the *shared epoch* across
+ *   tracks that obligation 4 asks for wherever you have one. Both are bounded by SuperPlayer at
+ *   playback rather than here — see [verifyTerminationIsFinal] and
+ *   [verifyTimestampsAreMonotonicPerTrack] for why.
  *
  * And one that is a limit of the **sink** rather than of the seam: obligation 1 is checked by
  * widening the window and watching for two deliveries in flight at once, so a transport with two
@@ -117,8 +124,15 @@ public class FrameSourceConformance(
 ) {
 
     /**
-     * Every obligation, in the order [FrameSource]'s KDoc numbers them, stopping at the first one
-     * broken.
+     * Every check, in the order [FrameSource]'s KDoc numbers the obligations, stopping at the first
+     * one broken.
+     *
+     * Two of the eleven enforce a rule that is not one of the nine — the codec string's, and the
+     * finality of a terminal callback — and each runs at the point it bears on rather than at the
+     * end: the codec string after obligation 4 because obligation 7 is stated in terms of its
+     * fourcc, and termination before cancellation because the two are the pair of ways a
+     * subscription stops. Obligation 2 is two calls, because "declared once, before the first frame"
+     * and "a frame names a declared track" are read off different halves of the delivery.
      *
      * Stopping rather than collecting, for `HttpTransportConformance.verifyAll`'s reason: the checks
      * are independent of one another, but a transport that fails one has a defect to fix before the
@@ -160,8 +174,9 @@ public class FrameSourceConformance(
         if (observed.overlapped) {
             refuse(
                 OBLIGATION_1,
-                "had two deliveries in flight on the sink at the same moment, from " +
-                    "${observed.deliveringThreads} different threads",
+                "had two deliveries in flight on the sink at the same moment; " +
+                    "${observed.deliveringThreads} different threads delivered during this " +
+                    "subscription",
                 "one delivery at a time. SuperPlayer writes what arrives into a sample queue with " +
                     "one writer assumed; two concurrent writers corrupt it, and what surfaces is a " +
                     "crash inside Media3 whose stack names nothing of yours. Delivering from " +
@@ -238,8 +253,10 @@ public class FrameSourceConformance(
             refuse(
                 OBLIGATION_2,
                 "delivered a frame at ${stray.timestampUs} us naming trackIndex " +
-                    "${stray.trackIndex}, where onTracks declared ${declared.size} track(s) — " +
-                    "indices ${declared.indices.first}..${declared.indices.last}",
+                    "${stray.trackIndex}, where onTracks declared ${declared.size} track(s)" +
+                    // An empty declaration is refused by its own check rather than here, so this
+                    // renders the range only where there is one to render.
+                    if (declared.isEmpty()) " and so has no index a frame could name" else " — indices 0..${declared.size - 1}",
                 "a trackIndex that is a position in the list onTracks declared. It is an index " +
                     "into that list and not an identifier of your own; a single-track subscription " +
                     "leaves it at its default of 0",
@@ -327,8 +344,10 @@ public class FrameSourceConformance(
      * a module boundary rather than a preference: that table is `superplayer-realtime`'s and is
      * `internal`, while this module is phase 2 and may name nothing later than core. What is
      * duplicated is a **list of names** and deliberately not a parser — the mapping itself, with its
-     * profile and level extraction, stays in one place. `RealtimeFormatsTest` holds the two lists to
-     * each other so a family added there and not here fails the build.
+     * profile and level extraction, stays in one place.
+     * `ScriptedFrameSourceConformanceTest.theSuiteAcceptsEveryCodecFamilyTheTableMaps` holds the two
+     * lists to each other, from the module that can see both, so a family added there and not here
+     * fails the build.
      */
     public fun verifyCodecStringsAreMapped() {
         val observed = observe()
@@ -360,9 +379,9 @@ public class FrameSourceConformance(
      * parameter sets in band before every keyframe and hand over
      * [RealtimeTrack.CodecConfiguration.InBand]. Every other codec's record is passed through
      * unchanged, so nothing is required of it here.
-     * // spec: ISO/IEC 14496-15 §5.3.3.1 and §5.4.2 — the `avc1` sample entry carries an
-     * `AVCDecoderConfigurationRecord` while `avc3` carries its parameter sets in the samples; Annex E
-     * says the same of `hvc1` and `hev1`.
+     * // spec: ISO/IEC 14496-15 §5.3.3.1 — the `avc1` sample entry carries an
+     * `AVCDecoderConfigurationRecord` while `avc3` carries its parameter sets in the samples;
+     * §8.3.3.1 says the same of `hvc1` and `hev1`.
      * // ref: ADR-0018 rule 4 and its #345 addendum.
      */
     public fun verifyCodecConfigurationFollowsTheFourcc() {
@@ -423,17 +442,25 @@ public class FrameSourceConformance(
     public fun verifySamplesAreFramedAsTheFourccRequires() {
         val observed = observe()
         val declared = observed.tracksOrRefuse(OBLIGATION_7)
+        // The length field size is a fact about the *track*, read once from its record, so it is
+        // read here and not per frame: a record parsed again for every sample would be the same
+        // answer at a cost, and a refusal from it would name a frame where the defect is the track's.
+        val lengthSizes = declared.map { track ->
+            val configuration = track.codecConfiguration
+            if (configuration is RealtimeTrack.CodecConfiguration.Record && fourccOf(track.codec) in RECORD_FOURCCS) {
+                nalLengthSize(fourccOf(track.codec), configuration.bytes, track)
+            } else {
+                null
+            }
+        }
         observed.frames.forEach { frame ->
             val track = declared.getOrNull(frame.trackIndex) ?: return@forEach
-            val fourcc = fourccOf(track.codec)
-            when (val configuration = track.codecConfiguration) {
-                is RealtimeTrack.CodecConfiguration.Record ->
-                    if (fourcc in RECORD_FOURCCS) {
-                        verifyLengthPrefixed(frame, track, nalLengthSize(fourcc, configuration.bytes, track))
-                    }
+            val lengthSize = lengthSizes[frame.trackIndex]
+            when {
+                lengthSize != null -> verifyLengthPrefixed(frame, track, lengthSize)
 
-                RealtimeTrack.CodecConfiguration.InBand ->
-                    if (fourcc in IN_BAND_FOURCCS) verifyAnnexB(frame, track)
+                track.codecConfiguration == RealtimeTrack.CodecConfiguration.InBand &&
+                    fourccOf(track.codec) in IN_BAND_FOURCCS -> verifyAnnexB(frame, track)
             }
         }
     }
@@ -492,7 +519,10 @@ public class FrameSourceConformance(
      * keep arriving, and that is not this check's: SuperPlayer bounds it itself, in media time
      * against the furthest-ahead track, and ends the session with `RealtimeTrackStalledException`.
      * Nothing a transport can do makes that bound its own to enforce — what it can do is deliver
-     * every track it declared, which is obligation 2's check above.
+     * every track it declared, and **no check here reads that either**: a track declared and never
+     * delivered is invisible to every check below, because each one iterates the frames that did
+     * arrive. Bounding it here would mean deciding how long a track may take to start, which is a
+     * number about a publisher rather than about a transport.
      */
     public fun verifyTerminationIsFinal() {
         val observed = observe()
@@ -691,7 +721,7 @@ public class FrameSourceConformance(
         val source = sources.open(uri)
         val sink = RecordingSink(lingerMs)
         val failure = AtomicReference<Throwable>()
-        thread(isDaemon = true, name = "frame-source-conformance") {
+        val subscription = thread(isDaemon = true, name = "frame-source-conformance") {
             try {
                 source.subscribe(sink)
             } catch (raised: Throwable) {
@@ -711,11 +741,21 @@ public class FrameSourceConformance(
         // finish what it was in the middle of before anything is read off it. Without it, a source
         // that ends its subscription just after the last frame this waited for would be read before
         // it had done so, and what follows the end is exactly what one of the checks is about.
+        //
+        // The join is the deterministic half and is there for the shape a fake usually has: a
+        // transport that delivers its whole script inside `subscribe` has demonstrably finished
+        // when that call returns, so nothing about those checks rests on a duration. The pause is
+        // the best there is for a transport that returned from `subscribe` and delivers from a
+        // thread of its own, where nothing here can know what it was in the middle of.
+        subscription.join(SETTLE_BOUND_MS)
         pause(SETTLE_BOUND_MS)
-        val beforeCancel = sink.callbacks
         source.cancel()
+        // Counted from the moment cancel *returned*, which is what the obligation says: a callback
+        // made inside cancel is a transport draining what it had, and refusing that would be
+        // refusing something the rule allows.
+        val afterCancel = sink.callbacks
         if (watchAfterCancel) pause(CANCELLATION_BOUND_MS)
-        return sink.observation(callbacksAfterCancel = if (watchAfterCancel) sink.callbacks - beforeCancel else 0)
+        return sink.observation(callbacksAfterCancel = if (watchAfterCancel) sink.callbacks - afterCancel else 0)
     }
 
     private fun refuseSubscription(raised: Throwable): Nothing = refuse(
@@ -780,9 +820,10 @@ private fun refuse(rule: String, did: String, requires: String): Nothing =
 /**
  * Waits [millis], and nothing else.
  *
- * A latch nobody counts down, which is how a fixed wait is expressed here without reading a clock:
- * this class runs under Robolectric as often as it runs on a device, and Robolectric's clock is
- * simulated and does not advance on its own.
+ * A latch nobody counts down rather than a `Thread.sleep`, so a fixed wait is expressed in the same
+ * vocabulary as every other bound here and is interrupted the same way. Both are real time on this
+ * thread; what Robolectric simulates is `SystemClock` and the main looper, neither of which is
+ * involved.
  */
 private fun pause(millis: Long) {
     CountDownLatch(1).await(millis, TimeUnit.MILLISECONDS)
@@ -1009,8 +1050,16 @@ private val MAPPED_TOKENS = setOf(
  */
 private val AAC_OBJECT_TYPES = setOf(0x40, 0x67)
 
-/** The shortest `AVCDecoderConfigurationRecord` that carries a length field size and an SPS count. */
-private const val AVCC_MINIMUM_BYTES = 7
+/**
+ * The shortest `AVCDecoderConfigurationRecord` this suite can read anything out of: the six bytes
+ * before the first parameter set's own length field — `configurationVersion`, the three profile and
+ * level bytes, `lengthSizeMinusOne` and `numOfSequenceParameterSets`.
+ *
+ * Deliberately not "the shortest record that is valid", which is 8 with one parameter set: nothing
+ * here parses the parameter sets, so a bound that implied it did would be a bound this suite cannot
+ * stand behind. // spec: ISO/IEC 14496-15 §5.3.3.1.2.
+ */
+private const val AVCC_MINIMUM_BYTES = 6
 
 /** `lengthSizeMinusOne`'s byte in an `AVCDecoderConfigurationRecord`. // spec: ISO/IEC 14496-15 §5.3.3.1.2. */
 private const val AVCC_LENGTH_SIZE_OFFSET = 4

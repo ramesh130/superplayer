@@ -338,14 +338,27 @@ at once, so a transport with two genuinely concurrent deliverers is caught while
 from several threads with a happens-before passes — which is what the obligation permits. And
 obligation 7's second half, the sample framing, is checked against the length field size the track's
 *own* record declares: Annex-B under a record is caught, and a stream where both readings are
-structurally valid is not.
+structurally valid is not. Two more are named rather than bounded: a track **declared and never
+delivered**, and the *shared epoch* across tracks that obligation 4 asks for wherever a publisher has
+one. SuperPlayer bounds both at playback — in media time against the leading track — and a
+conformance suite bounding them would be deciding how long a publisher may take to start, which is a
+number about the stream rather than about the transport. The consequence worth stating: a source that
+declares its tracks and then delivers no frames at all passes every check vacuously, so the suite is
+pointed at a stream that plays.
 
 **What scores it.** `FrameSourceConformanceTest`, from both sides, in `HttpTransportConformanceTest`'s
 shape: a deliberately wrong publisher **per obligation** (`PublishingFrameSource.Defect`), each driven
 against the check meant to catch it, with the correct publisher run through the whole suite in both of
-obligation 7's branches as the control. Adding a twelfth check means adding a wrong publisher for it in
-the same change, which `everyCheckHasAWrongPublisherAndEveryWrongPublisherHasACheck` enforces by
-reading the checks off the class. The other half is `superplayer-realtime`'s
+obligation 7's branches as the control. There is a third control, and it is there because two would
+have been a vacuous pass: a publisher that finishes delivering inside `subscribe` has nothing left to
+stop by the time anything cancels it, so obligation 9's positive side needs a publisher that delivers
+**asynchronously** and joins its thread in `cancel`. Adding a twelfth check means adding a wrong
+publisher for it in the same change, which
+`everyCheckHasAWrongPublisherAndEveryWrongPublisherHasACheck` enforces by reading the checks off the
+class. That register departs from the HTTP one in a single way, argued where it is made: a check maps
+to a *list* of defects rather than to one, because obligation 8's two refusals — an array handed over
+twice, and one written into after it was — cannot both fire on one publisher, and a one-to-one pairing
+would leave a shipped refusal forced by nothing. The other half is `superplayer-realtime`'s
 `ScriptedFrameSourceConformanceTest`: the reference fake this phase's own tests play through, run
 through `verifyAll` in both branches, so the implementation an adopter reads is held to the contract it
 defines. That test also holds the suite's list of codec families to `RealtimeFormats`' table, which is

@@ -150,10 +150,16 @@ public interface FrameSink {
 /**
  * What is being delivered: the codec, and the codec-specific data that codec needs out of band.
  *
- * @property codec The RFC 6381 codecs string — `avc1.640028`, `avc3.42E01E`. Its **fourcc** prefix
- *   is what decides whether [codecSpecificData] is expected, never the container the frames came in
- *   (ADR-0018 rule 4). Phase 13 maps the H.264 fourccs and refuses the rest; the full mapping and
- *   its typed refusal are #344's.
+ * @property codec What is being sent, in either of the two vocabularies a realtime transport has:
+ *   an RFC 6381 codecs string — `avc1.640028`, `avc3.42E01E`, `hev1.1.6.L93.B0`, `vp09.00.10.08`,
+ *   `av01.0.04M.08`, `mp4a.40.2`, `opus` — or an SDP encoding name as an `a=rtpmap` line carries it,
+ *   `H264`, `H265`, `VP9`, `AV1`, `MPEG4-GENERIC` or `opus`. Prefer the RFC 6381 string where you
+ *   have one: it states a profile and a level, which is what lets a rendition a device's decoder
+ *   cannot reach be refused rather than failed at, and a bare encoding name states neither.
+ *   H.264, H.265, VP9, AV1, AAC and Opus are mapped and **anything else is refused** with
+ *   [UnsupportedRealtimeCodecException] naming the string, because a codec decoded as the wrong one
+ *   fails silently. An RFC 6381 string's **fourcc** prefix is also what decides whether
+ *   [codecSpecificData] is expected, never the container the frames came in (ADR-0018 rule 4).
  * @property codecSpecificData Parameter sets the decoder needs before the first frame, each entry
  *   one Annex-B start-code-delimited unit, in the order the decoder expects. **Empty for a
  *   self-describing codec** (`avc3`, `hev1`), which carries them in band — supplying them for one of

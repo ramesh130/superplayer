@@ -1176,9 +1176,29 @@ resume is indistinguishable from one that worked. `RealtimePlaybackTest` drives 
 real `SuperPlayer`, with two controls that keep the dispatch from being "everything is realtime" and
 the refusal from being "refuse every seek"; `RealtimeGoldenTraceTest` pins a session whose interesting
 content is what is **absent** — no `load` line and no `bandwidth` line anywhere in it, which is
-rules 6 and 8 as a readable artifact. What is still open in Phase 13 is the codec-string mapping
-(#344), the codec-specific-data conversion (#345), audio beside video (#346) and
-`FrameSourceConformance` (#347).
+rules 6 and 8 as a readable artifact.
+Since #344 the codec string is a **table** rather than one `when` branch, `RealtimeFormats` in the
+same module: H.264, H.265, VP9, AV1, AAC and Opus, each with its `// spec:` citation, reached by
+**both** spellings the transports use — MoQ's RFC 6381 codecs string and WHEP's SDP encoding name —
+so the two phases ahead keep no mapping of their own. It is `internal`, because what it answers is a
+Media3 `Format`; what the public surface carries is the **refusal**, core's
+`UnsupportedRealtimeCodecException`, an `IOException` and not
+`RealtimeStreamNotSeekableException`'s shape, because a track arrives on a transport already
+subscribed and is a delivery that went wrong rather than a configuration that cannot be honoured. An
+unrecognised string **refuses and names itself**: *unknown refuses nothing* is this repository's rule
+about **constraints**, and a codec string is an assertion about bytes, where a wrong guess is a
+decoder failure with a misleading cause. Three things are easy to get wrong. `mp4a` cannot be mapped
+by its fourcc — object type `0x69` is **MP3** — so the object type indication is read and only AAC's
+two are answered. Profile and level are extracted through Media3's own reader rather than a second
+parser, so the table and the selection gate cannot disagree; but Media3 1.11 dispatches on `avc1`
+and `avc2` and **not `avc3`**, so that spelling is read through its `avc1` twin for the extraction
+while `Format.codecs` keeps the fourcc the transport sent, which is what ADR-0018 rule 4 keys
+codec-specific data on. And an SDP encoding name sets **no** `codecs` string, because the field's
+vocabulary is RFC 6381's and a bare name states no profile. `RealtimeFormatsTest` drives it on string
+literals alone, #340's observed `avc1.42c01e` and `avc3.42c01e` among them, with an unmapped string,
+a malformed one and `mp4a.69` as the controls that keep it from being "map everything".
+What is still open in Phase 13 is the codec-specific-data conversion (#345), audio beside video
+(#346) and `FrameSourceConformance` (#347).
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,

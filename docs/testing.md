@@ -384,6 +384,15 @@ asserts the Kotlin compiled while calling nothing. `MoqBindingsResolutionTest` i
 is about *which* artifact was resolved, because Maven Central publishes the same coordinate built
 with the codec features on and a version range would reach it.
 
+`MoqCatalogTracksTest` is the exception that is worth stating, because it is the shape the rest of
+this module's tests should take wherever they can. The catalog mapping is pure — a `MoqCatalog` is a
+plain Kotlin record on this side of the FFI, constructed and read without the native library being
+touched — so that test needs no `assumeTrue` and runs on every host, CI included. It is also where
+Phase 14's "both codec-description shapes are covered by a test" criterion is discharged, and
+`DeclaredCatalogs` states per fixture what #340 observed and what was written for the test:
+no `MoqCatalog` in this repository was ever received from a broadcast, because that spike's caveat 4
+records the catalog path as source-only.
+
 **What neither can show.**
 
 - **Two builds of one crate.** The Android `.so` and the host `.dylib` come from the same checkout,

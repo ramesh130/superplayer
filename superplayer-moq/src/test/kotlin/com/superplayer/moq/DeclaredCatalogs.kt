@@ -1,0 +1,146 @@
+/*
+ * Copyright 2026 The SuperPlayer Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.superplayer.moq
+
+import uniffi.moq.MoqAudio
+import uniffi.moq.MoqCatalog
+import uniffi.moq.MoqContainer
+import uniffi.moq.MoqDimensions
+import uniffi.moq.MoqVideo
+
+/**
+ * The catalogs this module's mapping is tested against, each saying where it came from.
+ *
+ * **What was observed and what was not.** #340 drove real MoQ code over a real encoder and dumped
+ * what arrived at the transport's API boundary: the codec strings `avc1.42c01e` and `avc3.42c01e`,
+ * the presence or absence of a `description`, and the first 24 bytes of the 40-byte `avcC` it saw.
+ * Those are the fixtures below that say *observed*. What that spike explicitly did **not** exercise
+ * is the catalog path itself — its caveat 4 says so in as many words — so no `MoqCatalog` here was
+ * ever received from a broadcast. Each is **assembled** from observed fields, and the assembly is
+ * the part that is not evidence.
+ *
+ * The HEVC and AAC fixtures are **synthesized** outright, because #340's caveat 2 binds this file
+ * as it binds `superplayer-realtime`'s `ObservedBytes`: what was seen was H.264 only. An `hvcC`
+ * here is written to be shaped like one and is evidence of nothing about a real HEVC publisher.
+ *
+ * None of that weakens what the tests using them assert. The subject is a *mapping* — a catalog
+ * field reaching a seam field unmodified — so what the bytes are matters far less than that they
+ * are the same bytes on both sides, and the one thing a real recording would add is confidence
+ * that a publisher populates these fields the way the bindings' types say. That is what #366's
+ * first run against a live broadcast is for.
+ */
+internal object DeclaredCatalogs {
+
+    /** #340's observed video codec string for the out-of-band shape: an `avc1` sample entry. */
+    const val OBSERVED_AVC1_CODEC = "avc1.42c01e"
+
+    /** #340's observed video codec string for the in-band shape: the same media, an `avc3` entry. */
+    const val OBSERVED_AVC3_CODEC = "avc3.42c01e"
+
+    /**
+     * #340's `description` hex dump, **verbatim**: the first 24 bytes of the 40-byte `avcC` it
+     * observed, identical across all three of its containers.
+     *
+     * It is a prefix and not the whole record, which is why nothing here parses it — this module is
+     * forbidden from doing so anyway (ADR-0018 rule 4), and the assertion it serves is that the
+     * bytes arrive at the seam unchanged.
+     */
+    val OBSERVED_AVCC_PREFIX =
+        bytes("01 42 c0 1e ff e1 00 18 67 42 c0 1e d9 01 41 fb 01 10 00 00 03 00 10 00")
+
+    /**
+     * An `hvcC`-shaped record, **synthesized**. #340 saw H.264 only (its caveat 2), so this is
+     * written here rather than recorded, exactly as `CodecConfigurationRecordsTest`'s own `hvcC` is
+     * and labelled the same way. It is evidence that a record reaches the seam unmodified and
+     * evidence of nothing about a real HEVC broadcast.
+     */
+    val SYNTHESIZED_HVCC = bytes("01 01 60 00 00 00 90 00 00 00 00 00 5d f0 00 fc fd f8 f8 00 00 0f 03")
+
+    /** A well-formed `MoqCatalog` carrying one video rendition and no audio. */
+    fun videoOnly(
+        trackName: String = "video",
+        codec: String,
+        description: ByteArray?,
+        container: MoqContainer = MoqContainer.Loc,
+    ): MoqCatalog = catalog(video = mapOf(trackName to video(codec, description, container)))
+
+    /** A well-formed `MoqCatalog` carrying one audio rendition and no video. */
+    fun audioOnly(
+        trackName: String = "audio",
+        codec: String,
+        description: ByteArray?,
+        container: MoqContainer = MoqContainer.Loc,
+    ): MoqCatalog = catalog(audio = mapOf(trackName to audio(codec, description, container)))
+
+    /** The whole catalog, so a test can state exactly what a publisher declared. */
+    fun catalog(
+        video: Map<String, MoqVideo> = emptyMap(),
+        audio: Map<String, MoqAudio> = emptyMap(),
+    ): MoqCatalog = MoqCatalog(
+        video = video,
+        audio = audio,
+        // The catalog's presentation half — how the publisher would like the whole broadcast laid
+        // out. Nothing in this module reads any of it, and it is left unstated rather than filled
+        // with numbers a reader might take for something the mapping depends on.
+        display = null,
+        rotation = null,
+        flip = null,
+        sections = emptyMap(),
+    )
+
+    /**
+     * One video rendition. Everything but the codec and the description is a plausible constant: a
+     * declaration this module reads none of, kept here so that a fixture is a whole rendition and a
+     * reader is not left wondering whether an unset field mattered.
+     */
+    fun video(
+        codec: String,
+        description: ByteArray?,
+        container: MoqContainer = MoqContainer.Loc,
+        stalled: Boolean = false,
+    ): MoqVideo = MoqVideo(
+        codec = codec,
+        description = description,
+        container = container,
+        stalled = stalled,
+        // 720p30 at 2 Mbps: an ordinary rendition, so that a fixture is a whole declaration. The
+        // mapping reads none of these three, which is what makes any plausible value do.
+        coded = MoqDimensions(width = 1280u, height = 720u),
+        displayAspect = null,
+        bitrate = 2_000_000uL,
+        framerate = 30.0,
+    )
+
+    /** One audio rendition, on [video]'s terms. */
+    fun audio(
+        codec: String,
+        description: ByteArray?,
+        container: MoqContainer = MoqContainer.Loc,
+    ): MoqAudio = MoqAudio(
+        codec = codec,
+        description = description,
+        container = container,
+        // Stereo at 48 kHz, the ordinary case, and read by nothing here for [video]'s reason.
+        sampleRate = 48_000u,
+        channelCount = 2u,
+        bitrate = 128_000uL,
+    )
+
+    /** A hex dump as bytes, so a fixture can be pasted out of a bug report and read back in it. */
+    fun bytes(hex: String): ByteArray =
+        hex.split(" ").filter { it.isNotEmpty() }.map { it.toInt(16).toByte() }.toByteArray()
+}

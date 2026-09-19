@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.superplayer.realtime
+package com.superplayer.core
 
 import android.net.Uri
 
@@ -28,18 +28,22 @@ import android.net.Uri
  * (rule 1), which is why the TV path, secure decoders, tunneling, audio focus and the decoder half
  * of telemetry all keep working on a realtime stream with no new code.
  *
- * It names no Media3 type, for [com.superplayer.core.HttpTransport]'s reason and for one more: it is
- * the only boundary at which a realtime transport is testable at all. Neither QUIC nor WebRTC runs
- * under `check`, and Robolectric cannot load an Android `.so` on the JVM, so a fake stands here and
- * everything above it is ordinary Robolectric work.
+ * It names no Media3 type, for [HttpTransport]'s reason and for one more: it is the only boundary at
+ * which a realtime transport is testable at all. Neither QUIC nor WebRTC runs under `check`, and
+ * Robolectric cannot load an Android `.so` on the JVM, so a fake stands here and everything above it
+ * is ordinary Robolectric work.
+ *
+ * It lives in `superplayer-core` beside [HttpTransport] for that seam's reason too (ADR-0018 rule 2,
+ * #356): a conformance suite belongs in `superplayer-testkit`, which is phase 2 and may name nothing
+ * later than core, so an interface a consumer implements has to be core's for its suite to reach it.
  *
  * ## The obligations, and what getting each one wrong costs
  *
  * Written out because **every one of them fails silently**. A transport that breaks one does not
  * throw: it produces a decoder that configures cleanly and renders nothing, or a player that sits in
- * `STATE_BUFFERING` with no error anywhere. That is the same reason
- * [com.superplayer.core.HttpTransport] states its five, and the same reason this one is paired with
- * a conformance suite (#347) rather than with KDoc alone.
+ * `STATE_BUFFERING` with no error anywhere. That is the same reason [HttpTransport] states its five,
+ * and the same reason this one is paired with a conformance suite (#347) rather than with KDoc
+ * alone.
  *
  * 1. **Deliver on one thread, or with a happens-before between deliveries.** Every call on the
  *    [FrameSink] a subscription was given must be ordered against every other. *Cost:* SuperPlayer
@@ -79,9 +83,9 @@ import android.net.Uri
  *
  * Stated rather than discovered (ADR-0018 rule 6): no content cache, no CMCD, no downloads, no
  * bandwidth estimate and none of the fallback ladder's load-error rungs, because every one of those
- * is keyed to a `DataSource` and this is not one. What survives is
- * [com.superplayer.core.MediaRequest.sources] and ADR-0011's rung 4 — a realtime source falling back
- * to an HLS one — which is the documented way to have a fallback here at all.
+ * is keyed to a `DataSource` and this is not one. What survives is [MediaRequest.sources] and
+ * ADR-0011's rung 4 — a realtime source falling back to an HLS one — which is the documented way to
+ * have a fallback here at all.
  */
 public interface FrameSource {
 

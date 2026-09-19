@@ -77,11 +77,14 @@ them under `Added` would be worse than stating them here:
 - **Phase 10 — HTTP stack.** `HttpTransport` and `HttpStack` at the bottom of all four chains, the
   five obligations carried by `HttpTransportConformance` in `superplayer-testkit`, and
   `docs/http-transport.md`.
-- **Phase 13 — Realtime source seam.** `superplayer-realtime`: a public `FrameSource` a realtime
+- **Phase 13 — Realtime source seam.** `superplayer-core`: a public `FrameSource` a realtime
   transport implements — encoded frames with a timestamp, a codec, a keyframe flag and optional
   codec-specific data, naming no Media3 type — and behind it the `MediaSource`/`MediaPeriod` that
-  writes those frames into Media3's own `SampleQueue`s under a live, unseekable timeline
-  (ADR-0018). A realtime URI reaches it from `TransferChain` on its **scheme**, through
+  writes those frames into Media3's own `SampleQueue`s under a live, unseekable timeline, in
+  `superplayer-realtime` (ADR-0018). The seam is core's so that its conformance suite can be
+  `superplayer-testkit`'s, exactly as `HttpTransport` and `HttpTransportConformance` are
+  (rule 2's #356 addendum); what stays in the realtime module is what names a Media3
+  `@UnstableApi` type. A realtime URI reaches it from `TransferChain` on its **scheme**, through
   `SuperPlayer.Builder.setRealtime`. What such a stream does **not** get is a rule rather than an
   omission — no cache, no CMCD, no downloads, no bandwidth estimate and none of the fallback
   ladder's load-error rungs (rule 6) — and a start position it cannot honour is refused with

@@ -44,7 +44,7 @@ than to wave the dependency through.
 | `superplayer-offline` | 7 | Downloads into the ContentCache the consumer opened, on the one chain: a store over Media3's download stack, WorkManager scheduling under unmetered, battery-not-low and storage-not-low, download track selection, and the licence bound to the download (ADR-0013) | core; testkit, testmedia, cache, drm and resilience (tests only) |
 | `superplayer-tv` | 8 | CTV behind one output slot: frame-rate matching, the display as a live reading, tunneling where the policy asks, and Compose-for-TV controls on a `SurfaceView` (ADR-0014) | core; testkit, testmedia, abr, drm, resilience and telemetry (tests only) |
 | `superplayer-diagnostics` | 9 | MediaSourceDoctor — a manifest's pathologies named over the chain a player of that request would load through, as one report for preflight and postmortem — the session trace bundle with its capability snapshot, and the on-device debug HUD (ADR-0015) | core and telemetry (ADR-0015 rule 1); testkit, testmedia, abr, cache, drm and resilience (tests only) |
-| `superplayer-realtime` | 13 | The push-based source seam realtime transports are built on: a public `FrameSource` naming no Media3 type, the `MediaSource`/`MediaPeriod` that writes its frames into Media3 `SampleQueue`s under a live unseekable timeline, codec-string mapping and codec-specific-data conversion (ADR-0018) | core; testkit and telemetry (tests only) |
+| `superplayer-realtime` | 13 | The Media3 half of the push-based source seam: the `MediaSource`/`MediaPeriod` that writes a `FrameSource`'s frames into Media3 `SampleQueue`s under a live unseekable timeline, codec-string mapping and codec-specific-data conversion. The seam itself — the public `FrameSource`, naming no Media3 type — is core's, so that its conformance suite can be testkit's (ADR-0018 rule 2's #356 addendum) | core; testkit and telemetry (tests only) |
 | `superplayer-moq` | 14 | Sub-second live over Media over QUIC: `moq-dev/moq`'s published Kotlin bindings behind a `FrameSource` (ADR-0018) | core, realtime; testkit (tests only) |
 | `superplayer-whep` | 15 | Sub-second live over WebRTC: WHEP signalling and a `PeerConnection` transport behind a `FrameSource`. Contingent — see `PRD.md` Part 4 | core, realtime; testkit (tests only) |
 | `superplayer-ui` | — † | Optional Compose player surface | core |
@@ -70,9 +70,10 @@ bundle's format and `docs/reading-a-session-bundle.md` how to get an answer out 
 
 ADR-0018 rule 11 admits `superplayer-realtime` as the **tenth**, and the first since the ninth. It is
 a friend because it fills a `MediaSource.Factory` into `TransferChain`, which is core-internal and
-Media3 `@UnstableApi` vocabulary; what a consumer names is the public `FrameSource`, and
-`superplayer-moq` and `superplayer-whep` are deliberately **not** friends — they implement that
-interface, which is the test that the seam is real. The friendship does **not** carry a closed list
+Media3 `@UnstableApi` vocabulary; what a consumer names is the public `FrameSource`, which is
+**core's** since ADR-0018 rule 2's #356 addendum, and `superplayer-moq` and `superplayer-whep` are
+deliberately **not** friends — they implement that interface, which is the test that the seam is
+real. The friendship does **not** carry a closed list
 of seams in ADR-0015 rule 3's sense: what this module reaches is the one slot and the engine
 configurator its own tests use.
 
@@ -85,6 +86,14 @@ cross-module visibility question that shape would have raised, and why removing 
 rather than answering it. The conformance test a consumer runs against their own transport is
 `superplayer-testkit`'s public `HttpTransportConformance` (#312), and that module is phase 2 and
 depends on core alone, so it reaches nothing later than itself.
+
+That sentence is a rule and not an observation, and ADR-0018 rule 2's #356 addendum applied it
+again: `FrameSource` is `superplayer-core`'s for the same reason `HttpTransport` is, so that
+`FrameSourceConformance` (#347) can be `superplayer-testkit`'s without a phase 2 module naming a
+phase 13 one. **The interface a consumer implements lives in core; its conformance suite lives in
+testkit.** What stays behind in the later module is whatever names a Media3 `@UnstableApi` type,
+which is why `superplayer-realtime` keeps `Realtime` and the `MediaSource`/`MediaPeriod` pair and
+nothing else.
 
 `superplayer-testmedia` is the one module that depends on nothing, and that is what it is for. Its
 synthetic HLS and DASH streams are played by `superplayer-core`'s tests *and* by

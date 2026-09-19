@@ -1151,8 +1151,17 @@ keyframe flag and optional codec-specific data, cancel — which names **no Medi
 testable, since neither QUIC nor WebRTC runs under `check`. Its KDoc carries **nine obligations, each
 with what getting it wrong costs**, in `HttpTransport`'s register, because every one of them fails
 silently — a wrong length-field size produces a decoder that configures cleanly and renders nothing.
-It is core's **tenth** Kotlin friend (ADR-0018 rule 11), and `superplayer-moq` and `superplayer-whep`
-are deliberately **not** friends. Behind the seam, internal: `RealtimeMediaSource` publishes a
+Since #356 that seam — `FrameSource`, `FrameSink`, `RealtimeTrack`, `EncodedFrame` and
+`FrameSourceFactory` — is **`superplayer-core`'s**, beside `RealtimeSources` and
+`RealtimeStreamNotSeekableException`, and it is `HttpTransport`'s precedent rather than an exception
+to it (ADR-0018 rule 2's addendum): `FrameSourceConformance` is to be public API of
+`superplayer-testkit`, which is phase 2 and may name nothing later than core, so a seam living in a
+phase 13 module is a suite `verifyModulePhaseRule` forbids. The interface a consumer implements lives
+in core and its conformance suite in testkit; what stays in `superplayer-realtime` is what names a
+Media3 `@UnstableApi` type, which is `Realtime` and the two internal classes. Behaviour moved
+nowhere, and the proof is that the three tests changed imports and not one assertion.
+`superplayer-realtime` is core's **tenth** Kotlin friend (ADR-0018 rule 11), and `superplayer-moq`
+and `superplayer-whep` are deliberately **not** friends. Behind the seam, internal: `RealtimeMediaSource` publishes a
 `SinglePeriodTimeline` that is unseekable, dynamic and of unknown duration, and
 `RealtimeMediaPeriod` writes frames into a Media3 `SampleQueue` that Media3's own renderers read —
 **nothing here decodes** (rule 1), so the TV path, secure decoders, tunneling, audio focus and the

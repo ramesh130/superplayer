@@ -32,6 +32,10 @@ import androidx.media3.exoplayer.source.SampleStream
 import androidx.media3.exoplayer.source.TrackGroupArray
 import androidx.media3.exoplayer.trackselection.ExoTrackSelection
 import androidx.media3.exoplayer.upstream.Allocator
+import com.superplayer.core.EncodedFrame
+import com.superplayer.core.FrameSink
+import com.superplayer.core.FrameSource
+import com.superplayer.core.RealtimeTrack
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 

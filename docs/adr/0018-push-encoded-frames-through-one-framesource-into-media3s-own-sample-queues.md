@@ -84,6 +84,24 @@ and Robolectric cannot load an Android `.so` on the JVM, so the fake stands here
 it is ordinary Robolectric work. *Enforced by `verifyNoUnstableMedia3InPublicApi` and the tracked API
 surface, and by `FrameSourceConformance` (#347) for the obligations a signature cannot carry.*
 
+*Addendum (2026-09-19, #356).* The seam is **`superplayer-core`'s**, not `superplayer-realtime`'s.
+This rule named the shape without naming the module, and the sentence above settles it in the
+direction the enforcement clause already required: `FrameSourceConformance` is to be public API of
+`superplayer-testkit`, which is phase 2 and may name nothing later than core, while
+`superplayer-realtime` is phase 13 — so a suite over a seam living in the realtime module is
+unexpressible under `verifyModulePhaseRule`, and an exception to that rule would be the wrong price
+for a package name. The precedent is the one this rule is already built on: `HttpTransport` is
+core's and `HttpTransportConformance` is testkit's, for exactly this reason
+([`docs/modules.md`](../modules.md)). So `FrameSource`, `FrameSink`, `RealtimeTrack`, `EncodedFrame`
+and `FrameSourceFactory` are `com.superplayer.core`, beside the other two public types this phase
+already put there (`RealtimeSources`, `RealtimeStreamNotSeekableException`), and they qualify for
+core by the same test `HttpTransport` passes: they name no Media3 type at all. What stays in
+`superplayer-realtime` is what cannot leave — `Realtime`, `RealtimeMediaSource` and
+`RealtimeMediaPeriod`, which name Media3 `@UnstableApi` vocabulary and are why the module exists.
+Nothing about the seam's shape, its nine obligations or any behaviour moves with it, and no build
+script gains a dependency: testkit already declares `api(project(":superplayer-core"))`. *Enforced
+by the tracked API surface of both modules, which is where a type moving back would show.*
+
 **Rule 3 — Container framing is the transport's to strip, and the seam carries codec bitstream
 only.** A transport that receives containerised frames unwraps them before the seam. MoQ's bindings
 already do this, which is why no fragmented-MP4 parsing appears anywhere in this design, and a
@@ -171,6 +189,14 @@ become ones**: they depend on `superplayer-realtime` and implement its public `F
 the whole point of rule 2 and the test that the seam is real. *Enforced by
 `verifyModulePhaseRule` for the dependency direction; the friend count itself is declared per module
 by `declareKotlinFriendModule(...)` and is reviewed rather than counted by a task.*
+
+*Addendum (2026-09-19, #356).* Rule 2's addendum moved the seam into core, so the two transport
+modules implement **core's** `FrameSource` rather than this module's. Neither the friendship nor the
+prohibition moves with it: `superplayer-realtime` is still core's tenth friend, because it is still
+the module that fills a `MediaSource.Factory` into `TransferChain`, and `superplayer-moq` and
+`superplayer-whep` are still not friends — they now name core for the seam they implement and this
+module for `Realtime.transport` alone, which makes the prohibition easier to keep rather than
+weaker.
 
 **Rule 12 — A realtime URI is dispatched in `TransferChain`, on its scheme.** `TransferChain` is the
 one place a `MediaSource.Factory` is chosen, which that file's KDoc already requires, and a realtime

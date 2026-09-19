@@ -83,7 +83,7 @@ to every row equally. What differs between rows is what the module is *for*.
 
 | Module | Status | What you may depend on |
 | --- | --- | --- |
-| `superplayer-core` | **Public** | The facade and the whole vocabulary: `SuperPlayer`, `MediaRequest`, `PlaybackProfile`, `PlaybackSnapshot`, `PlaybackSession`, `PlayerPool`, the telemetry sink and event types, `PlaybackPolicy`, `HttpTransport`. The only module an app needs |
+| `superplayer-core` | **Public** | The facade and the whole vocabulary: `SuperPlayer`, `MediaRequest`, `PlaybackProfile`, `PlaybackSnapshot`, `PlaybackSession`, `PlayerPool`, the telemetry sink and event types, `PlaybackPolicy`, `HttpTransport`, `FrameSource`. The only module an app needs |
 | `superplayer-testmedia` | **Public (for your tests)** | Synthetic HLS and DASH streams, and the hostile-manifest corpus. Depends on nothing, not even Media3 |
 | `superplayer-telemetry` | **Public** | `QoeCollector`, `LogcatSink`, `SessionTraceRecorder`, and the session reduction (`SessionMetrics`, `QoeScore`) |
 | `superplayer-testkit` | **Public (for your tests)** | `PlaybackHarness`, and `HttpTransportConformance` — the suite to run against your own `HttpTransport` ([`http-transport.md`](http-transport.md)) |
@@ -95,7 +95,7 @@ to every row equally. What differs between rows is what the module is *for*.
 | `superplayer-offline` | **Public** | `Downloads`, `DownloadItem`, `DownloadsListener`, and the `DownloadsService` your app subclasses |
 | `superplayer-tv` | **Public** | `TvOutput` and `TvPlaybackControls` |
 | `superplayer-diagnostics` | **Public** | `MediaSourceDoctor` ([`media-source-doctor.md`](media-source-doctor.md)), `SessionBundle` ([`session-bundle.md`](session-bundle.md)) and `DebugHud` |
-| `superplayer-realtime` | **Public** | `Realtime.transport` and the `FrameSource` a realtime transport implements. What a realtime stream does **not** get is a rule rather than an omission — no cache, no CMCD, no downloads, no bandwidth estimate and none of the fallback ladder's load-error rungs ([ADR-0018](adr/0018-push-encoded-frames-through-one-framesource-into-media3s-own-sample-queues.md) rule 6) |
+| `superplayer-realtime` | **Public** | `Realtime.transport`. The `FrameSource` a realtime transport implements is `superplayer-core`'s, so that its conformance suite can be `superplayer-testkit`'s ([ADR-0018](adr/0018-push-encoded-frames-through-one-framesource-into-media3s-own-sample-queues.md) rule 2's #356 addendum). What a realtime stream does **not** get is a rule rather than an omission — no cache, no CMCD, no downloads, no bandwidth estimate and none of the fallback ladder's load-error rungs ([ADR-0018](adr/0018-push-encoded-frames-through-one-framesource-into-media3s-own-sample-queues.md) rule 6) |
 | `superplayer-ui` | **Empty** | Nothing. The module publishes no public declaration; it exists so the boundary is fixed before code arrives |
 
 The three statuses are the three answers there are: **Public** is a module whose API you build your

@@ -41,9 +41,17 @@ dependencies {
     // reach and could only assert that the Kotlin compiled.
     testImplementation(libs.moq.ffi.jvm)
 
-    // The deterministic playback harness. Nothing here plays yet; it is declared because
-    // docs/modules.md's row says this module tests against it, and #365 onwards do.
+    // The deterministic playback harness, and since #366 the thing this module's tests are really
+    // for: `FrameSourceConformance`, testkit's public suite of eleven checks over the obligations
+    // `FrameSource` carries. Nothing here plays; what is driven is the frame pump alone.
     testImplementation(project(":superplayer-testkit"))
+
+    // `MoqFrameSource` is opened for an `android.net.Uri`, which is a stub on a bare JVM unit test,
+    // so the tests that drive the pump run under Robolectric. They load **no native library**: the
+    // relay behind the seam is scripted (`ScriptedMoqRelay`), which is what lets them run on every
+    // host and in CI, unlike `MoqFfiLinkageTest`. `docs/testing.md`'s *The MoQ bindings* has the
+    // split.
+    testImplementation(libs.robolectric)
 }
 
 // What `MoqBindingsResolutionTest` compares: the version the catalog *asked for*, and the

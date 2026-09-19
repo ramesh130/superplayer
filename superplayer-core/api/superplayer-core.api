@@ -1256,6 +1256,10 @@ public final class com/superplayer/core/TtffStartBoundary : java/lang/Enum {
 	public static fun values ()[Lcom/superplayer/core/TtffStartBoundary;
 }
 
+public final class com/superplayer/core/UnsupportedRealtimeCodecException : java/io/IOException {
+	public final fun getCodec ()Ljava/lang/String;
+}
+
 public final class com/superplayer/core/VideoCodec : java/lang/Enum {
 	public static final field AV1 Lcom/superplayer/core/VideoCodec;
 	public static final field H264 Lcom/superplayer/core/VideoCodec;

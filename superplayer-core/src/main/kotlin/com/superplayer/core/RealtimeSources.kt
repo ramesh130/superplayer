@@ -18,6 +18,7 @@ package com.superplayer.core
 
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.source.MediaSource
+import java.io.IOException
 
 /**
  * The realtime transports a player can reach, and the URI schemes that reach them.
@@ -123,4 +124,53 @@ public class RealtimeStreamNotSeekableException internal constructor(
         "SuperPlayer refuses it rather than starting at the live edge, because a coerced resume is " +
         "indistinguishable from one that worked. Use StartPosition.Beginning, or give the request a " +
         "non-realtime source to resume into.",
+)
+
+/**
+ * A realtime transport delivered a track whose codec string SuperPlayer cannot map to a decoder.
+ *
+ * Raised from the seam's own mapping, when [RealtimeTrack.codec] is neither an RFC 6381 codecs
+ * string for a codec this library maps nor an SDP encoding name for one.
+ *
+ * ## Why a refusal rather than a guess
+ *
+ * Elsewhere in this repository an unknown refuses nothing — a device that reports an empty codec
+ * table must not exclude every rendition. That rule is about **constraints**, and this is an
+ * **assertion about bytes**: a codec nobody mapped that is quietly treated as the one codec we do
+ * know would configure a decoder cleanly and then render nothing, or render corruption, with the
+ * player reporting a decoder failure whose stated cause names the wrong codec entirely. A refusal
+ * that says which string arrived is the only version of this a bug report can act on, which is why
+ * the string is a property and is in the message.
+ *
+ * ## Why an `IOException`
+ *
+ * The three shapes core raises are described on [HttpStackUnsupportedException], and this is the
+ * first of them: something that travels a transfer. The track arrived over a transport that was
+ * already subscribed, so a session exists and a delivery is what went wrong — and Media3 asks for
+ * exactly this type at the two points a `MediaPeriod` may report a failure of preparation, so the
+ * refusal reaches the consumer as the cause of the `PlaybackException` `onPlayerError` carries,
+ * exactly as a failed segment load does. [RealtimeStreamNotSeekableException] is the *other* shape
+ * for the neighbouring reason: it refuses a **configuration** before any frame is asked for.
+ *
+ * It adds no `FailureClass` leaf. ADR-0018 rule 6 keeps a realtime stream off the ladder's
+ * load-error rungs, and the rung that still applies — a later entry of [MediaRequest.sources], which
+ * is where a transport-independent fallback belongs — is reached by the ordinary player-error path
+ * and needs no taxonomy of its own.
+ *
+ * ## What to do instead
+ *
+ * Publish one of the codecs this library maps — H.264, H.265, VP9, AV1, AAC or Opus — or, where the
+ * codec is one of those under a spelling that is neither RFC 6381's nor SDP's, hand over the RFC
+ * 6381 string for it, which is what [RealtimeTrack.codec] is documented to carry.
+ */
+public class UnsupportedRealtimeCodecException internal constructor(
+
+    /** The codec string the transport delivered, verbatim, so a bug report carries the thing itself. */
+    public val codec: String,
+) : IOException(
+    "No decoder mapping for realtime codec \"$codec\". SuperPlayer maps H.264 (avc1, avc3, H264), " +
+        "H.265 (hvc1, hev1, H265), VP9 (vp09, VP9), AV1 (av01, AV1), AAC (mp4a.40.*, MPEG4-GENERIC) " +
+        "and Opus (opus), as RFC 6381 codecs strings or SDP encoding names. It refuses an " +
+        "unrecognised string rather than guessing, because a codec decoded as the wrong one fails " +
+        "silently.",
 )

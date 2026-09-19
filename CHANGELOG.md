@@ -88,6 +88,10 @@ them under `Added` would be worse than stating them here:
   `SuperPlayer.Builder.setRealtime`. What such a stream does **not** get is a rule rather than an
   omission — no cache, no CMCD, no downloads, no bandwidth estimate and none of the fallback
   ladder's load-error rungs (rule 6) — and a start position it cannot honour is refused with
-  `RealtimeStreamNotSeekableException` rather than coerced to the live edge (rule 5). One codec
-  (H.264) and one track; the codec mapping, the codec-specific-data conversion, audio beside video
-  and the conformance suite are the rest of the phase.
+  `RealtimeStreamNotSeekableException` rather than coerced to the live edge (rule 5). The codec a
+  transport declares is mapped from one table over **both** spellings the transports use — an RFC
+  6381 codecs string and an SDP encoding name — covering H.264, H.265, VP9, AV1, AAC and Opus, with
+  profile and level extracted where the string carries them; a string nothing maps is refused with
+  the public `UnsupportedRealtimeCodecException` naming it, rather than decoded as something else.
+  One track; the codec-specific-data conversion, audio beside video and the conformance suite are
+  the rest of the phase.

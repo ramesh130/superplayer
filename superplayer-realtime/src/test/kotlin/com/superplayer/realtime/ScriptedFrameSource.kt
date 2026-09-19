@@ -34,6 +34,8 @@ internal class ScriptedFrameSource(
     private val frames: Int,
     /** Whether the publisher stops at the end of the script, as one that goes off air does. */
     private val endsAfterScript: Boolean = false,
+    /** The codec the track is declared as; overridden by the test that hands over an unmappable one. */
+    private val codec: String = DEFAULT_CODEC,
 ) : FrameSource {
 
     @Volatile
@@ -46,10 +48,7 @@ internal class ScriptedFrameSource(
 
     override fun subscribe(sink: FrameSink) {
         subscribed = true
-        // `avc3`, so the track carries no codec-specific data and the parameter sets are in band —
-        // the branch of ADR-0018 rule 4 that needs no conversion, which is #345's. The other branch
-        // is deliberately not exercised here.
-        sink.onTrack(RealtimeTrack(codec = "avc3.42E01E"))
+        sink.onTrack(RealtimeTrack(codec = codec))
         repeat(frames) { index ->
             sink.onFrame(
                 EncodedFrame(
@@ -72,6 +71,13 @@ internal class ScriptedFrameSource(
     }
 
     private companion object {
+        /**
+         * `avc3`, so the track carries no codec-specific data and the parameter sets are in band —
+         * the branch of ADR-0018 rule 4 that needs no conversion, which is #345's. The other branch
+         * is deliberately not exercised here.
+         */
+        const val DEFAULT_CODEC = "avc3.42E01E"
+
         /** 30 fps, which makes 300 frames ten seconds — comfortably past any profile's buffer floor. */
         const val FRAME_DURATION_US = 33_333L
 

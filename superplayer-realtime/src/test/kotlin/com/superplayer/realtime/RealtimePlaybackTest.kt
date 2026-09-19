@@ -31,6 +31,7 @@ import com.superplayer.core.FrameSource
 import com.superplayer.core.MediaRequest
 import com.superplayer.core.RealtimeStreamNotSeekableException
 import com.superplayer.core.SuperPlayer
+import com.superplayer.core.UnsupportedRealtimeCodecException
 import org.junit.After
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -221,6 +222,28 @@ class RealtimePlaybackTest {
         TestPlayerRunHelper.runUntilIsLoading(player.exoPlayer, false)
 
         assertThat(player.isLoading).isFalse()
+    }
+
+    /**
+     * A codec nothing maps ends the session naming the string, rather than being decoded as
+     * something else (#344).
+     *
+     * The table itself is `RealtimeFormatsTest`'s, over string literals. What this adds is the one
+     * claim only a player can make: the refusal reaches a consumer where errors already arrive, as
+     * the cause of the `PlaybackException` the player carries, so an app needs no new listener to
+     * see it and a bug report has the offending string in it.
+     */
+    @Test
+    fun `a codec the table does not map ends the session naming the string`() {
+        val player = buildPlayer(ScriptedFrameSource(frames = 1, codec = "theora"))
+
+        player.setMediaRequest(realtimeRequest())
+        player.prepare()
+        val error: Throwable = TestPlayerRunHelper.runUntilError(player.exoPlayer)
+
+        val refusals = generateSequence(error) { it.cause }.filterIsInstance<UnsupportedRealtimeCodecException>().toList()
+        assertThat(refusals).hasSize(1)
+        assertThat(refusals.single().codec).isEqualTo("theora")
     }
 
     private fun realtimeRequest(

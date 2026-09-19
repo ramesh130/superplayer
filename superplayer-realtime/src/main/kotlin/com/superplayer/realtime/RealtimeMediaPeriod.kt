@@ -18,7 +18,6 @@ package com.superplayer.realtime
 
 import android.os.Handler
 import androidx.media3.common.C
-import androidx.media3.common.Format
 import androidx.media3.common.TrackGroup
 import androidx.media3.common.util.ParsableByteArray
 import androidx.media3.common.util.Util
@@ -36,6 +35,7 @@ import com.superplayer.core.EncodedFrame
 import com.superplayer.core.FrameSink
 import com.superplayer.core.FrameSource
 import com.superplayer.core.RealtimeTrack
+import com.superplayer.core.UnsupportedRealtimeCodecException
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -199,15 +199,18 @@ internal class RealtimeMediaPeriod(
     // --- FrameSink: the transport thread's half ------------------------------------------------
 
     override fun onTrack(track: RealtimeTrack) {
-        val format = formatOf(track)
-        if (format == null) {
-            // Raised as a failure of preparation rather than thrown at the transport: the transport
-            // did nothing wrong — it delivered a codec this phase does not map. The full mapping and
-            // the typed refusal that names it are #344's; until then the failure says which codec,
-            // because "unsupported" with no fourcc in it is what makes this hard to report.
-            onError(IOException("No Format for realtime codec \"${track.codec}\": phase 13 maps H.264 (avc1, avc3) only."))
+        val mapped = try {
+            RealtimeFormats.formatFor(track.codec)
+        } catch (refusal: UnsupportedRealtimeCodecException) {
+            // Reported as a failure of preparation rather than thrown back at the transport: the
+            // transport called this method correctly and what it handed over is what cannot be
+            // decoded, so the refusal belongs on the path a consumer already watches for errors.
+            onError(refusal)
             return
         }
+        val format = mapped.buildUpon()
+            .setInitializationData(track.codecSpecificData.map { it.copyOf() })
+            .build()
         val queue = SampleQueue.createWithoutDrm(allocator)
         queue.format(format)
         sampleQueue = queue
@@ -257,36 +260,6 @@ internal class RealtimeMediaPeriod(
 
     private fun cancelSubscription() {
         if (cancelled.compareAndSet(false, true)) frameSource.cancel()
-    }
-
-    /**
-     * [track] as a Media3 `Format`, or null for a codec this phase does not map.
-     *
-     * Keyed on the codec's **fourcc** and never on anything about the container, which is ADR-0018
-     * rule 4: `avc1` carries an out-of-band record that belongs in the initialization data, `avc3`
-     * carries its parameter sets in band and supplies none. Both are H.264 to a decoder, which is
-     * why one `when` branch covers them and the difference lives entirely in what the transport was
-     * obliged to send.
-     *
-     * Deliberately narrow. The full RFC 6381 and WebCodecs mapping, HEVC included, is #344's, and
-     * widening it here would be that ticket done badly: this phase carries one codec so the rest of
-     * the path can be proven.
-     *
-     * spec: RFC 6381 §3.3 — the `codecs` parameter and its fourcc-prefixed grammar.
-     * spec: ISO/IEC 14496-15 — the `avc1` versus `avc3` sample entry distinction, which is the
-     * standard's own mechanism for whether parameter sets may appear in the elementary stream.
-     */
-    private fun formatOf(track: RealtimeTrack): Format? {
-        val fourcc = track.codec.substringBefore('.').lowercase()
-        val mimeType = when (fourcc) {
-            "avc1", "avc3" -> androidx.media3.common.MimeTypes.VIDEO_H264
-            else -> return null
-        }
-        return Format.Builder()
-            .setSampleMimeType(mimeType)
-            .setCodecs(track.codec)
-            .setInitializationData(track.codecSpecificData.map { it.copyOf() })
-            .build()
     }
 
     /**

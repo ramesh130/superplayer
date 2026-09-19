@@ -18,6 +18,7 @@ package com.superplayer.realtime
 
 import android.os.Handler
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.TrackGroup
 import androidx.media3.common.util.ParsableByteArray
 import androidx.media3.common.util.Util
@@ -35,7 +36,6 @@ import com.superplayer.core.EncodedFrame
 import com.superplayer.core.FrameSink
 import com.superplayer.core.FrameSource
 import com.superplayer.core.RealtimeTrack
-import com.superplayer.core.UnsupportedRealtimeCodecException
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -82,6 +82,14 @@ internal class RealtimeMediaPeriod(
 
     @Volatile
     private var trackGroups: TrackGroupArray? = null
+
+    /**
+     * How this track's samples are framed, written in [onTrack] and read by the same transport
+     * thread in [onFrame] — [FrameSource] obligations 1 and 2 are what make that one thread and put
+     * the write first. Until a track arrives no frame is accepted, so the initial value is only
+     * ever read by a transport that broke obligation 2, and it converts nothing.
+     */
+    private var sampleFraming: TrackConfiguration = TrackConfiguration.selfDescribing("")
 
     /** Set by [onEnded] and by [onError]: the queue will receive nothing further. */
     @Volatile
@@ -199,17 +207,24 @@ internal class RealtimeMediaPeriod(
     // --- FrameSink: the transport thread's half ------------------------------------------------
 
     override fun onTrack(track: RealtimeTrack) {
-        val mapped = try {
-            RealtimeFormats.formatFor(track.codec)
-        } catch (refusal: UnsupportedRealtimeCodecException) {
+        val mapped: Format
+        val configuration: TrackConfiguration
+        try {
+            mapped = RealtimeFormats.formatFor(track.codec)
+            // Keyed on the codec's fourcc and never on the container (ADR-0018 rule 4, #345). What
+            // comes back is the initialization data a decoder is configured with and, for a
+            // fourcc whose samples are length-prefixed, the length size the record declared.
+            configuration = CodecConfigurationRecords.of(track.codec, track.codecConfiguration)
+        } catch (refusal: IOException) {
             // Reported as a failure of preparation rather than thrown back at the transport: the
             // transport called this method correctly and what it handed over is what cannot be
             // decoded, so the refusal belongs on the path a consumer already watches for errors.
             onError(refusal)
             return
         }
+        sampleFraming = configuration
         val format = mapped.buildUpon()
-            .setInitializationData(track.codecSpecificData.map { it.copyOf() })
+            .setInitializationData(configuration.initializationData)
             .build()
         val queue = SampleQueue.createWithoutDrm(allocator)
         queue.format(format)
@@ -224,7 +239,12 @@ internal class RealtimeMediaPeriod(
         val queue = sampleQueue ?: return
         if (streamFinished) return
         if (firstTimestampUs == C.TIME_UNSET) firstTimestampUs = frame.timestampUs
-        val payload = frame.payload
+        val payload = try {
+            sampleFraming.toAnnexB(frame.payload)
+        } catch (refusal: IOException) {
+            onError(refusal)
+            return
+        }
         // Whether the reader had caught up with the writer *before* this frame went in, which is the
         // only case a wake-up below is needed for. Read here rather than after the write, when it
         // would always be false.

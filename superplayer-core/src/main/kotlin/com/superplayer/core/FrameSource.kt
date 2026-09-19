@@ -69,10 +69,17 @@ import android.net.Uri
  *    strip before the seam (ADR-0018 rule 3); no fragmented-MP4 parsing exists on this side.
  *    *Cost:* the decoder configures cleanly and renders nothing, which is the hardest of all these
  *    to attribute.
- * 7. **[RealtimeTrack.codecSpecificData] follows the codec's fourcc, never the container**
- *    (ADR-0018 rule 4). `avc1` and `hvc1` carry an out-of-band record and must supply it here,
- *    already converted to Annex-B; `avc3` and `hev1` carry parameter sets in-band before every
- *    keyframe and must supply **none**. *Cost:* the same silent nothing as 6, in both directions.
+ * 7. **[RealtimeTrack.codecConfiguration] follows the codec's fourcc, never the container**
+ *    (ADR-0018 rule 4). `avc1` and `hvc1` carry an out-of-band configuration record and hand it over
+ *    as [RealtimeTrack.CodecConfiguration.Record], **exactly as received** — SuperPlayer converts it
+ *    to what the decoder wants, and a transport that converts it first is a transport that has to
+ *    know what a decoder wants. `avc3` and `hev1` carry their parameter sets in band before every
+ *    keyframe and hand over [RealtimeTrack.CodecConfiguration.InBand], which is the default.
+ *    *Cost:* smaller than the rest of this list, and deliberately so (#345): naming the shape is
+ *    what lets a fourcc that contradicts it be **refused** with
+ *    [MalformedRealtimeBitstreamException] at preparation, instead of becoming the silent nothing
+ *    of 6 in both directions. What stays silent is a record that parses and belongs to a different
+ *    stream, which nothing on this side can tell from the right one.
  * 8. **Do not touch [EncodedFrame.payload] after [FrameSink.onFrame] returns**, and do not hand the
  *    same array twice. *Cost:* a torn frame, and a corruption that moves when timing moves — the
  *    least reproducible failure in this list.
@@ -158,18 +165,60 @@ public interface FrameSink {
  *   cannot reach be refused rather than failed at, and a bare encoding name states neither.
  *   H.264, H.265, VP9, AV1, AAC and Opus are mapped and **anything else is refused** with
  *   [UnsupportedRealtimeCodecException] naming the string, because a codec decoded as the wrong one
- *   fails silently. An RFC 6381 string's **fourcc** prefix is also what decides whether
- *   [codecSpecificData] is expected, never the container the frames came in (ADR-0018 rule 4).
- * @property codecSpecificData Parameter sets the decoder needs before the first frame, each entry
- *   one Annex-B start-code-delimited unit, in the order the decoder expects. **Empty for a
- *   self-describing codec** (`avc3`, `hev1`), which carries them in band — supplying them for one of
- *   those is obligation 7 broken in the direction nothing detects. Converting an `avcC` record to
- *   this form, including reading its length-field size rather than assuming four bytes, is #345's.
+ *   fails silently. An RFC 6381 string's **fourcc** prefix is also what decides which
+ *   [CodecConfiguration] is expected, never the container the frames came in (ADR-0018 rule 4).
+ * @property codecConfiguration What the decoder needs before the first frame, in the shape the
+ *   codec's fourcc says it comes in: [CodecConfiguration.Record] for `avc1` and `hvc1`, and
+ *   [CodecConfiguration.InBand] — the default — for `avc3` and `hev1`, which carry it in the
+ *   bitstream. See obligation 7 on [FrameSource].
  */
 public class RealtimeTrack(
     public val codec: String,
-    public val codecSpecificData: List<ByteArray> = emptyList(),
-)
+    public val codecConfiguration: CodecConfiguration = CodecConfiguration.InBand,
+) {
+
+    /**
+     * Where the parameter sets a decoder must be configured with come from, which the codec's
+     * **fourcc** decides and the container never does (ADR-0018 rule 4).
+     *
+     * ## Why a named shape rather than a list of bytes
+     *
+     * The seam carried `List<ByteArray>` of Annex-B units until #345, and every value of it
+     * type-checked: a transport that handed over an `avcC` record where units were expected, or
+     * units where its fourcc said a record, compiled, configured a decoder cleanly and rendered
+     * nothing — #340's observed failure and the one this whole branch exists to prevent. Naming the
+     * two shapes makes the contradiction a *statement* rather than a byte pattern, so SuperPlayer
+     * can refuse it by name ([MalformedRealtimeBitstreamException]) at the moment the track
+     * arrives. It also moves the conversion to the side that knows what a decoder wants: a
+     * transport hands over the record its publisher sent and needs to know nothing about Annex-B.
+     */
+    public sealed class CodecConfiguration {
+
+        /**
+         * The stream is self-describing: parameter sets arrive in band, as Annex-B units before
+         * every keyframe, and nothing is configured out of band.
+         *
+         * What `avc3` and `hev1` must hand over, and the default because it is the shape that needs
+         * no bytes — a transport that says nothing says the thing that is true of the codecs
+         * carrying nothing.
+         */
+        public object InBand : CodecConfiguration()
+
+        /**
+         * The codec's out-of-band configuration record, **exactly as the transport received it**.
+         *
+         * For `avc1` that is an `AVCDecoderConfigurationRecord` (`avcC`) and for `hvc1` an
+         * `HEVCDecoderConfigurationRecord` (`hvcC`); for any other codec it is whatever that codec's
+         * binding calls its configuration record. It is not converted, unwrapped or reordered
+         * first: [bytes] is what arrived, and what a decoder is configured with is SuperPlayer's to
+         * derive from it.
+         *
+         * @property bytes The record. Not modified after this is handed to [FrameSink.onTrack],
+         *   for [EncodedFrame.payload]'s reason.
+         */
+        public class Record(public val bytes: ByteArray) : CodecConfiguration()
+    }
+}
 
 /**
  * One encoded frame.

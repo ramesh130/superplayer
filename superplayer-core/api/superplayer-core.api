@@ -202,6 +202,11 @@ public final class com/superplayer/core/LiveWindowTooShortException : java/io/IO
 	public final fun getTimeShiftBufferDepthMs ()J
 }
 
+public final class com/superplayer/core/MalformedRealtimeBitstreamException : java/io/IOException {
+	public final fun getCodec ()Ljava/lang/String;
+	public final fun getReason ()Ljava/lang/String;
+}
+
 public final class com/superplayer/core/MediaRequest {
 	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;Lcom/superplayer/core/MediaRequest$StartPosition;Ljava/lang/String;Ljava/lang/String;Landroid/net/Uri;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getArtworkUri ()Landroid/net/Uri;
@@ -541,10 +546,22 @@ public final class com/superplayer/core/RealtimeStreamNotSeekableException : jav
 }
 
 public final class com/superplayer/core/RealtimeTrack {
-	public fun <init> (Ljava/lang/String;Ljava/util/List;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Lcom/superplayer/core/RealtimeTrack$CodecConfiguration;)V
+	public synthetic fun <init> (Ljava/lang/String;Lcom/superplayer/core/RealtimeTrack$CodecConfiguration;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getCodec ()Ljava/lang/String;
-	public final fun getCodecSpecificData ()Ljava/util/List;
+	public final fun getCodecConfiguration ()Lcom/superplayer/core/RealtimeTrack$CodecConfiguration;
+}
+
+public abstract class com/superplayer/core/RealtimeTrack$CodecConfiguration {
+}
+
+public final class com/superplayer/core/RealtimeTrack$CodecConfiguration$InBand : com/superplayer/core/RealtimeTrack$CodecConfiguration {
+	public static final field INSTANCE Lcom/superplayer/core/RealtimeTrack$CodecConfiguration$InBand;
+}
+
+public final class com/superplayer/core/RealtimeTrack$CodecConfiguration$Record : com/superplayer/core/RealtimeTrack$CodecConfiguration {
+	public fun <init> ([B)V
+	public final fun getBytes ()[B
 }
 
 public final class com/superplayer/core/RetryBudget {

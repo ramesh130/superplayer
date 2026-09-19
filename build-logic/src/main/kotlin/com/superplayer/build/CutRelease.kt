@@ -199,8 +199,29 @@ abstract class CutRelease : DefaultTask() {
         logger.lifecycle("Cut ${plan.release}. Nothing has been pushed; docs/releasing.md is what happens next.")
     }
 
+    /**
+     * The publication, as a child invocation — the one step this task cannot do in its own build,
+     * because every module's `version` was read from the catalog at configuration time and the
+     * catalog has moved since.
+     *
+     * Two flags, and both are a defect met rather than a precaution. A child that reuses the
+     * running daemon is served **by the process already in the middle of this build**, and Gradle's
+     * project-scoped caches are locked per process: the publication succeeds and then the *next*
+     * invocation in that directory fails with "Cannot lock file hash cache … already been locked by
+     * this process", which is a wedged daemon and a hand-unpicked release. `--no-daemon` makes the
+     * child a separate JVM and `--project-cache-dir` gives it a `.gradle` of its own, so neither
+     * build can hold a lock the other wants. What it costs is the child's configuration cache,
+     * which is per project cache directory and is therefore always cold here — seconds, on the one
+     * command in this repository that is allowed to take them.
+     */
     private fun publishToMavenLocal(root: File) {
-        val result = run(root, File(root, "gradlew").absolutePath, "publishToMavenLocal")
+        val result = run(
+            root,
+            File(root, "gradlew").absolutePath,
+            "publishToMavenLocal",
+            "--no-daemon",
+            "--project-cache-dir=${File(root, PUBLISH_CACHE_DIRECTORY).absolutePath}"
+        )
         if (result.exitCode != 0) {
             throw GradleException(
                 "`./gradlew publishToMavenLocal` failed while publishing the release:\n" +
@@ -217,6 +238,13 @@ abstract class CutRelease : DefaultTask() {
  */
 private val WRITTEN_PATHS =
     arrayOf("gradle/libs.versions.toml", "CHANGELOG.md", RECORDED_SURFACE_DIRECTORY)
+
+/**
+ * Where the publishing child keeps its own `.gradle`. Under `build/`, which is already ignored and
+ * already disposable, so a release leaves nothing behind that `git status` or a clean would argue
+ * about.
+ */
+private const val PUBLISH_CACHE_DIRECTORY = "build/release-publish-cache"
 
 /** How much of a failed publication's log is worth carrying into the refusal above it. */
 private const val PUBLISH_LINES_ON_FAILURE = 40

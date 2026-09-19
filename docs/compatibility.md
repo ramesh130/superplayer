@@ -4,10 +4,10 @@ For someone integrating SuperPlayer into an app, deciding what they are allowed 
 
 Every answer below is a consequence of
 [ADR-0017](adr/0017-version-the-library-by-semver-in-lockstep-with-the-tracked-api-surface-as-the-arbiter.md),
-which is where the rules live and where they are argued. This document cites those rules by number
-and does not restate them, because two copies of a rule drift and the ADR is the one that binds.
-Where a rule is enforced by a build task, the task is named; where it is not, this document says so
-rather than implying otherwise.
+which is where the rules live and where they are argued. This document cites those rules **by
+number** and says what each one means for you; it does not reproduce the ADR's reasoning, and where
+the two ever read differently the ADR is the one that binds. Where a rule is enforced by a build
+task, the task is named; where it is not, this document says so rather than implying otherwise.
 
 > **Before anything else: there is nothing to resolve yet.** SuperPlayer has never been released,
 > and publishing to a remote repository is deliberately out of scope — there is no publish
@@ -33,11 +33,12 @@ is the part worth acting on:
 > `superplayer-core:0.3.0` is not a combination that was ever built, tested or benchmarked, and
 > nothing in the library will tell you at runtime that you assembled one.
 
-That is stronger than the usual multi-module caution, and the reason is mechanical. The optional
-modules reach into `superplayer-core` through Kotlin *friend* compilation — a compiler flag, not a
+That is stronger than the usual multi-module caution, and the reason is mechanical. **Nine** of the
+thirteen reach into `superplayer-core` through Kotlin *friend* compilation — a compiler flag, not a
 Gradle dependency, carrying no binary-compatibility guarantee at all — so a change core is entitled
 to make under rule 2 can break a module compiled against the previous core without any check seeing
-it (ADR-0017 rule 1; [`modules.md`](modules.md)). Pin one version for all of them, in one place.
+it (ADR-0017 rule 1; [`modules.md`](modules.md) lists the nine). Pin one version for all of them, in
+one place.
 
 **A `-SNAPSHOT` version is not a release and carries none of this.** An artefact resolved from a
 snapshot coordinate may change under that same coordinate without notice (ADR-0017 rule 8). Today's
@@ -87,7 +88,7 @@ to every row equally. What differs between rows is what the module is *for*.
 | `superplayer-telemetry` | **Public** | `QoeCollector`, `LogcatSink`, `SessionTraceRecorder`, and the session reduction (`SessionMetrics`, `QoeScore`) |
 | `superplayer-testkit` | **Public (for your tests)** | `PlaybackHarness`, and `HttpTransportConformance` — the suite to run against your own `HttpTransport` ([`http-transport.md`](http-transport.md)) |
 | `superplayer-abr` | **Public** | `AdaptivePolicy` and `BandwidthOracle`. The adaptive behaviour behind them is tuning work and is expected to move; the types are not |
-| `superplayer-cache` | **Public** | `CachePolicy` and the `ContentCache` it opens in a directory you name |
+| `superplayer-cache` | **Public** | `CachePolicy` and the `ContentKeyedCache` it opens in a directory you name. The `ContentCache` you hand to a player is `superplayer-core`'s type |
 | `superplayer-preload` | **Public** | `PreloadCoordinator`, attached to a `PlayerPool` |
 | `superplayer-resilience` | **Public** | `Resilience`, `HeaderProvider`, `FailureClass` and `ErrorClassifier` — the failure taxonomy a log line and a warehouse row share |
 | `superplayer-drm` | **Public** | `Drm.widevine`, `WidevineConfig`, and the offline licence store |
@@ -113,7 +114,7 @@ SuperPlayer composes on AndroidX Media3 and does not fork it. Every module here 
 [`modules.md`](modules.md) and enforced against the build's own pin by
 `./gradlew verifyMedia3SupportedVersion`. Read it there; it is the one copy.
 
-**A Media3 upgrade is usually not a SuperPlayer major** (ADR-0017 rule 4). No Media3 type marked
+**A Media3 upgrade is not automatically a SuperPlayer major** (ADR-0017 rule 4). No Media3 type marked
 `@UnstableApi` crosses SuperPlayer's public boundary — that is
 [ADR-0001](adr/0001-compose-dont-fork.md) rule 2, and `./gradlew verifyNoUnstableMedia3InPublicApi`
 fails the build on a breach rather than merely showing it in a diff — so a Media3 release that
@@ -125,10 +126,10 @@ pin of your own can be forced off (ADR-0017 rule 4).
 **There is exactly one exception, and it is `player.exoPlayer`.** That property hands you the
 wrapped `ExoPlayer`, an `@UnstableApi` type, deliberately — it is ADR-0001 rule 2's one named
 breach, so that an app needing something the facade does not expose is not blocked by the boundary.
-**What you reach through it carries Media3's own compatibility, not SuperPlayer's.** A Media3 change
-that breaks code written against it moves no version here (ADR-0017 rule 4). This is stated rather
-than left to be inferred, because the rule a reader would otherwise guess — that a public
-`@UnstableApi` member drags the whole library to a major — is not the rule.
+**What you reach through it carries Media3's own compatibility, not SuperPlayer's**, and a Media3
+change that breaks code written against it moves no version here (ADR-0017 rule 4). If you use that
+property, track Media3's own release notes as well as this library's; that is the price of the
+hatch, and it is worth knowing before you reach through it rather than after.
 
 ## What about the telemetry schema and the trace format?
 
@@ -141,8 +142,9 @@ in either direction** (ADR-0017 rule 6).
 | `SessionTrace.FORMAT_VERSION` | **1** | What a line of a session trace or bundle *means* to its reader | [`session-bundle.md`](session-bundle.md) |
 
 Both move on **meaning and not on shape**: an added event type or an appended field does not move
-them, while a changed denominator does. That is why `SCHEMA_VERSION` has stood at 2 across four
-releases' worth of added event types. [`telemetry-schema.md`](telemetry-schema.md)'s *Release notes*
+them, while a changed denominator does. That is why several event types have been added since
+`SCHEMA_VERSION` last moved and it still reads 2.
+[`telemetry-schema.md`](telemetry-schema.md)'s *Release notes*
 is where a moved schema version is argued, and is the document to hand whoever owns your warehouse.
 
 The independence runs both ways. A SuperPlayer major does not move either constant, and a moved
@@ -164,9 +166,9 @@ because the major has nowhere to go — but it is still deprecated first, and th
 says so. The `0.x` licence is for the version *number* to be small, not for the removal to be a
 surprise.
 
-**Nothing enforces this mechanically, and honestly so.** `checkApiSurface` compares declarations in
-one tree; a deprecation cycle is a fact about two releases, and no check here can see it. Review and
-the changelog row carry it.
+**Nothing enforces this mechanically**, and ADR-0017 rule 9 says why rather than implying otherwise.
+What you can check for yourself is the changelog row, which is where a removal and the release that
+deprecated it are both written down.
 
 ## What does a release not promise?
 
@@ -180,8 +182,10 @@ The honest list. Each of these is a real gap rather than a disclaimer.
   secure surfaces, real display modes, tunneling, audio passthrough and the platform's own HTTP
   engine are all exercised against stand-ins; `testing.md` says per stand-in what it cannot show.
 - **Behaviour on a real network.** The tests reach **no network**: streams are synthetic, faults are
-  scripted, and throughput is a replayed trace ([`throughput-traces.md`](throughput-traces.md)). A
-  release is not evidence that a particular CDN, packager or middlebox behaves.
+  scripted, and throughput is a replayed trace ([`throughput-traces.md`](throughput-traces.md)). The
+  one carve-out is the transport conformance suite, which binds a server socket on the **loopback**
+  interface and reaches nothing off the host ([`testing.md`](testing.md), *The conformance test a
+  consumer runs*). A release is not evidence that a particular CDN, packager or middlebox behaves.
 - **Performance numbers.** Nothing in a version number promises a startup time, a rebuffer rate, a
   peak RSS or a battery figure. What exists is a fixed benchmark matrix and its published report
   (`benchmark/README.md`), measured on the machine that ran it.

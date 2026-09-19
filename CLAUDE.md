@@ -1478,8 +1478,9 @@ repository.
   modules are stable, the Media3 relationship and its one exception, the two format versions that
   are not this one, how much warning a removal carries, and what a release does **not** promise
   (a device, a network, a performance number, and anything reached through `player.exoPlayer`). It
-  **cites ADR-0017's rules by number rather than restating them**, so the two cannot drift, and it
-  says plainly that nothing is resolvable by anyone else today. Its stability table is held to
+  **cites ADR-0017's rules by number** and says what each means for an adopter without reproducing
+  the record's reasoning — where the two ever read differently the ADR binds — and it says plainly
+  that nothing is resolvable by anyone else today. Its stability table is held to
   `settings.gradle.kts` by `./gradlew verifyCompatibilityDocument`, a root-only check in
   `build-logic` beside `verifyModulePhaseRule` — a **set** comparison and deliberately not an order,
   since the include list is in neither phase nor alphabetical order; everything else in that

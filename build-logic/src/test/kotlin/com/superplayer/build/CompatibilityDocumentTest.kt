@@ -70,6 +70,8 @@ class CompatibilityDocumentTest {
     @Test
     fun `a status outside the vocabulary fails naming the status`() {
         val document = """
+            ## Which parts are stable?
+
             | Module | Status | What you may depend on |
             | --- | --- | --- |
             | `superplayer-core` | **Public** | The facade |
@@ -113,10 +115,65 @@ class CompatibilityDocumentTest {
     fun `a table that parses to nothing fails loudly rather than passing`() {
         // The failure mode a parser over prose has to be held to: every module reads as missing,
         // rather than the check reading as satisfied.
-        val violations = findCompatibilityDocumentViolations(settingsScript, "No table here at all.")
+        val document = "## Which parts are stable?\n\nThe table was deleted."
+        val violations = findCompatibilityDocumentViolations(settingsScript, document)
 
         assertEquals(2, violations.size)
         assertTrue(violations.all { it.endsWith("has no row in the stability table.") })
+    }
+
+    @Test
+    fun `a renamed heading fails naming the check rather than silently passing`() {
+        // Scoping to one section is what keeps a row in some other table from counting; the cost
+        // is that the heading is load-bearing, and it has to fail loudly when it moves.
+        assertEquals(
+            listOf(
+                "docs/compatibility.md has no \"Which parts are stable?\" section to read a table " +
+                    "out of. If the heading was reworded, VerifyCompatibilityDocument in " +
+                    "build-logic has to learn the new wording."
+            ),
+            findCompatibilityDocumentViolations(
+                settingsScript,
+                table("superplayer-core", "superplayer-ui").substringAfter("\n")
+            )
+        )
+    }
+
+    @Test
+    fun `a module row in some other table of the document does not count`() {
+        val document = """
+            ## Where to look next
+
+            | Module | Status | Note |
+            | --- | --- | --- |
+            | `superplayer-ui` | **Public** | Mentioned in passing, not a stability row |
+
+            ## Which parts are stable?
+
+            | Module | Status | What you may depend on |
+            | --- | --- | --- |
+            | `superplayer-core` | **Public** | The facade |
+        """.trimIndent()
+
+        assertEquals(
+            listOf(
+                "superplayer-ui is published by settings.gradle.kts and has no row in the " +
+                    "stability table."
+            ),
+            findCompatibilityDocumentViolations(settingsScript, document)
+        )
+    }
+
+    @Test
+    fun `an include is read whatever the module is called, and however many are on the line`() {
+        // Every include in settings.gradle.kts is a published module; reading only the ones whose
+        // name begins `superplayer-` would let a differently named one go undocumented in silence.
+        val settings = """include(":media-extras", ":superplayer-core")"""
+
+        assertEquals(
+            listOf("media-extras is published by settings.gradle.kts and has no row in the stability table."),
+            findCompatibilityDocumentViolations(settings, table("superplayer-core"))
+        )
     }
 
     @Test
@@ -147,6 +204,8 @@ class CompatibilityDocumentTest {
 
     private fun table(vararg modules: String): String =
         buildList {
+            add("## Which parts are stable?")
+            add("")
             add("| Module | Status | What you may depend on |")
             add("| --- | --- | --- |")
             modules.forEach { add("| `$it` | **Public** | Something |") }

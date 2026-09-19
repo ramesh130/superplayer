@@ -93,5 +93,21 @@ them under `Added` would be worse than stating them here:
   6381 codecs string and an SDP encoding name — covering H.264, H.265, VP9, AV1, AAC and Opus, with
   profile and level extracted where the string carries them; a string nothing maps is refused with
   the public `UnsupportedRealtimeCodecException` naming it, rather than decoded as something else.
-  One track; the codec-specific-data conversion, audio beside video and the conformance suite are
-  the rest of the phase.
+  Codec-specific data is converted on this side rather than by the transport, keyed on the codec's
+  fourcc and never on the container (rule 4's #345 addendum): `avc1` and `hvc1` hand over their
+  `avcC`/`hvcC` record as received and it becomes Annex-B here, with the NAL length field size read
+  out of the record rather than assumed to be four bytes, while `avc3` and `hev1` carry their
+  parameter sets in band and supply none — a configuration contradicting the fourcc is refused with
+  the public `MalformedRealtimeBitstreamException` rather than configuring a decoder that renders
+  nothing. Audio and video arrive through one subscription: `FrameSink.onTracks` declares every
+  track before the first frame and each `EncodedFrame` names the one it belongs to, a single anchor
+  rebases them all so a publisher's own skew survives rather than being flattened to zero, the
+  buffered position is the most conservative queue's, and a declared track that never starts or that
+  stops is bounded against the others in **media time** rather than against a clock, ending on the
+  public `RealtimeTrackStalledException`. What holds a transport to all of it is
+  `FrameSourceConformance`, `superplayer-testkit`'s executable contract in
+  `HttpTransportConformance`'s shape — one check per obligation, each failure naming the rule, what
+  the implementation did and what the rule requires, and naming no test framework, with the
+  obligations no suite can execute written down rather than left silently unchecked. **Nothing in
+  this phase has run on a device**, and the transports that would exercise it — `superplayer-moq`
+  and `superplayer-whep` — are phases 14 and 15.

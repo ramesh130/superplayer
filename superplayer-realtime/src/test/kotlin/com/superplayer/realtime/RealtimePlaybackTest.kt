@@ -70,8 +70,10 @@ import java.io.IOException
  * Synthetic H.264: Annex-B start codes and NAL headers of the right shape, carrying no picture data.
  * **Nothing here decodes them** — the renderer is Media3's `FakeRenderer`, which reads samples and
  * advances — so the bytes prove the path rather than the picture. That is the honest limit of any
- * test under `check`, and it is why [FrameSource]'s obligations 3, 6 and 7 are carried by a
- * conformance suite (#347) instead of by this file.
+ * test under `check`, and it is why [FrameSource]'s obligations 3 and 6 are carried by a conformance
+ * suite (#347) instead of by this file. Obligation 7 is the one of the three this file can reach,
+ * since #345 made a fourcc that contradicts its own configuration a refusal rather than a decoder
+ * that renders nothing — but only as far as the refusal and the `Format`, never as far as a picture.
  */
 @RunWith(RobolectricTestRunner::class)
 @LooperMode(LooperMode.Mode.PAUSED)

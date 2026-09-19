@@ -89,7 +89,7 @@ class CodecConfigurationRecordsTest {
 
         assertThat(configuration.nalLengthSize).isEqualTo(2)
         // Two units behind two-byte lengths. Read as four-byte lengths the first would declare
-        // 0x00036 5aa bytes and the conversion would refuse; read as two, it is exactly this.
+        // 0x000365aa bytes and the conversion would refuse; read as two, it is exactly this.
         val sample = bytes("00 03 65 aa bb 00 02 41 cc")
         assertThat(configuration.toAnnexB(sample))
             .isEqualTo(ANNEX_B_START_CODE + bytes("65 aa bb") + ANNEX_B_START_CODE + bytes("41 cc"))
@@ -220,6 +220,41 @@ class CodecConfigurationRecordsTest {
     }
 
     /**
+     * A four-byte length field with its top bit set is refused, not read as a negative length.
+     *
+     * The case a bounds check written as `offset + length > size` walks straight through: `ff ff ff
+     * ff` is -1 as a signed `Int`, the check reads as satisfied, and what a consumer sees is a
+     * crash inside SuperPlayer naming an array rather than the transport's contract broken. It is
+     * reachable from noise on an `avc1` track, which is exactly the input this file exists for.
+     */
+    @Test
+    fun `a length field whose top bit is set is refused rather than read as negative`() {
+        val configuration = CodecConfigurationRecords.of(OBSERVED_AVC1_CODEC, CodecConfiguration.Record(ObservedBytes.AVCC))
+
+        val refusal = runCatching { configuration.toAnnexB(bytes("ff ff ff ff 65 aa")) }.exceptionOrNull()
+
+        assertThat(refusal).isInstanceOf(MalformedRealtimeBitstreamException::class.java)
+        assertThat((refusal as MalformedRealtimeBitstreamException).reason).contains("runs past the end")
+    }
+
+    /**
+     * The one NAL length width the grammar forbids is refused rather than honoured.
+     *
+     * spec: ISO/IEC 14496-15 §5.3.3.1.3 — `lengthSizeMinusOne` shall be 0, 1 or 3, so three-byte
+     *   length fields do not exist. A record declaring one was written by nothing legal, and
+     *   framing every sample of the track at that width would look like it worked.
+     */
+    @Test
+    fun `a record declaring a three-byte NAL length field is refused`() {
+        val refusal = runCatching {
+            CodecConfigurationRecords.of(OBSERVED_AVC1_CODEC, CodecConfiguration.Record(avcCDeclaringLengthSize(3)))
+        }.exceptionOrNull()
+
+        assertThat(refusal).isInstanceOf(MalformedRealtimeBitstreamException::class.java)
+        assertThat((refusal as MalformedRealtimeBitstreamException).reason).contains("3-byte NAL length field")
+    }
+
+    /**
      * The control that keeps the conversion off every codec that is not H.264 or H.265.
      *
      * An AAC track's record is an AudioSpecificConfig with no NAL unit in it, and Media3 hands it to
@@ -251,7 +286,7 @@ class CodecConfigurationRecordsTest {
          * PPS, one NAL unit each.
          */
         val SYNTHESIZED_HVCC = bytes(
-            "01 01 60 00 00 00 90 00 00 00 00 00 5d f0 00 fc fd f8 f8 00 00 0f" +
+            "01 01 60 00 00 00 90 00 00 00 00 00 5d f0 00 fc fd f8 f8 00 00 ff" +
                 " 03" +
                 " a0 00 01 00 03 40 01 0c" +
                 " a1 00 01 00 04 42 01 01 01" +

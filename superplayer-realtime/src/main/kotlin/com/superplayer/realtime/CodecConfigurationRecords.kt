@@ -79,6 +79,18 @@ internal class TrackConfiguration(
  * source rather than seen. What is written below for `hvc1` is ISO/IEC 14496-15 §8.3.3.1.2 read as a
  * document; the first transport to carry HEVC is expected to confirm it, which is what ADR-0018
  * rule 4 asks for in as many words.
+ *
+ * ## Why this is not Media3's `AvcConfig`
+ *
+ * Media3 parses both records already, in `androidx.media3.extractor`'s `AvcConfig.parse` and
+ * `HevcConfig.parse`, and [RealtimeFormats] reaches for Media3's own reader wherever one exists —
+ * so departing from that here is a decision and not an oversight. Three reasons, in order of
+ * weight. This module depends on `media3-exoplayer` and not on `media3-extractor`, so using them
+ * means a new dependency and its `THIRD_PARTY.md` row for one call. Neither exposes the conversion
+ * a *sample* needs, which is the other half of what the length size is read for, so a parser of
+ * this side's own would exist either way and there would then be two. And what they raise is a
+ * `ParserException` carrying no codec, which would be caught and rewrapped at once. The record's
+ * grammar is six fields; the wiring would have been larger than the parse.
  */
 internal object CodecConfigurationRecords {
 
@@ -92,6 +104,11 @@ internal object CodecConfigurationRecords {
         // RFC 6381 §3.3: the first dot-separated element is the sample entry name. An SDP encoding
         // name carries no dot and falls through the same take, which is what puts `h264` in the
         // `else` branch below: SDP states no sample entry, so it states no expectation either.
+        //
+        // The other place a fourcc is switched on is `RealtimeFormats`' table, which answers what a
+        // string decodes *as*; this answers what it is *configured* with. A codec added there and
+        // not here gets the pass-through branch below, which is the safe direction — but a codec
+        // whose configuration is length-prefixed NAL units has to be added to both.
         val fourcc = codec.substringBefore('.').lowercase(Locale.ROOT)
         return when (fourcc) {
             "avc1" -> parseAvcConfigurationRecord(codec, recordOf(codec, fourcc, configuration))
@@ -114,13 +131,21 @@ internal object CodecConfigurationRecords {
             }
 
             else -> when (configuration) {
-                // Every other codec this library maps — VP9, AV1, AAC, Opus — states its
-                // configuration in a record with no NAL units in it at all, and Media3 hands such a
-                // record to `MediaCodec` as `csd-0` unchanged: AV1's `av1C` (AV1 ISOBMFF binding
-                // §2.3), AAC's AudioSpecificConfig (ISO/IEC 14496-3 §1.6.2) and Opus's
-                // identification header (RFC 7845 §5.1). There is nothing to convert, so nothing
-                // is, and neither is anything demanded: a codec with no record simply has none.
-                // Audio beside video is #346's, and this branch is where it starts.
+                // No codec but H.264 and H.265 carries its configuration as length-prefixed NAL
+                // units, so there is nothing here to convert and the record is passed through as
+                // the one entry it arrived as — AV1's `av1C` (AV1 ISOBMFF binding §2.3) and AAC's
+                // AudioSpecificConfig (ISO/IEC 14496-3 §1.6.2) are the two a realtime publisher is
+                // likely to send. **Pass-through is the honest default and not a claim that it is
+                // right for every codec**: Opus wants three entries by Media3's own convention
+                // (RFC 7845 §5.1's identification header, then pre-skip and seek pre-roll), and
+                // nothing here or in #340 — which saw H.264 only — has observed what a transport
+                // hands over for any of them. Audio beside video is #346's, and getting each of
+                // these right, per codec and with something observed behind it, is that ticket's
+                // work rather than a guess made here.
+                //
+                // Nothing is demanded either: a codec whose configuration is in its own bitstream
+                // simply hands over `InBand`, which is what an SDP encoding name always does — it
+                // names no sample entry, so it states no expectation.
                 is RealtimeTrack.CodecConfiguration.Record ->
                     TrackConfiguration(codec, listOf(configuration.bytes.copyOf()), TrackConfiguration.SAMPLES_ARE_ANNEX_B)
 
@@ -166,7 +191,7 @@ internal object CodecConfigurationRecords {
         val reader = RecordReader(codec, record)
         reader.expectConfigurationVersion()
         reader.skip(AVC_PROFILE_AND_LEVEL_BYTES)
-        val nalLengthSize = (reader.readByte() and LENGTH_SIZE_MINUS_ONE_MASK) + 1
+        val nalLengthSize = nalLengthSizeOf(codec, reader)
         val parameterSets = mutableListOf<ByteArray>()
         // The low five bits: the three above them are reserved and set to 1 by the grammar.
         repeat(reader.readByte() and SPS_COUNT_MASK) { parameterSets += reader.readAnnexBUnit() }
@@ -192,13 +217,35 @@ internal object CodecConfigurationRecords {
         val reader = RecordReader(codec, record)
         reader.expectConfigurationVersion()
         reader.skip(HEVC_HEADER_BYTES_BEFORE_LENGTH_SIZE)
-        val nalLengthSize = (reader.readByte() and LENGTH_SIZE_MINUS_ONE_MASK) + 1
-        var parameterSets = ByteArray(0)
+        val nalLengthSize = nalLengthSizeOf(codec, reader)
+        val parameterSets = ByteArrayOutputStream()
         repeat(reader.readByte()) {
             reader.skip(1) // array_completeness, a reserved bit and NAL_unit_type: none of it configures anything.
-            repeat(reader.readUnsignedShort()) { parameterSets += reader.readAnnexBUnit() }
+            repeat(reader.readUnsignedShort()) { parameterSets.write(reader.readAnnexBUnit()) }
         }
-        return TrackConfiguration(codec, listOf(parameterSets), nalLengthSize)
+        return TrackConfiguration(codec, listOf(parameterSets.toByteArray()), nalLengthSize)
+    }
+
+    /**
+     * `lengthSizeMinusOne + 1`, read off the byte the reader is at, or a refusal for the one value
+     * the grammar does not allow.
+     *
+     * spec: ISO/IEC 14496-15 §5.3.3.1.3 (and §8.3.3.1.3 for HEVC) — the field "shall be 0, 1 or 3",
+     *   so a NAL length field is one, two or four bytes wide and never three. Refused rather than
+     *   honoured, for this file's whole reason: a record declaring three bytes is a record nothing
+     *   legal wrote, and reading its samples at that width would frame every one of them wrongly
+     *   while looking like it worked.
+     */
+    private fun nalLengthSizeOf(codec: String, reader: RecordReader): Int {
+        val declared = (reader.readByte() and LENGTH_SIZE_MINUS_ONE_MASK) + 1
+        if (declared == FORBIDDEN_NAL_LENGTH_SIZE) {
+            throw MalformedRealtimeBitstreamException(
+                codec,
+                "the record declares a $declared-byte NAL length field, which ISO/IEC 14496-15 does not allow " +
+                    "(1, 2 and 4 are its widths)",
+            )
+        }
+        return declared
     }
 
     /** Fourccs whose streams carry their parameter sets in the bitstream (#340's observed pair, and HEVC's twin). */
@@ -215,13 +262,19 @@ internal object CodecConfigurationRecords {
 
     /** `numOfSequenceParameterSets` is the low five bits of its byte; the three above it are reserved. */
     private const val SPS_COUNT_MASK = 0x1F
+
+    /** `lengthSizeMinusOne = 2`, the one width of the four the grammar does not allow; see [nalLengthSizeOf]. */
+    private const val FORBIDDEN_NAL_LENGTH_SIZE = 3
 }
 
 /**
  * A run of length-prefixed NAL units as one Annex-B buffer, with a start code before each.
  *
- * spec: ISO/IEC 14496-15 §5.3.3.1.2 — a record's parameter sets and an `avc1`/`hvc1` track's samples
- *   both carry each NAL unit behind an unsigned big-endian length, of [lengthSize] bytes.
+ * spec: ISO/IEC 14496-15 §5.3.2 (and §8.3.2 for HEVC) — a sample of a track whose sample entry is
+ *   `avc1` or `hvc1` is a run of NAL units, each behind an unsigned big-endian length of
+ *   `lengthSizeMinusOne + 1` bytes. The *record's* own parameter sets are §5.3.3.1.2's and are
+ *   16-bit whatever that field says, which is why [lengthSize] is a parameter here rather than read
+ *   from anywhere.
  * spec: ITU-T H.264 Annex B / ISO/IEC 14496-10 Annex B — the byte stream format a `MediaCodec`
  *   configured by hand is fed: each NAL unit preceded by `00 00 00 01`. Four bytes rather than
  *   three, because the four-byte start code is legal everywhere the three-byte one is and the
@@ -259,16 +312,16 @@ private class RecordReader(private val codec: String, private val source: ByteAr
     val exhausted: Boolean get() = offset >= source.size
 
     fun skip(count: Int) {
-        requireBytes(count, "a $count-byte field")
+        requireBytes(count.toLong(), "a $count-byte field")
         offset += count
     }
 
     fun readByte(): Int {
-        requireBytes(1, "a one-byte field")
+        requireBytes(1L, "a one-byte field")
         return source[offset++].toInt() and 0xFF
     }
 
-    fun readUnsignedShort(): Int = readLength(2, "a two-byte count")
+    fun readUnsignedShort(): Int = readLength(2, "a two-byte count").toInt()
 
     /**
      * The next length-prefixed NAL unit, behind an Annex-B start code.
@@ -279,20 +332,28 @@ private class RecordReader(private val codec: String, private val source: ByteAr
     fun readAnnexBUnit(lengthSize: Int = PARAMETER_SET_LENGTH_BYTES): ByteArray {
         val start = offset
         val length = readLength(lengthSize, "a $lengthSize-byte NAL unit length at offset $start")
-        if (length == 0) {
+        if (length == 0L) {
             throw MalformedRealtimeBitstreamException(codec, "a NAL unit length field at offset $start declares zero bytes")
         }
         requireBytes(length, "a $length-byte NAL unit declared at offset $start")
-        val unit = ANNEX_B_START_CODE + source.copyOfRange(offset, offset + length)
-        offset += length
+        val unit = ANNEX_B_START_CODE + source.copyOfRange(offset, offset + length.toInt())
+        offset += length.toInt()
         return unit
     }
 
-    /** [size] bytes as one unsigned big-endian integer. */
-    private fun readLength(size: Int, describedAs: String): Int {
-        requireBytes(size, describedAs)
-        var value = 0
-        repeat(size) { value = (value shl 8) or (source[offset++].toInt() and 0xFF) }
+    /**
+     * [size] bytes as one unsigned big-endian integer, **as a `Long`**.
+     *
+     * The width is the point and not a habit: a four-byte length field with its top bit set is
+     * negative as an `Int`, and a negative length walks straight through a `remaining` check written
+     * as an addition — which is the one way bytes a transport really sends could reach
+     * `copyOfRange` and crash inside SuperPlayer rather than be refused by name. A `Long` cannot
+     * overflow at four bytes, so the check below is true arithmetic.
+     */
+    private fun readLength(size: Int, describedAs: String): Long {
+        requireBytes(size.toLong(), describedAs)
+        var value = 0L
+        repeat(size) { value = (value shl 8) or (source[offset++].toLong() and 0xFF) }
         return value
     }
 
@@ -315,8 +376,10 @@ private class RecordReader(private val codec: String, private val source: ByteAr
         }
     }
 
-    private fun requireBytes(bytes: Int, describedAs: String) {
-        if (offset + bytes > source.size) {
+    private fun requireBytes(bytes: Long, describedAs: String) {
+        // In `Long`, and as a subtraction rather than an addition, so that neither a huge declared
+        // length nor a negative one can make this read as satisfied.
+        if (bytes < 0 || bytes > source.size - offset) {
             throw MalformedRealtimeBitstreamException(
                 codec,
                 "$describedAs runs past the end of ${source.size} bytes",

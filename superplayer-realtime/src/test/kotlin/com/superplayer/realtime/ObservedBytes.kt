@@ -36,7 +36,7 @@ internal object ObservedBytes {
      * #340's `description` hex dump, **verbatim**: the first 24 bytes of the 40-byte `avcC` it
      * observed, identical across all three of its containers.
      *
-     * `01` configurationVersion, `42` Baseline, `c0` constraint flags, `1e` level 3.0, `ff`
+     * `01` configurationVersion, `42` Baseline, `c0` `profile_compatibility`, `1e` level 3.0, `ff`
      * `lengthSizeMinusOne = 3` so a four-byte NAL length field, `e1` one SPS, `00 18` a 24-byte SPS,
      * then the first 16 bytes of it.
      */

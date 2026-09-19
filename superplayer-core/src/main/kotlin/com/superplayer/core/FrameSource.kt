@@ -75,11 +75,22 @@ import android.net.Uri
  *    to what the decoder wants, and a transport that converts it first is a transport that has to
  *    know what a decoder wants. `avc3` and `hev1` carry their parameter sets in band before every
  *    keyframe and hand over [RealtimeTrack.CodecConfiguration.InBand], which is the default.
- *    *Cost:* smaller than the rest of this list, and deliberately so (#345): naming the shape is
- *    what lets a fourcc that contradicts it be **refused** with
- *    [MalformedRealtimeBitstreamException] at preparation, instead of becoming the silent nothing
- *    of 6 in both directions. What stays silent is a record that parses and belongs to a different
- *    stream, which nothing on this side can tell from the right one.
+ *    *Cost:* a decoder configured from parameter sets that were about to arrive again in band, or
+ *    configured from none at all with none coming — which is the silent nothing of 6 in both
+ *    directions. Since #345 the two that a byte can catch are **refused** with
+ *    [MalformedRealtimeBitstreamException] at preparation instead. What stays silent is a record
+ *    that parses and belongs to a different stream, which nothing on this side can tell from the
+ *    right one.
+ *
+ *    The same fourcc decides how that track's **samples** are framed, which is the other half of
+ *    this obligation and is stated because it is the half nothing can check. A track carrying a
+ *    record sends [EncodedFrame.payload] as **length-prefixed** NAL units, each behind the length
+ *    field width the record declared; a self-describing track sends Annex-B start codes, the same
+ *    framing its in-band parameter sets arrive in. SuperPlayer converts the first to the second.
+ *    *Cost:* worse than the rest of 7, because both directions read as valid — a start code taken
+ *    for a length declares a one-byte unit and the picture data behind it becomes the next
+ *    "length", so a decoder is fed a structurally plausible stream of noise and reports nothing.
+ *    The bytes cannot say which they are, so this one is the conformance suite's (#347).
  * 8. **Do not touch [EncodedFrame.payload] after [FrameSink.onFrame] returns**, and do not hand the
  *    same array twice. *Cost:* a torn frame, and a corruption that moves when timing moves — the
  *    least reproducible failure in this list.
@@ -212,6 +223,9 @@ public class RealtimeTrack(
          * binding calls its configuration record. It is not converted, unwrapped or reordered
          * first: [bytes] is what arrived, and what a decoder is configured with is SuperPlayer's to
          * derive from it.
+         *
+         * A track that carries a record sends its samples **length-prefixed** rather than Annex-B,
+         * which is obligation 7's second half and the half nothing here can check.
          *
          * @property bytes The record. Not modified after this is handed to [FrameSink.onTrack],
          *   for [EncodedFrame.payload]'s reason.

@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# Copyright 2026 The SuperPlayer Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# moq-smoke: opens one real MoQ session against a public relay from a device, and reports what came
+# back (issue #367).
+#
+#   devicelab/moq-smoke [--broadcast moq://HOST/NAME] [--serial S] [--headless] [--out DIR]
+#
+# Not a `lab run` scenario, and that is deliberate. A scenario drives the **demo app** — it launches
+# an activity, waits on a MediaSession position and captures a Perfetto trace, and every one of those
+# is a thing this run does not have. What runs here is `superplayer-moq`'s instrumented test, which
+# opens a transport and counts frames with no player, no surface and no activity anywhere in it. It
+# borrows devicelab's device half (boot or adopt, wait for boot, confirm it answers) because that is
+# the part the two genuinely share, and nothing else.
+#
+# Not part of `./gradlew check`: it needs a device and a network, both of which docs/testing.md bars.
+# *The first real MoQ session* in that document is the carve-out and says what this proves.
+set -euo pipefail
+
+. "$(cd "$(dirname "$0")" && pwd)/lib/common.sh"
+. "$DEVICELAB_HOME/lib/device.sh"
+
+usage() {
+    sed -n '4,16p' "$0" | sed 's/^# \{0,1\}//' >&2
+    cat >&2 <<'USAGE'
+
+Options:
+  --broadcast URI   the moq:// broadcast to subscribe to (default: the test's own, cdn.moq.dev/anon)
+  --serial S        use this device; it is never booted or restarted (also: ANDROID_SERIAL)
+  --headless        boot the emulator without a window (the default when CI is set)
+  --out DIR         where the report is written (default: devicelab/out)
+USAGE
+    exit 2
+}
+
+BROADCAST=""
+SERIAL="${ANDROID_SERIAL:-}"
+HEADLESS=0
+[ -z "${CI:-}" ] || HEADLESS=1
+OUT="$DEVICELAB_HOME/out"
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --broadcast) BROADCAST="${2:-}"; shift 2 ;;
+        --serial) SERIAL="${2:-}"; shift 2 ;;
+        --headless) HEADLESS=1; shift ;;
+        --out) OUT="${2:-}"; shift 2 ;;
+        -h|--help) usage ;;
+        *) die "unknown option: $1" ;;
+    esac
+done
+
+export HEADLESS
+
+# The phone AVD. There is no TV half of this: what is under test is a transport, and a television
+# differs from a phone in its display, its input and its audio output — none of which this touches.
+DEVICELAB_DEVICE=phone
+ADB="$(adb_bin)"
+
+ensure_device
+log "running the MoQ smoke on $SERIAL"
+
+RUN_DIR="$OUT/moq-smoke-$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -p "$RUN_DIR"
+REPORT="$RUN_DIR/report.txt"
+LOGCAT="$RUN_DIR/logcat.txt"
+
+# Cleared *before* the run so the window scraped below is this run's alone, and bounded on the way
+# out with `-t`: an unbounded `adb logcat -d` against an emulator that has been up a while dumps the
+# whole buffer and reads as a hang rather than as a slow command (CLAUDE.md says so for the demo
+# recipe, and it is the same buffer).
+with_timeout 30 "$ADB" -s "$SERIAL" logcat -c || log "could not clear logcat; the report may carry an earlier run"
+
+GRADLE_ARGS=(
+    ":superplayer-moq:connectedDebugAndroidTest"
+    "--max-workers=2"
+)
+[ -z "$BROADCAST" ] ||
+    GRADLE_ARGS+=("-Pandroid.testInstrumentationRunnerArguments.broadcast=$BROADCAST")
+
+# ANDROID_SERIAL rather than a Gradle device selector: AGP runs connected tests on every attached
+# device unless adb itself is narrowed, and this run must not be duplicated onto whatever else the
+# contributor has plugged in.
+set +e
+(
+    cd "$REPO_ROOT" &&
+        JAVA_HOME="$(/usr/libexec/java_home -v 17 2>/dev/null || printf '%s' "${JAVA_HOME:-}")" \
+        ANDROID_SERIAL="$SERIAL" \
+        ./gradlew "${GRADLE_ARGS[@]}"
+) >"$RUN_DIR/gradle.txt" 2>&1
+GRADLE_EXIT=$?
+set -e
+
+# Scraped whether the run passed or failed, and that ordering is the point of the ticket: #367 asks
+# for an observation rather than an assertion, and the interesting runs are the ones that fail.
+with_timeout 60 "$ADB" -s "$SERIAL" logcat -d -t 5000 >"$LOGCAT" 2>/dev/null || true
+
+{
+    printf 'MoQ live session smoke — issue #367\n'
+    printf 'run at:      %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf 'device:      %s (%s, API %s, ABIs %s)\n' \
+        "$SERIAL" \
+        "$(with_timeout 20 "$ADB" -s "$SERIAL" shell getprop ro.product.model 2>/dev/null | tr -d '\r')" \
+        "$(with_timeout 20 "$ADB" -s "$SERIAL" shell getprop ro.build.version.sdk 2>/dev/null | tr -d '\r')" \
+        "$(with_timeout 20 "$ADB" -s "$SERIAL" shell getprop ro.product.cpu.abilist 2>/dev/null | tr -d '\r')"
+    printf 'emulator:    %s\n' "$(emulator_avd "$SERIAL" 2>/dev/null || printf 'no — a physical device')"
+    printf 'broadcast:   %s\n' "${BROADCAST:-<the test default>}"
+    printf 'gradle exit: %s\n' "$GRADLE_EXIT"
+    printf '\n--- what the session observed ---\n'
+    if grep -q 'moq-smoke begin' "$LOGCAT"; then
+        sed -n '/moq-smoke begin/,/moq-smoke end/p' "$LOGCAT" |
+            sed 's/^.*SuperPlayerMoqSmoke[^:]*: //'
+    else
+        printf 'No report block reached logcat. The run did not get as far as observing anything —\n'
+        printf 'see gradle.txt for whether it failed to install, to start, or to load the library.\n'
+    fi
+    printf '\n--- failures, if any ---\n'
+    grep -E 'FAILED|AssertionError|UnsatisfiedLinkError|junit' "$RUN_DIR/gradle.txt" | head -40 || printf 'none in the Gradle log\n'
+} >"$REPORT"
+
+log "report: $REPORT"
+cat "$REPORT"
+exit "$GRADLE_EXIT"

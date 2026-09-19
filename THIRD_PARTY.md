@@ -108,6 +108,14 @@ LGPL-2.1-or-later. It is taken under **Apache-2.0**, which the dual licence perm
 | `com.google.truth:truth` | Apache-2.0 | transitive, via `media3-test-utils` |
 | `org.mockito:mockito-core` | MIT | transitive, via `media3-test-utils` |
 | `androidx.test:core`, `androidx.test.ext:junit` | Apache-2.0 | transitive, via `media3-test-utils` |
+| `androidx.test:runner` | Apache-2.0 | `superplayer-moq` (androidTest) |
+
+`androidx.test:runner` is the one row here that is **not** on any host-JVM classpath. It is declared
+by `superplayer-moq` alone, for the repository's single instrumented source set — #367's live MoQ
+session, which needs a device because neither QUIC nor an `arm64-v8a` `.so` exists under Robolectric.
+`androidx.test.ext:junit` is named explicitly there too, rather than relied on transitively, because
+`media3-test-utils` is not on that configuration at all. `docs/testing.md`'s *The first real MoQ
+session* is the carve-out, in the idiom that document uses for the loopback one.
 
 The transitive rows are listed because the tests use them directly — Truth for assertions, Mockito
 through Media3's forwarding-contract helper, `androidx.test` for the Robolectric runner — even though

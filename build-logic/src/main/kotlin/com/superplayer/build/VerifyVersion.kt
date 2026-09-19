@@ -172,6 +172,11 @@ private val CATALOG_VERSION = Regex("""^superplayer\s*=\s*"([^"]+)"""", RegexOpt
 // ref: Keep a Changelog 1.1.0 — a version heading is the version in brackets followed by its
 // release date, and dates are ISO 8601. The brackets are that format's link-reference shape and
 // are what tells a heading from any other `##` in the document.
+//
+// The separator that format writes is the hyphen; the en and em dashes are accepted beside it
+// because an editor that substitutes one is the likeliest way this file acquires a character
+// nobody typed, and failing a release over it would be failing it for punctuation. The date is
+// still held to ISO 8601 below, which is the part a reader reads.
 private val HEADING = Regex("""^##\s+\[([^\]]+)\]\s*(?:[-–—]\s*(\S+))?\s*$""", RegexOption.MULTILINE)
 
 /** ISO 8601's calendar date, which is the only date form Keep a Changelog admits. */

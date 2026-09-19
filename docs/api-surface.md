@@ -11,9 +11,12 @@ stops being true. A missing file would be an omission instead.
 ## The commands
 
 ```bash
-./gradlew check                                # includes checkApiSurface for every module
+./gradlew check                                # includes checkApiSurface for every module,
+                                               # and verifyVersionBump once at the root
 ./gradlew updateApiSurface                     # regenerate every module's tracked surface
 ./gradlew :superplayer-core:updateApiSurface   # regenerate one
+./gradlew recordReleasedApiSurface             # re-record api/released/; the release command's
+                                               # step, not a contributor's (issue #329)
 ```
 
 `updateApiSurface` is the deliberate step. Nothing regenerates the tracked file implicitly, because
@@ -26,7 +29,8 @@ who wants to know why the machinery is shaped the way it is.
 
 ## What the checks are
 
-Two tasks run per module, both wired into `check`, so local and CI cannot disagree.
+Two tasks run per module and one runs at the root, all three wired into `check`, so local and CI
+cannot disagree.
 
 **`checkApiSurface`** compares the surface the module currently builds against the tracked file. It
 reads the *release* variant's own compiled classes, which is what a consumer resolves — never the
@@ -56,6 +60,23 @@ so any edit to that file would move the tracked surface. Both modules' composabl
 their content lambdas something to capture — or, as the HUD does, by having no content lambda at all —
 and a `ComposableSingletons` class appearing in a diff is a
 lambda that lost its capture.
+
+**`verifyVersionBump`** is the third task, and it is the *root*'s rather than a module's. It
+answers a different question from the other two: not "does the tracked file match the code" but
+"does the version match the difference between two tracked files". What it compares each module's
+tracked surface against is `api/released/`, the surface recorded at the last release, and it fails
+when `gradle/libs.versions.toml`'s `superplayer` version is too small for that difference —
+[ADR-0017](adr/0017-version-the-library-by-semver-in-lockstep-with-the-tracked-api-surface-as-the-arbiter.md)
+rule 2's arbitration, made mechanical. It reads no compiled class at all. It is the root's because
+rule 1 releases all thirteen modules at one number, so the verdict is thirteen surfaces against one
+catalog entry rather than thirteen independent answers, and
+[`api/released/README.md`](../api/released/README.md) says what writes that record (the release
+command, issue #329) and why an absent one — today's state, nothing having been released — passes
+rather than fails.
+
+Keeping it separate from `checkApiSurface` is the point rather than an accident of wiring: a
+legitimate surface change and an illegitimate version are two failures, and one task reporting both
+would teach a contributor to regenerate something to make either go away.
 
 ## Explicit API mode, one step earlier
 

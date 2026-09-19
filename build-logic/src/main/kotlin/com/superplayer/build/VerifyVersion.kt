@@ -109,15 +109,9 @@ abstract class VerifyVersion : DefaultTask() {
  * "has a row" is a fact about the file, "has the right row" is a review.
  */
 internal fun findVersionChangelogMismatch(catalog: String, changelog: String): String? {
-    val declared = CATALOG_VERSION.find(catalog)?.groupValues?.get(1)
-        ?: return "gradle/libs.versions.toml has no `superplayer = \"...\"` under `[versions]`, " +
-            "which is the one version ADR-0017 rule 1 publishes every module under. CHANGELOG.md " +
-            "cannot be checked against a version that is not there."
-
-    val version = SemanticVersion.parse(declared)
-        ?: return "gradle/libs.versions.toml sets superplayer = \"$declared\", which is not " +
-            "${SemanticVersion.GRAMMAR}. CHANGELOG.md cannot be checked against a version that " +
-            "cannot be read."
+    val version = catalogVersion(catalog)
+        ?: return catalogVersionProblem(catalog) +
+            " CHANGELOG.md cannot be checked against a version it cannot read."
 
     val entries = releaseEntries(changelog)
     val dated = entries.firstOrNull { it.version == version.released }
@@ -166,8 +160,36 @@ private const val UNRELEASED = "Unreleased"
  * The `[versions]` key itself. The library entries — `superplayer-core = { ... }` and the rest —
  * also begin with `superplayer`, and the `\s*=` right after the name is what keeps them out. The
  * same trade [findMedia3SupportedVersionMismatch] makes, for the same reason.
+ *
+ * File-private, because the two readers of that entry — this check and [findVersionBumpMismatch] —
+ * both reach it through [catalogVersion] rather than through the pattern, and two regexes over one
+ * catalog key would be two places for it to be spelled differently.
  */
 private val CATALOG_VERSION = Regex("""^superplayer\s*=\s*"([^"]+)"""", RegexOption.MULTILINE)
+
+/**
+ * The version every published module is about to be released under, or null when `[versions]` does
+ * not name one this repository can judge. [catalogVersionProblem] is the other half and says which
+ * of the two it was.
+ *
+ * Both checks over that entry read it here rather than each parsing the catalog itself, so
+ * "the version" means one thing in this build (ADR-0017 rule 1).
+ */
+internal fun catalogVersion(catalog: String): SemanticVersion? =
+    CATALOG_VERSION.find(catalog)?.groupValues?.get(1)?.let { SemanticVersion.parse(it) }
+
+/**
+ * Why [catalogVersion] answered null: the entry is missing, or it is there and malformed. Each
+ * caller appends what *it* could not do as a result, because that sentence is the only part of the
+ * two failures that differs.
+ */
+internal fun catalogVersionProblem(catalog: String): String {
+    val declared = CATALOG_VERSION.find(catalog)?.groupValues?.get(1)
+        ?: return "gradle/libs.versions.toml has no `superplayer = \"...\"` under `[versions]`, " +
+            "which is the one version ADR-0017 rule 1 publishes every module under."
+    return "gradle/libs.versions.toml sets superplayer = \"$declared\", which is not " +
+        "${SemanticVersion.GRAMMAR}."
+}
 
 // ref: Keep a Changelog 1.1.0 — a version heading is the version in brackets followed by its
 // release date, and dates are ISO 8601. The brackets are that format's link-reference shape and

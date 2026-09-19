@@ -4,8 +4,10 @@ import com.android.build.api.variant.LibraryAndroidComponentsExtension
 import com.android.build.api.variant.ScopedArtifacts
 import com.superplayer.build.CheckApiSurface
 import com.superplayer.build.DumpApiSurface
+import com.superplayer.build.ModulePublication
 import com.superplayer.build.UpdateApiSurface
 import com.superplayer.build.VerifyNoUnstableMedia3InPublicApi
+import com.superplayer.build.modulePublicationOf
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.gradle.api.tasks.testing.logging.TestLogEvent
@@ -27,6 +29,25 @@ val javaVersion = JavaVersion.toVersion(jvmTargetVersion)
 
 group = "com.superplayer"
 version = libs.findVersion("superplayer").get().requiredVersion
+
+// Whether this module is published, read out of `settings.gradle.kts` — the one place that is
+// declared (ADR-0017 rule 1, `ModulePublication`). Three things below hang off it, and a module
+// that declaration cannot account for fails here rather than being published by default.
+//
+// `providers.fileContents` rather than `File.readText()`, so the configuration cache knows the
+// build was configured against this file and re-runs configuration when it moves. The path is
+// relative to this module because every library module is a direct child of the root, which
+// `settings.gradle.kts` itself would have to change for it to stop being true.
+val settingsScript = layout.projectDirectory.file("../settings.gradle.kts")
+val publication = modulePublicationOf(
+    providers.fileContents(settingsScript).asText.get(),
+    project.name
+) ?: error(
+    "settings.gradle.kts declares neither an include(\":${project.name}\") nor an " +
+        "unpublishedModules entry for it, so whether it is published is unknown. Add it to one " +
+        "of the two rather than leaving the answer to a default (see ModulePublication)."
+)
+val published = publication == ModulePublication.PUBLISHED
 
 extensions.configure<LibraryExtension> {
     namespace = "com.superplayer." + project.name.removePrefix("superplayer-").replace('-', '.')
@@ -72,48 +93,16 @@ extensions.configure<LibraryExtension> {
         }
     }
 
-    // One publication per module, built from the release variant.
-    publishing {
-        singleVariant("release") {
-            withSourcesJar()
+    // One publication per module, built from the release variant — for a module that is published.
+    // An unpublished one declares no `release` component at all, so `publish` has nothing to offer
+    // rather than offering something nobody registered a destination for.
+    if (published) {
+        publishing {
+            singleVariant("release") {
+                withSourcesJar()
+            }
         }
     }
-}
-
-// The consumer-facing API surface, tracked in `api/<module>.api` and validated by `check`.
-//
-// Read off the release variant's own compiled classes, which is what a consumer resolves.
-// `updateApiSurface` regenerates the tracked file; nothing regenerates it implicitly, because the
-// point of tracking it is that widening the surface produces a reviewable diff. ADR-0001 rule 2
-// depends on this: an `@UnstableApi` Media3 type reaching public API cannot land unnoticed.
-val trackedApiSurfaceFile = layout.projectDirectory.file("api/${project.name}.api")
-val builtApiSurfaceFile = layout.buildDirectory.file("api-surface/${project.name}.api")
-
-val dumpApiSurface = tasks.register<DumpApiSurface>("dumpApiSurface") {
-    group = "verification"
-    description = "Writes the release variant's public API surface into the build directory."
-    apiFile.set(builtApiSurfaceFile)
-}
-
-val updateApiSurface = tasks.register<UpdateApiSurface>("updateApiSurface") {
-    group = "verification"
-    description = "Rewrites api/${project.name}.api from what this module currently builds."
-    builtApiFile.set(dumpApiSurface.flatMap { it.apiFile })
-    trackedApiFile.set(trackedApiSurfaceFile)
-}
-
-val checkApiSurface = tasks.register<CheckApiSurface>("checkApiSurface") {
-    group = "verification"
-    description = "Fails if the built public API surface differs from the tracked api/${project.name}.api."
-    builtApiFile.set(dumpApiSurface.flatMap { it.apiFile })
-    trackedApiFile.from(trackedApiSurfaceFile)
-    trackedApiFilePath.set("${project.name}/api/${project.name}.api")
-    updateTaskPath.set("${project.path}:updateApiSurface")
-    stampFile.set(layout.buildDirectory.file("verification/api-surface.txt"))
-
-    // `./gradlew updateApiSurface check` is the natural "regenerate, then verify" invocation, and
-    // both tasks touch the tracked file. Without an ordering Gradle refuses the pair outright.
-    mustRunAfter(updateApiSurface)
 }
 
 // Golden traces, tracked in `src/test/golden/` and validated by the module's own tests.
@@ -164,41 +153,86 @@ tasks.register("updateGoldenTraces") {
     dependsOn("testDebugUnitTest")
 }
 
-val verifyNoUnstableMedia3InPublicApi =
-    tasks.register<VerifyNoUnstableMedia3InPublicApi>("verifyNoUnstableMedia3InPublicApi") {
+// The consumer-facing API surface, tracked in `api/<module>.api` and validated by `check`.
+//
+// Read off the release variant's own compiled classes, which is what a consumer resolves.
+// `updateApiSurface` regenerates the tracked file; nothing regenerates it implicitly, because the
+// point of tracking it is that widening the surface produces a reviewable diff. ADR-0001 rule 2
+// depends on this: an `@UnstableApi` Media3 type reaching public API cannot land unnoticed.
+//
+// An unpublished module has none of this, and that is the same fact rather than a second decision:
+// `docs/api-surface.md` tracks a surface because a *consumer* resolves the artifact, and there is
+// no artifact. A tracked file for one would be a diff nobody outside this repository can be broken
+// by, reviewed as though they could.
+if (published) {
+    val trackedApiSurfaceFile = layout.projectDirectory.file("api/${project.name}.api")
+    val builtApiSurfaceFile = layout.buildDirectory.file("api-surface/${project.name}.api")
+
+    val dumpApiSurface = tasks.register<DumpApiSurface>("dumpApiSurface") {
         group = "verification"
-        description = "Fails if an @UnstableApi Media3 type has reached this module's public API."
-        apiSurfaceFile.set(dumpApiSurface.flatMap { it.apiFile })
-        stampFile.set(layout.buildDirectory.file("verification/no-unstable-media3-in-public-api.txt"))
+        description = "Writes the release variant's public API surface into the build directory."
+        apiFile.set(builtApiSurfaceFile)
     }
 
-tasks.named("check") {
-    dependsOn(checkApiSurface, verifyNoUnstableMedia3InPublicApi)
-}
+    val updateApiSurface = tasks.register<UpdateApiSurface>("updateApiSurface") {
+        group = "verification"
+        description = "Rewrites api/${project.name}.api from what this module currently builds."
+        builtApiFile.set(dumpApiSurface.flatMap { it.apiFile })
+        trackedApiFile.set(trackedApiSurfaceFile)
+    }
 
-extensions.configure<LibraryAndroidComponentsExtension> {
-    onVariants(selector().withBuildType("release")) { variant ->
-        variant.artifacts
-            .forScope(ScopedArtifacts.Scope.PROJECT)
-            .use(dumpApiSurface)
-            .toGet(
-                ScopedArtifact.CLASSES,
-                DumpApiSurface::classJars,
-                DumpApiSurface::classDirectories,
-            )
+    val checkApiSurface = tasks.register<CheckApiSurface>("checkApiSurface") {
+        group = "verification"
+        description = "Fails if the built public API surface differs from the tracked api/${project.name}.api."
+        builtApiFile.set(dumpApiSurface.flatMap { it.apiFile })
+        trackedApiFile.from(trackedApiSurfaceFile)
+        trackedApiFilePath.set("${project.name}/api/${project.name}.api")
+        updateTaskPath.set("${project.path}:updateApiSurface")
+        stampFile.set(layout.buildDirectory.file("verification/api-surface.txt"))
 
-        // The compile classpath hands out `.aar` files, and Media3's annotations sit inside their
-        // nested `classes.jar`. AGP publishes that unpacked jar as an artifact view, so the check
-        // asks for it by artifact type rather than learning to open an archive inside an archive.
-        verifyNoUnstableMedia3InPublicApi.configure {
-            media3Classpath.from(
-                variant.compileConfiguration.incoming.artifactView {
-                    attributes.attribute(
-                        Attribute.of("artifactType", String::class.java),
-                        "android-classes-jar",
-                    )
-                }.files
-            )
+        // `./gradlew updateApiSurface check` is the natural "regenerate, then verify" invocation,
+        // and both tasks touch the tracked file. Without an ordering Gradle refuses the pair
+        // outright.
+        mustRunAfter(updateApiSurface)
+    }
+
+    val verifyNoUnstableMedia3InPublicApi =
+        tasks.register<VerifyNoUnstableMedia3InPublicApi>("verifyNoUnstableMedia3InPublicApi") {
+            group = "verification"
+            description = "Fails if an @UnstableApi Media3 type has reached this module's public API."
+            apiSurfaceFile.set(dumpApiSurface.flatMap { it.apiFile })
+            stampFile.set(layout.buildDirectory.file("verification/no-unstable-media3-in-public-api.txt"))
+        }
+
+    tasks.named("check") {
+        dependsOn(checkApiSurface, verifyNoUnstableMedia3InPublicApi)
+    }
+
+    extensions.configure<LibraryAndroidComponentsExtension> {
+        onVariants(selector().withBuildType("release")) { variant ->
+            variant.artifacts
+                .forScope(ScopedArtifacts.Scope.PROJECT)
+                .use(dumpApiSurface)
+                .toGet(
+                    ScopedArtifact.CLASSES,
+                    DumpApiSurface::classJars,
+                    DumpApiSurface::classDirectories,
+                )
+
+            // The compile classpath hands out `.aar` files, and Media3's annotations sit inside
+            // their nested `classes.jar`. AGP publishes that unpacked jar as an artifact view, so
+            // the check asks for it by artifact type rather than learning to open an archive
+            // inside an archive.
+            verifyNoUnstableMedia3InPublicApi.configure {
+                media3Classpath.from(
+                    variant.compileConfiguration.incoming.artifactView {
+                        attributes.attribute(
+                            Attribute.of("artifactType", String::class.java),
+                            "android-classes-jar",
+                        )
+                    }.files
+                )
+            }
         }
     }
 }
@@ -230,21 +264,27 @@ dependencies {
     add("testImplementation", libs.findLibrary("junit").get())
 }
 
-extensions.configure<PublishingExtension> {
-    publications {
-        register<MavenPublication>("release") {
-            // AGP creates the `release` software component during evaluation, so it cannot
-            // be referenced while this plugin is being applied.
-            afterEvaluate { from(components["release"]) }
-            artifactId = project.name
-            pom {
-                name.set(project.name)
-                description.set("SuperPlayer — a production playback layer on AndroidX Media3.")
-                url.set("https://github.com/ramesh130/superplayer")
-                licenses {
-                    license {
-                        name.set("The Apache License, Version 2.0")
-                        url.set("https://www.apache.org/licenses/LICENSE-2.0.txt")
+// `maven-publish` stays applied to every module — it is in the `plugins` block above, which is
+// evaluated before anything can be decided — and an unpublished module registers no publication
+// under it, so `publishToMavenLocal` produces nothing for it rather than producing an artifact
+// whose native half nobody else can reproduce (ADR-0017 rule 1, `ModulePublication`).
+if (published) {
+    extensions.configure<PublishingExtension> {
+        publications {
+            register<MavenPublication>("release") {
+                // AGP creates the `release` software component during evaluation, so it cannot
+                // be referenced while this plugin is being applied.
+                afterEvaluate { from(components["release"]) }
+                artifactId = project.name
+                pom {
+                    name.set(project.name)
+                    description.set("SuperPlayer — a production playback layer on AndroidX Media3.")
+                    url.set("https://github.com/ramesh130/superplayer")
+                    licenses {
+                        license {
+                            name.set("The Apache License, Version 2.0")
+                            url.set("https://www.apache.org/licenses/LICENSE-2.0.txt")
+                        }
                     }
                 }
             }

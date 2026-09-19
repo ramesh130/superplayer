@@ -4,10 +4,20 @@ Every published module's consumer-facing API is checked into this repository, as
 `<module>/api/<module>.api`, and validated on every build. Widening the surface is therefore an
 explicit, reviewed edit rather than something noticed after a release.
 
-One of the fourteen modules is still a placeholder — `superplayer-ui`, which has no phase — so its
+One of the published modules is still a placeholder — `superplayer-ui`, which has no phase — so its
 file is empty. That is deliberate: an empty tracked file is a claim that the module publishes
 nothing, and it will fail the moment that stops being true. A missing file would be an omission
 instead.
+
+**"Every published module" is the whole of the rule, and since #364 it excludes one.**
+`superplayer-moq` is in the build and is deliberately not released with the others
+(`settings.gradle.kts`'s `unpublishedModules` list, ADR-0017 rule 1), so it has **no** tracked file
+and neither `checkApiSurface` nor `verifyNoUnstableMedia3InPublicApi` runs for it. That is the same
+declaration deciding all three things rather than three switches that happen to agree — the
+convention plugin reads it once, and a module that file accounts for in neither list fails the build
+rather than defaulting either way. The reason it is not an omission is the reason the surface is
+tracked at all: the file exists so that a diff shows what an *adopter* can be broken by, and nobody
+can resolve this module. An empty file here would be a promise to a consumer who does not exist.
 
 ## The commands
 

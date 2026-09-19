@@ -364,6 +364,38 @@ through `verifyAll` in both branches, so the implementation an adopter reads is 
 defines. That test also holds the suite's list of codec families to `RealtimeFormats`' table, which is
 written down twice because the table is `internal` to a phase 13 module and the suite is phase 2's.
 
+### The MoQ bindings
+
+`superplayer-moq` links a native library, and everything unusual about testing it follows from where
+that library comes from: it is **built on this machine** and committed to `third-party/moq/m2`,
+rather than resolved from Maven (issue #364, and `third-party/moq/README.md` is the recipe and the
+licence evidence). So the module is not published at all — `settings.gradle.kts`'s
+`unpublishedModules` list, ADR-0017 rule 1 — and what a test here can show is bounded by that.
+
+`MoqFfiLinkageTest` calls across the FFI boundary for real, and the library it loads is the **host**
+build, `darwin-aarch64/libmoq_ffi.dylib`, which reaches the test classpath from
+`dev.moq:moq-ffi-jvm` at JNA's own resource layout. That is not a convenience: a Robolectric JVM
+cannot load an Android `.so` at all, so without a host build the criterion "a test calls a binding
+function" would have had no honest way to be met, and the alternative would have been a test that
+asserts the Kotlin compiled while calling nothing. `MoqBindingsResolutionTest` is the other half and
+is about *which* artifact was resolved, because Maven Central publishes the same coordinate built
+with the codec features on and a version range would reach it.
+
+**What neither can show.**
+
+- **Two builds of one crate.** The Android `.so` and the host `.dylib` come from the same checkout,
+  the same commit and the same features, but they are separate compilations. What the JVM test
+  proves about the host build is a strong indication about the Android one and not a proof of it.
+  Nothing under `check` loads the Android library, and nothing here can.
+- **One ABI.** Only `arm64-v8a` is built. `armeabi-v7a` and `x86_64` are unbuilt and untested,
+  because the host is Apple Silicon and its only Android system image is arm64 — so an Intel-host
+  emulator cannot run this module, and neither `devicelab` nor the demo has been pointed at it.
+- **No relay, and no QUIC.** The smoke test allocates a local origin and frees it. Nothing connects,
+  which is what keeps the no-network rule above intact — and it is why `FrameSourceConformance` is
+  the suite that matters for a transport, as the section above says.
+- **Not reproducible by anyone else.** No check builds the artifact; a clean machine follows
+  `third-party/moq/README.md` by hand, toolchain pin and all.
+
 ## Synthetic media, not fixtures
 
 Streams are generated in Kotlin rather than checked in as binaries. `SyntheticHlsStream` writes a

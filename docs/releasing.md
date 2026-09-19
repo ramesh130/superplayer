@@ -31,6 +31,10 @@ and passes whatever it says.
   the library is `0.x` (rule 7) — one added is a minor, and an unmoved surface is a patch (rule 2).
   If you are wrong the command tells you the smallest version that describes the change, in
   `verifyVersionBump`'s own words.
+- If a public symbol was **removed** since the last release, check it was deprecated first: ADR-0017
+  rule 9 has one survive at least one minor release annotated `@Deprecated` with its replacement
+  named. No tool can see this — `checkApiSurface` compares declarations and a deprecation cycle is a
+  fact about two releases — so it is a reviewer's, and the changelog row is where it is recorded.
 - Optionally run `./gradlew check` first. The release command depends on it, so it runs anyway; a
   check that has already passed is up to date and the release run's is quick. Doing it first is how
   you find out about a failing test before you have thought about a version number.

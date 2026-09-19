@@ -1452,6 +1452,25 @@ repository.
   implementer by a conformance test in `superplayer-testkit` rather than by KDoc alone; a stack that
   cannot be honoured fails at `build()` with a typed error; and a consumer who names none pays
   nothing, which a test counts.
+- **[ADR-0017](docs/adr/0017-version-the-library-by-semver-in-lockstep-with-the-tracked-api-surface-as-the-arbiter.md)** —
+  the library is versioned `MAJOR.MINOR.PATCH` by semver, every published module carries the same
+  version and is released with the others (a mixed set is not expressible: the convention plugin
+  reads one catalog entry, and nine modules reach core as Kotlin friends, a mechanism with no ABI
+  contract), and what counts as breaking is the tracked API surface rather than a reviewer's
+  judgement — a declaration removed is a major, one added a minor, an unmoved surface a patch, with
+  a behaviour change that moves no declaration still a major, which no tool can catch. A Media3 bump
+  is not automatically a library major, because ADR-0001 rule 2 keeps `@UnstableApi` off the public
+  boundary and `verifyNoUnstableMedia3InPublicApi` enforces it; the one exception is
+  `player.exoPlayer`, which carries Media3's own compatibility and is outside this library's
+  promise. `TelemetryEvent.SCHEMA_VERSION` and `SessionTrace.FORMAT_VERSION` move on ADR-0008
+  rule 5's meaning-versus-shape rule and are independent of this version in both directions. The
+  library stays on `0.x` while the functional phases and Phase 11 are open, and under `0.x` a minor
+  **may break** — the record says what would take it to `1.0.0` rather than implying a guarantee the
+  phases cannot keep. A `-SNAPSHOT` is not a release and nothing published from one is covered; a
+  symbol is deprecated with its replacement named and survives a minor before a major removes it.
+  Four of its nine rules are enforced by nothing in `check` today, which the record says at each
+  rule rather than in a summary: #327 checks the version and changelog, #328 gates the surface
+  against the bump, #329 is the release command, #330 the adopter's document.
 - **[`docs/api-surface.md`](docs/api-surface.md)** — every published module's public API is tracked
   in `<module>/api/<module>.api` and validated by `check`. Changing it means running
   `./gradlew updateApiSurface` and committing the diff in the same change. A leaked `@UnstableApi`

@@ -1271,6 +1271,37 @@ because a fake that finishes inside `subscribe` satisfies obligation 9 by arithm
 `ScriptedFrameSource`, `ScriptedTrack` and #340's observed bytes as a versioned API surface to save
 one import.
 
+`superplayer-moq` has the first of Phase 14. #364 was the prefactor — the module, MoQ's UniFFI
+bindings linked from `third-party/moq/m2`, and the one "not published" fact declared in
+`settings.gradle.kts`. Since #365 it has the half of the transport that `check` can test honestly:
+`MoqCatalogTracks.declaredTracksOf(catalog)` turns what a publisher *declared* into the
+`List<RealtimeTrack>` the Phase 13 seam accepts, and this is where Phase 14's "both
+codec-description shapes are covered by a test" criterion is discharged, because a pure mapping
+needs no session, no QUIC and no frames. **The catalog arrives typed and nothing parses it**:
+`subscribeCatalog` yields a `uniffi.moq.MoqCatalog` of two maps, video and audio, each rendition
+carrying its `codec` string and an optional `description`, so no JSON is read and no serialization
+dependency is declared — worth knowing, because #364 left upstream's `dev.moq:moq` wrapper out and
+with it the typed JSON helpers a reader would come looking for. The module **maps no codec string
+and re-derives no fourcc rule**: `RealtimeFormats` and `CodecConfigurationRecords` are `internal` to
+`superplayer-realtime` and this module is deliberately not a friend of it (ADR-0018 rule 11), so
+they are unreachable by design rather than by discipline. The consequence is where a refusal lands —
+a codec string nothing maps is passed through **verbatim and kept in the list**, and
+`RealtimeMediaPeriod.onTracks` refuses the whole subscription by name, because a track dropped here
+would play a partially understood catalog as a silently narrower stream. The `description`'s
+*presence* is the configuration's shape and nothing else: present is a `Record` handed over exactly
+as received (`assertSame`, not equal bytes), absent is `InBand`. Two promises #366 will rest on. A
+`MoqDeclaredTrack` carries the catalog's own track name and the `MoqContainer`, which is what
+`subscribeMedia` takes and the **only** thing that container is for — the bindings strip framing
+below the FFI boundary, so it must not enter a decoding decision (#340). And the order is **video
+first, then audio**, because `EncodedFrame.trackIndex` is a position in that list. One rendition per
+kind is taken, and it is the *first* the catalog declared — not a preference but the absence of one,
+with `MoqVideo.stalled` read by nothing for exactly that reason (ADR-0018 rule 7 defers selection,
+and a phase adding it amends that record). `MoqCatalogTracksTest` drives all of it, and
+`DeclaredCatalogs` says per fixture what #340 observed and what was written here: the codec strings
+and the `avcC` prefix are observed, the `hvcC` is synthesized and labelled so, and no `MoqCatalog`
+anywhere was ever received from a broadcast, because that spike's caveat 4 says the catalog path was
+never exercised.
+
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,
 `superplayer-abr`, `superplayer-cache`, `superplayer-preload`, `superplayer-resilience`,

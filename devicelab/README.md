@@ -140,6 +140,32 @@ API 36 `dumpsys package` reports no flag for it.
 If release builds ever turn on minification, `benchmark` inherits it, and a heap graph from it needs
 the mapping file to be readable.
 
+## `moq-smoke`, which is not a scenario
+
+[`moq-smoke`](moq-smoke) is the other thing in this directory that needs a device, and it is a
+sibling of `lab` rather than a scenario under it (issue #367). A scenario drives the **demo app** —
+it launches an activity, waits on a `MediaSession` position and captures a Perfetto trace — and this
+run has none of those: it opens one real MoQ session against a public relay and counts frames, with
+no player, no surface and no activity anywhere in it. What it borrows is the device half, `lib/device.sh`'s
+boot-or-adopt, because that is the part the two genuinely share.
+
+```bash
+devicelab/moq-smoke                                    # the default relay
+devicelab/moq-smoke --broadcast moq://host/name        # somewhere else
+```
+
+It runs `superplayer-moq`'s `connectedDebugAndroidTest`, the repository's only instrumented test,
+and writes `devicelab/out/moq-smoke-*/report.txt` — the observations scraped out of logcat, the
+device's ABIs and API level, and the Gradle log beside them. **The artifact is the observation**:
+the report is written whether the run passed, failed or skipped, because a relay that is up today
+may be down tomorrow and a finding that fails is still a finding.
+
+A relay that answers and announces nothing is a **skip**, not a failure. There is no broadcast to
+subscribe to and nothing in this repository could produce one, and a run that goes red whenever a
+public relay is quiet is a run whose red stops being read. Anything else fails, with the cause chain
+and the relay's own announce listing in the message. `docs/testing.md`'s *The first real MoQ
+session* is the argument, including what the run deliberately does not measure.
+
 ## Scenarios
 
 A scenario is `scenarios/<name>.sh`, sourced into the run once the harness's functions are loaded.
@@ -297,6 +323,10 @@ step is still running in the next, and that boot fits in the job's timeout on a 
 
 ## Limits
 
+- `moq-smoke` needs an `arm64-v8a` device, because that is the only ABI `libmoq_ffi.so` is built
+  for (`third-party/moq/README.md`). On an Intel host no emulator can run it. It also needs egress
+  to the relay's UDP port, which an emulator's user-mode NAT provides and a restricted network may
+  not.
 - The harness has been run end to end on the API 36 phone emulator only. The television is described, and its
   selection is in the self-test, but no run has booted it yet. A physical device takes the
   adoption path: it is never booted or restarted. The emulator-specific parts, such as the AVD name

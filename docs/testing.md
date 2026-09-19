@@ -438,11 +438,60 @@ every other line of `UniffiMoqRelay` it runs nowhere under `check`. It is verifi
 - **One ABI.** Only `arm64-v8a` is built. `armeabi-v7a` and `x86_64` are unbuilt and untested,
   because the host is Apple Silicon and its only Android system image is arm64 — so an Intel-host
   emulator cannot run this module, and neither `devicelab` nor the demo has been pointed at it.
-- **No relay, and no QUIC.** The smoke test allocates a local origin and frees it. Nothing connects,
-  which is what keeps the no-network rule above intact — and it is why `FrameSourceConformance` is
-  the suite that matters for a transport, as the section above says.
+- **No relay, and no QUIC — under `check`.** The smoke test allocates a local origin and frees it.
+  Nothing connects, which is what keeps the no-network rule above intact — and it is why
+  `FrameSourceConformance` is the suite that matters for a transport, as the section above says.
+  Since #367 there is **one** run that does connect, and it is not in `check`: see *The first real
+  MoQ session* below.
 - **Not reproducible by anyone else.** No check builds the artifact; a clean machine follows
   `third-party/moq/README.md` by hand, toolchain pin and all.
+
+### The first real MoQ session
+
+This repository has exactly one **instrumented** test, `superplayer-moq`'s
+`MoqLiveSessionSmokeTest`, and it is the second carve-out from the no-network rule above — the first
+being `HttpTransportConformance`'s loopback socket. It is a wider one and is admitted by name rather
+than by extending the first: that one binds a socket on `127.0.0.1` and reaches nothing off the
+host, while this one opens a QUIC session to a relay on the public internet.
+
+**It is not in `check` and cannot be.** `check` is the complete definition of the library's checks
+and every other claim here is reachable on a host JVM; three of Phase 14's are reachable nowhere
+else, and they fail together in ways a demo app cannot tell apart — whether the `arm64-v8a` `.so`
+loads on an Android runtime, whether a QUIC handshake completes from this build, and whether
+`UniffiMoqRelay`'s split of a `moq://` URI into a connect URL and a broadcast name is right. That
+last one had no citation and no test: no public document states the split, and the file said so.
+
+`devicelab/moq-smoke` is how it runs, and it is deliberately **not** a `lab run` scenario. A
+scenario drives the demo app — an activity, a `MediaSession` position, a Perfetto trace — and this
+run has none of those. It borrows devicelab's device half, which boots or adopts a device, and
+nothing else. `--broadcast moq://host/name` points it somewhere; the report lands under
+`devicelab/out/moq-smoke-*/`.
+
+**What it asserts, and what it merely records.** The artifact is the observation: every reading is
+written to logcat and scraped into the report *before* any assertion runs, so a failing run is still
+a finding. Three outcomes are encoded differently on purpose, because conflating them is what makes
+a device harness stop being believed:
+
+- a broadcast that declares tracks and delivers frames **passes**;
+- a relay that answers and announces **nothing** is a `assumeTrue` **skip**, not a failure — there is
+  no broadcast to subscribe to, nothing in this repository could produce one, and a run that goes red
+  whenever a public relay is quiet is a run whose red gets ignored;
+- anything else **fails**, with the cause chain and the relay's own announce listing in the message.
+
+**What it cannot show.** It plays nothing — there is no player, renderer or decoder in it, which is
+ADR-0018 rule 1 at its narrowest; whether the frames decode is #353's, in the demo. And it takes no
+latency figure: an emulator's user-mode NAT and the host's scheduling sit between the relay and this
+code, so a number taken here would describe the host. That is this document's rule about a stand-in
+that cannot support a measurement, applied before the number is taken rather than after it is
+published.
+
+**What the first run found**, on an API 36 `arm64-v8a` emulator against `cdn.moq.dev`: the library
+loaded, the QUIC session connected, the announce stream answered, and the connect-URL derivation is
+**correct** — the authority under `https` is what the relay accepts. The relay was publishing
+nothing at the time, under `anon/` or anywhere else, so **no frame has yet crossed this path and the
+codec-description branch a live publisher uses is still unobserved** — #340's caveat 2 stands
+exactly where it was. The dated finding is on #367 rather than here, because a relay's contents are
+true on a day and this document is not.
 
 ## Synthetic media, not fixtures
 

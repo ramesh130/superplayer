@@ -16,6 +16,27 @@ plugins {
 //
 // It is deliberately **not** a Kotlin friend of core (ADR-0018 rule 11): what it implements is
 // core's *public* `FrameSource`, which is the test that the seam is real.
+// The repository's **one** instrumented source set, and it is declared here rather than in the
+// `superplayer.android.library` convention plugin on purpose.
+//
+// CLAUDE.md's orientation says Android setup belongs in the convention plugin and a module's own
+// build file holds only its dependencies, so this is a departure and is argued rather than assumed:
+// putting a `testInstrumentationRunner` in the plugin would give all fifteen modules a
+// `connectedAndroidTest` task, fourteen of which have no instrumented source set and none of which
+// may have one — `docs/testing.md` bars the device for everything that can be tested without it. A
+// task that exists everywhere and is correct in one place is the kind of switch that gets used by
+// accident. The blast radius is kept at the module that earned the exception.
+//
+// What earned it is #367: MoQ's `.so` is `arm64-v8a` and Robolectric runs on the host JVM, and
+// `docs/testing.md` bars the network, so a QUIC session against a real relay is reachable from
+// nowhere under `check`. This source set is **not** in `check` and never will be; AGP keeps
+// `connectedDebugAndroidTest` out of it, and `devicelab/moq-smoke` is how it is run.
+android {
+    defaultConfig {
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+}
+
 dependencies {
     // The seam this module will implement: `FrameSource`, `RealtimeTrack`, `EncodedFrame`
     // (ADR-0018 rule 2's #356 addendum). Phase 1.
@@ -52,6 +73,18 @@ dependencies {
     // host and in CI, unlike `MoqFfiLinkageTest`. `docs/testing.md`'s *The MoQ bindings* has the
     // split.
     testImplementation(libs.robolectric)
+
+    // The instrumented half (#367). These three reach the `androidTest` configuration alone, which
+    // shares nothing with the unit tests above: `media3-test-utils` is not on it, so the JUnit 4
+    // bridge is named here rather than inherited the way a unit test inherits it.
+    //
+    // Nothing that stands in for anything is on this list, and that is the point of the source set.
+    // What runs there loads the **real** `libmoq_ffi.so`, opens a **real** QUIC session and reads a
+    // **real** publisher's catalog — the three things `ScriptedMoqRelay` is a fake of, and the three
+    // #366 could prove nothing about.
+    androidTestImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
 }
 
 // What `MoqBindingsResolutionTest` compares: the version the catalog *asked for*, and the

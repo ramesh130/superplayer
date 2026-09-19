@@ -104,7 +104,7 @@ LGPL-2.1-or-later. It is taken under **Apache-2.0**, which the dual licence perm
 | `androidx.compose.ui:ui-test-junit4` | Apache-2.0 | `superplayer-tv` (test), `superplayer-diagnostics` (test) |
 | `androidx.compose.ui:ui-test-manifest` | Apache-2.0 | `superplayer-tv` (test), `superplayer-diagnostics` (test) |
 | `androidx.work:work-testing` | Apache-2.0 | `superplayer-testkit` (compile only, and its own tests), `superplayer-offline` (test) |
-| `org.robolectric:robolectric` | MIT | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`, `superplayer-abr`, `superplayer-cache`, `superplayer-preload`, `superplayer-tv`, `benchmark` (test) |
+| `org.robolectric:robolectric` | MIT | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`, `superplayer-abr`, `superplayer-cache`, `superplayer-preload`, `superplayer-tv`, `superplayer-moq`, `benchmark` (test) |
 | `com.google.truth:truth` | Apache-2.0 | transitive, via `media3-test-utils` |
 | `org.mockito:mockito-core` | MIT | transitive, via `media3-test-utils` |
 | `androidx.test:core`, `androidx.test.ext:junit` | Apache-2.0 | transitive, via `media3-test-utils` |

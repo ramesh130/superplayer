@@ -393,6 +393,22 @@ Phase 14's "both codec-description shapes are covered by a test" criterion is di
 no `MoqCatalog` in this repository was ever received from a broadcast, because that spike's caveat 4
 records the catalog path as source-only.
 
+Since #366 the frame pump is tested the same way, and the shape is worth stating because it is what
+the rest of this phase rests on. `MoqFrameSource` is written against an **internal seam**,
+`MoqRelay` — connect, read a catalog, subscribe to a track, pull frames — of which `UniffiMoqRelay`
+is the one implementation that touches the bindings. Every check runs against `ScriptedMoqRelay`, a
+fake of that seam, so `MoqFrameSourceConformanceTest`, `MoqFrameSourceTest` and `MoqPayNothingTest`
+load **no native library** and run on every host, CI included. The suite they run is the shipped one:
+`FrameSourceConformance`, over both of ADR-0018 rule 4's branches, which is #366's central assertion
+and the reason that suite was written to be executed outside this repository at all.
+
+**Say what that proves, because the sentence is easy to shorten wrongly.** It proves that *this
+module's bridge* honours all nine of `FrameSource`'s obligations — the declaration before the first
+frame, the ordering, the keyframe each track starts on, the index a frame carries, the cancellation
+that joins its threads, and the failure that reaches `onError` rather than a thread nobody watches.
+It proves **nothing about MoQ's bindings, about QUIC, or about a relay**, and a green run here is not
+evidence that a broadcast plays. #367 is the ticket that answers that, and it needs a device.
+
 **What neither can show.**
 
 - **Two builds of one crate.** The Android `.so` and the host `.dylib` come from the same checkout,

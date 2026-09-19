@@ -1305,6 +1305,32 @@ and a phase adding it amends that record). `MoqCatalogTracksTest` drives all of 
 and the `avcC` prefix are observed, the `hvcC` is synthesized and labelled so, and no `MoqCatalog`
 anywhere was ever received from a broadcast, because that spike's caveat 4 says the catalog path was
 never exercised.
+Since #366 the module has its substance, the bridge: `MoqFrameSource` is core's public `FrameSource`
+over MoQ, opened as `MoqFrameSource(uri)` and handed to a player through
+`Realtime.transport(MoqFrameSource.SCHEME) { … }`. **No signature in the module names a Media3
+type**, which is the test that the seam is real (ADR-0018 rule 2), and the module is **not** a Kotlin
+friend of core (rule 11) — `MoqPayNothingTest` reads that off the build file with
+`superplayer-realtime`'s as the control. One subscription is one connect thread and one pump thread
+per track: the connect thread opens the session, reads the catalog **once**, subscribes to each
+declared track and calls `onTracks` before any pump exists (obligation 2 by construction), and every
+callback goes through one monitor, which is the happens-before obligation 1 permits rather than the
+single thread it prefers — a blocking `next()` per track makes a thread each unavoidable. Two
+obligations are made true rather than trusted: a track is started at its **first keyframe**, the
+dependent frames of a group joined part-way dropped rather than relabelled, and `cancel()` closes
+the streams and the session and then **joins** every thread, which is why `MoqTrackStream.close`
+carries the obligation to unblock a reader — a pump parked in a `next` nothing interrupts would make
+a correct-looking cancellation hang the playback thread. Everything that fails reaches
+`FrameSink.onError`, never a throw on a thread the player does not own. The structure is an internal
+seam, `MoqRelay`, with `UniffiMoqRelay` the one implementation that touches the bindings: the
+`suspend` boundary and `MoqSubscription` are turned into blocking calls there, and
+`MoqBroadcastSession` is the object holding the `uniffi.moq.MoqSession` that #368 polls statistics
+on. What `check` runs is `FrameSourceConformance` — testkit's shipped suite, in both of ADR-0018
+rule 4's branches — over the pump driven by `ScriptedMoqRelay`, a scripted fake of that seam, whose
+tracks are **endless by default** because a fake that finishes inside `subscribe` satisfies
+obligation 9 by arithmetic. **That proves the bridge and proves nothing about MoQ**: no QUIC session
+is opened anywhere under `check`, no line of `UniffiMoqRelay` runs, and the address mapping it uses
+is read off MoQ's tooling rather than observed. #367 is the first real session and needs a device.
+These tests load no native library, so unlike `MoqFfiLinkageTest` they run on every host.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,

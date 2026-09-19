@@ -33,9 +33,20 @@ import uniffi.moq.MoqVideo
  * ever received from a broadcast. Each is **assembled** from observed fields, and the assembly is
  * the part that is not evidence.
  *
- * The HEVC and AAC fixtures are **synthesized** outright, because #340's caveat 2 binds this file
- * as it binds `superplayer-realtime`'s `ObservedBytes`: what was seen was H.264 only. An `hvcC`
- * here is written to be shaped like one and is evidence of nothing about a real HEVC publisher.
+ * Everything that is not H.264 is **synthesized** outright, because #340's caveat 2 binds this file
+ * as it binds `superplayer-realtime`'s `ObservedBytes`: what was seen was H.264 only. That covers
+ * the `hvcC` record below and all four of the other codec strings the tests name —
+ * [SYNTHESIZED_HVC1_CODEC], [SYNTHESIZED_AAC_CODEC], [SYNTHESIZED_OPUS_CODEC] and
+ * [SYNTHESIZED_UNMAPPED_CODEC] — which are written here rather than recorded and are evidence of
+ * nothing about a real publisher of any of those codecs.
+ *
+ * #340's `avcC` dump is restated here rather than shared with `ObservedBytes`, which exists so that
+ * two readers of those bytes "cannot drift into disagreeing about what was seen". Sharing it is not
+ * available: that object is `superplayer-realtime`'s *test* source, which no other module's tests
+ * can see, and promoting it to either module's main sources would publish #340's dumps as API to
+ * save a copy. What keeps the copy honest is that it is a prefix nothing here parses — this module
+ * is forbidden from parsing it (ADR-0018 rule 4) — so the two cannot disagree about a *reading* of
+ * the record, only about the hex, which is quoted verbatim in both places from the same comment.
  *
  * None of that weakens what the tests using them assert. The subject is a *mapping* — a catalog
  * field reaching a seam field unmodified — so what the bytes are matters far less than that they
@@ -67,8 +78,33 @@ internal object DeclaredCatalogs {
      * written here rather than recorded, exactly as `CodecConfigurationRecordsTest`'s own `hvcC` is
      * and labelled the same way. It is evidence that a record reaches the seam unmodified and
      * evidence of nothing about a real HEVC broadcast.
+     *
+     * // spec: the shape is the `HEVCDecoderConfigurationRecord`, ISO/IEC 14496-15 §8.3.3.1.2 — its
+     * // `configurationVersion`, general profile, tier and level, then the arrays. Cited because it
+     * // is claimed to be shaped like one; nothing in this module reads a byte of it, so any bytes
+     * // would serve the assertion it is actually used for.
      */
     val SYNTHESIZED_HVCC = bytes("01 01 60 00 00 00 90 00 00 00 00 00 5d f0 00 fc fd f8 f8 00 00 0f 03")
+
+    /** An `hvc1` codec string, **synthesized** for [SYNTHESIZED_HVCC]'s reason. */
+    const val SYNTHESIZED_HVC1_CODEC = "hvc1.1.6.L93.B0"
+
+    /** An AAC-LC codec string, **synthesized**: #340 saw no audio track at all. */
+    const val SYNTHESIZED_AAC_CODEC = "mp4a.40.2"
+
+    /** An Opus codec string, **synthesized** for [SYNTHESIZED_AAC_CODEC]'s reason. */
+    const val SYNTHESIZED_OPUS_CODEC = "opus"
+
+    /**
+     * A codec string the seam's table does not carry, **synthesized**: VP8, chosen because it is one
+     * a publisher plausibly sends rather than a string invented to fail.
+     *
+     * It is unmapped by `superplayer-realtime`'s `RealtimeFormats` today, and nothing mechanical
+     * holds it so — that table is `internal` to a module this one is not a friend of (ADR-0018
+     * rule 11), which is the same reason the refusal is not assertable here. A phase that maps VP8
+     * therefore has to move this constant, and saying so is the only guard available.
+     */
+    const val SYNTHESIZED_UNMAPPED_CODEC = "vp08.00.41.08"
 
     /** A well-formed `MoqCatalog` carrying one video rendition and no audio. */
     fun videoOnly(

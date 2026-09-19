@@ -112,8 +112,8 @@ tasks.register<RecordReleasedApiSurface>("recordReleasedApiSurface") {
 
 // ADR-0017 rule 8's enforcement, and the one root task here that **must not** be in `check`: it
 // mutates the tree, publishes and commits. It is registered beside the verification tasks because
-// what it mostly is, is six refusals — and because `check` is what it depends on. docs/releasing.md
-// is its manual.
+// what it mostly is, is refusals — and because `check` is what it depends on. docs/releasing.md is
+// its manual.
 tasks.register<CutRelease>("release") {
     group = "publishing"
     description = "Cuts a release: --release-version=<x.y.z>, or refuses. See docs/releasing.md."
@@ -123,9 +123,21 @@ tasks.register<CutRelease>("release") {
     recordDirectory.set(releasedApiSurfaces)
     trackedApiFiles.from(trackedApiSurfaces)
 
-    // Not a claim that the checks passed, and not a second build: the task graph runs the whole of
-    // `check` before this action starts, so a red tree stops the release where it stands.
+    // Not a claim that the checks passed, and not a second build: the task graph runs them before
+    // this action starts, so a red tree stops the release where it stands.
+    //
+    // **Both lines are needed, and the second is the one that is easy to leave out.** This plugin
+    // is applied to the root project alone, so `tasks.named("check")` is the *root's* — the seven
+    // repo-wide verifications, Spotless and `build-logic:check`, and nothing of the thirteen
+    // modules. A plain `./gradlew check` reaches those by the CLI matching the task *name* in every
+    // project, which a dependency does not do. Without the second line a release would be cut
+    // without a single module's unit tests, `lintRelease`, `checkApiSurface` or
+    // `verifyNoUnstableMedia3InPublicApi` having run — and a stale tracked surface recorded into
+    // `api/released/` would then mis-state the *next* version too (ADR-0017 rule 2 and that
+    // record's *Consequences*). Task paths rather than task objects, so nothing here configures
+    // another project.
     dependsOn(tasks.named("check"))
+    dependsOn(subprojects.map { "${it.path}:check" })
 }
 
 // Spotless stamps `config/license-header.txt` onto every `.kt` file; nothing in Spotless checks

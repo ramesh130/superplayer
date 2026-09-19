@@ -1,9 +1,11 @@
 # The last release's API surface
 
-**Nothing in this directory is hand-edited.** `./gradlew recordReleasedApiSurface` writes it, and
-the only thing that runs that command is the release command (issue #329), as one step of cutting a
-release.
-Editing a file here by hand changes what the next version is allowed to be, silently.
+**Nothing in this directory is hand-edited.** `./gradlew release --release-version=<x.y.z>` writes
+it, as one step of cutting a release ([`docs/releasing.md`](../../docs/releasing.md)); the catalog
+has to name the release before a surface may be recorded under it (ADR-0017 rule 8), which is why
+that step is the release command's own rather than a task it calls. `./gradlew
+recordReleasedApiSurface` is the same writing, reachable by hand for a record that has to be
+retaken. Editing a file here by hand changes what the next version is allowed to be, silently.
 
 ## What is here
 

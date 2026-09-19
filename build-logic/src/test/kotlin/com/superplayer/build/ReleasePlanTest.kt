@@ -21,7 +21,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The decision behind `./gradlew release`: six refusals, and the four files a cut writes.
+ * The decision behind `./gradlew release`: every refusal but one, and the files a cut writes.
+ *
+ * The exception is a failing `check`, which is a task dependency rather than a branch — a line in
+ * `superplayer.verification.gradle.kts` that `ReleaseWiringTest` reads off the script.
  *
  * Every input here is a string literal, because the whole of the judgement is text — a catalog, a
  * changelog, two sets of surfaces, `git status --porcelain` and a tag list. Nothing writes a file,

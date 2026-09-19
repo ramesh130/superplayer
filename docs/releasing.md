@@ -25,7 +25,11 @@ and passes whatever it says.
   scratch file. The command refuses a dirty tree.
 - Write what changed under `CHANGELOG.md`'s `## [Unreleased]` heading. The command refuses an empty
   one, because that section is the only record of a behaviour change that moved no declaration
-  (ADR-0017 rule 3), and the version it becomes is a number that cannot express one.
+  (ADR-0017 rule 3), and the version it becomes is a number that cannot express one. **Read it
+  before the first cut**: that section moves *whole* into the dated heading, and today it opens
+  "**Nothing has been released.** The catalog reads `0.1.0-SNAPSHOT`…", which is true while it sits
+  under `Unreleased` and is nonsense the moment it is dated. The command moves what it is given and
+  writes no release notes of its own.
 - Know the version. It is derived rather than chosen: a declaration removed from or incompatibly
   changed in any `<module>/api/<module>.api` since the last release is a major — a **minor** while
   the library is `0.x` (rule 7) — one added is a minor, and an unmoved surface is a patch (rule 2).
@@ -41,9 +45,10 @@ and passes whatever it says.
 
 ## What the command does, in order
 
-1. **Runs the full `check`.** This is a task dependency, not a claim: Gradle runs the whole of
-   `check` before the release action starts, so a red tree stops the release where it stands. It is
-   neither trusting your word nor starting a second build.
+1. **Runs the full `check`** — the root project's and every module's, which is what a plain
+   `./gradlew check` means. This is a task dependency, not a claim: Gradle runs them before the
+   release action starts, so a red tree stops the release where it stands. It is neither trusting
+   your word nor starting a second build.
 2. **Refuses, or plans.** The tree is clean, the version parses, it is a legal successor of the last
    release, it is no smaller than the surface diff requires, the `Unreleased` section is not empty,
    the tag is free. Every refusal happens **before anything is written**.

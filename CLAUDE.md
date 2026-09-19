@@ -1473,9 +1473,12 @@ repository.
   Four of its nine rules are enforced by nothing in `check` today, which the record says at each
   rule rather than in a summary: #327 checks the version and changelog, #328 gates the surface
   against the bump, #330 the adopter's document. Rule 8 is #329's, and it is built:
-  `./gradlew release --release-version=<x.y.z>` is the one supported way to cut a release — it depends on
-  `check`, refuses six ways before it writes a byte, then moves the catalog, stamps `CHANGELOG.md`,
-  re-records `api/released/`, publishes, tags and opens the next snapshot. It **commits and tags
+  `./gradlew release --release-version=<x.y.z>` is the one supported way to cut a release. It
+  depends on the root's `check` **and every module's**, since a dependency on the root's alone
+  reaches none of the thirteen. It then refuses before it writes a byte: a dirty tree, a version
+  that is not a successor of the last release or is smaller than the surface diff requires, an
+  empty `Unreleased`, a tag that exists. Only then does it move the catalog, stamp `CHANGELOG.md`,
+  re-record `api/released/`, publish, tag and open the next snapshot. It **commits and tags
   locally and never pushes**, because the released version has to exist as a commit for a tag to
   name while the tree has to end on the next snapshot, and one working tree cannot be both.
   [`docs/releasing.md`](docs/releasing.md) is the manual and says plainly that a cut release lands

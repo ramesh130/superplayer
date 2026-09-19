@@ -55,7 +55,7 @@ class ReleasePlanTest {
         val refusal = refusal(asked = "0.2")
 
         assertTrue(refusal, refusal.contains(SemanticVersion.GRAMMAR))
-        assertTrue(refusal, refusal.contains("--version=1.2.0"))
+        assertTrue(refusal, refusal.contains("--release-version=1.2.0"))
     }
 
     @Test
@@ -63,7 +63,7 @@ class ReleasePlanTest {
         val refusal = refusal(asked = "0.2.0-SNAPSHOT")
 
         assertTrue(refusal, refusal.contains("ADR-0017 rule 8"))
-        assertTrue(refusal, refusal.contains("--version=0.2.0"))
+        assertTrue(refusal, refusal.contains("--release-version=0.2.0"))
     }
 
     @Test

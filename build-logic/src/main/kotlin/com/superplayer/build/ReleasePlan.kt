@@ -107,14 +107,14 @@ internal fun planRelease(
 
     val release = SemanticVersion.parse(asked)
         ?: return refuse(
-            "--version=$asked is not ${SemanticVersion.GRAMMAR}. Pass the version being released, " +
-                "as in `./gradlew release --version=1.2.0`."
+            "--release-version=$asked is not ${SemanticVersion.GRAMMAR}. Pass the version being released, " +
+                "as in `./gradlew release --release-version=1.2.0`."
         )
     if (release.isSnapshot) {
         return refuse(
-            "--version=$asked names a snapshot, and ADR-0017 rule 8 is that a snapshot is not a " +
+            "--release-version=$asked names a snapshot, and ADR-0017 rule 8 is that a snapshot is not a " +
                 "release: nothing published from one is covered by any promise. Pass the release " +
-                "itself, `--version=${release.released}`; the command opens the next snapshot on " +
+                "itself, `--release-version=${release.released}`; the command opens the next snapshot on " +
                 "its own as its last step."
         )
     }
@@ -137,7 +137,7 @@ internal fun planRelease(
     // nothing accounts for, and the gap reads to an adopter as a release they missed.
     if (previous != null && release !in successorsOf(previous)) {
         return refuse(
-            "--version=$release does not succeed $previous, the version " +
+            "--release-version=$release does not succeed $previous, the version " +
                 "$RECORDED_SURFACE_DIRECTORY/$RECORDED_VERSION_FILE records as the last release. " +
                 "The successors of $previous are " +
                 successorsOf(previous).joinToString(", ") + "."

@@ -116,7 +116,7 @@ tasks.register<RecordReleasedApiSurface>("recordReleasedApiSurface") {
 // is its manual.
 tasks.register<CutRelease>("release") {
     group = "publishing"
-    description = "Cuts a release: --version=<x.y.z>, or refuses. See docs/releasing.md."
+    description = "Cuts a release: --release-version=<x.y.z>, or refuses. See docs/releasing.md."
     projectRoot.set(layout.projectDirectory)
     versionCatalog.set(layout.projectDirectory.file("gradle/libs.versions.toml"))
     changelog.set(layout.projectDirectory.file("CHANGELOG.md"))

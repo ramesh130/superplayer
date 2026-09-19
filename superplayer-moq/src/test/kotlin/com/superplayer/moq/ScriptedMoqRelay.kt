@@ -21,6 +21,7 @@ import uniffi.moq.MoqCatalog
 import uniffi.moq.MoqContainer
 import uniffi.moq.MoqMediaFrame
 import java.io.IOException
+import java.util.Collections
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -60,7 +61,7 @@ internal class ScriptedMoqRelay(
     val streamsClosed: AtomicInteger = AtomicInteger()
 
     /** The track names this relay was asked to subscribe to, in the order they were asked for. */
-    val subscribed: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
+    val subscribed: MutableList<String> = Collections.synchronizedList(mutableListOf())
 
     override fun connect(uri: Uri): MoqBroadcastSession {
         if (failsAt == FailurePoint.CONNECT) throw IOException(FAILURE_MESSAGE)
@@ -95,6 +96,8 @@ internal class ScriptedMoqRelay(
         private val failsOnAFrame: Boolean,
     ) : MoqTrackStream {
 
+        // `java.lang.Object` by its full name: Kotlin's `Any` carries no `wait`/`notifyAll`, and a
+        // monitor is what a blocking pull that must be woken by `close()` needs.
         private val paced = java.lang.Object()
         private var delivered = 0
 

@@ -125,3 +125,20 @@ internal interface MoqTrackStream : AutoCloseable {
      */
     override fun close()
 }
+
+/**
+ * Closes without raising: a failure while tearing down has nowhere useful to go.
+ *
+ * Nothing is reported and there is nobody to report it to — the subscription is already over, and a
+ * teardown that threw would fail a thread whose only remaining job was to stop, or the playback
+ * thread for a session it was ending anyway. It lives beside the seam because both sides of it close
+ * the same things: [MoqFrameSource.cancel] closes what it opened, and [UniffiMoqRelay]'s adapters
+ * close the handles under them.
+ */
+internal fun AutoCloseable.closeQuietly() {
+    try {
+        close()
+    } catch (@Suppress("SwallowedException", "TooGenericExceptionCaught") ignored: Throwable) {
+        // Deliberately nothing; the KDoc above is the reason.
+    }
+}

@@ -73,6 +73,18 @@ class MoqFrameSourceTest {
         assertEquals(listOf(VIDEO, AUDIO), relay.subscribed.toList())
         // Both tracks delivered, and every frame named one of the two declared positions.
         assertEquals(setOf(0, 1), sink.frames.map { it.trackIndex }.toSet())
+        // And the frames stamped 0 really are the *video* track's, read off the one thing that tells
+        // the two scripts apart: their payload size. Without this the method would pass on a pump
+        // that numbered its subscriptions the other way round, which is the whole defect its name
+        // claims to catch — every other assertion above is true of either numbering.
+        assertEquals(
+            setOf(annexBH264(keyFrame = true).size),
+            sink.frames.filter { it.trackIndex == 0 }.map { it.payload.size }.toSet(),
+        )
+        assertEquals(
+            setOf(aacFrame(keyFrame = true).size),
+            sink.frames.filter { it.trackIndex == 1 }.map { it.payload.size }.toSet(),
+        )
         // The video track's own epoch reaches the seam unchanged: this module subtracts nothing,
         // because the period above it anchors the whole subscription (ADR-0018 rule 9).
         assertEquals(TRANSPORT_EPOCH_US, sink.frames.first { it.trackIndex == 0 }.timestampUs)
@@ -150,7 +162,7 @@ class MoqFrameSourceTest {
         source.cancel()
 
         val afterCancel = sink.callbacks
-        Thread.sleep(QUIET_AFTER_CANCEL_MS)
+        pause(QUIET_AFTER_CANCEL_MS)
         assertEquals("no callback arrives after cancel() returned", afterCancel, sink.callbacks)
         assertEquals("every stream opened was closed", relay.streamsOpened.get(), relay.streamsClosed.get())
         assertEquals("and so was the session", relay.sessionsOpened.get(), relay.sessionsClosed.get())
@@ -249,7 +261,7 @@ class MoqFrameSourceTest {
         source.subscribe(sink)
         sink.awaitTerminal()
         val whenItEnded = sink.frames.size
-        Thread.sleep(QUIET_AFTER_CANCEL_MS)
+        pause(QUIET_AFTER_CANCEL_MS)
         source.cancel()
 
         assertEquals("onEnded", sink.terminal)
@@ -290,6 +302,18 @@ class MoqFrameSourceTest {
 
     private fun broadcast(): Uri = Uri.parse("${MoqFrameSource.SCHEME}://relay.example/studio-a")
 
+    /**
+     * Waits [millis], and nothing else.
+     *
+     * A latch nobody counts down rather than a `Thread.sleep`, which is `FrameSourceConformance`'s
+     * own idiom: a fixed wait is expressed in the same vocabulary as every other bound here and is
+     * interrupted the same way. Both are real time on this thread; what Robolectric simulates is
+     * `SystemClock` and the main looper, neither of which is involved.
+     */
+    private fun pause(millis: Long) {
+        CountDownLatch(1).await(millis, TimeUnit.MILLISECONDS)
+    }
+
     private companion object {
 
         const val VIDEO = "video"
@@ -310,6 +334,15 @@ class MoqFrameSourceTest {
          * Several times [ScriptedMoqRelay.FRAME_INTERVAL_MS], so a pump still running would have
          * delivered, and short because every assertion that reads it is about *stopped* rather than
          * about fast.
+         *
+         * This is the one wall-clock window in this file, and `docs/testing.md`'s determinism rule
+         * is why it is argued rather than used. Everything else here waits on a **latch**, which is
+         * an event; "nothing more arrives" is the absence of an event, so there is nothing to wait
+         * on and the only form the assertion has is a window in which a defect would have shown.
+         * `FrameSourceConformance` reaches exactly the same conclusion for its own cancellation
+         * check and spends `CANCELLATION_BOUND_MS` on it. It cannot flake into a false pass that
+         * matters: the pace is a scripted 2 ms, so a pump still running delivers many times over
+         * inside it, and a host slow enough to miss that is one on which nothing here runs at all.
          */
         const val QUIET_AFTER_CANCEL_MS = 50L
 
@@ -371,16 +404,29 @@ class MoqFrameSourceTest {
             while (wanted.count > 0) wanted.countDown()
         }
 
-        /** Waits for [count] frames, or for the subscription to end before that many arrive. */
+        /**
+         * Waits for [count] frames, or for the subscription to end before that many arrive.
+         *
+         * The wait is asserted rather than discarded, which `docs/testing.md`'s determinism rule
+         * asks for: a run that times out then fails naming what it was waiting for, instead of
+         * reaching an assertion about the frames and reporting an empty list.
+         */
         fun awaitFrames(count: Int) {
             synchronized(lock) {
                 wanted = CountDownLatch((count - delivered.size).coerceAtLeast(0))
             }
-            wanted.await(WAIT_BOUND_MS, TimeUnit.MILLISECONDS)
+            assertTrue(
+                "waited for $count frames or the end of the subscription",
+                wanted.await(WAIT_BOUND_MS, TimeUnit.MILLISECONDS),
+            )
         }
 
+        /** Waits for the subscription to end, and fails naming that if it does not. */
         fun awaitTerminal() {
-            ended.await(WAIT_BOUND_MS, TimeUnit.MILLISECONDS)
+            assertTrue(
+                "waited for onEnded or onError",
+                ended.await(WAIT_BOUND_MS, TimeUnit.MILLISECONDS),
+            )
         }
     }
 }

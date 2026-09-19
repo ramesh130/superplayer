@@ -35,7 +35,8 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /**
- * What an app that does not play MoQ pays for this module, which is nothing (#366).
+ * What an app that does not play MoQ pays for this module — nothing — and the two structural claims
+ * ADR-0018 makes about it, which nothing else in `check` reads (#366).
  *
  * `DownloadsPayNothingTest` and `DiagnosticsPayNothingTest` are the shape, and the half that makes
  * them worth writing is taken here too: each counter is **shown to move**, so a zero is evidence
@@ -48,7 +49,9 @@ import java.util.concurrent.TimeUnit
  * rather than platform registrations: `MoqFrameSource` registers nothing with the platform at all,
  * and a counter that can never move is not a check.
  *
- * The third test is ADR-0018 rule 11, read off the build configuration rather than by inspection.
+ * The last two tests are rules 2 and 11 — no Media3 type in any signature, and no Kotlin friendship
+ * with core — each read off the repository rather than asserted by inspection, and each with the
+ * control that makes the reading a reading.
  */
 @RunWith(RobolectricTestRunner::class)
 class MoqPayNothingTest {
@@ -79,7 +82,12 @@ class MoqPayNothingTest {
         val source = MoqFrameSource(Uri.parse(BROADCAST), relay)
         val delivered = CountDownLatch(1)
         source.subscribe(FirstFrame(delivered))
-        delivered.await(WAIT_BOUND_MS, TimeUnit.MILLISECONDS)
+        // Asserted rather than discarded, so a run that never delivers fails naming what it waited
+        // for instead of failing on the thread count below (`docs/testing.md`, *Determinism*).
+        assertTrue(
+            "waited for the subscription to deliver something",
+            delivered.await(WAIT_BOUND_MS, TimeUnit.MILLISECONDS),
+        )
         assertTrue("a subscribed broadcast runs on threads of its own", transportThreads() > 0)
         assertEquals("and holds one session", 1, relay.sessionsOpened.get())
 
@@ -97,6 +105,35 @@ class MoqPayNothingTest {
     @Test
     fun theModuleDeclaresNoComponentAndNoPermission() {
         assertFalse("this module's own manifest", File("src/main/AndroidManifest.xml").exists())
+    }
+
+    /**
+     * ADR-0018 rule 2: **no signature in this module names a Media3 type**, which is the test that
+     * the Phase 13 seam is real — what a transport implements is core's `FrameSource`, and that
+     * interface names none either.
+     *
+     * Read off this module's own source tree, in `DrmFailureTest`'s shape, because nothing
+     * mechanical covers it: `verifyNoUnstableMedia3InPublicApi` and the tracked API surface are
+     * where this rule is normally enforced, and neither looks here — the module is unpublished
+     * (ADR-0017 rule 1's #364 addendum) so it has no `api/` file at all. Meanwhile
+     * `api(project(":superplayer-core"))` puts every Media3 type on the compile classpath, so the
+     * next signature that named one would fail nothing whatever.
+     *
+     * The second half is the control, and it is the same reading over `superplayer-realtime` —
+     * which exists *because* its half cannot avoid naming Media3's `MediaSource` vocabulary. A
+     * reading that found nothing there would be a reading that finds nothing anywhere.
+     */
+    @Test
+    fun noSourceFileInThisModuleNamesAMedia3Type() {
+        assertEquals(
+            "files in superplayer-moq naming a Media3 type",
+            emptyList<String>(),
+            sourcesNamingMedia3(File("src/main/kotlin")),
+        )
+        assertTrue(
+            "and superplayer-realtime's do, which is what makes the reading above a reading",
+            sourcesNamingMedia3(File("../superplayer-realtime/src/main/kotlin")).isNotEmpty(),
+        )
     }
 
     /**
@@ -122,6 +159,19 @@ class MoqPayNothingTest {
             File("../superplayer-realtime/build.gradle.kts").readText().contains(FRIEND_DECLARATION),
         )
     }
+
+    /**
+     * The Kotlin sources under [root] that name a Media3 type, by path.
+     *
+     * The token is the **package**, `androidx.media3`, and not the word "Media3": every file in this
+     * module discusses Media3 in prose, and a reading that counted that would refuse the KDoc
+     * explaining why there is none.
+     */
+    private fun sourcesNamingMedia3(root: File): List<String> = root.walkTopDown()
+        .filter { it.extension == "kt" }
+        .filter { it.readText().contains(MEDIA3_PACKAGE) }
+        .map { it.path }
+        .toList()
 
     /** Live threads this transport started, told by the names [MoqFrameSource] gives them. */
     private fun transportThreads(): Int =
@@ -150,6 +200,9 @@ class MoqPayNothingTest {
 
         /** What friendship looks like in a module's build file. */
         const val FRIEND_DECLARATION = "declareKotlinFriendModule"
+
+        /** What naming a Media3 type looks like in a source file: its package, not the word. */
+        const val MEDIA3_PACKAGE = "androidx.media3"
 
         /** How long a first frame is waited for before the test gives up and fails as itself. */
         const val WAIT_BOUND_MS = 10_000L

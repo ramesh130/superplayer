@@ -157,10 +157,10 @@ public class MoqFrameSource internal constructor(
 
     /** The connect thread's whole body: session, catalog, subscriptions, declaration, pumps. */
     private fun connect(sink: FrameSink) {
-        val connected = register(relay.connect(uri)) ?: return
+        val connected = registerSession(relay.connect(uri)) ?: return
         val declared = MoqCatalogTracks.declaredTracksOf(connected.catalog())
         val pumps = declared.mapIndexed { index, track ->
-            TrackPump(index, register(connected.subscribe(track.trackName, track.container)) ?: return)
+            TrackPump(index, registerStream(connected.subscribe(track.trackName, track.container)) ?: return)
         }
         // Declared before any pump exists, which is obligation 2 made true by construction rather
         // than by ordering care. The order is `MoqCatalogTracks`' — video first, then audio — and
@@ -217,36 +217,58 @@ public class MoqFrameSource internal constructor(
                     // A cancellation is what most transports report as a failure on the way down —
                     // a closed session, an interrupted read — and reporting one as the stream's
                     // failure would show a viewer an error for a screen they had already left.
+                    //
+                    // `Throwable` and not `Exception`, which is `TelemetryDelivery`'s reason taken
+                    // again: this is the last frame on a thread nothing else watches, so an `Error`
+                    // raised here — an `OutOfMemoryError` on a pump, most plausibly — would
+                    // otherwise vanish and leave the player buffering for ever with nothing to read
+                    // in a bug report. It reaches the consumer as the cause of a session that
+                    // failed, which is the truthful thing to call it.
                     if (!cancelled.get()) deliver(sink, terminal = true) { onError(failure) }
                 }
             },
             "$name-${uri.host.orEmpty()}",
         )
         thread.isDaemon = true
+        // Registered **and started** under the one monitor, which is what makes [cancel]'s join mean
+        // what its KDoc says. Appending first and starting after the monitor was released left a
+        // window in which `cancel` read the list, joined a thread that had not started — which
+        // returns at once — and returned while the body was still to run. Nothing could have been
+        // delivered through it, since `deliver` gates on the same flag, but a session opened
+        // afterwards would have been closed by nobody.
         synchronized(lifecycle) {
             if (cancelled.get()) return
             threads += thread
+            thread.start()
         }
-        thread.start()
     }
 
     /**
-     * Keeps [opened] so that [cancel] can close it, or closes it at once and answers null where a
+     * Keeps the session so that [cancel] can close it, or closes it at once and answers null where a
      * cancellation has already run.
      *
-     * The window it closes is the one every connecting transport has: a [cancel] arriving between
+     * The window this closes is the one every connecting transport has: a [cancel] arriving between
      * the session being opened and this source learning of it would otherwise leave a QUIC session
-     * nobody holds, outliving the screen it was opened from.
+     * nobody holds, outliving the screen it was opened from. [registerStream] is its twin, written
+     * out rather than shared behind a type test, because what the two do with what they are handed
+     * is the only interesting line in either.
      */
-    private fun <T : AutoCloseable> register(opened: T): T? = synchronized(lifecycle) {
+    private fun registerSession(opened: MoqBroadcastSession): MoqBroadcastSession? = synchronized(lifecycle) {
         if (cancelled.get()) {
             opened.closeQuietly()
             return null
         }
-        when (opened) {
-            is MoqBroadcastSession -> session = opened
-            is MoqTrackStream -> streams += opened
+        session = opened
+        opened
+    }
+
+    /** [registerSession] for one track's subscription, which is the other thing a cancel must close. */
+    private fun registerStream(opened: MoqTrackStream): MoqTrackStream? = synchronized(lifecycle) {
+        if (cancelled.get()) {
+            opened.closeQuietly()
+            return null
         }
+        streams += opened
         opened
     }
 
@@ -282,16 +304,6 @@ public class MoqFrameSource internal constructor(
          * the `:`, because that is what `Realtime.transport` takes.
          */
         public const val SCHEME: String = "moq"
-    }
-}
-
-/** Closes without raising: a failure while tearing down has nowhere useful to go. */
-private fun AutoCloseable.closeQuietly() {
-    try {
-        close()
-    } catch (@Suppress("SwallowedException", "TooGenericExceptionCaught") ignored: Throwable) {
-        // Nothing to report and nobody to report it to: the subscription is already over, and a
-        // cancellation that threw would fail the playback thread for a session it was ending anyway.
     }
 }
 

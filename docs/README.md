@@ -46,6 +46,15 @@ decides, held to the version catalog by `./gradlew verifyVersion`.
 on a real device, and `devicelab/leak/README.md` the leak hunt. Neither is part of
 `./gradlew check`, and each says why.
 
+## Built outside the build
+
+`third-party/moq/README.md` is the one dependency this repository builds rather than resolves: MoQ's
+Kotlin bindings, compiled on one machine with the crate's codec features off so no MPL-2.0 code is
+in the graph, and committed as a Maven repository that `superplayer-moq` alone reads. It carries the
+rebuild recipe, the stated limits — one ABI, reproducible by nobody else — and `CRATES.md`, the
+licence of every crate in that build. Nothing in `./gradlew check` rebuilds it, and the module that
+links it is deliberately not published.
+
 ## For agents
 
 [`agents/domain.md`](agents/domain.md) and [`agents/issue-tracker.md`](agents/issue-tracker.md).

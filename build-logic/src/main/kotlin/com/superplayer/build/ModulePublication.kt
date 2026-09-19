@@ -96,12 +96,18 @@ fun unpublishedModules(settingsScript: String): Set<String> {
     // end the list, and the single-line `listOf(":a")` form has to end on its own line rather than
     // running on to collect every path in the `include(...)` lines below and report the whole
     // build as unpublished.
+    //
+    // "The code alone" means a whole-line comment skipped *and* a trailing one cut, because both
+    // spellings are ordinary here and an unbalanced count either truncates the list or swallows
+    // it. Truncating is the dangerous direction — a module the parser stops short of is published
+    // by the convention plugin, which is the one outcome this whole mechanism exists to prevent.
     val body = mutableListOf<String>()
     var depth = 0
     for (line in lines.drop(start)) {
         if (isCommentLine(line)) continue
-        body += line
-        depth += line.count { it == '(' } - line.count { it == ')' }
+        val code = line.substringBefore("//")
+        body += code
+        depth += code.count { it == '(' } - code.count { it == ')' }
         if (depth <= 0) break
     }
 

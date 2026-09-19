@@ -76,6 +76,27 @@ or that it is not yet and which ticket will enforce it.
    can express without deleting that line. No task asserts it, because there is nothing yet for a
    task to disagree with.
 
+   *Addendum (2026-09-19, #364).* **The published set is now declared rather than implied, and it
+   is not every module in the build.** Until now "in `settings.gradle.kts`" and "published" were
+   the same fact, and three separate things read it that way — `maven-publish`, the tracked API
+   surface, and `verifyCompatibilityDocument`. `superplayer-moq` is the first module that must be
+   in the build and out of the release: it links a native library built on one machine, for one
+   ABI, which nobody else can resolve, and whose graph carries weak copyleft that
+   `CONTRIBUTING.md`'s own #364 amendment admits **only** for a module that is not published.
+
+   So `settings.gradle.kts` carries an `unpublishedModules` list, `build-logic`'s
+   `ModulePublication` is its only reader, and all three consumers ask it rather than deciding
+   separately — three switches that happened to agree being the defect this shape exists to avoid.
+   A module the list accounts for in neither direction fails the convention plugin by name, so
+   silence publishes nothing.
+
+   This does **not** weaken lockstep; it narrows what lockstep is over. Every *published* module
+   still moves at one number, and the argument above is untouched, because a module a consumer
+   cannot resolve is not a version they can mix. What it costs is that the phrase "all thirteen
+   library modules" above was already stale at fourteen includes and is now wrong in a second way:
+   the number that matters is the number of rows in `docs/compatibility.md`'s stability table that
+   do not read **Not published**, which `verifyCompatibilityDocument` holds to this list.
+
 2. **The tracked API surface is the arbiter of the bump.** Against the previous release: a
    declaration removed from, or incompatibly changed in, any module's `api/<module>.api` is a
    **major**; a declaration added with nothing removed is a **minor**; a release whose tracked

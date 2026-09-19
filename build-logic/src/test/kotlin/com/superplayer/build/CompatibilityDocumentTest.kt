@@ -274,6 +274,22 @@ class CompatibilityDocumentTest {
     }
 
     @Test
+    fun `a bracket in a trailing comment does not truncate the unpublished list`() {
+        // The same hazard one line further in: a reason written beside an entry rather than above
+        // it. Truncation is the direction that costs something — a module the parser stops short
+        // of is one the convention plugin publishes.
+        val settings = """
+            val unpublishedModules = listOf(
+                ":superplayer-moq", // built here (see third-party/moq/
+                ":superplayer-whep",
+            )
+            unpublishedModules.forEach { include(it) }
+        """.trimIndent()
+
+        assertEquals(setOf("superplayer-moq", "superplayer-whep"), unpublishedModules(settings))
+    }
+
+    @Test
     fun `an empty unpublished list does not swallow the includes below it`() {
         // The parser reads to the line closing `listOf(`, so a one-line empty list has to stop on
         // its own line. Reading past it would collect every include below and report the whole

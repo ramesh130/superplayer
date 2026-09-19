@@ -12,8 +12,8 @@ way after any rebuild (`README.md`).
 
 **320 crates. No strong copyleft, and one weak-copyleft family** — UniFFI's eight MPL-2.0 crates,
 which `THIRD_PARTY.md` argues at length: `uniffi_core` is *linked*, so the binary this repository
-builds contains MPL-2.0 code, which the policy accepts only because `superplayer-moq` is not a
-published artifact. Everything else is MIT, Apache-2.0, BSD, ISC, Zlib, 0BSD, Unicode-3.0,
+builds contains MPL-2.0 code, which `CONTRIBUTING.md`'s #364 amendment admits only because
+`superplayer-moq` is not published. Everything else is MIT, Apache-2.0, BSD, ISC, Zlib, 0BSD, Unicode-3.0,
 CC0-1.0 or CDLA-Permissive-2.0, all permissive and all without a field-of-use restriction.
 
 | Crate | License |

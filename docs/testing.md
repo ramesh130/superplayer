@@ -5,10 +5,13 @@ the JVM, against Media3's own fakes. No device, no network, no assertion that re
 facade. This is not a default that happened to stick — it is the constraint the first slice of the
 library was built to satisfy, and it holds for everything added afterwards.
 
-There are seven documented exceptions. Six of them are still tests with no device and no network; the
+There are eight documented exceptions. Six of them are still tests with no device and no network; the
 seventh binds a server socket on the **loopback** interface and reaches nothing off the host, for the
 reason *The conformance test a consumer runs* gives — an HTTP client's obligations are about what it
-puts on a wire, and there is no wire in any other fake here.
+puts on a wire, and there is no wire in any other fake here. The eighth is #364's and departs on a
+different axis: `MoqFfiLinkageTest` drives **no SuperPlayer API at all** and loads a real native
+library into the test JVM, because what it checks is whether a natively built dependency links.
+*The MoQ bindings* argues it, and states what no automated run can show.
 
 `SuperPlayerTransferChainTest` keeps the HTTP stack `SuperPlayer.Builder` puts at the bottom of its
 chain instead of substituting a fake data source for it, and reads a `file:` URI. "The one player that keeps its own transfer

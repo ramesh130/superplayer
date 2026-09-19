@@ -33,7 +33,7 @@ of truth. This file records *what* is depended on and under *what license*.
 | `com.google.guava:guava` | Apache-2.0 | `superplayer-core`, `superplayer-testkit`, `demo` (transitive, via `media3-common`) |
 | `org.jetbrains.kotlin:kotlin-stdlib` | Apache-2.0 | all modules (transitively, via the Kotlin toolchain) |
 | `org.jetbrains.kotlinx:kotlinx-coroutines-android` | Apache-2.0 | all modules |
-| `dev.moq:moq-ffi` | MIT OR Apache-2.0 | `superplayer-moq` (api) — **built here, not resolved from Maven**; see below |
+| `dev.moq:moq-ffi` | MIT OR Apache-2.0 (the built binary also contains **MPL-2.0** — see below) | `superplayer-moq` — **built here, not resolved from Maven** |
 | `net.java.dev.jna:jna` | Apache-2.0 OR LGPL-2.1+ | `superplayer-moq` (transitive, via `moq-ffi`: the bindings' FFI bridge) |
 
 ## The MoQ bindings, and the native crates inside them
@@ -73,15 +73,18 @@ exported function is written against. `llvm-nm` finds 342 `uniffi_core` symbols 
 `libmoq_ffi.so`, so the binary this repository builds **contains MPL-2.0 code**. That is not a gap
 in #351's reasoning about `symphonia`; it is a second fact that ticket's enumeration did not reach.
 
-It is nonetheless within `CONTRIBUTING.md` as written, and by the narrowest margin the policy
-allows. MPL-2.0 is weak, file-scoped copyleft: not accepted **in a published artifact**, accepted
-for what is never distributed in one. `superplayer-moq` is not published — it is in
-`settings.gradle.kts`'s `unpublishedModules` list (ADR-0017 rule 1), so no consumer resolves it,
-nothing of it reaches an adopter's APK, and the copyleft reaches only modifications to UniFFI's own
-files, which this project does not make. The module's exclusion from the published set is therefore
-load-bearing rather than tidy-minded, and **whatever else #369 needs, it needs an answer to this**:
-publishing `superplayer-moq` as it stands would put MPL-2.0 code in a published artifact, which the
-policy refuses.
+It is admitted by **`CONTRIBUTING.md`'s #364 amendment**, and by that amendment alone. The weak
+copyleft carve-out always rested on *never distributed in a published artifact*, and it named
+test-only and build-time dependencies as the two kinds that satisfy it. A dependency of a module in
+`settings.gradle.kts`'s `unpublishedModules` list is a third, and it is written into the policy
+rather than read into it — the literal wording covered test-only and build-time dependencies and
+this is neither, and stretching it in prose here would have been an undocumented exception.
+
+So `superplayer-moq`'s exclusion from the published set is load-bearing rather than tidy-minded: no
+consumer resolves it, nothing of it reaches an adopter's APK, and the copyleft reaches only
+modifications to UniFFI's own files, which this project does not make. **Whatever else #369 needs, it
+needs an answer to this**: publishing `superplayer-moq` as it stands would put MPL-2.0 code in a
+published artifact, which the amendment does not admit and the rule above refuses.
 
 The other eight-crate half of that family — `uniffi_bindgen`, `uniffi_udl`, `uniffi_pipeline` and
 the macro crates — is build-time only in the plainest sense: they are in the graph because

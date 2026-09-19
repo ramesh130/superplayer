@@ -28,7 +28,11 @@ dependencies {
     // nothing else, which `docs/testing.md`'s *The MoQ bindings* states as a limit rather than
     // leaving to be discovered. Version and repository: `gradle/libs.versions.toml` and
     // `settings.gradle.kts`.
-    api(libs.moq.ffi)
+    //
+    // `implementation` and not `api`, because `api` claims the bindings are part of this module's
+    // own consumer-facing types and today it has none — #365 widens it in one word when a
+    // `FrameSource` over `uniffi.moq` arrives.
+    implementation(libs.moq.ffi)
 
     // The same bindings' JVM variant, for its host `libmoq_ffi.dylib` at JNA's classpath layout.
     // A unit test runs on the host JVM, where an Android `.so` cannot be loaded at all
@@ -59,14 +63,13 @@ dependencies {
 // The reading itself is `build-logic`'s `resolvedModuleComponents`, and its KDoc says why it is
 // there rather than here: a lambda written in a build script captures the script object, which the
 // configuration cache cannot store once a task holds it.
-//
-// `afterEvaluate` because AGP creates the unit test's runtime configuration while it evaluates this
-// module, so nothing before that point can name it. It is the *naming* that is deferred; resolution
-// still happens when the tests run, through the provider.
 tasks.withType<Test>().configureEach {
     systemProperty("superplayer.moq.ffi.version", libs.versions.moqFfi.get())
 }
 
+// `afterEvaluate` because AGP creates the unit test's runtime configuration while it evaluates this
+// module, so nothing before that point can name it. It is the *naming* that is deferred; resolution
+// still happens when the tests run, through the provider.
 afterEvaluate {
     val resolved = resolvedModuleComponents(
         configurations.getByName("debugUnitTestRuntimeClasspath"),

@@ -19,6 +19,7 @@ package com.superplayer.build
 import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.api.artifacts.result.ResolvedComponentResult
+import org.gradle.api.artifacts.result.ResolvedDependencyResult
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.provider.Provider
@@ -68,7 +69,7 @@ private fun collectComponents(
     if (!seen.add(component)) return emptyList()
     return listOf(component) +
         component.dependencies
-            .filterIsInstance<org.gradle.api.artifacts.result.ResolvedDependencyResult>()
+            .filterIsInstance<ResolvedDependencyResult>()
             .flatMap { collectComponents(it.selected, seen) }
 }
 

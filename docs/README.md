@@ -49,11 +49,16 @@ on a real device, and `devicelab/leak/README.md` the leak hunt. Neither is part 
 ## Built outside the build
 
 `third-party/moq/README.md` is the one dependency this repository builds rather than resolves: MoQ's
-Kotlin bindings, compiled on one machine with the crate's codec features off so no MPL-2.0 code is
-in the graph, and committed as a Maven repository that `superplayer-moq` alone reads. It carries the
-rebuild recipe, the stated limits — one ABI, reproducible by nobody else — and `CRATES.md`, the
-licence of every crate in that build. Nothing in `./gradlew check` rebuilds it, and the module that
-links it is deliberately not published.
+Kotlin bindings, compiled on one machine with the crate's codec features off, and committed as a
+Maven repository that `superplayer-moq` alone reads. It carries the rebuild recipe, the stated
+limits — one ABI, reproducible by nobody else — and `CRATES.md`, the licence of every crate in that
+build. Nothing in `./gradlew check` rebuilds it.
+
+Read `CRATES.md` and `THIRD_PARTY.md` before drawing a conclusion about that build's licences. The
+codec subtraction removed every `symphonia` and `openh264` symbol, and it did **not** empty the
+graph of copyleft: UniFFI is MPL-2.0 and `uniffi_core` is linked. That is admitted by
+`CONTRIBUTING.md`'s #364 amendment and only because the module is **not published** — which is why
+it is not, and what #369 has to answer.
 
 ## For agents
 

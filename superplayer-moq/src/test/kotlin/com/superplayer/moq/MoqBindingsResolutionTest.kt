@@ -17,6 +17,7 @@
 package com.superplayer.moq
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -54,10 +55,14 @@ class MoqBindingsResolutionTest {
     }
 
     /**
-     * The control: the same reading over a resolution that reached Maven Central names it, so the
-     * assertion above is "this one and no other" rather than "any `moq-ffi` will do". `0.3.19` is
-     * the version Central would answer with — the same crate release, built with the codecs on —
-     * and it is the near miss worth being able to see.
+     * The reading that would name a component resolved from Maven Central, so the assertion above
+     * is "this one and no other" rather than "any `moq-ffi` will do". `0.3.19` is the version
+     * Central would answer with — the same crate release, built with the codecs on — and it is the
+     * near miss worth being able to see.
+     *
+     * It is a check of the reading and **not** of the build: nothing here can remove
+     * `exclusiveContent` and watch the resolution move, so what this pins down is that a foreign
+     * version would be reported rather than passed over.
      */
     @Test
     fun aComponentResolvedFromMavenCentralWouldBeNamed() {
@@ -68,6 +73,23 @@ class MoqBindingsResolutionTest {
             listOf(central),
             componentsNotAtVersion(listOf(central, local), "0.3.19-superplayer-local")
         )
+    }
+
+    /**
+     * `MoqFfiLinkageTest`'s host guard, checked here because this is the class that runs on every
+     * host. Its own would skip on the machines the guard exists for, so the predicate would be
+     * asserted by nothing precisely where it matters.
+     *
+     * The two negatives are the point: a Linux CI runner and an Intel Mac both carry no library in
+     * `third-party/moq/m2`, and a guard that admitted either would turn a missing artifact into a
+     * red build rather than a skip with a reason.
+     */
+    @Test
+    fun theHostGuardAdmitsOnlyTheMachineTheLibraryWasBuiltFor() {
+        assertTrue(hostMatchesTheCommittedLibrary("Mac OS X", "aarch64"))
+        assertFalse(hostMatchesTheCommittedLibrary("Linux", "amd64"))
+        assertFalse(hostMatchesTheCommittedLibrary("Mac OS X", "x86_64"))
+        assertFalse(hostMatchesTheCommittedLibrary(null, null))
     }
 
     private fun resolvedComponents(): List<String> =

@@ -50,6 +50,15 @@ internal class ScriptedMoqRelay(
     private val defaultTrack: ScriptedMoqTrack = ScriptedMoqTrack(),
     /** Where this relay fails, or null for one that does not. */
     private val failsAt: FailurePoint? = null,
+    /**
+     * What a session answers when it is polled, given how many times it has been polled already.
+     *
+     * A function of the poll count rather than a constant, so that a reading which *moves* — the
+     * cumulative counters a real session reports — can be asserted as movement.
+     * [statisticsMissingTheReceiveRate] and [statisticsThatFail] are this file's two control cases
+     * rather than its shape.
+     */
+    private val statisticsScript: (Int) -> MoqSessionStatistics = ::scriptedStatistics,
 ) : MoqRelay {
 
     /** How many sessions have been opened, and how many of those have been closed. */
@@ -62,6 +71,33 @@ internal class ScriptedMoqRelay(
 
     /** The track names this relay was asked to subscribe to, in the order they were asked for. */
     val subscribed: MutableList<String> = Collections.synchronizedList(mutableListOf())
+
+    /** How many times a session of this relay has been asked for its statistics. */
+    val statisticsPolls: AtomicInteger = AtomicInteger()
+
+    /** What [awaitPolls] waits on, notified by every poll. `java.lang.Object` for the monitor. */
+    private val polled = java.lang.Object()
+
+    /**
+     * Waits until this relay's session has been polled [count] times, and answers whether it was.
+     *
+     * An **event** rather than a wall-clock window, which is what `docs/testing.md`'s *Determinism*
+     * asks for: a test says how many polls it wants and either gets them or fails naming the number,
+     * instead of sampling a counter after a span and hoping the host kept up. [boundMs] is a
+     * timeout, never a pace — a test that passes because the bound is generous is still a test that
+     * observed the polls it asked for.
+     */
+    fun awaitPolls(count: Int, boundMs: Long): Boolean {
+        val deadline = System.nanoTime() + boundMs * NANOS_PER_MILLI
+        synchronized(polled) {
+            while (statisticsPolls.get() < count) {
+                val remaining = (deadline - System.nanoTime()) / NANOS_PER_MILLI
+                if (remaining <= 0) return false
+                polled.wait(remaining)
+            }
+        }
+        return true
+    }
 
     override fun connect(uri: Uri): MoqBroadcastSession {
         if (failsAt == FailurePoint.CONNECT) throw IOException(FAILURE_MESSAGE)
@@ -84,6 +120,15 @@ internal class ScriptedMoqRelay(
             subscribed += trackName
             streamsOpened.incrementAndGet()
             return ScriptedStream(tracks[trackName] ?: defaultTrack, failsAt == FailurePoint.FRAME)
+        }
+
+        override fun statistics(): MoqSessionStatistics {
+            // Counted and announced *before* the script runs, so that a script which throws is still
+            // a poll a waiting test sees — otherwise a failing session would be indistinguishable
+            // from one nothing asked.
+            val ordinal = statisticsPolls.getAndIncrement()
+            synchronized(polled) { polled.notifyAll() }
+            return statisticsScript(ordinal)
         }
 
         override fun close() {
@@ -154,6 +199,9 @@ internal class ScriptedMoqRelay(
 
         /** What a scripted failure says, so a test can assert the cause reached the sink intact. */
         const val FAILURE_MESSAGE: String = "the scripted relay was told to fail here"
+
+        /** Arithmetic, so [awaitPolls]' two clock readings are in the same unit as its bound. */
+        const val NANOS_PER_MILLI: Long = 1_000_000
     }
 }
 
@@ -226,6 +274,44 @@ internal fun lengthPrefixedH264(keyFrame: Boolean): ByteArray {
     val unit = h264NalUnit(keyFrame)
     return byteArrayOf(0, 0, 0, unit.size.toByte()) + unit
 }
+
+/**
+ * What a scripted session says about itself on its [poll]th poll.
+ *
+ * Every number is **non-zero and distinct**, which is what makes a reading that reached a caller
+ * distinguishable from a default-constructed one, and the cumulative counters *advance* with the
+ * poll count as a session's own do — so a test asserting that a later reading replaced an earlier
+ * one is asserting movement rather than re-reading one constant.
+ */
+internal fun scriptedStatistics(poll: Int): MoqSessionStatistics = MoqSessionStatistics(
+    // Robolectric's `elapsedRealtime` is what the real adapter stamps, and a scripted session stamps
+    // the same clock so that a reading's age reads the same way here as it does on a device.
+    sampledAtMs = android.os.SystemClock.elapsedRealtime(),
+    roundTripTimeUs = 37_000,
+    sendRateBps = 128_000,
+    receiveRateBps = 4_800_000,
+    bytesSent = 1_024L * (poll + 1),
+    bytesReceived = 600_000L * (poll + 1),
+    packetsSent = 9L * (poll + 1),
+    packetsReceived = 420L * (poll + 1),
+    transportBytesLost = 1_500L * (poll + 1),
+    transportPacketsLost = poll + 1L,
+)
+
+/**
+ * A session against a relay too old to estimate its receive rate.
+ *
+ * MoQ declares every statistic optional and this is the one that is optional *in practice*, so it
+ * is scripted rather than imagined: a peer below the protocol version that carries the estimate
+ * reports none. What it is here to catch is a mapping that turned an absent field into a zero, which
+ * would read as a link carrying nothing on a session that is plainly delivering frames.
+ */
+internal fun statisticsMissingTheReceiveRate(poll: Int): MoqSessionStatistics =
+    scriptedStatistics(poll).copy(receiveRateBps = null)
+
+/** A session whose statistics call fails, which must cost the subscription nothing. */
+internal fun statisticsThatFail(@Suppress("UNUSED_PARAMETER") poll: Int): MoqSessionStatistics =
+    throw IOException(ScriptedMoqRelay.FAILURE_MESSAGE)
 
 /** One frame of audio: bytes of the right size and no meaning, since nothing here decodes. */
 internal fun aacFrame(@Suppress("UNUSED_PARAMETER") keyFrame: Boolean): ByteArray = ByteArray(96)

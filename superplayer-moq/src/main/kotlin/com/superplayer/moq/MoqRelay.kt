@@ -96,6 +96,31 @@ internal interface MoqBroadcastSession : AutoCloseable {
      */
     fun subscribe(trackName: String, container: MoqContainer): MoqTrackStream
 
+    /**
+     * This session's statistics as of now.
+     *
+     * The one place this seam does *not* carry a binding type across unchanged, which the interface
+     * KDoc's rule above makes a departure worth writing down. It is answered as
+     * [MoqSessionStatistics], because the reading is the only thing in this module a **consumer**
+     * can name, and `uniffi.moq.MoqConnectionStats` cannot be that type: the bindings are an
+     * `implementation` dependency deliberately (`build.gradle.kts`), so no `uniffi` type is on
+     * anything this module's public surface carries. A second vocabulary is the price, and unlike
+     * the catalog and the frame it buys something.
+     *
+     * **Non-null, and the absence is inside the record instead.** MoQ always answers *a* snapshot
+     * and declares each of its numbers optional, so "this session has no statistics" is not a state
+     * that exists — what exists is a snapshot whose fields are individually null, which is what
+     * [MoqSessionStatistics] carries. The remaining way for a caller to get no reading at all is a
+     * session that *fails* the call, and that is a throw rather than a null.
+     *
+     * Answered without blocking: the bindings' `stats()` is the one call on this path that is not
+     * `suspend`.
+     *
+     * @throws java.io.IOException if the session cannot be read, which costs the polling and never
+     *   the subscription — [MoqFrameSource]'s own reason, written down where it is caught.
+     */
+    fun statistics(): MoqSessionStatistics
+
     /** Ends the broadcast subscription and then the session. Safe to call more than once. */
     override fun close()
 }

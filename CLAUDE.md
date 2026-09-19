@@ -1332,6 +1332,37 @@ obligation 9 by arithmetic. **That proves the bridge and proves nothing about Mo
 is opened anywhere under `check`, no line of `UniffiMoqRelay` runs, and the address mapping it uses
 is read off MoQ's tooling rather than observed. #367 is the first real session and needs a device.
 These tests load no native library, so unlike `MoqFfiLinkageTest` they run on every host.
+Since #368 the phase has its measurement half, and it is two things. What MoQ **does** export is
+surfaced: `MoqFrameSource.statistics()` answers a `MoqSessionStatistics` — round trip time, the
+connection's send and receive rate estimates, byte and packet counters, stamped with `sampledAtMs`.
+MoQ has no `statsFlow`, so the cadence is this library's: **one second**, argued at
+`STATISTICS_INTERVAL_MS` in both directions (not the schema's ten, because this is a snapshot of a
+sub-second-latency link rather than a time-weighted quantity a warehouse averages; and not less,
+because a HUD is the only reader). A daemon poller per subscription parks on a monitor `cancel`
+notifies, so joining it costs a cancellation nothing, and a **failed poll ends the polling and never
+the subscription** — it runs inside the same wrapper that turns a throw into `FrameSink.onError`.
+The reading is deliberately **not** a `TelemetryEvent` and reaches no sink: this vocabulary is a
+playback session's and names no transport, so a MoQ rate on an existing field would be a second
+measurement under a name that already means `BandwidthOracle`'s estimate, and
+`PlaybackStateSampled.throughputEstimateBps` is that trap by name. Nothing was added to the schema,
+so `SCHEMA_VERSION` stays **2** — the strongest form of ADR-0008 rule 5's test rather than the
+usual shape-not-meaning one. What MoQ does **not** export is written down: `MoqUpstreamMediaLoss`
+is a one-value enum, `NOT_INSTRUMENTED`, and the single value is the point — a `Long` cannot say
+"nobody counted this", because every consumer reads an absent counter as zero. The two counters that
+would answer it are the container consumer's `discontinuity` (in MoQ's Rust, exported over no UniFFI
+binding) and a stale-drop count (instrumented nowhere at all). One binding fact corrects the spike:
+**all nine statistics are optional**, so the record carries `Long?` and a field the session did not
+report stays null across the adapter — the receive-rate estimate really is absent against an older
+relay. The bindings' `bytesLost`/`packetsLost` cross the seam renamed `transportBytesLost`/
+`transportPacketsLost`, because a QUIC endpoint retransmits what it detects as lost (RFC 9000 §13)
+and a reader who found "lost" on a MoQ record would contradict ADR-0018 rule 8 with a number that is
+true about something else. The rule needs **no amendment** — it already states the absence — and the
+gap it left was `docs/telemetry-schema.md`, which now has a *Realtime sessions* section: what is
+unchanged, the table of what is empty and why, the two unreachable counters, and why MoQ's own
+statistics are not events. `MoqSessionStatisticsTest` drives all seven claims through
+`ScriptedMoqRelay`, whose `statisticsScript` is a function of the poll count so movement is
+assertable, with `noStatistics`, `statisticsMissingTheReceiveRate` and `statisticsThatFail` the
+controls. #354 reports the missing counters upstream and blocks nothing.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,

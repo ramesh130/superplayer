@@ -1314,9 +1314,10 @@ friend of core (rule 11) — `MoqPayNothingTest` reads that off the build file w
 per track: the connect thread opens the session, reads the catalog **once**, subscribes to each
 declared track and calls `onTracks` before any pump exists (obligation 2 by construction), and every
 callback goes through one monitor, which is the happens-before obligation 1 permits rather than the
-single thread it prefers — a blocking `next()` per track makes a thread each unavoidable. Two
-obligations are made true rather than trusted: a track is started at its **first keyframe**, the
-dependent frames of a group joined part-way dropped rather than relabelled, and `cancel()` closes
+single thread it prefers — a blocking `next()` per track makes a thread each unavoidable. **Three**
+obligations are made true rather than trusted: 2, since no pump exists until `onTracks` has returned;
+3, since a track is started at its **first keyframe** and the dependent frames of a group joined
+part-way are dropped rather than relabelled; and 9, since `cancel()` closes
 the streams and the session and then **joins** every thread, which is why `MoqTrackStream.close`
 carries the obligation to unblock a reader — a pump parked in a `next` nothing interrupts would make
 a correct-looking cancellation hang the playback thread. Everything that fails reaches

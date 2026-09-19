@@ -18,6 +18,7 @@ package com.superplayer.moq
 
 import android.net.Uri
 import kotlinx.coroutines.runBlocking
+import uniffi.moq.MoqBroadcastConsumer
 import uniffi.moq.MoqCatalog
 import uniffi.moq.MoqCatalogConsumer
 import uniffi.moq.MoqClient
@@ -25,6 +26,7 @@ import uniffi.moq.MoqContainer
 import uniffi.moq.MoqMediaConsumer
 import uniffi.moq.MoqMediaFrame
 import uniffi.moq.MoqSession
+import uniffi.moq.MoqSubscription
 import java.io.IOException
 
 /**
@@ -71,12 +73,18 @@ internal object UniffiMoqRelay : MoqRelay {
     /**
      * The relay's own address: the broadcast URI's authority under `https`.
      *
-     * // ref: MoQ over WebTransport is an HTTP/3 upgrade, so a relay is addressed as an `https`
-     * // origin; `moq://` is the scheme a *broadcast* is written with and the one
-     * // [MoqFrameSource.SCHEME] answers, which is why the two are not the same string. The split
-     * // between the origin and the broadcast path is what `moq-relay`'s own clients do, and it is
-     * // the one thing here that no test in this repository can confirm — #367 is where it is first
-     * // run against a real relay, and its report is what would correct this.
+     * // spec: draft-ietf-moq-transport §3.1 — a MoQ session over WebTransport is established by a
+     * // WebTransport `CONNECT`, whose URI is an `https` one naming the relay. That is why the
+     * // scheme handed to the bindings is `https` and not [MoqFrameSource.SCHEME]: `moq://` is the
+     * // spelling a *broadcast* is written in on this side, and nothing puts it on a wire.
+     *
+     * **The split between that origin and the broadcast name is not cited, because no public
+     * document states it.** The bindings take the two separately — a URL to `connect` and a name to
+     * `requestBroadcast` — and taking the authority for the first and the path for the second is a
+     * derivation from that signature and from how a broadcast address is written, not a rule read
+     * anywhere. It is the one thing in this module no test here can confirm, which is why it is
+     * labelled rather than asserted: #367 is the first run against a real relay, and its report is
+     * what corrects this or keeps it.
      */
     private fun connectUrlOf(uri: Uri): String = Uri.Builder()
         .scheme("https")
@@ -93,7 +101,7 @@ private class UniffiBroadcastSession(
     private val client: MoqClient,
     /** Held because it is what #368 polls: `stats()` is a snapshot taken from the session. */
     private val session: MoqSession,
-    private val broadcast: uniffi.moq.MoqBroadcastConsumer,
+    private val broadcast: MoqBroadcastConsumer,
 ) : MoqBroadcastSession {
 
     override fun catalog(): MoqCatalog {
@@ -105,7 +113,7 @@ private class UniffiBroadcastSession(
     }
 
     override fun subscribe(trackName: String, container: MoqContainer): MoqTrackStream =
-        UniffiTrackStream(runBlocking { broadcast.subscribeMedia(trackName, container, MoqSubscriptions.liveEdge()) })
+        UniffiTrackStream(runBlocking { broadcast.subscribeMedia(trackName, container, liveEdge()) })
 
     override fun close() {
         broadcast.closeQuietly()
@@ -141,27 +149,13 @@ private class UniffiTrackStream(private val consumer: MoqMediaConsumer) : MoqTra
     }
 }
 
-/** What this module asks a relay for, which is the live edge and nothing else. */
-private object MoqSubscriptions {
-
-    /**
-     * A subscription at the live edge.
-     *
-     * Every field is the bindings' own default, which is what `MoqSubscription()` is: ADR-0018
-     * rule 5 makes a realtime stream live and unseekable and core refuses a start position before
-     * this module is reached, so there is no group range to ask for and no latency target this
-     * library has any business choosing on a publisher's behalf. The call exists so that the
-     * *absence* of a choice is written down once rather than implied at each subscription.
-     */
-    fun liveEdge(): uniffi.moq.MoqSubscription = uniffi.moq.MoqSubscription()
-}
-
-/** Closes without raising: a failure while tearing down has nowhere useful to go. */
-private fun AutoCloseable.closeQuietly() {
-    try {
-        close()
-    } catch (@Suppress("SwallowedException", "TooGenericExceptionCaught") ignored: Throwable) {
-        // The session is already over. A teardown that threw would fail a thread whose only
-        // remaining job was to stop.
-    }
-}
+/**
+ * A subscription at the live edge.
+ *
+ * Every field is the bindings' own default, which is what `MoqSubscription()` is: ADR-0018 rule 5
+ * makes a realtime stream live and unseekable and core refuses a start position before this module
+ * is reached, so there is no group range to ask for and no latency target this library has any
+ * business choosing on a publisher's behalf. It is written down once, here, so that the *absence* of
+ * a choice is a stated thing rather than one implied at each subscription.
+ */
+private fun liveEdge(): MoqSubscription = MoqSubscription()

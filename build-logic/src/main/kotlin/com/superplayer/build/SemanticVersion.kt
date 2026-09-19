@@ -26,9 +26,12 @@ package com.superplayer.build
  * would carry here — unreleased, covered by none of the other rules — so parsing the wider grammar
  * would be accepting strings no rule in that record can judge.
  *
- * [compareTo] is the "compare" half: ordering two versions is what a release has to do to say
- * whether the version moved at all, and it is the one operation this type carries beyond reading
- * one string.
+ * [compareTo] is the "compare" half, and it is **declared here and reached by nothing in this
+ * check** — the shape `RetryPolicy.licence` takes, said out loud for the same reason. It is here
+ * for **#328**, the gate that compares the bump being proposed against the surface diff since the
+ * last release, and **#329**, the release command that has to refuse a version that did not move.
+ * Both land on this type rather than each parsing the string again, and ordering is the one
+ * operation either needs beyond reading one.
  */
 internal data class SemanticVersion(
     val major: Int,

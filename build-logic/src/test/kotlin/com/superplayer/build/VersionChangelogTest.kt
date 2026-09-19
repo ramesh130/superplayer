@@ -117,6 +117,21 @@ class VersionChangelogTest {
     }
 
     @Test
+    fun `a dash an editor substituted is not a failed release`() {
+        val changelog = """
+            # Changelog
+
+            ## [Unreleased]
+
+            ## [0.1.0] – 2026-09-19
+
+            - An en dash where the format writes a hyphen.
+        """.trimIndent()
+
+        assertNull(findVersionChangelogMismatch(catalog("0.1.0"), changelog))
+    }
+
+    @Test
     fun `a release heading with nothing under it is an empty promise`() {
         val changelog = """
             # Changelog

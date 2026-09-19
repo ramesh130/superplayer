@@ -29,13 +29,14 @@ one says so.
 | [`api-surface.md`](api-surface.md) | How the public API of every published module is tracked and validated |
 | [`throughput-traces.md`](throughput-traces.md) | The network-trace format the test harness replays, and how a public dataset comes in |
 
-The repository root carries four more: `CONTEXT.md` is the vocabulary the code, the ADRs and the
+The repository root carries six more: `CONTEXT.md` is the vocabulary the code, the ADRs and the
 issues share; `CONTRIBUTING.md` is the clean-room discipline and the citation rule every non-obvious
 algorithm is held to; `PRD.md` is the problem inventory and the phase table the issues are cut from;
 and `CLAUDE.md` is the orientation for someone — or something — about to change the library, with
-`THIRD_PARTY.md` beside them as the dependency register and `CHANGELOG.md` as what changed between
-two versions, which [`adr/0017-version-the-library-by-semver-in-lockstep-with-the-tracked-api-surface-as-the-arbiter.md`](adr/0017-version-the-library-by-semver-in-lockstep-with-the-tracked-api-surface-as-the-arbiter.md)
-decides the shape of and `./gradlew verifyVersion` holds to the version catalog.
+`THIRD_PARTY.md` beside them as the dependency register. `CHANGELOG.md` is the last: what changed
+between two versions, in the shape
+[`adr/0017-version-the-library-by-semver-in-lockstep-with-the-tracked-api-surface-as-the-arbiter.md`](adr/0017-version-the-library-by-semver-in-lockstep-with-the-tracked-api-surface-as-the-arbiter.md)
+decides, held to the version catalog by `./gradlew verifyVersion`.
 
 ## Measurement outside `check`
 

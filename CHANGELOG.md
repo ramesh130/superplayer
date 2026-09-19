@@ -26,6 +26,18 @@ something demonstrable, and an adopter taking the first release is taking all te
 per-commit back-fill of several hundred commits would be longer, later and no more useful. Phase 11
 is tuning and is open.
 
+Two things this section does not say, because Keep a Changelog has no heading for them and burying
+them under `Added` would be worse than stating them here:
+
+- Phase 11 — tuning — is open, and its three exit criteria stand in three different states.
+  `benchmark/phase3/`'s `ExitCriterion` measured the adaptive policy against the static profile and
+  reports **not met**. The feed demo's p50 TTFF target is one `PRD.md` Part 4 has that phase *set
+  and argue*, so there is no number yet to be met. Peak RSS and battery need the benchmark's device
+  arm, which is not built (`benchmark/README.md`), so those columns are dashes rather than
+  measurements.
+- The library is `0.x` and, under ADR-0017 rule 7, a minor release may remove or change public
+  declarations. What takes it to `1.0.0` is listed in that rule.
+
 ### Added
 
 - **Phase 0 — Scaffold.** Thirteen library modules under one Gradle build with the convention
@@ -65,11 +77,3 @@ is tuning and is open.
 - **Phase 10 — HTTP stack.** `HttpTransport` and `HttpStack` at the bottom of all four chains, the
   five obligations carried by `HttpTransportConformance` in `superplayer-testkit`, and
   `docs/http-transport.md`.
-
-### Known limitations
-
-- Phase 11 — tuning — is open: the adaptive policy's win over the static profile, the feed demo's
-  p50 TTFF target, and peak RSS and battery from a device are measured but not met. `PRD.md` Part 4
-  and `benchmark/phase3/` carry the verdicts.
-- The library is `0.x` and, under ADR-0017 rule 7, a minor release may remove or change public
-  declarations. What takes it to `1.0.0` is listed in that rule.

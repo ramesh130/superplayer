@@ -2,6 +2,7 @@ import com.superplayer.build.VerifyLicenseHeader
 import com.superplayer.build.VerifyMedia3SupportedVersion
 import com.superplayer.build.VerifyModulePhaseRule
 import com.superplayer.build.VerifyNoHardcodedMedia3Versions
+import com.superplayer.build.VerifyVersion
 
 plugins {
     // For the lifecycle `check` task alone. This used to be `tasks.register("check")`, which
@@ -55,6 +56,19 @@ val verifyMedia3SupportedVersion =
         stampFile.set(layout.buildDirectory.file("verification/media3-supported-version.txt"))
     }
 
+// ADR-0017 rule 1 publishes all thirteen modules under the catalog's one `superplayer` version, and
+// nothing read it as anything but a string before this: `publishToMavenLocal` would take `0.1` as
+// happily as `0.1.0`. This holds it to the grammar that record admits and to CHANGELOG.md, so a
+// release whose notes were never written fails here rather than on someone else's build.
+val verifyVersion =
+    tasks.register<VerifyVersion>("verifyVersion") {
+        group = "verification"
+        description = "Fails if the published version is malformed or CHANGELOG.md disagrees with it."
+        versionCatalog.set(layout.projectDirectory.file("gradle/libs.versions.toml"))
+        changelog.set(layout.projectDirectory.file("CHANGELOG.md"))
+        stampFile.set(layout.buildDirectory.file("verification/version.txt"))
+    }
+
 // Spotless stamps `config/license-header.txt` onto every `.kt` file; nothing in Spotless checks
 // that the file names the license this project is under. This does, against `LICENSE` itself, so
 // the header and the license cannot drift apart.
@@ -95,6 +109,7 @@ tasks.named("check") {
     dependsOn(verifyNoHardcodedMedia3Versions)
     dependsOn(verifyModulePhaseRule)
     dependsOn(verifyMedia3SupportedVersion)
+    dependsOn(verifyVersion)
     dependsOn(verifyLicenseHeader)
     dependsOn(verifyDevicelab)
 

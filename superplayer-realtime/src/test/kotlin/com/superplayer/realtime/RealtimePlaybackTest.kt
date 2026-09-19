@@ -20,7 +20,9 @@ import android.net.Uri
 import android.os.SystemClock
 import androidx.media3.common.C
 import androidx.media3.common.Format
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.RenderersFactory
 import androidx.media3.test.utils.FakeClock
 import androidx.media3.test.utils.FakeRenderer
@@ -33,6 +35,7 @@ import com.superplayer.core.MalformedRealtimeBitstreamException
 import com.superplayer.core.MediaRequest
 import com.superplayer.core.RealtimeStreamNotSeekableException
 import com.superplayer.core.RealtimeTrack
+import com.superplayer.core.RealtimeTrackStalledException
 import com.superplayer.core.SuperPlayer
 import com.superplayer.core.UnsupportedRealtimeCodecException
 import org.junit.After
@@ -41,6 +44,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.LooperMode
 import java.io.IOException
+import kotlin.math.abs
 
 /**
  * Phase 13's tracer bullet: a frame handed in by a transport plays, with no device and no network
@@ -337,6 +341,216 @@ class RealtimePlaybackTest {
         assertThat(refusals.single().codec).isEqualTo("avc3.42c01e")
     }
 
+    // --- Two tracks (#346) ---------------------------------------------------------------------
+
+    /**
+     * Audio beside video through one subscription: both tracks selected, the player ready and the
+     * position advancing.
+     *
+     * The first half of #346's acceptance criteria, and the shape every test below builds on. Both
+     * groups being *selected* is what makes it two tracks rather than one played with a spare
+     * declared: a period that published two groups and fed one would still reach `STATE_READY`.
+     */
+    @Test
+    fun `audio and video through one source play with both tracks selected`() {
+        val player = buildPlayer(twoTrackSource())
+
+        player.setMediaRequest(realtimeRequest())
+        player.prepare()
+        player.play()
+        TestPlayerRunHelper.runUntilPlaybackState(player.exoPlayer, Player.STATE_READY)
+
+        val selected = player.currentTracks.groups.filter { it.isSelected }
+        assertThat(selected.map { it.mediaTrackGroup.getFormat(0).sampleMimeType })
+            .containsExactly(MimeTypes.VIDEO_H264, MimeTypes.AUDIO_AAC)
+
+        val atReady = player.currentPosition
+        TestPlayerRunHelper.playUntilPosition(player.exoPlayer, /* mediaItemIndex = */ 0, /* positionMs = */ 2_000)
+        assertThat(player.currentPosition - atReady).isAtLeast(1_000)
+    }
+
+    /**
+     * The sync claim, as an assertion over the two tracks' **rendered positions** rather than as an
+     * observation that it played.
+     *
+     * Each renderer records the timestamp of the last sample it actually processed, so what is
+     * compared is where the audio and the video had each got to at the same instant of one playback.
+     * A period that rebased each track on its own first frame, or that let one queue run away from
+     * the other, moves these apart; nothing about "it reached `STATE_READY`" would.
+     */
+    @Test
+    fun `the two tracks render in step`() {
+        val renderers = recordingRenderers()
+        val player = buildPlayer(twoTrackSource(), renderers)
+
+        player.setMediaRequest(realtimeRequest())
+        player.prepare()
+        player.play()
+        TestPlayerRunHelper.playUntilPosition(player.exoPlayer, /* mediaItemIndex = */ 0, /* positionMs = */ 2_000)
+
+        assertRenderedInStep(renderers)
+    }
+
+    /**
+     * Two tracks whose timestamp origins do not share a clock, with the **audio** ahead: still in
+     * step.
+     *
+     * `FrameSource` obligation 4 promises a monotonic timeline per track and deliberately promises
+     * no shared origin, so this is the case the reconciliation rule exists for. An hour is not an
+     * exotic choice — an RTP stream's initial timestamp is random per SSRC (RFC 3550 §5.1) and two
+     * tracks of one session routinely start that far apart on the wire. Unreconciled, the audio's
+     * samples would land an hour past the playhead and the buffer would wedge full.
+     */
+    @Test
+    fun `tracks whose origins differ are reconciled when the audio's is ahead`() {
+        val renderers = recordingRenderers()
+        val player = buildPlayer(twoTrackSource(audioEpochOffsetUs = ONE_HOUR_US), renderers)
+
+        player.setMediaRequest(realtimeRequest())
+        player.prepare()
+        player.play()
+        TestPlayerRunHelper.playUntilPosition(player.exoPlayer, /* mediaItemIndex = */ 0, /* positionMs = */ 2_000)
+
+        assertRenderedInStep(renderers)
+    }
+
+    /**
+     * The other direction: the audio's origin an hour **behind** the video's.
+     *
+     * A different failure rather than the same one mirrored, which is why both are tested.
+     * Unreconciled, these samples are timed before the queue's read position and are discarded
+     * silently — the cost obligation 4 names — so the video would play perfectly with no sound and
+     * nothing anywhere reporting it.
+     */
+    @Test
+    fun `tracks whose origins differ are reconciled when the audio's is behind`() {
+        val renderers = recordingRenderers()
+        val player = buildPlayer(twoTrackSource(audioEpochOffsetUs = -ONE_HOUR_US), renderers)
+
+        player.setMediaRequest(realtimeRequest())
+        player.prepare()
+        player.play()
+        TestPlayerRunHelper.playUntilPosition(player.exoPlayer, /* mediaItemIndex = */ 0, /* positionMs = */ 2_000)
+
+        assertRenderedInStep(renderers)
+    }
+
+    /**
+     * A track that has not started yet does not drag the period's buffered position to zero.
+     *
+     * The bound is stated on `RealtimeMediaPeriod.LATE_TRACK_START_BOUND_US` — five seconds of the
+     * other tracks' media — and this script stays inside it: the audio buffers about two and a half
+     * seconds while the video, declared and still connecting, has sent nothing. `bufferedPosition`
+     * is the audio's and not zero, which is the whole of the allowance and is read off the public
+     * `Player` API.
+     */
+    @Test
+    fun `a track that has not started yet does not hold the other's buffered position at zero`() {
+        val player = buildPlayer(
+            ScriptedFrameSource(
+                listOf(
+                    ScriptedTrack(codec = ScriptedTrack.H264, frames = 0),
+                    audioTrack(frames = AUDIO_FRAMES_INSIDE_START_BOUND),
+                ),
+            ),
+        )
+
+        player.setMediaRequest(realtimeRequest())
+        player.prepare()
+        // Twice, and the second is not superstition: the first pass carries the period's preparation
+        // to the player, and the buffered position it then reports is only published on the next.
+        // This player never reaches `STATE_READY` — its video renderer has no sample to read — so
+        // there is no state to wait on instead.
+        repeat(2) { TestPlayerRunHelper.advance(player.exoPlayer).untilPendingCommandsAreFullyHandled() }
+
+        assertThat(player.playbackState).isEqualTo(Player.STATE_BUFFERING)
+        assertThat(player.bufferedPosition).isAtLeast(2_000)
+        assertThat(player.playerError).isNull()
+    }
+
+    /**
+     * A track that delivered and then went quiet while the others kept arriving ends the session
+     * typed, rather than buffering for ever.
+     *
+     * The bound is `RealtimeMediaPeriod.STALLED_TRACK_BOUND_US`, three seconds of the leading
+     * track's media, and this script passes it: one video frame against seven seconds of audio. The
+     * failure names the track that stopped, because which one it was is the first thing a transport
+     * author needs.
+     */
+    @Test
+    fun `a track that stalls behind the others ends the session naming it`() {
+        val player = buildPlayer(
+            ScriptedFrameSource(
+                listOf(
+                    ScriptedTrack(codec = ScriptedTrack.H264, frames = 1),
+                    audioTrack(frames = AUDIO_FRAMES_PAST_STALL_BOUND),
+                ),
+            ),
+        )
+
+        player.setMediaRequest(realtimeRequest())
+        player.prepare()
+        val error: Throwable = TestPlayerRunHelper.runUntilError(player.exoPlayer)
+
+        val stalls = generateSequence(error) { it.cause }.filterIsInstance<RealtimeTrackStalledException>().toList()
+        assertThat(stalls).hasSize(1)
+        assertThat(stalls.single().codec).isEqualTo(ScriptedTrack.H264)
+        assertThat(stalls.single().behindByMs).isGreaterThan(stalls.single().boundMs)
+    }
+
+    /**
+     * A source that carries audio alone plays: a legitimate WHEP configuration, and the control that
+     * keeps everything above from quietly requiring a video track.
+     */
+    @Test
+    fun `a source that carries audio alone plays`() {
+        val player = buildPlayer(ScriptedFrameSource(listOf(audioTrack(frames = AUDIO_FRAMES))))
+
+        player.setMediaRequest(realtimeRequest())
+        player.prepare()
+        player.play()
+        TestPlayerRunHelper.runUntilPlaybackState(player.exoPlayer, Player.STATE_READY)
+
+        assertThat(selectedFormat(player).sampleMimeType).isEqualTo(MimeTypes.AUDIO_AAC)
+        val atReady = player.currentPosition
+        TestPlayerRunHelper.playUntilPosition(player.exoPlayer, /* mediaItemIndex = */ 0, /* positionMs = */ 2_000)
+        assertThat(player.currentPosition - atReady).isAtLeast(1_000)
+    }
+
+    /**
+     * How far apart the two renderers' last processed samples may be and still be called in step.
+     *
+     * Media3's `FakeRenderer` processes buffers up to a quarter of a second ahead of the playback
+     * position, so two renderers polled at one instant legitimately differ by up to that readahead
+     * plus one frame of whichever is coarser. Half a second is that, rounded up — tight enough that
+     * a track rebased on its own epoch (which moves them by the publisher's skew) or anchored on
+     * another clock (which moves them by hours) fails it by orders of magnitude, and loose enough
+     * that it is not a race against the fake's own scheduling.
+     */
+    private fun assertRenderedInStep(renderers: List<RecordingRenderer>) {
+        val positions = renderers.map { it.lastProcessedSampleUs }
+        assertThat(positions).doesNotContain(C.TIME_UNSET)
+        assertThat(abs(positions[0] - positions[1])).isAtMost(MAX_RENDERED_SKEW_US)
+    }
+
+    private fun twoTrackSource(audioEpochOffsetUs: Long = 0L) = ScriptedFrameSource(
+        listOf(
+            ScriptedTrack(codec = ScriptedTrack.H264, frames = VIDEO_FRAMES),
+            audioTrack(frames = AUDIO_FRAMES, epochOffsetUs = audioEpochOffsetUs),
+        ),
+    )
+
+    private fun audioTrack(frames: Int, epochOffsetUs: Long = 0L) = ScriptedTrack(
+        codec = ScriptedTrack.AAC,
+        frames = frames,
+        epochUs = ScriptedTrack.TRANSPORT_EPOCH_US + epochOffsetUs,
+        frameDurationUs = ScriptedTrack.AUDIO_FRAME_DURATION_US,
+        payload = ScriptedTrack::aacFrame,
+    )
+
+    private fun recordingRenderers() =
+        listOf(RecordingRenderer(C.TRACK_TYPE_VIDEO), RecordingRenderer(C.TRACK_TYPE_AUDIO))
+
     /** The one track the player selected, read off the public `Player` API. */
     private fun selectedFormat(player: SuperPlayer): Format =
         player.currentTracks.groups.single().mediaTrackGroup.getFormat(0)
@@ -348,7 +562,18 @@ class RealtimePlaybackTest {
         .setStartPosition(startPosition)
         .build()
 
-    private fun buildPlayer(source: FrameSource): SuperPlayer {
+    /**
+     * A player over [source], with a renderer per track type.
+     *
+     * The audio renderer is there for every player and not only the two-track ones: it costs a
+     * video-only session nothing — a renderer with no track selected for it is disabled — and a
+     * factory that varied by test would make "this player has no audio" a property of the test
+     * rather than of the stream.
+     */
+    private fun buildPlayer(
+        source: FrameSource,
+        renderers: List<Renderer> = listOf(FakeRenderer(C.TRACK_TYPE_VIDEO), FakeRenderer(C.TRACK_TYPE_AUDIO)),
+    ): SuperPlayer {
         val player = SuperPlayer.Builder(ApplicationProvider.getApplicationContext())
             .setRealtime(Realtime.transport(REALTIME_SCHEME) { source })
             .setEngineConfigurator { configuration ->
@@ -357,13 +582,33 @@ class RealtimePlaybackTest {
                 // a race against the host's speed.
                 configuration.engine
                     .setClock(FakeClock(SystemClock.elapsedRealtime(), /* isAutoAdvancing = */ true))
-                    .setRenderersFactory(
-                        RenderersFactory { _, _, _, _, _ -> arrayOf(FakeRenderer(C.TRACK_TYPE_VIDEO)) },
-                    )
+                    .setRenderersFactory(RenderersFactory { _, _, _, _, _ -> renderers.toTypedArray() })
             }
             .build()
         players += player
         return player
+    }
+
+    /**
+     * Media3's own fake renderer, with the timestamp of the last sample it processed kept.
+     *
+     * `FakeRenderer` keeps that value privately, and `shouldProcessBuffer` is the hook it asks
+     * before consuming each one — so this reads what the renderer really rendered rather than what
+     * the queue held. It is the only way to state #346's sync claim as an assertion over two
+     * *rendered* positions; every alternative reads one of the two queues, which is the thing under
+     * test.
+     */
+    private class RecordingRenderer(trackType: Int) : FakeRenderer(trackType) {
+
+        @Volatile
+        var lastProcessedSampleUs: Long = C.TIME_UNSET
+            private set
+
+        override fun shouldProcessBuffer(bufferTimeUs: Long, playbackPositionUs: Long): Boolean {
+            val process = super.shouldProcessBuffer(bufferTimeUs, playbackPositionUs)
+            if (process) lastProcessedSampleUs = bufferTimeUs
+            return process
+        }
     }
 
     private companion object {
@@ -372,5 +617,29 @@ class RealtimePlaybackTest {
          * would read as though it did. What is being proven is that *a* scheme reaches *a* transport.
          */
         const val REALTIME_SCHEME = "superplayer-test-realtime"
+
+        /** Ten seconds at 30 fps, comfortably more media than any assertion below plays. */
+        const val VIDEO_FRAMES = 300
+
+        /** The same ten seconds of AAC-LC access units, which are shorter and therefore more of them. */
+        const val AUDIO_FRAMES = 430
+
+        /**
+         * About 2.5 s of audio: inside `RealtimeMediaPeriod.LATE_TRACK_START_BOUND_US`, so a track
+         * that has not started yet is still merely late rather than stalled.
+         */
+        const val AUDIO_FRAMES_INSIDE_START_BOUND = 110
+
+        /**
+         * About 7 s of audio: past `RealtimeMediaPeriod.STALLED_TRACK_BOUND_US` by more than twice
+         * over, so the bound is crossed rather than approached.
+         */
+        const val AUDIO_FRAMES_PAST_STALL_BOUND = 300
+
+        /** Far outside any real audio/video skew, which is what makes it a different clock. */
+        const val ONE_HOUR_US = 3_600_000_000L
+
+        /** See `assertRenderedInStep`, which argues it. */
+        const val MAX_RENDERED_SKEW_US = 500_000L
     }
 }

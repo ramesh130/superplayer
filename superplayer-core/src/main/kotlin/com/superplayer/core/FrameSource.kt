@@ -49,17 +49,23 @@ import android.net.Uri
  *    [FrameSink] a subscription was given must be ordered against every other. *Cost:* SuperPlayer
  *    writes into a sample queue with one writer assumed; two concurrent writers corrupt it, and what
  *    surfaces is a crash inside Media3 whose stack names nothing of yours.
- * 2. **Call [FrameSink.onTrack] before the first frame, exactly once.** *Cost:* no `Format` exists,
- *    so nothing is prepared and the player waits in `STATE_BUFFERING` for ever, with no error to
- *    report and nothing in a bug report to read.
- * 3. **Make the first frame after [FrameSink.onTrack] a keyframe.** *Cost:* the decoder is fed a
- *    dependent frame with no reference, and renders either nothing or visible corruption — the
- *    classic "it connects and the picture is garbage" report.
- * 4. **Timestamps are microseconds on one monotonically non-decreasing timeline.** They are
- *    *yours*: SuperPlayer subtracts the first frame's value and treats the rest as offsets from it,
- *    so an epoch is not required, but a reset or a step backwards is not tolerated (ADR-0018
- *    rule 9). *Cost:* a frame timed before the queue's read position is discarded silently; a
- *    backwards step strands the playhead and playback stalls with a full buffer.
+ * 2. **Call [FrameSink.onTracks] before the first frame, exactly once, with every track the
+ *    subscription will deliver.** A frame names its track by [EncodedFrame.trackIndex], a position
+ *    in that list, so a track declared later has no index it could have been sent under and a
+ *    second call has nothing it could mean. *Cost:* no `Format` exists, so nothing is prepared and
+ *    the player waits in `STATE_BUFFERING` for ever, with no error to report and nothing in a bug
+ *    report to read.
+ * 3. **Make the first frame of each track a keyframe.** *Cost:* the decoder is fed a dependent
+ *    frame with no reference, and renders either nothing or visible corruption — the classic "it
+ *    connects and the picture is garbage" report.
+ * 4. **Timestamps are microseconds on one monotonically non-decreasing timeline per track, and
+ *    ideally on one epoch across tracks.** They are *yours*: SuperPlayer anchors the period on the
+ *    first frame delivered on any track and treats the rest as offsets from it, so an epoch is not
+ *    required, but a reset or a step backwards within a track is not tolerated (ADR-0018 rule 9).
+ *    What this obligation promises is monotonicity *within* a track; what it does not promise is
+ *    that two tracks share an origin, which is why SuperPlayer reconciles rather than assumes —
+ *    see *Two tracks* below. *Cost:* a frame timed before the queue's read position is discarded
+ *    silently; a backwards step strands the playhead and playback stalls with a full buffer.
  * 5. **The precision you have is the precision you state.** Where a transport cannot fill
  *    microseconds exactly — WebRTC's Android Java seam exposes no RTP timestamp and truncates to
  *    whole milliseconds — say so in *your* documentation rather than implying a precision you do not
@@ -97,6 +103,37 @@ import android.net.Uri
  * 9. **[cancel] stops delivery, and no callback arrives after it returns.** *Cost:* a write into a
  *    queue that has been released, which is a crash at an unrelated moment.
  *
+ * ## Two tracks
+ *
+ * A subscription carries as many tracks as the publisher sends — audio beside video is the ordinary
+ * WHEP and MoQ case, and audio alone is a legitimate one. They are declared together in one
+ * [FrameSink.onTracks] and each frame names its own with [EncodedFrame.trackIndex]; what follows is
+ * what SuperPlayer does with them, written here because it is what a transport has to be able to
+ * predict (#346).
+ *
+ * **One timebase, anchored once.** The first frame delivered on *any* track anchors the period, and
+ * every track's timestamps are rebased on that same anchor. That is what makes a real skew survive:
+ * a publisher whose audio genuinely leads its video by 40 ms sends two tracks on one epoch, and the
+ * 40 ms reaches the renderers as 40 ms rather than being flattened to zero by rebasing each track on
+ * its own first frame. Hand over one epoch for both tracks wherever you have one — it is the only
+ * way a skew you meant to send survives at all.
+ *
+ * **A track that is plainly on another epoch is reconciled rather than trusted.** Obligation 4
+ * promises monotonicity per track and says nothing about two tracks sharing an origin, and two
+ * origins really do occur — an RTP stream's random 32-bit offset is per SSRC, so two tracks of one
+ * session routinely start hours apart on the wire. A track whose first frame lands implausibly far
+ * from the period's anchor is therefore taken to be on an epoch of its own and anchored at the point
+ * the period had reached when it arrived, which with no common clock is the only estimate of "now"
+ * either side has. **That estimate is worth less than a shared epoch**: it recovers playback, not
+ * lip sync.
+ *
+ * **A track that starts late, or stops, is bounded.** A declared track that has delivered nothing
+ * does not hold the others' buffered position down, and a track that falls far enough behind the
+ * others — whether it never started or started and stopped — ends the session with
+ * [RealtimeTrackStalledException] rather than leaving the player buffering for ever. The bounds are
+ * relative: all tracks going quiet together is a live stream that went quiet, which is not a
+ * failure. See that exception for the numbers and the reasoning.
+ *
  * ## What a realtime stream does not get
  *
  * Stated rather than discovered (ADR-0018 rule 6): no content cache, no CMCD, no downloads, no
@@ -112,7 +149,7 @@ public interface FrameSource {
      *
      * Called once per playback, on the thread that prepares the player. A transport that needs to
      * connect does so here or on a thread of its own; nothing on this side waits for it, and the
-     * player is in `STATE_BUFFERING` until [FrameSink.onTrack] and the first frames arrive.
+     * player is in `STATE_BUFFERING` until [FrameSink.onTracks] and the first frames arrive.
      */
     public fun subscribe(sink: FrameSink)
 
@@ -137,13 +174,20 @@ public interface FrameSource {
 public interface FrameSink {
 
     /**
-     * The track that is about to be delivered. Called once, before the first [onFrame]
+     * Every track this subscription will deliver. Called once, before the first [onFrame]
      * (obligation 2).
      *
-     * One track per subscription in phase 13. Audio and video through one source, in sync across two
-     * sample queues, is #346's and widens this method rather than adding a second one.
+     * The order is the one [EncodedFrame.trackIndex] names, so a transport chooses it and then
+     * keeps it. One track is the ordinary WHEP or MoQ audio-only case and needs no more of this
+     * method than a single-element list; two is audio beside video. An empty list declares nothing
+     * to play and is refused.
+     *
+     * This carried one track until #346, and widening it was deliberate rather than adding a second
+     * method beside it: preparation completes once, with the whole `TrackGroupArray` a player
+     * selects from, so a second call would arrive after the player had already decided what it was
+     * playing and would have nowhere to put what it carried.
      */
-    public fun onTrack(track: RealtimeTrack)
+    public fun onTracks(tracks: List<RealtimeTrack>)
 
     /** One encoded frame (obligations 3, 4, 6 and 8). */
     public fun onFrame(frame: EncodedFrame)
@@ -227,7 +271,7 @@ public class RealtimeTrack(
          * A track that carries a record sends its samples **length-prefixed** rather than Annex-B,
          * which is obligation 7's second half and the half nothing here can check.
          *
-         * @property bytes The record. Not modified after this is handed to [FrameSink.onTrack],
+         * @property bytes The record. Not modified after this is handed to [FrameSink.onTracks],
          *   for [EncodedFrame.payload]'s reason.
          */
         public class Record(public val bytes: ByteArray) : CodecConfiguration()
@@ -243,12 +287,18 @@ public class RealtimeTrack(
  * @property payload The codec bitstream, with no container framing (obligation 6). Not touched after
  *   [FrameSink.onFrame] returns, and never handed over twice (obligation 8).
  * @property keyFrame Whether this frame can be decoded without reference to an earlier one. The
- *   first frame of a subscription must be one (obligation 3).
+ *   first frame of each track must be one (obligation 3).
+ * @property trackIndex Which of the tracks handed to [FrameSink.onTracks] this frame belongs to, by
+ *   position in that list. The default is the only value a single-track subscription has, which is
+ *   why a transport that carries one track need not name it. A frame naming a track that was never
+ *   declared is refused rather than dropped, because a silently discarded track is exactly the
+ *   failure the obligations above exist to prevent.
  */
 public class EncodedFrame(
     public val timestampUs: Long,
     public val payload: ByteArray,
     public val keyFrame: Boolean,
+    public val trackIndex: Int = 0,
 )
 
 /**

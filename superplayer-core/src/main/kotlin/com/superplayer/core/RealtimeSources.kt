@@ -218,3 +218,56 @@ public class MalformedRealtimeBitstreamException internal constructor(
     /** What was wrong, in one clause, naming the offset or the count that did not add up. */
     public val reason: String,
 ) : IOException("Malformed realtime bitstream for codec \"$codec\": $reason.")
+
+/**
+ * One track of a realtime subscription fell so far behind the others that playback could not go on.
+ *
+ * Raised where a subscription carries more than one track and one of them stops keeping up: either
+ * it was declared in [FrameSink.onTracks] and never delivered a frame, or it delivered frames and
+ * then went quiet while the others kept arriving. Two tracks feed two sample queues, a renderer
+ * reads each, and the player is only as ready as the emptier of them — so a track that stops is a
+ * player that stops, with a full buffer on the other side and nothing anywhere saying why.
+ *
+ * ## Why a bound at all, and why it is a relative one
+ *
+ * Without one the failure has no symptom: the player sits in `STATE_BUFFERING` for ever, which is
+ * [FrameSource] obligation 2's cost arriving through a different door, and a bug report reads "it
+ * just spins". The alternative — dropping the silent track and playing the other — was rejected
+ * because a track is chosen once, when preparation completes: a player that had already selected
+ * video cannot be told mid-session that there is no video after all, and a viewer watching a
+ * picture with the sound gone is not obviously better served than one shown an error.
+ *
+ * The bound is **relative to the other tracks and never to the wall clock**, which is the decision
+ * worth knowing. All of a publisher's tracks going quiet together is a live stream that went quiet —
+ * ADR-0018 rule 5's timeline has no end to reach, so that is an ordinary edge to sit at and not a
+ * failure. What is a failure is one track advancing while another does not, and that is what
+ * [behindByMs] measures.
+ *
+ * ## Why an `IOException`
+ *
+ * [UnsupportedRealtimeCodecException]'s shape and for its reason: the transport was subscribed, so
+ * a session exists, and what went wrong is a delivery that did not arrive. It adds no
+ * `FailureClass`, for that exception's reason.
+ *
+ * ## What to do instead
+ *
+ * Deliver every declared track, or declare only the tracks you will deliver. A publisher that may
+ * add a track later subscribes again rather than declaring one it has nothing for yet, since
+ * obligation 2 makes the declaration final.
+ */
+public class RealtimeTrackStalledException internal constructor(
+
+    /** The codec string of the track that fell behind, verbatim, so a bug report names which one. */
+    public val codec: String,
+
+    /** How far behind the furthest-ahead track it had fallen when the bound was crossed. */
+    public val behindByMs: Long,
+
+    /** The bound that was crossed, so the message says what was expected and not only what happened. */
+    public val boundMs: Long,
+) : IOException(
+    "The realtime track \"$codec\" fell ${behindByMs}ms behind the other tracks of its subscription, " +
+        "past the ${boundMs}ms this bound allows. Every declared track must keep delivering: two " +
+        "sample queues make the player only as ready as the emptier one, so a track that stops is " +
+        "playback that stops.",
+)

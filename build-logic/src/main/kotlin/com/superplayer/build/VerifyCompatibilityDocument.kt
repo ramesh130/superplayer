@@ -110,7 +110,13 @@ internal fun findCompatibilityDocumentViolations(
     compatibilityDocument: String
 ): List<String> {
     val published = includedModules(settingsScript)
-    val documented = parseStabilityRows(compatibilityDocument)
+    val section = stabilitySection(compatibilityDocument)
+        ?: return listOf(
+            "docs/compatibility.md has no \"$STABILITY_HEADING\" section to read a table out of. " +
+                "If the heading was reworded, VerifyCompatibilityDocument in build-logic has to " +
+                "learn the new wording."
+        )
+    val documented = parseStabilityRows(section)
 
     val missing = (published - documented.keys).map {
         "$it is published by settings.gradle.kts and has no row in the stability table."
@@ -136,15 +142,27 @@ private const val STABILITY_HEADING = "Which parts are stable?"
  * with a public API under `0.x`'s terms, one whose public API is for their *tests*, and one that
  * publishes nothing to depend on yet. `docs/compatibility.md` defines each beneath the table.
  */
-internal val STABILITY_STATUSES = listOf("Public", "Public (for your tests)", "Empty")
+private val STABILITY_STATUSES = listOf("Public", "Public (for your tests)", "Empty")
 
-/** `include(":superplayer-core")` and its twelve siblings, on a line that is not a comment. */
-private val INCLUDE = Regex("""^\s*include\("::?(superplayer-[\w-]+)"\)""")
+/**
+ * An `include(...)` line that is not a comment, and each project path on it — the multi-argument
+ * form included, since `include(":a", ":b")` declares the same two modules written differently.
+ *
+ * The path is read whatever it is called rather than only when it begins `superplayer-`. Every
+ * `include` in `settings.gradle.kts` is a published library module — `build-logic` arrives through
+ * `includeBuild` and `demo/` and `benchmark/` are separate builds entirely — so a module added
+ * under some other name is a module an adopter can resolve, and it should fail here rather than
+ * slip past a prefix. If one is ever added that is deliberately not published, the answer is to
+ * decide that here rather than to have the check quietly stop seeing it.
+ */
+private val INCLUDE_LINE = Regex("""^\s*include\(""")
+private val PROJECT_PATH = Regex(""""::?([\w-]+)"""")
 
 private fun includedModules(settingsScript: String): Set<String> =
     settingsScript.lineSequence()
         .filterNot(::isCommentLine)
-        .mapNotNull { INCLUDE.find(it)?.groupValues?.get(1) }
+        .filter { INCLUDE_LINE.containsMatchIn(it) }
+        .flatMap { line -> PROJECT_PATH.findAll(line).map { it.groupValues[1] } }
         .toSet()
 
 /**
@@ -152,7 +170,23 @@ private fun includedModules(settingsScript: String): Set<String> =
  * the second. The header row and the `| --- |` separator do not match, and neither does prose —
  * the same narrow shape [parseModulePhases] depends on, for the same reason.
  */
-private val STABILITY_ROW = Regex("""\|\s*`(superplayer-[\w-]+)`\s*\|\s*\*\*([^*|]+)\*\*\s*\|.*""")
+private val STABILITY_ROW = Regex("""\|\s*`([\w-]+)`\s*\|\s*\*\*([^*|]+)\*\*\s*\|.*""")
+
+/**
+ * The body of the "Which parts are stable?" section, up to the next heading of any level — the
+ * same scoping [findMedia3SupportedVersionMismatch] does over `docs/modules.md`, and for the same
+ * reason: only this section is read, so a module named in a row of some other table is not
+ * mistaken for a stability row.
+ */
+private fun stabilitySection(markdown: String): String? {
+    val lines = markdown.lines()
+    val heading = lines.indexOfFirst {
+        it.trimStart().startsWith("#") && it.contains(STABILITY_HEADING)
+    }
+    if (heading < 0) return null
+
+    return lines.drop(heading + 1).takeWhile { !it.trimStart().startsWith("#") }.joinToString("\n")
+}
 
 private fun parseStabilityRows(markdown: String): Map<String, String> =
     markdown.lineSequence()

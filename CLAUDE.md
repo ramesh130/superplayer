@@ -9,7 +9,7 @@ Four Gradle builds, not one. Mistaking them for a single build is the usual firs
 
 | Build | What it is |
 | --- | --- |
-| root | the 13 `superplayer-*` library modules, listed in `settings.gradle.kts` |
+| root | the 14 `superplayer-*` library modules, listed in `settings.gradle.kts` |
 | `build-logic/` | an **included build** holding the convention plugins every module applies |
 | `demo/` | a **separate** build resolving the library from published Maven coordinates |
 | `benchmark/` | a **separate** build, the same way, running `PRD.md` §6's matrix |
@@ -1142,10 +1142,44 @@ and `overstatedBitrate` bounds an **AAC** rung specifically rather than any audi
 ceiling is AAC's reservoir. Nothing here
 claims #293's Perfetto trace points or #296's exit, both of which are still open and need a device.
 
+`superplayer-realtime` has the first of Phase 13, the tracer bullet (#343): a frame handed in by a
+transport plays, with no device and no network. `Realtime.transport(scheme) { uri -> … }` returns
+core's public `RealtimeSources`, which `SuperPlayer.Builder.setRealtime` takes, and what a consumer
+implements is `FrameSource` — subscribe, receive encoded frames carrying a timestamp, a codec, a
+keyframe flag and optional codec-specific data, cancel — which names **no Media3 type**, for
+`HttpTransport`'s reason and for one more: it is the only boundary at which either transport is
+testable, since neither QUIC nor WebRTC runs under `check`. Its KDoc carries **nine obligations, each
+with what getting it wrong costs**, in `HttpTransport`'s register, because every one of them fails
+silently — a wrong length-field size produces a decoder that configures cleanly and renders nothing.
+It is core's **tenth** Kotlin friend (ADR-0018 rule 11), and `superplayer-moq` and `superplayer-whep`
+are deliberately **not** friends. Behind the seam, internal: `RealtimeMediaSource` publishes a
+`SinglePeriodTimeline` that is unseekable, dynamic and of unknown duration, and
+`RealtimeMediaPeriod` writes frames into a Media3 `SampleQueue` that Media3's own renderers read —
+**nothing here decodes** (rule 1), so the TV path, secure decoders, tunneling, audio focus and the
+decoder half of telemetry are untouched. A realtime URI reaches it from `TransferChain` on its
+**scheme** and never on a MIME type (rule 12), at the one dispatch point beside the HLS and DASH
+branches; a player built without `setRealtime` gets the factory it always got and pays not even the
+wrapper. Three things are easy to get wrong. **A realtime stream never reaches `STATE_ENDED`** —
+ExoPlayer declares a period final from the timeline and a dynamic period of unknown duration never
+is — so a live session ends when the player is released, which is what the golden trace does rather
+than waiting for an end that cannot come. A transport's timestamps are on its own epoch, so the
+period subtracts the first frame's and a fake that starts at zero hides a missing subtraction. And
+`StartPosition.At` and `ResumeFromLastKnown` are **refused** with the public
+`RealtimeStreamNotSeekableException` rather than coerced to the live edge (rule 5), raised before any
+of adoption's bookkeeping runs so a refused adoption leaves the player exactly as it was — a coerced
+resume is indistinguishable from one that worked. `RealtimePlaybackTest` drives all of it through a
+real `SuperPlayer`, with two controls that keep the dispatch from being "everything is realtime" and
+the refusal from being "refuse every seek"; `RealtimeGoldenTraceTest` pins a session whose interesting
+content is what is **absent** — no `load` line and no `bandwidth` line anywhere in it, which is
+rules 6 and 8 as a readable artifact. What is still open in Phase 13 is the codec-string mapping
+(#344), the codec-specific-data conversion (#345), audio beside video (#346) and
+`FrameSourceConformance` (#347).
+
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,
 `superplayer-abr`, `superplayer-cache`, `superplayer-preload`, `superplayer-resilience`,
-`superplayer-drm`, `superplayer-offline`, `superplayer-tv`, `superplayer-diagnostics` and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
+`superplayer-drm`, `superplayer-offline`, `superplayer-tv`, `superplayer-diagnostics`,
+`superplayer-realtime` and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
 requirements, and the phase table are what the issues are cut from.
 
 `benchmark/` is the fourth build and the phases' exit criteria: `PRD.md` §6's fixed matrix — six
@@ -1487,7 +1521,7 @@ repository.
   document is prose and says so. Rule 8 is #329's, and it is built:
   `./gradlew release --release-version=<x.y.z>` is the one supported way to cut a release. It
   depends on the root's `check` **and every module's**, since a dependency on the root's alone
-  reaches none of the thirteen. It then refuses before it writes a byte: a dirty tree, a version
+  reaches none of the fourteen. It then refuses before it writes a byte: a dirty tree, a version
   that is not a successor of the last release or is smaller than the surface diff requires, an
   empty `Unreleased`, a tag that exists. Only then does it move the catalog, stamp `CHANGELOG.md`,
   re-record `api/released/`, publish, tag and open the next snapshot. It **commits and tags

@@ -2,7 +2,7 @@
 
 For whoever is about to cut one, including the first time.
 
-A release of SuperPlayer is one version for all thirteen published modules, moved together
+A release of SuperPlayer is one version for all fourteen published modules, moved together
 ([ADR-0017](adr/0017-version-the-library-by-semver-in-lockstep-with-the-tracked-api-surface-as-the-arbiter.md)
 rule 1). Cutting one is six things that have to happen in one order, and there is exactly one
 supported way to do it:
@@ -56,7 +56,7 @@ and passes whatever it says.
    section becomes `## [<x.y.z>] - <today>` with a fresh empty `Unreleased` above it; `api/released/`
    is re-recorded from the surfaces tracked today, under that version.
 4. **Commits** those three as `Release <x.y.z>`.
-5. **Publishes** the thirteen modules at that version — see
+5. **Publishes** the fourteen modules at that version — see
    [where the artefacts go](#where-the-artefacts-go-and-where-they-do-not).
 6. **Tags** the release commit `v<x.y.z>`, annotated.
 7. **Opens the next snapshot**: the catalog moves to the next *patch* `-SNAPSHOT` and that is a

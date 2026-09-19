@@ -249,6 +249,19 @@ public class SuperPlayer private constructor(
      * none.
      */
     private val videoOutput: VideoOutputAttachment?,
+    /**
+     * The URI schemes this player's realtime transports answer, and empty on every player built
+     * without `SuperPlayer.Builder.setRealtime`.
+     *
+     * The schemes alone rather than the [RealtimeSources] itself, because this is the one thing the
+     * *facade* needs from that slot: whether the content being adopted is a stream with no past, so
+     * that [adopt] can refuse a start position it cannot honour (ADR-0018 rule 5). What builds the
+     * source is `TransferChain`'s, and the facade never asks for it.
+     *
+     * Deliberately without a default value, for the reason [builtWithTrackSelectionParameters] has
+     * none.
+     */
+    private val realtimeSchemes: Set<String>,
 ) : Player by delegate {
 
     /**
@@ -400,6 +413,9 @@ public class SuperPlayer private constructor(
         licenceSessions: LicenceSessions? = null,
         // Null for an engine somebody else built: no output of core's filled a slot on it.
         videoOutput: VideoOutputAttachment? = null,
+        // Empty for an engine somebody else built: no realtime slot of core's dispatches on it, so
+        // there is no scheme whose start position this player could refuse.
+        realtimeSchemes: Set<String> = emptySet(),
     ) : this(
         exoPlayer,
         profile,
@@ -417,6 +433,7 @@ public class SuperPlayer private constructor(
         protectionRepair,
         licenceSessions,
         videoOutput,
+        realtimeSchemes,
     )
 
     /**
@@ -638,6 +655,10 @@ public class SuperPlayer private constructor(
      * car head unit or a watch resumes exactly like content started from the app.
      */
     internal fun adopt(request: MediaRequest): AdoptedRequest {
+        // Before any bookkeeping, because a refused adoption must leave the player exactly as it was:
+        // the outgoing content's remembered position, the measurement session and the source index
+        // all belong to content this player is still playing (ADR-0018 rule 5).
+        refuseAnUnseekableStart(request)
         rememberPositionOfCurrentContent()
         currentRequest = request
         // Content taken on afresh starts at its first source, whatever the outgoing content had
@@ -1100,6 +1121,34 @@ public class SuperPlayer private constructor(
      * for "the content's own default position", which is the start of on-demand content and the live
      * edge of a live stream.
      */
+
+    /**
+     * Refuses [request] where it asks a realtime source to start somewhere it has no bytes for
+     * (ADR-0018 rule 5).
+     *
+     * Judged on the **first** source and no other, because that is the one adoption opens: a later
+     * entry is rung 4's, reached only after a failure, and rule 9 has core carry the position
+     * playback had *reached* into that re-adoption rather than re-reading this request's start
+     * position. So a request whose realtime first source falls back to an HLS second one is refused
+     * here — which is right, since the realtime stream is what would have been played — while the
+     * fallback itself asks nothing of this method.
+     *
+     * A player with no realtime slot has no answering scheme and refuses nothing, which is what lets
+     * every player built before phase 13 reach this line and pay a set membership test on an empty
+     * set.
+     */
+    private fun refuseAnUnseekableStart(request: MediaRequest) {
+        if (realtimeSchemes.isEmpty()) return
+        val scheme = request.sources.firstOrNull()?.scheme?.lowercase() ?: return
+        if (scheme !in realtimeSchemes) return
+        val asked = when (request.startPosition) {
+            is MediaRequest.StartPosition.Beginning -> return
+            is MediaRequest.StartPosition.At -> "At"
+            is MediaRequest.StartPosition.ResumeFromLastKnown -> "ResumeFromLastKnown"
+        }
+        throw RealtimeStreamNotSeekableException(scheme, asked)
+    }
+
     private fun MediaRequest.resolvedStartPositionMs(): Long = when (val position = startPosition) {
         is MediaRequest.StartPosition.Beginning -> C.TIME_UNSET
 
@@ -1386,6 +1435,7 @@ public class SuperPlayer private constructor(
         private var resilience: PlaybackResilience? = null
         private var drm: PlaybackDrm? = null
         private var output: PlaybackOutput? = null
+        private var realtime: RealtimeSources? = null
         private var httpStack: HttpStack? = null
         private var pooledEngine: PooledEngine? = null
 
@@ -1563,6 +1613,35 @@ public class SuperPlayer private constructor(
          * built.
          */
         public fun setOutput(output: PlaybackOutput): Builder = apply { this.output = output }
+
+        /**
+         * Plays realtime streams through [sources]: the transports this player reaches, and the URI
+         * schemes that reach them.
+         *
+         * ```kotlin
+         * val player = SuperPlayer.Builder(context)
+         *     .setRealtime(Realtime.transport(scheme = "moq", sources = MoqFrameSources(relay)))
+         *     .build()
+         * ```
+         *
+         * `superplayer-realtime` is where a [RealtimeSources] comes from. A player built without this
+         * call has no realtime path at all, registers nothing and loads no class of the module
+         * (ADR-0018 rule 12) — a URI with a realtime scheme on such a player fails as any unknown
+         * scheme does.
+         *
+         * **What a realtime item does not get is a rule rather than an omission** (ADR-0018 rule 6):
+         * no content cache, no CMCD, no downloads, no bandwidth estimate, and none of the fallback
+         * ladder's load-error rungs, because every one of those is keyed to a `DataSource` and a
+         * realtime transport is not one. [MediaRequest.sources] and ADR-0011's rung 4 do survive, so a
+         * realtime source falling back to an HLS one is expressible with no new mechanism, and it is
+         * the documented way to have a fallback here at all.
+         *
+         * A realtime stream is live and unseekable, so [setMediaRequest] refuses a
+         * [MediaRequest.StartPosition.At] or [MediaRequest.StartPosition.ResumeFromLastKnown] on one
+         * with [RealtimeStreamNotSeekableException] rather than coercing it (rule 5). Fixed for the
+         * player's lifetime: the dispatch is composed into the loading path as the engine is built.
+         */
+        public fun setRealtime(sources: RealtimeSources): Builder = apply { this.realtime = sources }
 
         /**
          * Loads this player's media over [stack]: the HTTP client the bytes below `MediaSource`
@@ -1755,6 +1834,7 @@ public class SuperPlayer private constructor(
                     configuration.drm,
                     configuration.exoMediaDrm,
                     deliveredProtection,
+                    realtime,
                 )
             engineBuilder.setMediaSourceFactory(mediaSourceFactory)
 
@@ -1805,6 +1885,9 @@ public class SuperPlayer private constructor(
                         DisplayWatch(context, engine.applicationLooper, checkNotNull(reselectingSelector), configuration.displayInForce),
                     )
                 },
+                // The realtime slot's facade half: the schemes alone, empty on every player without
+                // `setRealtime`, so a player that has none refuses nothing (ADR-0018 rule 5).
+                realtimeSchemes = realtime?.schemes.orEmpty(),
             )
 
             // The first pooled player's components become the pool's. The factory handed on is the

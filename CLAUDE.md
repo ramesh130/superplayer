@@ -1472,7 +1472,18 @@ repository.
   symbol is deprecated with its replacement named and survives a minor before a major removes it.
   Four of its nine rules are enforced by nothing in `check` today, which the record says at each
   rule rather than in a summary: #327 checks the version and changelog, #328 gates the surface
-  against the bump, #330 the adopter's document. Rule 8 is #329's, and it is built:
+  against the bump. #330 is built and is the adopter's half:
+  [`docs/compatibility.md`](docs/compatibility.md) answers seven questions an integrator asks —
+  which coordinate and whether versions must match, what a major, minor and patch each mean, which
+  modules are stable, the Media3 relationship and its one exception, the two format versions that
+  are not this one, how much warning a removal carries, and what a release does **not** promise
+  (a device, a network, a performance number, and anything reached through `player.exoPlayer`). It
+  **cites ADR-0017's rules by number rather than restating them**, so the two cannot drift, and it
+  says plainly that nothing is resolvable by anyone else today. Its stability table is held to
+  `settings.gradle.kts` by `./gradlew verifyCompatibilityDocument`, a root-only check in
+  `build-logic` beside `verifyModulePhaseRule` — a **set** comparison and deliberately not an order,
+  since the include list is in neither phase nor alphabetical order; everything else in that
+  document is prose and says so. Rule 8 is #329's, and it is built:
   `./gradlew release --release-version=<x.y.z>` is the one supported way to cut a release. It
   depends on the root's `check` **and every module's**, since a dependency on the root's alone
   reaches none of the thirteen. It then refuses before it writes a byte: a dirty tree, a version

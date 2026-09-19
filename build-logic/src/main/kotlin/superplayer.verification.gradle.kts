@@ -2,6 +2,7 @@ import com.superplayer.build.CutRelease
 import com.superplayer.build.RECORDED_SURFACE_DIRECTORY
 import com.superplayer.build.RECORDED_VERSION_FILE
 import com.superplayer.build.RecordReleasedApiSurface
+import com.superplayer.build.VerifyCompatibilityDocument
 import com.superplayer.build.VerifyLicenseHeader
 import com.superplayer.build.VerifyMedia3SupportedVersion
 import com.superplayer.build.VerifyModulePhaseRule
@@ -59,6 +60,21 @@ val verifyMedia3SupportedVersion =
         versionCatalog.set(layout.projectDirectory.file("gradle/libs.versions.toml"))
         modulesDocument.set(layout.projectDirectory.file("docs/modules.md"))
         stampFile.set(layout.buildDirectory.file("verification/media3-supported-version.txt"))
+    }
+
+// docs/compatibility.md is what an adopter is handed instead of ADR-0017, and its stability table is
+// the one list in it that can go stale silently: a module added to settings.gradle.kts is a
+// coordinate an adopter can resolve, and a row that was never written is a promise that was never
+// made. This holds the table to the build's own module list, as verifyModulePhaseRule holds
+// docs/modules.md's phase column to the module build scripts. Root-only, because the authority is
+// settings.gradle.kts and no single module's test can read it without restating it.
+val verifyCompatibilityDocument =
+    tasks.register<VerifyCompatibilityDocument>("verifyCompatibilityDocument") {
+        group = "verification"
+        description = "Fails if docs/compatibility.md's stability table and the published modules disagree."
+        settingsScript.set(layout.projectDirectory.file("settings.gradle.kts"))
+        compatibilityDocument.set(layout.projectDirectory.file("docs/compatibility.md"))
+        stampFile.set(layout.buildDirectory.file("verification/compatibility-document.txt"))
     }
 
 // ADR-0017 rule 1 publishes all thirteen modules under the catalog's one `superplayer` version, and
@@ -127,7 +143,7 @@ tasks.register<CutRelease>("release") {
     // this action starts, so a red tree stops the release where it stands.
     //
     // **Both lines are needed, and the second is the one that is easy to leave out.** This plugin
-    // is applied to the root project alone, so `tasks.named("check")` is the *root's* — the seven
+    // is applied to the root project alone, so `tasks.named("check")` is the *root's* — the eight
     // repo-wide verifications, Spotless and `build-logic:check`, and nothing of the thirteen
     // modules. A plain `./gradlew check` reaches those by the CLI matching the task *name* in every
     // project, which a dependency does not do. Without the second line a release would be cut
@@ -180,6 +196,7 @@ tasks.named("check") {
     dependsOn(verifyNoHardcodedMedia3Versions)
     dependsOn(verifyModulePhaseRule)
     dependsOn(verifyMedia3SupportedVersion)
+    dependsOn(verifyCompatibilityDocument)
     dependsOn(verifyVersion)
     dependsOn(verifyVersionBump)
     dependsOn(verifyLicenseHeader)

@@ -17,6 +17,7 @@ one says so.
 
 | Document | For |
 | --- | --- |
+| [`compatibility.md`](compatibility.md) | Someone deciding what they may depend on: the lockstep rule, what a major, minor and patch each mean here, the pre-1.0 position, every module's stability, the Media3 relationship and its one exception, the two format versions that are not this one, the deprecation policy, and what a release does not promise |
 | [`http-transport.md`](http-transport.md) | Someone putting their app's own HTTP client under the player: the worked adapter, the five obligations with what each costs to get wrong, what the library already does above the transport, and the conformance suite to run against your implementation |
 
 ## If you are changing the library

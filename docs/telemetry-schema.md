@@ -882,9 +882,74 @@ that thread is a Media3 wrong-thread violation.
 
 ---
 
+## Realtime sessions
+
+A session playing a **realtime** stream — MoQ today, WHEP next — emits this same schema, with the
+differences below, which a query over a mixed population has to know about. Nothing below changes a
+definition, so `schemaVersion` is still **2** on every one of these events ([ADR-0018][adr18]
+rule 8).
+
+**Nothing in this schema says a session was realtime**, and that is worth knowing before writing the
+query. No event carries the source URI, and the realtime scheme (`moq://`) that dispatches a request
+onto this path never leaves the player — so a warehouse separates these rows by joining `contentId`
+against the app's own catalog, exactly as it would to separate live from on-demand. No field was
+added to make this easier, because adding one would be a change to the schema for a fact the app
+already holds.
+
+**What is unchanged.** Rebuffering, time to first frame, startup and mid-stream failure, seeks,
+dropped frames, session start and end — all of it. These are derived from playback state and from
+the decoder, and a realtime stream reaches both exactly as an HLS or DASH one does.
+
+**What is empty, and why.** A realtime transport hands over encoded frames rather than loading
+objects, so nothing on this path crosses the layer every bandwidth number in this schema is measured
+at:
+
+| Field | On a realtime session | Why |
+| --- | --- | --- |
+| `PlaybackStateSampled.throughputEstimateBps` | always `null` | The engine's bandwidth meter is fed by transfers, and there are none. `BandwidthOracle` observes nothing here ([ADR-0018][adr18] rule 6). |
+| `PlaybackStateSampled.videoBitrateBps` | always `null` | Both this and the event below read one number, the **declared peak bitrate** of the rendition playing, and a realtime track carries none: the figure is a manifest rung's declaration and a realtime catalog states no such thing. |
+| `TrackSwitched` | not emitted | Same number, same absence — no declared bitrate means nothing to report a switch *between*. Selection itself is deferred rather than excluded on this path ([ADR-0018][adr18] rule 7), so a phase that adds it amends that record and this row with it. |
+
+A `null` estimate here is **not** a link that measured zero. It is a measurement nobody took, and a
+pipeline that coalesces it to `0` will report a realtime population as having no bandwidth at all.
+
+**Upstream loss is absent, and absent is what it says.** This schema has never carried an upstream
+loss metric and does not gain one here — which is worth stating explicitly, because a realtime
+transport is exactly the place a reader would expect one. Two counters would answer it and neither is
+reachable:
+
+| The counter | Where it stops |
+| --- | --- |
+| **Group skips** — media the publisher's stream advanced past, which the decoder never sees | Exists in MoQ's Rust as the container consumer's `discontinuity` count and is exported over **no** UniFFI binding, so it stops at the FFI boundary this library reaches MoQ across. |
+| **Stale drops** — frames the transport discarded as too late to be worth delivering | Instrumented **nowhere** in MoQ, in Rust or in JavaScript. It is upstream work rather than plumbing. |
+
+So a realtime session **reports no upstream loss rather than reporting zero**, and there is no field
+in this schema to misread as one. Two things follow for anyone reading these rows. An upstream skip
+and a renderer's dropped frame are different events and are **never** summed — a skipped group never
+reaches the decoder, so `VideoFramesDropped` counts the second and says nothing about the first. And
+the connection's own packet-loss counters, which MoQ *does* export, are not this figure either: a
+QUIC endpoint retransmits what it detects as lost ([RFC 9000][rfc9000] §13), so those count packets
+the transport recovered from rather than media a viewer missed. They are `superplayer-moq`'s own
+`MoqSessionStatistics.transportPacketsLost` and are deliberately **not** in this schema.
+
+**MoQ's own session statistics are not telemetry.** `MoqFrameSource.statistics()` answers a polled
+snapshot of the session — round trip time, the connection's send and receive rate estimates, byte and
+packet counters — and none of it reaches a `TelemetrySink`. That is a decision rather than an
+omission: this vocabulary is a *playback session's* and names no transport, so a MoQ rate arriving on
+an existing field would be a second measurement under a name that already means the bandwidth meter's
+estimate, and two different numbers under one name in a warehouse is the defect the split exists to
+prevent. A reading is taken once a second, is stamped with when it was taken, and is read from the
+`MoqFrameSource` the app itself opened. Every one of its numbers is optional there too, on the same
+rule: a number the session did not report is `null` and not `0`.
+
+---
+
 ## Not in this schema
 
 - **UI smoothness.** See the section above — it is the app's own pipeline.
+- **A realtime transport's own connection statistics.** MoQ's are `superplayer-moq`'s
+  `MoqSessionStatistics`, read off the `MoqFrameSource` the app opened. See
+  [Realtime sessions](#realtime-sessions) for why they are not events.
 - **CMCD.** A separate seam (CTA-5004), joined to this one by a shared session id: CMCD's `sid` *is*
   the telemetry `sessionId`, so a row in a CDN log joins to a row in a warehouse. It annotates
   requests rather than producing events, and no event is routed through it. See
@@ -925,3 +990,5 @@ a difference between two clocks: correct whenever they happen to agree, and sile
 do not.
 
 [adr6]: adr/0006-own-the-platform-rules-and-hand-back-the-state.md
+[adr18]: adr/0018-push-encoded-frames-through-one-framesource-into-media3s-own-sample-queues.md
+[rfc9000]: https://www.rfc-editor.org/rfc/rfc9000#section-13

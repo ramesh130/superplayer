@@ -409,6 +409,26 @@ that joins its threads, and the failure that reaches `onError` rather than a thr
 It proves **nothing about MoQ's bindings, about QUIC, or about a relay**, and a green run here is not
 evidence that a broadcast plays. #367 is the ticket that answers that, and it needs a device.
 
+Since #368 the session's **statistics** are tested through that same seam, and one thing about it is
+worth writing down because it looks at first like a breach of *Determinism*.
+`MoqSessionStatisticsTest` asserts a **cadence**, which is a claim about a span — so the span is the
+measurement rather than a guess at what a machine needs, which is the second of the two shapes that
+section permits. The polls are *awaited*, on an event `ScriptedMoqRelay.awaitPolls` exposes, and what
+is asserted afterwards is how long getting them took. There is deliberately **no upper bound on the
+poll count**: a count is exactly what a loaded host makes unreliable, while a lower bound on elapsed
+time cannot be failed by a slow machine, because a clock does not run backwards. The two spans that
+remain are `MoqFrameSourceTest.QUIET_AFTER_CANCEL_MS`'s idiom — nothing further happening is the
+absence of an event, so a window is the only form the assertion has.
+
+Its scripted statistics are a **function of the poll count**, so a counter that moves is assertable
+as movement rather than as one constant re-read, and its two controls are the ones the ticket's
+honesty rests on: a session missing one number (the receive-rate estimate an older relay does not
+carry) and a session whose statistics call fails. What *no* test here can show is the mapping itself:
+`UniffiBroadcastSession.statistics()` is the nine-field conversion from
+`uniffi.moq.MoqConnectionStats`, including the `bytesLost` → `transportBytesLost` rename, and like
+every other line of `UniffiMoqRelay` it runs nowhere under `check`. It is verified by review, and
+#367 is where a real session first answers.
+
 **What neither can show.**
 
 - **Two builds of one crate.** The Android `.so` and the host `.dylib` come from the same checkout,

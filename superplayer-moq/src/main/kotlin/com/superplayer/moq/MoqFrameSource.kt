@@ -82,6 +82,17 @@ import java.util.concurrent.atomic.AtomicInteger
 public class MoqFrameSource internal constructor(
     private val uri: Uri,
     private val relay: MoqRelay,
+    /**
+     * How often this subscription's session is polled for [statistics].
+     *
+     * On the internal constructor and not the public one: the cadence is argued at
+     * [STATISTICS_INTERVAL_MS] and is not a consumer's to vary — a reading nothing in the library
+     * acts on is not worth a knob on the public surface, and a consumer who wants a different one
+     * differences two readings by their `sampledAtMs`. It is a parameter at all because the scripted
+     * relay enters by this same door, and a cadence a test cannot shorten is one whose pacing can
+     * only be asserted by waiting seconds for it.
+     */
+    private val statisticsIntervalMs: Long = STATISTICS_INTERVAL_MS,
 ) : FrameSource {
 
     /** Opens [uri] over MoQ's own bindings, which is what a consumer wants and what #367 first runs. */
@@ -113,6 +124,44 @@ public class MoqFrameSource internal constructor(
     private var session: MoqBroadcastSession? = null
     private val streams = mutableListOf<MoqTrackStream>()
     private val threads = mutableListOf<Thread>()
+
+    /**
+     * What the statistics thread waits on between polls, and what [cancel] wakes it with.
+     *
+     * `java.lang.Object` by its full name, because Kotlin's `Any` carries no `wait`/`notifyAll`. A
+     * wait rather than a sleep: [cancel] joins every thread this source started, so a poller asleep
+     * for a whole interval would make the playback thread pay up to that interval to leave a screen.
+     */
+    private val statisticsPacing = java.lang.Object()
+
+    /**
+     * The last reading the poller took, or null where it has taken none.
+     *
+     * Volatile and not under a monitor, because a reading is one immutable value replaced whole: a
+     * reader wants the most recent snapshot, never a consistent view across two of them.
+     */
+    @Volatile
+    private var latestStatistics: MoqSessionStatistics? = null
+
+    /**
+     * What this subscription's MoQ session last said about itself, or **null** where it has said
+     * nothing.
+     *
+     * Null is the honest answer in three cases and is never stood in for by a record of zeroes: a
+     * subscription not yet connected, one whose first poll has yet to happen, and a session that
+     * answers no statistics at all. A last reading is **kept after [cancel]**, because the final
+     * numbers of a session that has just ended are the ones a bug report wants, and
+     * [MoqSessionStatistics.sampledAtMs] is what tells a stale reading from a live one.
+     *
+     * Safe to call from any thread, and cheap: it answers the poller's last snapshot rather than
+     * crossing the FFI boundary on the caller's thread, which is what keeps it callable from a HUD
+     * or from the thread driving playback.
+     *
+     * What this is **not** is telemetry — [MoqSessionStatistics]' own KDoc argues why, and
+     * `docs/telemetry-schema.md`'s *Realtime sessions* is the same argument for a reader of the
+     * warehouse rather than of this file.
+     */
+    public fun statistics(): MoqSessionStatistics? = latestStatistics
 
     override fun subscribe(sink: FrameSink) {
         // Connecting happens on a thread of this source's own rather than on the caller's: the
@@ -149,6 +198,9 @@ public class MoqFrameSource internal constructor(
             closing
         }
         opened.forEach { it.closeQuietly() }
+        // The statistics poller is parked on this monitor rather than asleep, so that the join below
+        // costs a cancellation nothing instead of up to one whole polling interval.
+        synchronized(statisticsPacing) { statisticsPacing.notifyAll() }
         // Read under the monitor and joined outside it, so a pump on its way out can still take
         // `lifecycle` rather than deadlocking against the thread that is waiting for it.
         val running = synchronized(lifecycle) { threads.toList() }
@@ -158,6 +210,16 @@ public class MoqFrameSource internal constructor(
     /** The connect thread's whole body: session, catalog, subscriptions, declaration, pumps. */
     private fun connect(sink: FrameSink) {
         val connected = registerSession(relay.connect(uri)) ?: return
+        // Started before the catalog is read, because a session that never publishes one is exactly
+        // the session whose round trip time and byte counters say what went wrong.
+        //
+        // Unconditional, and there is no way for a consumer to decline it. That departs from this
+        // repository's usual "a player built without X pays nothing", and the reason it is not one
+        // here is that the choice was already made further out: the cost is a thread per *MoQ
+        // subscription*, paid only by a consumer who opened one, and it buys the reading that says
+        // what a session that will not start was doing. A flag would make the one diagnostic this
+        // transport has switchable off by the app least likely to need it switched on.
+        start("moq-stats", sink) { poll(connected) }
         val declared = MoqCatalogTracks.declaredTracksOf(connected.catalog())
         val pumps = declared.mapIndexed { index, track ->
             TrackPump(index, registerStream(connected.subscribe(track.trackName, track.container)) ?: return)
@@ -175,6 +237,39 @@ public class MoqFrameSource internal constructor(
                 // that stops its audio and keeps sending video has not ended the broadcast, and
                 // SuperPlayer bounds a silent track itself, in media time against the leading one.
                 if (running.decrementAndGet() == 0) deliver(sink, terminal = true) { onEnded() }
+            }
+        }
+    }
+
+    /**
+     * The statistics thread's whole body: ask, keep, wait, repeat until the subscription ends.
+     *
+     * **A failed poll ends the polling and never the subscription.** Measurement is not a reason to
+     * stop a viewer's stream, and the `start` wrapper this body runs inside would otherwise turn a
+     * session that declined to answer into `FrameSink.onError` — a broadcast torn down because a
+     * counter could not be read. What is left behind is the last reading, which [statistics] keeps
+     * and stamps, so a poll that stopped is legible as a reading that stopped advancing rather than
+     * as one that never happened.
+     *
+     * Asked before the first wait, so that a reading exists a poll interval sooner than a loop that
+     * waited first would give one.
+     */
+    private fun poll(session: MoqBroadcastSession) {
+        while (!cancelled.get()) {
+            latestStatistics = try {
+                session.statistics()
+            } catch (@Suppress("TooGenericExceptionCaught") failure: Throwable) {
+                // The KDoc above is the reason; nothing is reported, because there is nobody this
+                // fact is useful to and the subscription is unharmed. The likeliest arrival here is
+                // not a session that declined to answer but a **cancellation**: `cancel` closes the
+                // session under this thread, so a poll already past the flag above meets a closed
+                // handle. Reporting that would show a viewer an error for a screen they had already
+                // left, which is `start`'s own reason for gating on the same flag.
+                return
+            }
+            synchronized(statisticsPacing) {
+                if (cancelled.get()) return
+                statisticsPacing.wait(statisticsIntervalMs)
             }
         }
     }
@@ -304,6 +399,29 @@ public class MoqFrameSource internal constructor(
          * the `:`, because that is what `Realtime.transport` takes.
          */
         public const val SCHEME: String = "moq"
+
+        /**
+         * How often a subscription's session is asked for [statistics]: **one second**.
+         *
+         * MoQ exports statistics as a poll and not a stream — the bindings carry `stats()` and no
+         * flow of it — so this number is entirely this library's, and it is argued here rather than
+         * inherited.
+         *
+         * **A second, and not the ten `docs/telemetry-schema.md` states** for the three periodic
+         * telemetry events. That cadence is chosen for a *time-weighted* quantity a warehouse
+         * averages, and this is not one of those: it is a snapshot of a link a viewer is watching a
+         * sub-second-latency broadcast over, and a round trip time ten seconds old describes a link
+         * that has since changed — which is the whole reason a transport reports one. Nothing here
+         * enters that vocabulary, so nothing about that cadence binds this one.
+         *
+         * **A second and not less**, because faster buys nothing: a reader of a live session is a
+         * HUD or a support tool, both of which a viewer reads at about this rate, and a poll is a
+         * round trip across the FFI boundary. Its cost is negligible either way — a video track
+         * crosses the same boundary thirty times a second — so the bound on this number is what is
+         * *useful* rather than what is affordable, and both directions are written down because
+         * neither is obvious.
+         */
+        public const val STATISTICS_INTERVAL_MS: Long = 1_000
     }
 }
 

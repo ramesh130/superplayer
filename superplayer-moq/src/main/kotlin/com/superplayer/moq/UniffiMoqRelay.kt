@@ -17,6 +17,7 @@
 package com.superplayer.moq
 
 import android.net.Uri
+import android.os.SystemClock
 import kotlinx.coroutines.runBlocking
 import uniffi.moq.MoqBroadcastConsumer
 import uniffi.moq.MoqCatalog
@@ -114,6 +115,34 @@ private class UniffiBroadcastSession(
 
     override fun subscribe(trackName: String, container: MoqContainer): MoqTrackStream =
         UniffiTrackStream(runBlocking { broadcast.subscribeMedia(trackName, container, liveEdge()) })
+
+    /**
+     * `MoqSession::stats()`, stamped and renamed.
+     *
+     * The only binding call on this path that is **not** `suspend`, so there is no `runBlocking`
+     * here and the poll is a plain FFI round trip. What the record's own KDoc argues is the naming:
+     * the bindings' `bytesLost` and `packetsLost` are the connection's, and cross this line as
+     * `transportBytesLost` and `transportPacketsLost` so that nothing downstream reads them as media
+     * that failed to arrive. The counters are unsigned across the FFI and signed on this side; the
+     * conversion is exact for every value a session can reach, since 2^63 bytes is more than any
+     * connection moves. A field the session did not report stays **null** across this line rather
+     * than becoming a zero, which is [MoqSessionStatistics]' rule about absence applied to each of
+     * the nine.
+     */
+    override fun statistics(): MoqSessionStatistics = session.stats().let { stats ->
+        MoqSessionStatistics(
+            sampledAtMs = SystemClock.elapsedRealtime(),
+            roundTripTimeUs = stats.rttUs?.toLong(),
+            sendRateBps = stats.sendRateBps?.toLong(),
+            receiveRateBps = stats.recvRateBps?.toLong(),
+            bytesSent = stats.bytesSent?.toLong(),
+            bytesReceived = stats.bytesReceived?.toLong(),
+            packetsSent = stats.packetsSent?.toLong(),
+            packetsReceived = stats.packetsReceived?.toLong(),
+            transportBytesLost = stats.bytesLost?.toLong(),
+            transportPacketsLost = stats.packetsLost?.toLong(),
+        )
+    }
 
     override fun close() {
         broadcast.closeQuietly()

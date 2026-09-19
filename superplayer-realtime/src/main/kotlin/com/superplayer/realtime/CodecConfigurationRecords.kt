@@ -139,9 +139,11 @@ internal object CodecConfigurationRecords {
                 // right for every codec**: Opus wants three entries by Media3's own convention
                 // (RFC 7845 §5.1's identification header, then pre-skip and seek pre-roll), and
                 // nothing here or in #340 — which saw H.264 only — has observed what a transport
-                // hands over for any of them. Audio beside video is #346's, and getting each of
-                // these right, per codec and with something observed behind it, is that ticket's
-                // work rather than a guess made here.
+                // hands over for any of them. #346 put audio through this seam beside video and
+                // **observed no record either**: its AAC track declares `InBand` and takes the
+                // branch below, so the pass-through above is still unexercised by anything real.
+                // Getting each of these right, per codec and with something observed behind it, is
+                // the work of whichever transport first sends one, rather than a guess made here.
                 //
                 // Nothing is demanded either: a codec whose configuration is in its own bitstream
                 // simply hands over `InBand`, which is what an SDP encoding name always does — it

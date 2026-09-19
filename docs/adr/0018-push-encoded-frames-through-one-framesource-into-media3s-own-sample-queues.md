@@ -102,6 +102,19 @@ Nothing about the seam's shape, its nine obligations or any behaviour moves with
 script gains a dependency: testkit already declares `api(project(":superplayer-core"))`. *Enforced
 by the tracked API surface of both modules, which is where a type moving back would show.*
 
+*Addendum (2026-09-19, #346).* The seam carries **as many tracks as the publisher declared**, not
+one. `FrameSink.onTrack` becomes `FrameSink.onTracks(List<RealtimeTrack>)` and `EncodedFrame` gains
+a `trackIndex` naming a position in that list, defaulted to zero so a single-track transport is
+unchanged in everything but the declaration. The method was *widened* rather than joined by a second
+one, which this rule's own shape decides: preparation completes exactly once, with the whole
+`TrackGroupArray` a player then selects from, so a track declared in a second call would arrive after
+the player had already chosen what it was playing and there would be nowhere to put it. Audio alone
+is a legitimate WHEP configuration and is one element of the same list, so nothing about this path
+requires a video track. An empty list is refused, and a frame naming a track nobody declared is
+reported rather than dropped. *Enforced by the tracked API surface for the shape, and by
+`RealtimePlaybackTest` for the behaviour; `FrameSourceConformance` (#347) is where a transport is
+held to the declaration.*
+
 **Rule 3 — Container framing is the transport's to strip, and the seam carries codec bitstream
 only.** A transport that receives containerised frames unwraps them before the seam. MoQ's bindings
 already do this, which is why no fragmented-MP4 parsing appears anywhere in this design, and a
@@ -184,6 +197,31 @@ Android Java seam was found to expose no RTP timestamp and to truncate it to who
 (#338, on paper), which no amount of work on this side recovers. *Enforced by
 `FrameSourceConformance` (#347) for ordering and monotonicity; **precision itself is unenforceable**
 and is a documentation obligation on the transport.*
+
+*Addendum (2026-09-19, #346).* Monotonicity is promised **per track**; a **shared epoch across
+tracks is not**, and this rule now says what SuperPlayer does about it rather than leaving it to be
+discovered. One anchor for the whole period — the first frame delivered on any track — and every
+track rebased by it, so a skew the publisher meant to send survives; rebasing each track on its own
+first frame was rejected because it puts both first frames at zero and flattens lip sync to nothing,
+silently. A track whose first frame lands more than a stated bound from that anchor is taken to be on
+an epoch of its own and anchored at the point the period had reached when it arrived: two origins are
+not hypothetical, since an RTP stream's initial timestamp is random per SSRC (RFC 3550 §5.1) and two
+tracks of one session routinely start hours apart on the wire, and honouring such a difference either
+strands a track before the read position where its frames are discarded or hours past it where the
+buffer wedges. That recovery buys playback and not lip sync, which the seam's KDoc says in as many
+words.
+
+Two tracks also make **silence** a failure mode one track did not have, so a track that falls far
+enough behind the others ends the session with the public `RealtimeTrackStalledException` rather than
+buffering for ever — with a longer bound for a track that has never delivered, which is still
+connecting, than for one that delivered and stopped. Both bounds are measured in **media time against
+the furthest-ahead track and never against a clock**, which is what keeps all of a publisher's tracks
+going quiet together an ordinary live edge (rule 5) rather than a failure, and what makes the bounds
+assertable under `check` at all. A period's buffered position is correspondingly the **most
+conservative** of its queues, since that is what `STATE_READY` is computed from; a track that has yet
+to deliver is left out of that minimum, which is the late-start allowance the first bound closes.
+*Enforced by `RealtimePlaybackTest`, which forces the reconciliation in both directions and each bound
+in turn.*
 
 **Rule 10 — Signalling is not the media path, and does not travel `HttpTransport`.** ADR-0016 rule
 13's list of entry points that take a stack **does not gain a fifth entry**. Widening `HttpTransport`

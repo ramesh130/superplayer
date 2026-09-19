@@ -18,11 +18,13 @@ package com.superplayer.realtime
 
 import android.os.SystemClock
 import androidx.media3.common.C
+import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.RenderersFactory
 import androidx.media3.test.utils.FakeClock
 import androidx.media3.test.utils.FakeRenderer
 import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
 import androidx.test.core.app.ApplicationProvider
+import com.superplayer.core.FrameSource
 import com.superplayer.core.MediaRequest
 import com.superplayer.core.SuperPlayer
 import com.superplayer.core.TelemetryEvent
@@ -65,10 +67,54 @@ class RealtimeGoldenTraceTest {
 
     @Test
     fun aRealtimeSessionFromSubscriptionToEnd() {
-        GoldenFile.check("realtime-h264.trace", play())
+        GoldenFile.check(
+            "realtime-h264.trace",
+            play(
+                ScriptedFrameSource(frames = FRAMES),
+                listOf(FakeRenderer(C.TRACK_TYPE_VIDEO)),
+            ),
+        )
     }
 
-    private fun play(): String {
+    /**
+     * The same session with audio beside the video (#346), pinned beside the one-track one.
+     *
+     * Two goldens rather than one widened, because what each is evidence for is different. The
+     * one-track trace is rules 6 and 8 — the absence of `load` and `bandwidth` lines — and moving it
+     * to two tracks would have conflated "a realtime session opens no `DataSource`" with "a realtime
+     * session can carry two tracks".
+     *
+     * **It is byte for byte the one-track trace today, and that is the claim rather than an
+     * oversight.** A subscription carrying audio beside video produces one session, the same two
+     * state transitions and no load of any kind: no second `BUFFERING` where a queue starved, no
+     * `error` line where one track outran the other past #346's bounds, and nothing on the chain for
+     * the second track. Every one of those failures moves this file. What *cannot* move it is the
+     * `tracks` line, which reads each selected rendition's bitrate and a realtime `Format` carries
+     * none — so the trace is honestly silent about which tracks were selected, and
+     * `RealtimePlaybackTest` is where that is asserted instead.
+     */
+    @Test
+    fun aRealtimeSessionCarryingAudioBesideVideo() {
+        GoldenFile.check(
+            "realtime-h264-aac.trace",
+            play(
+                ScriptedFrameSource(
+                    listOf(
+                        ScriptedTrack(codec = ScriptedTrack.H264, frames = FRAMES),
+                        ScriptedTrack(
+                            codec = ScriptedTrack.AAC,
+                            frames = AUDIO_FRAMES,
+                            frameDurationUs = ScriptedTrack.AUDIO_FRAME_DURATION_US,
+                            payload = ScriptedTrack::aacFrame,
+                        ),
+                    ),
+                ),
+                listOf(FakeRenderer(C.TRACK_TYPE_VIDEO), FakeRenderer(C.TRACK_TYPE_AUDIO)),
+            ),
+        )
+    }
+
+    private fun play(source: FrameSource, renderers: List<Renderer>): String {
         val recorder = SessionTraceRecorder()
         // A sink of the test's own beside the recorder, because a golden has to be taken once the
         // delivery queue has drained, and `SessionEnded` is the event that says it has (ADR-0008
@@ -76,13 +122,11 @@ class RealtimeGoldenTraceTest {
         val delivered = Collections.synchronizedList(mutableListOf<TelemetryEvent>())
         val player = SuperPlayer.Builder(ApplicationProvider.getApplicationContext())
             .setTelemetry(QoeCollector(TelemetrySink.composite(recorder, TelemetrySink { delivered += it })))
-            .setRealtime(Realtime.transport(SCHEME) { ScriptedFrameSource(frames = FRAMES) })
+            .setRealtime(Realtime.transport(SCHEME) { source })
             .setEngineConfigurator { configuration ->
                 configuration.engine
                     .setClock(FakeClock(SystemClock.elapsedRealtime(), /* isAutoAdvancing = */ true))
-                    .setRenderersFactory(
-                        RenderersFactory { _, _, _, _, _ -> arrayOf(FakeRenderer(C.TRACK_TYPE_VIDEO)) },
-                    )
+                    .setRenderersFactory(RenderersFactory { _, _, _, _, _ -> renderers.toTypedArray() })
             }
             .build()
 
@@ -117,6 +161,9 @@ class RealtimeGoldenTraceTest {
 
         /** Ten seconds at 30 fps: comfortably more than [PLAY_TO_MS], so the edge is never reached. */
         const val FRAMES = 300
+
+        /** The same ten seconds of AAC-LC access units, which are shorter and so more numerous. */
+        const val AUDIO_FRAMES = 430
 
         /** Far enough in that startup is over and the trace has something to say; short enough to read. */
         const val PLAY_TO_MS = 2_000L

@@ -1216,7 +1216,32 @@ not 1 (which is what an Annex-B blob handed over as a record reads as) — is re
 past. `CodecConfigurationRecordsTest` is #340's observed bytes as fixtures, its `avcC` dump doubling
 as the truncation case; the `hvcC` is **synthesized and labelled so**, because #340's caveat 2 saw
 H.264 only. `ObservedBytes` is the one place those dumps live.
-What is still open in Phase 13 is audio beside video (#346) and `FrameSourceConformance` (#347).
+Since #346 a subscription carries **as many tracks as the publisher declared**: `FrameSink.onTrack`
+is `onTracks(List<RealtimeTrack>)` — widened rather than joined by a second method, because
+preparation completes once with the whole `TrackGroupArray` a player selects from — and each
+`EncodedFrame` names its track with a `trackIndex` defaulted to zero, so a one-track transport is
+unchanged. Audio alone is one element of that list and needs no video track; an empty list and a
+frame naming a track nobody declared are both refused. The period keeps a queue, a `TrackGroup`, a
+`SampleStream` and #345's own NAL length size **per track**, and one **timeline over them**: the
+first frame on *any* track anchors the period and every track is rebased by that same anchor, so a
+skew the publisher meant to send survives — rebasing each track on its own first frame would flatten
+lip sync to zero silently. A track whose first frame lands more than `SHARED_EPOCH_BOUND_US` (30 s)
+from the anchor is taken to be on an epoch of its own — an RTP timestamp's start is random per SSRC
+(RFC 3550 §5.1), so two tracks routinely start hours apart — and is anchored at the point the period
+had reached when it arrived, which recovers playback and not lip sync, and the seam's KDoc says so.
+`getBufferedPositionUs` is the **most conservative** of the queues, since that is what `STATE_READY`
+is computed from, with a track that has yet to deliver left out of the minimum. That allowance is
+bounded: a declared track silent past `LATE_TRACK_START_BOUND_US` (5 s, because connecting is slower
+than continuing) or a delivering track quiet past `STALLED_TRACK_BOUND_US` (3 s) ends the session on
+the public `RealtimeTrackStalledException`. Both bounds are **media time against the leading track
+and never a clock**, which is what keeps all the tracks going quiet together an ordinary live edge
+rather than a failure — and what makes them assertable. `RealtimePlaybackTest` states the sync claim
+as an assertion over the two renderers' **rendered** positions (a `FakeRenderer` subclass recording
+what `shouldProcessBuffer` accepted), forces the reconciliation in both directions and each bound in
+turn, and plays an audio-only source as the control. `realtime-h264-aac.trace` is the second golden,
+byte for byte the first today and deliberately so: what would move it is a rebuffer, an error or a
+load appearing, and the `tracks` line reads a bitrate a realtime `Format` does not carry.
+What is still open in Phase 13 is `FrameSourceConformance` (#347).
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,

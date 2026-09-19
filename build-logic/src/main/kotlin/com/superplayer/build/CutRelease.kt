@@ -43,9 +43,9 @@ import java.time.LocalDate
  * the whole of the next cycle. The steps are:
  *
  * 1. **the full `check` is green**, which is a task dependency rather than a claim — see below;
- * 2. the tree is clean, the version is a legal successor, it is no smaller than the surface diff
- *    requires, the `Unreleased` section is not empty and the tag is free — all six refusals are
- *    [planRelease]'s, decided before a byte is written;
+ * 2. the tree is clean, the version parses and is a legal successor, it is no smaller than the
+ *    surface diff requires, the `Unreleased` section is not empty and the tag is free — every
+ *    refusal but the first is [planRelease]'s, decided before a byte is written;
  * 3. the catalog drops its `-SNAPSHOT`, `CHANGELOG.md`'s `Unreleased` section becomes a dated
  *    heading with a fresh empty one above it, and `api/released/` is re-recorded;
  * 4. those three are committed — the release commit;
@@ -62,12 +62,15 @@ import java.time.LocalDate
  * one tag, all local, all named in the refusal message if a later step fails, and nothing in this
  * file can reach a remote. **It never pushes**, and `docs/releasing.md` says how to undo it.
  *
- * **How `check` being green is established.** The task depends on it, so Gradle runs the whole of
- * `check` before this action starts and the build stops at the first failure without any of the
- * above happening. That is neither trusting the operator's word nor running a second build inside
- * this one: it is the ordinary task graph. The cost is that a refusal about the changelog arrives
- * after a check the tree was going to have to pass anyway — run `./gradlew check` first and the
- * release run's is up to date.
+ * **How `check` being green is established.** The task depends on the root project's `check` *and*
+ * on every module's, which `superplayer.verification.gradle.kts` argues at the two lines that do
+ * it — a dependency on the root's alone reaches none of the thirteen, because a plain
+ * `./gradlew check` gets there by matching the task *name* in every project rather than by any
+ * dependency. Gradle runs them all before this action starts and the build stops at the first
+ * failure without any of the above happening. That is neither trusting the operator's word nor
+ * running a second build inside this one: it is the ordinary task graph. The cost is that a
+ * refusal about the changelog arrives after a check the tree was going to have to pass anyway —
+ * run `./gradlew check` first and the release run's is up to date.
  *
  * **Publishing is the one step that forks a second Gradle invocation**, and it has to. Every
  * module's `version` is read from the catalog at *configuration* time, so the publication tasks of
@@ -160,7 +163,10 @@ abstract class CutRelease : DefaultTask() {
             writeRecordedSurfaces(recordDirectory.get().asFile, plan.recordedSurfaces)
             logger.lifecycle("  catalog, CHANGELOG.md and $RECORDED_SURFACE_DIRECTORY/ written.")
 
-            git(root, "add", "--all")
+            // The paths the plan named rather than everything: the tree was clean when the
+            // refusals read it, but `check` ran between that reading and this line, and anything
+            // it wrote outside `.gitignore` would otherwise be swept into a release commit.
+            git(root, "add", *WRITTEN_PATHS)
             git(root, "commit", "--message", "Release ${plan.release}")
             logger.lifecycle("  committed.")
 
@@ -174,7 +180,7 @@ abstract class CutRelease : DefaultTask() {
 
             // ADR-0017 rule 8's other half: the tree may not be left on the version just published.
             catalogFile.writeText(plan.nextSnapshotCatalog)
-            git(root, "add", "--all")
+            git(root, "add", *WRITTEN_PATHS)
             git(root, "commit", "--message", "Open ${plan.nextSnapshot}")
             logger.lifecycle("  catalog opened on ${plan.nextSnapshot}.")
         } catch (failure: Exception) {
@@ -203,6 +209,14 @@ abstract class CutRelease : DefaultTask() {
         }
     }
 }
+
+/**
+ * Everything a cut writes, as the paths `git add` is handed: the catalog, the changelog and the
+ * recorded surfaces, which are the three the plan decides. Naming them is what makes the release
+ * commit exactly the plan, rather than the plan plus whatever else was in the tree at that moment.
+ */
+private val WRITTEN_PATHS =
+    arrayOf("gradle/libs.versions.toml", "CHANGELOG.md", RECORDED_SURFACE_DIRECTORY)
 
 /** How much of a failed publication's log is worth carrying into the refusal above it. */
 private const val PUBLISH_LINES_ON_FAILURE = 40

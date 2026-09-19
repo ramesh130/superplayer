@@ -39,9 +39,18 @@ class ReleaseWiringTest {
 
         assertTrue(
             "The `release` task must depend on `check`: that dependency is how a release is kept " +
-                "from being cut from a red tree, and it is the one of #329's six refusals that is " +
-                "not planRelease's.\n$registration",
+                "from being cut from a red tree, and it is the one refusal #329 names that is not " +
+                "planRelease's.\n$registration",
             registration.contains("dependsOn(tasks.named(\"check\"))")
+        )
+        assertTrue(
+            "The `release` task must also depend on every module's `check`. This plugin is applied " +
+                "to the root project alone, so the line above reaches the root's `check` and none " +
+                "of the thirteen modules': a plain `./gradlew check` gets there by matching the " +
+                "task name in every project, which a dependency does not do. Without this, a " +
+                "release is cut with no module's tests, lint, checkApiSurface or " +
+                "verifyNoUnstableMedia3InPublicApi having run.\n$registration",
+            registration.contains("dependsOn(subprojects.map { \"\${it.path}:check\" })")
         )
     }
 

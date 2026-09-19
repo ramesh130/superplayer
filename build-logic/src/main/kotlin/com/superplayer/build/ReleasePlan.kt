@@ -16,25 +16,7 @@
 
 package com.superplayer.build
 
-/**
- * Everything `./gradlew release` decides, as a function of text.
- *
- * A release cut is six refusals and four rewritten files, and only the second half needs a disk.
- * [planRelease] takes what the tree says — the catalog, the changelog, the recorded surfaces, the
- * tracked surfaces, `git status --porcelain` and the tag list — and answers either every byte the
- * cut will write or the one refusal that stops it, without touching a file, a process or a clock.
- * `CutRelease` is then the effectful remainder: read, plan, write, publish, commit, tag.
- *
- * The split is `ApiSurfaceBump.kt`'s and `VerifyVersion.kt`'s, for their reason: a refusal is worth
- * having only if its exact wording is tested, and wording is testable here as string literals
- * rather than as a release performed against a throwaway repository.
- *
- * One judgement is deliberately **not** made here. Whether the version is large enough for the API
- * surface that moved is [findVersionBumpMismatch]'s — the same function `verifyVersionBump` runs in
- * `check` — asked with the catalog this cut *would* write. ADR-0017 rule 2 makes the tracked surface
- * the arbiter of the bump, and a release command with its own second opinion about what a removal
- * costs would be a second arbiter.
- */
+/** What a cut reads: the four tracked artefacts its refusals and its rewrites are computed from. */
 internal data class ReleaseSources(
     val catalog: String,
     val changelog: String,
@@ -85,6 +67,29 @@ internal fun releaseTag(version: SemanticVersion): String = "v$version"
 internal fun nextSnapshotAfter(release: SemanticVersion): SemanticVersion =
     release.copy(patch = release.patch + 1, isSnapshot = true)
 
+/**
+ * Everything `./gradlew release` decides, as a function of text.
+ *
+ * It takes what the tree says — the catalog, the changelog, the recorded surfaces, the tracked
+ * surfaces, `git status --porcelain` and the tag list — and answers either every byte the cut will
+ * write or the one refusal that stops it, without touching a file, a process or a clock.
+ * [CutRelease] is the effectful remainder: read, plan, write, commit, publish, tag.
+ *
+ * The split is `ApiSurfaceBump.kt`'s and `VerifyVersion.kt`'s, for their reason: a refusal is worth
+ * having only if its exact wording is tested, and wording is testable here as string literals
+ * rather than as a release performed against a throwaway repository. Every refusal #329 names is
+ * below except one — a failing `check`, which is a task dependency and therefore a line in
+ * `superplayer.verification.gradle.kts` that `ReleaseWiringTest` reads.
+ *
+ * [today] is a parameter rather than a clock for the same reason: the dated heading is part of what
+ * a cut writes, so it has to be part of what a test can state.
+ *
+ * One judgement is deliberately **not** made here. Whether the version is large enough for the API
+ * surface that moved is [findVersionBumpMismatch]'s — the same function `verifyVersionBump` runs in
+ * `check` — asked with the catalog this cut *would* write. ADR-0017 rule 2 makes the tracked surface
+ * the arbiter of the bump, and a release command with its own second opinion about what a removal
+ * costs would be a second arbiter.
+ */
 internal fun planRelease(
     asked: String,
     sources: ReleaseSources,
@@ -180,16 +185,26 @@ internal fun planRelease(
     }
 
     val nextSnapshot = nextSnapshotAfter(release)
+    // From the catalog on disk rather than from `releaseCatalog`: one entry is being rewritten
+    // either way, and deriving the second from the first would make a defect in the first
+    // invisible in the second. The null arm is unreachable — the refusal above proves the entry is
+    // there — and is a refusal rather than a default because what a default would write is an
+    // *empty* catalog, at the last step of a cut, after the tag exists. This file's premise is that
+    // every byte is decided before any is written; a fallback here is the one line that opts out.
+    val nextSnapshotCatalog = setCatalogVersion(sources.catalog, nextSnapshot)
+        ?: return refuse(
+            catalogVersionProblem(sources.catalog) +
+                " The release version could be written and the next snapshot could not, which " +
+                "should not be reachable; nothing was written."
+        )
+
     return ReleasePlanning.Planned(
         ReleasePlan(
             release = release,
             nextSnapshot = nextSnapshot,
             tag = tag,
             releaseCatalog = releaseCatalog,
-            // From the catalog on disk rather than from `releaseCatalog`: one entry is being
-            // rewritten either way, and deriving the second from the first would make a defect in
-            // the first invisible in the second.
-            nextSnapshotCatalog = setCatalogVersion(sources.catalog, nextSnapshot).orEmpty(),
+            nextSnapshotCatalog = nextSnapshotCatalog,
             stampedChangelog = stamped,
             recordedSurfaces = releasedApiSurfaceRecord(sources.trackedSurfaces, release.toString())
         )
@@ -256,6 +271,12 @@ internal fun setCatalogVersion(catalog: String, version: SemanticVersion): Strin
     return catalog.replaceRange(match.range, "superplayer = \"$version\"")
 }
 
+/**
+ * How many uncommitted paths the dirty-tree refusal lists. `ApiSurfaceBump.kt`'s `DEPARTURES_SHOWN`
+ * for its reason — a message nobody scrolls to the end of names nothing — and the same number,
+ * because the reader of either is looking for whether they recognise the work in the list rather
+ * than counting it, and `git status` is a keystroke away when they do not.
+ */
 private const val PATHS_SHOWN = 10
 
 private fun successorsOf(previous: SemanticVersion): List<SemanticVersion> =

@@ -15,8 +15,10 @@ stops being true. A missing file would be an omission instead.
                                                # and verifyVersionBump once at the root
 ./gradlew updateApiSurface                     # regenerate every module's tracked surface
 ./gradlew :superplayer-core:updateApiSurface   # regenerate one
-./gradlew recordReleasedApiSurface             # re-record api/released/; the release command's
-                                               # step, not a contributor's (issue #329)
+./gradlew release --release-version=x.y.z      # cuts a release, and re-records api/released/ as
+                                               # one of its steps (docs/releasing.md)
+./gradlew recordReleasedApiSurface             # that step alone, for a record that has to be
+                                               # retaken by hand; not a contributor's step
 ```
 
 `updateApiSurface` is the deliberate step. Nothing regenerates the tracked file implicitly, because

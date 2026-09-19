@@ -1509,9 +1509,11 @@ repository.
   self-describing); and a realtime stream refuses `StartPosition.At` and `ResumeFromLastKnown` with a
   typed exception rather than coercing them. What the path does **not** reach is a rule rather than a
   discovery: the cache, CMCD, downloads, the fallback ladder's load-error rungs and bandwidth
-  estimation are all keyed to `DataSource`, `superplayer-abr` has nothing to select, and **ADR-0016's
-  four chains do not become five** — what survives is `MediaRequest.sources` and rung 4, which is the
-  documented way to have a fallback. Telemetry keeps rebuffer and startup metrics and loses bandwidth
+  estimation are all keyed to `DataSource`, and **ADR-0016's four chains do not become five** — what survives is `MediaRequest.sources` and rung 4, which is the
+  documented way to have a fallback. Adaptive selection is **deferred rather than excluded** (rule 6a):
+  MoQ's catalog does list renditions and a publisher can flag one stalled, so the protocol bears a
+  ladder even though no phase wires one, and a phase that adds selection amends the record. Telemetry
+  keeps rebuffer and startup metrics and loses bandwidth
   samples, with `SCHEMA_VERSION` unmoved; a transport's own throughput may come through the seam. A
   timestamp's precision is the transport's limit and is documented rather than implied. Signalling
   does **not** travel `HttpTransport` — WHEP needs a `POST` with a body and a `DELETE` where that

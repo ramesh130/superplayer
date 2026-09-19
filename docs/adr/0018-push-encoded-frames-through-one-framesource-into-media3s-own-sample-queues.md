@@ -77,8 +77,8 @@ audio focus and dropped-frame telemetry, none of which is improved by being rewr
 nothing mechanical; #343 pins the shape with a test, and a renderer added later is visible in review.*
 
 **Rule 2 — A transport implements `FrameSource`, which names no Media3 type.** Subscribe, receive
-encoded frames carrying a timestamp, a codec, a keyframe flag and optional codec-specific data,
-cancel. This is ADR-0016's `HttpTransport` shape taken again, for its reason and for one more: it is
+encoded frames carrying a timestamp, a codec, a keyframe flag and the codec configuration the
+fourcc says it carries (rule 4's #345 addendum), cancel. This is ADR-0016's `HttpTransport` shape taken again, for its reason and for one more: it is
 the only boundary at which either transport is testable. Neither QUIC nor WebRTC runs under `check`,
 and Robolectric cannot load an Android `.so` on the JVM, so the fake stands here and everything above
 it is ordinary Robolectric work. *Enforced by `verifyNoUnstableMedia3InPublicApi` and the tracked API
@@ -116,6 +116,26 @@ length field size is **read out of the record** rather than assumed to be four b
 of this rule is derived from source rather than observed (#340), and the first transport to carry
 HEVC is expected to confirm it rather than to assume this rule already did. *Enforced by #345's tests
 over literal byte arrays, using #340's observed bytes as fixtures.*
+
+> **#345 addendum — the conversion is SuperPlayer's, and the seam names the shape.** The rule as
+> first written left *who* converts unsaid, and the seam answered it by taking Annex-B units: the
+> transport converted. That is now reversed. `RealtimeTrack` carries a `CodecConfiguration` of
+> `InBand` or `Record(bytes)` — the record **exactly as received** — in place of a
+> `codecSpecificData: List<ByteArray>`, so a transport hands over what its publisher sent and needs
+> to know nothing about Annex-B. The reason is the one this record keeps returning to: every value
+> of a byte list type-checked, so an `avcC` handed over where units were expected compiled and
+> rendered nothing, while a *named* shape makes the contradiction a statement and lets a fourcc that
+> disagrees with it be refused by name. That refusal is the new public
+> `MalformedRealtimeBitstreamException`, an `IOException` for `UnsupportedRealtimeCodecException`'s
+> reason and not a fourth exception shape.
+>
+> Two things the rule did not say and now does. The length field size read out of the record is
+> **used**, on that track's samples, because a track that carries a record sends its samples
+> length-prefixed and a size read but not applied is a number nobody uses; the record's own
+> parameter-set lengths are 16-bit by its grammar, which is a different field. And every codec that
+> is neither H.264 nor H.265 has its record **passed through unchanged**, which is the honest
+> default rather than a claim that it is right for each of them — #346 owns getting that right per
+> codec, with something observed behind it.
 
 **Rule 5 — A realtime stream is live and unseekable, and says so rather than pretending.**
 `StartPosition.At` and `ResumeFromLastKnown` are refused at adoption with a typed exception naming

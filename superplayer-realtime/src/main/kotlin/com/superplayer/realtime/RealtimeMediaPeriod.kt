@@ -216,9 +216,13 @@ internal class RealtimeMediaPeriod(
             // fourcc whose samples are length-prefixed, the length size the record declared.
             configuration = CodecConfigurationRecords.of(track.codec, track.codecConfiguration)
         } catch (refusal: IOException) {
-            // Reported as a failure of preparation rather than thrown back at the transport: the
-            // transport called this method correctly and what it handed over is what cannot be
-            // decoded, so the refusal belongs on the path a consumer already watches for errors.
+            // The two typed refusals this can raise — an unmappable codec string and a
+            // configuration that contradicts its own fourcc — are reported as a failure of
+            // preparation rather than thrown back at the transport: the transport called this
+            // method correctly and what it handed over is what cannot be decoded, so the refusal
+            // belongs on the path a consumer already watches for errors. `IOException` rather than
+            // the two by name because both are one, and because anything else raised from reading
+            // what a transport handed over is the same kind of fact about the same delivery.
             onError(refusal)
             return
         }

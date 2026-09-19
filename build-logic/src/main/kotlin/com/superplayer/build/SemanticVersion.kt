@@ -26,12 +26,11 @@ package com.superplayer.build
  * would carry here — unreleased, covered by none of the other rules — so parsing the wider grammar
  * would be accepting strings no rule in that record can judge.
  *
- * [compareTo] is the "compare" half, and it is **declared here and reached by nothing in this
- * check** — the shape `RetryPolicy.licence` takes, said out loud for the same reason. It is here
- * for **#328**, the gate that compares the bump being proposed against the surface diff since the
- * last release, and **#329**, the release command that has to refuse a version that did not move.
- * Both land on this type rather than each parsing the string again, and ordering is the one
- * operation either needs beyond reading one.
+ * [compareTo] is the "compare" half. It was declared for **#328**, the gate that compares the bump
+ * being proposed against the surface diff since the last release, and reached by nothing until that
+ * ticket landed; [bumpFrom] is now what reads it, and **#329**'s release command — which has to
+ * refuse a version that did not move — reads the same pair. Both land on this type rather than each
+ * parsing the string again, and ordering is the one operation either needs beyond reading one.
  */
 internal data class SemanticVersion(
     val major: Int,
@@ -57,6 +56,21 @@ internal data class SemanticVersion(
     override fun compareTo(other: SemanticVersion): Int =
         compareValuesBy(this, other, { it.major }, { it.minor }, { it.patch }, { !it.isSnapshot })
 
+    /**
+     * Which of the three this version is, read as a move from [previous], or null when it is not a
+     * move forward at all.
+     *
+     * This is the "is the bump at least a minor" question #328 asks, expressed once here rather
+     * than as three comparisons spelled out at the gate: a release is a major when the major moved,
+     * a minor when the minor moved under an unchanged major, and a patch otherwise.
+     */
+    fun bumpFrom(previous: SemanticVersion): Bump? = when {
+        this <= previous -> null
+        major > previous.major -> Bump.MAJOR
+        minor > previous.minor -> Bump.MINOR
+        else -> Bump.PATCH
+    }
+
     companion object {
         const val SNAPSHOT_SUFFIX = "SNAPSHOT"
 
@@ -81,5 +95,33 @@ internal data class SemanticVersion(
                 isSnapshot = suffix.isNotEmpty()
             )
         }
+    }
+}
+
+/**
+ * How far one release moved from the one before it, smallest first — so "at least a minor" is
+ * `bump >= Bump.MINOR` rather than a pair of comparisons repeated at every reader.
+ *
+ * The three are Semantic Versioning's own, and what each of them *means about the API* is
+ * ADR-0017 rule 2's, mechanised in [findVersionBumpMismatch].
+ */
+internal enum class Bump {
+    // spec: Semantic Versioning 2.0.0 items 6, 7 and 8 — patch for a backwards-compatible fix,
+    // minor for backwards-compatible added functionality, major for an incompatible API change.
+    // Declared in that order because the ordinal is the ordering every caller compares on.
+    PATCH,
+    MINOR,
+    MAJOR;
+
+    /**
+     * The smallest version that is this bump on [previous] — what a failure message offers instead
+     * of leaving the arithmetic to whoever is reading it mid-release.
+     */
+    // spec: Semantic Versioning 2.0.0 items 7 and 8 — patch resets to 0 when minor is incremented,
+    // and both reset when major is.
+    fun smallestFrom(previous: SemanticVersion): SemanticVersion = when (this) {
+        PATCH -> previous.copy(patch = previous.patch + 1)
+        MINOR -> previous.copy(minor = previous.minor + 1, patch = 0)
+        MAJOR -> previous.copy(major = previous.major + 1, minor = 0, patch = 0)
     }
 }

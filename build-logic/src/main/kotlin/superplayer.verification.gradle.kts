@@ -1,8 +1,12 @@
+import com.superplayer.build.RECORDED_SURFACE_DIRECTORY
+import com.superplayer.build.RECORDED_VERSION_FILE
+import com.superplayer.build.RecordReleasedApiSurface
 import com.superplayer.build.VerifyLicenseHeader
 import com.superplayer.build.VerifyMedia3SupportedVersion
 import com.superplayer.build.VerifyModulePhaseRule
 import com.superplayer.build.VerifyNoHardcodedMedia3Versions
 import com.superplayer.build.VerifyVersion
+import com.superplayer.build.VerifyVersionBump
 
 plugins {
     // For the lifecycle `check` task alone. This used to be `tasks.register("check")`, which
@@ -69,6 +73,41 @@ val verifyVersion =
         stampFile.set(layout.buildDirectory.file("verification/version.txt"))
     }
 
+// ADR-0017 rule 2 makes the tracked API surface the arbiter of the bump, and only half of it was
+// enforced until now: `checkApiSurface` holds each module's tracked file to its code, and nothing
+// held the version to the difference between that file and the one last released. This does. It is
+// root-only because rule 1 releases all thirteen modules at one number, so the verdict is thirteen
+// surfaces against one catalog entry rather than thirteen independent answers.
+val releasedApiSurfaces = layout.projectDirectory.dir(RECORDED_SURFACE_DIRECTORY)
+val trackedApiSurfaces = fileTree(layout.projectDirectory) { include("superplayer-*/api/*.api") }
+
+val verifyVersionBump =
+    tasks.register<VerifyVersionBump>("verifyVersionBump") {
+        group = "verification"
+        description = "Fails if the published version is too small for the API surface change since the last release."
+        trackedApiFiles.from(trackedApiSurfaces)
+        // The files themselves rather than the directory, because a directory property would leave
+        // a changed recorded surface looking up to date. The tree is legitimately empty until the
+        // first release, which the check reads as "nothing has been released" rather than as a
+        // missing input.
+        recordedApiFiles.from(
+            fileTree(releasedApiSurfaces) { include("*.api", RECORDED_VERSION_FILE) }
+        )
+        versionCatalog.set(layout.projectDirectory.file("gradle/libs.versions.toml"))
+        stampFile.set(layout.buildDirectory.file("verification/version-bump.txt"))
+    }
+
+// The other half, and deliberately not in `check`: #329's release command runs it to re-record the
+// surfaces as part of cutting a release. `updateApiSurface`'s contract, for `updateApiSurface`'s
+// reason — a baseline refreshed to make a failure go away is a baseline that means nothing.
+tasks.register<RecordReleasedApiSurface>("recordReleasedApiSurface") {
+    group = "verification"
+    description = "Rewrites api/released/ from the tracked surfaces, under the catalog's version."
+    trackedApiFiles.from(trackedApiSurfaces)
+    versionCatalog.set(layout.projectDirectory.file("gradle/libs.versions.toml"))
+    recordDirectory.set(releasedApiSurfaces)
+}
+
 // Spotless stamps `config/license-header.txt` onto every `.kt` file; nothing in Spotless checks
 // that the file names the license this project is under. This does, against `LICENSE` itself, so
 // the header and the license cannot drift apart.
@@ -110,6 +149,7 @@ tasks.named("check") {
     dependsOn(verifyModulePhaseRule)
     dependsOn(verifyMedia3SupportedVersion)
     dependsOn(verifyVersion)
+    dependsOn(verifyVersionBump)
     dependsOn(verifyLicenseHeader)
     dependsOn(verifyDevicelab)
 

@@ -37,6 +37,20 @@ dependencies**, which are never distributed in a published artifact and whose co
 modifications to the dependency's own files. This is what allows JUnit, which is EPL-1.0, and it is
 the narrowest carve-out that does. It does not extend to anything that ships to a consumer.
 
+**#364's amendment, and it widens that carve-out by exactly one case.** The rule's reason is *never
+distributed in a published artifact*, and it named two kinds of dependency that satisfy it. A third
+does: a dependency of a module the build carries and **does not publish**, declared as such in
+`settings.gradle.kts`'s `unpublishedModules` list (ADR-0017 rule 1, `build-logic`'s
+`ModulePublication`). Such a module has no coordinate at any version, so nothing of it reaches an
+adopter's APK, which is the same fact the original two rest on rather than a new allowance.
+
+This is written down because something relies on it: `superplayer-moq` links MoQ's UniFFI bindings,
+whose `uniffi_core` is MPL-2.0 and *is* linked into the native library
+(`third-party/moq/CRATES.md`). The amendment is deliberately not a general loosening — it does not
+admit copyleft into a published module, and it does not survive the module being published. **#369,
+which would publish `superplayer-moq`, has to answer this first**, and the row it would have to
+clear is the one above rather than this one.
+
 Adding a dependency means adding its entry to `THIRD_PARTY.md` in the same change, creating the
 file if it does not exist yet.
 

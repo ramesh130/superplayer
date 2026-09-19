@@ -17,6 +17,8 @@
 package com.superplayer.moq
 
 import org.junit.Assert.assertNotNull
+import org.junit.Assume.assumeTrue
+import org.junit.Before
 import org.junit.Test
 import uniffi.moq.MoqOriginOptions
 import uniffi.moq.MoqOriginProducer
@@ -40,8 +42,28 @@ import uniffi.moq.uniffiEnsureInitialized
  *
  * These tests reach `uniffi.moq` directly rather than through anything of this module's, because
  * there is nothing of this module's yet: the seam over it is #365's.
+ *
+ * **They run on one host and skip on every other, and that is a gap rather than a nuisance.** The
+ * committed JVM artifact carries `darwin-aarch64/libmoq_ffi.dylib` and nothing else, because that
+ * is the machine `third-party/moq/README.md`'s recipe was run on; CI is `ubuntu-latest`, where
+ * there is no library to load. Failing there would make local and CI disagree about what passing
+ * means, which CLAUDE.md's *Commands* forbids, and asserting nothing while pretending otherwise
+ * would be worse than either. So the check is skipped with its reason named, and
+ * `docs/testing.md`'s *The MoQ bindings* records that **the FFI half of this module is verified on
+ * a developer's machine and by no automated run**. `MoqBindingsResolutionTest` is unaffected and
+ * does run everywhere: what was resolved is a fact about the build rather than about the host.
  */
 class MoqFfiLinkageTest {
+
+    @Before
+    fun onlyWhereTheCommittedLibraryCanLoad() {
+        assumeTrue(
+            "the committed bindings carry a host library for $BUILT_FOR only, and this is " +
+                "${System.getProperty("os.name")}/${System.getProperty("os.arch")}. " +
+                "third-party/moq/README.md is how a second host's library would be built.",
+            hostMatchesTheCommittedLibrary()
+        )
+    }
 
     /**
      * Every checksum the generated bindings hold is answered by the binary that is loaded.
@@ -85,5 +107,22 @@ class MoqFfiLinkageTest {
          * from.
          */
         const val SMOKE_BROADCAST_PATH = "superplayer/ffi-smoke"
+
+        /** The one host `third-party/moq/m2` carries a library for, in JNA's own spelling. */
+        const val BUILT_FOR = "darwin-aarch64"
     }
 }
+
+/**
+ * Whether this JVM is the host the committed bindings were built for.
+ *
+ * Read off `os.name` and `os.arch` rather than by looking for the resource, because JNA computes
+ * the resource prefix itself and a test that guessed that prefix would be asserting against its own
+ * guess. The consequence of getting this wrong is visible either way: too strict and the check
+ * skips where it could have run, too loose and it fails with an `UnsatisfiedLinkError` naming the
+ * library — neither is a silent pass.
+ */
+internal fun hostMatchesTheCommittedLibrary(
+    osName: String? = System.getProperty("os.name"),
+    osArch: String? = System.getProperty("os.arch")
+): Boolean = osName.orEmpty().startsWith("Mac") && osArch == "aarch64"

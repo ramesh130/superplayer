@@ -9,7 +9,7 @@ Four Gradle builds, not one. Mistaking them for a single build is the usual firs
 
 | Build | What it is |
 | --- | --- |
-| root | the 14 `superplayer-*` library modules, listed in `settings.gradle.kts` |
+| root | the 15 `superplayer-*` library modules, listed in `settings.gradle.kts` — 14 published, and `superplayer-moq` deliberately not (ADR-0017 rule 1's #364 addendum) |
 | `build-logic/` | an **included build** holding the convention plugins every module applies |
 | `demo/` | a **separate** build resolving the library from published Maven coordinates |
 | `benchmark/` | a **separate** build, the same way, running `PRD.md` §6's matrix |
@@ -1275,7 +1275,7 @@ Every other library module is still an empty placeholder: they exist so boundari
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,
 `superplayer-abr`, `superplayer-cache`, `superplayer-preload`, `superplayer-resilience`,
 `superplayer-drm`, `superplayer-offline`, `superplayer-tv`, `superplayer-diagnostics`,
-`superplayer-realtime` and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
+`superplayer-realtime`, `superplayer-moq` and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
 requirements, and the phase table are what the issues are cut from.
 
 `benchmark/` is the fourth build and the phases' exit criteria: `PRD.md` §6's fixed matrix — six

@@ -82,8 +82,8 @@ abstract class VerifyVersionBump : DefaultTask() {
         val recorded = recordedApiFiles.files.filter { it.isFile }
         val mismatch = findVersionBumpMismatch(
             recordedVersion = recorded.firstOrNull { it.name == RECORDED_VERSION_FILE }?.readText()?.trim(),
-            recorded = recorded.filter { it.extension == API_EXTENSION }.associate { it.moduleName() to it.readText() },
-            current = trackedApiFiles.files.filter { it.isFile }.associate { it.moduleName() to it.readText() },
+            recorded = recorded.filter { it.extension == API_EXTENSION }.surfacesByModule(),
+            current = trackedApiFiles.files.surfacesByModule(),
             catalog = versionCatalog.get().asFile.readText()
         )
 
@@ -144,16 +144,13 @@ abstract class RecordReleasedApiSurface : DefaultTask() {
             )
         }
 
-        val record = releasedApiSurfaceRecord(
-            tracked = trackedApiFiles.files.filter { it.isFile }.associate { it.moduleName() to it.readText() },
-            version = version.toString()
+        writeRecordedSurfaces(
+            directory = recordDirectory.get().asFile,
+            record = releasedApiSurfaceRecord(
+                tracked = trackedApiFiles.files.surfacesByModule(),
+                version = version.toString()
+            )
         )
-
-        val directory = recordDirectory.get().asFile
-        directory.mkdirs()
-        val present = directory.listFiles().orEmpty().map { it.name }
-        staleRecordedSurfaces(present, record).forEach { File(directory, it).delete() }
-        record.forEach { (name, content) -> File(directory, name).writeText(content) }
     }
 }
 
@@ -163,3 +160,23 @@ abstract class RecordReleasedApiSurface : DefaultTask() {
  * recorded — so one reading serves both and the two cannot be keyed differently.
  */
 private fun File.moduleName(): String = nameWithoutExtension
+
+/** A set of `.api` files read as [findVersionBumpMismatch] and [releasedApiSurfaceRecord] key them. */
+internal fun Collection<File>.surfacesByModule(): Map<String, String> =
+    filter { it.isFile }.associate { it.moduleName() to it.readText() }
+
+/**
+ * Writes a record [releasedApiSurfaceRecord] composed, deleting the surfaces of modules that no
+ * longer exist and leaving every other file — the hand-written `README.md` — alone.
+ *
+ * Shared by [RecordReleasedApiSurface] and by [CutRelease], which performs this step itself: the
+ * catalog has to name the release before a surface may be recorded under it (ADR-0017 rule 8), and
+ * only the release command can have moved it. One writer rather than two, so the two cannot come to
+ * lay out that directory differently.
+ */
+internal fun writeRecordedSurfaces(directory: File, record: Map<String, String>) {
+    directory.mkdirs()
+    val present = directory.listFiles().orEmpty().map { it.name }
+    staleRecordedSurfaces(present, record).forEach { File(directory, it).delete() }
+    record.forEach { (name, content) -> File(directory, name).writeText(content) }
+}

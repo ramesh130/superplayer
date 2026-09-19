@@ -154,18 +154,19 @@ internal fun findVersionChangelogMismatch(catalog: String, changelog: String): S
 }
 
 /** Keep a Changelog's own name for the section above the dated ones. */
-private const val UNRELEASED = "Unreleased"
+internal const val UNRELEASED = "Unreleased"
 
 /**
  * The `[versions]` key itself. The library entries — `superplayer-core = { ... }` and the rest —
  * also begin with `superplayer`, and the `\s*=` right after the name is what keeps them out. The
  * same trade [findMedia3SupportedVersionMismatch] makes, for the same reason.
  *
- * File-private, because the two readers of that entry — this check and [findVersionBumpMismatch] —
- * both reach it through [catalogVersion] rather than through the pattern, and two regexes over one
- * catalog key would be two places for it to be spelled differently.
+ * Its two *readers* — this check and [findVersionBumpMismatch] — reach the entry through
+ * [catalogVersion] rather than through the pattern; [setCatalogVersion], which is the one writer,
+ * needs the pattern itself to replace the entry in place. All three spell the key once, here,
+ * because two regexes over one catalog key would be two places for it to be spelled differently.
  */
-private val CATALOG_VERSION = Regex("""^superplayer\s*=\s*"([^"]+)"""", RegexOption.MULTILINE)
+internal val CATALOG_VERSION = Regex("""^superplayer\s*=\s*"([^"]+)"""", RegexOption.MULTILINE)
 
 /**
  * The version every published module is about to be released under, or null when `[versions]` does
@@ -199,7 +200,10 @@ internal fun catalogVersionProblem(catalog: String): String {
 // because an editor that substitutes one is the likeliest way this file acquires a character
 // nobody typed, and failing a release over it would be failing it for punctuation. The date is
 // still held to ISO 8601 below, which is the part a reader reads.
-private val HEADING = Regex("""^##\s+\[([^\]]+)\]\s*(?:[-–—]\s*(\S+))?\s*$""", RegexOption.MULTILINE)
+//
+// [stampRelease] writes a heading through this same pattern's shape and finds the `Unreleased` one
+// with it, so what the release command writes and what this check reads back cannot disagree.
+internal val CHANGELOG_HEADING = Regex("""^##\s+\[([^\]]+)\]\s*(?:[-–—]\s*(\S+))?\s*$""", RegexOption.MULTILINE)
 
 /** ISO 8601's calendar date, which is the only date form Keep a Changelog admits. */
 private val ISO_DATE = Regex("""\d{4}-\d{2}-\d{2}""")
@@ -213,7 +217,7 @@ private data class ReleaseEntry(
 )
 
 private fun hasUnreleasedHeading(changelog: String): Boolean =
-    HEADING.findAll(changelog).any { it.groupValues[1].equals(UNRELEASED, ignoreCase = true) }
+    CHANGELOG_HEADING.findAll(changelog).any { it.groupValues[1].equals(UNRELEASED, ignoreCase = true) }
 
 /**
  * Every `## [version]` heading that names a version, in the order the file writes them, with the
@@ -222,7 +226,7 @@ private fun hasUnreleasedHeading(changelog: String): Boolean =
  * therefore reports it missing rather than matching it by accident.
  */
 private fun releaseEntries(changelog: String): List<ReleaseEntry> {
-    val headings = HEADING.findAll(changelog).toList()
+    val headings = CHANGELOG_HEADING.findAll(changelog).toList()
     return headings.mapIndexedNotNull { index, match ->
         val version = SemanticVersion.parse(match.groupValues[1]) ?: return@mapIndexedNotNull null
         val bodyEnd = headings.getOrNull(index + 1)?.range?.first ?: changelog.length

@@ -280,6 +280,77 @@ than an instruction: `everyCheckHasAWrongTransportAndEveryWrongTransportHasAChec
 off the class and pairs them with `PlatformClientTransport.Defect`, in `FallbackRungCoverageTest`'s
 shape and for its reason, so a check with nothing to fail it fails the build instead.
 
+## A realtime transport
+
+Phase 13's path is the one part of the library that opens no `DataSource`, so almost none of the
+apparatus above reaches it. A realtime item is dispatched on its URI's **scheme** and loads through a
+`MediaSource` of `superplayer-realtime`'s own, which writes a `FrameSource`'s frames into Media3's
+sample queues (ADR-0018 rules 1 and 12). There is no transfer to shape, no fault to inject and no
+request to count, which is why `RealtimePlaybackTest` does **not** go through `PlaybackHarness`: what
+the harness contributes is a fake in the chain's transport slot, and there is no chain. What it uses
+instead is the seam *The one seam that is not public* already sanctions — `setEngineConfigurator`,
+reached because that module is core's tenth Kotlin friend — with Media3's own `FakeClock` and
+`FakeRenderer` under it, and every assertion still on the public `Player` API.
+
+What stands in for a transport is `ScriptedFrameSource`, a fake that delivers a fixed script of
+synthetic frames and then stays open, as a live publisher that has not yet sent more does. Its bytes
+are H.264 of the right *shape* and carry no picture data — nothing under `check` decodes them, so
+what they prove is the path rather than the picture — and the parameter-set fixtures beside it, in
+`ObservedBytes`, are #340's observed dump with every synthesized byte labelled as one. Three things
+about the path are worth knowing before writing a test against it. A realtime stream **never reaches
+`STATE_ENDED`**, because ExoPlayer declares a period final from the timeline and a dynamic period of
+unknown duration never is, so a session ends when the player is released. A transport's timestamps
+are on its own epoch, so a fake that starts at zero hides a missing subtraction on the other side.
+And the bounds on a track that starts late or stops are **media time against the leading track and
+never a clock**, which is what makes them assertable at all.
+
+### The conformance test a transport implementer runs
+
+`FrameSourceConformance` is the second thing in this repository written to be executed **outside**
+it, and the argument for it is `HttpTransportConformance`'s one degree stronger. A transport
+implements the seam over MoQ or over WebRTC; neither QUIC nor WebRTC runs under `check`, and
+Robolectric cannot load an Android `.so` on the JVM. So for `superplayer-moq` and `superplayer-whep`
+this suite is not one check among several — it is the only one there is, and it is what lets a third
+party write a third transport without reading our internals.
+
+It is public API of `superplayer-testkit`, tracked in that module's `api/` file, and it is testkit's
+because `FrameSource` is **core's**: a phase 2 module may name nothing later than core, so the seam
+had to move there for its suite to reach it (ADR-0018 rule 2's #356 addendum). Eleven checks, one per
+obligation, each naming the rule, what the source did and what the rule requires; a broken obligation
+is a `FrameSourceConformanceException`, an `AssertionError`, and no test framework is named, for the
+reason the HTTP suite's does not name one either.
+
+**It needs no socket, and the one loopback carve-out is not widened.** That is the difference between
+the two suites and it is a difference of subject: an HTTP client's obligations are claims about what
+goes on a wire, so that suite stands up an origin and reads both ends of the exchange, while a
+`FrameSource`'s obligations are claims about what it delivers **to a sink**. So this one supplies the
+sink — a recorder that subscribes, keeps what arrives in order, and cancels — and nothing else. What
+the consumer supplies is the transport *and the stream*, since no fake publisher here could stand in
+for their relay.
+
+**What it cannot cover**, said in the suite's own KDoc and repeated here because it is the half a
+reader should not have to infer. Obligation 5, the precision a transport states, is unenforceable by
+construction — nothing can tell a transport that truncated to milliseconds from a publisher that
+emitted them. Obligation 6 is reached only as far as the framing walk goes, so a container this suite
+has never seen may pass it. A configuration record that parses and belongs to a *different* stream is
+invisible. Obligation 1 is checked by widening the window and watching for two deliveries in flight
+at once, so a transport with two genuinely concurrent deliverers is caught while one that delivers
+from several threads with a happens-before passes — which is what the obligation permits. And
+obligation 7's second half, the sample framing, is checked against the length field size the track's
+*own* record declares: Annex-B under a record is caught, and a stream where both readings are
+structurally valid is not.
+
+**What scores it.** `FrameSourceConformanceTest`, from both sides, in `HttpTransportConformanceTest`'s
+shape: a deliberately wrong publisher **per obligation** (`PublishingFrameSource.Defect`), each driven
+against the check meant to catch it, with the correct publisher run through the whole suite in both of
+obligation 7's branches as the control. Adding a twelfth check means adding a wrong publisher for it in
+the same change, which `everyCheckHasAWrongPublisherAndEveryWrongPublisherHasACheck` enforces by
+reading the checks off the class. The other half is `superplayer-realtime`'s
+`ScriptedFrameSourceConformanceTest`: the reference fake this phase's own tests play through, run
+through `verifyAll` in both branches, so the implementation an adopter reads is held to the contract it
+defines. That test also holds the suite's list of codec families to `RealtimeFormats`' table, which is
+written down twice because the table is `internal` to a phase 13 module and the suite is phase 2's.
+
 ## Synthetic media, not fixtures
 
 Streams are generated in Kotlin rather than checked in as binaries. `SyntheticHlsStream` writes a

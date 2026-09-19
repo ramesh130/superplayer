@@ -57,6 +57,20 @@ class FrameSourceConformanceTest {
         conformance(selfDescribing = true).verifyAll()
     }
 
+    /**
+     * The control obligation 9 needs, and the one the two above cannot be.
+     *
+     * A publisher that delivers its whole script inside `subscribe` has nothing left to stop by the
+     * time anything can cancel it, so it satisfies cancellation by arithmetic rather than by doing
+     * what the obligation asks. This one delivers from a thread of its own and joins it in `cancel`,
+     * which is the shape both of this phase's transports will have and the only shape in which
+     * `verifyCancellationStopsDelivery` passing means anything.
+     */
+    @Test
+    fun anAsynchronousPublisherSatisfiesEveryObligation() {
+        conformance(asynchronous = true).verifyAll()
+    }
+
     @Test
     fun aPublisherDeliveringFromTwoThreadsAtOnceIsRefusedByObligationOne() {
         val refusal = refusalFrom(PublishingFrameSource.Defect.DELIVERS_FROM_TWO_THREADS_AT_ONCE) {
@@ -157,6 +171,21 @@ class FrameSourceConformanceTest {
         assertThat(refusal).contains("the same")
     }
 
+    /**
+     * Obligation 8's other half, which the pooled-buffer defect above cannot reach: that one is
+     * refused on identity before the comparison is ever made, so without this the mutation branch
+     * would be a refusal nothing had ever forced.
+     */
+    @Test
+    fun aPublisherWritingIntoAPayloadItHasHandedOverIsRefusedByObligationEight() {
+        val refusal = refusalFrom(PublishingFrameSource.Defect.WRITES_INTO_A_PAYLOAD_IT_HAS_HANDED_OVER) {
+            it.verifyPayloadsAreNeitherReusedNorTouchedAgain()
+        }
+
+        assertThat(refusal).contains("obligation 8")
+        assertThat(refusal).contains("after onFrame had returned")
+    }
+
     @Test
     fun aPublisherDeliveringAfterItHasEndedIsRefused() {
         val refusal = refusalFrom(PublishingFrameSource.Defect.DELIVERS_A_FRAME_AFTER_ENDING) {
@@ -201,32 +230,39 @@ class FrameSourceConformanceTest {
      * drives — fail the build rather than go unnoticed, which is the way a suite like this quietly
      * stops being non-vacuous. The pairing is written out rather than derived from a name, because a
      * name is exactly what a rename would take with it.
+     *
+     * A check maps to a *list* where the HTTP suite's maps to one defect, which is the one place
+     * this register departs from it: obligation 8 is two refusals inside one check — an array handed
+     * over twice, and one written into after it was — and the first of them fires before the second
+     * can, so a single pairing would leave a shipped refusal forced by nothing.
      */
     @Test
     fun everyCheckHasAWrongPublisherAndEveryWrongPublisherHasACheck() {
         val register = mapOf(
             "verifyDeliveriesDoNotOverlap" to
-                PublishingFrameSource.Defect.DELIVERS_FROM_TWO_THREADS_AT_ONCE,
+                listOf(PublishingFrameSource.Defect.DELIVERS_FROM_TWO_THREADS_AT_ONCE),
             "verifyTracksAreDeclaredOnceBeforeTheFirstFrame" to
-                PublishingFrameSource.Defect.DELIVERS_A_FRAME_BEFORE_DECLARING_ITS_TRACKS,
+                listOf(PublishingFrameSource.Defect.DELIVERS_A_FRAME_BEFORE_DECLARING_ITS_TRACKS),
             "verifyEveryFrameNamesADeclaredTrack" to
-                PublishingFrameSource.Defect.SENDS_A_FRAME_ON_AN_UNDECLARED_TRACK,
+                listOf(PublishingFrameSource.Defect.SENDS_A_FRAME_ON_AN_UNDECLARED_TRACK),
             "verifyEachTrackStartsWithAKeyframe" to
-                PublishingFrameSource.Defect.STARTS_A_TRACK_WITHOUT_A_KEYFRAME,
+                listOf(PublishingFrameSource.Defect.STARTS_A_TRACK_WITHOUT_A_KEYFRAME),
             "verifyTimestampsAreMonotonicPerTrack" to
-                PublishingFrameSource.Defect.STEPS_ONE_TRACKS_TIMESTAMPS_BACKWARDS,
+                listOf(PublishingFrameSource.Defect.STEPS_ONE_TRACKS_TIMESTAMPS_BACKWARDS),
             "verifyCodecStringsAreMapped" to
-                PublishingFrameSource.Defect.DECLARES_AN_UNMAPPED_CODEC,
+                listOf(PublishingFrameSource.Defect.DECLARES_AN_UNMAPPED_CODEC),
             "verifyCodecConfigurationFollowsTheFourcc" to
-                PublishingFrameSource.Defect.HANDS_A_RECORD_FOR_A_SELF_DESCRIBING_FOURCC,
+                listOf(PublishingFrameSource.Defect.HANDS_A_RECORD_FOR_A_SELF_DESCRIBING_FOURCC),
             "verifySamplesAreFramedAsTheFourccRequires" to
-                PublishingFrameSource.Defect.FRAMES_SAMPLES_AS_ANNEX_B_UNDER_A_RECORD,
-            "verifyPayloadsAreNeitherReusedNorTouchedAgain" to
+                listOf(PublishingFrameSource.Defect.FRAMES_SAMPLES_AS_ANNEX_B_UNDER_A_RECORD),
+            "verifyPayloadsAreNeitherReusedNorTouchedAgain" to listOf(
                 PublishingFrameSource.Defect.HANDS_THE_SAME_BUFFER_OVER_TWICE,
+                PublishingFrameSource.Defect.WRITES_INTO_A_PAYLOAD_IT_HAS_HANDED_OVER,
+            ),
             "verifyTerminationIsFinal" to
-                PublishingFrameSource.Defect.DELIVERS_A_FRAME_AFTER_ENDING,
+                listOf(PublishingFrameSource.Defect.DELIVERS_A_FRAME_AFTER_ENDING),
             "verifyCancellationStopsDelivery" to
-                PublishingFrameSource.Defect.KEEPS_DELIVERING_AFTER_CANCEL,
+                listOf(PublishingFrameSource.Defect.KEEPS_DELIVERING_AFTER_CANCEL),
         )
         // Read off the class rather than listed here, so that a check added to it is a check this
         // register is missing. Public and non-synthetic; `verifyAll` is excluded by name, since it
@@ -238,7 +274,8 @@ class FrameSourceConformanceTest {
             .toSet()
 
         assertThat(register.keys).isEqualTo(checks)
-        assertThat(register.values.toSet()).isEqualTo(PublishingFrameSource.Defect.entries.toSet())
+        assertThat(register.values.flatten().toSet())
+            .isEqualTo(PublishingFrameSource.Defect.entries.toSet())
     }
 
     private fun refusalFrom(
@@ -271,10 +308,11 @@ class FrameSourceConformanceTest {
     private fun conformance(
         defect: PublishingFrameSource.Defect? = null,
         selfDescribing: Boolean = false,
+        asynchronous: Boolean = false,
     ): FrameSourceConformance = FrameSourceConformance(
         // A source per call, exactly as a player opens one per playback: one instance subscribed
         // twice would have the first check's cancellation reach the second check's delivery.
-        FrameSourceFactory { PublishingFrameSource(defect, selfDescribing) },
+        FrameSourceFactory { PublishingFrameSource(defect, selfDescribing, asynchronous) },
         URI,
     )
 

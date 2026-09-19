@@ -41,10 +41,18 @@ import kotlin.concurrent.thread
  * `avc3` with in-band parameter sets and Annex-B samples when [selfDescribing] is set, because
  * obligation 7 has two branches and a suite scored against one of them is a suite that proves half
  * of it.
+ *
+ * Delivery is synchronous inside [subscribe] unless [asynchronous] is set, and that flag exists for
+ * one obligation: a publisher that has finished delivering by the time `subscribe` returns satisfies
+ * obligation 9 by having nothing left to stop, so scoring [FrameSourceConformance] against it alone
+ * would leave the *positive* side of cancellation asserted by nothing. An asynchronous publisher
+ * delivers from a thread of its own and its [cancel] joins that thread, which is the shape the
+ * obligation is written for and the shape both of this phase's transports will have.
  */
 internal class PublishingFrameSource(
     private val defect: Defect? = null,
     private val selfDescribing: Boolean = false,
+    private val asynchronous: Boolean = false,
 ) : FrameSource {
 
     /**
@@ -82,6 +90,9 @@ internal class PublishingFrameSource(
         /** Obligation 8: one pooled buffer, refilled and handed over for every frame. */
         HANDS_THE_SAME_BUFFER_OVER_TWICE,
 
+        /** Obligation 8's other half: a distinct array per frame, written into once it is gone. */
+        WRITES_INTO_A_PAYLOAD_IT_HAS_HANDED_OVER,
+
         /** The finality of a terminal callback: a frame after the subscription has ended. */
         DELIVERS_A_FRAME_AFTER_ENDING,
 
@@ -92,6 +103,9 @@ internal class PublishingFrameSource(
     /** Counted down by [cancel]; what a defective shutdown then ignores. */
     private val cancelled = CountDownLatch(1)
 
+    /** Counted down by an [asynchronous] delivery once it has stopped, which is what [cancel] joins. */
+    private val stopped = CountDownLatch(1)
+
     /** One buffer for the whole session, which is obligation 8's ordinary way of going wrong. */
     private val pooled = ByteArray(POOLED_BUFFER_BYTES)
 
@@ -100,23 +114,55 @@ internal class PublishingFrameSource(
             sink.onFrame(videoFrame(ordinal = 0))
         }
         sink.onTracks(tracks())
-        when (defect) {
-            Defect.DELIVERS_FROM_TWO_THREADS_AT_ONCE -> deliverFromTwoThreads(sink)
-
-            Defect.KEEPS_DELIVERING_AFTER_CANCEL -> deliverPastCancellation(sink)
-
-            else -> {
-                script().forEach { sink.onFrame(it) }
-                if (defect == Defect.DELIVERS_A_FRAME_AFTER_ENDING) {
-                    sink.onEnded()
-                    sink.onFrame(videoFrame(ordinal = FRAMES_PER_TRACK))
-                }
-            }
+        when {
+            defect == Defect.DELIVERS_FROM_TWO_THREADS_AT_ONCE -> deliverFromTwoThreads(sink)
+            defect == Defect.KEEPS_DELIVERING_AFTER_CANCEL -> deliverPastCancellation(sink)
+            asynchronous -> deliverOnItsOwnThread(sink)
+            else -> deliverScript(sink)
         }
     }
 
     override fun cancel() {
         cancelled.countDown()
+        // What obligation 9 asks for, and the only branch here that has anything to do: return once
+        // no further callback can be made. A synchronous publisher has already finished delivering
+        // by the time anyone can call this, and the defective one deliberately does not wait.
+        if (asynchronous) stopped.await()
+    }
+
+    /** The whole script, in order, on whatever thread is delivering. */
+    private fun deliverScript(sink: FrameSink) {
+        script().forEach { frame ->
+            sink.onFrame(frame)
+            if (defect == Defect.WRITES_INTO_A_PAYLOAD_IT_HAS_HANDED_OVER) {
+                // A buffer handed over and then reused for the *next* frame's bytes, which is what
+                // an encoder loop that fills before it recycles does — and which tears a frame the
+                // player has already accepted, since nothing on the other side copies on receipt.
+                frame.payload.fill(OVERWRITTEN_BYTE)
+            }
+        }
+        if (defect == Defect.DELIVERS_A_FRAME_AFTER_ENDING) {
+            sink.onEnded()
+            sink.onFrame(videoFrame(ordinal = FRAMES_PER_TRACK))
+        }
+    }
+
+    /**
+     * The script from a thread of its own, stopping where a cancellation has arrived — which is what
+     * a transport reading from a socket does, and the only shape in which obligation 9 has anything
+     * to prove.
+     */
+    private fun deliverOnItsOwnThread(sink: FrameSink) {
+        thread(isDaemon = true, name = "publisher") {
+            try {
+                script().forEach { frame ->
+                    if (cancelled.count == 0L) return@forEach
+                    sink.onFrame(frame)
+                }
+            } finally {
+                stopped.countDown()
+            }
+        }
     }
 
     /** The declaration, which every check reads and three defects bend. */
@@ -226,7 +272,7 @@ internal class PublishingFrameSource(
      * watches after `cancel` has returned rather than only counting what arrived before it.
      */
     private fun deliverPastCancellation(sink: FrameSink) {
-        script().forEach { sink.onFrame(it) }
+        deliverScript(sink)
         cancelled.await()
         (0 until FRAMES_PER_TRACK).forEach { sink.onFrame(videoFrame(FRAMES_PER_TRACK + it)) }
     }
@@ -275,6 +321,9 @@ private const val BACKWARDS_STEP_AT = 4
 private const val UNDECLARED_TRACK = 7
 
 private const val AUDIO_FRAME_BYTES = 96
+
+/** What a reused buffer's second fill leaves behind, and nothing a frame of this fake ever carries. */
+private const val OVERWRITTEN_BYTE: Byte = 0x7F
 
 /** Wide enough to hold either video framing, so the pooled-buffer defect changes nothing else. */
 private const val POOLED_BUFFER_BYTES = 128

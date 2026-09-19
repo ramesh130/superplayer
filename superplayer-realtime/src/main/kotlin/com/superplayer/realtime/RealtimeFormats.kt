@@ -105,6 +105,18 @@ internal object RealtimeFormats {
         return pair.first to pair.second
     }
 
+    /**
+     * Every token this table answers for, `mp4a` included.
+     *
+     * Exposed for one reader, and it is a test: `superplayer-testkit`'s `FrameSourceConformance`
+     * tells a transport author which codec families to publish, and cannot read this table — that
+     * module is phase 2 and may name nothing later than core, so it keeps a list of the same names
+     * (#347). `ScriptedFrameSourceConformanceTest` holds the two together, and holds them to *this*
+     * rather than to a third copy, so a family added below and nowhere else fails the build instead
+     * of becoming a codec SuperPlayer plays and the conformance suite refuses.
+     */
+    val mappedTokens: Set<String> get() = MIME_TYPES.keys + "mp4a"
+
     /** A codec string this table answers for: the token it was looked up under, and what it decodes as. */
     private class Resolved(val token: String, val mimeType: String)
 

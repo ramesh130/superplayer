@@ -1,3 +1,4 @@
+import com.superplayer.build.CutRelease
 import com.superplayer.build.RECORDED_SURFACE_DIRECTORY
 import com.superplayer.build.RECORDED_VERSION_FILE
 import com.superplayer.build.RecordReleasedApiSurface
@@ -97,15 +98,34 @@ val verifyVersionBump =
         stampFile.set(layout.buildDirectory.file("verification/version-bump.txt"))
     }
 
-// The other half, and deliberately not in `check`: #329's release command runs it to re-record the
-// surfaces as part of cutting a release. `updateApiSurface`'s contract, for `updateApiSurface`'s
-// reason — a baseline refreshed to make a failure go away is a baseline that means nothing.
+// The other half, and deliberately not in `check`: the release command performs this step itself
+// (the catalog has to name the release first, which only that command can have done), and this task
+// is how it is reached by hand when a record has to be retaken. `updateApiSurface`'s contract, for
+// `updateApiSurface`'s reason — a baseline refreshed to make a failure go away means nothing.
 tasks.register<RecordReleasedApiSurface>("recordReleasedApiSurface") {
     group = "verification"
     description = "Rewrites api/released/ from the tracked surfaces, under the catalog's version."
     trackedApiFiles.from(trackedApiSurfaces)
     versionCatalog.set(layout.projectDirectory.file("gradle/libs.versions.toml"))
     recordDirectory.set(releasedApiSurfaces)
+}
+
+// ADR-0017 rule 8's enforcement, and the one root task here that **must not** be in `check`: it
+// mutates the tree, publishes and commits. It is registered beside the verification tasks because
+// what it mostly is, is six refusals — and because `check` is what it depends on. docs/releasing.md
+// is its manual.
+tasks.register<CutRelease>("release") {
+    group = "publishing"
+    description = "Cuts a release: --version=<x.y.z>, or refuses. See docs/releasing.md."
+    projectRoot.set(layout.projectDirectory)
+    versionCatalog.set(layout.projectDirectory.file("gradle/libs.versions.toml"))
+    changelog.set(layout.projectDirectory.file("CHANGELOG.md"))
+    recordDirectory.set(releasedApiSurfaces)
+    trackedApiFiles.from(trackedApiSurfaces)
+
+    // Not a claim that the checks passed, and not a second build: the task graph runs the whole of
+    // `check` before this action starts, so a red tree stops the release where it stands.
+    dependsOn(tasks.named("check"))
 }
 
 // Spotless stamps `config/license-header.txt` onto every `.kt` file; nothing in Spotless checks

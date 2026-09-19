@@ -27,6 +27,7 @@ one says so.
 | [`modules.md`](modules.md) | The module table, the phases, and the rule that dependencies point inward |
 | [`testing.md`](testing.md) | How this library is tested: Robolectric, Media3's own fakes, no device and no network, and what each stand-in cannot show |
 | [`api-surface.md`](api-surface.md) | How the public API of every published module is tracked and validated |
+| [`releasing.md`](releasing.md) | Cutting a release with `./gradlew release`: the order, the six refusals, where the artefacts go and where they do not, and how to undo one |
 | [`throughput-traces.md`](throughput-traces.md) | The network-trace format the test harness replays, and how a public dataset comes in |
 
 The repository root carries six more: `CONTEXT.md` is the vocabulary the code, the ADRs and the

@@ -34,7 +34,7 @@ import java.io.File
 import java.time.LocalDate
 
 /**
- * `./gradlew release --version=<x.y.z>`: the whole of a release cut, or none of it.
+ * `./gradlew release --release-version=<x.y.z>`: the whole of a release cut, or none of it.
  *
  * ADR-0017 rule 8 is what this task exists to keep — a snapshot is not a release, so no release
  * procedure may publish one under a release tag or leave the catalog on the version just published.
@@ -83,8 +83,17 @@ import java.time.LocalDate
 @UntrackedTask(because = "a release mutates the tree it reads, publishes and commits; it is never up to date")
 abstract class CutRelease : DefaultTask() {
 
+    /**
+     * The version being released.
+     *
+     * The option is `--release-version` and not the `--version` #329 asked for, because Gradle
+     * parses `--version` as its own built-in flag — "prints the version of Gradle" — before any
+     * task sees the command line, and answers `--version does not take an argument`. A task option
+     * of that name can be declared and registers fine; it is simply unreachable. The spelling is
+     * therefore the closest one that works, and `docs/releasing.md` and every refusal below use it.
+     */
     @get:Input
-    @get:Option(option = "version", description = "The version to release, as MAJOR.MINOR.PATCH.")
+    @get:Option(option = "release-version", description = "The version to release, as MAJOR.MINOR.PATCH.")
     abstract val version: Property<String>
 
     @get:Internal

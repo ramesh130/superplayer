@@ -8,8 +8,11 @@ rule 1). Cutting one is six things that have to happen in one order, and there i
 supported way to do it:
 
 ```bash
-./gradlew release --version=<x.y.z>
+./gradlew release --release-version=<x.y.z>
 ```
+
+The option is `--release-version` rather than `--version` because Gradle parses `--version` as its
+own built-in flag — the one that prints Gradle's version — before any task sees the command line.
 
 There is no second way, and that is deliberate. Five of the six steps done by hand still leaves a
 release: one whose record of the released API surface was never taken, which silently disarms
@@ -79,9 +82,9 @@ prints exactly what to run to undo it.
 | Refusal | What it means | What to do |
 | --- | --- | --- |
 | The working tree is not clean | A release is cut from a tree that is exactly what gets tagged and published | Commit or discard the paths it lists |
-| `--version=…` is not `MAJOR.MINOR.PATCH` | The grammar ADR-0017 admits, optionally with `-SNAPSHOT` | Pass the version being released, e.g. `--version=1.2.0` |
-| `--version=…` names a snapshot | A snapshot is not a release (rule 8) | Pass the release itself; the command opens the next snapshot on its own |
-| `--version=…` does not succeed the last release | A successor is one of the three versions semver reaches in one step; a skipped version is a release an adopter reads as one they missed | Pick one of the three it names |
+| `--release-version=…` is not `MAJOR.MINOR.PATCH` | The grammar ADR-0017 admits, optionally with `-SNAPSHOT` | Pass the version being released, e.g. `--release-version=1.2.0` |
+| `--release-version=…` names a snapshot | A snapshot is not a release (rule 8) | Pass the release itself; the command opens the next snapshot on its own |
+| `--release-version=…` does not succeed the last release | A successor is one of the three versions semver reaches in one step; a skipped version is a release an adopter reads as one they missed | Pick one of the three it names |
 | The version is smaller than the surface diff requires | `verifyVersionBump`'s judgement, asked about your version before anything was written (rule 2) | Cut the version it names, or work out why a declaration moved that should not have |
 | The `Unreleased` section is empty | The release would ship with nothing said about it | Write what changed under that heading |
 | The tag already exists | That version has been cut before | Pick the next version — or, if the tag was cut wrongly and nothing has been shared, `git tag -d v<x.y.z>` |

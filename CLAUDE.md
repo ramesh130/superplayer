@@ -1190,7 +1190,7 @@ where the two disagree `PRD.md` is right.
 ./gradlew spotlessApply           # reformat and stamp the Apache-2.0 header on every .kt file
 ./gradlew convertThroughputTrace --from=… --transport=… --input=… --output=…   # docs/throughput-traces.md
 ./gradlew publishToMavenLocal     # required before the demo will build
-./gradlew release --version=x.y.z # cut a release, or refuse; NOT in check — it commits (docs/releasing.md)
+./gradlew release --release-version=x.y.z  # cut a release, or refuse; NOT in check — it commits (docs/releasing.md)
 ./gradlew recordReleasedApiSurface # rewrite api/released/ by hand; the release command does it itself
 (cd demo && ./gradlew assembleDebug lintDebug spotlessCheck)
 benchmark/bench                   # PRD.md §6's matrix and its report; NOT in check (benchmark/README.md)
@@ -1473,7 +1473,7 @@ repository.
   Four of its nine rules are enforced by nothing in `check` today, which the record says at each
   rule rather than in a summary: #327 checks the version and changelog, #328 gates the surface
   against the bump, #330 the adopter's document. Rule 8 is #329's, and it is built:
-  `./gradlew release --version=<x.y.z>` is the one supported way to cut a release — it depends on
+  `./gradlew release --release-version=<x.y.z>` is the one supported way to cut a release — it depends on
   `check`, refuses six ways before it writes a byte, then moves the catalog, stamps `CHANGELOG.md`,
   re-records `api/released/`, publishes, tags and opens the next snapshot. It **commits and tags
   locally and never pushes**, because the released version has to exist as a commit for a tag to

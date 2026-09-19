@@ -26,6 +26,8 @@ import androidx.media3.test.utils.FakeRenderer
 import androidx.media3.test.utils.robolectric.TestPlayerRunHelper
 import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
+import com.superplayer.core.FrameSink
+import com.superplayer.core.FrameSource
 import com.superplayer.core.MediaRequest
 import com.superplayer.core.RealtimeStreamNotSeekableException
 import com.superplayer.core.SuperPlayer

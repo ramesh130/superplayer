@@ -4,8 +4,9 @@ plugins {
     id("superplayer.android.library")
 }
 
-// The realtime source seam: a public `FrameSource` a transport implements, and behind it the
-// `MediaSource`/`MediaPeriod` that writes its frames into Media3's own `SampleQueue`s (ADR-0018)
+// The realtime source seam's Media3 half: the `MediaSource`/`MediaPeriod` that writes a
+// `FrameSource`'s frames into Media3's own `SampleQueue`s (ADR-0018). The seam a transport
+// implements is core's, so that its conformance suite can be testkit's (rule 2's #356 addendum).
 //
 // Phase 13. Dependency direction: see docs/modules.md. This module may depend on
 // modules from its own or an earlier phase only — never on a later one.
@@ -31,5 +32,5 @@ dependencies {
 // ADR-0001 rule 2 keeps out of public API. So a consumer names a `FrameSource` and no Media3 type,
 // and this module is core's **tenth** Kotlin friend (ADR-0018 rule 11), the first since ADR-0015
 // rule 3 took the ninth. `superplayer-moq` and `superplayer-whep` are deliberately **not** friends:
-// they implement this module's public `FrameSource`, which is the test that the seam is real.
+// they implement core's public `FrameSource`, which is the test that the seam is real.
 declareKotlinFriendModule(":superplayer-core")

@@ -16,6 +16,7 @@
 
 package com.superplayer.realtime
 
+import com.superplayer.core.FrameSourceFactory
 import com.superplayer.core.RealtimeMediaSources
 import com.superplayer.core.RealtimeSources
 import com.superplayer.core.SuperPlayer

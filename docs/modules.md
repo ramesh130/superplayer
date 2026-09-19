@@ -44,6 +44,9 @@ than to wave the dependency through.
 | `superplayer-offline` | 7 | Downloads into the ContentCache the consumer opened, on the one chain: a store over Media3's download stack, WorkManager scheduling under unmetered, battery-not-low and storage-not-low, download track selection, and the licence bound to the download (ADR-0013) | core; testkit, testmedia, cache, drm and resilience (tests only) |
 | `superplayer-tv` | 8 | CTV behind one output slot: frame-rate matching, the display as a live reading, tunneling where the policy asks, and Compose-for-TV controls on a `SurfaceView` (ADR-0014) | core; testkit, testmedia, abr, drm, resilience and telemetry (tests only) |
 | `superplayer-diagnostics` | 9 | MediaSourceDoctor — a manifest's pathologies named over the chain a player of that request would load through, as one report for preflight and postmortem — the session trace bundle with its capability snapshot, and the on-device debug HUD (ADR-0015) | core and telemetry (ADR-0015 rule 1); testkit, testmedia, abr, cache, drm and resilience (tests only) |
+| `superplayer-realtime` | 13 | The push-based source seam realtime transports are built on: a public `FrameSource` naming no Media3 type, the `MediaSource`/`MediaPeriod` that writes its frames into Media3 `SampleQueue`s under a live unseekable timeline, codec-string mapping and codec-specific-data conversion (ADR-0018) | core; testkit and testmedia (tests only) |
+| `superplayer-moq` | 14 | Sub-second live over Media over QUIC: `moq-dev/moq`'s published Kotlin bindings behind a `FrameSource` (ADR-0018) | core, realtime; testkit (tests only) |
+| `superplayer-whep` | 15 | Sub-second live over WebRTC: WHEP signalling and a `PeerConnection` transport behind a `FrameSource`. Contingent — see `PRD.md` Part 4 | core, realtime; testkit (tests only) |
 | `superplayer-ui` | — † | Optional Compose player surface | core |
 
 `superplayer-testkit`, `superplayer-abr`, `superplayer-cache`, `superplayer-preload`,

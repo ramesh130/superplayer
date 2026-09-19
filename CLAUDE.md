@@ -1495,6 +1495,28 @@ repository.
   name while the tree has to end on the next snapshot, and one working tree cannot be both.
   [`docs/releasing.md`](docs/releasing.md) is the manual and says plainly that a cut release lands
   in the local Maven repository and is resolvable by nobody else.
+- **[ADR-0018](docs/adr/0018-push-encoded-frames-through-one-framesource-into-media3s-own-sample-queues.md)** —
+  decides the shape of phases 13–15, the realtime transports. A transport hands over **encoded**
+  frames through one public `FrameSource` naming no Media3 type, and an internal
+  `MediaSource`/`MediaPeriod` writes them into Media3's own `SampleQueue`s under a live, unseekable
+  timeline — so **nothing here decodes** and the TV path, secure decoders, tunneling, audio focus and
+  the decoder half of telemetry are not rewritten. A custom `Renderer` was the original framing and
+  is rejected: ExoPlayer enables a renderer only for a track selected from a `MediaPeriod`, so that
+  pair is needed either way and the renderer is pure addition. Container framing is the transport's
+  to strip before the seam, so no fragmented-MP4 parsing exists here; codec-specific data is keyed on
+  the codec's **fourcc** and never on the container (`avc1`/`hvc1` carry a record that becomes
+  `csd-0`/`csd-1` with its NAL length size read rather than assumed, `avc3`/`hev1` carry none and are
+  self-describing); and a realtime stream refuses `StartPosition.At` and `ResumeFromLastKnown` with a
+  typed exception rather than coercing them. What the path does **not** reach is a rule rather than a
+  discovery: the cache, CMCD, downloads, the fallback ladder's load-error rungs and bandwidth
+  estimation are all keyed to `DataSource`, `superplayer-abr` has nothing to select, and **ADR-0016's
+  four chains do not become five** — what survives is `MediaRequest.sources` and rung 4, which is the
+  documented way to have a fallback. Telemetry keeps rebuffer and startup metrics and loses bandwidth
+  samples, with `SCHEMA_VERSION` unmoved; a transport's own throughput may come through the seam. A
+  timestamp's precision is the transport's limit and is documented rather than implied. Signalling
+  does **not** travel `HttpTransport` — WHEP needs a `POST` with a body and a `DELETE` where that
+  interface models a `GET` with a range, and widening it would break every consumer's
+  `HttpTransportConformance` for one protocol.
 - **[`docs/api-surface.md`](docs/api-surface.md)** — every published module's public API is tracked
   in `<module>/api/<module>.api` and validated by `check`. Changing it means running
   `./gradlew updateApiSurface` and committing the diff in the same change. A leaked `@UnstableApi`

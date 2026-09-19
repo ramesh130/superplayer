@@ -1,0 +1,155 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "url": "../../moq-ffi/0.3.19-superplayer-local/moq-ffi-0.3.19-superplayer-local.module",
+    "group": "dev.moq",
+    "module": "moq-ffi",
+    "version": "0.3.19-superplayer-local",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.7.1"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "moq-ffi-release.aar",
+          "url": "moq-ffi-android-0.3.19-superplayer-local.aar",
+          "size": 8248848,
+          "sha512": "178e9388cbaaa0899f7f2e9c62f99f7a14d10057689fae668be1eaf286c556b4f8d56777dbe5eaec555f08c9255bb46b0e7aa7ae7a95934d92d64492ca65e314",
+          "sha256": "9892d4345e51a0d75627849aaaa9e20819150ee8c42bd8c4ff424efe9a8ddc17",
+          "sha1": "45fcdf1d8339c1f2a82b43a098f0b498252cb694",
+          "md5": "6058245f3a38c8c7b04201c0a5c59249"
+        }
+      ]
+    },
+    {
+      "name": "releaseRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "net.java.dev.jna",
+          "module": "jna",
+          "version": {
+            "requires": "5.19.1"
+          },
+          "excludes": [
+            {
+              "group": "*",
+              "module": "*"
+            }
+          ],
+          "thirdPartyCompatibility": {
+            "artifactSelector": {
+              "name": "jna",
+              "type": "aar",
+              "extension": "aar"
+            }
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.10"
+          },
+          "excludes": [
+            {
+              "group": "org.jetbrains.kotlin",
+              "module": "kotlin-stdlib-common"
+            },
+            {
+              "group": "org.jetbrains.kotlin",
+              "module": "kotlin-test-common"
+            },
+            {
+              "group": "org.jetbrains.kotlin",
+              "module": "kotlin-test-annotations-common"
+            }
+          ]
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-core",
+          "version": {
+            "requires": "1.11.0"
+          },
+          "excludes": [
+            {
+              "group": "org.jetbrains.kotlin",
+              "module": "kotlin-stdlib-common"
+            },
+            {
+              "group": "org.jetbrains.kotlin",
+              "module": "kotlin-test-common"
+            },
+            {
+              "group": "org.jetbrains.kotlin",
+              "module": "kotlin-test-annotations-common"
+            }
+          ]
+        }
+      ],
+      "files": [
+        {
+          "name": "moq-ffi-release.aar",
+          "url": "moq-ffi-android-0.3.19-superplayer-local.aar",
+          "size": 8248848,
+          "sha512": "178e9388cbaaa0899f7f2e9c62f99f7a14d10057689fae668be1eaf286c556b4f8d56777dbe5eaec555f08c9255bb46b0e7aa7ae7a95934d92d64492ca65e314",
+          "sha256": "9892d4345e51a0d75627849aaaa9e20819150ee8c42bd8c4ff424efe9a8ddc17",
+          "sha1": "45fcdf1d8339c1f2a82b43a098f0b498252cb694",
+          "md5": "6058245f3a38c8c7b04201c0a5c59249"
+        }
+      ]
+    },
+    {
+      "name": "releaseSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "files": [
+        {
+          "name": "moq-ffi-android-0.3.19-superplayer-local-sources.jar",
+          "url": "moq-ffi-android-0.3.19-superplayer-local-sources.jar",
+          "size": 46545,
+          "sha512": "7ab758f90a9429b1c078089c78dac43ddb0c00586a933d2f81b3f22cd13e9068171e954abf7e79a321125312a5408063e500df562a481f4ea67643f816dd7ff6",
+          "sha256": "dc50b91d7da90d6abe99fd1f03a28217bd656af283eb291f38b7cd653bf8509a",
+          "sha1": "cc32e8138a8c822ec24f278000c788196db1c02c",
+          "md5": "9367c58a627a18995b600b3a42db0596"
+        }
+      ]
+    }
+  ]
+}

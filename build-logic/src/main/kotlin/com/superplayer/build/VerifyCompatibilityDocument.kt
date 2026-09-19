@@ -45,7 +45,10 @@ import org.gradle.api.tasks.TaskAction
  */
 abstract class VerifyCompatibilityDocument : DefaultTask() {
 
-    /** `settings.gradle.kts`, whose `include(...)` lines are the set of published modules. */
+    /**
+     * `settings.gradle.kts`, whose `include(...)` lines are the published modules and whose
+     * `unpublishedModules` list is the ones the build carries and does not publish ([ModulePublication]).
+     */
     @get:InputFile
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val settingsScript: RegularFileProperty
@@ -79,8 +82,10 @@ abstract class VerifyCompatibilityDocument : DefaultTask() {
                 buildString {
                     appendLine(
                         "docs/compatibility.md's \"$STABILITY_HEADING\" table must carry one row " +
-                            "per module settings.gradle.kts publishes, so a module an adopter can " +
-                            "resolve cannot go undocumented (ADR-0017 rule 1)."
+                            "per module settings.gradle.kts includes, carrying the publication that " +
+                            "file declares, so a module an adopter can resolve cannot go " +
+                            "undocumented and one they cannot resolve cannot read as though they " +
+                            "could (ADR-0017 rule 1)."
                     )
                     appendLine("Violations:")
                     violations.forEach { appendLine("  $it") }
@@ -104,12 +109,21 @@ abstract class VerifyCompatibilityDocument : DefaultTask() {
  * fixed vocabulary is what keeps the table's shape narrow enough to parse, and it means a row
  * mistyped into unparseability fails naming the status rather than silently reading as a missing
  * module.
+ *
+ * Since #364 the module list has two halves — [publishedModules] and [unpublishedModules] — and the
+ * table has to name every module in either, because an unpublished module is one an adopter will
+ * read about here and find nowhere to resolve. What distinguishes them is the status itself, which
+ * is the **same declaration** the convention plugin publishes by (see [ModulePublication]): a
+ * module `settings.gradle.kts` does not publish reads [NOT_PUBLISHED_STATUS] and every other module
+ * reads something else. Checked in both directions, so neither a row claiming an artifact that does
+ * not exist nor one silently promising a prototype can land.
  */
 internal fun findCompatibilityDocumentViolations(
     settingsScript: String,
     compatibilityDocument: String
 ): List<String> {
-    val published = includedModules(settingsScript)
+    val published = publishedModules(settingsScript)
+    val unpublished = unpublishedModules(settingsScript)
     val section = stabilitySection(compatibilityDocument)
         ?: return listOf(
             "docs/compatibility.md has no \"$STABILITY_HEADING\" section to read a table out of. " +
@@ -121,8 +135,11 @@ internal fun findCompatibilityDocumentViolations(
     val missing = (published - documented.keys).map {
         "$it is published by settings.gradle.kts and has no row in the stability table."
     }
-    val stale = (documented.keys - published).map {
-        "$it has a stability row but settings.gradle.kts does not publish it."
+    val missingUnpublished = (unpublished - documented.keys).map {
+        "$it is in the build as an unpublished module and has no row in the stability table."
+    }
+    val stale = (documented.keys - published - unpublished).map {
+        "$it has a stability row but settings.gradle.kts does not include it."
     }
     val unknownStatus = documented
         .filterValues { it !in STABILITY_STATUSES }
@@ -130,40 +147,46 @@ internal fun findCompatibilityDocumentViolations(
             "$module's status reads \"$status\", which is not one of: " +
                 STABILITY_STATUSES.joinToString(", ")
         }
+    val wrongPublication = documented
+        .filterKeys { it in published || it in unpublished }
+        .filterValues { it in STABILITY_STATUSES }
+        .mapNotNull { (module, status) ->
+            val declared = modulePublicationOf(settingsScript, module)
+            when {
+                declared == ModulePublication.NOT_PUBLISHED && status != NOT_PUBLISHED_STATUS ->
+                    "$module's status reads \"$status\", but settings.gradle.kts declares it " +
+                        "unpublished, so its row must read \"$NOT_PUBLISHED_STATUS\"."
 
-    return (missing + stale + unknownStatus).sorted()
+                declared == ModulePublication.PUBLISHED && status == NOT_PUBLISHED_STATUS ->
+                    "$module's row reads \"$NOT_PUBLISHED_STATUS\", but settings.gradle.kts " +
+                        "publishes it. Move it into the unpublishedModules list or fix the row."
+
+                else -> null
+            }
+        }
+
+    return (missing + missingUnpublished + stale + unknownStatus + wrongPublication).sorted()
 }
 
 /** The heading the table sits under, named in the failure message so it can be found. */
 private const val STABILITY_HEADING = "Which parts are stable?"
 
 /**
- * The statuses a row may carry. Three, because there are three answers an adopter needs: a module
- * with a public API under `0.x`'s terms, one whose public API is for their *tests*, and one that
- * publishes nothing to depend on yet. `docs/compatibility.md` defines each beneath the table.
+ * The statuses a row may carry. Four, because there are four answers an adopter needs: a module
+ * with a public API under `0.x`'s terms, one whose public API is for their *tests*, one that
+ * publishes nothing to depend on yet, and — since #364 — one that is not published at all.
+ * `docs/compatibility.md` defines each beneath the table.
  */
-private val STABILITY_STATUSES = listOf("Public", "Public (for your tests)", "Empty")
+private val STABILITY_STATUSES =
+    listOf("Public", "Public (for your tests)", "Empty", NOT_PUBLISHED_STATUS)
 
 /**
- * An `include(...)` line that is not a comment, and each project path on it — the multi-argument
- * form included, since `include(":a", ":b")` declares the same two modules written differently.
- *
- * The path is read whatever it is called rather than only when it begins `superplayer-`. Every
- * `include` in `settings.gradle.kts` is a published library module — `build-logic` arrives through
- * `includeBuild` and `demo/` and `benchmark/` are separate builds entirely — so a module added
- * under some other name is a module an adopter can resolve, and it should fail here rather than
- * slip past a prefix. If one is ever added that is deliberately not published, the answer is to
- * decide that here rather than to have the check quietly stop seeing it.
+ * The status an unpublished module's row carries, and the only one it may. It is deliberately the
+ * *same fact* `settings.gradle.kts` declares rather than a second opinion about it: a reader of
+ * the table and the build's own publication decision cannot disagree, because this check reads
+ * both and fails on any difference.
  */
-private val INCLUDE_LINE = Regex("""^\s*include\(""")
-private val PROJECT_PATH = Regex(""""::?([\w-]+)"""")
-
-private fun includedModules(settingsScript: String): Set<String> =
-    settingsScript.lineSequence()
-        .filterNot(::isCommentLine)
-        .filter { INCLUDE_LINE.containsMatchIn(it) }
-        .flatMap { line -> PROJECT_PATH.findAll(line).map { it.groupValues[1] } }
-        .toSet()
+private const val NOT_PUBLISHED_STATUS = "Not published"
 
 /**
  * A row of the stability table: a backticked module name in the first cell and a bold status in

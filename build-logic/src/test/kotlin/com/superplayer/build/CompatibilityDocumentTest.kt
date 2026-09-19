@@ -58,7 +58,7 @@ class CompatibilityDocumentTest {
         // longer resolves, which is the same defect from the other side.
         assertEquals(
             listOf(
-                "superplayer-ads has a stability row but settings.gradle.kts does not publish it."
+                "superplayer-ads has a stability row but settings.gradle.kts does not include it."
             ),
             findCompatibilityDocumentViolations(
                 settingsScript,
@@ -81,7 +81,7 @@ class CompatibilityDocumentTest {
         assertEquals(
             listOf(
                 "superplayer-ui's status reads \"Stable-ish\", which is not one of: " +
-                    "Public, Public (for your tests), Empty"
+                    "Public, Public (for your tests), Empty, Not published"
             ),
             findCompatibilityDocumentViolations(settingsScript, document)
         )
@@ -177,6 +177,119 @@ class CompatibilityDocumentTest {
     }
 
     @Test
+    fun `an unpublished module needs a row too, and it reads Not published`() {
+        assertEquals(
+            emptyList<String>(),
+            findCompatibilityDocumentViolations(
+                settingsWithUnpublished,
+                table("superplayer-core", "superplayer-ui") +
+                    "\n| `superplayer-moq` | **Not published** | Nothing |"
+            )
+        )
+    }
+
+    @Test
+    fun `an unpublished module left out of the table fails, naming it as unpublished`() {
+        assertEquals(
+            listOf(
+                "superplayer-moq is in the build as an unpublished module and has no row in the " +
+                    "stability table."
+            ),
+            findCompatibilityDocumentViolations(
+                settingsWithUnpublished,
+                table("superplayer-core", "superplayer-ui")
+            )
+        )
+    }
+
+    @Test
+    fun `an unpublished module whose row promises an artifact fails`() {
+        // The defect this third state exists to prevent, from the direction that costs an adopter
+        // something: a row reading Public for a coordinate nobody can resolve.
+        assertEquals(
+            listOf(
+                "superplayer-moq's status reads \"Public\", but settings.gradle.kts declares it " +
+                    "unpublished, so its row must read \"Not published\"."
+            ),
+            findCompatibilityDocumentViolations(
+                settingsWithUnpublished,
+                table("superplayer-core", "superplayer-ui", "superplayer-moq")
+            )
+        )
+    }
+
+    @Test
+    fun `a published module whose row says Not published fails too`() {
+        // The other direction, and the control that keeps the rule from reading as "Not published
+        // is always allowed": a real artifact described as though there were none.
+        assertEquals(
+            listOf(
+                "superplayer-ui's row reads \"Not published\", but settings.gradle.kts publishes " +
+                    "it. Move it into the unpublishedModules list or fix the row."
+            ),
+            findCompatibilityDocumentViolations(
+                settingsScript,
+                table("superplayer-core") + "\n| `superplayer-ui` | **Not published** | Nothing |"
+            )
+        )
+    }
+
+    @Test
+    fun `the two lists are disjoint, so an unpublished module is not also read as published`() {
+        // `forEach { include(it) }` rather than include lines is what makes this true by
+        // construction; if it ever stopped being true the module would be published *and*
+        // required to say it was not, which no row could satisfy.
+        assertEquals(setOf("superplayer-core", "superplayer-ui"), publishedModules(settingsWithUnpublished))
+        assertEquals(setOf("superplayer-moq"), unpublishedModules(settingsWithUnpublished))
+        assertEquals(
+            ModulePublication.NOT_PUBLISHED,
+            modulePublicationOf(settingsWithUnpublished, "superplayer-moq")
+        )
+        assertEquals(
+            ModulePublication.PUBLISHED,
+            modulePublicationOf(settingsWithUnpublished, "superplayer-core")
+        )
+    }
+
+    @Test
+    fun `a module in neither list has no publication, which is what the convention plugin fails on`() {
+        assertEquals(null, modulePublicationOf(settingsWithUnpublished, "superplayer-whep"))
+    }
+
+    @Test
+    fun `a bracket inside a comment does not end the unpublished list`() {
+        // The reason a module is unpublished belongs against its entry, and a sentence that
+        // explains it will sooner or later contain a bracket. Counting brackets over the code
+        // alone is what keeps the entry below such a comment from being missed — and a missed
+        // entry is the dangerous direction, because the convention plugin would then publish it.
+        val settings = """
+            val unpublishedModules = listOf(
+                // Built here (see third-party/moq/) rather than resolved.
+                ":superplayer-moq",
+            )
+            unpublishedModules.forEach { include(it) }
+        """.trimIndent()
+
+        assertEquals(setOf("superplayer-moq"), unpublishedModules(settings))
+    }
+
+    @Test
+    fun `an empty unpublished list does not swallow the includes below it`() {
+        // The parser reads to the line closing `listOf(`, so a one-line empty list has to stop on
+        // its own line. Reading past it would collect every include below and report the whole
+        // build as unpublished.
+        val settings = """
+            val unpublishedModules = listOf()
+            unpublishedModules.forEach { include(it) }
+            include(":superplayer-core")
+            include(":superplayer-ui")
+        """.trimIndent()
+
+        assertEquals(emptySet<String>(), unpublishedModules(settings))
+        assertEquals(setOf("superplayer-core", "superplayer-ui"), publishedModules(settings))
+    }
+
+    @Test
     fun `the tree as it stands satisfies the check`() {
         // The check has to pass on the real repository, or it is a check nobody can land. The test
         // runs from build-logic's directory; the repository is whichever ancestor holds the
@@ -195,7 +308,24 @@ class CompatibilityDocumentTest {
         )
     }
 
-    /** Two modules is enough to state every case; the real thirteen are the control's. */
+    /**
+     * The same two, plus one module the build carries and does not publish — declared the way
+     * `settings.gradle.kts` declares it, over several lines with a comment, since that is the
+     * shape the parser has to read.
+     */
+    private val settingsWithUnpublished = """
+        rootProject.name = "superplayer"
+        include(":superplayer-core")
+        include(":superplayer-ui")
+
+        val unpublishedModules = listOf(
+            // Links a natively built dependency; #369 tracks publishing.
+            ":superplayer-moq",
+        )
+        unpublishedModules.forEach { include(it) }
+    """.trimIndent()
+
+    /** Two modules is enough to state every case; the real fourteen are the control's. */
     private val settingsScript = """
         rootProject.name = "superplayer"
         include(":superplayer-core")

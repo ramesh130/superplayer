@@ -33,6 +33,63 @@ of truth. This file records *what* is depended on and under *what license*.
 | `com.google.guava:guava` | Apache-2.0 | `superplayer-core`, `superplayer-testkit`, `demo` (transitive, via `media3-common`) |
 | `org.jetbrains.kotlin:kotlin-stdlib` | Apache-2.0 | all modules (transitively, via the Kotlin toolchain) |
 | `org.jetbrains.kotlinx:kotlinx-coroutines-android` | Apache-2.0 | all modules |
+| `dev.moq:moq-ffi` | MIT OR Apache-2.0 | `superplayer-moq` (api) — **built here, not resolved from Maven**; see below |
+| `net.java.dev.jna:jna` | Apache-2.0 OR LGPL-2.1+ | `superplayer-moq` (transitive, via `moq-ffi`: the bindings' FFI bridge) |
+
+## The MoQ bindings, and the native crates inside them
+
+`dev.moq:moq-ffi` is the one dependency in this file that is **not the artifact its coordinate
+names on Maven Central**. It is built from `moq-dev/moq` at commit `4e419f9` with
+`--no-default-features` and committed to `third-party/moq/m2`, because the published build carries
+MPL-2.0 code this project's policy does not accept. `third-party/moq/README.md` is the recipe, the
+evidence and the list of what publishing it would need (#369); `settings.gradle.kts` scopes the
+whole `dev.moq` group to that directory so Central cannot answer for it.
+
+The crates in that build are enumerated **one row per crate** in
+[`third-party/moq/CRATES.md`](third-party/moq/CRATES.md), which ADR-0018 rule 13 asks for by name
+rather than by assertion. There are 320 of them, read off each crate's own `license` field with
+`cargo metadata --filter-platform aarch64-linux-android` over the set `cargo tree -e normal
+--no-default-features` resolves. This is the reading of that list.
+
+| License | Crates | Note |
+| --- | --- | --- |
+| MIT, Apache-2.0, or a choice of both | 269 | `moq-ffi` itself, `tokio`, `rustls`, `quinn`, `bytes`, `serde`, and most of the graph |
+| ISC, BSD-2-Clause, BSD-3-Clause, Zlib, 0BSD (alone or as a choice) | 17 | `aws-lc-rs`, `unsafe-libopus`, `sonora` and the like |
+| Unicode-3.0 (alone or with a choice) | 19 | the ICU crates, reached through `idna` |
+| Unlicense (as a choice with MIT) | 5 | `aho-corasick`, `byteorder` and friends |
+| CC0-1.0, CDLA-Permissive-2.0 | 2 | `notify`, `webpki-roots` |
+| **MPL-2.0** | **8** | UniFFI: `uniffi`, `uniffi_core`, `uniffi_bindgen`, `uniffi_macros`, `uniffi_meta`, `uniffi_udl`, `uniffi_pipeline`, `uniffi_internal_macros` |
+
+**What #351 settled, and what it did not.** #351 removed the *codec* copyleft: `symphonia-core` and
+`symphonia-codec-aac` are MPL-2.0 and sit behind `moq-audio`'s default `aac` feature, with
+`openh264`'s vendored C++ behind the `video` one. With both off, `cargo tree` reports zero
+`symphonia` entries and `llvm-nm` finds zero `symphonia` and zero `openh264` symbols in the binary.
+ADR-0018 rule 1 says nothing here decodes, so what was dropped is precisely what this library was
+never going to call.
+
+**MPL-2.0 has not left the graph, though, and the enumeration above is what shows it.** UniFFI is
+Mozilla's and is MPL-2.0, and `uniffi_core` is not a generator — it is the runtime scaffolding every
+exported function is written against. `llvm-nm` finds 342 `uniffi_core` symbols in
+`libmoq_ffi.so`, so the binary this repository builds **contains MPL-2.0 code**. That is not a gap
+in #351's reasoning about `symphonia`; it is a second fact that ticket's enumeration did not reach.
+
+It is nonetheless within `CONTRIBUTING.md` as written, and by the narrowest margin the policy
+allows. MPL-2.0 is weak, file-scoped copyleft: not accepted **in a published artifact**, accepted
+for what is never distributed in one. `superplayer-moq` is not published — it is in
+`settings.gradle.kts`'s `unpublishedModules` list (ADR-0017 rule 1), so no consumer resolves it,
+nothing of it reaches an adopter's APK, and the copyleft reaches only modifications to UniFFI's own
+files, which this project does not make. The module's exclusion from the published set is therefore
+load-bearing rather than tidy-minded, and **whatever else #369 needs, it needs an answer to this**:
+publishing `superplayer-moq` as it stands would put MPL-2.0 code in a published artifact, which the
+policy refuses.
+
+The other eight-crate half of that family — `uniffi_bindgen`, `uniffi_udl`, `uniffi_pipeline` and
+the macro crates — is build-time only in the plainest sense: they are in the graph because
+`moq-ffi` also builds a `uniffi-bindgen` binary, and nothing of them is linked into the cdylib.
+
+`net.java.dev.jna:jna` is the Kotlin side of the same bridge and is dual-licensed Apache-2.0 or
+LGPL-2.1-or-later. It is taken under **Apache-2.0**, which the dual licence permits and which
+`CONTRIBUTING.md` accepts without qualification.
 
 ## Test-only dependencies
 

@@ -258,6 +258,10 @@ internal object TransferChain {
      * one object rather than two is what makes `RetryPolicy.licence` reachable (#205).
      * [deliveredProtection] is where the slot writes down what it opened, read back through
      * [SuperPlayer.deliveredSecurityLevel]; a player with no slot writes nothing into it.
+     *
+     * [realtime] is the realtime slot, from `SuperPlayer.Builder.setRealtime`. Filled, an item whose
+     * URI scheme it answers is built by it and reaches none of the chain below; null leaves every
+     * item on the chain, which is every player before phase 13 (ADR-0018 rules 6 and 12).
      */
     fun mediaSourceFactory(
         context: Context,
@@ -272,6 +276,7 @@ internal object TransferChain {
         drm: LicenceSessions? = null,
         exoMediaDrm: ExoMediaDrm.Provider? = null,
         deliveredProtection: DeliveredProtection = DeliveredProtection(),
+        realtime: RealtimeSources? = null,
     ): MediaSource.Factory {
         val bottom = resolveTransport(context, transport, httpStack)
         // Header refresh first, so it is the innermost wrapper: a request it repairs and re-opens is
@@ -285,7 +290,7 @@ internal object TransferChain {
         // not an item's requests do.
         val stamps = cache != null || headerRefresh != null
         val factory = if (stamps) StampingMediaSourceFactory(chain, cache?.downloads) else DefaultMediaSourceFactory(chain)
-        return factory.apply {
+        val composed = factory.apply {
             cmcdMode.toCmcdConfigurationFactory(measurementSession)
                 ?.let(::setCmcdConfigurationFactory)
             loadExecutor?.let(::setDownloadExecutor)
@@ -319,6 +324,12 @@ internal object TransferChain {
                 )
             }
         }
+        // The one place a realtime URI reaches its own factory, beside the HLS and DASH branches
+        // rather than at a second composition point (ADR-0018 rule 12). Composed outermost because
+        // it is a *replacement* rather than a layer: what it dispatches to opens no `DataSource` at
+        // all, so nothing below this wrapper is on a realtime item's path (rule 6). A player built
+        // without `setRealtime` gets `composed` itself and pays not even this wrapper.
+        return if (realtime == null) composed else RealtimeDispatchingMediaSourceFactory(composed, realtime)
     }
 
     /**
@@ -720,5 +731,47 @@ private class DownloadStampingDataSource(private val upstream: DataSource) : Dat
 
     override fun close() {
         upstream.close()
+    }
+}
+
+/**
+ * The one dispatch point ADR-0018 rule 12 names: an item whose URI scheme a [RealtimeSources]
+ * answers is built by it, and every other item by [delegate].
+ *
+ * The discriminator is the **scheme**, deliberately, and not the `MediaItem`'s MIME type. Media3's
+ * content-type inference has no value for a realtime protocol; a scheme is what a consumer actually
+ * writes; and a MIME type would have to be supplied by that same consumer with no way to check it
+ * against the transport that answers. An item carrying a realtime scheme and a contradictory MIME
+ * type therefore resolves on the scheme.
+ *
+ * Every `MediaSource.Factory` setter is forwarded to [delegate] and applied to **nothing** on the
+ * realtime side, which is rule 6 by construction rather than by omission: a CMCD configuration, a
+ * DRM provider, a load-error policy and a download executor are all facts about loading through a
+ * `DataSource`, and a realtime item opens none. A setter Media3 adds later is forwarded the same way
+ * and reaches the realtime branch no more than these do.
+ */
+private class RealtimeDispatchingMediaSourceFactory(
+    private val delegate: MediaSource.Factory,
+    private val realtime: RealtimeSources,
+) : MediaSource.Factory {
+
+    override fun setCmcdConfigurationFactory(factory: CmcdConfiguration.Factory): MediaSource.Factory =
+        apply { delegate.setCmcdConfigurationFactory(factory) }
+
+    override fun setDrmSessionManagerProvider(provider: DrmSessionManagerProvider): MediaSource.Factory =
+        apply { delegate.setDrmSessionManagerProvider(provider) }
+
+    override fun setLoadErrorHandlingPolicy(policy: LoadErrorHandlingPolicy): MediaSource.Factory =
+        apply { delegate.setLoadErrorHandlingPolicy(policy) }
+
+    override fun getSupportedTypes(): IntArray = delegate.supportedTypes
+
+    override fun createMediaSource(mediaItem: MediaItem): MediaSource {
+        val uri = mediaItem.localConfiguration?.uri
+        return if (realtime.answers(uri?.scheme)) {
+            realtime.mediaSources.create(mediaItem)
+        } else {
+            delegate.createMediaSource(mediaItem)
+        }
     }
 }

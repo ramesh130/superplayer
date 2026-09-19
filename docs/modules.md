@@ -44,16 +44,16 @@ than to wave the dependency through.
 | `superplayer-offline` | 7 | Downloads into the ContentCache the consumer opened, on the one chain: a store over Media3's download stack, WorkManager scheduling under unmetered, battery-not-low and storage-not-low, download track selection, and the licence bound to the download (ADR-0013) | core; testkit, testmedia, cache, drm and resilience (tests only) |
 | `superplayer-tv` | 8 | CTV behind one output slot: frame-rate matching, the display as a live reading, tunneling where the policy asks, and Compose-for-TV controls on a `SurfaceView` (ADR-0014) | core; testkit, testmedia, abr, drm, resilience and telemetry (tests only) |
 | `superplayer-diagnostics` | 9 | MediaSourceDoctor — a manifest's pathologies named over the chain a player of that request would load through, as one report for preflight and postmortem — the session trace bundle with its capability snapshot, and the on-device debug HUD (ADR-0015) | core and telemetry (ADR-0015 rule 1); testkit, testmedia, abr, cache, drm and resilience (tests only) |
-| `superplayer-realtime` | 13 | The push-based source seam realtime transports are built on: a public `FrameSource` naming no Media3 type, the `MediaSource`/`MediaPeriod` that writes its frames into Media3 `SampleQueue`s under a live unseekable timeline, codec-string mapping and codec-specific-data conversion (ADR-0018) | core; testkit and testmedia (tests only) |
+| `superplayer-realtime` | 13 | The push-based source seam realtime transports are built on: a public `FrameSource` naming no Media3 type, the `MediaSource`/`MediaPeriod` that writes its frames into Media3 `SampleQueue`s under a live unseekable timeline, codec-string mapping and codec-specific-data conversion (ADR-0018) | core; testkit and telemetry (tests only) |
 | `superplayer-moq` | 14 | Sub-second live over Media over QUIC: `moq-dev/moq`'s published Kotlin bindings behind a `FrameSource` (ADR-0018) | core, realtime; testkit (tests only) |
 | `superplayer-whep` | 15 | Sub-second live over WebRTC: WHEP signalling and a `PeerConnection` transport behind a `FrameSource`. Contingent — see `PRD.md` Part 4 | core, realtime; testkit (tests only) |
 | `superplayer-ui` | — † | Optional Compose player surface | core |
 
 `superplayer-testkit`, `superplayer-abr`, `superplayer-cache`, `superplayer-preload`,
-`superplayer-resilience`, `superplayer-drm`, `superplayer-offline`, `superplayer-tv` and
-`superplayer-diagnostics` also compile as Kotlin *friends* of core (`docs/testing.md`'s *Reaching that seam from another module*,
+`superplayer-resilience`, `superplayer-drm`, `superplayer-offline`, `superplayer-tv`,
+`superplayer-diagnostics` and `superplayer-realtime` also compile as Kotlin *friends* of core (`docs/testing.md`'s *Reaching that seam from another module*,
 ADR-0009 rule 7, ADR-0010 rules 3 and 6, ADR-0011 rule 13, ADR-0012 rule 4, ADR-0013 rule 4, ADR-0014
-rule 3, ADR-0015 rule 3). A friend path is a compiler flag rather than a Gradle
+rule 3, ADR-0015 rule 3, ADR-0018 rule 11). A friend path is a compiler flag rather than a Gradle
 dependency, which is why it does not appear in the column above and why it is not what the rule
 measures.
 
@@ -68,9 +68,19 @@ have never seen this repository, which is #295's half of the phase: `docs/media-
 every pathology with its citation, its cause and what to change, `docs/session-bundle.md` is the
 bundle's format and `docs/reading-a-session-bundle.md` how to get an answer out of one.
 
-**Phase 10 adds no module, deliberately.** The HTTP stack (ADR-0004, ADR-0016) is a seam in core and
+ADR-0018 rule 11 admits `superplayer-realtime` as the **tenth**, and the first since the ninth. It is
+a friend because it fills a `MediaSource.Factory` into `TransferChain`, which is core-internal and
+Media3 `@UnstableApi` vocabulary; what a consumer names is the public `FrameSource`, and
+`superplayer-moq` and `superplayer-whep` are deliberately **not** friends — they implement that
+interface, which is the test that the seam is real. The friendship does **not** carry a closed list
+of seams in ADR-0015 rule 3's sense: what this module reaches is the one slot and the engine
+configurator its own tests use.
+
+**Phase 10 added no module, deliberately**, and the sentence that follows is superseded on its
+tenth-friendship half by ADR-0018 rule 11 above rather than contradicted. The HTTP stack (ADR-0004,
+ADR-0016) is a seam in core and
 an interface the *consumer* implements over their own client, so there is no `superplayer-net-okhttp`
-or sibling in the table above and no tenth Kotlin friendship — ADR-0004's *Consequences* records the
+or sibling in the table above and no tenth Kotlin friendship *of that phase's* — ADR-0004's *Consequences* records the
 cross-module visibility question that shape would have raised, and why removing the module closes it
 rather than answering it. The conformance test a consumer runs against their own transport is
 `superplayer-testkit`'s public `HttpTransportConformance` (#312), and that module is phase 2 and

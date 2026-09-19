@@ -509,6 +509,14 @@ public final class com/superplayer/core/PreloadPolicy {
 public final class com/superplayer/core/PreloadPolicy$Companion {
 }
 
+public abstract class com/superplayer/core/RealtimeSources {
+}
+
+public final class com/superplayer/core/RealtimeStreamNotSeekableException : java/lang/UnsupportedOperationException {
+	public final fun getScheme ()Ljava/lang/String;
+	public final fun getStartPosition ()Ljava/lang/String;
+}
+
 public final class com/superplayer/core/RetryBudget {
 	public static final field Companion Lcom/superplayer/core/RetryBudget$Companion;
 	public static final field MEDIA3_DEFAULT Lcom/superplayer/core/RetryBudget;
@@ -778,6 +786,7 @@ public final class com/superplayer/core/SuperPlayer$Builder {
 	public final fun setOutput (Lcom/superplayer/core/PlaybackOutput;)Lcom/superplayer/core/SuperPlayer$Builder;
 	public final fun setPolicy (Lcom/superplayer/core/PlaybackPolicy;)Lcom/superplayer/core/SuperPlayer$Builder;
 	public final fun setProfile (Lcom/superplayer/core/PlaybackProfile;)Lcom/superplayer/core/SuperPlayer$Builder;
+	public final fun setRealtime (Lcom/superplayer/core/RealtimeSources;)Lcom/superplayer/core/SuperPlayer$Builder;
 	public final fun setResilience (Lcom/superplayer/core/PlaybackResilience;)Lcom/superplayer/core/SuperPlayer$Builder;
 	public final fun setTelemetry (Lcom/superplayer/core/TelemetryCollector;)Lcom/superplayer/core/SuperPlayer$Builder;
 }

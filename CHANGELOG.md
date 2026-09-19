@@ -5,7 +5,7 @@ Every notable change to SuperPlayer, for someone deciding whether to take a new 
 The format is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions are
 [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html) as
 [ADR-0017](docs/adr/0017-version-the-library-by-semver-in-lockstep-with-the-tracked-api-surface-as-the-arbiter.md)
-reads it here: one version for all thirteen published modules, moved in lockstep (rule 1), with the
+reads it here: one version for all fourteen published modules, moved in lockstep (rule 1), with the
 tracked API surface in `<module>/api/<module>.api` as the arbiter of how far it moves (rule 2). A
 behaviour change that moves no declaration still moves the version, and this file is where that
 judgement is written down rather than made silently (rule 3).
@@ -77,3 +77,14 @@ them under `Added` would be worse than stating them here:
 - **Phase 10 — HTTP stack.** `HttpTransport` and `HttpStack` at the bottom of all four chains, the
   five obligations carried by `HttpTransportConformance` in `superplayer-testkit`, and
   `docs/http-transport.md`.
+- **Phase 13 — Realtime source seam.** `superplayer-realtime`: a public `FrameSource` a realtime
+  transport implements — encoded frames with a timestamp, a codec, a keyframe flag and optional
+  codec-specific data, naming no Media3 type — and behind it the `MediaSource`/`MediaPeriod` that
+  writes those frames into Media3's own `SampleQueue`s under a live, unseekable timeline
+  (ADR-0018). A realtime URI reaches it from `TransferChain` on its **scheme**, through
+  `SuperPlayer.Builder.setRealtime`. What such a stream does **not** get is a rule rather than an
+  omission — no cache, no CMCD, no downloads, no bandwidth estimate and none of the fallback
+  ladder's load-error rungs (rule 6) — and a start position it cannot honour is refused with
+  `RealtimeStreamNotSeekableException` rather than coerced to the live edge (rule 5). One codec
+  (H.264) and one track; the codec mapping, the codec-specific-data conversion, audio beside video
+  and the conformance suite are the rest of the phase.

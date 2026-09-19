@@ -25,7 +25,7 @@ The group is `com.superplayer` and the artifact id is the module's own directory
 other module is additive, and an APK does not grow for a module the app does not depend on
 ([`modules.md`](modules.md)).
 
-**Every module carries the same version, and they all move together.** A release moves all thirteen
+**Every module carries the same version, and they all move together.** A release moves all fourteen
 to one number, including the modules nothing changed in (ADR-0017 rule 1). The consequence for you
 is the part worth acting on:
 
@@ -33,11 +33,11 @@ is the part worth acting on:
 > `superplayer-core:0.3.0` is not a combination that was ever built, tested or benchmarked, and
 > nothing in the library will tell you at runtime that you assembled one.
 
-That is stronger than the usual multi-module caution, and the reason is mechanical. **Nine** of the
-thirteen reach into `superplayer-core` through Kotlin *friend* compilation — a compiler flag, not a
+That is stronger than the usual multi-module caution, and the reason is mechanical. **Ten** of the
+fourteen reach into `superplayer-core` through Kotlin *friend* compilation — a compiler flag, not a
 Gradle dependency, carrying no binary-compatibility guarantee at all — so a change core is entitled
 to make under rule 2 can break a module compiled against the previous core without any check seeing
-it (ADR-0017 rule 1; [`modules.md`](modules.md) lists the nine). Pin one version for all of them, in
+it (ADR-0017 rule 1; [`modules.md`](modules.md) lists the ten). Pin one version for all of them, in
 one place.
 
 **A `-SNAPSHOT` version is not a release and carries none of this.** An artefact resolved from a
@@ -95,6 +95,7 @@ to every row equally. What differs between rows is what the module is *for*.
 | `superplayer-offline` | **Public** | `Downloads`, `DownloadItem`, `DownloadsListener`, and the `DownloadsService` your app subclasses |
 | `superplayer-tv` | **Public** | `TvOutput` and `TvPlaybackControls` |
 | `superplayer-diagnostics` | **Public** | `MediaSourceDoctor` ([`media-source-doctor.md`](media-source-doctor.md)), `SessionBundle` ([`session-bundle.md`](session-bundle.md)) and `DebugHud` |
+| `superplayer-realtime` | **Public** | `Realtime.transport` and the `FrameSource` a realtime transport implements. What a realtime stream does **not** get is a rule rather than an omission — no cache, no CMCD, no downloads, no bandwidth estimate and none of the fallback ladder's load-error rungs ([ADR-0018](adr/0018-push-encoded-frames-through-one-framesource-into-media3s-own-sample-queues.md) rule 6) |
 | `superplayer-ui` | **Empty** | Nothing. The module publishes no public declaration; it exists so the boundary is fixed before code arrives |
 
 The three statuses are the three answers there are: **Public** is a module whose API you build your

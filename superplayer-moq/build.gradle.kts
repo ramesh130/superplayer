@@ -30,8 +30,9 @@ dependencies {
     // `settings.gradle.kts`.
     //
     // `implementation` and not `api`, because `api` claims the bindings are part of this module's
-    // own consumer-facing types and today it has none — #365 widens it in one word when a
-    // `FrameSource` over `uniffi.moq` arrives.
+    // own consumer-facing types and today it has none. #365 kept it that way rather than widening
+    // it: `MoqCatalogTracks` and `MoqDeclaredTrack` are both `internal`, so no `uniffi` type is on
+    // anything a consumer could name.
     implementation(libs.moq.ffi)
 
     // The same bindings' JVM variant, for its host `libmoq_ffi.dylib` at JNA's classpath layout.

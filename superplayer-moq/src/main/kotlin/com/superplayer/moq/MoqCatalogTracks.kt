@@ -89,9 +89,14 @@ internal class MoqDeclaredTrack(
  * a publisher raises so that players prefer another rendition, is read by nothing here for exactly
  * that reason.
  *
- * That order survives the FFI: UniFFI's generated map converter builds its result with
- * `kotlin.collections.MapsKt.createMapBuilder`, whose map preserves insertion order, so "first"
- * means the first entry the publisher wrote rather than a hash order.
+ * That order survives the FFI, and the claim is about generated third-party code rather than about
+ * anything here, so it carries its reading:
+ *
+ * // ref: `uniffi.moq.FfiConverterMapStringTypeMoqVideo.read` at `dev.moq:moq-ffi:0.3.19-superplayer-local`
+ * // builds its result through `kotlin.collections.MapsKt.createMapBuilder`, whose `MapBuilder`
+ * // iterates in insertion order — so "first" is the first entry the publisher wrote and not a hash
+ * // order. Nothing under `check` exercises that converter (`MoqCatalogTracksTest` builds its maps
+ * // on this side), so this half is read off the bindings rather than asserted.
  */
 internal object MoqCatalogTracks {
 

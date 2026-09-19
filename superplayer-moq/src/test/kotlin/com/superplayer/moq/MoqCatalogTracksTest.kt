@@ -131,7 +131,7 @@ class MoqCatalogTracksTest {
     @Test
     fun anHvc1RenditionCarriesItsRecordTheSameWay() {
         val catalog = DeclaredCatalogs.videoOnly(
-            codec = "hvc1.1.6.L93.B0",
+            codec = DeclaredCatalogs.SYNTHESIZED_HVC1_CODEC,
             description = DeclaredCatalogs.SYNTHESIZED_HVCC,
         )
 
@@ -160,7 +160,7 @@ class MoqCatalogTracksTest {
                 ),
             ),
             audio = mapOf(
-                "audio" to DeclaredCatalogs.audio(codec = "mp4a.40.2", description = null),
+                "audio" to DeclaredCatalogs.audio(codec = DeclaredCatalogs.SYNTHESIZED_AAC_CODEC, description = null),
             ),
         )
 
@@ -168,7 +168,7 @@ class MoqCatalogTracksTest {
 
         assertEquals(
             "video at index 0 and audio at index 1",
-            listOf(DeclaredCatalogs.OBSERVED_AVC1_CODEC, "mp4a.40.2"),
+            listOf(DeclaredCatalogs.OBSERVED_AVC1_CODEC, DeclaredCatalogs.SYNTHESIZED_AAC_CODEC),
             tracks.map { it.track.codec },
         )
         assertEquals("the catalog's own track names", listOf("video", "audio"), tracks.map { it.trackName })
@@ -182,12 +182,12 @@ class MoqCatalogTracksTest {
      */
     @Test
     fun audioAloneIsTheOnlyTrackAndIsIndexedFirst() {
-        val catalog = DeclaredCatalogs.audioOnly(codec = "opus", description = null)
+        val catalog = DeclaredCatalogs.audioOnly(codec = DeclaredCatalogs.SYNTHESIZED_OPUS_CODEC, description = null)
 
         val tracks = MoqCatalogTracks.declaredTracksOf(catalog)
 
         assertEquals("one declared track", 1, tracks.size)
-        assertEquals("opus", tracks.single().track.codec)
+        assertEquals(DeclaredCatalogs.SYNTHESIZED_OPUS_CODEC, tracks.single().track.codec)
     }
 
     /**
@@ -203,15 +203,15 @@ class MoqCatalogTracksTest {
     @Test
     fun aCodecStringNothingMapsSurvivesIntoTheListVerbatim() {
         val catalog = DeclaredCatalogs.catalog(
-            video = mapOf("video" to DeclaredCatalogs.video(codec = "vp08.00.41.08", description = null)),
-            audio = mapOf("audio" to DeclaredCatalogs.audio(codec = "mp4a.40.2", description = null)),
+            video = mapOf("video" to DeclaredCatalogs.video(codec = DeclaredCatalogs.SYNTHESIZED_UNMAPPED_CODEC, description = null)),
+            audio = mapOf("audio" to DeclaredCatalogs.audio(codec = DeclaredCatalogs.SYNTHESIZED_AAC_CODEC, description = null)),
         )
 
         val tracks = MoqCatalogTracks.declaredTracksOf(catalog)
 
         assertEquals(
             "the unmappable track is still declared, beside the one that maps",
-            listOf("vp08.00.41.08", "mp4a.40.2"),
+            listOf(DeclaredCatalogs.SYNTHESIZED_UNMAPPED_CODEC, DeclaredCatalogs.SYNTHESIZED_AAC_CODEC),
             tracks.map { it.track.codec },
         )
     }
@@ -244,6 +244,11 @@ class MoqCatalogTracksTest {
      * first is flagged `stalled` — the flag a publisher raises precisely so that a selecting player
      * moves off it — so a mapping that had grown any preference at all would take the second and
      * fail here rather than quietly become a selector.
+     *
+     * What it cannot show is the other half of "first": the maps here are Kotlin's own, built on
+     * this side of the FFI, so this exercises the mapping's `entries.firstOrNull()` and never the
+     * generated converter whose insertion order `MoqCatalogTracks`' `// ref:` reads off the
+     * bindings rather than asserting.
      */
     @Test
     fun aLadderIsTakenAtItsFirstDeclaredRenditionAndNothingPrefers() {

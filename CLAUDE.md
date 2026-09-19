@@ -1274,14 +1274,18 @@ one import.
 `superplayer-moq` has the first of Phase 14. #364 was the prefactor — the module, MoQ's UniFFI
 bindings linked from `third-party/moq/m2`, and the one "not published" fact declared in
 `settings.gradle.kts`. Since #365 it has the half of the transport that `check` can test honestly:
-`MoqCatalogTracks.declaredTracksOf(catalog)` turns what a publisher *declared* into the
-`List<RealtimeTrack>` the Phase 13 seam accepts, and this is where Phase 14's "both
+`MoqCatalogTracks.declaredTracksOf(catalog)` turns what a publisher *declared* into a list of
+`MoqDeclaredTrack`, each carrying the `RealtimeTrack` the Phase 13 seam accepts, and this is where Phase 14's "both
 codec-description shapes are covered by a test" criterion is discharged, because a pure mapping
 needs no session, no QUIC and no frames. **The catalog arrives typed and nothing parses it**:
-`subscribeCatalog` yields a `uniffi.moq.MoqCatalog` of two maps, video and audio, each rendition
-carrying its `codec` string and an optional `description`, so no JSON is read and no serialization
-dependency is declared — worth knowing, because #364 left upstream's `dev.moq:moq` wrapper out and
-with it the typed JSON helpers a reader would come looking for. The module **maps no codec string
+`subscribeCatalog` yields a `uniffi.moq.MoqCatalog` — two maps of track name to rendition, video and
+audio, each rendition carrying its `codec` string and an optional `description`, beside a
+presentation half (`display`, `rotation`, `flip`, `sections`) that nothing here reads — so no JSON
+is read and no serialization dependency is declared, worth knowing because #364 left upstream's
+`dev.moq:moq` wrapper out and with it the typed JSON helpers a reader would come looking for.
+A catalog declaring **neither** kind is refused here, as a plain `IOException` naming what was
+empty rather than a fourth typed refusal: the phase's three are all about *bytes*, and an empty
+catalog has none to name. The module **maps no codec string
 and re-derives no fourcc rule**: `RealtimeFormats` and `CodecConfigurationRecords` are `internal` to
 `superplayer-realtime` and this module is deliberately not a friend of it (ADR-0018 rule 11), so
 they are unreachable by design rather than by discipline. The consequence is where a refusal lands —

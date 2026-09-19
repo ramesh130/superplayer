@@ -89,12 +89,22 @@ never coerced to `Beginning`. A silent coercion is a resume that looks like it w
 
 **Rule 6 — What this path does not reach is stated, not discovered.** The content cache, CMCD,
 downloads, the fallback ladder's load-error rungs and bandwidth estimation are all keyed to
-`DataSource`, and a realtime transport is not one. `superplayer-abr` has nothing to select: WHEP has
-no ladder, and in MoQ the relay decides. **ADR-0016's four chains do not become five** — a realtime
+`DataSource`, and a realtime transport is not one. **ADR-0016's four chains do not become five** — a realtime
 transport is not a fifth chain a consumer's `HttpStack` carries, and that ADR's promise is unchanged
 rather than quietly weakened. What *does* survive is `MediaRequest.sources` and ADR-0011's rung 4, so
 a realtime source falling back to an HLS source is expressible with no new mechanism, and that is the
 documented way to have a fallback at all.
+
+**Rule 6a — adaptive selection is *deferred*, not excluded, and the difference is deliberate.** An
+earlier draft of rule 6 said `superplayer-abr` has nothing to select because the server decides the
+quality. That is true of WHEP and **false of MoQ**, whose catalog lists *renditions* per media kind,
+lets a transcoder publish a ladder, and lets a publisher flag a rendition stalled so that players
+prefer another — which is a client-side ladder in all but name. No phase wires it: selection here
+would be a subscription change at the transport rather than a track choice inside Media3, so it
+reaches `PlaybackPolicy` through a seam that does not exist yet. The rule is therefore that a
+realtime transport **exposes no selection to `superplayer-abr` today**, and that a phase adding one
+amends this record rather than quietly widening it. What is *not* claimed is that the protocol
+cannot bear it.
 
 **Rule 7 — Telemetry keeps what it can derive and declares the rest missing.** Playback state
 transitions, dropped frames, video size and decoder events all survive, so rebuffer and startup

@@ -117,6 +117,25 @@ public final class com/superplayer/testkit/FrameRateRequest {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class com/superplayer/testkit/FrameSourceConformance {
+	public fun <init> (Lcom/superplayer/core/FrameSourceFactory;Landroid/net/Uri;)V
+	public final fun verifyAll ()V
+	public final fun verifyCancellationStopsDelivery ()V
+	public final fun verifyCodecConfigurationFollowsTheFourcc ()V
+	public final fun verifyCodecStringsAreMapped ()V
+	public final fun verifyDeliveriesDoNotOverlap ()V
+	public final fun verifyEachTrackStartsWithAKeyframe ()V
+	public final fun verifyEveryFrameNamesADeclaredTrack ()V
+	public final fun verifyPayloadsAreNeitherReusedNorTouchedAgain ()V
+	public final fun verifySamplesAreFramedAsTheFourccRequires ()V
+	public final fun verifyTerminationIsFinal ()V
+	public final fun verifyTimestampsAreMonotonicPerTrack ()V
+	public final fun verifyTracksAreDeclaredOnceBeforeTheFirstFrame ()V
+}
+
+public final class com/superplayer/testkit/FrameSourceConformanceException : java/lang/AssertionError {
+}
+
 public final class com/superplayer/testkit/GoldenFile {
 	public static final field DIRECTORY_PROPERTY Ljava/lang/String;
 	public static final field INSTANCE Lcom/superplayer/testkit/GoldenFile;

@@ -1241,7 +1241,30 @@ what `shouldProcessBuffer` accepted), forces the reconciliation in both directio
 turn, and plays an audio-only source as the control. `realtime-h264-aac.trace` is the second golden,
 byte for byte the first today and deliberately so: what would move it is a rebuffer, an error or a
 load appearing, and the `tracks` line reads a bitrate a realtime `Format` does not carry.
-What is still open in Phase 13 is `FrameSourceConformance` (#347).
+Since #347 the phase has its **conformance suite**, and it is the second thing in this repository
+written to be run outside it: `FrameSourceConformance`, public API of `superplayer-testkit`, eleven
+checks over the obligations `FrameSource`'s KDoc carries — ordered delivery, the declaration before
+the first frame, a frame naming a declared track, a first keyframe per track, monotonic timestamps
+per track, the codec string, **both** halves of obligation 7 (the configuration record's branch and
+the sample framing that follows the same fourcc), a payload handed over once, a terminal callback
+that is final, and cancellation — each failure naming the rule, what the source did and what the
+rule requires, and carried by a `FrameSourceConformanceException`, an `AssertionError`, so no test
+framework is named. It is testkit's **because** the seam is core's (#356): a phase 2 module may name
+nothing later than core. The one thing that differs from `HttpTransportConformance` is the subject:
+an HTTP client's obligations are claims about a wire and a `FrameSource`'s are claims about what it
+delivers **to a sink**, so this suite supplies a recording sink and **no socket** — `docs/testing.md`'s
+one loopback carve-out is not widened. Four obligations are named as *not* covered rather than
+half-checked: the precision a transport states (unenforceable by construction), a record that parses
+and belongs to another stream, a container the framing walk has never seen, and a delivery from
+several threads with a happens-before, which is what obligation 1 permits.
+`FrameSourceConformanceTest` scores it in `HttpTransportConformanceTest`'s shape — a deliberately
+wrong publisher **per obligation**, a register holding the two sets equal — and
+`superplayer-realtime`'s `ScriptedFrameSourceConformanceTest` runs the reference fake through
+`verifyAll` in both of obligation 7's branches, and holds the suite's codec families to
+`RealtimeFormats`' table, which is written down twice because that table is a phase 13 module's
+`internal`. The fake stayed where it is: moving it into testkit would publish
+`ScriptedFrameSource`, `ScriptedTrack` and #340's observed bytes as a versioned API surface to save
+one import.
 
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,

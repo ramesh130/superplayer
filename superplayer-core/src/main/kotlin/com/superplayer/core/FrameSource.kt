@@ -102,6 +102,16 @@ import android.net.Uri
  *    least reproducible failure in this list.
  * 9. **[cancel] stops delivery, and no callback arrives after it returns.** *Cost:* a write into a
  *    queue that has been released, which is a crash at an unrelated moment.
+ * 10. **State a video track's coded size if you know it** ([RealtimeTrack.codedSize]). Almost every
+ *    transport does: a publisher declares the resolution and it arrives with the catalog or the
+ *    session description, ahead of any frame. *Cost:* `MediaCodec.configure` refuses a video format
+ *    with no size, so the session connects, subscribes, delivers frames and then dies at the first
+ *    keyframe with `IllegalArgumentException: Invalid size(s), width=-1, height=-1` inside a
+ *    `DecoderInitializationException` naming the device's decoder — an error pointing at the one
+ *    component that was behaving correctly. #353 lost an afternoon to exactly that. **Like 5, this
+ *    one is unenforceable**: no suite can know your stream's true resolution, so nothing here can
+ *    tell a transport that omitted it from one that genuinely does not know. It is written down for
+ *    the same reason 5 is.
  *
  * ## Two tracks
  *
@@ -230,7 +240,69 @@ public interface FrameSink {
 public class RealtimeTrack(
     public val codec: String,
     public val codecConfiguration: CodecConfiguration = CodecConfiguration.InBand,
+    /**
+     * The coded size of a video track, or **null** where the transport did not state one.
+     *
+     * **A decoder cannot be configured without it**, which is the whole reason this is on the seam
+     * rather than derived. `MediaCodec.configure` refuses a video format whose size is unset —
+     * `IllegalArgumentException: Invalid size(s), width=-1, height=-1` — so a transport that knows
+     * the resolution and does not say it produces a session that connects, subscribes, receives
+     * frames and then fails at the first keyframe with an error naming the decoder rather than the
+     * omission. #353 found exactly that against a live `hev1` broadcast.
+     *
+     * Null is the honest answer for an audio track, and for a video transport that genuinely does
+     * not know — an in-band stream carries its own parameter sets, so a decoder that tolerates an
+     * unsized configuration may still start. It is the default, because a transport that says
+     * nothing must not be read as claiming a size.
+     */
+    public val codedSize: CodedSize? = null,
 ) {
+
+    /**
+     * The dimensions of a video track's samples, in pixels.
+     *
+     * ## Why a type rather than two `Int`s on the track
+     *
+     * Because half a size is not a state that should be expressible. The two numbers are never
+     * meaningful apart — a width without a height describes nothing, and `MediaCodec` refuses it
+     * with the same message as a format carrying neither — so a seam that took them separately
+     * would have every reader downstream branching on a combination that must never occur. Here the
+     * pair is constructed or it is absent, and `null` is the one way to say "not stated".
+     *
+     * That also puts the validation in one place. The values come from a **remote publisher's**
+     * declaration, and this repository's rule for that is to refuse what does not hold together
+     * rather than read past it (ADR-0018 rule 4's #345 addendum): a zero, a negative, or a value a
+     * transport produced by narrowing an unsigned field it never checked would otherwise travel all
+     * the way to `MediaCodec` and fail there, naming the decoder rather than the declaration.
+     *
+     * It is the **coded** size and not the display size: a decoder is configured with the
+     * dimensions of the samples, and any aspect-ratio correction is applied after decoding. A
+     * square picture is ordinary — the broadcast #353 first played was 3520×3520 from a fisheye
+     * camera — so nothing here assumes an orientation or a ratio.
+     *
+     * @property width The coded width in pixels. Positive.
+     * @property height The coded height in pixels. Positive.
+     * @throws IllegalArgumentException if either dimension is not positive, naming both values.
+     */
+    public class CodedSize(public val width: Int, public val height: Int) {
+
+        init {
+            require(width > 0 && height > 0) {
+                "A coded size is two positive dimensions in pixels, or no size at all. Got " +
+                    "${width}x$height. A transport that does not know the resolution passes null " +
+                    "for RealtimeTrack.codedSize rather than a placeholder — a zero or a negative " +
+                    "reaches MediaCodec.configure as a claim about the picture and fails there, " +
+                    "naming the decoder instead of this declaration."
+            }
+        }
+
+        override fun equals(other: Any?): Boolean =
+            this === other || (other is CodedSize && width == other.width && height == other.height)
+
+        override fun hashCode(): Int = 31 * width + height
+
+        override fun toString(): String = "${width}x$height"
+    }
 
     /**
      * Where the parameter sets a decoder must be configured with come from, which the codec's

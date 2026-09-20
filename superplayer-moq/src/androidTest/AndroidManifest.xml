@@ -32,4 +32,24 @@
     -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!--
+      The watchable half, for a person rather than for an assertion (`MoqPlaybackActivity`'s KDoc
+      says why it is here and not in the demo, and why it is not Phase 14's exit criterion).
+
+      `exported` so it can be started with `am start` from a shell, which is the only way anybody
+      runs it. It is in the **test** APK, which is installed by `connectedAndroidTest` and by
+      nothing a consumer ships.
+    -->
+    <application>
+        <!--
+          No `screenOrientation`: the first broadcast this played was 3520x3520 from a fisheye
+          camera, and pinning an orientation would be an assumption about a rendition's shape that
+          ADR-0018 makes nowhere else.
+        -->
+        <activity
+            android:name="com.superplayer.moq.MoqPlaybackActivity"
+            android:exported="true"
+            android:label="MoQ live" />
+    </application>
+
 </manifest>

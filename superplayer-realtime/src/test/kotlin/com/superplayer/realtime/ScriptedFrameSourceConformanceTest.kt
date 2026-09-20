@@ -105,11 +105,11 @@ class ScriptedFrameSourceConformanceTest {
         assertThat(MAPPED.map { it.substringBefore('.').lowercase(Locale.ROOT) }.toSet())
             .isEqualTo(RealtimeFormats.mappedTokens)
         MAPPED.forEach { codec ->
-            assertThat(RealtimeFormats.formatFor(codec).sampleMimeType).isNotNull()
+            assertThat(RealtimeFormats.formatFor(codec, codedSize = null).sampleMimeType).isNotNull()
             assertThat(refusalFor(codec)).isNull()
         }
         UNMAPPED.forEach { codec ->
-            val fromTheTable = runCatching { RealtimeFormats.formatFor(codec) }.exceptionOrNull()
+            val fromTheTable = runCatching { RealtimeFormats.formatFor(codec, codedSize = null) }.exceptionOrNull()
             assertThat(fromTheTable).isInstanceOf(UnsupportedRealtimeCodecException::class.java)
             assertThat(refusalFor(codec)).contains(codec)
         }

@@ -548,10 +548,11 @@ public final class com/superplayer/core/RealtimeStreamNotSeekableException : jav
 }
 
 public final class com/superplayer/core/RealtimeTrack {
-	public fun <init> (Ljava/lang/String;Lcom/superplayer/core/RealtimeTrack$CodecConfiguration;)V
-	public synthetic fun <init> (Ljava/lang/String;Lcom/superplayer/core/RealtimeTrack$CodecConfiguration;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Lcom/superplayer/core/RealtimeTrack$CodecConfiguration;Lcom/superplayer/core/RealtimeTrack$CodedSize;)V
+	public synthetic fun <init> (Ljava/lang/String;Lcom/superplayer/core/RealtimeTrack$CodecConfiguration;Lcom/superplayer/core/RealtimeTrack$CodedSize;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getCodec ()Ljava/lang/String;
 	public final fun getCodecConfiguration ()Lcom/superplayer/core/RealtimeTrack$CodecConfiguration;
+	public final fun getCodedSize ()Lcom/superplayer/core/RealtimeTrack$CodedSize;
 }
 
 public abstract class com/superplayer/core/RealtimeTrack$CodecConfiguration {
@@ -564,6 +565,15 @@ public final class com/superplayer/core/RealtimeTrack$CodecConfiguration$InBand 
 public final class com/superplayer/core/RealtimeTrack$CodecConfiguration$Record : com/superplayer/core/RealtimeTrack$CodecConfiguration {
 	public fun <init> ([B)V
 	public final fun getBytes ()[B
+}
+
+public final class com/superplayer/core/RealtimeTrack$CodedSize {
+	public fun <init> (II)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHeight ()I
+	public final fun getWidth ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class com/superplayer/core/RealtimeTrackStalledException : java/io/IOException {

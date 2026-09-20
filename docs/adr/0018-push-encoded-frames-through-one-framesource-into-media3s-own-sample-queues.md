@@ -115,6 +115,30 @@ reported rather than dropped. *Enforced by the tracked API surface for the shape
 `RealtimePlaybackTest` for the behaviour; `FrameSourceConformance` (#347) is where a transport is
 held to the declaration.*
 
+*Addendum (2026-09-20, #353).* A `RealtimeTrack` also carries the **coded size** of a video track,
+as a `RealtimeTrack.CodedSize?` defaulting to null, and `FrameSource`'s obligation register gains a
+**tenth** entry for it — unenforceable, like obligation 5, because no suite can know a stream's true
+resolution, and written down for the same reason. This is a declaration and not
+a policy: it is the publisher's own statement of what its samples are, `MediaCodec.configure`
+**refuses a video format without it**, and no part of this design can derive it — rule 1 means
+nothing here decodes, and rule 3 means the container that would otherwise carry it was stripped
+before the seam. The cost of leaving it off was a failure of exactly the kind rule 4's KDoc
+register exists to prevent, and it was found on a device rather than by any check: a session
+connected, subscribed, delivered frames, and then died at the first keyframe with an
+`IllegalArgumentException: Invalid size(s), width=-1, height=-1` and a `DecoderInitializationException`
+naming the device's decoder — a message pointing at the one component that was not at fault. It is
+the **coded** size rather than the display size, because that is what a decoder is configured with
+and any aspect correction happens after decoding; a transport that genuinely does not know says
+**null** rather than a zeroed size, since an absent size may still configure from an in-band
+stream's own parameter sets while a zero is a positive claim about the picture. That distinction is
+structural rather than documented: a `CodedSize` is two positive dimensions or it does not exist, so
+half a size is unrepresentable and a nonsensical one is refused where it is built — which is where
+a value narrowed from an unsigned field a transport never checked is caught, rather than at
+`MediaCodec`. *Enforced by the
+tracked API surface for the shape, by `CodedSize`'s own constructor for the values, by
+`RealtimeFormatsTest` for the translation, and by `MoqCatalogTracksTest` for a transport that reads
+it out of a catalog and for the refusal when what it read cannot be used.*
+
 **Rule 3 — Container framing is the transport's to strip, and the seam carries codec bitstream
 only.** A transport that receives containerised frames unwraps them before the seam. MoQ's bindings
 already do this, which is why no fragmented-MP4 parsing appears anywhere in this design, and a

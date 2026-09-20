@@ -528,6 +528,16 @@ kind: **#340's caveat 2 is narrowed rather than closed** — `hev1` is now obser
 Dated, relay-specific observations belong on #367 rather than here, because what a relay carries is
 true on a day and this document is not.
 
+**There is a second device-only artifact in that APK, and it is not a test.** `MoqPlaybackActivity`
+plays a broadcast onto a `SurfaceView` so a person can look at it, started with `am start` rather
+than by any runner; it asserts nothing and is in `check` no more than the smoke is. It exists
+because the demo **cannot** play MoQ — `demo/` resolves SuperPlayer from published coordinates and
+`superplayer-moq` is deliberately unpublished (#364, #369) — so the only way to watch frames decode
+today is from inside the instrumented APK, which reaches the module by project dependency. It is
+recorded here rather than left to be discovered, and it is **not** Phase 14's exit criterion:
+`PRD.md` asks for a broadcast playing in the demo, and that is #353's, blocked on the publishing
+question rather than on playback.
+
 ## Synthetic media, not fixtures
 
 Streams are generated in Kotlin rather than checked in as binaries. `SyntheticHlsStream` writes a

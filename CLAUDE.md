@@ -1337,6 +1337,10 @@ broadcast name, and a freshly connected session is refused `unroutable` for a br
 until it asks again, so the request is retried on that one refusal. What the relay is doing in that
 window is **not known**, and the second defect was first "fixed" by a mechanism the evidence did not
 support — that history is kept at `requestBroadcastWhenRoutable` because the mistake is instructive.
+The same APK carries `MoqPlaybackActivity`, which is not a test: it plays a broadcast onto a surface
+so a person can watch it, because the **demo cannot** — `demo/` resolves published coordinates and
+this module is unpublished. It is not Phase 14's exit criterion, which is #353's and is blocked on
+that publishing question rather than on playback.
 These tests load no native library, so unlike `MoqFfiLinkageTest` they run on every host.
 Since #368 the phase has its measurement half, and it is two things. What MoQ **does** export is
 surfaced: `MoqFrameSource.statistics()` answers a `MoqSessionStatistics` — round trip time, the

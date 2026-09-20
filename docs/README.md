@@ -26,6 +26,7 @@ one says so.
 | --- | --- |
 | [`adr/README.md`](adr/README.md) | The architecture decision records, each decision in a line — **why the library is shaped as it is**, and the rules a change is held to |
 | [`modules.md`](modules.md) | The module table, the phases, and the rule that dependencies point inward |
+| [`realtime-path.md`](realtime-path.md) | One table: when a `moq://` URI plays, which layer is MoQ's, which is this library's and which is Media3's — with what the path deliberately does not reach |
 | [`testing.md`](testing.md) | How this library is tested: Robolectric, Media3's own fakes, no device and no network, and what each stand-in cannot show |
 | [`api-surface.md`](api-surface.md) | How the public API of every published module is tracked and validated |
 | [`releasing.md`](releasing.md) | Cutting a release with `./gradlew release`: the order, the six refusals, where the artefacts go and where they do not, and how to undo one |

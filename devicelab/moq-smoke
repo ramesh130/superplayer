@@ -109,8 +109,13 @@ with_timeout 60 "$ADB" -s "$SERIAL" logcat -d -t 5000 >"$LOGCAT" 2>/dev/null || 
     printf 'gradle exit: %s\n' "$GRADLE_EXIT"
     printf '\n--- what the session observed ---\n'
     if grep -q 'moq-smoke begin' "$LOGCAT"; then
-        sed -n '/moq-smoke begin/,/moq-smoke end/p' "$LOGCAT" |
-            sed 's/^.*SuperPlayerMoqSmoke[^:]*: //'
+        # Filtered to the tag **first**, then cut between the markers. The report is written a line
+        # at a time (logcat truncates a single message at about 4 kB), so anything else logging at
+        # the same moment lands between the markers — on one run, a GMS stack trace did, and the
+        # report carried twenty lines of somebody else's garbage collector.
+        grep -F "SuperPlayerMoqSmoke" "$LOGCAT" |
+            sed 's/^.*SuperPlayerMoqSmoke[^:]*: //' |
+            sed -n '/moq-smoke begin/,/moq-smoke end/p'
     else
         printf 'No report block reached logcat. The run did not get as far as observing anything —\n'
         printf 'see gradle.txt for whether it failed to install, to start, or to load the library.\n'

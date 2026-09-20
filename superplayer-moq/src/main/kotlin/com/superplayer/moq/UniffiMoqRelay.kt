@@ -18,12 +18,14 @@ package com.superplayer.moq
 
 import android.net.Uri
 import android.os.SystemClock
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import uniffi.moq.MoqBroadcastConsumer
 import uniffi.moq.MoqCatalog
 import uniffi.moq.MoqCatalogConsumer
 import uniffi.moq.MoqClient
 import uniffi.moq.MoqContainer
+import uniffi.moq.MoqException
 import uniffi.moq.MoqMediaConsumer
 import uniffi.moq.MoqMediaFrame
 import uniffi.moq.MoqSession
@@ -36,9 +38,16 @@ import java.io.IOException
  *
  * Everything below is a round trip, and **nothing under `check` runs a line of it**: Robolectric
  * cannot load an Android `.so` on the JVM and `docs/testing.md` bars the network, so what stands
- * here in every test is a scripted fake of [MoqRelay]. #367 is the ticket that first runs this
- * against a public relay from a device, and until it has, the address mapping below is read off
- * MoQ's own tooling rather than observed.
+ * here in every test is a scripted fake of [MoqRelay]. What exercises this file is
+ * `MoqLiveSessionSmokeTest`, on a device, against a real relay.
+ *
+ * **Two things in here were wrong until that run existed**, and both were wrong in the same quiet
+ * way — a session that connected, then refused every broadcast with `unroutable`, which reads
+ * identically to a name nobody publishes. [connectUrlOf] put the namespace on the wrong side of the
+ * split, and [connect] asked once, at a moment the relay was not yet able to answer. Each is
+ * corrected where it is made, with what settled it — and the second was first "fixed" the wrong
+ * way, which [requestBroadcastWhenRoutable] records rather than quietly drops. They are the reason
+ * that run is worth its carve-out from the no-network rule.
  *
  * ## Suspend becomes blocking, on this side of the seam
  *
@@ -62,7 +71,7 @@ internal object UniffiMoqRelay : MoqRelay {
             UniffiBroadcastSession(
                 client,
                 session,
-                runBlocking { session.consumer().requestBroadcast(broadcastPathOf(uri)) },
+                requestBroadcastWhenRoutable(session, broadcastPathOf(uri)),
             )
         } catch (failure: Exception) {
             session.closeQuietly()
@@ -72,29 +81,126 @@ internal object UniffiMoqRelay : MoqRelay {
     }
 
     /**
-     * The relay's own address: the broadcast URI's authority under `https`.
+     * Requests [name], retrying while the relay answers `unroutable`, until [ROUTABLE_BOUND_MS].
+     *
+     * ## What was measured, and what is still unknown
+     *
+     * A freshly connected session cannot immediately route a broadcast that demonstrably exists:
+     * asked at once, `cdn.moq.pro` answers `unroutable` for a name its own announce stream lists;
+     * asked again a moment later, on the same session, the same name resolves and its catalog
+     * arrives.
+     *
+     * #367 measured this with three arms differing in one thing each — request at once, wait then
+     * request, subscribe to announcements then request. **The second and third behaved
+     * identically**, so the wait is what matters and listening is not. That is worth writing down
+     * because this code briefly did the opposite: it held an announce subscription open for the
+     * session's life, on the strength of a two-arm comparison in which the listening arm also
+     * waited and the silent one did not. Two explanations predicted the same result and the wrong
+     * one was written down as mechanism.
+     *
+     * **What the relay is doing in that window is not known**, and is deliberately not guessed at
+     * here. What is known is the shape of the remedy: ask again.
+     *
+     * ## Why a retry and not a delay
+     *
+     * A delay charges every subscription the worst case. A relay that is ready pays one round trip
+     * and no wait at all, which is the common case and the one a viewer sits through.
+     *
+     * Only `unroutable` is retried. Every other refusal is a fact a second ask cannot change — an
+     * unauthorized session, a malformed name — and retrying those turns a clear failure into a slow
+     * one.
+     */
+    private fun requestBroadcastWhenRoutable(session: MoqSession, name: String): MoqBroadcastConsumer {
+        val consumer = session.consumer()
+        val deadline = SystemClock.elapsedRealtime() + ROUTABLE_BOUND_MS
+        var wait = FIRST_RETRY_MS
+        while (true) {
+            try {
+                return runBlocking { consumer.requestBroadcast(name) }
+            } catch (failure: MoqException) {
+                val retryable = failure.message?.contains(UNROUTABLE, ignoreCase = true) == true
+                if (!retryable || SystemClock.elapsedRealtime() + wait >= deadline) throw failure
+                runBlocking { delay(wait) }
+                // Doubling, for `Backoff`'s reason in core: a fixed interval against a relay that
+                // needs longer spends every attempt early and none late. No jitter, because this is
+                // one subscription for one player rather than a fleet retrying in step.
+                wait *= 2
+            }
+        }
+    }
+
+    /**
+     * How long a broadcast is asked for before `unroutable` is taken at its word: **5 s**.
+     *
+     * It bounds a wait a viewer sits through, so it is chosen against their patience rather than
+     * against the relay: a broadcast that will not route in five seconds is one to report rather
+     * than keep asking about. The window observed in #367 was under three.
+     */
+    private const val ROUTABLE_BOUND_MS = 5_000L
+
+    /** The first retry interval; it doubles from here. Short, because a ready relay never waits. */
+    private const val FIRST_RETRY_MS = 100L
+
+    /** What MoQ calls the refusal a later ask can resolve. */
+    private const val UNROUTABLE = "unroutable"
+
+    /**
+     * The relay's own address: the URI's authority **and its namespace segment**, under `https`.
      *
      * // spec: draft-ietf-moq-transport §3.1 — a MoQ session over WebTransport is established by a
      * // WebTransport `CONNECT`, whose URI is an `https` one naming the relay. That is why the
      * // scheme handed to the bindings is `https` and not [MoqFrameSource.SCHEME]: `moq://` is the
      * // spelling a *broadcast* is written in on this side, and nothing puts it on a wire.
      *
-     * **The split between that origin and the broadcast name is not cited, because no public
-     * document states it.** The bindings take the two separately — a URL to `connect` and a name to
-     * `requestBroadcast` — and taking the authority for the first and the path for the second is a
-     * derivation from that signature and from how a broadcast address is written, not a rule read
-     * anywhere. It is the one thing in this module no test here can confirm, which is why it is
-     * labelled rather than asserted: #367 is the first run against a real relay, and its report is
-     * what corrects this or keeps it.
+     * ## Where the split falls, and how that was settled
+     *
+     * The bindings take the two apart — a URL to `connect` and a name to `requestBroadcast` — and
+     * **no public document states where a single address divides between them**, which is why this
+     * was labelled as a derivation rather than cited when it was written.
+     *
+     * #367 settled it against a live relay, and settled it the other way: the namespace belongs to
+     * the **session** and not to the broadcast name. Asked both ways against `cdn.moq.pro` with
+     * `anon` as the namespace, connecting to the bare authority and requesting `anon/<name>`
+     * announced **nothing** and answered `unroutable`, while connecting to `https://<authority>/anon`
+     * and requesting `<name>` announced the ten broadcasts that were live. MoQ's own web player
+     * takes the same two inputs the same way round, which is the corroboration rather than the
+     * evidence.
+     *
+     * ## Why the first path segment, and what that costs
+     *
+     * A broadcast name may itself contain `/` — `anon/doom/game/e1m1` was one of the ten — so the
+     * split cannot be "the last segment is the name". What a relay publishes under is one namespace
+     * segment, so the first one is taken and **everything after it is the name**, slashes included.
+     *
+     * The cost is stated rather than hidden: a deployment whose namespace is two segments deep is
+     * not addressable by a single `moq://` URI under this rule, and would need the two handed over
+     * separately the way the bindings take them. No such relay has been seen, and inventing a
+     * spelling for one before it exists would be a guess of exactly the kind this KDoc used to
+     * carry. A URI with no path at all connects to the bare authority and requests the empty name,
+     * which is what the relay will refuse as unroutable — the honest failure for an address that
+     * names no broadcast.
      */
     private fun connectUrlOf(uri: Uri): String = Uri.Builder()
         .scheme("https")
         .encodedAuthority(uri.encodedAuthority.orEmpty())
+        .encodedPath(namespaceOf(uri))
         .build()
         .toString()
 
-    /** The broadcast's name at that relay: the URI's path, without its leading separator. */
-    private fun broadcastPathOf(uri: Uri): String = uri.encodedPath.orEmpty().trimStart('/')
+    /**
+     * The broadcast's name at that relay: everything after the namespace segment, slashes kept.
+     *
+     * Empty where the URI carried no segment beyond the namespace, which the relay refuses. See
+     * [connectUrlOf] for why the division falls here.
+     */
+    private fun broadcastPathOf(uri: Uri): String =
+        pathOf(uri).substringAfter('/', missingDelimiterValue = "")
+
+    /** The one leading segment a relay publishes under, with its separator, or empty. */
+    private fun namespaceOf(uri: Uri): String =
+        pathOf(uri).substringBefore('/').let { if (it.isEmpty()) "" else "/$it" }
+
+    private fun pathOf(uri: Uri): String = uri.encodedPath.orEmpty().trimStart('/')
 }
 
 /** One `MoqSession` and the `MoqBroadcastConsumer` over it, closed in that order. */

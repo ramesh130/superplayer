@@ -1329,8 +1329,14 @@ on. What `check` runs is `FrameSourceConformance` — testkit's shipped suite, i
 rule 4's branches — over the pump driven by `ScriptedMoqRelay`, a scripted fake of that seam, whose
 tracks are **endless by default** because a fake that finishes inside `subscribe` satisfies
 obligation 9 by arithmetic. **That proves the bridge and proves nothing about MoQ**: no QUIC session
-is opened anywhere under `check`, no line of `UniffiMoqRelay` runs, and the address mapping it uses
-is read off MoQ's tooling rather than observed. #367 is the first real session and needs a device.
+is opened anywhere under `check` and no line of `UniffiMoqRelay` runs. #367 is the run that does,
+on a device, and it is the repository's one instrumented test — `MoqLiveSessionSmokeTest`, driven by
+`devicelab/moq-smoke`, with `docs/testing.md`'s *The first real MoQ session* as its record. It found
+two defects nothing here could: the namespace belongs to the **session URL** and not to the
+broadcast name, and a freshly connected session is refused `unroutable` for a broadcast that exists
+until it asks again, so the request is retried on that one refusal. What the relay is doing in that
+window is **not known**, and the second defect was first "fixed" by a mechanism the evidence did not
+support — that history is kept at `requestBroadcastWhenRoutable` because the mistake is instructive.
 These tests load no native library, so unlike `MoqFfiLinkageTest` they run on every host.
 Since #368 the phase has its measurement half, and it is two things. What MoQ **does** export is
 surfaced: `MoqFrameSource.statistics()` answers a `MoqSessionStatistics` — round trip time, the

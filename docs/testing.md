@@ -485,12 +485,47 @@ code, so a number taken here would describe the host. That is this document's ru
 that cannot support a measurement, applied before the number is taken rather than after it is
 published.
 
-**What the first run found**, on an API 36 `arm64-v8a` emulator against `cdn.moq.dev`: the library
-loaded, the QUIC session connected, the announce stream answered, and the connect-URL derivation is
-**correct** — the authority under `https` is what the relay accepts. The relay was publishing
-nothing at the time, under `anon/` or anywhere else, so **no frame has yet crossed this path and the
-codec-description branch a live publisher uses is still unobserved** — #340's caveat 2 stands
-exactly where it was. The dated finding is on #367 rather than here, because a relay's contents are
+**What the runs found**, on an API 36 `arm64-v8a` emulator. The library loads on an Android runtime,
+a QUIC session reaches a public relay, and a broadcast plays frames into the seam — and getting
+there corrected **two** defects in `UniffiMoqRelay` that nothing under `check` could have seen,
+because both produce a session that connects and then refuses every broadcast as `unroutable`:
+
+- **The namespace was on the wrong side of the address split.** `moq://host/ns/name` connected to
+  `https://host` and requested `ns/name`; the relay wants `https://host/ns` and `name`. The
+  namespace belongs to the session.
+- **The broadcast was requested at a moment the relay could not yet answer.** A freshly connected
+  session is refused `unroutable` for a name the relay's own announce stream lists; asked again a
+  moment later, on the same session, it resolves. The request is now retried on that one refusal,
+  bounded, so a ready relay pays nothing.
+
+**Two lessons about the diagnostic, worth more than either fix**, because the harness made the same
+class of error twice and caught itself only the second time.
+
+The first run concluded the address mapping was *correct* because the handshake completed. That was
+wrong: a MoQ session connects to a bare authority quite happily and it is routing that fails
+afterwards, so "connected" is no evidence about the split at all.
+
+The second was worse, because it was a fix rather than a reading. The retry above was first written
+as *"a relay routes only to a session subscribed to its announcements"*, and an announce stream was
+opened and held for the session's life to satisfy it. The comparison behind that claim ran two arms
+— silent-and-immediate against listening-and-waiting — so "listening" and "waiting" predicted the
+same result and the wrong one was written down as mechanism. A third arm settles it: **waiting
+without listening succeeds exactly as listening does.** What the relay is doing in that window is
+still unknown, and the code now says so rather than inventing a reason.
+
+The rule both teach is the same one: **vary one thing per arm, and prefer a control you expect to
+fail.** A harness that reports only whether its one configured attempt worked will confirm a bug
+rather than find it.
+
+Against `cdn.moq.pro/anon`, once both were fixed: one video track, `hev1.1.6.L180.80`, its
+configuration **in band** with no description — thirty frames and one keyframe in a ten-second
+window, a 110 ms round trip out of `MoqSessionStatistics`, and a cancellation after which no thread
+survived and no further frame arrived. That is the first time ADR-0018 rule 4's in-band branch has
+been exercised by a real publisher rather than by #340's recorded bytes, and the first HEVC of any
+kind: **#340's caveat 2 is narrowed rather than closed** — `hev1` is now observed, while `hvc1`'s
+`hvcC` record and `av1C` remain source-derived and unobserved.
+
+Dated, relay-specific observations belong on #367 rather than here, because what a relay carries is
 true on a day and this document is not.
 
 ## Synthetic media, not fixtures

@@ -121,13 +121,7 @@ class MoqLiveSessionSmokeTest {
                 // subscribes successfully opens one session, which is what #367 asked for. A run
                 // that does not is already a finding, and the finding is worth more with the
                 // relay's own answer in it than without.
-                val prefix = uri.encodedPath.orEmpty().trimStart('/').substringBefore('/')
-                val discovery = MoqRelayDiscovery.announcedUnder(
-                    connectUrl = "https://${uri.encodedAuthority.orEmpty()}",
-                    prefix = if (prefix.isEmpty()) "" else "$prefix/",
-                    timeoutMs = DISCOVERY_BOUND_MS,
-                )
-                observations.record("relay.announcedUnder[$prefix]", discovery.describe())
+                val discovery = reportRelayAndMappings(uri, observations)
                 observations.emit()
 
                 // A relay that answered and is publishing nothing is an **absent precondition**,
@@ -142,10 +136,10 @@ class MoqLiveSessionSmokeTest {
                 // The finding is emitted **above** this line either way, so a skip is still a
                 // report — which is #367's "the artifact is the observation and not the assertion",
                 // taken literally.
-                val relayIsEmpty = discovery is MoqRelayDiscovery.Result.Answered && discovery.paths.isEmpty()
+                val relayIsEmpty = discovery.isEmptyAnswer
                 assumeTrue(
                     "The relay at ${uri.encodedAuthority} answered and announced no broadcast under " +
-                        "\"$prefix\", so there was nothing to subscribe to. The session itself " +
+                        "\"${namespaceOf(uri)}\", so there was nothing to subscribe to. The session itself " +
                         "connected: see the $TAG block. Point this at a live broadcast with " +
                         "--broadcast to observe frames.",
                     !relayIsEmpty,
@@ -154,7 +148,7 @@ class MoqLiveSessionSmokeTest {
                 fail(
                     "No tracks were declared within ${CONNECT_BOUND_MS}ms. The session reported " +
                         "${sink.failureDescription() ?: "nothing"}, and asking the relay what it " +
-                        "announces under \"$prefix\" said: ${discovery.describe()}. " +
+                        "announces under \"${namespaceOf(uri)}\" said: ${discovery.describe()}. " +
                         "The logcat block under $TAG has what was reached.",
                 )
             }
@@ -211,6 +205,11 @@ class MoqLiveSessionSmokeTest {
         val framesAfterQuiet = sink.frames.get()
         observations.record("frames.afterCancel", "$framesAtCancel then $framesAfterQuiet")
 
+        if (argument("probeMappings", "false") == "true") {
+            // After the real subscription has been cancelled, so the two never share a session.
+            reportRelayAndMappings(uri, observations)
+        }
+
         observations.emit()
 
         assertTrue(
@@ -245,6 +244,114 @@ class MoqLiveSessionSmokeTest {
             observations.record("track[$index].codec", track.codec)
             observations.record("track[$index].configuration", configuration)
         }
+    }
+
+    /**
+     * Asks the relay what it announces, and asks each candidate address mapping which one routes.
+     *
+     * Run on the failing path, and on demand through `-e probeMappings true` even when the
+     * subscription succeeded — because the interesting comparison is against a broadcast that is
+     * **live**, and on that broadcast the failing path is never taken. An experiment reachable only
+     * when the thing under test is broken can compare a working arm against nothing.
+     */
+    private fun reportRelayAndMappings(uri: Uri, observations: Observations): MoqRelayDiscovery.Announced {
+        val prefix = uri.encodedPath.orEmpty().trimStart('/').substringBefore('/')
+        // The **corrected** mapping, which is what `UniffiMoqRelay` now uses. Asking the
+        // bare authority here — as this probe did until the review caught it — reports a
+        // live relay as empty and silently skips the run, because the namespace is in the
+        // session URL and a listing taken without it sees nothing.
+        val discovery = MoqRelayDiscovery.announcedUnder(
+            connectUrl = "https://${uri.encodedAuthority.orEmpty()}" +
+                if (prefix.isEmpty()) "" else "/$prefix",
+            prefix = "",
+            timeoutMs = DISCOVERY_BOUND_MS,
+        )
+        observations.record("relay.announcedUnder[$prefix]", discovery.describe())
+
+        // The address mapping, asked as a question rather than assumed — and asked again
+        // after it was corrected, because the reason it stays here is that a relay is the
+        // only thing that can answer it. `UniffiMoqRelay` now puts the namespace in the
+        // session URL and requests the remainder; the other split is kept as the control
+        // that shows why, and a relay that ever answered the other way would show here
+        // rather than in a support ticket.
+        //
+        // Written to report rather than to assert: which one routes is a fact about MoQ,
+        // not about this repository, and a test that hard-coded the answer would be
+        // re-asserting its own guess.
+        observations.record("mapping.candidates", "asking the relay which one routes")
+        candidateMappings(uri).forEach { (label, candidate) ->
+            val answer = MoqRelayDiscovery.announcedUnder(
+                connectUrl = candidate.connectUrl,
+                prefix = "",
+                timeoutMs = DISCOVERY_BOUND_MS,
+            )
+            observations.record(
+                "mapping[$label].announced",
+                "connect=${candidate.connectUrl} -> ${answer.describe()}",
+            )
+            // Asked as well as listed, because the two can disagree: a name in the announce
+            // stream that `requestBroadcast` still refuses means the split is wrong
+            // somewhere other than where the listing suggests. Both with and without the
+            // announce stream open, since a relay may route only what this session has
+            // already been told about.
+            // Three arms, because two could not tell the two explanations apart. The
+            // first version of this matrix let the listening arm wait and the silent arm
+            // not, so "listening routes" and "settling routes" predicted the same result
+            // and the difference was read as the former. `settling` is the control that
+            // separates them: it waits exactly as long and listens to nothing.
+            listOf(
+                Arm("immediate", announceFirst = false, settleMs = 0L),
+                Arm("settling", announceFirst = false, settleMs = DISCOVERY_BOUND_MS),
+                Arm("listening", announceFirst = true, settleMs = DISCOVERY_BOUND_MS),
+            ).forEach { arm ->
+                observations.record(
+                    "mapping[$label].requested(${arm.label})",
+                    "broadcast=${candidate.broadcastName} -> " +
+                        MoqRelayDiscovery.probeBroadcast(
+                            connectUrl = candidate.connectUrl,
+                            name = candidate.broadcastName,
+                            timeoutMs = DISCOVERY_BOUND_MS,
+                            announceFirst = arm.announceFirst,
+                            settleMs = arm.settleMs,
+                        ),
+                )
+            }
+        }
+        return discovery
+    }
+
+    /** The one leading path segment a relay publishes under, which the session URL carries. */
+    private fun namespaceOf(uri: Uri): String =
+        uri.encodedPath.orEmpty().trimStart('/').substringBefore('/')
+
+    /** One arm of the routing experiment: what it waits for, and whether it listens. */
+    private data class Arm(val label: String, val announceFirst: Boolean, val settleMs: Long)
+
+    /** One way of splitting a `moq://` URI into the two things the bindings take separately. */
+    private data class Mapping(val connectUrl: String, val broadcastName: String)
+
+    /**
+     * The ways this URI could be split, in the order they are worth trying.
+     *
+     * `authority-only` is what [UniffiMoqRelay] does today. `authority-plus-first-segment` is what
+     * MoQ's own web player does with the same address, taking the namespace into the session. A
+     * URI with no path beyond a single segment collapses the two, and the duplicate is dropped so
+     * the report does not show one candidate twice.
+     */
+    private fun candidateMappings(uri: Uri): List<Pair<String, Mapping>> {
+        val authority = uri.encodedAuthority.orEmpty()
+        val path = uri.encodedPath.orEmpty().trimStart('/')
+        val firstSegment = path.substringBefore('/')
+        val rest = path.substringAfter('/', missingDelimiterValue = "")
+
+        val candidates = mutableListOf<Pair<String, Mapping>>(
+            "authority-only" to Mapping("https://$authority", path),
+        )
+        if (rest.isNotEmpty()) {
+            candidates += "authority-plus-first-segment" to
+                Mapping("https://$authority/$firstSegment", rest)
+        }
+        return candidates
     }
 
     /** The threads [MoqFrameSource] names after the broadcast's host, if any are still alive. */
@@ -415,7 +522,7 @@ class MoqLiveSessionSmokeTest {
          * that finds no broadcast is a finding about that relay rather than a failure of this code,
          * which is what the two separated waits above exist to say.
          */
-        const val DEFAULT_BROADCAST = "moq://cdn.moq.dev/anon"
+        const val DEFAULT_BROADCAST = "moq://cdn.moq.pro/anon/catshark.hang"
 
         /**
          * How long a connect, a catalog and a declaration are waited for: **15 s**.

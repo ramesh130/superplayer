@@ -89,6 +89,10 @@ them under `Added` would be worse than stating them here:
   omission — no cache, no CMCD, no downloads, no bandwidth estimate and none of the fallback
   ladder's load-error rungs (rule 6) — and a start position it cannot honour is refused with
   `RealtimeStreamNotSeekableException` rather than coerced to the live edge (rule 5). The codec a
+  track also states its **coded size** where it knows one, as a `CodedSize` that is two positive
+  dimensions or absent — a decoder cannot be configured without it, and a transport that omits one
+  it knows produces a session that connects, subscribes, delivers frames and then fails at the
+  first keyframe naming the device's decoder rather than the omission (#353). The codec a
   transport declares is mapped from one table over **both** spellings the transports use — an RFC
   6381 codecs string and an SDP encoding name — covering H.264, H.265, VP9, AV1, AAC and Opus, with
   profile and level extracted where the string carries them; a string nothing maps is refused with

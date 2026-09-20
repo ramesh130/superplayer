@@ -112,7 +112,8 @@ internal object DeclaredCatalogs {
         codec: String,
         description: ByteArray?,
         container: MoqContainer = MoqContainer.Loc,
-    ): MoqCatalog = catalog(video = mapOf(trackName to video(codec, description, container)))
+        coded: MoqDimensions? = MoqDimensions(width = 1280u, height = 720u),
+    ): MoqCatalog = catalog(video = mapOf(trackName to video(codec, description, container, coded = coded)))
 
     /** A well-formed `MoqCatalog` carrying one audio rendition and no video. */
     fun audioOnly(
@@ -139,23 +140,28 @@ internal object DeclaredCatalogs {
     )
 
     /**
-     * One video rendition. Everything but the codec and the description is a plausible constant: a
-     * declaration this module reads none of, kept here so that a fixture is a whole rendition and a
-     * reader is not left wondering whether an unset field mattered.
+     * One video rendition. The codec, the description and the **coded size** are what this module
+     * reads; the rest is a plausible constant, kept here so that a fixture is a whole rendition and
+     * a reader is not left wondering whether an unset field mattered.
+     *
+     * [coded] is a parameter rather than a constant because its absence is a case: a publisher may
+     * declare no size, and what the mapping does with that is asserted rather than assumed
+     * (#353). It defaults to 720p, an ordinary rendition.
      */
     fun video(
         codec: String,
         description: ByteArray?,
         container: MoqContainer = MoqContainer.Loc,
         stalled: Boolean = false,
+        coded: MoqDimensions? = MoqDimensions(width = 1280u, height = 720u),
     ): MoqVideo = MoqVideo(
         codec = codec,
         description = description,
         container = container,
         stalled = stalled,
-        // 720p30 at 2 Mbps: an ordinary rendition, so that a fixture is a whole declaration. The
-        // mapping reads none of these three, which is what makes any plausible value do.
-        coded = MoqDimensions(width = 1280u, height = 720u),
+        coded = coded,
+        // Read by nothing here: `displayAspect` is presentation, and neither the bitrate nor the
+        // frame rate reaches a decoder's configuration (ADR-0018 rule 1).
         displayAspect = null,
         bitrate = 2_000_000uL,
         framerate = 30.0,

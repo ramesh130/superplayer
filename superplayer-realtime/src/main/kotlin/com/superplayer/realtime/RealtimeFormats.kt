@@ -19,6 +19,7 @@ package com.superplayer.realtime
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
+import com.superplayer.core.RealtimeTrack
 import com.superplayer.core.UnsupportedRealtimeCodecException
 import java.util.Locale
 
@@ -58,10 +59,16 @@ internal object RealtimeFormats {
      * @throws UnsupportedRealtimeCodecException if [codec] is neither a mapped RFC 6381 string nor a
      *   mapped SDP encoding name, or is a mapped one whose parameters are malformed.
      */
-    fun formatFor(codec: String): Format {
+    fun formatFor(codec: String, codedSize: RealtimeTrack.CodedSize?): Format {
         val resolved = resolve(codec) ?: throw UnsupportedRealtimeCodecException(codec)
 
         val builder = Format.Builder().setSampleMimeType(resolved.mimeType)
+
+        // Set only when the transport stated a size, and necessarily as a pair — `CodedSize`
+        // cannot be half-built, so there is no combination to branch on here. Left alone otherwise:
+        // `Format.Builder` already defaults both to `Format.NO_VALUE`, so an unstated size writes
+        // nothing rather than writing a placeholder that would read as a claim.
+        codedSize?.let { builder.setWidth(it.width).setHeight(it.height) }
         if (resolved.token !in SDP_ENCODING_NAMES) {
             // `Format.codecs` is RFC 6381's field, so only an RFC 6381 string goes in it. An SDP
             // encoding name is left out rather than written there under a spelling nothing reads:

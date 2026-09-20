@@ -19,6 +19,7 @@ package com.superplayer.moq
 import com.superplayer.core.RealtimeTrack
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -293,5 +294,100 @@ class MoqCatalogTracksTest {
 
         assertEquals("the catalog's own key, which subscribeMedia takes", "video/1", declared.trackName)
         assertSame("the container the publisher declared", MoqContainer.Legacy, declared.container)
+    }
+
+    /**
+     * The coded size crosses the seam, because a decoder cannot be configured without it.
+     *
+     * This is the assertion #353 was missing, and its absence was not a gap in coverage but a
+     * defect that no unit test could have caught on its own: the mapping compiled, the conformance
+     * suite passed, frames arrived, and playback then died at the first keyframe with
+     * `MediaCodec.configure` refusing a format sized `-1 x -1` and an error naming the decoder
+     * rather than the omission. It took a live broadcast to see it, so what is pinned here is the
+     * fact that made it possible to fix once.
+     */
+    @Test
+    fun theCodedSizeIsCarriedSoADecoderCanBeConfigured() {
+        val catalog = DeclaredCatalogs.videoOnly(
+            trackName = "video/1",
+            codec = DeclaredCatalogs.OBSERVED_AVC3_CODEC,
+            description = null,
+            coded = uniffi.moq.MoqDimensions(width = 3520u, height = 3520u),
+        )
+
+        val track = MoqCatalogTracks.declaredTracksOf(catalog).single().track
+
+        // The observed broadcast's own square size, which is what a fisheye publisher sends and a
+        // reminder that a rendition is not obliged to be 16:9.
+        assertEquals("the size the publisher declared", RealtimeTrack.CodedSize(3520, 3520), track.codedSize)
+    }
+
+    /**
+     * A publisher that declared no size says nothing, rather than saying zero.
+     *
+     * `DIMENSION_UNKNOWN` and not `0`, because the two reach a decoder differently: an unset pair
+     * is what `Format` already carries and lets an in-band stream configure from its own parameter
+     * sets where the device tolerates it, while a zero is a positive claim that the picture has no
+     * area and is refused everywhere. The seam has a value for "not stated" for this reason.
+     */
+    @Test
+    fun aRenditionDeclaringNoSizeCarriesTheUnknownRatherThanAZero() {
+        val catalog = DeclaredCatalogs.videoOnly(
+            trackName = "video/1",
+            codec = DeclaredCatalogs.OBSERVED_AVC3_CODEC,
+            description = null,
+            coded = null,
+        )
+
+        val track = MoqCatalogTracks.declaredTracksOf(catalog).single().track
+
+        assertNull("a publisher that declared no size says nothing", track.codedSize)
+    }
+
+    /**
+     * A dimension a decoder cannot use is refused with the track named, rather than narrowed.
+     *
+     * The bindings carry these unsigned, so a declaration past `Int.MAX_VALUE` would wrap to a
+     * negative if it were simply converted — and a publisher may declare a plain zero. Both would
+     * otherwise reach `MediaCodec.configure` as a claim about the picture and fail there, naming
+     * the device's decoder rather than the catalog that was wrong. This is #345's "refused rather
+     * than read past" applied to a number.
+     */
+    @Test
+    fun aDimensionNoDecoderCouldUseIsRefusedWithTheTrackNamed() {
+        listOf(
+            "a zero" to uniffi.moq.MoqDimensions(width = 0u, height = 720u),
+            "a height of zero" to uniffi.moq.MoqDimensions(width = 1280u, height = 0u),
+            "a width past Int.MAX_VALUE" to uniffi.moq.MoqDimensions(width = 4_294_967_295u, height = 720u),
+        ).forEach { (what, dimensions) ->
+            val catalog = DeclaredCatalogs.videoOnly(
+                trackName = "video/1",
+                codec = DeclaredCatalogs.OBSERVED_AVC3_CODEC,
+                description = null,
+                coded = dimensions,
+            )
+
+            val refusal = assertThrows(what, IOException::class.java) {
+                MoqCatalogTracks.declaredTracksOf(catalog)
+            }
+            assertTrue(
+                "$what names the track it was declared on: ${refusal.message}",
+                refusal.message.orEmpty().contains("video/1"),
+            )
+        }
+    }
+
+    /** An audio track carries no size, which is the honest answer rather than a defaulted one. */
+    @Test
+    fun anAudioTrackCarriesNoCodedSize() {
+        val catalog = DeclaredCatalogs.audioOnly(
+            trackName = "audio",
+            codec = DeclaredCatalogs.SYNTHESIZED_AAC_CODEC,
+            description = null,
+        )
+
+        val track = MoqCatalogTracks.declaredTracksOf(catalog).single().track
+
+        assertNull("audio has no picture to measure", track.codedSize)
     }
 }

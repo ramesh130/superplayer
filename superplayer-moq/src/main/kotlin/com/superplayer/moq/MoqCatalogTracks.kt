@@ -19,6 +19,7 @@ package com.superplayer.moq
 import com.superplayer.core.RealtimeTrack
 import uniffi.moq.MoqCatalog
 import uniffi.moq.MoqContainer
+import uniffi.moq.MoqDimensions
 import java.io.IOException
 
 /**
@@ -124,7 +125,28 @@ internal object MoqCatalogTracks {
                     MoqDeclaredTrack(
                         trackName,
                         video.container,
-                        RealtimeTrack(video.codec, configurationOf(video.description)),
+                        RealtimeTrack(
+                            video.codec,
+                            configurationOf(video.description),
+                            // The **coded** size, which is what a decoder is configured with;
+                            // `displayAspect` is presentation and is read by nothing here
+                            // (ADR-0018 rule 1 — nothing in this library decodes or scales).
+                            //
+                            // Carried because leaving it out is a silent failure rather than a
+                            // missing feature: `MediaCodec.configure` refuses a video format with
+                            // no size, so a broadcast whose catalog stated one would connect,
+                            // subscribe, deliver frames and then die at the first keyframe naming
+                            // the decoder. #353 observed exactly that on `hev1.1.6.L180.80`.
+                            //
+                            // A declaration that does not hold together is **refused by name**
+                            // rather than narrowed into one that does: the bindings carry these
+                            // unsigned, so a publisher declaring a dimension past `Int.MAX_VALUE`
+                            // would otherwise wrap to a negative and travel to `MediaCodec` as a
+                            // claim about the picture. `CodedSize` rejects anything not positive,
+                            // and `codedSizeOf` turns that into this module's own refusal, which
+                            // is #345's rule applied to a number instead of to bytes.
+                            codedSize = codedSizeOf(video.coded, trackName),
+                        ),
                     ),
                 )
             }
@@ -161,6 +183,30 @@ internal object MoqCatalogTracks {
      * [RealtimeTrack.CodecConfiguration.Record] of no bytes for the same reason: deciding what an
      * empty record means is a judgement about bytes, and this module makes none.
      */
+
+    /**
+     * [declared] as the seam's own [RealtimeTrack.CodedSize], or null where none was declared.
+     *
+     * The narrowing is checked rather than assumed. A `UInt` past `Int.MAX_VALUE` becomes a
+     * negative, and a publisher may declare a zero; both are refused here with the track named, so
+     * the failure arrives as a statement about the catalog instead of as a decoder that would not
+     * start. `IOException` and not one of the phase's three typed refusals, for the reason an empty
+     * catalog is also a plain one: those three are about **bytes**, and a dimension is not bytes.
+     */
+    private fun codedSizeOf(declared: MoqDimensions?, trackName: String): RealtimeTrack.CodedSize? {
+        if (declared == null) return null
+        val width = declared.width.toLong()
+        val height = declared.height.toLong()
+        if (width !in 1..Int.MAX_VALUE.toLong() || height !in 1..Int.MAX_VALUE.toLong()) {
+            throw IOException(
+                "The MoQ catalog declares track \"$trackName\" as ${width}x$height, which is not a " +
+                    "size a decoder can be configured with. A publisher that does not know its " +
+                    "resolution declares none.",
+            )
+        }
+        return RealtimeTrack.CodedSize(width.toInt(), height.toInt())
+    }
+
     private fun configurationOf(description: ByteArray?): RealtimeTrack.CodecConfiguration =
         description?.let { RealtimeTrack.CodecConfiguration.Record(it) }
             ?: RealtimeTrack.CodecConfiguration.InBand

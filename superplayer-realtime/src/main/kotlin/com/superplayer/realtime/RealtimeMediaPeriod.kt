@@ -315,7 +315,7 @@ internal class RealtimeMediaPeriod(
             val mapped: Format
             val configuration: TrackConfiguration
             try {
-                mapped = RealtimeFormats.formatFor(track.codec)
+                mapped = RealtimeFormats.formatFor(track.codec, track.codedSize)
                 // Keyed on the codec's fourcc and never on the container (ADR-0018 rule 4, #345).
                 // What comes back is the initialization data a decoder is configured with and, for
                 // a fourcc whose samples are length-prefixed, the length size the record declared.

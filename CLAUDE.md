@@ -9,7 +9,7 @@ Four Gradle builds, not one. Mistaking them for a single build is the usual firs
 
 | Build | What it is |
 | --- | --- |
-| root | the 15 `superplayer-*` library modules, listed in `settings.gradle.kts` — 14 published, and `superplayer-moq` deliberately not (ADR-0017 rule 1's #364 addendum) |
+| root | the 14 `superplayer-*` library modules, listed in `settings.gradle.kts` — 13 published, and `superplayer-moq` deliberately not (ADR-0017 rule 1's #364 addendum) |
 | `build-logic/` | an **included build** holding the convention plugins every module applies |
 | `demo/` | a **separate** build resolving the library from published Maven coordinates |
 | `benchmark/` | a **separate** build, the same way, running `PRD.md` §6's matrix |

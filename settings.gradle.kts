@@ -52,7 +52,6 @@ include(":superplayer-offline")
 include(":superplayer-diagnostics")
 include(":superplayer-tv")
 include(":superplayer-realtime")
-include(":superplayer-ui")
 include(":superplayer-testkit")
 include(":superplayer-testmedia")
 

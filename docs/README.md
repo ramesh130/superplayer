@@ -32,7 +32,10 @@ one says so.
 | [`releasing.md`](releasing.md) | Cutting a release with `./gradlew release`: the order, the six refusals, where the artefacts go and where they do not, and how to undo one |
 | [`throughput-traces.md`](throughput-traces.md) | The network-trace format the test harness replays, and how a public dataset comes in |
 
-The repository root carries six more: `CONTEXT.md` is the vocabulary the code, the ADRs and the
+The repository root carries seven more. [`README.md`](../README.md) is the front door and the only
+one written for somebody who has not decided to be here yet: what the library is, what it does not
+yet promise, and which of these documents to open next. The rest are for a reader already inside.
+`CONTEXT.md` is the vocabulary the code, the ADRs and the
 issues share; `CONTRIBUTING.md` is the clean-room discipline and the citation rule every non-obvious
 algorithm is held to; `PRD.md` is the problem inventory and the phase table the issues are cut from;
 and `CLAUDE.md` is the orientation for someone — or something — about to change the library, with

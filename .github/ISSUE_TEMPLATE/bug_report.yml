@@ -1,0 +1,160 @@
+# A bug report that can actually be acted on.
+#
+# The fields are not a generic bug form. This library ships two artefacts built for exactly this
+# moment — a session bundle (docs/session-bundle.md) and a `MediaSourceDoctor` report
+# (docs/media-source-doctor.md) — and a report carrying either is worth more than a paragraph of
+# prose, because both are redacted by construction and can travel in public.
+#
+# Only five fields are required. Every other one is a field that has, at some point, been the
+# difference between a fix and a guess, but demanding all of them would cost more reports than it
+# saves.
+name: Bug report
+description: Playback that fails, stalls, or behaves differently from what the docs say
+labels: ["bug"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time.
+
+        **Before filing:** this library is pre-1.0 and its device coverage is thin — see the
+        *Status* section of the [README](https://github.com/ramesh130/superplayer/blob/main/README.md). A behaviour that only differs
+        from Media3's own default may be deliberate;
+        [`docs/adr/README.md`](https://github.com/ramesh130/superplayer/blob/main/docs/adr/README.md) is where the departures are argued.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, what you got instead, and how often it happens.
+      placeholder: |
+        Playback of a live HLS stream stalls after roughly 30 seconds and never recovers.
+        Expected it to keep playing, or to fail with a typed error. Happens on every attempt.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: stock-exoplayer
+    attributes:
+      label: Does it also happen on a stock ExoPlayer?
+      description: >
+        The single most useful thing in this report. SuperPlayer delegates to a wrapped ExoPlayer,
+        so a bug that reproduces on a stock one belongs upstream in Media3 and we would be fixing
+        the wrong layer. `player.exoPlayer` gets you the wrapped instance, and the demo's screens
+        are a quick way to compare. "Not tried" is an honest answer — say so rather than guessing.
+      options:
+        - Not tried
+        - "No — only SuperPlayer is affected"
+        - "Yes — a stock ExoPlayer does it too"
+        - Not applicable (the bug is in a SuperPlayer-only API)
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: SuperPlayer version
+      description: >
+        The version you resolved, or the commit SHA if you built it yourself. Nothing is published
+        to a remote repository yet, so a SHA is the usual answer.
+      placeholder: "0.1.0-SNAPSHOT, built from 71f77ed"
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Device and Android version
+      description: Model, Android version and API level. Say if it is an emulator, and which ABI.
+      placeholder: "Pixel 7, Android 15 (API 35), arm64-v8a — also on the API 36 emulator"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: modules
+    attributes:
+      label: Which modules is the player built with?
+      description: >
+        This changes the answer more than anything else in the report. Every optional module is a
+        seam that is empty unless you filled it, and a player built without one takes a different
+        path — so "core only" and "core plus resilience" are two different players.
+      options:
+        - label: "`superplayer-core` only"
+        - label: "`superplayer-abr` — `setPolicy(AdaptivePolicy…)`"
+        - label: "`superplayer-cache` — `setCache`"
+        - label: "`superplayer-preload` — a `PreloadCoordinator` on a `PlayerPool`"
+        - label: "`superplayer-resilience` — `setResilience`"
+        - label: "`superplayer-drm` — `setDrm`"
+        - label: "`superplayer-offline` — a download store"
+        - label: "`superplayer-tv` — `setOutput`"
+        - label: "`superplayer-telemetry` — `setTelemetry`"
+        - label: "`superplayer-diagnostics` — the doctor or the debug HUD"
+        - label: "`superplayer-realtime` / `superplayer-moq` — `setRealtime`"
+        - label: "A custom `HttpTransport` through `setHttpStack`"
+
+  - type: textarea
+    id: content
+    attributes:
+      label: The content
+      description: >
+        Protocol (HLS, DASH, progressive, `moq://`), live or on-demand, clear or protected, and the
+        `PlaybackProfile` in force. A public URL that reproduces it is ideal; if the stream is not
+        public, say what is unusual about it — a short live window, a multi-period manifest, an
+        audio-only rendition, a signed URL.
+      placeholder: |
+        Live HLS, clear, LIVE_LINEAR profile. Not public. Six-segment live window,
+        EXT-X-DISCONTINUITY every few minutes, segments on a different host from the playlist.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: How the player is built
+      description: |
+        The builder calls, as code. This is usually shorter and more precise than describing it,
+        and the ordering of builder calls has mattered before. Something like:
+
+        ```kotlin
+        val player = SuperPlayer.Builder(context)
+            .setProfile(PlaybackProfile.LIVE_LINEAR)
+            .setResilience(Resilience.standard())
+            .build()
+        ```
+      render: kotlin
+
+  - type: textarea
+    id: session-bundle
+    attributes:
+      label: Session bundle
+      description: >
+        If you have `superplayer-diagnostics`, this is the best evidence you can attach and it is
+        **safe to paste in public**: the bundle is redacted by construction — signed URLs,
+        credentials, licences, session ids and `Build` strings are all removed before it is
+        written. See
+        [`docs/session-bundle.md`](https://github.com/ramesh130/superplayer/blob/main/docs/session-bundle.md) for how to produce one and
+        [`docs/reading-a-session-bundle.md`](https://github.com/ramesh130/superplayer/blob/main/docs/reading-a-session-bundle.md) for what
+        it says.
+      render: text
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: MediaSourceDoctor report
+      description: >
+        If the stream itself may be at fault, `MediaSourceDoctor.examine(request)` names the defect
+        — and `examine(request, player.classify(error))` adds what the session died of.
+        [`docs/media-source-doctor.md`](https://github.com/ramesh130/superplayer/blob/main/docs/media-source-doctor.md) lists every defect
+        it can name. A clean report is useful too: it rules the manifest out.
+      render: text
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or the error
+      description: >
+        The `SuperPlayerError` if there was one — its cause class, `userMessageKey` and the rungs
+        tried — or logcat filtered to the `SuperPlayerQoE` tag if you use `LogcatSink`. Please
+        redact anything a bundle would have removed for you: signed URLs and credentials especially.
+      render: shell

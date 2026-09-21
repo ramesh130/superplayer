@@ -764,6 +764,26 @@ private class RealtimeDispatchingMediaSourceFactory(
     override fun setLoadErrorHandlingPolicy(policy: LoadErrorHandlingPolicy): MediaSource.Factory =
         apply { delegate.setLoadErrorHandlingPolicy(policy) }
 
+    /**
+     * [delegate]'s answer, unwidened — the one method here that reports rather than forwards, and
+     * the reason it adds nothing is worth stating rather than leaving to look like an oversight
+     * (#350).
+     *
+     * A value cannot be added. `C.CONTENT_TYPE_*` is Media3's own closed vocabulary, and an `int`
+     * outside it is not merely unrecognised: `DefaultMediaSourceFactory`'s supplier loader answers
+     * one with `IllegalArgumentException("Unrecognized contentType: …")`, so a realtime constant
+     * invented here would break whoever took this factory at its word.
+     *
+     * Nothing about the realtime branch is gated by the answer either, because [createMediaSource]
+     * resolves on the scheme *before* any content type is inferred. What the answer does describe is
+     * where a realtime URI would land if it ever reached the inference — `C.CONTENT_TYPE_OTHER`,
+     * which is always in this array whatever the classpath holds, since Media3 loads the DASH,
+     * SmoothStreaming, HLS and RTSP suppliers reflectively and drops the ones whose module is
+     * absent, while the progressive one is constructed directly.
+     *
+     * ref: androidx.media3.exoplayer.source.DefaultMediaSourceFactory.DelegateFactoryLoader
+     * (Media3 1.11), `maybeLoadSupplier` and `loadSupplier`.
+     */
     override fun getSupportedTypes(): IntArray = delegate.supportedTypes
 
     override fun createMediaSource(mediaItem: MediaItem): MediaSource {

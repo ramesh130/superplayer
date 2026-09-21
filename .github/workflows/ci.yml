@@ -1,18 +1,32 @@
 # Continuous integration: build, test, lint.
 #
-# Runs on demand only, from the Actions tab or `gh workflow run ci.yml --ref <branch>`, once a
-# phase is complete. Per-push runs were switched off to stay inside the GitHub Actions minutes
-# budget, so between phases `./gradlew assemble check` locally is the only gate.
-#
 # The steps are the same commands a contributor runs locally; CONTRIBUTING.md lists them and
 # is the place that explains what belongs in `check`. The narrower steps before `check` exist
 # only so a failure is attributable at a glance in the run log.
 name: CI
 
-# To restore per-change runs, bring back `push:` and `pull_request:` beside the dispatch
-# trigger. Both were there: a push to a branch with no pull request still needs checking, and
-# a pull request from a fork is not covered by `push`.
+# Per-change runs, restored now that the repository is one other people can send changes to.
+#
+# They were switched off while this was a private repository, to stay inside the Actions
+# minutes budget, which made `./gradlew assemble check` on the author's own machine the only
+# gate. That is a reasonable arrangement for one person and an unreasonable thing to ask of a
+# contributor: nobody should have to take "it passed locally" on trust, in either direction.
+# The budget argument also lapses with privacy — standard runners are free for public
+# repositories — so the constraint that justified the dispatch-only trigger no longer exists.
+#
+# `pull_request` rather than `push` alone is the load-bearing half: a pull request from a fork
+# is not a push to this repository and `push` never sees one, so a fork's change would arrive
+# ungated. `push` is restricted to the default branch, where it checks the *result* of a merge
+# rather than the branch that was merged — a rebase replays commits onto a head none of them
+# was tested against, and this is what catches a replay that lands broken. Leaving `push`
+# unrestricted would instead run every topic branch twice, once as a push and once as its own
+# pull request, for one answer. A branch with no pull request open is still reachable by hand
+# through `workflow_dispatch`.
 on:
+  push:
+    branches:
+      - main
+  pull_request:
   workflow_dispatch:
 
 # One in-flight run per ref. A new push makes the previous run's answer irrelevant.

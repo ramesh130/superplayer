@@ -114,6 +114,15 @@ prior publish, and they are the only consumers a cut release has today. A versio
 is a version this repository can *state* — a tag, a changelog row, a recorded API surface — not one
 an adopter can add to their build.
 
+**A local-only module rides along, and is covered by none of it.** `publishToMavenLocal` is what
+cuts a release, and `ModulePublication.LOCAL_ONLY` modules are published by that same task — so
+`superplayer-moq` lands in `~/.m2` at the release version like everything else. It is *not* part of
+the release: no API surface is recorded for it, `CHANGELOG.md` does not describe it,
+`docs/compatibility.md` reads **Not published** for it, and ADR-0017 rule 1's "every published
+module at one version" does not reach it. It is there because `demo/` resolves it, on this machine,
+to play a MoQ broadcast (#353). Do not read a version number on such an artifact as a promise about
+it; the version is the catalog's, and it is the only thing the two share.
+
 ## Undoing a release cut wrongly
 
 Nothing has been pushed, so this is local surgery and it is complete:

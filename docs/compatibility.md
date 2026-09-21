@@ -80,9 +80,9 @@ Every module below but one is published, and each published module's public API 
 validated on every build ([`api-surface.md`](api-surface.md)). "Stable" therefore means the same
 thing for all of them — the API is the file, and a change to it is visible and reviewed — and the
 pre-1.0 caveat above applies to every row equally. What differs between rows is what the module is
-*for*. The exception is the row marked **Not published**, which has no artifact and therefore no
-tracked surface either; it is listed because a module you can see in this repository and cannot
-resolve is worth being told about rather than left to be discovered.
+*for*. The exception is the row marked **Not published**, which has no tracked surface, because there
+is no coordinate you can resolve; it is listed because a module you can see in this repository and
+cannot resolve is worth being told about rather than left to be discovered.
 
 | Module | Status | What you may depend on |
 | --- | --- | --- |
@@ -99,7 +99,7 @@ resolve is worth being told about rather than left to be discovered.
 | `superplayer-tv` | **Public** | `TvOutput` and `TvPlaybackControls` |
 | `superplayer-diagnostics` | **Public** | `MediaSourceDoctor` ([`media-source-doctor.md`](media-source-doctor.md)), `SessionBundle` ([`session-bundle.md`](session-bundle.md)) and `DebugHud` |
 | `superplayer-realtime` | **Public** | `Realtime.transport`. The `FrameSource` a realtime transport implements is `superplayer-core`'s ([ADR-0018](adr/0018-push-encoded-frames-through-one-framesource-into-media3s-own-sample-queues.md) rule 2's #356 addendum), so a transport module depends on core for the seam and on this one for `Realtime.transport`. What a realtime stream does **not** get is a rule rather than an omission — no cache, no CMCD, no downloads, no bandwidth estimate and none of the fallback ladder's load-error rungs ([ADR-0018](adr/0018-push-encoded-frames-through-one-framesource-into-media3s-own-sample-queues.md) rule 6) |
-| `superplayer-moq` | **Not published** | Nothing, and there is no artifact to resolve. Phase 14's prototype links Media over QUIC's Kotlin bindings from a native library built on one machine, for `arm64-v8a` alone ([ADR-0018](adr/0018-push-encoded-frames-through-one-framesource-into-media3s-own-sample-queues.md), `third-party/moq/README.md`). It is in the build and out of the release |
+| `superplayer-moq` | **Not published** | Nothing. Phase 14's prototype links Media over QUIC's Kotlin bindings from a native library built on one machine, for `arm64-v8a` alone ([ADR-0018](adr/0018-push-encoded-frames-through-one-framesource-into-media3s-own-sample-queues.md), `third-party/moq/README.md`). It is in the build, out of the release, and at no version you can resolve. `./gradlew publishToMavenLocal` does write it into the *local* repository of the machine that built its native half, which is how this repository's own `demo/` plays a broadcast; that is a development arrangement on one machine and not a coordinate, and nothing about it is covered by any promise here |
 | `superplayer-ui` | **Empty** | Nothing. The module publishes no public declaration; it exists so the boundary is fixed before code arrives |
 
 The four statuses are the four answers there are: **Public** is a module whose API you build
@@ -109,7 +109,14 @@ repository's build and is *not released with the others* — so there is no coor
 any version, and ADR-0017 rule 1's "every module at one version" reads over the first three.
 The last exists because a module can carry something that is nobody else's to resolve: today
 that is a natively built dependency, and `settings.gradle.kts` is where the exclusion is
-declared, in the same line the build's check and the publishing plugin both read.
+declared, in the same lines the build's check and the publishing plugin both read.
+
+That file distinguishes two kinds of unresolvable module which this table deliberately does
+**not**: one that publishes no artifact at all, and one that publishes to the local Maven
+repository of the machine that built it so that this repository's `demo/` can resolve it. The
+difference is a fact about developing the library, and from outside it there is none — neither is
+released, neither has a tracked API surface, and neither may be depended on. They share this row on
+purpose, so that arranging for the demo to play something can never quietly read here as a promise.
 
 `./gradlew verifyCompatibilityDocument` holds that table to `settings.gradle.kts`, so a module the
 build publishes cannot be left out of this document, a row cannot outlive its module, and a status

@@ -73,4 +73,6 @@
     <string name="downloads_action_download">Download</string>
     <string name="downloads_action_play">Play</string>
     <string name="downloads_action_remove">Remove</string>
+    <string name="screen_moq">MoQ</string>
+    <string name="moq_live_note">Live over QUIC. There is no timeline to seek and no end to reach: leaving this screen releases the player, which is what closes the session.</string>
 </resources>

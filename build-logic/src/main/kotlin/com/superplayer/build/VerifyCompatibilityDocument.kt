@@ -110,12 +110,15 @@ abstract class VerifyCompatibilityDocument : DefaultTask() {
  * mistyped into unparseability fails naming the status rather than silently reading as a missing
  * module.
  *
- * Since #364 the module list has two halves — [publishedModules] and [unpublishedModules] — and the
- * table has to name every module in either, because an unpublished module is one an adopter will
- * read about here and find nowhere to resolve. What distinguishes them is the status itself, which
- * is the **same declaration** the convention plugin publishes by (see [ModulePublication]): a
- * module `settings.gradle.kts` does not publish reads [NOT_PUBLISHED_STATUS] and every other module
- * reads something else. Checked in both directions, so neither a row claiming an artifact that does
+ * Since #364 the module list has more than one half — [publishedModules], [unpublishedModules] and,
+ * since #353, [locallyPublishedModules] — and the table has to name every module in any of them,
+ * because a module an adopter cannot resolve is still one they will read about here. What
+ * distinguishes them is the status itself, which is the **same declaration** the convention plugin
+ * publishes by (see [ModulePublication]): a module no adopter can resolve reads
+ * [NOT_PUBLISHED_STATUS] and every other module reads something else. The two unresolvable kinds
+ * share that row deliberately — a `LOCAL_ONLY` artifact exists only in the local repository of the
+ * machine that built it, so from this document's side it is not published, which is exactly what
+ * keeps #353 from pre-empting #369. Checked in both directions, so neither a row claiming an artifact that does
  * not exist nor one silently promising a prototype can land.
  */
 internal fun findCompatibilityDocumentViolations(
@@ -123,7 +126,10 @@ internal fun findCompatibilityDocumentViolations(
     compatibilityDocument: String
 ): List<String> {
     val published = publishedModules(settingsScript)
-    val unpublished = unpublishedModules(settingsScript)
+    // The two kinds an adopter cannot resolve, taken together, because this document answers that
+    // one question and `LOCAL_ONLY`'s artifact exists only in the local repository of the machine
+    // that built it (#353, [ModulePublication]).
+    val unpublished = unpublishedModules(settingsScript) + locallyPublishedModules(settingsScript)
     val section = stabilitySection(compatibilityDocument)
         ?: return listOf(
             "docs/compatibility.md has no \"$STABILITY_HEADING\" section to read a table out of. " +
@@ -153,19 +159,35 @@ internal fun findCompatibilityDocumentViolations(
         .mapNotNull { (module, status) ->
             val declared = modulePublicationOf(settingsScript, module)
             when {
-                declared == ModulePublication.NOT_PUBLISHED && status != NOT_PUBLISHED_STATUS ->
+                declared != null && !declared.isResolvableByAnAdopter && status != NOT_PUBLISHED_STATUS ->
                     "$module's status reads \"$status\", but settings.gradle.kts declares it " +
-                        "unpublished, so its row must read \"$NOT_PUBLISHED_STATUS\"."
+                        "${describe(declared)}, so its row must read \"$NOT_PUBLISHED_STATUS\"."
 
                 declared == ModulePublication.PUBLISHED && status == NOT_PUBLISHED_STATUS ->
                     "$module's row reads \"$NOT_PUBLISHED_STATUS\", but settings.gradle.kts " +
-                        "publishes it. Move it into the unpublishedModules list or fix the row."
+                        "publishes it. Move it into the unpublishedModules or " +
+                        "locallyPublishedModules list, or fix the row."
 
                 else -> null
             }
         }
 
     return (missing + missingUnpublished + stale + unknownStatus + wrongPublication).sorted()
+}
+
+/**
+ * How a declaration reads in a failure message. The two unresolvable kinds are named apart even
+ * though they demand the same row, because the fix differs: one is a row to correct, the other is
+ * a module to move between two lists.
+ */
+private fun describe(publication: ModulePublication): String = when (publication) {
+    ModulePublication.PUBLISHED -> "published"
+
+    ModulePublication.LOCAL_ONLY ->
+        "locally published, which produces an artifact for this machine alone and none an adopter " +
+            "can resolve"
+
+    ModulePublication.NOT_PUBLISHED -> "unpublished"
 }
 
 /** The heading the table sits under, named in the failure message so it can be found. */

@@ -219,13 +219,60 @@ class CompatibilityDocumentTest {
     }
 
     @Test
+    fun `a locally published module reads Not published, exactly as an unpublished one does`() {
+        // #353's central claim, stated as a test: the artifact exists in this machine's local
+        // repository so that demo/ can resolve it, and from an adopter's side nothing changed.
+        // If this ever passes with some other status, #353 has quietly answered #369.
+        assertEquals(
+            emptyList<String>(),
+            findCompatibilityDocumentViolations(
+                settingsWithLocallyPublished,
+                table("superplayer-core", "superplayer-ui") +
+                    "\n| `superplayer-moq` | **Not published** | Nothing |"
+            )
+        )
+    }
+
+    @Test
+    fun `a locally published module whose row promises an artifact fails, naming the reason`() {
+        assertEquals(
+            listOf(
+                "superplayer-moq's status reads \"Public\", but settings.gradle.kts declares it " +
+                    "locally published, which produces an artifact for this machine alone and " +
+                    "none an adopter can resolve, so its row must read \"Not published\"."
+            ),
+            findCompatibilityDocumentViolations(
+                settingsWithLocallyPublished,
+                table("superplayer-core", "superplayer-ui", "superplayer-moq")
+            )
+        )
+    }
+
+    @Test
+    fun `a locally published module left out of the table fails rather than being overlooked`() {
+        // The control that matters for a third state: a module in a list this parser did not learn
+        // about would be absent from every set and silently need no row at all.
+        assertEquals(
+            listOf(
+                "superplayer-moq is in the build as an unpublished module and has no row in the " +
+                    "stability table."
+            ),
+            findCompatibilityDocumentViolations(
+                settingsWithLocallyPublished,
+                table("superplayer-core", "superplayer-ui")
+            )
+        )
+    }
+
+    @Test
     fun `a published module whose row says Not published fails too`() {
         // The other direction, and the control that keeps the rule from reading as "Not published
         // is always allowed": a real artifact described as though there were none.
         assertEquals(
             listOf(
                 "superplayer-ui's row reads \"Not published\", but settings.gradle.kts publishes " +
-                    "it. Move it into the unpublishedModules list or fix the row."
+                    "it. Move it into the unpublishedModules or locallyPublishedModules list, or " +
+                    "fix the row."
             ),
             findCompatibilityDocumentViolations(
                 settingsScript,
@@ -339,6 +386,26 @@ class CompatibilityDocumentTest {
             ":superplayer-moq",
         )
         unpublishedModules.forEach { include(it) }
+    """.trimIndent()
+
+    /**
+     * The same shape as [settingsWithUnpublished], with the module in the **other** list — which is
+     * the whole of what distinguishes a `LOCAL_ONLY` module from an unpublished one as far as this
+     * document is concerned, and the reason both cases below expect the same row (#353).
+     */
+    private val settingsWithLocallyPublished = """
+        rootProject.name = "superplayer"
+        include(":superplayer-core")
+        include(":superplayer-ui")
+
+        val unpublishedModules = listOf<String>()
+        unpublishedModules.forEach { include(it) }
+
+        val locallyPublishedModules = listOf(
+            // Publishes to this machine's local repository so demo/ can resolve it; #369.
+            ":superplayer-moq",
+        )
+        locallyPublishedModules.forEach { include(it) }
     """.trimIndent()
 
     /** Two modules is enough to state every case; the real fourteen are the control's. */

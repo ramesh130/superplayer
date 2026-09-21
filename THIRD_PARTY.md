@@ -193,8 +193,7 @@ Compose from SuperPlayer, and an app that adds diagnostics for the doctor alone 
 HUD has Compose on its classpath and no reachable Compose code, which R8 removes.
 `superplayer-diagnostics` takes `foundation` and no Material of either flavour, because a HUD lying
 over a consumer's own video surface must take the app's screen as it finds it.
-`superplayer-ui`, the
-library's optional phone Compose surface, is a later phase and still an empty placeholder. `tv-material`'s
+`tv-material`'s
 other Compose artifacts (animation, layout, text, graphics) arrive under the BOM's pins and are not rowed one
 by one, as `foundation`'s are not. The icons are rowed because the controls deliberately draw their glyphs
 rather than naming them.

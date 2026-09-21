@@ -80,7 +80,6 @@ superplayer/
 ├─ superplayer-offline       # DownloadManager wrapper, WorkManager constraints, battery policy
 ├─ superplayer-diagnostics   # MediaSourceDoctor, session trace bundle, on-device debug HUD
 ├─ superplayer-tv            # Connected TV: display capability, Compose-for-TV surfaces (ADR-0014)
-├─ superplayer-ui            # Optional Compose player surface (thin; an app may bring its own)
 ├─ superplayer-testkit       # Fault injection, network shaping, fake manifests, golden traces
 ├─ superplayer-testmedia     # Synthetic HLS and DASH streams the other modules' tests play
 └─ demo/                     # Phone + TV demo app, benchmark runner

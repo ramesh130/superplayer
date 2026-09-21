@@ -30,8 +30,6 @@ Read this before the feature list, because the feature list is longer than the g
 - **The benchmark's Phase 3 verdict is a committed finding, not a win.** `benchmark/phase3/`
   reports what the adaptive policy did against three other arms on a fixed matrix, including
   where it lost. Moving those numbers is Phase 11 and is open.
-- **`superplayer-ui` is an empty placeholder.** Fifteen module directories read as more built
-  than fourteen of them are; the module table below says which is which.
 - **`superplayer-moq` is local-only on purpose.** It links a native library built on one machine
   for one ABI. It is excluded from any release and from the tracked API surface, and
   [#369](https://github.com/ramesh130/superplayer/issues/369) is what publishing it would have to
@@ -109,7 +107,6 @@ depend on one from a later phase ([`docs/modules.md`](docs/modules.md)).
 | `superplayer-moq` | Media over QUIC over that seam — **local-only, see Status** |
 | `superplayer-testkit` | The deterministic harness: shaped networks, fault injection, golden traces |
 | `superplayer-testmedia` | Synthetic HLS and DASH streams, and a corpus of deliberately broken ones |
-| `superplayer-ui` | **Empty placeholder** |
 
 ## Building it
 

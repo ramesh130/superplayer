@@ -47,7 +47,6 @@ than to wave the dependency through.
 | `superplayer-realtime` | 13 | The Media3 half of the push-based source seam: the `MediaSource`/`MediaPeriod` that writes a `FrameSource`'s frames into Media3 `SampleQueue`s under a live unseekable timeline, codec-string mapping and codec-specific-data conversion. The seam itself — the public `FrameSource`, naming no Media3 type — is core's, so that its conformance suite can be testkit's (ADR-0018 rule 2's #356 addendum) | core; testkit and telemetry (tests only) |
 | `superplayer-moq` | 14 | Sub-second live over Media over QUIC: `moq-dev/moq`'s Kotlin bindings behind a `FrameSource` (ADR-0018). The bindings are **built here** rather than resolved from Maven, so this module is deliberately not published (`third-party/moq/README.md`, #364) | core, realtime; testkit (tests only) |
 | `superplayer-whep` | 15 | Sub-second live over WebRTC: WHEP signalling and a `PeerConnection` transport behind a `FrameSource`. Contingent — see `PRD.md` Part 4 | core, realtime; testkit (tests only) |
-| `superplayer-ui` | — † | Optional Compose player surface | core |
 
 `superplayer-testkit`, `superplayer-abr`, `superplayer-cache`, `superplayer-preload`,
 `superplayer-resilience`, `superplayer-drm`, `superplayer-offline`, `superplayer-tv`,
@@ -112,13 +111,6 @@ shipping them inside `superplayer-core`'s own artifact was worse.
 the roadmap; this one is the roadmap expressed as a dependency constraint. When the two disagree the
 PRD wins, and the fix is to correct this column rather than to reason from it — a stale number here
 does not merely mislead, it changes which dependencies the rule above permits.
-
-† `PRD.md` Part 4 does not schedule `superplayer-ui`. It appears in the module layout of §2.1 and in
-no phase, so it carries no number here rather than an invented one — a number would have to be either
-a schedule the roadmap has not made, or a tie with a module it has no stated relationship to. Both
-halves of the rule above still resolve without one: no module may depend on it, because an unscheduled
-module is not an earlier phase than anything; and it may depend on any scheduled module. The row gains
-a number when the roadmap schedules it.
 
 Only `superplayer-core` is required by a consumer. Every other module is additive: an app depends on
 what it uses and its APK does not grow for features it does not need.

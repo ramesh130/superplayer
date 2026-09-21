@@ -56,24 +56,41 @@ include(":superplayer-ui")
 include(":superplayer-testkit")
 include(":superplayer-testmedia")
 
-// Modules in the build that are deliberately **not** published, and the one place that is said.
+// How each module is published, and the one place that is said (`ModulePublication`).
 //
 // ADR-0017 rule 1 releases every published module together at one version, so being in the build
 // used to be the whole of being published and three things read it that way: `maven-publish` in the
 // `superplayer.android.library` convention plugin, the tracked API surface, and
-// `verifyCompatibilityDocument`. Three switches that happened to agree would be the defect here, so
-// this list is the single fact all three read, through `build-logic`'s `ModulePublication`. A
-// module named in neither list fails the convention plugin rather than defaulting to published.
+// `verifyCompatibilityDocument`. Switches that happened to agree would be the defect here, so these
+// lists are the single fact all three read. A module named in none of them fails the convention
+// plugin rather than defaulting to published.
 //
 // `forEach { include(it) }` rather than `include(...)` lines: that is what keeps the published
-// parser above unable to see these, so the two sets are disjoint by construction.
-val unpublishedModules = listOf(
-    // Phase 14's prototype. It links `dev.moq:moq-ffi` built on one machine (third-party/moq/), so
-    // publishing it would offer an adopter a coordinate carrying native code nobody else can
-    // reproduce and a single ABI. #369 tracks what shipping it would take.
+// parser above unable to see these, so the sets are disjoint by construction.
+//
+// Modules in the build that publish **no artifact at all**. Empty since #353 moved
+// `superplayer-moq` to the list below, and kept rather than deleted because the state is still the
+// right answer for a module nothing outside this build ever resolves — a spike, or a module whose
+// artifact would be wrong to produce at all rather than merely wrong to distribute.
+val unpublishedModules = listOf<String>()
+unpublishedModules.forEach { include(it) }
+
+// Modules published to this machine's local Maven repository and to nowhere else
+// (`ModulePublication.LOCAL_ONLY`). An adopter cannot resolve one — `docs/compatibility.md` still
+// reads "Not published" for it and no API surface is tracked — but `publishToMavenLocal` produces
+// an artifact, which is what lets `demo/` name the coordinate.
+val locallyPublishedModules = listOf(
+    // Phase 14's prototype. It links `dev.moq:moq-ffi` built on one machine (third-party/moq/),
+    // for `arm64-v8a` alone, so a coordinate an adopter could resolve would carry native code
+    // nobody else can reproduce; #369 tracks what shipping it would take and is unanswered.
+    //
+    // It is local-only rather than unpublished because `PRD.md`'s Phase 14 exit criterion is a
+    // broadcast playing **in the demo**, and `demo/` is a separate build that resolves published
+    // coordinates through `mavenLocal()`. #353 is that criterion. What a local artifact
+    // distributes is nothing, which is why this does not pre-empt #369.
     ":superplayer-moq",
 )
-unpublishedModules.forEach { include(it) }
+locallyPublishedModules.forEach { include(it) }
 
 // `demo/` is deliberately NOT included here. It is a standalone Gradle build that
 // consumes SuperPlayer through published Maven coordinates, exactly as an external

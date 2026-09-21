@@ -7,6 +7,7 @@ import com.superplayer.build.DumpApiSurface
 import com.superplayer.build.ModulePublication
 import com.superplayer.build.UpdateApiSurface
 import com.superplayer.build.VerifyNoUnstableMedia3InPublicApi
+import com.superplayer.build.isResolvableByAnAdopter
 import com.superplayer.build.modulePublicationOf
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.tasks.testing.logging.TestExceptionFormat
@@ -44,10 +45,18 @@ val publication = modulePublicationOf(
     project.name
 ) ?: error(
     "settings.gradle.kts declares neither an include(\":${project.name}\") nor an " +
-        "unpublishedModules entry for it, so whether it is published is unknown. Add it to one " +
-        "of the two rather than leaving the answer to a default (see ModulePublication)."
+        "unpublishedModules or locallyPublishedModules entry for it, so whether it is published " +
+        "is unknown. Add it to one of the three rather than leaving the answer to a default " +
+        "(see ModulePublication)."
 )
-val published = publication == ModulePublication.PUBLISHED
+
+// Two questions, not one, and #353 is what separated them. *Does an artifact exist* decides whether
+// a Maven publication is registered; *can an adopter resolve it* decides whether a public API
+// surface is tracked. They answered together until `superplayer-moq` became LOCAL_ONLY: the demo
+// build resolves published coordinates, so it needs the artifact, while nothing about #369's
+// licence and ABI questions is changed by one existing in this machine's local repository.
+val publishesAnArtifact = publication != ModulePublication.NOT_PUBLISHED
+val published = publication.isResolvableByAnAdopter
 
 extensions.configure<LibraryExtension> {
     namespace = "com.superplayer." + project.name.removePrefix("superplayer-").replace('-', '.')
@@ -93,10 +102,10 @@ extensions.configure<LibraryExtension> {
         }
     }
 
-    // One publication per module, built from the release variant — for a module that is published.
-    // An unpublished one declares no `release` component at all, so `publish` has nothing to offer
-    // rather than offering something nobody registered a destination for.
-    if (published) {
+    // One publication per module, built from the release variant — for a module that publishes an
+    // artifact at all. An unpublished one declares no `release` component, so `publish` has nothing
+    // to offer rather than offering something nobody registered a destination for.
+    if (publishesAnArtifact) {
         publishing {
             singleVariant("release") {
                 withSourcesJar()
@@ -266,9 +275,11 @@ dependencies {
 
 // `maven-publish` stays applied to every module — it is in the `plugins` block above, which is
 // evaluated before anything can be decided — and an unpublished module registers no publication
-// under it, so `publishToMavenLocal` produces nothing for it rather than producing an artifact
-// whose native half nobody else can reproduce (ADR-0017 rule 1, `ModulePublication`).
-if (published) {
+// under it, so `publishToMavenLocal` produces nothing for it (ADR-0017 rule 1,
+// `ModulePublication`). A LOCAL_ONLY module does register one: the artifact reaches this machine's
+// local repository, where `demo/` resolves it, and no remote repository is declared anywhere in
+// this build for it to reach instead (`docs/releasing.md`).
+if (publishesAnArtifact) {
     extensions.configure<PublishingExtension> {
         publications {
             register<MavenPublication>("release") {

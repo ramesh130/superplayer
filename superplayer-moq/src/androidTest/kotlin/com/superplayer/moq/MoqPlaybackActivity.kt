@@ -35,21 +35,21 @@ import com.superplayer.realtime.Realtime
  *
  * ## Why this is here rather than in the demo
  *
- * `demo/` is a separate Gradle build that resolves SuperPlayer from published Maven coordinates,
- * and `superplayer-moq` is deliberately **not published** (`settings.gradle.kts`'s
- * `unpublishedModules`, ADR-0017 rule 1) — so `publishToMavenLocal` produces nothing for it and the
- * demo cannot name it. That is a real consequence of #364's decision rather than an oversight, and
- * it is the first thing #353 has to solve; #369 is where publishing is decided.
+ * It predates the demo's own MoQ screen and is kept beside it deliberately. When it was written,
+ * `superplayer-moq` published no artifact at all, so `demo/` — a separate Gradle build resolving
+ * published Maven coordinates — could not name the module; #353 resolved that by declaring the
+ * module `locallyPublishedModules` rather than `unpublishedModules`, and `MoqScreen` is now where
+ * Phase 14's exit criterion lives.
  *
- * This activity ships in the **instrumented test APK**, which reaches the module by project
- * dependency and therefore needs nothing published. It exists so that a broadcast can be watched
- * with human eyes on a device today, which `MoqLiveSessionSmokeTest` deliberately cannot do: that
- * test counts frames arriving at a `FrameSink` and **nothing in it decodes**.
+ * What this activity still earns is the shorter path. It ships in the **instrumented test APK**,
+ * which reaches the module by project dependency and needs nothing published at all, so it plays a
+ * broadcast without `publishToMavenLocal`, without the demo's build, and against the working tree
+ * rather than against an artifact. When the demo's screen and this one disagree, the difference is
+ * the publishing step, which is exactly the thing worth being able to take out of the picture.
  *
- * **It is not the Phase 14 exit criterion and must not be mistaken for it.** `PRD.md` asks for a
- * broadcast playing *in the demo*, and what makes that hard is the publishing question above, not
- * the playback. What this shows is that the frames the smoke counts are frames Media3's own
- * renderers will accept — one step further than the smoke and one step short of #353.
+ * It shows what `MoqLiveSessionSmokeTest` deliberately cannot: that test counts frames arriving at
+ * a `FrameSink` and **nothing in it decodes**, whereas these are frames Media3's own renderers
+ * accepted.
  *
  * ## Running it
  *

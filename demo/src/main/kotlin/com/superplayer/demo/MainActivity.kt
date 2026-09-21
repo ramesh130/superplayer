@@ -423,6 +423,14 @@ private fun DemoApp(launch: DemoLaunch) {
                     DemoScreen.DOWNLOADS -> DownloadsScreen(modifier = Modifier.weight(1f))
 
                     DemoScreen.HUD -> DebugHudScreen(modifier = Modifier.weight(1f))
+
+                    // Its own player too, and for a reason the others do not have: the transport is
+                    // registered on the builder, so a player that can play a `moq://` URI is one
+                    // that was built to. The service's player was not (#353).
+                    DemoScreen.MOQ -> MoqScreen(
+                        broadcast = launch.broadcast ?: DEFAULT_BROADCAST,
+                        modifier = Modifier.weight(1f),
+                    )
                 }
             }
         }
@@ -632,6 +640,7 @@ private enum class DemoScreen(val labelRes: Int) {
     FEED(R.string.screen_feed),
     DOWNLOADS(R.string.screen_downloads),
     HUD(R.string.screen_hud),
+    MOQ(R.string.screen_moq),
 }
 
 /**
@@ -654,6 +663,9 @@ private enum class DemoScreen(val labelRes: Int) {
  * adb shell am start -n com.superplayer.demo/.MainActivity \
  *     --es com.superplayer.demo.extra.CONTENT_ID demo:tears-of-steel
  * adb shell am start -n com.superplayer.demo/.MainActivity --es com.superplayer.demo.extra.SCREEN TV
+ * adb shell am start -n com.superplayer.demo/.MainActivity \
+ *     --es com.superplayer.demo.extra.SCREEN MOQ \
+ *     --es com.superplayer.demo.extra.MOQ_BROADCAST moq://cdn.moq.pro/anon/catshark.hang
  * ```
  *
  * An unrecognised screen or a non-positive row count reads as absent rather than failing the launch.
@@ -663,6 +675,7 @@ private class DemoLaunch(
     val television: Boolean,
     val feedRows: Int?,
     val contentId: String?,
+    val broadcast: String?,
 ) {
     /** The demo stream [contentId] names, or null when it names none of them. */
     val stream: DemoStream?
@@ -672,6 +685,14 @@ private class DemoLaunch(
         const val EXTRA_SCREEN = "com.superplayer.demo.extra.SCREEN"
         const val EXTRA_FEED_ROWS = "com.superplayer.demo.extra.FEED_ROWS"
         const val EXTRA_CONTENT_ID = "com.superplayer.demo.extra.CONTENT_ID"
+
+        /**
+         * The broadcast [MoqScreen] opens. A launch argument rather than a picker entry because
+         * what it names is somebody else's live stream: a public relay's anonymous namespace is
+         * whatever its visitors left running, so the name that works is a thing discovered on the
+         * day rather than a constant worth building into a menu.
+         */
+        const val EXTRA_MOQ_BROADCAST = "com.superplayer.demo.extra.MOQ_BROADCAST"
 
         /** The screen name that opens [TvScreen]: not a [DemoScreen] name, since that screen is not the picker's. */
         const val SCREEN_TV = "TV"
@@ -684,6 +705,7 @@ private class DemoLaunch(
                 television = name == SCREEN_TV || (onTelevision && screen == null),
                 feedRows = intent?.getIntExtra(EXTRA_FEED_ROWS, 0)?.takeIf { it > 0 },
                 contentId = intent?.getStringExtra(EXTRA_CONTENT_ID),
+                broadcast = intent?.getStringExtra(EXTRA_MOQ_BROADCAST)?.takeIf { it.isNotBlank() },
             )
         }
     }

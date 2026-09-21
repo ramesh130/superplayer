@@ -223,6 +223,18 @@ dependencies {
     // to carry Compose — so this dependency is also how the demo build catches a POM that failed to
     // declare it, an adopter's first failure being the one this build exists to have here instead.
     implementation("com.superplayer:superplayer-diagnostics:${libs.versions.superplayer.get()}")
+    // The MoQ screen's two modules (#353). `superplayer-realtime` carries `Realtime.transport`,
+    // which turns a `FrameSource` factory into the `RealtimeSources` a player is built with, and
+    // `superplayer-moq` carries `MoqFrameSource` over it.
+    //
+    // `superplayer-moq` is the one coordinate here that is **not published** to anybody:
+    // `settings.gradle.kts` declares it `locallyPublishedModules`, so `publishToMavenLocal`
+    // produces it on the machine that can build its native half and no adopter can resolve it
+    // (`ModulePublication`, #369). That is why this dependency is the one that fails for a reason
+    // the others cannot — a missing `third-party/moq/m2`, or an `x86_64` host — and
+    // `docs/testing.md`'s *A MoQ broadcast in the demo* says so rather than leaving it to be met.
+    implementation("com.superplayer:superplayer-realtime:${libs.versions.superplayer.get()}")
+    implementation("com.superplayer:superplayer-moq:${libs.versions.superplayer.get()}")
     implementation(libs.media3.ui)
     // For `androidx.annotation.OptIn`, the form of opt-in that works on Media3's Java
     // `@UnstableApi` marker — see MainActivity.showBufferingSpinner. Named here rather than

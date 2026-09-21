@@ -25,8 +25,10 @@
  *
  * Two facts about this module are unusual and are decisions rather than accidents.
  *
- * It is **not published** (`settings.gradle.kts`'s `unpublishedModules` list, which ADR-0017 rule 1
- * makes the only way to say so). The native library it links is built on one machine with the
+ * It is **not published** (`settings.gradle.kts`'s `locallyPublishedModules` list, which ADR-0017
+ * rule 1 makes the only way to say so — and which since #353 means an artifact this machine's own
+ * local Maven repository carries so that `demo/` can resolve it, and no coordinate an adopter can
+ * reach). The native library it links is built on one machine with the
  * crate's default features off — which is how #351 settled the licence question, by removing the
  * MPL-2.0 decoder from the dependency graph rather than excepting it — and it covers `arm64-v8a`
  * alone. Publishing it would offer an adopter a coordinate they cannot reproduce and an ABI set

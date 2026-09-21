@@ -10,8 +10,11 @@ plugins {
 // Phase 14. Dependency direction: see docs/modules.md. This module may depend on
 // modules from its own or an earlier phase only — never on a later one.
 //
-// It is **not published** (`settings.gradle.kts`'s `unpublishedModules`, ADR-0017 rule 1): the
-// native half it links is built on one machine, for one ABI, and is nobody else's to resolve.
+// It is **not published** to anybody (`settings.gradle.kts`'s `locallyPublishedModules`, ADR-0017
+// rule 1): the native half it links is built on one machine, for one ABI, and is nobody else's to
+// resolve. `publishToMavenLocal` does produce it, on that machine alone, which is what lets `demo/`
+// name the coordinate and play a broadcast (#353) — `docs/compatibility.md` still reads
+// "Not published", because from outside this repository nothing changed.
 // `third-party/moq/README.md` is the recipe and the licence evidence; #369 tracks publishing.
 //
 // It is deliberately **not** a Kotlin friend of core (ADR-0018 rule 11): what it implements is

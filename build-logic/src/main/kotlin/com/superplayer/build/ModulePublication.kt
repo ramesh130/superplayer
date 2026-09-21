@@ -28,16 +28,34 @@ package com.superplayer.build
  * have the check quietly stop seeing it" — and `superplayer-moq` is the first, because the artifact
  * it links is built on one machine and is nobody else's to resolve (#364, #369).
  *
- * The answer is a **declared third state** rather than three switches that happen to agree.
- * `settings.gradle.kts` says once which modules are not published; [publishedModules] and
- * [unpublishedModules] read that one file; and everything that has to know asks here:
+ * The answer is a **declared state** rather than switches that happen to agree.
+ * `settings.gradle.kts` says once how each module is carried; [publishedModules],
+ * [locallyPublishedModules] and [unpublishedModules] read that one file; and everything that has
+ * to know asks here:
  *
- *  - the convention plugin, which registers neither a publication nor a tracked API surface for an
- *    unpublished module — `docs/api-surface.md` tracks a surface because a *consumer* resolves it;
- *  - [findCompatibilityDocumentViolations], which requires such a module's `docs/compatibility.md`
- *    row to read **Not published** and every other row not to.
+ *  - the convention plugin, which registers a Maven publication for anything but
+ *    [NOT_PUBLISHED], and a tracked API surface for [PUBLISHED] alone —
+ *    `docs/api-surface.md` tracks a surface because a *consumer* resolves it;
+ *  - [findCompatibilityDocumentViolations], which requires the row of a module an adopter cannot
+ *    resolve to read **Not published** and every other row not to.
  *
- * The failure mode is deliberate in the safe direction. A module declared in neither list is not
+ * ## Why there are three and not two (#353)
+ *
+ * [NOT_PUBLISHED] was the whole of #364's answer, and it turned out to say two things at once: *no
+ * adopter may resolve this*, which is still true of `superplayer-moq` and is #369's to change, and
+ * *no artifact exists at all*, which made `demo/` unable to name the module. The demo is a separate
+ * build that resolves published coordinates through `mavenLocal()`, so a module with no publication
+ * is one the demo cannot show — and `PRD.md`'s Phase 14 exit criterion is a broadcast playing **in
+ * the demo**.
+ *
+ * [LOCAL_ONLY] separates them. It is an artifact `publishToMavenLocal` produces on the one machine
+ * that can build the module's native half, for that machine's own `demo/` build to resolve, and it
+ * is **nothing an adopter can reach**: the compatibility table still reads *Not published*, no API
+ * surface is tracked, and `docs/releasing.md` says what a release does and does not mean for one.
+ * The licence and ABI questions #369 holds are about *distribution*, and a coordinate that exists
+ * only in the local repository of the machine that built it distributes nothing.
+ *
+ * The failure mode is deliberate in the safe direction. A module declared in no list is not
  * silently published: [modulePublicationOf] answers `null` and the convention plugin fails naming
  * the module, so a declaration this file cannot read stops the build rather than shipping an
  * artifact nobody meant to ship.
@@ -46,9 +64,23 @@ enum class ModulePublication {
     /** In `settings.gradle.kts`'s `include(...)` lines: released with the rest at one version. */
     PUBLISHED,
 
+    /**
+     * In its `locallyPublishedModules` list: an artifact for the local Maven repository of the
+     * machine that built it, so `demo/` can resolve it, and no adopter's to reach.
+     */
+    LOCAL_ONLY,
+
     /** In its `unpublishedModules` list: in the build, and deliberately not an artifact. */
     NOT_PUBLISHED,
 }
+
+/**
+ * Whether an adopter can resolve a module of this kind — the one question `docs/compatibility.md`
+ * answers, and the reason [LOCAL_ONLY] and [NOT_PUBLISHED] share a row status while differing in
+ * everything the build does with them.
+ */
+val ModulePublication.isResolvableByAnAdopter: Boolean
+    get() = this == ModulePublication.PUBLISHED
 
 /**
  * How [moduleName] — a bare module name such as `superplayer-moq`, as [publishedModules] and
@@ -57,6 +89,7 @@ enum class ModulePublication {
  */
 fun modulePublicationOf(settingsScript: String, moduleName: String): ModulePublication? = when (moduleName) {
     in unpublishedModules(settingsScript) -> ModulePublication.NOT_PUBLISHED
+    in locallyPublishedModules(settingsScript) -> ModulePublication.LOCAL_ONLY
     in publishedModules(settingsScript) -> ModulePublication.PUBLISHED
     else -> null
 }
@@ -81,12 +114,29 @@ fun publishedModules(settingsScript: String): Set<String> =
  * The modules named in `settings.gradle.kts`'s `unpublishedModules` list.
  *
  * The list is included into the build by a `forEach` rather than by `include(...)` lines of its
- * own, which is what keeps [publishedModules] above unable to see it: the two sets are disjoint by
- * construction, so a module cannot be read as both.
+ * own, which is what keeps [publishedModules] above unable to see it: the sets are disjoint by
+ * construction, so a module cannot be read as two of them.
  */
-fun unpublishedModules(settingsScript: String): Set<String> {
+fun unpublishedModules(settingsScript: String): Set<String> =
+    modulesInList(settingsScript, "unpublishedModules")
+
+/**
+ * The modules named in `settings.gradle.kts`'s `locallyPublishedModules` list — [ModulePublication.LOCAL_ONLY].
+ *
+ * Read exactly as [unpublishedModules] is, and included into the build the same way, so that the
+ * disjointness above holds across all three lists rather than only across two.
+ */
+fun locallyPublishedModules(settingsScript: String): Set<String> =
+    modulesInList(settingsScript, "locallyPublishedModules")
+
+/** The project paths in the `val <name> = listOf(...)` declaration, or empty if there is none. */
+private fun modulesInList(settingsScript: String, name: String): Set<String> {
     val lines = settingsScript.lines()
-    val start = lines.indexOfFirst { UNPUBLISHED_LIST.containsMatchIn(it) }
+    // The `<String>` form matters: an empty list has to be written `listOf<String>()` for Kotlin to
+    // infer anything, and a list that has emptied out is exactly when misreading it as absent would
+    // be invisible.
+    val declaration = Regex("""^\s*val\s+$name\s*=\s*listOf(<[^>]*>)?\(""")
+    val start = lines.indexOfFirst { declaration.containsMatchIn(it) }
     if (start < 0) return emptySet()
 
     // Up to and including the line that closes `listOf(`, so the list may be written over several
@@ -117,5 +167,4 @@ fun unpublishedModules(settingsScript: String): Set<String> {
 }
 
 private val INCLUDE_LINE = Regex("""^\s*include\(""")
-private val UNPUBLISHED_LIST = Regex("""^\s*val\s+unpublishedModules\s*=\s*listOf\(""")
 private val PROJECT_PATH = Regex(""""::?([\w-]+)"""")

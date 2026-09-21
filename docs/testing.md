@@ -530,13 +530,42 @@ true on a day and this document is not.
 
 **There is a second device-only artifact in that APK, and it is not a test.** `MoqPlaybackActivity`
 plays a broadcast onto a `SurfaceView` so a person can look at it, started with `am start` rather
-than by any runner; it asserts nothing and is in `check` no more than the smoke is. It exists
-because the demo **cannot** play MoQ — `demo/` resolves SuperPlayer from published coordinates and
-`superplayer-moq` is deliberately unpublished (#364, #369) — so the only way to watch frames decode
-today is from inside the instrumented APK, which reaches the module by project dependency. It is
-recorded here rather than left to be discovered, and it is **not** Phase 14's exit criterion:
-`PRD.md` asks for a broadcast playing in the demo, and that is #353's, blocked on the publishing
-question rather than on playback.
+than by any runner; it asserts nothing and is in `check` no more than the smoke is. What it is for
+is the **shorter path**: it reaches the module by project dependency, so it plays a broadcast
+against the working tree with nothing published and no second Gradle build involved. When it and
+the demo's screen disagree, the difference is the publishing step.
+
+### A MoQ broadcast in the demo
+
+Phase 14's exit criterion is `PRD.md`'s own words — *a broadcast plays in the demo on a device* —
+and since #353 that is `MoqScreen`, reached with
+`--es com.superplayer.demo.extra.SCREEN MOQ` and pointed at another name with
+`--es com.superplayer.demo.extra.MOQ_BROADCAST`. It is a real `SuperPlayer` on a stock
+`PlayerView`, and the only realtime-aware line in it is the builder call naming the scheme.
+
+What made it reachable is a publication state rather than a decision about shipping:
+`superplayer-moq` is `locallyPublishedModules` (`ModulePublication.LOCAL_ONLY`), so
+`publishToMavenLocal` produces an artifact the demo's separate build can resolve on this machine,
+while `docs/compatibility.md` still reads **Not published** and no API surface is tracked. #369 is
+untouched.
+
+**What this cannot show**, in the idiom every other stand-in here is held to:
+
+- **Nothing is asserted.** There is no runner, no harness and no fake — the relay is somebody
+  else's and the broadcast is whatever its visitors left running. Evidence is an *advancing
+  position across two logged state transitions*, per `CLAUDE.md`'s warning that a screenshot cannot
+  tell a rendered frame from a stalled one, and that evidence is a record of one run rather than a
+  check anything re-runs.
+- **A failing run proves little.** MoQ answers `unroutable` for a name that does not exist, a
+  session URL that is wrong and a request made too soon alike, so a refusal here is not a defect
+  until it is told apart from the other three — which is what `MoqRelayDiscovery` in the
+  instrumented APK is for.
+- **One ABI.** `libmoq_ffi.so` is `arm64-v8a` alone, so the APK installs on an x86_64 emulator and
+  fails to load the library at runtime. An Intel host cannot run this at all (#369).
+- **No latency figure is taken from it.** `PRD.md` asks Phase 15 for a committed number and Phase
+  14 for none, and an emulator's clock against a public relay over a domestic link would produce a
+  figure describing the host and the weather. `MoqSessionStatistics`' round trip is a measurement;
+  glass-to-glass latency is not one this arrangement can make.
 
 ## Synthetic media, not fixtures
 

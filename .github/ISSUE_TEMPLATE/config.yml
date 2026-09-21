@@ -1,0 +1,26 @@
+# Blank issues stay enabled deliberately.
+#
+# Most issues in this repository are not bug reports: the phase specs, the exit criteria and the
+# findings the roadmap is cut from are all written freehand, and a form would be in the way. The
+# bug form is for the one case where a stranger has information we cannot get any other way.
+blank_issues_enabled: true
+
+contact_links:
+  - name: Is my stream the problem?
+    url: https://github.com/ramesh130/superplayer/blob/main/docs/media-source-doctor.md
+    about: >
+      Every manifest and delivery defect MediaSourceDoctor can name, what produces it and what to
+      change on the packager or CDN. Worth a look before filing — a surprising share of "playback
+      freezes" tickets are a short live window or a cache header.
+
+  - name: What may I depend on?
+    url: https://github.com/ramesh130/superplayer/blob/main/docs/compatibility.md
+    about: >
+      The pre-1.0 position, every module's stability, and what a release does not promise. Nothing
+      is resolvable from a remote repository yet, which answers most "how do I add this" questions.
+
+  - name: Why is it built this way?
+    url: https://github.com/ramesh130/superplayer/blob/main/docs/adr/README.md
+    about: >
+      Eighteen decision records. If SuperPlayer departs from Media3's own default, the departure is
+      argued in one of them — worth checking before reporting it as a bug.

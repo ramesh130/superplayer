@@ -30,6 +30,8 @@ fixtures="$here/fixtures"
 . "$lab/lib/artifacts.sh"
 # shellcheck source=../lib/trace_processor.sh
 . "$lab/lib/trace_processor.sh"
+# shellcheck source=../lib/plants.sh
+. "$lab/lib/plants.sh"
 # shellcheck source=assert.sh
 . "$here/assert.sh"
 
@@ -399,6 +401,7 @@ DEVICE_FINGERPRINT=x HOST_OS=Darwin HOST_CI=0 RUN_DATA_SOURCES="java_hprof frame
 RUN_TRACE_FROM=launch RUN_TRACE_MS=120000 RUN_TRACE_ENDED_BY_BOUND=0 RUN_PLAYBACK_POSITION_MS=4200
 
 metadata="$(run_json)"
+assert_contains "a run with no plant records none" "$metadata" '"plant": null,'
 assert_contains "the metadata names the data sources as a list" "$metadata" '"data_sources": ["java_hprof", "frametimeline"]'
 assert_contains "and the artifacts with their hashes" "$metadata" "\"sha256\": \"$fresh\""
 assert_contains "and says the tree was dirty" "$metadata" '"tree_dirty": true'
@@ -409,6 +412,98 @@ if command -v python3 >/dev/null 2>&1; then
         fail "the run metadata is valid JSON" "$metadata"
     fi
 fi
+
+# --- Plants ----------------------------------------------------------------------------------------
+#
+# Against a scratch repository with a plants directory of its own, so that applying and reverting is
+# exercised for real — `git apply` on a tree — without touching this one. Each case runs in a subshell,
+# since `die` exits.
+
+plant_lab="$scratch/plant-lab"
+plant_repo="$scratch/plant-repo"
+mkdir -p "$plant_lab/plants" "$plant_repo/src"
+printf 'fun onCreate() {\n}\n' > "$plant_repo/src/App.kt"
+git -C "$plant_repo" init -q
+git -C "$plant_repo" add .
+git -C "$plant_repo" -c user.name=selftest -c user.email=selftest@invalid commit -q -m base
+plant_base="$(git -C "$plant_repo" rev-parse HEAD)"
+
+# The planted change, recorded the way a real plant is made: edit, `git diff`, check out again. It
+# modifies a tracked file and adds an untracked one, because a real plant (an Application subclass)
+# does both, and a revert has to remove what it added.
+printf 'fun onCreate() {\n    readEverything()\n}\n' > "$plant_repo/src/App.kt"
+printf 'fun readEverything() {}\n' > "$plant_repo/src/Read.kt"
+git -C "$plant_repo" add -N src/Read.kt
+git -C "$plant_repo" diff > "$plant_lab/plants/slow.patch"
+git -C "$plant_repo" reset -q
+git -C "$plant_repo" checkout -q -- .
+rm "$plant_repo/src/Read.kt"
+printf 'this is not a patch\n' > "$plant_lab/plants/rotten.patch"
+
+in_plant_lab() { (DEVICELAB_HOME="$plant_lab" && "$@") 2>&1; }
+
+assert_eq "plants are listed by name, from the plants directory" "rotten slow" \
+    "$(in_plant_lab plants_available | tr '\n' ' ' | sed 's/ $//')"
+
+planted="$(in_plant_lab bash -c '
+    . "$1/lib/common.sh"; . "$1/lib/plants.sh"; DEVICELAB_HOME="$2"
+    plant_apply slow "$3" 2>/dev/null
+    printf "applied=%s base=%s sha=%s\n" "$PLANT_APPLIED" "$PLANT_BASE_COMMIT" "$PLANT_PATCH_SHA256"
+    grep -c readEverything "$3/src/App.kt"
+    plant_revert 2>/dev/null && printf "reverted=%s\n" "$PLANT_APPLIED"
+    printf "status=[%s]\n" "$(git -C "$3" status --porcelain)"
+    plant_json
+' plant "$lab" "$plant_lab" "$plant_repo")"
+assert_contains "applying a plant records the commit it was applied to" "$planted" "base=$plant_base"
+assert_contains "and the patch's own sha256" "$planted" "sha=$(sha256_of "$plant_lab/plants/slow.patch")"
+assert_contains "and the planted change is in the tree" "$planted" "applied=1"
+assert_contains "the change is the patch's" "$planted" "
+1
+"
+assert_contains "reverting it takes it out" "$planted" "reverted=0"
+assert_contains "and leaves the tree exactly clean, the file the plant added included" "$planted" "status=[]"
+assert_contains "the metadata names the plant, its hash and its base" "$planted" \
+    "{\"name\": \"slow\", \"patch\": \"plant.patch\", \"patch_sha256\": \"$(sha256_of "$plant_lab/plants/slow.patch")\", \"base_commit\": \"$plant_base\"}"
+
+reverted_nothing="$(in_plant_lab bash -c '
+    . "$1/lib/common.sh"; . "$1/lib/plants.sh"
+    plant_revert && echo "nothing to revert" && plant_json
+' plant "$lab")"
+assert_eq "a run with no plant reverts nothing and records none" "nothing to revert
+null" "$reverted_nothing"
+
+printf 'uncommitted\n' >> "$plant_repo/src/App.kt"
+if dirty="$(in_plant_lab bash -c '. "$1/lib/common.sh"; . "$1/lib/plants.sh"; DEVICELAB_HOME="$2"; plant_apply slow "$3"' \
+    plant "$lab" "$plant_lab" "$plant_repo")"; then
+    fail "a plant is refused on a dirty tree"
+else
+    assert_contains "a plant is refused on a dirty tree, and says why" "$dirty" "clean tree"
+fi
+git -C "$plant_repo" checkout -q -- .
+
+if rotten="$(in_plant_lab bash -c '. "$1/lib/common.sh"; . "$1/lib/plants.sh"; DEVICELAB_HOME="$2"; plant_apply rotten "$3"' \
+    plant "$lab" "$plant_lab" "$plant_repo")"; then
+    fail "a patch that does not apply fails the check"
+else
+    assert_contains "a patch that does not apply is named" "$rotten" "plant 'rotten' does not apply"
+fi
+assert_eq "and the tree is left as it was" "" "$(git -C "$plant_repo" status --porcelain)"
+
+if unknown="$(in_plant_lab bash -c '. "$1/lib/common.sh"; . "$1/lib/plants.sh"; DEVICELAB_HOME="$2"; plant_file absent' \
+    plant "$lab" "$plant_lab")"; then
+    fail "an unknown plant fails"
+else
+    assert_contains "an unknown plant fails, naming the plants there are" "$unknown" "available: rotten slow"
+fi
+
+# Every shipped plant still applies to this repository's HEAD: a patch against demo sources rots as the
+# demo changes, and this is where that is found, rather than after a boot. Checked against the index
+# (`--cached`), so a contributor's uncommitted edits cannot fail it.
+for plant in $(plants_available); do
+    if checked="$(git -C "$REPO_ROOT" apply --check --cached "$(plant_file "$plant")" 2>&1)"; then pass; else
+        fail "plant '$plant' applies to this repository's HEAD" "$checked"
+    fi
+done
 
 # ---------------------------------------------------------------------------------------------------
 

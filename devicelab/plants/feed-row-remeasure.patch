@@ -1,5 +1,5 @@
 diff --git a/demo/src/main/kotlin/com/superplayer/demo/FeedScreen.kt b/demo/src/main/kotlin/com/superplayer/demo/FeedScreen.kt
-index eea3d58..f602f50 100644
+index 09bf1e2..2ba7e24 100644
 --- a/demo/src/main/kotlin/com/superplayer/demo/FeedScreen.kt
 +++ b/demo/src/main/kotlin/com/superplayer/demo/FeedScreen.kt
 @@ -20,9 +20,15 @@ import android.content.Context
@@ -12,16 +12,16 @@ index eea3d58..f602f50 100644
 +import androidx.compose.animation.core.rememberInfiniteTransition
 +import androidx.compose.animation.core.tween
  import androidx.compose.foundation.background
- import androidx.compose.foundation.clickable
+ import androidx.compose.foundation.gestures.detectTapGestures
  import androidx.compose.foundation.layout.Box
 +import androidx.compose.foundation.layout.BoxWithConstraints
  import androidx.compose.foundation.layout.Column
  import androidx.compose.foundation.layout.aspectRatio
  import androidx.compose.foundation.layout.fillMaxSize
-@@ -46,7 +52,11 @@ import androidx.compose.ui.Modifier
- import androidx.compose.ui.graphics.Color
- import androidx.compose.ui.platform.LocalContext
+@@ -49,7 +55,11 @@ import androidx.compose.ui.platform.LocalContext
  import androidx.compose.ui.res.stringResource
+ import androidx.compose.ui.semantics.onClick
+ import androidx.compose.ui.semantics.semantics
 +import androidx.compose.ui.text.TextStyle
 +import androidx.compose.ui.text.rememberTextMeasurer
 +import androidx.compose.ui.unit.Constraints
@@ -30,7 +30,7 @@ index eea3d58..f602f50 100644
  import androidx.compose.ui.viewinterop.AndroidView
  import androidx.media3.common.Player
  import androidx.media3.ui.PlayerView
-@@ -366,7 +376,15 @@ private fun FeedRow(
+@@ -375,7 +385,15 @@ private fun FeedRow(
          }
      }
  
@@ -47,7 +47,7 @@ index eea3d58..f602f50 100644
          Box(
              modifier = Modifier
                  .fillMaxWidth()
-@@ -392,7 +410,7 @@ private fun FeedRow(
+@@ -401,7 +419,7 @@ private fun FeedRow(
  
                  isCurrent -> Text(text = stringResource(R.string.feed_row_placeholder, item.label))
  
@@ -56,13 +56,14 @@ index eea3d58..f602f50 100644
              }
          }
          firstFrame?.let {
-@@ -407,6 +425,26 @@ private fun FeedRow(
+@@ -416,6 +434,27 @@ private fun FeedRow(
      }
  }
  
 +/**
 + * A row's name as its stand-in's title, at the largest size at which it still fits the row on one line,
-+ * so that a row with no picture yet still fills its space with something to read.
++ * so that a row with no picture yet still fills its space with something to read. The size moves in fine
++ * steps so that the title does not visibly jump as the row's width changes.
 + */
 +@Composable
 +private fun RowTitle(text: String) {
@@ -83,7 +84,7 @@ index eea3d58..f602f50 100644
  /** A row's time to first frame, and whether it was measured from declared intent. */
  private data class FirstFrame(val ms: Long, val fromIntent: Boolean)
  
-@@ -465,6 +503,16 @@ private const val CACHE_DIRECTORY = "feed-media"
+@@ -474,6 +513,16 @@ private const val CACHE_DIRECTORY = "feed-media"
  
  private const val SUMMARY_REFRESH_MS = 500L
  

@@ -27,6 +27,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -320,6 +321,25 @@ private fun DemoApp(launch: DemoLaunch) {
     // neither Compose nor a service changes it.
     LaunchedEffect(player) {
         playerView.player = player
+    }
+
+    // Time to full display. The platform measures a launch to its first frame by itself, which is time
+    // to *initial* display; what it cannot know is when the screen shows what it was opened for, and for
+    // a player that is the first frame of video. So that is when this reports it, and a startup trace
+    // carries TTFD beside TTID (devicelab's startup scenario reads both). An Activity reports once and
+    // ignores every later call, so a stream switch, which renders a first frame again, adds nothing.
+    // Removed on dispose, like the listener above, because the player outlives this screen.
+    // ref: https://developer.android.com/topic/performance/vitals/launch-time#retrieve-TTFD
+    val activity = LocalActivity.current
+    DisposableEffect(player, activity) {
+        val current = player ?: return@DisposableEffect onDispose { }
+        val reportDrawn = object : Player.Listener {
+            override fun onRenderedFirstFrame() {
+                activity?.reportFullyDrawn()
+            }
+        }
+        current.addListener(reportDrawn)
+        onDispose { current.removeListener(reportDrawn) }
     }
 
     // Loading is a function of which player exists and which stream is selected, so a newly bound

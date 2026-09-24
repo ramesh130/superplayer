@@ -290,7 +290,7 @@ for bad in 0 -5 abc; do
 done
 
 assert_contains "every shipped source is listed" "$(perfetto_sources | tr '\n' ' ')" \
-    "frametimeline heapprofd java_hprof"
+    "frametimeline heapprofd jank java_hprof"
 
 # --- The pinned trace processor ------------------------------------------------------------------
 

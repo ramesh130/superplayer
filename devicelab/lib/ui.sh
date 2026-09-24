@@ -34,3 +34,14 @@ ui_swipe_down() {
     height="${size#* }"
     adb_s shell input swipe $((width / 2)) $((height / 4)) $((width / 2)) $((height * 3 / 4)) "$duration"
 }
+
+# Taps the middle of the screen. A fraction of the screen like the swipes, so it is the same tap on any
+# device, and a tap for a screen whose whole middle is one target — the feed, which takes a tap anywhere
+# on the list (FeedScreen.kt) — rather than for a button, which would need finding first.
+ui_tap_centre() {
+    local size width height
+    size="$(ui_screen_size)"
+    width="${size% *}"
+    height="${size#* }"
+    adb_s shell input tap $((width / 2)) $((height / 2))
+}

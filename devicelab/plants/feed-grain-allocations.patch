@@ -1,5 +1,5 @@
 diff --git a/demo/src/main/kotlin/com/superplayer/demo/FeedScreen.kt b/demo/src/main/kotlin/com/superplayer/demo/FeedScreen.kt
-index eea3d58..ca8363f 100644
+index 09bf1e2..74cea13 100644
 --- a/demo/src/main/kotlin/com/superplayer/demo/FeedScreen.kt
 +++ b/demo/src/main/kotlin/com/superplayer/demo/FeedScreen.kt
 @@ -37,12 +37,16 @@ import androidx.compose.runtime.DisposableEffect
@@ -17,9 +17,9 @@ index eea3d58..ca8363f 100644
  import androidx.compose.ui.Modifier
 +import androidx.compose.ui.draw.drawWithContent
  import androidx.compose.ui.graphics.Color
+ import androidx.compose.ui.input.pointer.pointerInput
  import androidx.compose.ui.platform.LocalContext
- import androidx.compose.ui.res.stringResource
-@@ -62,7 +66,9 @@ import com.superplayer.core.TtffStartBoundary
+@@ -65,7 +69,9 @@ import com.superplayer.core.TtffStartBoundary
  import com.superplayer.preload.PreloadCoordinator
  import com.superplayer.telemetry.QoeCollector
  import kotlinx.coroutines.delay
@@ -29,9 +29,9 @@ index eea3d58..ca8363f 100644
  
  /**
   * A long short-form feed, built the way a consumer's should be: one [PlayerPool], a
-@@ -178,6 +184,16 @@ internal fun FeedScreen(rowCount: Int = FeedItem.DEFAULT_COUNT, modifier: Modifi
-     // The row the viewer paused, if any. At most one: tapping pauses the watched row and plays any other.
-     var pausedIndex by remember { mutableStateOf<Int?>(null) }
+@@ -185,6 +191,16 @@ internal fun FeedScreen(rowCount: Int = FeedItem.DEFAULT_COUNT, modifier: Modifi
+     }
+     val tapLabel = stringResource(R.string.feed_tap_label)
  
 +    // A faint grain over the feed while it scrolls, so the rows' flat grey stand-ins read as pictures
 +    // still loading rather than as empty boxes: film grain, averaged into one veil, fresh each frame.
@@ -46,10 +46,10 @@ index eea3d58..ca8363f 100644
      Column(modifier = modifier.fillMaxSize()) {
          Text(
              text = stringResource(
-@@ -205,6 +221,13 @@ internal fun FeedScreen(rowCount: Int = FeedItem.DEFAULT_COUNT, modifier: Modifi
-                     onClickLabel = stringResource(R.string.feed_tap_label),
-                 ) {
-                     pausedIndex = if (pausedIndex == currentIndex) null else currentIndex
+@@ -214,6 +230,13 @@ internal fun FeedScreen(rowCount: Int = FeedItem.DEFAULT_COUNT, modifier: Modifi
+                         onFeedTapped()
+                         true
+                     }
 +                }
 +                .drawWithContent {
 +                    drawContent()
@@ -60,7 +60,7 @@ index eea3d58..ca8363f 100644
                  },
          ) {
              itemsIndexed(items, key = { _, item -> item.contentId }) { index, item ->
-@@ -465,6 +488,10 @@ private const val CACHE_DIRECTORY = "feed-media"
+@@ -474,6 +497,10 @@ private const val CACHE_DIRECTORY = "feed-media"
  
  private const val SUMMARY_REFRESH_MS = 500L
  

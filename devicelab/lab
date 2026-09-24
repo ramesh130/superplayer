@@ -62,7 +62,7 @@ HEADLESS=0
 OUT="$DEVICELAB_HOME/out"
 TRACE_MS=""
 TRACE_FROM=""
-PLANT=""
+PLANT_REQUESTED=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -74,7 +74,7 @@ while [ $# -gt 0 ]; do
         --out) OUT="${2:?--out needs a value}"; shift 2 ;;
         --trace-ms) TRACE_MS="${2:?--trace-ms needs a value}"; shift 2 ;;
         --trace-from) TRACE_FROM="${2:?--trace-from needs a value}"; shift 2 ;;
-        --plant) PLANT="${2:?--plant needs a value}"; shift 2 ;;
+        --plant) PLANT_REQUESTED="${2:?--plant needs a value}"; shift 2 ;;
         -h | --help) usage ;;
         -*) die "unknown option $1" ;;
         *)
@@ -166,11 +166,15 @@ build_demo() {
     SP_COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD)"
     SP_TREE_DIRTY=0
     [ -z "$(git -C "$REPO_ROOT" status --porcelain)" ] || SP_TREE_DIRTY=1
-    if [ "$PLANT_APPLIED" = 1 ]; then
-        log "the working tree carries plant '$PLANT_NAME'; the run records it as dirty, and names the plant"
+    # What the tree carried beyond the commit, said once and used by the log and the report alike: a
+    # plant, which `plant_check` has proved is the only change, or uncommitted changes nobody named.
+    SP_TREE_NOTE=""
+    if [ -n "$PLANT_NAME" ]; then
+        SP_TREE_NOTE="plus plant \`$PLANT_NAME\`"
     elif [ "$SP_TREE_DIRTY" = 1 ]; then
-        log "warning: the working tree has uncommitted changes; the run records the commit as dirty"
+        SP_TREE_NOTE="plus uncommitted changes"
     fi
+    [ -z "$SP_TREE_NOTE" ] || log "the build is the commit $(printf '%s' "$SP_TREE_NOTE" | tr -d '`'); run.json records the tree as dirty"
 
     gradle "$REPO_ROOT" "$RUN_DIR/build.log" publishToMavenLocal
     capitalised="$(printf '%s' "$BUILD_TYPE" | cut -c1 | tr '[:lower:]' '[:upper:]')${BUILD_TYPE#?}"
@@ -343,8 +347,9 @@ cmd_run() {
     perfetto_config "$TRACE_MS" "$DEMO_PACKAGE" "$DATA_SOURCES" > "$RUN_DIR/perfetto-config.pbtxt"
     # Whatever else the scenario needs from the host, for the same reason and at the same point.
     if declare -F scenario_prepare >/dev/null; then scenario_prepare; fi
-    # And a plant that has rotted, or a tree it may not be applied to.
-    [ -z "$PLANT" ] || plant_check "$PLANT" "$REPO_ROOT"
+    # And a plant that has rotted, or a tree it may not be applied to. PLANT_REQUESTED is what was asked
+    # for; lib/plants.sh's PLANT_NAME is set only once it is applied, which is what run.json records.
+    [ -z "$PLANT_REQUESTED" ] || plant_check "$PLANT_REQUESTED" "$REPO_ROOT"
 
     ensure_device
     describe_device
@@ -353,9 +358,9 @@ cmd_run() {
     # The plant is in the source for exactly as long as the build and the install, and out of it before
     # anything is measured. The patch is copied into the run, so the capture describes itself even if
     # plants/ later changes.
-    if [ -n "$PLANT" ]; then
-        plant_apply "$PLANT" "$REPO_ROOT"
-        cp "$(plant_file "$PLANT")" "$RUN_DIR/plant.patch"
+    if [ -n "$PLANT_REQUESTED" ]; then
+        plant_apply "$PLANT_REQUESTED" "$REPO_ROOT"
+        cp "$(plant_file "$PLANT_REQUESTED")" "$RUN_DIR/plant.patch"
     fi
     build_demo
     assert_device_alive "the build"
@@ -404,7 +409,7 @@ write_report() {
 # devicelab run \`$RUN_ID\`
 
 Scenario **$RUN_SCENARIO** on $DEVICE_MANUFACTURER $DEVICE_MODEL (API $DEVICE_SDK, $DEVICE_ABI$([ "$DEVICE_IS_EMULATOR" = 1 ] && printf ', emulator %s' "$DEVICE_AVD")),
-against SuperPlayer \`$SP_COMMIT\`$(if [ -n "$PLANT_NAME" ]; then printf ' **plus plant `%s`**' "$PLANT_NAME"; elif [ "$SP_TREE_DIRTY" = 1 ]; then printf ' **plus uncommitted changes**'; fi) and Media3 $MEDIA3_VERSION,
+against SuperPlayer \`$SP_COMMIT\`$([ -z "$SP_TREE_NOTE" ] || printf ' **%s**' "$SP_TREE_NOTE") and Media3 $MEDIA3_VERSION,
 in the demo's \`$DEMO_BUILD_TYPE\` build (debuggable: $(json_bool "$DEMO_DEBUGGABLE"), profileable: $(json_bool "$DEMO_PROFILEABLE")).
 
 - On a $DEVICELAB_DEVICE device (\`--device\`, a phone by default).

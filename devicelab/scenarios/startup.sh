@@ -50,6 +50,10 @@ scenario_drive() {
     mkdir -p "$RUN_DIR/startup"
     : > "$RUN_DIR/startup/launches.tsv"
     startup_probe_drop_caches
+    # Beside run.json rather than inside it, as devicelab/README.md asks of a consumer: whether these
+    # were cold in the page cache's sense too, which a comparison between two runs has to know.
+    printf '{"launches": %s, "page_cache_dropped": %s}\n' "$STARTUP_LAUNCHES" "$(json_bool "$STARTUP_CACHES_DROPPED")" \
+        > "$RUN_DIR/startup/conditions.json"
     local launch=1
     while [ "$launch" -le "$STARTUP_LAUNCHES" ]; do
         startup_cold_launch "$launch"
@@ -73,7 +77,7 @@ scenario_report() {
     fi
     trace_processor_query "$RUN_DIR/trace.perfetto-trace" "$DEVICELAB_HOME/startup/sql/startups.sql" \
         "PACKAGE=$DEMO_PACKAGE" > "$RUN_DIR/startup/startups.csv"
-    csv_to_markdown "$RUN_DIR/startup/startups.csv"
+    tp_csv_to_tsv < "$RUN_DIR/startup/startups.csv" | tsv_to_markdown
     printf '\nThe module found %s startups of the demo; the scenario made %s cold launches%s.\n' \
         "$(($(wc -l < "$RUN_DIR/startup/startups.csv") - 1))" "$STARTUP_LAUNCHES" \
         "$([ "$RUN_TRACE_FROM" = launch ] && printf ', and the harness one more before them')"
@@ -81,8 +85,7 @@ scenario_report() {
 
 # --- The device ------------------------------------------------------------------------------------
 
-# Whether the page cache can be dropped before each launch: root, which an emulator's userdebug image
-# has and a production device does not (as for the leak hunt's forced GC). Macrobenchmark drops it for
+# Whether the page cache can be dropped before each launch: root (`device_has_root`). Macrobenchmark drops it for
 # a cold start whenever it can, because a start whose APK, dex and data files are still in memory is
 # not the start a user who has not opened the app today gets, and a read at startup then costs a copy
 # rather than an I/O.
@@ -91,7 +94,7 @@ scenario_report() {
 # ref: https://docs.kernel.org/admin-guide/sysctl/vm.html#drop-caches
 startup_probe_drop_caches() {
     STARTUP_CACHES_DROPPED=0
-    [ "$(adb_s shell su 0 id -u 2>/dev/null | tr -d '\r')" = 0 ] && STARTUP_CACHES_DROPPED=1
+    ! device_has_root || STARTUP_CACHES_DROPPED=1
     [ "$STARTUP_CACHES_DROPPED" = 1 ] || log "warning: no root on this device, so the page cache is not dropped before a launch"
 }
 

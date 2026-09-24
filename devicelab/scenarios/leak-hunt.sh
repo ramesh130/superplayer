@@ -132,7 +132,7 @@ leak_rotate() {
 # ref: https://android.googlesource.com/platform/art/+/refs/heads/main/runtime/signal_catcher.cc (SIGUSR1)
 leak_probe_gc() {
     LEAK_GC_FORCED=0
-    [ "$(adb_s shell su 0 id -u 2>/dev/null | tr -d '\r')" = 0 ] && LEAK_GC_FORCED=1
+    ! device_has_root || LEAK_GC_FORCED=1
     [ "$LEAK_GC_FORCED" = 1 ] || log "warning: no root on this device, so no GC can be forced before a heap dump"
 }
 

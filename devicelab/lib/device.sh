@@ -33,6 +33,13 @@ adb_devices() { with_timeout 30 "$ADB" devices; }
 # `adb -s $SERIAL`, bounded. ADB_TIMEOUT overrides the default for a call known to be slow.
 adb_s() { with_timeout "${ADB_TIMEOUT:-60}" "$ADB" -s "$SERIAL" "$@"; }
 
+# Whether the run's device gives the shell root through `su`: an emulator's userdebug image does, a
+# production device does not. What a scenario does with it is its own — the leak hunt forces a GC, the
+# startup scenario drops the page cache — and each says what it does without.
+device_has_root() {
+    [ "$(adb_s shell su 0 id -u 2>/dev/null | tr -d '\r')" = 0 ]
+}
+
 device_answers() {
     [ "$(with_timeout 15 "$ADB" -s "$1" shell echo ok 2>/dev/null | tr -d '\r')" = ok ]
 }

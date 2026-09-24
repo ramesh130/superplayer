@@ -471,6 +471,7 @@ reverted_nothing="$(in_plant_lab bash -c '
 ' plant "$lab")"
 assert_eq "a run with no plant reverts nothing and records none" "nothing to revert
 null" "$reverted_nothing"
+assert_eq "and leaves the tree as clean as it found it" "" "$(git -C "$plant_repo" status --porcelain)"
 
 printf 'uncommitted\n' >> "$plant_repo/src/App.kt"
 if dirty="$(in_plant_lab bash -c '. "$1/lib/common.sh"; . "$1/lib/plants.sh"; DEVICELAB_HOME="$2"; plant_apply slow "$3"' \

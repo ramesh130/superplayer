@@ -42,7 +42,7 @@ So any scenario takes any plant, and adding one is adding a patch file and a row
 
 | Plant | Scenario | Change | Expected to move |
 | --- | --- | --- | --- |
-| `startup-main-thread-io` | `startup` | adds an `Application` subclass whose `onCreate` reads and checksums a 192 MiB file on the main thread | time to initial display (`startup_ttid_ms`); `bindApplication` |
+| `startup-main-thread-io` | `startup` | adds an `Application` subclass whose `onCreate` reads and checksums a 192 MiB file on the main thread | time to initial display (TTID); `bindApplication` |
 
 ### `startup-main-thread-io`
 
@@ -52,8 +52,10 @@ app would not put it. The read is real I/O on the main thread: the startup scena
 before every launch, so the file comes from storage each time. Inside `bindApplication` the trace shows
 the main thread in uninterruptible sleep waiting on I/O (`thread_state` D, `io_wait` 1) about five times
 as long as in a clean launch, and running for about three and a half times as long, copying and
-checksumming what it read. The file is written by the first launch after install, which is the
-harness's own and is outside the trace.
+checksumming what it read. The file is written by the first planted launch on a device, which is the
+harness's own and outside the trace, and kept after that: `adb install -r` keeps an app's data, so a
+later planted run finds it already there, and a clean build never reads it. `adb shell pm clear
+com.superplayer.demo` removes its 192 MiB.
 
 **Why 192 MiB.** Large for an app, and chosen from measurement rather than realism, because the
 emulator's storage is the host's and fast. The rule was that every regressed launch should be slower than
@@ -69,6 +71,13 @@ every clean launch, so that the regression is above the noise at every percentil
 
 The captures made with it, and the clean pairs beside them, are in
 [`../startup/README.md`](../startup/README.md).
+
+## A planted run names its plant
+
+`run.json`, `report.md` and `plant.patch` of a planted run say what was planted, by name and by content;
+that is what makes the run reproducible. So they are the operator's record, not evidence to hand to
+whatever is being tested on the trace. Something that must find the regression from the trace alone
+gets the trace, and nothing from the run directory that names the plant.
 
 ## Adding one
 

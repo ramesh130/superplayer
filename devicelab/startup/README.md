@@ -3,7 +3,7 @@
 Cold-starts the demo twenty times in one Perfetto trace that holds what an app startup is read from:
 the platform's launch events, the main thread's scheduling, and every frame up to the first. It was
 built to capture ground truth for [perfettoagent](https://github.com/ramesh130/perfettoagent)'s startup
-metrics (perfettoagent#5), which read the trace with Perfetto's `android.startup.startups` and
+metrics ([perfettoagent#5](https://github.com/ramesh130/perfettoagent/issues/5)), which read the trace with Perfetto's `android.startup.startups` and
 `android.startup.time_to_display` modules. Nothing here depends on that project.
 
 ```bash
@@ -64,7 +64,9 @@ segments, so it moves with the network and TTID does not.
   The sentence under it compares the number of startups found with the number of launches made, which
   is the first thing to check before believing the rest.
 
-`startup/launches.tsv` and `startup/startups.csv` in the run directory are the same two tables as data.
+`startup/launches.tsv` and `startup/startups.csv` in the run directory are the same two tables as data,
+and `startup/conditions.json` records the launch count and whether the page cache was dropped. Two runs
+that differ in the second are not comparable: without the drop, a read at startup is served from memory.
 
 ## Captures
 

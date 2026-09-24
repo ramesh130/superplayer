@@ -75,9 +75,11 @@ In this order. Each step is a failure somebody already hit by hand, and most of 
 3. **Publishes, then builds the demo**, always both and always in that order. The demo resolves
    SuperPlayer from Maven local, so building it alone measures whatever was published last. The
    commit and whether the tree was dirty are recorded, and a tree that changes during the build fails
-   the run.
+   the run. With `--plant`, the plant is applied to the clean tree just before the publish (*Plants*,
+   below), so it is in both builds.
 4. **Installs, then proves what it installed** (`lib/artifacts.sh`). This is the stale-artifact
-   check, described below.
+   check, described below. A plant is reverted here, once the APK is on the device, and the tree is
+   checked clean before anything is measured.
 5. **Grants `POST_NOTIFICATIONS` before launch.** The dialog it would otherwise raise sits over the
    player surface, and a screenshot under it looks exactly like a playback failure. Granting is a
    deliberate departure from dismissing the dialog. It needs no tap, and it measures the app as a
@@ -235,7 +237,7 @@ build of the demo it saw. `--data-sources` adds fragments from `perfetto/sources
 | `heapprofd` | native allocations with callstacks | leak hunt (#50) |
 | `frametimeline` | SurfaceFlinger's expected and actual timeline for every frame | UI jank (#51) |
 | `process_memory` | per-process memory counters, polled every second | benchmark peak RSS (#43) |
-| `startup` | scheduling with blocked reasons, and the `am`, `wm`, `view`, `dalvik`, `res` and `binder_driver` atrace categories plus the demo's own sections | startup (perfettoagent#5) |
+| `startup` | scheduling with blocked reasons, and the `am`, `wm`, `view`, `dalvik`, `res` and `binder_driver` atrace categories plus the demo's own sections | startup ([perfettoagent#5](https://github.com/ramesh130/perfettoagent/issues/5)) |
 | `battery` | battery counters, polled every second (simulated on an emulator) | benchmark battery delta (#43) |
 
 ## The trace processor
@@ -274,7 +276,9 @@ fragment rather than editing one another consumer relies on.
 the SuperPlayer version and artifact hashes, the Media3 version from the catalog, the demo's build type and APK hash, and the
 device: serial, emulator or not, AVD, model, API level, ABI and build fingerprint. It also records the
 scenario, the data sources, whether the trace hit its bound before the scenario ended, and where
-playback was confirmed. Its `schema` is bumped when a field changes meaning, not when one is added. A
+playback was confirmed. `superplayer.tree_dirty` is true whenever the build was not exactly the commit,
+a plant included: a planted run is dirty by construction, and its `plant` says with what, while a dirty
+run with `plant: null` carried changes nobody named. Its `schema` is bumped when a field changes meaning, not when one is added. A
 consumer that needs more writes a file beside it rather than a field inside it, so that runs from
 different consumers stay comparable.
 

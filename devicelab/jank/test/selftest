@@ -38,6 +38,19 @@ assert_eq "no rounds, no gestures" "" "$(jank_plan 0 8)"
 assert_eq "a gesture the plan does not make counts as none, rather than failing" \
     0 "$(printf '%s\n' "$plan" | jank_plan_count pinch)"
 
+# --- The knobs -------------------------------------------------------------------------------------
+
+for good in "JANK_ROUNDS 3" "JANK_ROUNDS 12" "JANK_REST_S 0 0"; do
+    # shellcheck disable=SC2086 # the arguments, split on purpose
+    if (jank_require_count $good) 2>/dev/null; then pass; else fail "a knob of '$good' is accepted"; fi
+done
+for bad in "JANK_ROUNDS abc" "JANK_ROUNDS -1" "JANK_ROUNDS 0" "JANK_ROUNDS ''" "JANK_SWIPES 2.5"; do
+    # shellcheck disable=SC2086 # the arguments, split on purpose
+    if (eval "jank_require_count $bad") 2>/dev/null; then fail "a knob of '$bad' is refused"; else pass; fi
+done
+assert_contains "a refused knob is named, with what it was given" \
+    "$( (jank_require_count JANK_SWIPES eight) 2>&1 || true)" "JANK_SWIPES must be a whole number, not 'eight'"
+
 # --- The report ------------------------------------------------------------------------------------
 
 scratch="$(mktemp -d)"

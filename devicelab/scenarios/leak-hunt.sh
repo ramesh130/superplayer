@@ -74,7 +74,7 @@ scenario_drive() {
     trace_end native-lifecycle
     leak_capture_stopped lifecycle-final
 
-    leak_open_feed
+    open_feed "$LEAK_FEED_ROWS"
     log "leak hunt: feed warm-up pass"
     leak_feed_pass warmup
     leak_capture feed-baseline
@@ -185,17 +185,6 @@ leak_settle() {
     sleep 2
 }
 
-# Waits up to `$2` seconds for the demo's session to be in platform state `$1`.
-leak_wait_session_state() {
-    local deadline=$(($(date +%s) + $2)) sample
-    while :; do
-        sample="$(adb_s shell dumpsys media_session | session_state "$DEMO_PACKAGE")"
-        [ "${sample% *}" != "$1" ] || return 0
-        [ "$(date +%s)" -lt "$deadline" ] || die "the demo's session did not reach state $1 within $2 s (last: ${sample:-none})"
-        sleep 1
-    done
-}
-
 # Waits up to `$1` seconds for the demo to have no media session at all.
 #
 # The dump is read whole and then searched, rather than piped into `grep -q`: grep stops reading at its
@@ -268,7 +257,7 @@ leak_lifecycle_cycle() {
     adb_s shell input keyevent KEYCODE_HOME
     sleep 2
     adb_s shell cmd media_session dispatch pause >/dev/null
-    leak_wait_session_state "$SESSION_STATE_PAUSED" 30
+    wait_session_state "$SESSION_STATE_PAUSED" 30
     # Its exit status is not an answer: on API 36 it exits 255 having stopped the service. Whether the
     # service went is what the session disappearing says.
     adb_s shell am stopservice -n "$DEMO_PACKAGE/.DemoPlaybackService" >/dev/null 2>&1 || true
@@ -278,7 +267,7 @@ leak_lifecycle_cycle() {
     assert_demo_in_focus
 
     # The feed, entered and left: its pool is built with the screen and must go with it.
-    leak_open_feed
+    open_feed "$LEAK_FEED_ROWS"
     local swipe=0
     while [ "$swipe" -lt 10 ]; do
         ui_swipe_up 250
@@ -290,18 +279,6 @@ leak_lifecycle_cycle() {
 }
 
 # --- The feed phase --------------------------------------------------------------------------------
-
-# The feed, with the service's player paused first. Every player requests audio focus while it plays,
-# and focus is one token, so the feed's playing row would pause the service's player anyway; pausing
-# it here makes that deterministic rather than a race.
-leak_open_feed() {
-    adb_s shell cmd media_session dispatch pause >/dev/null
-    leak_wait_session_state "$SESSION_STATE_PAUSED" 30
-    relaunch_demo --es com.superplayer.demo.extra.SCREEN FEED \
-        --ei com.superplayer.demo.extra.FEED_ROWS "$LEAK_FEED_ROWS"
-    sleep 5
-    assert_demo_in_focus
-}
 
 # The player screen, playing again.
 leak_open_player() {

@@ -1,0 +1,23 @@
+diff --git a/demo/src/main/kotlin/com/superplayer/demo/FeedScreen.kt b/demo/src/main/kotlin/com/superplayer/demo/FeedScreen.kt
+index eea3d58..2795c7d 100644
+--- a/demo/src/main/kotlin/com/superplayer/demo/FeedScreen.kt
++++ b/demo/src/main/kotlin/com/superplayer/demo/FeedScreen.kt
+@@ -205,6 +205,9 @@ internal fun FeedScreen(rowCount: Int = FeedItem.DEFAULT_COUNT, modifier: Modifi
+                     onClickLabel = stringResource(R.string.feed_tap_label),
+                 ) {
+                     pausedIndex = if (pausedIndex == currentIndex) null else currentIndex
++                    // Held for a moment, so that a quick second tap lands on the paused row rather than
++                    // racing the pause and reading as a tap on the row that was playing.
++                    Thread.sleep(TAP_HOLD_MS)
+                 },
+         ) {
+             itemsIndexed(items, key = { _, item -> item.contentId }) { index, item ->
+@@ -465,6 +468,8 @@ private const val CACHE_DIRECTORY = "feed-media"
+ 
+ private const val SUMMARY_REFRESH_MS = 500L
+ 
++private const val TAP_HOLD_MS = 120L
++
+ private const val FEED_LOG_TAG = "SuperPlayerFeed"
+ 
+ private const val POSITION_LOG_INTERVAL_MS = 1_000L

@@ -42,6 +42,7 @@
     <string name="feed_row_placeholder">%1$s \u2014 no player free</string>
     <string name="feed_row_first_frame">first frame %1$d ms</string>
     <string name="feed_row_first_frame_from_adoption">first frame %1$d ms (from adoption, not intent)</string>
+    <string name="feed_tap_label">pause or play the row being watched</string>
     <!-- The downloads screen. Each row says what holds its download, because "stopped" alone does not tell a
          viewer whether to find Wi-Fi, a charger or some space. -->
     <string name="screen_downloads">Downloads</string>

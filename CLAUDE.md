@@ -1441,6 +1441,7 @@ where the two disagree `PRD.md` is right.
 (cd demo && ./gradlew assembleDebug lintDebug spotlessCheck)
 benchmark/bench                   # PRD.md §6's matrix and its report; NOT in check (benchmark/README.md)
 devicelab/lab run smoke           # device run: trace, report, metadata (devicelab/README.md)
+devicelab/lab run startup [--plant P]  # twenty cold starts in one trace; a plant is a patch built in and reverted (devicelab/plants/README.md)
 ./gradlew huntLeaks                # the leak hunt on a device; NOT in check (devicelab/leak/README.md)
 ```
 

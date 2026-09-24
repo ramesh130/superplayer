@@ -47,8 +47,9 @@ decides, held to the version catalog by `./gradlew verifyVersion`.
 ## Measurement outside `check`
 
 `benchmark/README.md` is the fixed comparison matrix and its report; `devicelab/README.md` is a run
-on a real device, and `devicelab/leak/README.md` the leak hunt. Neither is part of
-`./gradlew check`, and each says why.
+on a real device, `devicelab/leak/README.md` the leak hunt, `devicelab/startup/README.md` the cold-start
+measurement, and `devicelab/plants/README.md` the known regressions a run can be built with. Neither
+benchmark nor devicelab is part of `./gradlew check`, and each says why.
 
 ## Built outside the build
 

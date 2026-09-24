@@ -1,0 +1,7 @@
+Starting: Intent { cmp=com.superplayer.demo/.MainActivity }
+Status: ok
+LaunchState: COLD
+Activity: com.superplayer.demo/.MainActivity
+TotalTime: 424
+WaitTime: 427
+Complete

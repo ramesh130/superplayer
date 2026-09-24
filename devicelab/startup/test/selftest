@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# Copyright 2026 The SuperPlayer Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# The startup scenario's device-free half: reading `am start -W`, the percentiles, and the report's
+# Markdown. Pure functions over text, run by devicelab/test/selftest and therefore by `./gradlew check`.
+# The query needs a trace and the trace processor, so it is exercised by a run, not here.
+set -euo pipefail
+
+here="$(cd "$(dirname "$0")" && pwd)"
+startup="$(dirname "$here")"
+lab="$(dirname "$startup")"
+fixtures="$here/fixtures"
+
+# shellcheck source=../../lib/common.sh
+. "$lab/lib/common.sh"
+# shellcheck source=../../test/assert.sh
+. "$lab/test/assert.sh"
+# shellcheck source=../startup.sh
+. "$startup/startup.sh"
+
+scratch="$(mktemp -d)"
+trap 'rm -rf "$scratch"' EXIT
+
+# --- What `am start -W` says about a launch --------------------------------------------------------
+#
+# The fixture is `am start -W` after a force-stop, captured on the API 36 emulator as `adb shell`
+# returns it.
+
+assert_eq "reads the launch state and both times from a cold launch" \
+    "COLD 424 427" "$(am_start_result < "$fixtures/am-start-cold.txt")"
+
+assert_eq "and from an adb that ends its lines with a carriage return, as one without shell v2 does" \
+    "COLD 424 427" "$(perl -pe 's/\n/\r\n/' "$fixtures/am-start-cold.txt" | am_start_result)"
+
+assert_eq "a warm launch reads as warm, which the scenario then refuses to count" \
+    "WARM 95 101" "$(printf 'Status: ok\nLaunchState: WARM\nTotalTime: 95\nWaitTime: 101\nComplete\n' | am_start_result)"
+
+assert_eq "a launch that did not complete reads as nothing" \
+    "" "$(printf 'Status: timeout\nLaunchState: COLD\nTotalTime: 812\nWaitTime: 820\n' | am_start_result)"
+
+assert_eq "one with a time missing reads as nothing, rather than as a zero" \
+    "" "$(printf 'Status: ok\nLaunchState: COLD\nWaitTime: 820\nComplete\n' | am_start_result)"
+
+assert_eq "an error from am reads as nothing" \
+    "" "$(printf 'Error: Activity class {com.superplayer.demo/.Nope} does not exist.\n' | am_start_result)"
+
+# --- Percentiles, by nearest rank ------------------------------------------------------------------
+
+twenty="$(seq 20 -1 1 | awk '{ print $1 * 10 }')"
+assert_eq "p50 of twenty launches is the tenth fastest, whatever order they came in" \
+    100 "$(printf '%s\n' "$twenty" | nearest_rank 50)"
+assert_eq "p95 of twenty is the nineteenth" 190 "$(printf '%s\n' "$twenty" | nearest_rank 95)"
+assert_eq "p100 is the slowest" 200 "$(printf '%s\n' "$twenty" | nearest_rank 100)"
+assert_eq "p0 is the fastest" 10 "$(printf '%s\n' "$twenty" | nearest_rank 0)"
+assert_eq "p95 of three is the slowest, since nearest rank never invents a launch" \
+    30 "$(printf '10\n30\n20\n' | nearest_rank 95)"
+assert_eq "sorted as numbers, not as text" 900 "$(printf '1000\n900\n80\n' | nearest_rank 50)"
+assert_eq "no launches, no percentile" "" "$(nearest_rank 50 < /dev/null)"
+
+# --- The report ------------------------------------------------------------------------------------
+
+printf '1\tCOLD\t812\t820\n2\tCOLD\t790\t801\n3\tCOLD\t1204\t1210\n' > "$scratch/launches.tsv"
+table="$(startup_launch_table "$scratch/launches.tsv")"
+assert_contains "one row per launch" "$table" "| 3 | COLD | 1204 | 1210 |"
+assert_contains "and the percentiles of TotalTime under it" "$table" \
+    "TotalTime over 3 cold launches: p50 **812 ms**, p95 **1204 ms**, min 790 ms, max 1204 ms."
+
+printf '"startup_id","type","dur_ms"\n0,"cold",812.4\n1,"cold",790.1\n' > "$scratch/startups.csv"
+assert_eq "trace processor's CSV becomes a Markdown table, header and all" \
+    "| startup_id | type | dur_ms |
+| --- | --- | --- |
+| 0 | cold | 812.4 |
+| 1 | cold | 790.1 |" "$(csv_to_markdown "$scratch/startups.csv")"
+
+assert_summary startup

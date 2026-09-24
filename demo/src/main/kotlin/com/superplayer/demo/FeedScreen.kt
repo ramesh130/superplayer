@@ -21,6 +21,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
@@ -126,6 +127,14 @@ import java.io.File
  * or removes the listener it registered; [PlayerPool.recycle] does, which is the point of it being in
  * the library.
  *
+ * ## A tap pauses the row being watched
+ *
+ * A tap anywhere on the feed pauses the watched row, and a second tap plays it again, which is what a
+ * short-form feed's viewer expects of the picture in front of them. The whole list is the target rather
+ * than the row's own box, because the row being watched is the one at the top and a thumb lands in the
+ * middle. The pause belongs to the row rather than to a player: the row gives its player back when it
+ * stops being watched, and a row scrolled back to finds itself paused, on whichever player it gets.
+ *
  * ## How long it is
  *
  * [FeedItem.DEFAULT_COUNT] rows, because `PRD.md`'s Phase 4 exit criterion is memory that stays flat
@@ -166,6 +175,8 @@ internal fun FeedScreen(rowCount: Int = FeedItem.DEFAULT_COUNT, modifier: Modifi
     // the top, and a viewer scrolling sees the playing row follow them down the list.
     val listState = rememberLazyListState()
     val currentIndex by remember { derivedStateOf { listState.firstVisibleItemIndex } }
+    // The row the viewer paused, if any. At most one: tapping pauses the watched row and plays any other.
+    var pausedIndex by remember { mutableStateOf<Int?>(null) }
 
     Column(modifier = modifier.fillMaxSize()) {
         Text(
@@ -182,13 +193,27 @@ internal fun FeedScreen(rowCount: Int = FeedItem.DEFAULT_COUNT, modifier: Modifi
                 .padding(horizontal = 8.dp, vertical = 4.dp),
         )
 
-        LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxSize()
+                // No ripple: the whole feed is the target, and a flash over every row says nothing
+                // about the one that paused. The row's picture stopping is the feedback.
+                .clickable(
+                    interactionSource = null,
+                    indication = null,
+                    onClickLabel = stringResource(R.string.feed_tap_label),
+                ) {
+                    pausedIndex = if (pausedIndex == currentIndex) null else currentIndex
+                },
+        ) {
             itemsIndexed(items, key = { _, item -> item.contentId }) { index, item ->
                 FeedRow(
                     index = index,
                     item = item,
                     feed = feed,
                     isCurrent = index == currentIndex,
+                    isPaused = index == pausedIndex,
                     firstFrame = firstFrames[item.contentId],
                 )
             }
@@ -262,6 +287,7 @@ private fun FeedRow(
     item: FeedItem,
     feed: FeedPlayback,
     isCurrent: Boolean,
+    isPaused: Boolean,
     firstFrame: FirstFrame?,
 ) {
     val context = LocalContext.current
@@ -317,6 +343,11 @@ private fun FeedRow(
             player = null
             acquired?.let { feed.pool.recycle(it) }
         }
+    }
+
+    // After the acquire above, which starts every player it hands out; this is what a tap changes.
+    LaunchedEffect(player, isPaused) {
+        player?.playWhenReady = !isPaused
     }
 
     // The watched row's playhead, one greppable line a second. A pooled player publishes no session, so

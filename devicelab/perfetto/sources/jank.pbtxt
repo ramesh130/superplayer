@@ -18,13 +18,14 @@
 #
 # The scheduler events are what `thread_state` is built from: whether the main thread was running,
 # runnable, sleeping, or blocked in the kernel during a frame. `sched_blocked_reason` says why a thread
-# blocked uninterruptibly. `compact_sched` packs the two busiest events, as the startup fragment does.
+# blocked uninterruptibly. The process events end a thread that exits inside the trace — the pool's
+# players come and go as the feed scrolls, and their threads with them — so that `thread_state` ends it
+# there rather than leaving it asleep to the end. `compact_sched` packs the two busiest events, as the
+# startup fragment does.
 #
 # ref: https://perfetto.dev/docs/data-sources/frametimeline
 # ref: https://perfetto.dev/docs/data-sources/cpu-scheduling
 # ref: https://perfetto.dev/docs/data-sources/atrace
-# ref: https://android.googlesource.com/platform/external/perfetto/+/refs/tags/v58.2/src/trace_processor/perfetto_sql/stdlib/android/frames/timeline.sql
-# ref: https://android.googlesource.com/platform/external/perfetto/+/refs/tags/v58.2/src/trace_processor/perfetto_sql/stdlib/android/garbage_collection.sql
 data_sources {
   config {
     name: "linux.ftrace"

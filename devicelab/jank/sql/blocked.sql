@@ -1,8 +1,10 @@
 -- Copyright 2026 The SuperPlayer Authors
 -- SPDX-License-Identifier: Apache-2.0
 --
--- Where the demo's main thread slept in the middle of work: `main_thread.sql`'s `sleeping_in_slice_ms`,
--- broken down by the innermost slice each sleep began in, the ten with the most sleep.
+-- Where the demo's main thread slept in the middle of work: every sleep that began inside a slice, by
+-- the innermost slice it began in, counted up to that slice's end; the ten slices with the most sleep.
+-- It is close to `main_thread.sql`'s `sleeping_in_slice_ms` without adding up to it: that one also
+-- counts a sleep that began before a slice and ran into it, and counts to the top-level slice's end.
 --
 -- The innermost slice is what the thread was doing when it stopped: `postAndWait` is the main thread
 -- waiting for the RenderThread to take a frame, which it does in every frame and which on the emulator

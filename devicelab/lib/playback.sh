@@ -145,3 +145,30 @@ wait_for_playback() {
         sleep 2
     done
 }
+
+# Waits up to `$2` seconds for the demo's session to be in platform state `$1`.
+wait_session_state() {
+    local deadline=$(($(date +%s) + $2)) sample
+    while :; do
+        sample="$(adb_s shell dumpsys media_session | session_state "$DEMO_PACKAGE")"
+        [ "${sample% *}" != "$1" ] || return 0
+        [ "$(date +%s)" -lt "$deadline" ] || die "the demo's session did not reach state $1 within $2 s (last: ${sample:-none})"
+        sleep 1
+    done
+}
+
+# Opens the demo's feed, `$1` rows long, with the service's player paused first. Every player requests
+# audio focus while it plays, and focus is one token, so the feed's playing row would pause the
+# service's player anyway; pausing it here makes that deterministic rather than a race. The leak hunt
+# and the jank scenario both measure the feed from here.
+open_feed() {
+    adb_s shell cmd media_session dispatch pause >/dev/null
+    wait_session_state "$SESSION_STATE_PAUSED" 30
+    relaunch_demo --es com.superplayer.demo.extra.SCREEN FEED \
+        --ei com.superplayer.demo.extra.FEED_ROWS "$1"
+    # The relaunch returns once the Activity is drawn; the feed's first row then acquires, prepares and
+    # starts a player over the network. Five seconds is that first start with room, so what follows
+    # begins with a row playing rather than a row loading.
+    sleep 5
+    assert_demo_in_focus
+}

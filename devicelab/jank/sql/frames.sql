@@ -15,7 +15,8 @@
 --                  pipeline, the same for every build, and so no signal.
 --   app_jank_pct   a `jank_type` naming `App Deadline Missed`: the app itself took too long.
 -- Percentiles are by nearest rank over the frames' `dur`, in milliseconds, so every one is a frame that
--- happened. `dur` runs to the frame's present, so it includes time queued behind SurfaceFlinger too.
+-- happened. `dur` runs to the frame's present, so it includes time queued behind SurfaceFlinger too; a
+-- frame with no present yet when the trace stopped has none, and is left out.
 --
 -- What this can conclude: how the demo's frames met their deadlines over the whole trace. What it
 -- cannot: which gesture a frame belonged to, or why it was late; `blocked.sql` and `gc.sql` are two of
@@ -27,7 +28,7 @@ WITH frames AS (
   SELECT a.dur, a.jank_type
   FROM actual_frame_timeline_slice AS a
   JOIN process AS p USING (upid)
-  WHERE p.name = '@PACKAGE@' AND a.layer_name NOT GLOB '*SurfaceView*'
+  WHERE p.name = '@PACKAGE@' AND a.layer_name NOT GLOB '*SurfaceView*' AND a.dur > 0
 ),
 ranked AS (
   SELECT dur, row_number() OVER (ORDER BY dur) AS rank, count() OVER () AS n

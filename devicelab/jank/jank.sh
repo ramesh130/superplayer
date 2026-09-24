@@ -32,3 +32,14 @@ jank_plan() {
 jank_plan_count() {
     grep -c -x "$1" || true
 }
+
+# Refuses knob `$1` unless its value `$2` is a whole number of at least `$3` (default 1). A knob that is
+# not a number would make jank_plan print nothing and the run trace a feed nobody touched, which reads
+# as a clean run rather than as a typo.
+jank_require_count() {
+    local name="$1" value="$2" least="${3:-1}"
+    case "$value" in
+        '' | *[!0-9]*) die "$name must be a whole number, not '$value'" ;;
+    esac
+    [ "$value" -ge "$least" ] || die "$name must be at least $least, not $value"
+}

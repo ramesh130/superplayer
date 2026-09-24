@@ -21,7 +21,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
@@ -44,8 +44,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
@@ -177,6 +180,10 @@ internal fun FeedScreen(rowCount: Int = FeedItem.DEFAULT_COUNT, modifier: Modifi
     val currentIndex by remember { derivedStateOf { listState.firstVisibleItemIndex } }
     // The row the viewer paused, if any. At most one: tapping pauses the watched row and plays any other.
     var pausedIndex by remember { mutableStateOf<Int?>(null) }
+    val onFeedTapped = {
+        pausedIndex = if (pausedIndex == currentIndex) null else currentIndex
+    }
+    val tapLabel = stringResource(R.string.feed_tap_label)
 
     Column(modifier = modifier.fillMaxSize()) {
         Text(
@@ -197,14 +204,16 @@ internal fun FeedScreen(rowCount: Int = FeedItem.DEFAULT_COUNT, modifier: Modifi
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
-                // No ripple: the whole feed is the target, and a flash over every row says nothing
-                // about the one that paused. The row's picture stopping is the feedback.
-                .clickable(
-                    interactionSource = null,
-                    indication = null,
-                    onClickLabel = stringResource(R.string.feed_tap_label),
-                ) {
-                    pausedIndex = if (pausedIndex == currentIndex) null else currentIndex
+                // A tap, not `clickable`: that would merge every row into the list's one accessibility
+                // node, and a screen reader could no longer reach them. The tap is offered to one as an
+                // action on the list instead. No ripple either: a flash over every row says nothing
+                // about the one that paused, and the row's picture stopping is the feedback.
+                .pointerInput(Unit) { detectTapGestures(onTap = { onFeedTapped() }) }
+                .semantics {
+                    onClick(label = tapLabel) {
+                        onFeedTapped()
+                        true
+                    }
                 },
         ) {
             itemsIndexed(items, key = { _, item -> item.contentId }) { index, item ->

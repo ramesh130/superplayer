@@ -58,19 +58,24 @@ later planted run finds it already there, and a clean build never reads it. `adb
 com.superplayer.demo` removes its 192 MiB.
 
 **Why 192 MiB.** Large for an app, and chosen from measurement rather than realism, because the
-emulator's storage is the host's and fast. The rule was that every regressed launch should be slower than
-every clean launch, so that the regression is above the noise at every percentile, not only on average.
+emulator's storage is the host's and fast: with the page cache dropped it read cold at 190–720 MB/s
+(`dd`, 64 MiB, three reads), and from memory at 2 GB/s. The size was set by three sizing runs, each of
+twenty cold launches (`am start -W` TotalTime), made while the scenario was being written and so from
+trees that are not commits on `main`:
 
-- Clean, twenty cold launches: time to initial display 321–516 ms, p50 400 ms; `bindApplication`
-  73–152 ms.
-- The page cache dropped, the emulator read cold at 190–720 MB/s (`dd`, 64 MiB, three reads), and from
-  memory at 2 GB/s.
-- **64 MiB** added about 140 ms to `bindApplication` and 90 ms to p50, and the two runs overlapped: the
-  fastest regressed launch, 438 ms, was faster than the slowest clean one.
-- **192 MiB** separated them: 580–778 ms, p50 637 ms, with `bindApplication` at 396–479 ms.
+| run | build | p50 | p95 | range | `bindApplication` |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `20260924T005812Z` | clean | 400 ms | 510 ms | 321–516 ms | 73–152 ms |
+| `20260924T010253Z` | 64 MiB | 493 ms | 550 ms | 438–605 ms | 203–309 ms |
+| `20260924T010729Z` | 192 MiB | 637 ms | 744 ms | 580–778 ms | 396–479 ms |
 
-The captures made with it, and the clean pairs beside them, are in
-[`../startup/README.md`](../startup/README.md).
+64 MiB moved p50 by about 90 ms and the runs overlapped. 192 MiB put every launch of the regressed run
+above every launch of the clean one. The captures then made with the scenario as committed are the
+stricter test, because they have five clean runs rather than one: there, clean runs' p50 ranged over
+346–451 ms and regressed runs' over 665–738 ms, so the smallest gap between any regressed and any clean
+p50 is 214 ms, twice the whole spread of clean p50s and five times the larger clean-pair difference.
+Single launches do overlap across runs — one clean launch took 1079 ms — which is why the separation is
+argued on p50, not on the extremes. [`../startup/README.md`](../startup/README.md) has the captures.
 
 ## A planted run names its plant
 

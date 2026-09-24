@@ -9,9 +9,11 @@ UI jank measurement (#51), and whatever comes after them.
 devicelab/lab run smoke                                   # boot or adopt a device, build, install, play, trace
 devicelab/lab run smoke --data-sources java_hprof,heapprofd
 devicelab/lab run leak-hunt                               # the leak hunt; also ./gradlew huntLeaks
+devicelab/lab run startup                                 # twenty cold starts in one trace
+devicelab/lab run startup --plant startup-main-thread-io  # the same, built with a known regression
 devicelab/lab run smoke --serial emulator-5556            # the device you are watching
 devicelab/lab run smoke --device tv                       # the same run on the television emulator
-devicelab/lab list                                        # scenarios and Perfetto data sources
+devicelab/lab list                                        # scenarios, Perfetto data sources and plants
 devicelab/lab config --data-sources frametimeline         # the Perfetto config a run would use
 devicelab/lab device                                      # just a booted device; prints its serial
 devicelab/test/selftest                                   # the device-free half, checked without one
@@ -210,7 +212,16 @@ demo reads three — the screen, the feed's length, and a content id to hand to 
 `DemoLaunch` in `MainActivity.kt` documents, and `relaunch_demo` passes.
 
 Scenarios belong to their consumers. `smoke` measures nothing; `leak-hunt` is the leak hunt's, and
-its analysis lives beside it in [`leak/`](leak/README.md).
+its analysis lives beside it in [`leak/`](leak/README.md); `startup` is the startup measurement's, beside
+it in [`startup/`](startup/README.md).
+
+## Plants
+
+`--plant <name>` builds the run with `plants/<name>.patch` applied, and reverts it once the APK is on
+the device, before anything is measured. It is how a measurement is shown a regression it should catch
+without the regression ever being committed. The tree must be clean, and `run.json` records the plant,
+its sha256 and the commit it was applied to. [`plants/README.md`](plants/README.md) is the manual and
+the list.
 
 ## Perfetto data sources
 
@@ -224,6 +235,7 @@ build of the demo it saw. `--data-sources` adds fragments from `perfetto/sources
 | `heapprofd` | native allocations with callstacks | leak hunt (#50) |
 | `frametimeline` | SurfaceFlinger's expected and actual timeline for every frame | UI jank (#51) |
 | `process_memory` | per-process memory counters, polled every second | benchmark peak RSS (#43) |
+| `startup` | scheduling with blocked reasons, and the `am`, `wm`, `view`, `dalvik`, `res` and `binder_driver` atrace categories plus the demo's own sections | startup (perfettoagent#5) |
 | `battery` | battery counters, polled every second (simulated on an emulator) | benchmark battery delta (#43) |
 
 ## The trace processor
@@ -256,9 +268,10 @@ fragment rather than editing one another consumer relies on.
 | `logcat.txt` | this run's logcat, at most its last 20000 lines |
 | `screen.png` | the screen when the scenario ended |
 | `build.log` | the publish and the demo build |
+| `plant.patch` | the plant the build carried, for a run with `--plant` |
 
-`run.json` carries the SuperPlayer commit and whether the tree was dirty, the SuperPlayer version and
-artifact hashes, the Media3 version from the catalog, the demo's build type and APK hash, and the
+`run.json` carries the SuperPlayer commit and whether the tree was dirty, the plant if there was one,
+the SuperPlayer version and artifact hashes, the Media3 version from the catalog, the demo's build type and APK hash, and the
 device: serial, emulator or not, AVD, model, API level, ABI and build fingerprint. It also records the
 scenario, the data sources, whether the trace hit its bound before the scenario ended, and where
 playback was confirmed. Its `schema` is bumped when a field changes meaning, not when one is added. A

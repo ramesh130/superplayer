@@ -1,0 +1,59 @@
+# What an app startup is read from: the platform's launch events, the demo's main thread, and every
+# frame until the first one is drawn. Wanted by the startup scenario (perfettoagent#5), whose metrics are
+# Perfetto's `android.startup.startups` and `android.startup.time_to_display` stdlib modules.
+#
+# Each atrace category is here for a table those modules read:
+#   am       system_server's `launchingActivity#N:*` slices, from which API 33+ startups are found at
+#            all, and the app's `bindApplication`, `activityStart` and `activityResume`, which type a
+#            startup as cold; also `reportFullyDrawn`, which TTFD starts from
+#   wm       the window manager's side of the launch: starting window, transition, focus
+#   view     `Choreographer#doFrame` on the main thread and `DrawFrame` on the RenderThread, which
+#            are `android_frames`, and TTID is the end of the first `DrawFrame` of a startup
+#   dalvik   class loading, verification and GC, which is where much of a cold start's main thread goes
+#   res      resource loading, the other place
+#   binder_driver  binder transactions, so a main thread waiting on another process says which
+# and `atrace_apps` adds the demo's own `Trace` sections: Compose's, AndroidX's and Media3's.
+#
+# Not `gfx`, deliberately. It is SurfaceFlinger's, it was 1.2 million of a twenty-launch trace's 2
+# million slices, and nothing a startup is read from needs it: the frames are the app's own `view`
+# slices joined to the `frametimeline` source, which the scenario asks for beside this one.
+#
+# The scheduler events are what `thread_state` is built from: whether the main thread was running,
+# runnable, sleeping, or blocked in the kernel. `sched_blocked_reason` adds why a thread blocked
+# uninterruptibly — an I/O wait, and the kernel function it waited in — which is how a read on the main
+# thread tells itself apart from a lock. `task_newtask` and `task_rename` name the demo's process as the
+# zygote forks it, since the process is born after the trace starts; the base config's
+# `linux.process_stats` then reads the new pid's /proc entry when the scheduler first shows it.
+#
+# `compact_sched` encodes the two busiest scheduler events, switch and waking, in Perfetto's packed form,
+# which trace processor reads back into the same tables. Twenty launches come to about 75 MB with it.
+#
+# ref: https://perfetto.dev/docs/data-sources/cpu-scheduling
+# ref: https://perfetto.dev/docs/data-sources/atrace
+# ref: https://android.googlesource.com/platform/external/perfetto/+/refs/tags/v58.2/src/trace_processor/perfetto_sql/stdlib/android/startup/startups.sql
+# ref: https://android.googlesource.com/platform/external/perfetto/+/refs/tags/v58.2/src/trace_processor/perfetto_sql/stdlib/android/startup/time_to_display.sql
+data_sources {
+  config {
+    name: "linux.ftrace"
+    ftrace_config {
+      ftrace_events: "sched/sched_switch"
+      ftrace_events: "sched/sched_waking"
+      ftrace_events: "sched/sched_wakeup_new"
+      ftrace_events: "sched/sched_blocked_reason"
+      ftrace_events: "sched/sched_process_exit"
+      ftrace_events: "sched/sched_process_free"
+      ftrace_events: "task/task_newtask"
+      ftrace_events: "task/task_rename"
+      atrace_categories: "am"
+      atrace_categories: "wm"
+      atrace_categories: "view"
+      atrace_categories: "dalvik"
+      atrace_categories: "res"
+      atrace_categories: "binder_driver"
+      atrace_apps: "@PACKAGE@"
+      compact_sched {
+        enabled: true
+      }
+    }
+  }
+}

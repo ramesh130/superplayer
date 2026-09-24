@@ -14,6 +14,8 @@ fixtures="$here/fixtures"
 
 # shellcheck source=../../lib/common.sh
 . "$lab/lib/common.sh"
+# shellcheck source=../../lib/trace_processor.sh
+. "$lab/lib/trace_processor.sh"
 # shellcheck source=../../test/assert.sh
 . "$lab/test/assert.sh"
 # shellcheck source=../startup.sh
@@ -66,11 +68,13 @@ assert_contains "one row per launch" "$table" "| 3 | COLD | 1204 | 1210 |"
 assert_contains "and the percentiles of TotalTime under it" "$table" \
     "TotalTime over 3 cold launches: p50 **812 ms**, p95 **1204 ms**, min 790 ms, max 1204 ms."
 
-printf '"startup_id","type","dur_ms"\n0,"cold",812.4\n1,"cold",790.1\n' > "$scratch/startups.csv"
-assert_eq "trace processor's CSV becomes a Markdown table, header and all" \
-    "| startup_id | type | dur_ms |
-| --- | --- | --- |
-| 0 | cold | 812.4 |
-| 1 | cold | 790.1 |" "$(csv_to_markdown "$scratch/startups.csv")"
+# The query's output as trace processor writes it, rendered with the harness's shared helpers: the
+# table the report shows is the table the query returned, empty TTFD included.
+printf '"startup_id","type","dur_ms","ttfd_ms"\n6,"cold","376.1","1602.2"\n7,"cold","459.0","[NULL]"\n' > "$scratch/startups.csv"
+assert_eq "the startups query becomes a Markdown table, header and all" \
+    "| startup_id | type | dur_ms | ttfd_ms |
+| --- | --- | --- | --- |
+| 6 | cold | 376.1 | 1602.2 |
+| 7 | cold | 459.0 | [NULL] |" "$(tp_csv_to_tsv < "$scratch/startups.csv" | tsv_to_markdown)"
 
 assert_summary startup

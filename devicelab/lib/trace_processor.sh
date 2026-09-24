@@ -99,3 +99,33 @@ trace_processor_query() {
     fi
     rm -rf "$work"
 }
+
+# --- Its output, for a report -----------------------------------------------------------------------
+#
+# Shared by every consumer that renders a query into report.md: the leak hunt first, then the startup
+# scenario.
+
+# Trace processor's CSV — strings quoted, a quote doubled — on stdin, as tab-separated fields. Blank
+# lines, which separate one result from the next, are dropped.
+tp_csv_to_tsv() {
+    perl -ne '
+        chomp; s/\r$//;
+        next if $_ eq "";
+        my ($rest, @fields) = ($_);
+        while (length $rest) {
+            if ($rest =~ s/^"((?:[^"]|"")*)"(?:,|$)//) { (my $v = $1) =~ s/""/"/g; push @fields, $v }
+            elsif ($rest =~ s/^([^,]*)(?:,|$)//) { push @fields, $1 }
+        }
+        print join("\t", @fields), "\n";
+    '
+}
+
+# Tab-separated rows on stdin, the first of them the header, as a Markdown table.
+tsv_to_markdown() {
+    perl -ne '
+        chomp;
+        my @cells = map { s/\|/\\|/gr } split /\t/, $_, -1;
+        print "| ", join(" | ", @cells), " |\n";
+        print "|", " --- |" x @cells, "\n" if $. == 1;
+    '
+}

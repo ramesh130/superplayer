@@ -3,7 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # The startup scenario's device-free half: reading what `am start -W` says about a launch, the
-# percentiles taken over them, and the Markdown the report is written in. Pure functions over text,
+# percentiles taken over them, and the report's launch table. The query's table is rendered with
+# lib/trace_processor.sh's helpers, which the leak hunt shares. Pure functions over text,
 # checked by test/selftest. README.md is the manual.
 
 # Reads `am start -W`'s output on stdin and prints "<LaunchState> <TotalTime> <WaitTime>", or nothing
@@ -59,21 +60,4 @@ startup_launch_table() {
         "$(printf '%s\n' "$totals" | grep -c .)" \
         "$(printf '%s\n' "$totals" | nearest_rank 50)" "$(printf '%s\n' "$totals" | nearest_rank 95)" \
         "$(printf '%s\n' "$totals" | nearest_rank 0)" "$(printf '%s\n' "$totals" | nearest_rank 100)"
-}
-
-# Prints trace processor's CSV (`$1`, with a header row) as a Markdown table.
-csv_to_markdown() {
-    awk -F',' '
-        { gsub(/"/, "") }
-        NR == 1 {
-            line = "|"; rule = "|"
-            for (i = 1; i <= NF; i++) { line = line " " $i " |"; rule = rule " --- |" }
-            print line; print rule; next
-        }
-        {
-            line = "|"
-            for (i = 1; i <= NF; i++) line = line " " $i " |"
-            print line
-        }
-    ' "$1"
 }

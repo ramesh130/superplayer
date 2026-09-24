@@ -70,33 +70,6 @@ art_ref_holders() {
         <(zygote_children $2 < "$4") <(binder_ref_holders < "$3")
 }
 
-# --- Trace processor output ------------------------------------------------------------------------
-
-# Trace processor's CSV — strings quoted, a quote doubled — on stdin, as tab-separated fields. Blank
-# lines, which separate one result from the next, are dropped.
-tp_csv_to_tsv() {
-    perl -ne '
-        chomp; s/\r$//;
-        next if $_ eq "";
-        my ($rest, @fields) = ($_);
-        while (length $rest) {
-            if ($rest =~ s/^"((?:[^"]|"")*)"(?:,|$)//) { (my $v = $1) =~ s/""/"/g; push @fields, $v }
-            elsif ($rest =~ s/^([^,]*)(?:,|$)//) { push @fields, $1 }
-        }
-        print join("\t", @fields), "\n";
-    '
-}
-
-# Tab-separated rows on stdin, the first of them the header, as a Markdown table.
-tsv_to_markdown() {
-    perl -ne '
-        chomp;
-        my @cells = map { s/\|/\\|/gr } split /\t/, $_, -1;
-        print "| ", join(" | ", @cells), " |\n";
-        print "|", " --- |" x @cells, "\n" if $. == 1;
-    '
-}
-
 # --- Comparing two heap dumps ----------------------------------------------------------------------
 
 # The classes whose reachable instance count differs between histogram `$1` (the baseline) and `$2`

@@ -1,6 +1,7 @@
 # What an app startup is read from: the platform's launch events, the demo's main thread, and every
-# frame until the first one is drawn. Wanted by the startup scenario (perfettoagent#5), whose metrics are
-# Perfetto's `android.startup.startups` and `android.startup.time_to_display` stdlib modules.
+# frame until the first one is drawn. Wanted by the startup scenario, whose metrics are Perfetto's
+# `android.startup.startups` and `android.startup.time_to_display` stdlib modules
+# (https://github.com/ramesh130/perfettoagent/issues/5).
 #
 # Each atrace category is here for a table those modules read:
 #   am       system_server's `launchingActivity#N:*` slices, from which API 33+ startups are found at

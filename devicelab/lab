@@ -375,6 +375,9 @@ cmd_run() {
     RUN_PLAYBACK_POSITION_MS="$(wait_for_playback "${PLAYBACK_TIMEOUT:-90}")"
     assert_demo_in_focus
     log "playing (position ${RUN_PLAYBACK_POSITION_MS} ms)"
+    # Getting to where the measurement starts — another screen, a warm-up — is not the measurement, so
+    # it comes before a trace that starts at playing, rather than as the first seconds of it.
+    if declare -F scenario_setup >/dev/null; then scenario_setup; fi
     [ "$TRACE_FROM" != playing ] || start_trace
 
     log "driving scenario $SCENARIO"

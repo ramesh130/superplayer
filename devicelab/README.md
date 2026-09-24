@@ -184,6 +184,7 @@ A scenario is `scenarios/<name>.sh`, sourced into the run once the harness's fun
 | `SCENARIO_TRACE_MS` | no | Upper bound on the trace, default 300000. `--trace-ms` overrides it. |
 | `SCENARIO_DATA_SOURCES` | no | The run trace's data sources when `--data-sources` is empty or absent. |
 | `scenario_prepare` | no | Runs before a device is found or anything is built: what the scenario needs from the host. |
+| `scenario_setup` | no | Runs once playback is confirmed and before a `playing` trace starts: gets the demo to where the measurement begins, so that getting there is not in the trace. |
 | `scenario_verdict` | no | Runs once everything is written; returning non-zero makes the run exit 3. |
 | `scenario_cleanup` | no | Runs on every exit, success or failure: puts back what the scenario changed on the device. |
 
@@ -194,7 +195,7 @@ From inside `scenario_drive` a scenario can use:
   media_session` on stdin), `assert_demo_in_focus`;
 - `relaunch_demo [am args]`, which starts the demo afresh with launch extras and replaces the Activity
   that was showing, and `foreground_demo`, which brings a backgrounded demo back as the launcher does;
-- `ui_swipe_up [ms]` and `ui_swipe_down [ms]`;
+- `ui_swipe_up [ms]` and `ui_swipe_down [ms]`, and `ui_tap_centre` for a screen whose middle is one target;
 - `trace_begin name sources ms` and `trace_end name` for a trace of its own over a span it chooses,
   and `capture_trace name sources ms` for one run to its bound — a heap dump at a moment it chooses,
   since `java_hprof` dumps when its data source starts. Each is written into the run directory as

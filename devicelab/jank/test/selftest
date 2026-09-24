@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# Copyright 2026 The SuperPlayer Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# The jank scenario's device-free half: the plan of gestures, and the report's Markdown. Pure functions
+# over text, run by devicelab/test/selftest and therefore by `./gradlew check`. The queries need a trace
+# and the trace processor, so they are exercised by a run, not here.
+set -euo pipefail
+
+here="$(cd "$(dirname "$0")" && pwd)"
+jank="$(dirname "$here")"
+lab="$(dirname "$jank")"
+
+# shellcheck source=../../lib/common.sh
+. "$lab/lib/common.sh"
+# shellcheck source=../../lib/trace_processor.sh
+. "$lab/lib/trace_processor.sh"
+# shellcheck source=../../test/assert.sh
+. "$lab/test/assert.sh"
+# shellcheck source=../jank.sh
+. "$jank/jank.sh"
+
+# --- The plan --------------------------------------------------------------------------------------
+
+plan="$(jank_plan 3 8)"
+assert_eq "three rounds of eight swipes are twenty-four swipes" 24 "$(printf '%s\n' "$plan" | jank_plan_count swipe)"
+assert_eq "and two taps a round" 6 "$(printf '%s\n' "$plan" | jank_plan_count tap)"
+assert_eq "it starts by scrolling" swipe "$(printf '%s\n' "$plan" | head -1)"
+assert_eq "every tap has a rest before it and after it, so its frames are not a scroll's" \
+    "" "$(printf '%s\n' "$plan" | awk 'prev == "tap" && $0 != "rest" { print NR } $0 == "tap" && prev != "rest" { print NR } { prev = $0 }')"
+assert_eq "and a round ends at rest, so the next round's first swipe starts from a still list" \
+    rest "$(printf '%s\n' "$plan" | sed -n '13p')"
+assert_eq "the rounds are the same round, repeated" \
+    "$(printf '%s\n' "$plan" | sed -n '1,13p')" "$(printf '%s\n' "$plan" | sed -n '27,39p')"
+assert_eq "it has nothing it would not carry out" "rest swipe tap" \
+    "$(printf '%s\n' "$plan" | sort -u | tr '\n' ' ' | sed 's/ $//')"
+assert_eq "no rounds, no gestures" "" "$(jank_plan 0 8)"
+assert_eq "a gesture the plan does not make counts as none, rather than failing" \
+    0 "$(printf '%s\n' "$plan" | jank_plan_count pinch)"
+
+# --- The report ------------------------------------------------------------------------------------
+
+scratch="$(mktemp -d)"
+trap 'rm -rf "$scratch"' EXIT
+
+# The frames query's output as trace processor writes it, rendered with the harness's shared helpers:
+# the table the report shows is the table the query returned.
+printf '"frames","jank_pct","app_jank_pct","p50_ms","p95_ms","p99_ms","max_ms"\n914,"99.3","26.4","32.1","58.7","83.9","134.3"\n' \
+    > "$scratch/frames.csv"
+assert_eq "the frames query becomes a Markdown table, header and all" \
+    "| frames | jank_pct | app_jank_pct | p50_ms | p95_ms | p99_ms | max_ms |
+| --- | --- | --- | --- | --- | --- | --- |
+| 914 | 99.3 | 26.4 | 32.1 | 58.7 | 83.9 | 134.3 |" "$(tp_csv_to_tsv < "$scratch/frames.csv" | tsv_to_markdown)"
+
+# A slice name with a pipe in it — monitor contention names quote Java signatures — stays one cell.
+printf '"slice","sleeps"\n"a | b",2\n' > "$scratch/blocked.csv"
+assert_contains "a slice named with a pipe stays one cell" \
+    "$(tp_csv_to_tsv < "$scratch/blocked.csv" | tsv_to_markdown)" '| a \| b | 2 |'
+
+assert_summary jank

@@ -1,0 +1,46 @@
+# What UI jank is read from, beside the `frametimeline` source's per-frame deadlines: the demo's main
+# thread and RenderThread, what they were doing inside each frame, and the garbage collector. Wanted by
+# the jank scenario, whose metrics are frame percentiles, jank, main-thread blocking and GC time
+# (https://github.com/ramesh130/perfettoagent/issues/6).
+#
+# Each atrace category is here for something those metrics read:
+#   view     `Choreographer#doFrame` on the main thread and `DrawFrame` on the RenderThread, which are
+#            `android_frames`, joined to the frame timeline by their vsync id; and `deliverInputEvent`,
+#            inside which a tap's click handler runs
+#   dalvik   ART's GC slices on the demo's `HeapTaskDaemon`, and its waits for one on other threads
+#   binder_driver  binder transactions, so a main thread waiting on another process says which
+# and `atrace_apps` adds the demo's own `Trace` sections: Compose's, AndroidX's and Media3's.
+#
+# Not `gfx`, for the reason the startup fragment gives: SurfaceFlinger's, most of a trace's slices, and
+# nothing here reads it. The frames are the app's `view` slices and the `frametimeline` source.
+# Not `am`, `wm` or `res` either: the demo is running before this trace starts and nothing is launched
+# inside it, and no process is born in it, so neither are the task events the startup fragment names.
+#
+# The scheduler events are what `thread_state` is built from: whether the main thread was running,
+# runnable, sleeping, or blocked in the kernel during a frame. `sched_blocked_reason` says why a thread
+# blocked uninterruptibly. `compact_sched` packs the two busiest events, as the startup fragment does.
+#
+# ref: https://perfetto.dev/docs/data-sources/frametimeline
+# ref: https://perfetto.dev/docs/data-sources/cpu-scheduling
+# ref: https://perfetto.dev/docs/data-sources/atrace
+# ref: https://android.googlesource.com/platform/external/perfetto/+/refs/tags/v58.2/src/trace_processor/perfetto_sql/stdlib/android/frames/timeline.sql
+# ref: https://android.googlesource.com/platform/external/perfetto/+/refs/tags/v58.2/src/trace_processor/perfetto_sql/stdlib/android/garbage_collection.sql
+data_sources {
+  config {
+    name: "linux.ftrace"
+    ftrace_config {
+      ftrace_events: "sched/sched_switch"
+      ftrace_events: "sched/sched_waking"
+      ftrace_events: "sched/sched_blocked_reason"
+      ftrace_events: "sched/sched_process_exit"
+      ftrace_events: "sched/sched_process_free"
+      atrace_categories: "view"
+      atrace_categories: "dalvik"
+      atrace_categories: "binder_driver"
+      atrace_apps: "@PACKAGE@"
+      compact_sched {
+        enabled: true
+      }
+    }
+  }
+}

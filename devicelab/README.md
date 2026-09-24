@@ -11,6 +11,8 @@ devicelab/lab run smoke --data-sources java_hprof,heapprofd
 devicelab/lab run leak-hunt                               # the leak hunt; also ./gradlew huntLeaks
 devicelab/lab run startup                                 # twenty cold starts in one trace
 devicelab/lab run startup --plant startup-main-thread-io  # the same, built with a known regression
+devicelab/lab run jank                                    # the feed scrolled and tapped, one trace
+devicelab/lab run jank --plant feed-tap-sleep             # the same, built with a known regression
 devicelab/lab run smoke --serial emulator-5556            # the device you are watching
 devicelab/lab run smoke --device tv                       # the same run on the television emulator
 devicelab/lab list                                        # scenarios, Perfetto data sources and plants
@@ -188,11 +190,13 @@ A scenario is `scenarios/<name>.sh`, sourced into the run once the harness's fun
 | `scenario_verdict` | no | Runs once everything is written; returning non-zero makes the run exit 3. |
 | `scenario_cleanup` | no | Runs on every exit, success or failure: puts back what the scenario changed on the device. |
 
-From inside `scenario_drive` a scenario can use:
+From inside `scenario_setup` and `scenario_drive` a scenario can use:
 
 - `adb_s` (adb against the run's device, bounded) and `adb_pull`;
 - `wait_for_playback [timeout]`, `session_state` and `session_description` (both read `dumpsys
   media_session` on stdin), `assert_demo_in_focus`;
+- `open_feed rows`, which pauses the service's player and relaunches the demo on its feed, and
+  `wait_session_state state timeout`;
 - `relaunch_demo [am args]`, which starts the demo afresh with launch extras and replaces the Activity
   that was showing, and `foreground_demo`, which brings a backgrounded demo back as the launcher does;
 - `ui_swipe_up [ms]` and `ui_swipe_down [ms]`, and `ui_tap_centre` for a screen whose middle is one target;
@@ -209,14 +213,16 @@ There is no tap-by-text helper, on purpose. The tool for finding a button by its
 plays: on API 36, every dump of the player screen or the feed during playback fails with "could not
 get idle state". Scenarios run during playback by construction, so such a helper would work only
 when it caught a still moment. Taps at fixed coordinates are no better, since they land somewhere
-else on the next device. A scenario that needs a screen other than the one the demo opens on should
+else on the next device. The one tap there is, `ui_tap_centre`, is not one of those: it is a fraction
+of the screen, like the swipes, and it is for a screen whose whole middle is one target — the feed,
+which takes a tap anywhere on the list — so it finds the same thing on any phone. A scenario that needs a screen other than the one the demo opens on should
 get there through a launch argument the demo reads. The leak hunt was the first to need one, so the
 demo reads three — the screen, the feed's length, and a content id to hand to the session — which
 `DemoLaunch` in `MainActivity.kt` documents, and `relaunch_demo` passes.
 
 Scenarios belong to their consumers. `smoke` measures nothing; `leak-hunt` is the leak hunt's, and
 its analysis lives beside it in [`leak/`](leak/README.md); `startup` is the startup measurement's, beside
-it in [`startup/`](startup/README.md).
+it in [`startup/`](startup/README.md); and `jank` is the jank measurement's, beside it in [`jank/`](jank/README.md).
 
 ## Plants
 
@@ -239,6 +245,7 @@ build of the demo it saw. `--data-sources` adds fragments from `perfetto/sources
 | `frametimeline` | SurfaceFlinger's expected and actual timeline for every frame | UI jank (#51) |
 | `process_memory` | per-process memory counters, polled every second | benchmark peak RSS (#43) |
 | `startup` | scheduling with blocked reasons, and the `am`, `wm`, `view`, `dalvik`, `res` and `binder_driver` atrace categories plus the demo's own sections | startup ([perfettoagent#5](https://github.com/ramesh130/perfettoagent/issues/5)) |
+| `jank` | scheduling with blocked reasons, and the `view`, `dalvik` and `binder_driver` atrace categories plus the demo's own sections; no `gfx` | jank ([perfettoagent#6](https://github.com/ramesh130/perfettoagent/issues/6)), beside `frametimeline` |
 | `battery` | battery counters, polled every second (simulated on an emulator) | benchmark battery delta (#43) |
 
 ## The trace processor

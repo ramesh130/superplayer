@@ -43,6 +43,9 @@ So any scenario takes any plant, and adding one is adding a patch file and a row
 | Plant | Scenario | Change | Expected to move |
 | --- | --- | --- | --- |
 | `startup-main-thread-io` | `startup` | adds an `Application` subclass whose `onCreate` reads and checksums a 192 MiB file on the main thread | time to initial display (TTID); `bindApplication` |
+| `feed-tap-sleep` | `jank` | the feed's tap handler holds the main thread for 120 ms | main thread asleep inside the tap (`AndroidOwner:onTouch`) |
+| `feed-grain-allocations` | `jank` | a grain over the scrolling feed, averaged from a million boxed floats allocated in every scrolled frame's draw | GC count and time; app-deadline jank; `Choreographer#doFrame` |
+| `feed-row-remeasure` | `jank` | every row's padding breathes, so each visible row is re-measured every frame, and a row's measure fits its title in fine steps | frame p50 and p95; `Choreographer#doFrame` |
 
 ### `startup-main-thread-io`
 
@@ -76,6 +79,90 @@ stricter test, because they have five clean runs rather than one: there, clean r
 p50 is 214 ms, twice the whole spread of clean p50s and five times the larger clean-pair difference.
 Single launches do overlap across runs — one clean launch took 1079 ms — which is why the separation is
 argued on p50, not on the extremes. [`../startup/README.md`](../startup/README.md) has the captures.
+
+### The jank plants
+
+The three plants perfettoagent's roadmap asks of a scrolled list ([perfettoagent#6](https://github.com/ramesh130/perfettoagent/issues/6)),
+landed where the demo's Compose feed has the place for them, as perfettoagent's ADR-0007 decides: there is
+no `RecyclerView` to bind. Each is written against the feed's own code and names no regression. They were
+sized by pilot runs of the jank scenario, one plant against the clean build at a time, made while the
+scenario and the plants were being written and so from trees that are not commits on `main`. The pilots
+are kept in `devicelab/out/jank-pilots/` of the checkout they were made from. The captures made with the
+plants as committed are in [`../jank/README.md`](../jank/README.md). All times in ms. On the emulator
+nearly every frame is janky by the timeline's own verdict, so "app jank" below is the share of frames whose
+jank type names `App Deadline Missed` (`../jank/README.md` says why).
+
+#### `feed-tap-sleep`
+
+`Thread.sleep(120)` in the feed's tap handler, where it pauses or plays the row being watched, dressed as
+holding the tap for a second one. The roadmap's 120 ms, unchanged: the first pilot (`20260924T021615Z`)
+found all six of the scenario's taps as six 120 ms sleeps of the main thread inside `AndroidOwner:onTouch`,
+Compose handing the touch to the composition, 722 ms in all, where the clean pilots found none there at all.
+The frames barely notice it: six late frames, at most, out of seven hundred.
+
+What does not separate it is the main thread's *total* sleep inside slices: 7.2–9.6 s in the clean pilots,
+most of it waiting for the RenderThread, so 720 ms more is inside that spread. The sleep has to be looked
+for where it happened, which is what the report's `blocked.sql` table does.
+
+#### `feed-grain-allocations`
+
+A faint grain over the feed while it scrolls, drawn from boxed random floats averaged into one veil. The
+roadmap's size is 50,000 small objects a frame. It is **1,000,000**, and the place it runs moved too,
+because the pilots showed neither the default nor the first place was enough:
+
+| run | where, how many | frames | app jank | frame p95 | GCs | GC time |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| `20260924T022549Z` | clean | 688 | 62.1% | 82.5 | 7 | 475 |
+| `20260924T023402Z` | clean | 826 | 44.8% | 70.4 | 8 | 387 |
+| `20260924T023109Z` | the list's draw, 50k | 757 | 48.3% | 76.7 | 10 | 393 |
+| `20260924T023747Z` | each scrolled frame, after it, 50k | 821 | 48.4% | 73.1 | 35 | 1392 |
+| `20260924T024604Z` | each scrolled frame, after it, 250k | 554 | 64.1% | 82.5 | 83 | 5257 |
+| `20260924T025801Z` | each scrolled frame, after it, 1M | 411 | 62.3% | 77.0 | 114 | 10115 |
+| `20260924T030137Z` | each scrolled frame's draw, 250k | 647 | 62.0% | 85.5 | 113 | 6605 |
+| `20260924T031129Z` | each scrolled frame's draw, 1M | 339 | 74.0% | 106.3 | 100 | 9355 |
+
+- **In the list's draw it hardly ran.** A scrolled `LazyColumn` moves its rows without drawing itself
+  again, so an allocation in its draw modifier ran a handful of times, not once a frame.
+- **Once a frame, 50k moved GC and nothing else.** GCs went from 7–8 to 35, but the frames did not
+  change: ART's concurrent collector runs beside the main thread, and 50k floats is well under a
+  millisecond of the frame's time.
+- **After the frame, even a million moved no frame.** Work between frames makes the main thread skip
+  vsyncs, so the timeline records *fewer* frames (411 against 700–800), not later ones. A frame that was
+  never started is not in `actual_frame_timeline_slice` at all.
+- **So it runs inside the frame's draw**, invalidated each scrolled frame by the frame time, and at a
+  million it moves app jank and the app's own work per frame as well as GC. An earlier grain that drew
+  50,000 points instead of averaging them (`20260924T021917Z`) moved everything, to a 663 ms p95, but by
+  drawing, not by allocating, and was dropped for measuring the wrong thing.
+
+#### `feed-row-remeasure`
+
+Every row's horizontal padding breathes by 4 dp over 1.5 s, read in composition, so each visible row is
+re-measured, and recomposed, on every frame: the Compose form of the forced layout ADR-0007 names. A row
+without a picture shows its name as a title fitted to the row's width, stepping the font size up by
+0.05 sp until the next step would overflow, so its measure does real text layout each time the width
+changes. The pilots are why there is a title at all:
+
+| run | change | frames | app jank | frame p50 | frame p95 |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `20260924T022549Z` | clean | 688 | 62.1% | 48.8 | 82.5 |
+| `20260924T023402Z` | clean | 826 | 44.8% | 39.2 | 70.4 |
+| `20260924T022233Z` | a 4 dp inset read in `layout {}` | 1936 | 83.6% | 65.8 | 86.5 |
+| `20260924T024037Z` | 4 dp padding, read in composition | 2096 | 66.9% | 62.7 | 79.2 |
+| `20260924T024902Z` | 24 dp padding | 2049 | 67.0% | 61.1 | 78.6 |
+| `20260924T025407Z` | 4 dp, and the title fitted in 0.25 sp steps | 1950 | 74.4% | 63.7 | 81.2 |
+| `20260924T030429Z` | 4 dp, and the title fitted in 0.05 sp steps | 1515 | 84.2% | 64.4 | 105.4 |
+
+- **A forced re-measure of these rows is cheap.** A row is a box, a label and a line of text; re-measuring
+  three or four of them costs the main thread about half a millisecond more a frame. The breath turns an
+  idle feed into one drawing every frame and moves the middle of the frame distribution by 15–25 ms, but
+  not its tail: every frame becomes a middling one, and p95 stayed inside the clean runs' spread whether
+  the read was in `layout {}` or in composition, at 4 dp or at 24 dp.
+- **What a re-measure costs is the row's measure**, and in a real feed that is text. With the title fitted
+  in 0.05 sp steps, Compose's measure-and-layout pass takes about 20 ms a frame rather than 1.4
+  (`AndroidOwner:measureAndLayout`, pilot `20260924T030429Z` against the clean capture `20260924T033342Z`), and p95 moved.
+- **Side effects, all real and all the plant's.** The watched row's `SurfaceView` changes size with its
+  row every frame; the text layouts allocate, so GC rises too (about 200 collections a run); and the
+  trace is about 175 MB rather than 30, because the app draws three times as many frames.
 
 ## A planted run names its plant
 

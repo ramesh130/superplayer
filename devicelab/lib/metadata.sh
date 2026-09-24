@@ -55,6 +55,7 @@ run_json() {
     "version": $(json_str "$SP_VERSION"),
     "artifacts": $(json_artifacts "$SP_ARTIFACTS_FILE")
   },
+  "plant": $(plant_json),
   "media3": {
     "version": $(json_str "$MEDIA3_VERSION")
   },

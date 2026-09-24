@@ -4,11 +4,11 @@
 #
 # devicelab: drives the demo on a device and comes back with a trace, a report and the run metadata.
 #
-#   devicelab/lab run <scenario> [--device phone|tv] [--data-sources a,b] [--build-type benchmark|debug] [--serial S]
+#   devicelab/lab run <scenario> [--device phone|tv] [--data-sources a,b] [--build-type benchmark|debug] [--serial S] [--plant P]
 #   devicelab/lab device        ensure a booted, answering device and print its serial
 #   devicelab/lab create-avd    install the system image and create the AVD in device.properties (--device: which)
 #   devicelab/lab config        print the Perfetto config a run would use
-#   devicelab/lab list          list the scenarios and Perfetto data sources
+#   devicelab/lab list          list the scenarios, Perfetto data sources and plants
 #
 # Not a test, and not part of `./gradlew check`: `run` and `device` need a device. README.md says why that sits outside docs/testing.md's no-device rule rather than against it.
 set -euo pipefail
@@ -21,6 +21,7 @@ set -euo pipefail
 . "$DEVICELAB_HOME/lib/metadata.sh"
 . "$DEVICELAB_HOME/lib/ui.sh"
 . "$DEVICELAB_HOME/lib/trace_processor.sh"
+. "$DEVICELAB_HOME/lib/plants.sh"
 
 DEMO_PACKAGE=com.superplayer.demo
 DEMO_ACTIVITY=.MainActivity
@@ -40,6 +41,8 @@ Options:
   --out DIR            where runs are written (default: devicelab/out)
   --trace-ms N         upper bound on the trace, overriding the scenario's
   --trace-from W       launch or playing, overriding the scenario's
+  --plant P            build with plants/P.patch applied to a clean tree, reverted once the APK is
+                       installed (plants/README.md); run.json records the patch and its base commit
 USAGE
     exit 2
 }
@@ -59,6 +62,7 @@ HEADLESS=0
 OUT="$DEVICELAB_HOME/out"
 TRACE_MS=""
 TRACE_FROM=""
+PLANT=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -70,6 +74,7 @@ while [ $# -gt 0 ]; do
         --out) OUT="${2:?--out needs a value}"; shift 2 ;;
         --trace-ms) TRACE_MS="${2:?--trace-ms needs a value}"; shift 2 ;;
         --trace-from) TRACE_FROM="${2:?--trace-from needs a value}"; shift 2 ;;
+        --plant) PLANT="${2:?--plant needs a value}"; shift 2 ;;
         -h | --help) usage ;;
         -*) die "unknown option $1" ;;
         *)
@@ -161,8 +166,11 @@ build_demo() {
     SP_COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD)"
     SP_TREE_DIRTY=0
     [ -z "$(git -C "$REPO_ROOT" status --porcelain)" ] || SP_TREE_DIRTY=1
-    [ "$SP_TREE_DIRTY" = 0 ] ||
+    if [ "$PLANT_APPLIED" = 1 ]; then
+        log "the working tree carries plant '$PLANT_NAME'; the run records it as dirty, and names the plant"
+    elif [ "$SP_TREE_DIRTY" = 1 ]; then
         log "warning: the working tree has uncommitted changes; the run records the commit as dirty"
+    fi
 
     gradle "$REPO_ROOT" "$RUN_DIR/build.log" publishToMavenLocal
     capitalised="$(printf '%s' "$BUILD_TYPE" | cut -c1 | tr '[:lower:]' '[:upper:]')${BUILD_TYPE#?}"
@@ -216,10 +224,12 @@ stop_trace() {
         log "warning: the trace reached its ${TRACE_MS} ms bound before the scenario ended"
 }
 
-# On any exit: stop every session still open — a failed run's — and delete its file, rather than leave
-# the device tracing into storage until a bound runs out. Then the scenario's own cleanup, which runs on
-# success too: a scenario that changed a device setting puts it back either way.
+# On any exit: take out a plant a failed build left in the source first, since the tree matters more
+# than the device. Then stop every session still open — a failed run's — and delete its file, rather
+# than leave the device tracing into storage until a bound runs out. Then the scenario's own cleanup,
+# which runs on success too: a scenario that changed a device setting puts it back either way.
 on_exit() {
+    plant_revert || true
     perfetto_abandon_all
     if declare -F scenario_cleanup >/dev/null; then scenario_cleanup || true; fi
 }
@@ -276,6 +286,10 @@ cmd_list() {
     for name in $(perfetto_sources); do
         printf '  %s\n' "$name"
     done
+    printf '\nPlants (--plant; plants/README.md says what each is for):\n'
+    for name in $(plants_available); do
+        printf '  %s\n' "$name"
+    done
 }
 
 cmd_config() {
@@ -329,14 +343,24 @@ cmd_run() {
     perfetto_config "$TRACE_MS" "$DEMO_PACKAGE" "$DATA_SOURCES" > "$RUN_DIR/perfetto-config.pbtxt"
     # Whatever else the scenario needs from the host, for the same reason and at the same point.
     if declare -F scenario_prepare >/dev/null; then scenario_prepare; fi
+    # And a plant that has rotted, or a tree it may not be applied to.
+    [ -z "$PLANT" ] || plant_check "$PLANT" "$REPO_ROOT"
 
     ensure_device
     describe_device
     log "device: $SERIAL ($DEVICE_MANUFACTURER $DEVICE_MODEL, API $DEVICE_SDK, $DEVICE_ABI)"
 
+    # The plant is in the source for exactly as long as the build and the install, and out of it before
+    # anything is measured. The patch is copied into the run, so the capture describes itself even if
+    # plants/ later changes.
+    if [ -n "$PLANT" ]; then
+        plant_apply "$PLANT" "$REPO_ROOT"
+        cp "$(plant_file "$PLANT")" "$RUN_DIR/plant.patch"
+    fi
     build_demo
     assert_device_alive "the build"
     install_demo
+    plant_revert || die "the plant could not be taken out of the source; the run stops before measuring"
     describe_installed_demo
     grant_first_run_permissions
     adb_s logcat -c || true
@@ -380,13 +404,13 @@ write_report() {
 # devicelab run \`$RUN_ID\`
 
 Scenario **$RUN_SCENARIO** on $DEVICE_MANUFACTURER $DEVICE_MODEL (API $DEVICE_SDK, $DEVICE_ABI$([ "$DEVICE_IS_EMULATOR" = 1 ] && printf ', emulator %s' "$DEVICE_AVD")),
-against SuperPlayer \`$SP_COMMIT\`$([ "$SP_TREE_DIRTY" = 1 ] && printf ' **plus uncommitted changes**') and Media3 $MEDIA3_VERSION,
+against SuperPlayer \`$SP_COMMIT\`$(if [ -n "$PLANT_NAME" ]; then printf ' **plus plant `%s`**' "$PLANT_NAME"; elif [ "$SP_TREE_DIRTY" = 1 ]; then printf ' **plus uncommitted changes**'; fi) and Media3 $MEDIA3_VERSION,
 in the demo's \`$DEMO_BUILD_TYPE\` build (debuggable: $(json_bool "$DEMO_DEBUGGABLE"), profileable: $(json_bool "$DEMO_PROFILEABLE")).
 
 - On a $DEVICELAB_DEVICE device (\`--device\`, a phone by default).
 - Playback confirmed advancing at ${RUN_PLAYBACK_POSITION_MS} ms.
 - Trace from **$RUN_TRACE_FROM**, data sources: ${RUN_DATA_SOURCES:-base config only}.$([ "$RUN_TRACE_ENDED_BY_BOUND" = 1 ] && printf ' **The trace hit its %s ms bound before the scenario ended.**' "$RUN_TRACE_MS")
-- The installed APK was verified as the one just built, against the SuperPlayer just published.
+- The installed APK was verified as the one just built, against the SuperPlayer just published.$([ -n "$PLANT_NAME" ] && printf -- '\n- **Planted:** `%s`, patch sha256 `%s` (`plant.patch`), applied to `%s` for the build and reverted once the APK was installed.' "$PLANT_NAME" "$PLANT_PATCH_SHA256" "$PLANT_BASE_COMMIT")
 
 | File | What it is |
 | --- | --- |

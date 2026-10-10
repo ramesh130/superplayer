@@ -158,8 +158,8 @@ The Swift package at the repository root is held to the same rule by a different
 product's public API is `ios/api/<Product>.baseline`, `ios/check` diffs it on every run, and
 `ios/check --update-api` is the `updateApiSurface` analog — the one deliberate step that rewrites
 it, whose diff is committed with the change that caused it. A baseline with no product, and a
-product with no baseline, both fail. Every product is empty until its phase, so every baseline is
-its header line alone today; that is a recorded fact about the API, not a missing file.
+product with no baseline, both fail. A product empty until its phase has a baseline that is its
+header line alone, which is a recorded fact about the API rather than a missing file.
 
 ```bash
 ios/check                 # includes the API diff, after the simulator tests and the tvOS build

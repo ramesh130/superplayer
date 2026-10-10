@@ -35,12 +35,12 @@ import os
 /// harness.stop()
 /// ```
 ///
-/// **It names no AVFoundation type**, and builds no player: this ticket has no `SuperPlayer` to
-/// build, and a stock `AVPlayer` takes nothing from a harness but a URL. That is the stronger form of
-/// the Android harness's claim, whose public API names only Media3's stable `Player` and the
-/// `ExoPlayer` its stock arm returns. When `SuperPlayer` exists, a `buildPlayer` here will name it,
-/// and still not `AVPlayer`. The Foundation type it names is `URL`, because that is what a player is
-/// handed.
+/// **It names no AVFoundation type**, and builds no player: a stock `AVPlayer` takes nothing from a
+/// harness but a URL, and so far neither does a `SuperPlayer` (#400), whose tests make their own.
+/// That is the stronger form of the Android harness's claim, whose public API names only Media3's
+/// stable `Player` and the `ExoPlayer` its stock arm returns. When a harness player needs something
+/// a URL cannot carry, a `buildPlayer` here will name `SuperPlayer`, and still not `AVPlayer`. The
+/// Foundation type it names is `URL`, because that is what a player is handed.
 public final class PlaybackHarness: Sendable {
 
     private let origins = OSAllocatedUnfairLock(initialState: [LoopbackOrigin]())

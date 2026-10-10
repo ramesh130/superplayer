@@ -113,6 +113,19 @@ or that it is not yet and which ticket will enforce it.
    since the last release tag, compared against the bump being proposed, failing when the two
    disagree.
 
+   *Addendum (2026-10-10, #396), to rules 1 and 2.* **The Swift products ride this line, and the API
+   digester is their arbiter.** [ADR-0020](0020-compose-on-avfoundations-avplayer-and-bring-no-other-engine.md)
+   rule 12 puts every Swift product under `Package.swift` at the same `MAJOR.MINOR.PATCH` as the
+   published Android modules, cut by the same `release` command and tagged once, since SwiftPM
+   resolves the `vX.Y.Z` tag this record's release already writes. Rule 1's argument extends rather
+   than changes: one schema version, one trace format and one changelog across two platforms are
+   the same "what was tested is what can be resolved" claim at a wider scope, and under `0.x` a
+   change on one platform bumping both is accepted as its price. Rule 2's arbiter on Apple platforms
+   is `swift package diagnose-api-breaking-changes` against a baseline per product under `ios/api/`,
+   run by `ios/check` ([ADR-0021](0021-test-ios-against-a-loopback-origin-and-run-its-checks-in-one-script.md)
+   rule 7); its verdict feeds the same major/minor/patch reading. What would split the lines is a
+   superseding record, never a drift.
+
 3. **A behaviour change with an unmoved surface is still a major.** The surface is the arbiter of
    *at least* how far the version moves, never of at most. A changed default in
    `StaticProfilePolicy`, a retry budget that shrank, a cache key that now spells a URI differently

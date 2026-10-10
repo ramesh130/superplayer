@@ -292,6 +292,16 @@ Thirteen rules follow, and they are binding.
      here: a doctor that read a manifest with a parser of its own would be diagnosing a document the
      player never saw. Both parsers are `@UnstableApi` and both stay behind rule 2's public surface.
 
+   *Addendum (2026-10-10, #396).* **On Apple platforms the second consequence cannot hold, and a
+   lint parser of the doctor's own stands in for it.** AVFoundation exposes no playlist parser, so
+   there is no "parser the engine would run" to call.
+   [ADR-0020](0020-compose-on-avfoundations-avplayer-and-bring-no-other-engine.md) rule 8 decides
+   that the iOS doctor parses HLS with a parser written to RFC 8216, which decides nothing about
+   playback, and that a finding on iOS says it read the document as the RFC describes it rather than
+   as the engine does. The first consequence is unchanged and binds harder there: with no core
+   revalidation layer to ask, the live-window and cache-header judgements live in the iOS doctor
+   alone, once, rather than being copied. This rule binds the Android modules exactly as written.
+
 ### The fetch, and one report
 
 7. **The doctor fetches over the chain a player of that request would load through, and never over an

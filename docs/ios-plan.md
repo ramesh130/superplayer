@@ -1,7 +1,13 @@
 # SuperPlayer for iOS — port plan
 
-**Status:** draft, 2026-09-22; §3.11 added 2026-10-10 (#394). Not yet an ADR; the decisions below
-become ADR-0019, ADR-0020 and ADR-0021 when accepted.
+**Status:** plan, drafted 2026-09-22; §3.11 added 2026-10-10 (#394). **Its decisions are accepted** as
+[ADR-0020](adr/0020-compose-on-avfoundations-avplayer-and-bring-no-other-engine.md) (compose on
+AVFoundation, §1–§4),
+[ADR-0021](adr/0021-test-ios-against-a-loopback-origin-and-run-its-checks-in-one-script.md) (testing
+on iOS, §5) and [ADR-0022](adr/0022-give-an-effect-the-decoded-frame-through-a-second-output-slot.md)
+(the frame-output seam, §3.11), 2026-10-10 (#396). They were drafted here as ADR-0019 to ADR-0021 and
+renumbered because ADR-0019 is #383's. §8's open decisions are answered as this plan assumed. Where
+this plan and a record disagree, the record binds.
 
 This plan takes every feature the Android library ships (phases 0–10 and 13–14 of `PRD.md`) and
 says, one by one, what it becomes on Apple platforms: ported as is, ported with a different
@@ -53,11 +59,11 @@ doctor's HLS half, the bundle, the HUD, and the whole realtime path.
 | Deployment floor | iOS 17, tvOS 17; iOS 18 features gated at runtime and refused typed below it | `AVMetrics` is iOS 18; the `HttpStack.httpEngine()` precedent (refuse typed below API 34) is the shape |
 | Platforms | iOS and tvOS. macOS, visionOS and watchOS out of scope | tvOS is Phase 8's subject; the others add surface with no phase asking for it |
 | Versioning | Same `MAJOR.MINOR.PATCH` line as the Android modules, released by the same `release` command, under ADR-0017 | One schema version, one trace format, one changelog. Under `0.x` a platform-only change bumping the other is accepted; the record says what would split the lines |
-| API surface arbiter | `swift package diagnose-api-breaking-changes` against a recorded baseline per product, in `check` | The `api/<module>.api` analog; ADR-0017's arbiter must exist on both platforms or it binds on neither |
+| API surface arbiter | `swift package diagnose-api-breaking-changes` against a recorded baseline per product, in `ios/check` (ADR-0021 rule 7) | The `api/<module>.api` analog; ADR-0017's arbiter must exist on both platforms or it binds on neither |
 | Facade shape | `SuperPlayer` **owns** an `AVPlayer` and exposes it as `player.avPlayer`; it does not subclass `AVPlayer` | Subclassing a system class Apple documents as not designed for it is the ADR-0003 hazard in different clothes; `AVPlayerViewController`, `AVPlayerLayer` and SwiftUI's `VideoPlayer` take the exposed player unchanged, which is the "no adapter" point kept. `avPlayer` is the `exoPlayer` escape hatch under ADR-0001 rule 2 |
 | Builder idiom | `SuperPlayer(configuration:)` with a `Configuration` value; no `Builder` classes | Swift idiom; the Android builder's every setter becomes a property with a default |
-| Testing | XCTest on the simulator; a loopback HTTP origin in testkit as the harness | See §5. AVPlayer takes no fake transport, so the harness must be a server. This widens `docs/testing.md`'s carve-out and needs its own ADR |
-| CI | A macOS job in `ci.yml` running `swift build`, `swift test` on a simulator destination, the API digester and swift-format | GitHub-hosted macOS minutes cost ten times Linux; the job runs on paths under `ios/` and on the shared documents only |
+| Testing | XCTest on the simulator; a loopback HTTP origin in testkit as the harness | See §5. AVPlayer takes no fake transport, so the harness must be a server. This widens `docs/testing.md`'s carve-out, which ADR-0021 rule 2 argues |
+| CI | A macOS job in `ci.yml` running the `ios/check` script: `swift build`, `xcodebuild test` on an iOS and a tvOS simulator destination, the API digester and swift-format (ADR-0021 rule 7) | GitHub-hosted macOS minutes cost ten times Linux; the job runs on paths under `ios/` and on the shared documents only |
 
 ## 3. Feature by feature
 
@@ -101,7 +107,7 @@ document that describes it says how. **Not ported** is a rule rather than a gap 
 | Golden traces, byte-identical | **Not achievable**: AVPlayer runs on real time. Goldens become *structural*, kinds and order with times masked, and `docs/testing.md`'s iOS section says what a structural diff can and cannot show | Differs |
 | CMCD (CTA-5004) | Spike first. Whether the current SDK emits CMCD natively, and whether `AVURLAssetPrimarySessionIdentifierKey` carries the session id the schema's `sid` join promises, is verified against the SDK before a line is written. If neither exists, CMCD is **not ported** and the schema's join promise is marked Android-only | Spike, then decide |
 | `PlaybackHarness`, fault injection, network shaping, throughput trace replay | A loopback HTTP origin in `SuperPlayerTestkit` serving the synthetic streams, with `FaultScript` and `ThroughputTrace` applied at the server rather than in a transport slot. The trace format is `docs/throughput-traces.md`'s, shared | Differs in mechanism, same vocabulary; §5 |
-| `SyntheticHlsStream`, `HostileManifests`, `WidevineProtection` | `SyntheticHlsStream` and the HLS half of the corpus ported to Swift; a `check` task generates fixtures from both generators and asserts byte-equality, so one corpus exists. DASH generators not ported. Protection fixtures become FairPlay `EXT-X-KEY` with `skd://` URIs | Ports, with the cross-platform equality test as the proof it is one corpus |
+| `SyntheticHlsStream`, `HostileManifests`, `WidevineProtection` | `SyntheticHlsStream` and the HLS half of the corpus ported to Swift; the Kotlin generators' output is committed as fixtures and each platform's check asserts its own generators produce those bytes (ADR-0021 rule 6), so one corpus exists. DASH generators not ported. Protection fixtures become FairPlay `EXT-X-KEY` with `skd://` URIs | Ports, with the cross-platform equality test as the proof it is one corpus |
 | `NetworkProfile`, the six plus `ETHERNET` | Same constants, same sources | Ports |
 | Benchmark, four arms, `StockTelemetry` agreement test | Stock `AVPlayer`, stock plus intuitive config, SuperPlayer profile, SuperPlayer adaptive; metrics reduced by one ported `SessionMetrics`; the agreement test attaches both collectors to one `AVPlayer` | Ports; runs on the simulator against the loopback shaper |
 
@@ -249,19 +255,21 @@ decodes internally.
 
 | Concern | Android | iOS | Verdict |
 | --- | --- | --- | --- |
-| Where an effect attaches | `setVideoEffects`, before `prepare()` | `AVPlayerItemVideoOutput` on each item, drawn into a Metal layer | Differs. One SuperPlayer type, two mechanisms |
+| Where an effect attaches | `setVideoEffects`, before `prepare()` | `AVPlayerItemVideoOutput` on each item, enqueued to an `AVSampleBufferDisplayLayer` (ADR-0022 rule 5) | Differs. One SuperPlayer type, two mechanisms |
 | Public type | A core interface naming no Media3 type; the module behind it is an internal friend that calls `setVideoEffects` | The same interface, taking a `CVPixelBuffer` and a presentation time | Ports. The vocabulary is SuperPlayer's, and no effect API is shared |
-| When it is fixed | At build time, because Media3 requires the call before `prepare()` | At build time, for parity; the effect list itself may change during playback | Ports |
-| Display path when unused | Unchanged | `AVPlayerLayer`, unchanged; the Metal path exists only on a player built with a frame output | Ports. "Pays nothing" holds and a test counts it |
-| Protected content | Not supported by Media3 | Reported unsupported under FairPlay | **Not ported**: the output turns off for protected items and reports it as a typed reason, never as a playback failure |
+| When it is fixed | At build time, because Media3 requires the call before `prepare()` | At build time, for parity; what the output does with a frame may change during playback, inside the output itself (ADR-0022 rule 2) | Ports |
+| Display path when unused | Unchanged | `AVPlayerLayer`, unchanged; the sample-buffer path exists only on a player built with a frame output | Ports. "Pays nothing" holds and a test counts it |
+| Protected content | Not supported by Media3 | Reported unsupported under FairPlay | **Not ported**: a player built with protection has the output off for its lifetime (ADR-0022 rule 6) and reports it as a typed reason, never as a playback failure |
 | Realtime (§3.10) | Not examined | No decoded frame exists | **Not ported** |
-| Picture in Picture, `AVPlayerViewController` | Not affected | `AVPlayerViewController` is lost on a player built with a frame output. Picture in Picture survives only if processed frames are enqueued to an `AVSampleBufferDisplayLayer`, which `AVPictureInPictureController` accepts as a content source, rather than drawn to a bare Metal layer | Differs. The ADR chooses between the sample-buffer layer and a Metal layer, and states what each loses |
+| Picture in Picture, `AVPlayerViewController` | Not affected | `AVPlayerViewController` is lost on a player built with a frame output. Picture in Picture survives only if processed frames are enqueued to an `AVSampleBufferDisplayLayer`, which `AVPictureInPictureController` accepts as a content source, rather than drawn to a bare Metal layer | Differs. ADR-0022 rule 5 chooses the sample-buffer layer and states what each choice loses |
 
 **The slot.** ADR-0014 gives core one `EngineConfiguration.videoOutput` slot, which `TvOutput`
 fills, and it is fixed for the player's lifetime. A frame output either shares that slot, so that
 one `PlaybackOutput` composes display matching and effects, or it gets a second slot. Sharing keeps
-ADR-0014's "no second slot" argument. A second slot keeps the TV module ignorant of effects. The ADR
-decides, and amends ADR-0014 if it takes a second slot.
+ADR-0014's "no second slot" argument. A second slot keeps the TV module ignorant of effects.
+**ADR-0022 rule 3 takes a second slot**, `EngineConfiguration.frameOutput`, and amends ADR-0014 rule 3
+at the rule: that rule's argument was about a second watcher of an audio fact, and what it protects —
+the filled slot as the whole signal — is kept for both slots.
 
 **Rejected.**
 - *A custom `AVVideoCompositing` compositor.* It is not supported for HLS, which is every streamed
@@ -271,10 +279,10 @@ decides, and amends ADR-0014 if it takes a second slot.
   also forfeits FairPlay and the system's HLS stack.
 - *Exposing Media3's `Effect` directly.* ADR-0001 rule 2 forbids it.
 - *Deferring the decision past i1.* The iOS core would build on `AVPlayerLayer` alone, and the
-  Metal path would arrive later as a retrofit of the facade's rendering. That retrofit is the change
+  frame path would arrive later as a retrofit of the facade's rendering. That retrofit is the change
   this section exists to avoid.
 
-This becomes **ADR-0021** when accepted. i1 builds only the seam: the interface, the display path
+This is **ADR-0022**. i1 builds only the seam: the interface, the display path
 behind it, and one pass-through effect in the demo that proves frames arrive on time. The
 first real effect belongs to the separate effects project.
 
@@ -290,7 +298,7 @@ Package.swift                   at the repository root; every target names `path
 ios/
   Sources/<Product>/
   Tests/<Product>Tests/
-  api/<Product>.baseline        the digester baseline, `check` regenerates and diffs
+  api/<Product>.baseline        the digester baseline, `ios/check` regenerates and diffs
   Demo/                         an Xcode project resolving the package by path, iOS and tvOS targets
   CLAUDE.md                     iOS orientation, loaded only when working under `ios/`
 ```
@@ -309,7 +317,7 @@ iOS reading of `Package.swift`. Kotlin friend modules have no analog: Swift's `@
 
 `docs/testing.md`'s rule is *no device and no network, through the public API, against the
 engine's own fakes*. AVFoundation ships no fakes and takes no fake transport, so the rule cannot
-hold as written. The iOS section of that document, decided in ADR-0020, is:
+hold as written. The iOS section of that document, decided in ADR-0021, is:
 
 - **The harness is a loopback origin.** `SuperPlayerTestkit` starts an HTTP/1.1 server on
   `127.0.0.1` per test, serving the synthetic streams from `SuperPlayerTestMedia`, with
@@ -341,8 +349,8 @@ demonstrable, and none ends on a number moving.
 
 | Phase | Scope | Exit criteria |
 | --- | --- | --- |
-| **i0 — Scaffold** (1 wk) | A root `Package.swift` over `ios/` with empty products, macOS CI job, swift-format, API digester baseline task in `check`, `verifyModulePhaseRule` reading `Package.swift`, ADR-0019 (compose on AVFoundation; the not-ported list of §1) and ADR-0020 (testing on iOS), a platform column in `docs/modules.md` and `docs/compatibility.md` | Green CI; empty products resolve from a local path and by git URL from a scratch package |
-| **i1 — Core + demo** (4 wks) | `SuperPlayer` over `AVPlayer`, `MediaRequest`, profiles, snapshot, lifecycle, `PlaybackSession`, resolver, `PlayerPool`. The frame-output seam of §3.11 (ADR-0021) with a pass-through effect. SwiftUI demo plays public HLS on iPhone | Demo plays, with and without the frame output; the pass-through effect drops no frame that `AVPlayerLayer` would have shown, counted on a device; the observed-KVO register test; `api/` baselines recorded |
+| **i0 — Scaffold** (1 wk) | A root `Package.swift` over `ios/` with empty products, macOS CI job, swift-format, the `ios/check` script running the API digester against its baselines, `verifyModulePhaseRule` reading `Package.swift`, ADR-0020 to ADR-0022 (accepted ahead of the scaffold, #396), a platform column in `docs/modules.md` and `docs/compatibility.md` | Green CI; empty products resolve from a local path and by git URL from a scratch package |
+| **i1 — Core + demo** (4 wks) | `SuperPlayer` over `AVPlayer`, `MediaRequest`, profiles, snapshot, lifecycle, `PlaybackSession`, resolver, `PlayerPool`. The frame-output seam of §3.11 (ADR-0022) with a pass-through effect. SwiftUI demo plays public HLS on iPhone | Demo plays, with and without the frame output; the pass-through effect drops no frame that `AVPlayerLayer` would have shown, counted on a device; the observed-KVO register test; `api/` baselines recorded |
 | **i2 — Telemetry + testkit** (3 wks) | Vocabulary, collector, delivery, `OSLogSink`, trace recorder; testkit's loopback origin, synthetic HLS in Swift with the cross-platform fixture equality check, faults, shaping; the CMCD spike and its written finding; benchmark baseline on the simulator | Baseline report committed; schema document carries every iOS derivation |
 | **i3 — Policy** (2 wks) | Policy boundary, both bindings, static profiles, adaptive buffer and selection halves, per-transport memory over the access log, reapplication | Adaptive arm's report per profile committed, whatever it says |
 | **i4 — Preload** (2 wks) | `PreloadCoordinator` over early items and `preroll`, memory guard, Low Data Mode rule, feed demo | TTFF in the feed measured; memory flat over 200 rows in `xctrace` |
@@ -357,22 +365,22 @@ About 27 weeks before tuning, against Android's roughly 20 for the same ground, 
 i6's device-only testing and i2's harness. Phases i0–i5 are a complete library on their own, as
 0–5 are.
 
-## 8. What to decide before i0
+## 8. What was decided before i0
 
-These change the plan materially and are the user's rather than a careful colleague's:
+These changed the plan materially and were the user's rather than a careful colleague's. Each is now
+decided, the way the plan assumed, and recorded where it binds (#396).
 
-Where the code lives is no longer on this list: §2 decides it, one repository with the manifest
-at its root. That decision leans on the first item below, since a second version line is the one
-thing that would argue for a second repository.
+Where the code lives was never on this list: §2 decides it, one repository with the manifest at its
+root (ADR-0020 rule 10). That decision leans on the first item below, since a second version line is
+the one thing that would argue for a second repository.
 
-1. **Lockstep versioning** with the Android modules under one `release` command, or a second
-   version line. The plan assumes lockstep under `0.x`.
-2. **tvOS in scope from i0** (products declared, CI destination added) or deferred to i7. The
-   plan assumes from i0, since a product added later is a minor on the digester's reading.
-3. **`AVPlayerViewController` over custom controls** on tvOS. The plan assumes the system
-   controls and no `TvPlaybackControls` port.
-4. **Whether the CMCD spike's negative finding, if it is negative, closes CMCD on iOS** or opens
-   a custom-scheme resource-loader experiment. The plan assumes it closes it.
-5. **The frame-output seam in i1** (§3.11), or no effect seam on iOS. The plan assumes i1, at one
-   added week. It also assumes the Android half lands as its own issue against ADR-0021, so that
-   the two platforms share one interface.
+1. **Lockstep versioning** with the Android modules under one `release` command, under `0.x`.
+   ADR-0020 rule 12, with the addendum at ADR-0017 rules 1 and 2.
+2. **tvOS in scope from i0**, products declared and a CI destination added, since a product added
+   later is a minor on the digester's reading. ADR-0020 rule 9.
+3. **`AVPlayerViewController` over custom controls** on tvOS, and no `TvPlaybackControls` port.
+   ADR-0020 rule 6.
+4. **A negative CMCD spike finding closes CMCD on iOS**, rather than opening a custom-scheme
+   resource-loader experiment. ADR-0020 rule 7.
+5. **The frame-output seam in i1** (§3.11), at one added week, with the Android half landing as its
+   own issue (#406) against ADR-0022 so that the two platforms share one interface.

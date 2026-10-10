@@ -179,6 +179,18 @@ Fourteen rules follow, and they are binding.
    internal interface on the object the consumer already passes, and no configurability widened.
    This adds an instance and no shape, so the ceiling reads as ADR-0013 rule 4 left it.
 
+   *Addendum (2026-10-10, #396).* **Core has a second output slot, `EngineConfiguration.frameOutput`,
+   and it is not this one.** [ADR-0022](0022-give-an-effect-the-decoded-frame-through-a-second-output-slot.md)
+   rule 3 adds it for a frame output — an effect handed the decoded frame — filled by a module of its
+   own as core's eleventh friend. The sentence above refused a second slot *for audio*, because a
+   module receiver would have been a second watcher of a fact Media3 already watches; that argument
+   is about duplicated observation and does not reach a frame output, which watches nothing. What
+   this rule protects is kept for both slots: one slot per fact, and **the filled slot is the whole
+   signal** — filling `frameOutput` triggers none of the four things listed above, and filling
+   `videoOutput` installs no effect. One interaction is decided there and not here: on a player with
+   both filled, the tunneling half of rule 7 is not laid, because a tunneled path bypasses the effect
+   pipeline (ADR-0022 rule 4).
+
 ### What is correctness and what is policy
 
 4. **Frame-rate matching is correctness on every player built with the module, and no profile varies

@@ -1415,7 +1415,7 @@ Every other library module is still an empty placeholder: they exist so boundari
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,
 `superplayer-abr`, `superplayer-cache`, `superplayer-preload`, `superplayer-resilience`,
 `superplayer-drm`, `superplayer-offline`, `superplayer-tv`, `superplayer-diagnostics`,
-`superplayer-realtime`, `superplayer-moq`, `superplayer-effects` and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
+`superplayer-realtime`, `superplayer-moq`, `superplayer-effects`, `superplayer-testmedia` and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
 requirements, and the phase table are what the issues are cut from.
 
 `benchmark/` is the fourth build and the phases' exit criteria: `PRD.md` §6's fixed matrix — six
@@ -1457,6 +1457,7 @@ where the two disagree `PRD.md` is right.
 ./gradlew assemble check          # build, lint, tests, repo verification, tracked API surface, format
 ./gradlew updateApiSurface        # regenerate api/<module>.api after a deliberate API change
 ./gradlew updateGoldenTraces      # regenerate src/test/golden/*.trace after a deliberate behaviour change; run alone, then check
+./gradlew updateIosFixtures       # regenerate ios/Tests/Fixtures/synthetic/ after a deliberate generator change; run alone, then check (docs/testing.md)
 ./gradlew spotlessApply           # reformat and stamp the Apache-2.0 header on every .kt file
 ./gradlew convertThroughputTrace --from=… --transport=… --input=… --output=…   # docs/throughput-traces.md
 ./gradlew publishToMavenLocal     # required before the demo will build

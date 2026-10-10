@@ -7,7 +7,6 @@ Var SyntheticHlsStream.declaredBitrateBps : Swift.Int [static] { get }
 Var SyntheticHlsStream.declaredCodecs : Swift.String [static] { get }
 Var SyntheticHlsStream.durationMs : Swift.Int64 [static] { get }
 Var SyntheticHlsStream.higherDeclaredBitrateBps : Swift.Int [static] { get }
-Var SyntheticHlsStream.host : Swift.String [static] { get }
 Var SyntheticHlsStream.mediaPlaylistName : Swift.String [static] { get }
 Var SyntheticHlsStream.multivariantPlaylistName : Swift.String [static] { get }
 Var SyntheticHlsStream.secondMediaPlaylistName : Swift.String [static] { get }

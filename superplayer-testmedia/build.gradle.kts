@@ -34,11 +34,15 @@ dependencies {
 // traces' does and for the same reason: one unit-test task cannot run in two modes at once. The
 // directory travels relative to the module, which is where AGP runs unit tests, and is an input so a
 // fixture edited by hand re-runs the check instead of reading as up to date.
+//
+// Here rather than in the convention plugin beside `updateGoldenTraces`: every module has golden
+// traces to hold, and only this one generates the corpus the Swift port is held to.
 val iosFixtures = rootProject.layout.projectDirectory.dir("ios/Tests/Fixtures/synthetic")
+val iosFixturesFromModule = iosFixtures.asFile.relativeTo(projectDir).invariantSeparatorsPath
 val updatingIosFixtures = gradle.startParameter.taskNames.any { it.substringAfterLast(':') == "updateIosFixtures" }
 
 tasks.withType<Test>().configureEach {
-    systemProperty("superplayer.iosFixtures.dir", "../ios/Tests/Fixtures/synthetic")
+    systemProperty("superplayer.iosFixtures.dir", iosFixturesFromModule)
     systemProperty("superplayer.iosFixtures.mode", if (updatingIosFixtures) "update" else "check")
     inputs.files(fileTree(iosFixtures)).withPropertyName("iosFixtures").withPathSensitivity(PathSensitivity.RELATIVE)
     if (updatingIosFixtures) {

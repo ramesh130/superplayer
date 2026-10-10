@@ -40,6 +40,12 @@ final class SyntheticHlsPlaybackTests: XCTestCase {
     private let playbackBound: TimeInterval = 60
 
     /// Three times the six seconds of media: long enough that a stream which could end would have.
+    ///
+    /// Shorter than `playbackBound` on purpose, because an inverted wait always spends its whole
+    /// bound and `playbackBound` is a ceiling a pass never approaches — the two positive tests in
+    /// this class finish in about the media's own length. A host slow enough to need more than
+    /// eighteen seconds for six of media would weaken this control, and it would say so beside it:
+    /// those two tests' own durations are in the same result bundle.
     private let missingEndBound: TimeInterval = 18
 
     func testTheOneVariantStreamPlaysToItsEndInAVPlayer() async throws {
@@ -58,30 +64,12 @@ final class SyntheticHlsPlaybackTests: XCTestCase {
     func testAStreamWithASegmentMissingDoesNotPlayToItsEnd() async throws {
         var files = SyntheticHlsStream.files(segmentCount: 3, variantCount: 1)
         files[SyntheticHlsStream.segmentName(1)] = nil
-        let origin = try await StaticLoopbackOrigin(files: files)
-        defer { origin.stop() }
 
-        let item = AVPlayerItem(url: origin.url(SyntheticHlsStream.multivariantPlaylistName))
-        let player = AVPlayer(playerItem: item)
-        let ended = XCTNSNotificationExpectation(
-            name: AVPlayerItem.didPlayToEndTimeNotification, object: item)
-        ended.isInverted = true
-        player.play()
-        await fulfillment(of: [ended], timeout: missingEndBound)
-        player.pause()
+        _ = try await play(files, untilEnd: false, bound: missingEndBound)
     }
 
     private func assertPlaysToItsEnd(_ files: [String: [UInt8]]) async throws {
-        let origin = try await StaticLoopbackOrigin(files: files)
-        defer { origin.stop() }
-
-        let item = AVPlayerItem(url: origin.url(SyntheticHlsStream.multivariantPlaylistName))
-        let player = AVPlayer(playerItem: item)
-        let ended = XCTNSNotificationExpectation(
-            name: AVPlayerItem.didPlayToEndTimeNotification, object: item)
-        player.play()
-        await fulfillment(of: [ended], timeout: playbackBound)
-        player.pause()
+        let item = try await play(files, untilEnd: true, bound: playbackBound)
 
         XCTAssertEqual(item.status, .readyToPlay, "\(String(describing: item.error))")
         XCTAssertNil(item.error)
@@ -95,5 +83,24 @@ final class SyntheticHlsPlaybackTests: XCTestCase {
                 Int64((item.duration.seconds * 1_000).rounded()),
                 SyntheticHlsStream.durationMs(segmentCount: 3))
         }
+    }
+
+    /// Serves `files`, plays the multivariant playlist in a stock `AVPlayer`, and waits up to
+    /// `bound` for the end — which must come when `untilEnd` and must not otherwise.
+    private func play(_ files: [String: [UInt8]], untilEnd: Bool, bound: TimeInterval)
+        async throws -> AVPlayerItem
+    {
+        let origin = try await StaticLoopbackOrigin(files: files)
+        defer { origin.stop() }
+
+        let item = AVPlayerItem(url: origin.url(SyntheticHlsStream.multivariantPlaylistName))
+        let player = AVPlayer(playerItem: item)
+        let ended = XCTNSNotificationExpectation(
+            name: AVPlayerItem.didPlayToEndTimeNotification, object: item)
+        ended.isInverted = !untilEnd
+        player.play()
+        await fulfillment(of: [ended], timeout: bound)
+        player.pause()
+        return item
     }
 }

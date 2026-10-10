@@ -32,7 +32,7 @@
 /// **What is not ported, and why.** The Kotlin `resources` keys its map under `fake://` URIs, which
 /// is how a Media3 `FakeDataSet` is addressed and which nothing on iOS can serve: `AVPlayer` takes
 /// no fake transport, so an iOS test plays from a loopback origin (ADR-0021 rule 2) and a stream is
-/// served by path under that origin's address. [files(segmentCount:variantCount:)] is therefore the
+/// served by path under that origin's address. ``files(segmentCount:variantCount:)`` is therefore the
 /// public form here, and it is the Kotlin generator's own `files` — the form whose every reference
 /// is relative, and so the one form that is the same bytes wherever it is served. The second-host
 /// variant, the live window and the Widevine-protected forms are not ported: the first two are the
@@ -42,12 +42,6 @@
 /// `superplayer-testmedia`'s reason: it sits below core and testkit, and a module with no edges
 /// cannot break the phase rule.
 public enum SyntheticHlsStream {
-
-    /// The host the Kotlin stream's URIs name.
-    ///
-    /// Carried over so a test reading both platforms' vocabulary finds one name. On iOS it is not
-    /// an address — the loopback origin's is — because no reference inside [files] names a host.
-    public static let host = "superplayer.test"
 
     /// The multivariant playlist's file name: what a player is pointed at, under wherever the
     /// stream is served.
@@ -73,8 +67,9 @@ public enum SyntheticHlsStream {
 
     /// Two seconds, as a `Double` because it is written into `EXTINF` as one: Kotlin prints `2.0`
     /// and so does Swift, which is part of what keeps the playlists byte-equal.
-    static let segmentDurationSeconds = 2.0
+    private static let segmentDurationSeconds = 2.0
 
+    /// One segment's duration, as the playlists declare it in `EXTINF`.
     public static let segmentDurationMs: Int64 = 2_000
 
     /// The default stream: one segment, so the segment's own duration.
@@ -187,7 +182,7 @@ public enum SyntheticHlsStream {
     /// spec: ISO/IEC 13818-7 §6.2, `adts_fixed_header` followed by `adts_variable_header`, packed
     /// MSB-first across 7 bytes — the Kotlin `adtsSegment` carries the byte-by-byte layout.
     /// `buffer_fullness` is all ones, which §6.2.2 defines as "variable rate".
-    static func adtsSegment(_ index: Int) -> [UInt8] {
+    private static func adtsSegment(_ index: Int) -> [UInt8] {
         let startSeconds = Double(index) * segmentDurationSeconds
         let frameLength = adtsHeaderBytes + adtsPayloadBytes
         let frameCount = Int(
@@ -219,7 +214,7 @@ public enum SyntheticHlsStream {
     /// as a big-endian eight-octet number. Without it every segment's samples begin at zero and a
     /// stream of more than one segment does not play (the Kotlin KDoc tells that history).
     ///
-    /// spec: ID3v2.3.0 §3.1 (tag header, size in syncsafe integers) and §4.27 (the PRIV frame).
+    /// spec: ID3v2.3.0 §3.1 (tag header, size in syncsafe integers) and §4.28 (the PRIV frame).
     private static func id3TimestampTag(startSeconds: Double) -> [UInt8] {
         let presentationTimestamp = Int64(startSeconds * Double(mpeg2TimestampHz))
 

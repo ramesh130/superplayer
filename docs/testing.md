@@ -660,9 +660,14 @@ the same directory under #412.
 
 **A synthetic stream plays in `AVPlayer`.** On Android the ADTS payload is never decoded —
 Robolectric's shadow codec passes bytes through — so "it plays" was never a claim about the bytes.
-`SyntheticHlsPlaybackTests` makes it one on the simulator: both fixtures play to their end in a stock
+`SyntheticHlsPlaybackTests` makes it one on the simulator: both forms committed as fixtures play to their end in a stock
 `AVPlayer` with an audio track presented and nothing in the error log, and a control with one segment
-withheld does not. It plays over HTTP from a stopgap loopback origin in that test target, because
+withheld does not. Playing to the end is necessary and not sufficient, which is how #398 found the
+payload wrong: an all-zero ADTS payload, what both generators wrote until then, also plays to its end
+— on time, with no error any API reports — while AVFoundation's decoder refuses every frame. So
+`SyntheticAacDecodingTests` decompresses a segment to PCM with an `AVAssetReader` and counts the
+samples, with the all-zero payload as its control, and both generators now write a silent
+`raw_data_block`. It plays over HTTP from a stopgap loopback origin in that test target, because
 `AVPlayer` never loads an HLS playlist handed to it as a `file:` URL; #399's origin replaces it.
 
 ### The hostile manifest corpus

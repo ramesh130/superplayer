@@ -73,8 +73,11 @@ final class LifecyclePlaybackTests: XCTestCase {
             player.avPlayer.currentTime().seconds > pausedAt + 1
         }
         // Activated to play, and again after the interruption, which the system deactivated —
-        // never deactivated by the binding in between, since that was the system's to do.
-        XCTAssertEqual(platform.calls, [.activate, .activate])
+        // never deactivated by the binding in between, since that was the system's to do. Only the
+        // first two calls are this test's: what follows them is any rate change the engine makes
+        // of its own on the host while the position is waited for, which CI's simulator was seen
+        // to make (a pause and a play, each passed on faithfully) and a desktop's was not.
+        XCTAssertEqual(Array(platform.calls.prefix(2)), [.activate, .activate])
     }
 
     /// The Android permanent loss: an interruption that ends without leave to resume leaves the

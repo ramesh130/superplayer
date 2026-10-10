@@ -191,6 +191,16 @@ that, and *What nothing enforces* sums them.
    rule 6's reason. *Enforced by nothing; #413 is the decision's input and this rule is its outcome
    either way.*
 
+   *Addendum (2026-10-11, #413).* The finding is positive, so CMCD **ports**
+   ([`docs/ios-cmcd-finding.md`](../ios-cmcd-finding.md)). The SDK emits CTA-5004 v1 itself as
+   request headers once `AVAssetResourceLoader.sendsCommonMediaClientDataAsHTTPHeaders` is set
+   (iOS 18, tvOS 18), and its `sid` is the asset's read-only `httpSessionIdentifier`.
+   `AVURLAssetPrimarySessionIdentifierKey` reaches no CMCD key, so the join holds by the other
+   route: core reads the asset's identifier and uses it as the telemetry `sessionId`, rather than
+   minting one and handing it out as Android's core does. Below 18 no CMCD is sent, which is rule
+   9's measurement shape rather than a refusal. The implementation is #446, and
+   `CmcdFindingTests` pins the three facts it rests on.
+
 8. **The doctor parses HLS with a lint parser of its own, written to RFC 8216, and says so.**
    ADR-0015 rule 6 has the doctor parse with the parsers the engine would run, so that the doctor and
    the player never disagree about what a manifest says. AVFoundation exposes no playlist parser, so

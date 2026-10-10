@@ -5,7 +5,9 @@
 - **Amended:** 2026-10-11 (#400), by an addendum at rule 1 recording what a test may read through
   `player.avPlayer` while the facade publishes no state of its own. It narrows nothing the rule
   decided and lapses as the facade's state arrives. Amended again (#401) at the same rule, admitting
-  a profile's knobs and an item's readiness until the facade publishes its own.
+  a profile's knobs and an item's readiness until the facade publishes its own. Amended again (#402)
+  at rule 1, admitting a pause or resume the lifecycle made, and at rule 5, adding the lifecycle to
+  the device list with its one protocol.
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
 - **Refines:** [`docs/testing.md`](../testing.md)'s rule — *no device and no network, through the
@@ -102,6 +104,14 @@ rule names the ticket that brings its enforcement, and *What nothing enforces* s
    play button, so a test can say a restored player is ready and still paused rather than waiting
    on a time. Both lapse as the facade publishes a decision and a state.
 
+   *Addendum (2026-10-11, #402).* One reading more, of the same two values the #400 addendum
+   admits: **a pause or a resume the lifecycle made** is read off `timeControlStatus` and
+   `currentTime()`, though the facade made it rather than a consumer's control. The behaviour
+   under test *is* the player pausing and resuming — `LifecycleBinding` publishes no state of its
+   own, and a consumer sees an interruption exactly there, in the player its controls read — so
+   there is no reading through SuperPlayer to prefer. It lapses with the others as the facade
+   publishes a playback state.
+
 2. **The harness is a loopback HTTP origin, started per test, and the carve-out is widened to every
    iOS test.** `SuperPlayerTestkit` starts an HTTP/1.1 server on `127.0.0.1` at an ephemeral port
    for each test, serving the synthetic streams `SuperPlayerTestMedia` generates, and shuts it down
@@ -160,6 +170,14 @@ rule names the ticket that brings its enforcement, and *What nothing enforces* s
    one per call, so that the stub is a seam a reviewer can read whole rather than a mock of
    AVFoundation. *Enforced by review and by each device ticket existing; nothing detects a fake that
    pretends to be FairPlay.*
+
+   *Addendum (2026-10-11, #402).* The lifecycle joins the list: that the system honours an audio
+   session activation and interrupts it for a real call, that pulling out headphones posts the
+   route change, and that a video item holds the idle timer once it plays all need a device. Its
+   one protocol is `LifecyclePlatform` — activate and deactivate the session, hold and release the
+   idle timer — and the notifications are not stubbed at all: a test posts the real ones from
+   `AVAudioSession.sharedInstance()`. Its device run is the i1 demo's on an iPhone (`docs/ios-plan.md`
+   §7), which plays video and is where a call and a headphone unplug are made by hand.
 
 6. **The shared documents are tested on both platforms.** ADR-0020 rule 4 makes the documents the
    authority, and each platform holds itself to them with a test of its own: the telemetry schema

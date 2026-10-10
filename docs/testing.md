@@ -764,7 +764,7 @@ see a request.
   driven through `player.avPlayer`, since that is where a consumer's transport controls are too, and
   ADR-0021 rule 1's addendum bounds what a test may do there; a start is asserted as the position at
   the first poll that finds the player playing, inside a window argued at
-  `SuperPlayerPlaybackTests.startTolerance` — a position, never a duration. Three core tests import
+  `SuperPlayerPlaybackTests.startTolerance` — a position, never a duration. Four core tests import
   core `@testable`, each arguing it in its own comment: `RememberedPositionsTests`, for the order
   rule a read-is-a-use that no playback can isolate, and `ObservedSignalRegisterTests`, for the
   register's live count, which no public reading can see until the notification it waits for
@@ -772,9 +772,26 @@ see a request.
   initializer — so the stored JSON is pinned for a value with every field set, which no public
   call produces without playing — and for its internal remembered-position list, whose order is
   what a restored memory evicts by and which `.resumeFromLastKnown` can show only one id at a time.
-  None of the three seams is `package`, because no later product reaches it.
+  None of those three seams is `package`, because no later product reaches it. A fourth,
+  `LifecycleRulesTests` (#402), for the lifecycle's reading of each notification and its
+  process-wide count of who needs the session and the idle timer, which playback shows one player
+  at a time and on audio alone; the count's constructor and its platform protocol are `package`,
+  because `LifecyclePlaybackTests` in testkit's target reaches them too.
   `ProfileTableTests` reads each profile's knobs off `player.avPlayer`, and `SnapshotPlaybackTests`
   an item's readiness, under rule 1's #401 addendum.
+- **The lifecycle is driven by the platform's own notifications** (#402). `LifecyclePlaybackTests`
+  posts `AVAudioSession.interruptionNotification` and `routeChangeNotification` from
+  `AVAudioSession.sharedInstance()` with the `userInfo` keys `AVAudioSession.h` declares, as the
+  system posts them, and reads play and pause off `player.avPlayer` under rule 1's #402 addendum;
+  the control is a route change for another reason, which goes on playing. What the binding asks of
+  the platform — activating and deactivating the session, holding the idle timer — goes to a
+  recording `LifecyclePlatform`, the one `package` protocol rule 5's #402 addendum allows the
+  feature, through the `package` initializer `SuperPlayer(configuration:lifecycle:)`. Three things only a device shows,
+  and none is faked: that the system honours an activation and interrupts the session for a real
+  call; that headphones pulled out post the route change; and the idle timer's video half, because
+  every synthetic stream is audio — `LifecycleRulesTests` holds the rule over a presentation size,
+  and that a video item's is non-zero by the time it plays is AVFoundation's documented behaviour
+  that only a video stream on a device can confirm.
 
 What it cannot show is what real time cannot: a test here is evidence that something happened and in
 what order, never that it happened sooner, and a device is still the only place a FairPlay key, a

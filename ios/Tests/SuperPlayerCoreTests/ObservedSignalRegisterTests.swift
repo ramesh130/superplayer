@@ -30,7 +30,7 @@ import XCTest
 /// set, not when it plays.
 ///
 /// ADR-0020 rule 13 asks the count to be taken twice, so the counter is shown to see what it counts:
-/// with nothing configured (`testAPlayerGivenNoContentObservesNothing`), and with the feature in
+/// with nothing configured (`testAPlayerGivenNoContentObservesOnlyTheLifecycle`), and with the feature in
 /// use, which here is a request set rather than a hand-written stand-in, since the register's only
 /// client is the facade itself.
 @MainActor
@@ -49,10 +49,19 @@ final class ObservedSignalRegisterTests: XCTestCase {
         Dictionary(uniqueKeysWithValues: ObservedSignal.allCases.map { ($0, 1) })
     }
 
-    /// The control the count needs: a player given nothing has registered nothing, so the counter
-    /// is not one that reads "everything" regardless (ADR-0020 rule 13, "pays nothing").
-    func testAPlayerGivenNoContentObservesNothing() {
-        XCTAssertEqual(SuperPlayer().liveObservations, [:])
+    /// The lifecycle's signals, each once: what every player observes for its whole life (#402).
+    private var thePlayerSignalsOnce: [ObservedSignal: Int] {
+        everySignalOnce.filter { $0.key.scope == .player }
+    }
+
+    /// The control the count needs: a player given nothing has registered nothing on an item, so
+    /// the counter is not one that reads "everything" regardless (ADR-0020 rule 13, "pays
+    /// nothing"). What it has registered is the lifecycle, which ADR-0006 rule 1 puts on every
+    /// player rather than behind anything a configuration names.
+    func testAPlayerGivenNoContentObservesOnlyTheLifecycle() {
+        XCTAssertFalse(thePlayerSignalsOnce.isEmpty)
+        XCTAssertNotEqual(thePlayerSignalsOnce, everySignalOnce)
+        XCTAssertEqual(SuperPlayer().liveObservations, thePlayerSignalsOnce)
     }
 
     func testEverySignalInTheRegisterIsObservedOnceOnTheItemARequestPlays() {
@@ -74,14 +83,14 @@ final class ObservedSignalRegisterTests: XCTestCase {
     }
 
     /// An item with no identity has nothing to remember, so nothing is observed on it — and the
-    /// identified item it replaced has its observations removed.
+    /// identified item it replaced has its observations removed. The lifecycle is untouched.
     func testAnItemFromABareURLIsObservedForNothing() {
         let player = SuperPlayer()
         player.setMediaRequest(request("a"))
 
         player.setMediaURL(nowhere)
 
-        XCTAssertEqual(player.liveObservations, [:])
+        XCTAssertEqual(player.liveObservations, thePlayerSignalsOnce)
         XCTAssertNil(player.currentContentId)
     }
 

@@ -2,6 +2,8 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-10
+- **Amended:** 2026-10-11 (#402), by an addendum at rule 13 placing the lifecycle's signals in the
+  observed register with a player scope, since ADR-0006 rule 1 puts them on every player.
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
 - **Refines:** [ADR-0001](0001-compose-dont-fork.md), restated for Apple platforms rather than
@@ -288,6 +290,13 @@ that, and *What nothing enforces* sums them.
     nothing to forward, and what can go silently wrong is an observation registered and never
     removed. *Enforced by each feature's ticket bringing its count, starting with #400's observation
     register.*
+
+    *Addendum (2026-10-11, #402).* The lifecycle is not a feature a configuration names: ADR-0006
+    rule 1 makes the audio session, interruptions, the route change and the idle timer correctness
+    on every player. So its four signals — the two `AVAudioSession` notifications, the player's
+    rate change and its `timeControlStatus` — are in the register with a *player* scope, registered
+    as each player is made and removed with it, and "nothing configured" counts exactly those and
+    no item's. The rule's promise is unchanged for everything a configuration does name.
 
 ### What nothing enforces
 

@@ -1,0 +1,13 @@
+#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:2
+#EXT-X-MEDIA-SEQUENCE:0
+#EXTINF:2.0,
+segment0.aac?expires=1800000012&signature=corpus
+#EXTINF:2.0,
+segment1.aac?expires=1800000012&signature=corpus
+#EXTINF:2.0,
+segment2.aac?expires=1800000012&signature=corpus
+#EXTINF:2.0,
+segment3.aac?expires=1800000012&signature=corpus
+#EXT-X-ENDLIST

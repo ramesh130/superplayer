@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import SuperPlayerTestMedia
+
 /// The faults a test wants an origin to produce, declared up front as data — the port of
 /// `superplayer-testkit`'s `FaultScript`, applied at the server rather than in a transport slot
 /// (ADR-0021 rule 3), and handed to ``PlaybackHarness/serve(_:faults:network:)``.
@@ -229,6 +231,55 @@ public struct FaultScript: Sendable {
             adding(
                 kind, index, nil, host,
                 .responseHeaders(headers.sorted { $0.key < $1.key }.map { ($0.key, $0.value) }))
+        }
+
+        /// Adds the response headers `stream` declares, on the responses it declares them on — the
+        /// Kotlin harness's `TestContent.hostile`, which serves `HostileStream.declaredResponseHeaders`
+        /// with the content, written as this origin's faults: one
+        /// ``addResponseHeaders(_:kind:index:host:)`` per kind of resource.
+        ///
+        /// A fault is addressed by kind and index rather than by path, so a declaration has to be
+        /// one those coordinates can state: one header set for every resource of a kind, or — for
+        /// manifests — one for the multivariant playlist and another for every playlist it names.
+        /// The multivariant playlist is manifest index 0 because a player asks for what it is
+        /// pointed at before anything it names. Both of the corpus's header entries are one of those
+        /// shapes (`hls-cors-refuses-credentials` the first, `hls-cached-live-playlist` the second),
+        /// and a declaration that is neither stops the test naming the entry rather than being
+        /// served approximately. The stop is a trap, deliberately: testkit links no XCTest, and a
+        /// corpus entry no fault can state is a harness to extend, not one test's failure.
+        public func addDeclaredResponseHeaders(of stream: HostileStream) -> Builder {
+            let source = TestContent.withoutQuery(stream.sourcePath)
+            let declared = stream.declaredResponseHeaders.reduce(into: [String: [String: String]]())
+            {
+                paths, entry in paths[TestContent.withoutQuery(entry.key)] = entry.value
+            }
+            let paths = stream.files.keys.map(TestContent.withoutQuery)
+            var builder = self
+            for kind in ResourceKind.allCases {
+                let ofKind = paths.filter { ResourceKind.of(path: $0) == kind }
+                let sets = Set(ofKind.map { declared[$0] ?? [:] })
+                if sets.count <= 1 {
+                    if let headers = sets.first, !headers.isEmpty {
+                        builder = builder.addResponseHeaders(headers, kind: kind)
+                    }
+                    continue
+                }
+                let named = Set(ofKind.filter { $0 != source }.map { declared[$0] ?? [:] })
+                guard kind == .manifest, ofKind.contains(source), named.count == 1,
+                    let headers = named.first
+                else {
+                    preconditionFailure(
+                        "\(stream): its declared \(kind) headers cannot be addressed by kind and index"
+                    )
+                }
+                if let atSource = declared[source], !atSource.isEmpty {
+                    builder = builder.addResponseHeaders(atSource, kind: .manifest, index: 0)
+                }
+                for index in 1..<ofKind.count where !headers.isEmpty {
+                    builder = builder.addResponseHeaders(headers, kind: .manifest, index: index)
+                }
+            }
+            return builder
         }
 
         public func build() -> FaultScript { FaultScript(faults: faults) }

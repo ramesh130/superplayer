@@ -1,0 +1,12 @@
+#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:2
+#EXT-X-MEDIA-SEQUENCE:0
+#EXTINF:2.0,
+segment0.aac
+#EXTINF:2.0,
+segment1.aac
+#EXTINF:2.0,
+segment2.aac
+#EXTINF:2.0,
+segment3.aac

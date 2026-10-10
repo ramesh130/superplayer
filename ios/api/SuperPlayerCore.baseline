@@ -1,4 +1,5 @@
 // SuperPlayerCore: public API as ios/check reads it. Regenerate with ios/check --update-api.
+Class PlayerPool : Sendable
 Class SuperPlayer : Sendable
 Constructor MediaRequest.StartPosition.init(from:) : SuperPlayerCore.MediaRequest.StartPosition, any Swift.Decoder [throwing]
 Constructor MediaRequest.init(contentId:sources:startPosition:title:subtitle:artworkURL:) : SuperPlayerCore.MediaRequest, Swift.String, [Foundation.URL], SuperPlayerCore.MediaRequest.StartPosition, Swift.String?, Swift.String?, Foundation.URL?
@@ -6,6 +7,9 @@ Constructor MediaRequest.init(from:) : SuperPlayerCore.MediaRequest, any Swift.D
 Constructor PlaybackDecision.init() : SuperPlayerCore.PlaybackDecision
 Constructor PlaybackFailure.init(category:code:message:classification:) : SuperPlayerCore.PlaybackFailure, SuperPlayerCore.FailureCategory, Swift.String?, Swift.String?, Swift.String?
 Constructor PlaybackSnapshot.init(from:) : SuperPlayerCore.PlaybackSnapshot, any Swift.Decoder [throwing]
+Constructor PlayerPool.Configuration.init() : SuperPlayerCore.PlayerPool.Configuration
+Constructor PlayerPool.init(configuration:) : SuperPlayerCore.PlayerPool, SuperPlayerCore.PlayerPool.Configuration
+Constructor PlayerPool.init(configuration:availableMemory:) : SuperPlayerCore.PlayerPool, SuperPlayerCore.PlayerPool.Configuration, SuperPlayerCore.DeviceCapacity.MemoryReader
 Constructor SuperPlayer.Configuration.init() : SuperPlayerCore.SuperPlayer.Configuration
 Constructor SuperPlayer.Configuration.init(profile:) : SuperPlayerCore.SuperPlayer.Configuration, SuperPlayerCore.PlaybackProfile
 Constructor SuperPlayer.init(configuration:) : SuperPlayerCore.SuperPlayer, SuperPlayerCore.SuperPlayer.Configuration
@@ -25,6 +29,7 @@ Constructor TelemetryEvent.StartupFailed.init(sessionId:contentId:timestampMs:mo
 Constructor TelemetryEvent.TrackSwitched.init(sessionId:contentId:timestampMs:monotonicTimeMs:fromBitrateBps:toBitrateBps:direction:) : SuperPlayerCore.TelemetryEvent.TrackSwitched, Swift.String, Swift.String, Swift.Int64, Swift.Int64, Swift.Int?, Swift.Int, SuperPlayerCore.TrackSwitchDirection
 Constructor TelemetryEvent.VideoFramesDropped.init(sessionId:contentId:timestampMs:monotonicTimeMs:droppedFrames:repeatedFrames:elapsedPlayingMs:) : SuperPlayerCore.TelemetryEvent.VideoFramesDropped, Swift.String, Swift.String, Swift.Int64, Swift.Int64, Swift.Int, Swift.Int, Swift.Int64
 Enum DecisionTrigger : Equatable, Hashable, Sendable
+Enum DeviceCapacity : Sendable
 Enum FailureCategory : Equatable, Hashable, Sendable
 Enum LicenceOutcome : Equatable, Hashable, Sendable
 Enum MediaRequest.StartPosition : Decodable, Encodable, Equatable, Hashable, Sendable
@@ -78,6 +83,7 @@ EnumElement TtffStartBoundary.userIntent : (SuperPlayerCore.TtffStartBoundary.Ty
 Func CompositeTelemetrySink.onEvent(_:) : (), SuperPlayerCore.TelemetryEvent
 Func DecisionTrigger.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerCore.DecisionTrigger, SuperPlayerCore.DecisionTrigger [static]
 Func DecisionTrigger.hash(into:) : (), Swift.Hasher
+Func DeviceCapacity.concurrentPlayers(availableMemoryBytes:) : Swift.Int, Swift.UInt64 [static]
 Func FailureCategory.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerCore.FailureCategory, SuperPlayerCore.FailureCategory [static]
 Func FailureCategory.hash(into:) : (), Swift.Hasher
 Func LicenceOutcome.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerCore.LicenceOutcome, SuperPlayerCore.LicenceOutcome [static]
@@ -97,6 +103,9 @@ Func PlaybackProfile.hash(into:) : (), Swift.Hasher
 Func PlaybackSnapshot.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.PlaybackSnapshot, SuperPlayerCore.PlaybackSnapshot [static]
 Func PlaybackSnapshot.encode(to:) : (), any Swift.Encoder [throwing]
 Func PlaybackSnapshot.hash(into:) : (), Swift.Hasher
+Func PlayerPool.acquire() : SuperPlayerCore.SuperPlayer?
+Func PlayerPool.recycle(_:) : (), SuperPlayerCore.SuperPlayer
+Func PlayerPool.release() : ()
 Func SuperPlayer.release() : ()
 Func SuperPlayer.restoreSnapshot(_:) : (), SuperPlayerCore.PlaybackSnapshot
 Func SuperPlayer.saveSnapshot() : SuperPlayerCore.PlaybackSnapshot
@@ -151,6 +160,7 @@ Struct MediaRequest : Decodable, Encodable, Equatable, Hashable, Sendable
 Struct PlaybackDecision : Equatable, Hashable, Sendable
 Struct PlaybackFailure : Equatable, Hashable, Sendable
 Struct PlaybackSnapshot : Decodable, Encodable, Equatable, Hashable, Sendable
+Struct PlayerPool.Configuration : Sendable
 Struct SuperPlayer.Configuration : Sendable
 Struct TelemetryEvent.DecisionChanged : Equatable, Hashable, Sendable
 Struct TelemetryEvent.FirstFrameRendered : Equatable, Hashable, Sendable
@@ -167,8 +177,13 @@ Struct TelemetryEvent.SessionStarted : Equatable, Hashable, Sendable
 Struct TelemetryEvent.StartupFailed : Equatable, Hashable, Sendable
 Struct TelemetryEvent.TrackSwitched : Equatable, Hashable, Sendable
 Struct TelemetryEvent.VideoFramesDropped : Equatable, Hashable, Sendable
+TypeAlias DeviceCapacity.MemoryReader : () -> Swift.UInt64
 TypeAlias PlaybackProfile.AllCases : [SuperPlayerCore.PlaybackProfile]
 Var DecisionTrigger.hashValue : Swift.Int { get }
+Var DeviceCapacity.bytesPerPlayer : Swift.UInt64 [static] { get }
+Var DeviceCapacity.ceiling : Swift.Int [static] { get }
+Var DeviceCapacity.minimum : Swift.Int [static] { get }
+Var DeviceCapacity.processAvailableMemory : SuperPlayerCore.DeviceCapacity.MemoryReader [static] { get }
 Var FailureCategory.hashValue : Swift.Int { get }
 Var LicenceOutcome.hashValue : Swift.Int { get }
 Var MediaRequest.StartPosition.hashValue : Swift.Int { get }
@@ -191,6 +206,12 @@ Var PlaybackSnapshot.hashValue : Swift.Int { get }
 Var PlaybackSnapshot.playWhenReady : Swift.Bool { get }
 Var PlaybackSnapshot.positionMs : Swift.Int64? { get }
 Var PlaybackSnapshot.request : SuperPlayerCore.MediaRequest? { get }
+Var PlayerPool.Configuration.maxSize : Swift.Int? { get set }
+Var PlayerPool.Configuration.player : SuperPlayerCore.SuperPlayer.Configuration { get set }
+Var PlayerPool.configuration : SuperPlayerCore.PlayerPool.Configuration { get }
+Var PlayerPool.inUseCount : Swift.Int { get }
+Var PlayerPool.maxSize : Swift.Int { get }
+Var PlayerPool.size : Swift.Int { get }
 Var SuperPlayer.Configuration.profile : SuperPlayerCore.PlaybackProfile { get set }
 Var SuperPlayer.Configuration.telemetry : (() -> any SuperPlayerCore.TelemetryCollector)? { get set }
 Var SuperPlayer.avPlayer : AVFoundation.AVPlayer { get }

@@ -24,8 +24,8 @@ import XCTest
 /// the collector lets go. The collector is a hand-written recorder, because the real one is #409's;
 /// what is asserted is what core tells any collector, and in what order.
 ///
-/// Restore and reset-for-reuse are the other two edges, and their callers are #401's
-/// `restoreSnapshot` and #404's `resetForReuse`; `SessionEdges.swift` says what each calls.
+/// Restore is an adoption too, through the snapshot's request. Reset-for-reuse is the fourth edge,
+/// and its caller is #404's `resetForReuse`; `SessionEdges.swift` says what it calls.
 ///
 /// Time is real and nothing here measures it: each step waits, with a ceiling, for the position to
 /// advance, so every session asserted is one whose content was playing.
@@ -71,6 +71,26 @@ final class SessionEdgePlaybackTests: XCTestCase {
         player.avPlayer.play()
         try await harness.until("the bare item plays", timeout: bound) {
             player.avPlayer.currentTime().seconds > 1
+        }
+        player.release()
+
+        XCTAssertEqual(
+            recorder.edges.map(\.description),
+            ["attach", "start a (playing a)", "end (playing a)", "detach"])
+    }
+
+    func testARestoredSnapshotIsAnAdoptionOfItsContent() async throws {
+        let origin = try await harness.serve(.hls())
+        let saved = SuperPlayer()
+        try await play(MediaRequest(contentId: "a", sources: [origin.sourceURL]), on: saved)
+        let snapshot = saved.saveSnapshot()
+        saved.release()
+        let recorder = EdgeRecorder()
+        let player = measuredPlayer(recorder)
+
+        player.restoreSnapshot(snapshot)
+        try await harness.until("the restored content plays", timeout: bound) {
+            player.currentContentId == "a" && player.avPlayer.currentTime().seconds > 1
         }
         player.release()
 

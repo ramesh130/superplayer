@@ -5,7 +5,9 @@ Constructor MediaRequest.init(contentId:sources:startPosition:title:subtitle:art
 Constructor MediaRequest.init(from:) : SuperPlayerCore.MediaRequest, any Swift.Decoder [throwing]
 Constructor PlaybackDecision.init() : SuperPlayerCore.PlaybackDecision
 Constructor PlaybackFailure.init(category:code:message:classification:) : SuperPlayerCore.PlaybackFailure, SuperPlayerCore.FailureCategory, Swift.String?, Swift.String?, Swift.String?
+Constructor PlaybackSnapshot.init(from:) : SuperPlayerCore.PlaybackSnapshot, any Swift.Decoder [throwing]
 Constructor SuperPlayer.Configuration.init() : SuperPlayerCore.SuperPlayer.Configuration
+Constructor SuperPlayer.Configuration.init(profile:) : SuperPlayerCore.SuperPlayer.Configuration, SuperPlayerCore.PlaybackProfile
 Constructor SuperPlayer.init(configuration:) : SuperPlayerCore.SuperPlayer, SuperPlayerCore.SuperPlayer.Configuration
 Constructor TelemetryEvent.DecisionChanged.init(sessionId:contentId:timestampMs:monotonicTimeMs:decision:trigger:) : SuperPlayerCore.TelemetryEvent.DecisionChanged, Swift.String, Swift.String, Swift.Int64, Swift.Int64, SuperPlayerCore.PlaybackDecision, SuperPlayerCore.DecisionTrigger
 Constructor TelemetryEvent.FirstFrameRendered.init(sessionId:contentId:timestampMs:monotonicTimeMs:timeToFirstFrameMs:startBoundary:) : SuperPlayerCore.TelemetryEvent.FirstFrameRendered, Swift.String, Swift.String, Swift.Int64, Swift.Int64, Swift.Int64, SuperPlayerCore.TtffStartBoundary
@@ -26,7 +28,7 @@ Enum DecisionTrigger : Equatable, Hashable, Sendable
 Enum FailureCategory : Equatable, Hashable, Sendable
 Enum LicenceOutcome : Equatable, Hashable, Sendable
 Enum MediaRequest.StartPosition : Decodable, Encodable, Equatable, Hashable, Sendable
-Enum PlaybackProfile : Equatable, Hashable, Sendable
+Enum PlaybackProfile : CaseIterable, Equatable, Hashable, Sendable
 Enum TelemetryEvent : Equatable, Hashable, Sendable
 Enum TrackSwitchDirection : Equatable, Hashable, Sendable
 Enum TtffStartBoundary : Equatable, Hashable, Sendable
@@ -92,7 +94,12 @@ Func PlaybackFailure.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore
 Func PlaybackFailure.hash(into:) : (), Swift.Hasher
 Func PlaybackProfile.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerCore.PlaybackProfile, SuperPlayerCore.PlaybackProfile [static]
 Func PlaybackProfile.hash(into:) : (), Swift.Hasher
+Func PlaybackSnapshot.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.PlaybackSnapshot, SuperPlayerCore.PlaybackSnapshot [static]
+Func PlaybackSnapshot.encode(to:) : (), any Swift.Encoder [throwing]
+Func PlaybackSnapshot.hash(into:) : (), Swift.Hasher
 Func SuperPlayer.release() : ()
+Func SuperPlayer.restoreSnapshot(_:) : (), SuperPlayerCore.PlaybackSnapshot
+Func SuperPlayer.saveSnapshot() : SuperPlayerCore.PlaybackSnapshot
 Func SuperPlayer.setMediaRequest(_:) : (), SuperPlayerCore.MediaRequest
 Func SuperPlayer.setMediaURL(_:) : (), Foundation.URL
 Func TelemetryCollector.attach(to:) : (), SuperPlayerCore.SuperPlayer where <Self where Self : SuperPlayerCore.TelemetryCollector>
@@ -143,6 +150,7 @@ Struct CompositeTelemetrySink : Sendable, TelemetrySink
 Struct MediaRequest : Decodable, Encodable, Equatable, Hashable, Sendable
 Struct PlaybackDecision : Equatable, Hashable, Sendable
 Struct PlaybackFailure : Equatable, Hashable, Sendable
+Struct PlaybackSnapshot : Decodable, Encodable, Equatable, Hashable, Sendable
 Struct SuperPlayer.Configuration : Sendable
 Struct TelemetryEvent.DecisionChanged : Equatable, Hashable, Sendable
 Struct TelemetryEvent.FirstFrameRendered : Equatable, Hashable, Sendable
@@ -159,6 +167,7 @@ Struct TelemetryEvent.SessionStarted : Equatable, Hashable, Sendable
 Struct TelemetryEvent.StartupFailed : Equatable, Hashable, Sendable
 Struct TelemetryEvent.TrackSwitched : Equatable, Hashable, Sendable
 Struct TelemetryEvent.VideoFramesDropped : Equatable, Hashable, Sendable
+TypeAlias PlaybackProfile.AllCases : [SuperPlayerCore.PlaybackProfile]
 Var DecisionTrigger.hashValue : Swift.Int { get }
 Var FailureCategory.hashValue : Swift.Int { get }
 Var LicenceOutcome.hashValue : Swift.Int { get }
@@ -176,7 +185,13 @@ Var PlaybackFailure.classification : Swift.String? { get }
 Var PlaybackFailure.code : Swift.String? { get }
 Var PlaybackFailure.hashValue : Swift.Int { get }
 Var PlaybackFailure.message : Swift.String? { get }
+Var PlaybackProfile.allCases : [SuperPlayerCore.PlaybackProfile] [static] { get }
 Var PlaybackProfile.hashValue : Swift.Int { get }
+Var PlaybackSnapshot.hashValue : Swift.Int { get }
+Var PlaybackSnapshot.playWhenReady : Swift.Bool { get }
+Var PlaybackSnapshot.positionMs : Swift.Int64? { get }
+Var PlaybackSnapshot.request : SuperPlayerCore.MediaRequest? { get }
+Var SuperPlayer.Configuration.profile : SuperPlayerCore.PlaybackProfile { get set }
 Var SuperPlayer.Configuration.telemetry : (() -> any SuperPlayerCore.TelemetryCollector)? { get set }
 Var SuperPlayer.avPlayer : AVFoundation.AVPlayer { get }
 Var SuperPlayer.configuration : SuperPlayerCore.SuperPlayer.Configuration { get }

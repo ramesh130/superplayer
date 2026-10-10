@@ -16,14 +16,13 @@
 /// carried a ``MediaRequest`` (ADR-0008 rule 2; the Kotlin facade's `adopt`, `restoreSnapshot`,
 /// `resetForReuse` and `release`).
 ///
-/// Four edges, two callers today:
+/// Four edges, three callers today:
 ///
 /// - **adopt** — ``SuperPlayer/setMediaRequest(_:)`` ends the open session and begins one for the
-///   request's content.
+///   request's content, in the `load` it shares with restore.
+/// - **restore** — ``SuperPlayer/restoreSnapshot(_:)`` is an adoption of the snapshot's request
+///   through that same `load`; a snapshot with no request touches no session.
 /// - **release** — ``SuperPlayer/release()`` ends the open session before the collector detaches.
-/// - **restore** is `restoreSnapshot`'s, #401's: a restored request is an adoption, and it calls
-///   ``SuperPlayer/endMeasurement()`` then ``SuperPlayer/beginMeasurement(of:)`` around the item it
-///   sets, exactly as `setMediaRequest` does.
 /// - **reset for reuse** is `resetForReuse`'s, #404's pool: a recycled player's session ends and
 ///   none begins, so it calls ``SuperPlayer/endMeasurement()`` alone.
 ///

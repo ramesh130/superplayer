@@ -764,11 +764,17 @@ see a request.
   driven through `player.avPlayer`, since that is where a consumer's transport controls are too, and
   ADR-0021 rule 1's addendum bounds what a test may do there; a start is asserted as the position at
   the first poll that finds the player playing, inside a window argued at
-  `SuperPlayerPlaybackTests.startTolerance` — a position, never a duration. Two core tests import
+  `SuperPlayerPlaybackTests.startTolerance` — a position, never a duration. Three core tests import
   core `@testable`, each arguing it in its own comment: `RememberedPositionsTests`, for the order
   rule a read-is-a-use that no playback can isolate, and `ObservedSignalRegisterTests`, for the
   register's live count, which no public reading can see until the notification it waits for
-  arrives. Neither seam is `package`, because no later product reaches it.
+  arrives. A third, `PlaybackSnapshotTests` (#401), for the snapshot's internal memberwise
+  initializer — so the stored JSON is pinned for a value with every field set, which no public
+  call produces without playing — and for its internal remembered-position list, whose order is
+  what a restored memory evicts by and which `.resumeFromLastKnown` can show only one id at a time.
+  None of the three seams is `package`, because no later product reaches it.
+  `ProfileTableTests` reads each profile's knobs off `player.avPlayer`, and `SnapshotPlaybackTests`
+  an item's readiness, under rule 1's #401 addendum.
 
 What it cannot show is what real time cannot: a test here is evidence that something happened and in
 what order, never that it happened sooner, and a device is still the only place a FairPlay key, a

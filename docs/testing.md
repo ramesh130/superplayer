@@ -626,6 +626,45 @@ and cannot be a cycle. `SyntheticHlsStream.writeTo(directory)` is the same strea
 one test that plays through the real transfer chain.
 
 
+### One corpus on both platforms
+
+The Swift products play the same streams, and ADR-0021 rule 6 makes that **one corpus** rather than
+two generators that agree today. `SuperPlayerTestMedia`'s `SyntheticHlsStream` is a port of the
+Kotlin one, and the two are held to one set of committed files under `ios/Tests/Fixtures/synthetic/`:
+
+- **The Kotlin generator writes them.** `./gradlew updateIosFixtures` runs
+  `superplayer-testmedia`'s `SyntheticHlsFixturesTest` in update mode and rewrites the directory,
+  on the golden traces' contract: run it alone, then `check`, and commit the diff with the change
+  that caused it. Nothing else writes there.
+- **Gradle's `check` holds Kotlin to them.** The same test in check mode fails when a committed file
+  differs, is missing, or is not one the generators produce, naming each file and the update
+  command. It is a JVM test and needs no Swift toolchain, which is why it is in `check`.
+- **`ios/check` holds Swift to them.** `SyntheticHlsFixturesTests` generates every fixture with the
+  Swift port and compares it file for file and byte for byte. It needs no JVM.
+
+So a change to either generator fails its own side's build: Kotlin's until the fixtures are
+regenerated, and then Swift's until the port follows. `index.tsv` in that directory is the table —
+each fixture's name, generator and arguments — and the Kotlin test writes it, so the Swift test reads
+which fixtures exist rather than keeping a second list; a row naming a generator Swift has not ported
+fails rather than skips, and a directory the index does not list fails too.
+
+What is committed is the **relative** form of the stream — the Kotlin generator's `files`, the form
+`writeTo` uses — because every reference inside it is relative and it therefore names no `fake://`
+host. The `fake://` keys of `resources` are a Media3 `FakeDataSet`'s addresses and nothing on iOS can
+serve them; an iOS test serves the files by path from a loopback origin. Nothing about the Android
+streams changed to make that true. Two fixtures are committed today, `hls-vod` and `hls-ladder`, each
+three segments long so the one thing that varies between segments, the ID3 timestamp tag, is in the
+comparison. The live window, the second-host variant and the Widevine forms are not ported: the first
+two are the harness's (#399) and iOS protection is FairPlay. The HLS half of the hostile corpus joins
+the same directory under #412.
+
+**A synthetic stream plays in `AVPlayer`.** On Android the ADTS payload is never decoded —
+Robolectric's shadow codec passes bytes through — so "it plays" was never a claim about the bytes.
+`SyntheticHlsPlaybackTests` makes it one on the simulator: both fixtures play to their end in a stock
+`AVPlayer` with an audio track presented and nothing in the error log, and a control with one segment
+withheld does not. It plays over HTTP from a stopgap loopback origin in that test target, because
+`AVPlayer` never loads an HLS playlist handed to it as a `file:` URL; #399's origin replaces it.
+
 ### The hostile manifest corpus
 
 `HostileManifests`, also in `superplayer-testmedia`, is the other half of synthetic media:

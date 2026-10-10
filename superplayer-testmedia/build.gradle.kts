@@ -18,5 +18,37 @@ plugins {
 // an `addTo(FakeDataSet)` in this module's *public* API would fail
 // `verifyNoUnstableMedia3InPublicApi` (ADR-0001 rule 2) — the same rule that keeps Media3 out of
 // `superplayer-testkit`'s signatures.
+//
+// The one dependency is a *test* one, and it reaches no consumer: JUnit, for the fixture check below.
 dependencies {
+    testImplementation(libs.junit)
+}
+
+// The iOS fixtures: this module's generators' output, committed under `ios/Tests/Fixtures/synthetic/`
+// so the Swift port is held to the same bytes without a JVM (ADR-0021 rule 6, `docs/testing.md`'s
+// *One corpus on both platforms*). `SyntheticHlsFixturesTest` fails `check` when the committed files
+// are not what the generators produce now; `updateIosFixtures` is the one thing that rewrites them,
+// on the golden traces' contract — run alone, then `check`, and commit the diff with its cause.
+//
+// The mode reaches the test JVM as a system property decided from the command line, as the golden
+// traces' does and for the same reason: one unit-test task cannot run in two modes at once. The
+// directory travels relative to the module, which is where AGP runs unit tests, and is an input so a
+// fixture edited by hand re-runs the check instead of reading as up to date.
+val iosFixtures = rootProject.layout.projectDirectory.dir("ios/Tests/Fixtures/synthetic")
+val updatingIosFixtures = gradle.startParameter.taskNames.any { it.substringAfterLast(':') == "updateIosFixtures" }
+
+tasks.withType<Test>().configureEach {
+    systemProperty("superplayer.iosFixtures.dir", "../ios/Tests/Fixtures/synthetic")
+    systemProperty("superplayer.iosFixtures.mode", if (updatingIosFixtures) "update" else "check")
+    inputs.files(fileTree(iosFixtures)).withPropertyName("iosFixtures").withPathSensitivity(PathSensitivity.RELATIVE)
+    if (updatingIosFixtures) {
+        outputs.upToDateWhen { false }
+        filter { includeTestsMatching("*FixturesTest") }
+    }
+}
+
+tasks.register("updateIosFixtures") {
+    group = "verification"
+    description = "Rewrites ios/Tests/Fixtures/synthetic/ from what this module's generators produce now."
+    dependsOn("testDebugUnitTest")
 }

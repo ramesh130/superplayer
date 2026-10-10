@@ -127,6 +127,40 @@ does not merely mislead, it changes which dependencies the rule above permits.
 Only `superplayer-core` is required by a consumer. Every other module is additive: an app depends on
 what it uses and its APK does not grow for features it does not need.
 
+## iOS products
+
+The iOS and tvOS half is one Swift package whose manifest is the repository's root `Package.swift`
+and whose sources are under `ios/` (`docs/ios-plan.md` §2 and §4). The rule above binds it
+unchanged: each product takes the **phase of the Android module it ports**, because the phase is
+what the dependency constraint is about, and the iOS phase it is built in is a column beside it
+for a reader rather than a number anything compares. A test target takes its product's phase.
+
+`./gradlew verifyModulePhaseRule` reads this table too, and holds the targets' dependencies in
+`Package.swift` to it — on Linux, as text, so a manifest edit is checked by the job every change
+runs. A target this table does not list fails, as a module the table above does not list does.
+
+| Product | Phase | Android module | iOS phase |
+| --- | --- | --- | --- |
+| `SuperPlayerCore` | 1 | `superplayer-core` | i1 |
+| `SuperPlayerTestMedia` | 1 | `superplayer-testmedia` | i2 |
+| `SuperPlayerTelemetry` | 2 | `superplayer-telemetry` | i2 |
+| `SuperPlayerTestkit` | 2 | `superplayer-testkit` | i2 |
+| `SuperPlayerABR` | 3 | `superplayer-abr` | i3 |
+| `SuperPlayerPreload` | 4 | `superplayer-preload` | i4 |
+| `SuperPlayerResilience` | 5 | `superplayer-resilience` | i5 |
+| `SuperPlayerDRM` | 6 | `superplayer-drm` | i6 |
+| `SuperPlayerOffline` | 7 | `superplayer-offline` | i6 |
+| `SuperPlayerTV` | 8 | `superplayer-tv` | i7 |
+| `SuperPlayerDiagnostics` | 9 | `superplayer-diagnostics` | i8 |
+| `SuperPlayerRealtime` | 13 | `superplayer-realtime` | i9 |
+
+Three Android modules have no row. `superplayer-cache` does not port as a product of its own, since
+its content is the offline store's (`docs/ios-plan.md` §4); `superplayer-moq`'s product,
+`SuperPlayerMoQ`, is a binary target that i9 declares together with its row; and
+`superplayer-whep` is contingent on both platforms. Kotlin friend modules have no Swift analog — a
+seam a later product reaches is `package`-scoped rather than `internal` — so nothing above the
+table's dependency column needs a Swift counterpart. Every product is empty until its phase.
+
 ## Two separate builds beside this one
 
 `demo/` and `benchmark/` are **not** modules of the root build. It is a standalone Gradle build that resolves

@@ -212,6 +212,21 @@ The honest list. Each of these is a real gap rather than a disclaimer.
 - **Compatibility of a mixed set of versions**, and of anything resolved from a `-SNAPSHOT`
   coordinate (ADR-0017 rules 1 and 8).
 
+## What about iOS and tvOS?
+
+**Nothing iOS is released, and nothing here is a promise about it.** The repository's root
+`Package.swift` declares an iOS and tvOS Swift package (`docs/ios-plan.md`), and its products —
+`SuperPlayerCore` and the eleven beside it — are **empty**: they carry no public API, which their
+recorded baselines under `ios/api/` say in as many words. SwiftPM can resolve the package by its
+git URL today, and what that gets you is the scaffold and nothing to call.
+
+When it is released, the plan is that it follows the same version line as the Android modules,
+cut by the same `release` command under ADR-0017, with the same `vX.Y.Z` tag the one SwiftPM
+resolves; `ios/api/<Product>.baseline` is its API surface, as `<module>/api/<module>.api` is
+Android's ([`api-surface.md`](api-surface.md)). That is a plan rather than a rule until the record
+deciding it lands and the first product has something in it, and this section is rewritten then.
+The stability table above is Android's alone, and `verifyCompatibilityDocument` reads it alone.
+
 ## Where to look next
 
 | Question | Document |

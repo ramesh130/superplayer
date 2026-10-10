@@ -147,3 +147,78 @@ jobs:
             **/build/test-results/
           retention-days: 7
           if-no-files-found: ignore
+
+  # Whether the iOS job below has anything to check. GitHub-hosted macOS minutes cost ten times
+  # Linux's, so that job runs only for a change that touches what it reads (docs/ios-plan.md §2):
+  # the Swift package, the documents both platforms share, the corpus generators the Swift fixtures
+  # are to be held equal to, and this file. (Swift licence headers are the Linux job's, in `check`.)
+  #
+  # A job rather than a workflow-level `paths:` filter, because that would skip the Linux job too
+  # and leave a pull request with no check at all; and a `git diff` rather than a third-party
+  # path-filter action, because it is four lines and adds nothing to THIRD_PARTY.md. A manual
+  # dispatch, and a push whose previous head is unknown, run the job rather than guess.
+  ios-changes:
+    name: Does this change touch iOS?
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      ios: ${{ steps.diff.outputs.ios }}
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Compare with the base
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ "$EVENT" = workflow_dispatch ] || ! git fetch --no-tags --depth=1 origin "$BASE"; then
+            echo "ios=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          paths='^(ios/|Package\.swift$|docs/|superplayer-testmedia/|\.github/workflows/ci\.yml$)'
+          if git diff --name-only "$BASE" HEAD | grep -qE "$paths"; then
+            echo "ios=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ios=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # The iOS and tvOS Swift package. `ios/check` is the whole step, as `./gradlew check` is above:
+  # swift-format, every test target on an iOS simulator, a tvOS build, and the API baselines under
+  # ios/api. ios/CLAUDE.md says what each needs, and ADR-0021 why it is a script rather than a
+  # Gradle task.
+  ios:
+    name: iOS package
+    needs: ios-changes
+    if: needs.ios-changes.outputs.ios == 'true'
+    runs-on: macos-26
+    # The empty package's run is a few minutes, most of it booting a simulator; 30 leaves room for a
+    # cold runner and a first simulator creation, and stops a hung simulator well before macOS
+    # minutes add up. It grows when the products have tests worth the time.
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      # Pinned rather than the image's default, which moves under the job when the image is updated:
+      # the API baselines are the digester's reading, and a printed type name is the compiler's, so
+      # an Xcode that changed between two runs could move a baseline nobody changed. 26.6 is the
+      # newest release (not beta) on the image, and builds Swift 6 for the iOS 17 floor. Moving it is
+      # a one-line change here and, if a baseline moves with it, an `ios/check --update-api` diff.
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app
+
+      - name: ios/check
+        run: ios/check
+
+      - name: Upload the test result bundle
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-check
+          path: .build/ios-check/
+          retention-days: 7
+          if-no-files-found: ignore

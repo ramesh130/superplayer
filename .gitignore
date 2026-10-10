@@ -23,3 +23,10 @@ local.properties
 # it is what Phase 3 is graded against, and a baseline nobody can find is not one. See
 # benchmark/README.md.
 /benchmark/out/
+
+# The Swift package (Package.swift, ios/). SwiftPM writes .build/ and .swiftpm/ beside the manifest,
+# which is the repository root; ios/check keeps xcodebuild's DerivedData under .build/ as well, and
+# the last pattern catches an Xcode that was pointed somewhere of its own.
+/.build/
+/.swiftpm/
+DerivedData/

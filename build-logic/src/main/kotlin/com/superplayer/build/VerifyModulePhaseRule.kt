@@ -36,6 +36,12 @@ import java.io.File
  * remembering. This makes it mechanical, as `verifyNoHardcodedMedia3Versions` does for ADR-0001
  * rule 3.
  *
+ * The rule binds both platforms (`docs/ios-plan.md` §4), so the root `Package.swift` is read too:
+ * its targets' dependencies are held to the same document's iOS table by
+ * [findSwiftTargetPhaseViolations]. That half is plain text and runs here, on Linux, rather than
+ * in `ios/check` — a manifest edit is then caught by the job every change already runs, and the
+ * phase numbers keep one reader.
+ *
  * The checking itself lives in [findModulePhaseViolations], a plain function over files, so it
  * can be unit-tested without standing up a Gradle build.
  */
@@ -51,6 +57,11 @@ abstract class VerifyModulePhaseRule : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val moduleBuildScripts: ConfigurableFileCollection
 
+    /** The root `Package.swift`, whose targets are the iOS products and their tests. */
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val swiftPackageManifest: RegularFileProperty
+
     /**
      * A stamp file written on success. A verification task has no real product, but declaring
      * an output is what lets Gradle skip the task when nothing it reads has changed.
@@ -60,8 +71,10 @@ abstract class VerifyModulePhaseRule : DefaultTask() {
 
     @TaskAction
     fun verify() {
+        val document = modulesDocument.get().asFile
         val violations =
-            findModulePhaseViolations(modulesDocument.get().asFile, moduleBuildScripts.files)
+            findModulePhaseViolations(document, moduleBuildScripts.files) +
+                findSwiftTargetPhaseViolations(document, swiftPackageManifest.get().asFile)
 
         val stamp = stampFile.get().asFile
         if (violations.isEmpty()) {
@@ -145,6 +158,104 @@ private fun violation(module: String, dependency: String, phases: Map<String, In
     }
 }
 
+/**
+ * The Swift half of the rule: one sentence per dependency of a [packageManifest] target that breaks
+ * the phase rule against [modulesDocument]'s iOS table, sorted as [findModulePhaseViolations] sorts.
+ *
+ * A test target takes its product's phase — `SuperPlayerABRTests` is phase 3 because
+ * `SuperPlayerABR` is — which is what the Android reading does too, since a
+ * `testImplementation(project(...))` line is matched like any other. Unlike Android, a target the
+ * table does not list is itself a violation rather than an unscheduled module: every Swift target
+ * here is a product or a product's tests, and a target with no row is one nobody gave a phase.
+ */
+internal fun findSwiftTargetPhaseViolations(
+    modulesDocument: File,
+    packageManifest: File
+): List<String> {
+    val phases = parseModulePhases(modulesDocument.readText())
+
+    return swiftTargetsIn(packageManifest.readText())
+        .flatMap { target ->
+            val product = target.name.removeSuffix(TEST_TARGET_SUFFIX)
+            if (product !in phases) {
+                return@flatMap listOf("${target.name} is a target docs/modules.md does not list.")
+            }
+            val withTarget = phases + (target.name to phases[product])
+            target.dependencies.mapNotNull { violation(target.name, it, withTarget) }
+        }
+        .sorted()
+}
+
+/** SwiftPM's convention for a product's test target, and the only one this package uses. */
+private const val TEST_TARGET_SUFFIX = "Tests"
+
+/** One target of a `Package.swift`: its name and the names of the targets it depends on. */
+internal data class SwiftTarget(val name: String, val dependencies: List<String>)
+
+/**
+ * The targets a `Package.swift` declares, read as text.
+ *
+ * Like [PROJECT_DEPENDENCY], this is a reading of the manifest as written and not a model of it:
+ * evaluating the manifest needs a Swift toolchain, which the Linux job does not have, and would
+ * turn a question the file states plainly into a build. The shape it depends on is the one SwiftPM
+ * documents — `.target(name: "X", dependencies: [...])` and its `testTarget`, `executableTarget`
+ * and `binaryTarget` siblings — with a dependency named by a string, by `.target(name:)` or by
+ * `.byName(name:)`. A `.product(name:package:)` names another package's product, which no phase in
+ * this repository governs, so it is skipped; a target assembled from a variable would not be seen,
+ * and none is.
+ */
+internal fun swiftTargetsIn(manifest: String): List<SwiftTarget> {
+    // A trailing `// ...` is dropped too; the whitespace before it is what keeps a `file://` or
+    // `https://` inside a string intact.
+    val text = manifest.lineSequence()
+        .filterNot(::isCommentLine)
+        .map { it.replace(TRAILING_COMMENT, "") }
+        .joinToString("\n")
+    val targets = mutableListOf<SwiftTarget>()
+    var consumed = 0
+    for (declaration in SWIFT_TARGET_DECLARATION.findAll(text)) {
+        // A `.target(name:)` inside another target's dependency list is a reference rather than a
+        // declaration, and it sits inside the span already read.
+        if (declaration.range.first < consumed) continue
+        val open = declaration.range.last
+        val close = closingIndex(text, open, '(', ')')
+        consumed = close
+        val arguments = text.substring(open + 1, close)
+        val name = SWIFT_NAME_ARGUMENT.find(arguments)?.groupValues?.get(1) ?: continue
+        targets += SwiftTarget(name, swiftDependenciesIn(arguments))
+    }
+    return targets
+}
+
+private fun swiftDependenciesIn(arguments: String): List<String> {
+    val label = SWIFT_DEPENDENCIES_ARGUMENT.find(arguments) ?: return emptyList()
+    val open = label.range.last
+    val list = arguments.substring(open + 1, closingIndex(arguments, open, '[', ']'))
+    return SWIFT_STRING.findAll(OTHER_PACKAGE_PRODUCT.replace(list, ""))
+        .map { it.groupValues[1] }
+        .toList()
+}
+
+/** The index of the bracket closing the one at [open], or the end of [text] if none does. */
+private fun closingIndex(text: String, open: Int, opening: Char, closing: Char): Int {
+    var depth = 0
+    for (index in open until text.length) {
+        when (text[index]) {
+            opening -> depth++
+            closing -> if (--depth == 0) return index
+        }
+    }
+    return text.length
+}
+
+private val SWIFT_TARGET_DECLARATION =
+    Regex("""\.(?:target|testTarget|executableTarget|binaryTarget)\s*\(""")
+private val SWIFT_NAME_ARGUMENT = Regex("""\bname\s*:\s*"([^"]+)"""")
+private val SWIFT_DEPENDENCIES_ARGUMENT = Regex("""\bdependencies\s*:\s*\[""")
+private val OTHER_PACKAGE_PRODUCT = Regex("""\.product\s*\([^)]*\)""")
+private val SWIFT_STRING = Regex(""""([^"]+)"""")
+private val TRAILING_COMMENT = Regex("""\s//.*$""")
+
 /** A module as a failure message names it: with its phase, or as unscheduled. */
 private fun named(module: String, phase: Int?): String =
     if (phase == null) "$module (unscheduled)" else "$module (phase $phase)"
@@ -162,10 +273,11 @@ internal fun parseModulePhases(markdown: String): Map<String, Int?> =
         }
 
 /**
- * A row of the module table: a backticked module name in the first cell, the phase in the
- * second. The header row and the `| --- |` separator do not match, and neither does prose.
+ * A row of either module table: a backticked Android module or iOS product name in the first
+ * cell, the phase in the second. One map holds both, since no product name is a module's. The
+ * header row and the `| --- |` separator do not match, and neither does prose.
  */
-private val TABLE_ROW = Regex("""\|\s*`(superplayer-[\w-]+)`\s*\|([^|]*)\|.*""")
+private val TABLE_ROW = Regex("""\|\s*`(superplayer-[\w-]+|SuperPlayer\w+)`\s*\|([^|]*)\|.*""")
 
 /**
  * A `project(":superplayer-x")` dependency, on a line that is not a comment. The optional

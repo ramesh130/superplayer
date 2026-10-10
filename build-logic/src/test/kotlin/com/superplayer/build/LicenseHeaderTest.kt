@@ -138,6 +138,47 @@ class LicenseHeaderTest {
         )
     }
 
+    @Test
+    fun `the Swift header is the same text as slash-slash lines`() {
+        val swift = swiftLicenseHeader(APACHE_HEADER)
+
+        assertEquals("// Copyright 2026 The SuperPlayer Authors", swift.first())
+        assertEquals("//", swift[1])
+        assertEquals("// limitations under the License.", swift.last())
+        assertEquals(13, swift.size)
+    }
+
+    @Test
+    fun `a Swift file and a manifest carrying the header pass, and one without it is named`() {
+        val header = swiftLicenseHeader(APACHE_HEADER).joinToString("\n")
+        val files = mapOf(
+            "ios/Sources/A/A.swift" to "$header\n\nimport Foundation\n",
+            "Package.swift" to "// swift-tools-version: 6.0\n//\n$header\n\nimport PackageDescription\n",
+            "ios/Sources/B/B.swift" to "import Foundation\n",
+            "ios/Sources/C/C.swift" to header.replace("Apache License", "MIT License")
+        )
+
+        assertEquals(
+            listOf("ios/Sources/B/B.swift", "ios/Sources/C/C.swift"),
+            findSwiftFilesWithoutHeader(APACHE_HEADER, files)
+        )
+    }
+
+    @Test
+    fun `the repository's Swift files carry the header`() {
+        val root = File("..")
+        val swift = root.resolve("ios").walkTopDown()
+            .filter { it.isFile && it.extension == "swift" && "/.build/" !in it.path }
+            .plus(root.resolve("Package.swift"))
+            .associate { it.path to it.readText() }
+        assertTrue("no Swift files found under ${root.absolutePath}", swift.size > 1)
+
+        assertEquals(
+            emptyList<String>(),
+            findSwiftFilesWithoutHeader(File("../config/license-header.txt").readText(), swift)
+        )
+    }
+
     private companion object {
 
         /** Exactly the text of `config/license-header.txt`. */

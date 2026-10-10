@@ -146,10 +146,42 @@ public object SyntheticHlsStream {
     private const val ADTS_HEADER_BYTES = 7
 
     /**
-     * Arbitrary. The payload is never decoded — Robolectric's shadow codec passes bytes through —
-     * so it only has to be a plausible frame size.
+     * Arbitrary. The payload is never decoded here — Robolectric's shadow codec passes bytes
+     * through — so its *size* only has to be plausible. Its contents are another matter since #398:
+     * see [SILENT_RAW_DATA_BLOCK].
      */
     private const val ADTS_PAYLOAD_BYTES = 64
+
+    /**
+     * The start of every frame's payload: one AAC-LC `raw_data_block` that decodes to two channels
+     * of silence. The rest of the payload is zeros, which the decoder never reads.
+     *
+     * Until #398 the payload was zeros throughout, and nothing on Android could tell: no decoder here
+     * reads it. AVFoundation's does, and refuses every such frame ("Too few bits left in input
+     * buffer") — while an `AVPlayer` plays the stream to its end on time with no error it reports,
+     * which is why the Swift port's `SyntheticAacDecodingTests` decompresses a segment instead of
+     * trusting playback. These six bytes are what made the one corpus decodable on both platforms,
+     * and they change no byte count, so nothing Android measures moved with them.
+     *
+     * spec: ISO/IEC 14496-3 §4.4.2 — the syntax of `raw_data_block`, `channel_pair_element`,
+     * `ics_info` and `individual_channel_stream` — packed MSB-first:
+     *
+     * ```
+     * 001        id_syn_ele = ID_CPE, a channel pair, as channel_configuration 2 declares
+     * 0000       element_instance_tag
+     * 1          common_window: one ics_info for both channels
+     * 0 00 0     ics_reserved_bit, window_sequence ONLY_LONG_SEQUENCE, window_shape
+     * 000000     max_sfb = 0: no scale factor band carries a spectral coefficient — silence
+     * 0          predictor_data_present
+     * 00         ms_mask_present
+     * twice, one per channel:
+     *   00000000 global_gain (no band uses it)
+     *   0 0 0    pulse, TNS and gain control data absent
+     * 111        id_syn_ele = ID_END
+     * 00         byte_alignment()
+     * ```
+     */
+    private val SILENT_RAW_DATA_BLOCK = byteArrayOf(0x21, 0x00, 0x00, 0x00, 0x00, 0x1C)
 
     /**
      * Everything the player will ask for, keyed by URI, and nothing else: an unknown URI is a test
@@ -225,8 +257,13 @@ public object SyntheticHlsStream {
      *
      * Names rather than URIs, because the two callers above disagree about where the stream lives
      * and agree about everything else.
+     *
+     * `internal` rather than private for a third caller that agrees with them: this is the form
+     * committed under `ios/Tests/Fixtures/synthetic/` (`SyntheticHlsFixturesTest`), because every
+     * reference in it is relative and it therefore names no `fake://` host an iOS loopback origin
+     * could not serve. The Swift port's public `files` is held to the same bytes.
      */
-    private fun files(segmentCount: Int, variantCount: Int = 1): Map<String, ByteArray> {
+    internal fun files(segmentCount: Int, variantCount: Int = 1): Map<String, ByteArray> {
         require(segmentCount >= 1) { "A stream needs at least one segment, was $segmentCount" }
         require(variantCount in 1..2) { "This stream has one or two variants, not $variantCount" }
 
@@ -436,7 +473,8 @@ public object SyntheticHlsStream {
             out.write((frameLength shr 3) and 0xFF)
             out.write(((frameLength and 0b111) shl 5) or 0b11111)
             out.write(0b11111100)
-            repeat(frameLength - ADTS_HEADER_BYTES) { out.write(0) }
+            out.write(SILENT_RAW_DATA_BLOCK)
+            repeat(frameLength - ADTS_HEADER_BYTES - SILENT_RAW_DATA_BLOCK.size) { out.write(0) }
         }
         return out.toByteArray()
     }

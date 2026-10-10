@@ -78,6 +78,12 @@ them under `Added` would be worse than stating them here:
   yields where it runs, and a player built with `setDrm` or `setRealtime` has it off for its lifetime,
   read as `player.frameOutputOffReason` and never as an error. A player built without it pays
   nothing, and the effect artifact is the module's dependency rather than core's.
+- **One synthetic HLS corpus on both platforms (#398).** `superplayer-testmedia`'s
+  `SyntheticHlsStream` frames now carry a silent AAC-LC `raw_data_block` where they carried zeros:
+  AVFoundation's decoder refuses an all-zero payload, and nothing on Android decodes one, so no byte
+  count and no Android behaviour moved. Its output is committed under `ios/Tests/Fixtures/synthetic/`,
+  `check` holds it to those files and `ios/check` holds the Swift port to the same bytes
+  (`./gradlew updateIosFixtures` rewrites them).
 - **Phase 9 — Diagnostics and docs.** `MediaSourceDoctor`, which names twenty pathologies over the
   chain a player would load through; the postmortem reading; `SessionBundle`; the debug HUD; and
   the documents in `docs/`.

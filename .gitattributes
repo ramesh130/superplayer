@@ -1,0 +1,3 @@
+# The cross-platform fixtures are compared byte for byte by both platforms' checks (docs/testing.md,
+# One corpus on both platforms), so git must never convert their line endings on any checkout.
+ios/Tests/Fixtures/** -text

@@ -29,9 +29,7 @@ import XCTest
 @MainActor
 final class FaultScriptPlaybackTests: XCTestCase {
 
-    /// A ceiling for media that plays at 1× on a loaded CI host: several times the eight seconds of
-    /// the default stream, and only a bound.
-    private let bound: Duration = .seconds(60)
+    private let bound = StockPlayback.bound
 
     private let harness = PlaybackHarness()
 
@@ -69,10 +67,17 @@ final class FaultScriptPlaybackTests: XCTestCase {
             .hls(),
             faults: FaultScript.Builder().addLatencyMs(1_000, kind: .mediaSegment, index: 1).build()
         )
-        try await playToEnd(origin)
+        try await StockPlayback.playToEnd(origin, with: harness)
 
         XCTAssertEqual(faults(origin, "/segment1.aac"), [[.latency]])
         assertUntouched(origin, except: ["/segment1.aac"])
+        // What every test here addressing `index: 1` rests on: a stock player asks for the segments
+        // in order, whole, so the second segment it asks for is `segment1.aac` at offset zero.
+        let segments = origin.networkRequests().filter { $0.kind == .mediaSegment }
+        XCTAssertEqual(segments.map(\.path).prefix(2), ["/segment0.aac", "/segment1.aac"])
+        XCTAssertTrue(
+            segments.allSatisfy { ($0.headers["range"] ?? "bytes=0-").hasPrefix("bytes=0-") },
+            "\(segments)")
     }
 
     func testAThroughputCapPacesTheAddressedSegments() async throws {
@@ -80,7 +85,7 @@ final class FaultScriptPlaybackTests: XCTestCase {
         let origin = try await harness.serve(
             .hls(),
             faults: FaultScript.Builder().capThroughputBps(50_000, kind: .mediaSegment).build())
-        try await playToEnd(origin)
+        try await StockPlayback.playToEnd(origin, with: harness)
 
         let segments = origin.responses().filter { $0.request.kind == .mediaSegment }
         XCTAssertFalse(segments.isEmpty)
@@ -124,7 +129,8 @@ final class FaultScriptPlaybackTests: XCTestCase {
         XCTAssertEqual(cut.bodyBytesSent, 100)
         // The promise that was broken: the full length, declared.
         XCTAssertEqual(
-            cut.headers["content-length"], String(SyntheticHlsStream.files()["segment0.aac"]!.count)
+            cut.headers["content-length"],
+            String(SyntheticHlsStream.files(segmentCount: 2)["segment1.aac"]!.count)
         )
         assertUntouched(origin, except: ["/segment1.aac"])
     }
@@ -185,7 +191,8 @@ final class FaultScriptPlaybackTests: XCTestCase {
         XCTAssertEqual(loads.map(\.servedFromCache).prefix(3), [false, true, true])
         XCTAssertTrue(loads.allSatisfy { $0.faults == [.intermediaryCache] })
         XCTAssertEqual(loads.first?.headers["cache-control"], "public, max-age=600")
-        XCTAssertNotNil(loads.last?.headers["age"])
+        // `Age` on the copies the cache served, and not on the response that filled it.
+        XCTAssertEqual(loads.map { $0.headers["age"] != nil }.prefix(3), [false, true, true])
         // The control: the multivariant playlist, index 0, passes through the origin.
         XCTAssertTrue(
             origin.responses().filter { $0.request.path == "/live/master.m3u8" }
@@ -200,7 +207,7 @@ final class FaultScriptPlaybackTests: XCTestCase {
                     ["Cache-Control": "public, max-age=31536000, immutable"], kind: .mediaSegment
                 )
                 .build())
-        try await playToEnd(origin)
+        try await StockPlayback.playToEnd(origin, with: harness)
 
         let responses = origin.responses()
         let segments = responses.filter { $0.request.kind == .mediaSegment }
@@ -216,16 +223,6 @@ final class FaultScriptPlaybackTests: XCTestCase {
     }
 
     // MARK: -
-
-    /// Plays `origin`'s content in a stock `AVPlayer` until its item reports the end.
-    private func playToEnd(_ origin: LoopbackOrigin) async throws {
-        let item = AVPlayerItem(url: origin.sourceURL)
-        let player = AVPlayer(playerItem: item)
-        let ended = EndObserver(item)
-        player.play()
-        try await harness.until("the stream plays to its end", timeout: bound) { ended.hasEnded }
-        player.pause()
-    }
 
     private func statuses(_ origin: LoopbackOrigin, _ path: String) -> [Int?] {
         origin.responses().filter { $0.request.path == path }.map(\.status)
@@ -245,20 +242,4 @@ final class FaultScriptPlaybackTests: XCTestCase {
         XCTAssertEqual(touched, [], "faulted beyond what the script addresses", line: line)
         XCTAssertFalse(origin.responses().isEmpty, line: line)
     }
-}
-
-/// Whether an `AVPlayerItem` has posted that it played to its end, readable from the main actor.
-@MainActor
-final class EndObserver {
-    private(set) var hasEnded = false
-    // Written once, in `init`, and read once more in `deinit`, which is not on the main actor.
-    nonisolated(unsafe) private var token: NSObjectProtocol?
-
-    init(_ item: AVPlayerItem) {
-        token = NotificationCenter.default.addObserver(
-            forName: AVPlayerItem.didPlayToEndTimeNotification, object: item, queue: .main
-        ) { [weak self] _ in MainActor.assumeIsolated { self?.hasEnded = true } }
-    }
-
-    deinit { token.map(NotificationCenter.default.removeObserver) }
 }

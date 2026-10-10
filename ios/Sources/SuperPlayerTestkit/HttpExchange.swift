@@ -189,6 +189,16 @@ enum HttpExchange {
     static let badRequest = Response(
         status: 400, headers: [("Content-Length", "0"), ("Connection", "close")], body: [])
 
+    /// The `first` of `bytes=first-…`, or zero for no range, a suffix range or anything this origin
+    /// would answer whole — the position a read starts at, as Media3's `DataSpec.position` is, which
+    /// is what a fault script keys a resource on.
+    static func rangeStart(_ range: String?) -> Int {
+        guard let range, range.hasPrefix("bytes="), !range.contains(",") else { return 0 }
+        let spec = range.dropFirst("bytes=".count).trimmingCharacters(in: .whitespaces)
+        guard let dash = spec.firstIndex(of: "-") else { return 0 }
+        return Int(spec[..<dash]) ?? 0
+    }
+
     /// `body` whole, or the one byte range `range` asks for.
     ///
     /// spec: RFC 9110 §14.1.2 — `bytes=first-last`, `bytes=first-` and the suffix form

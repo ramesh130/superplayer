@@ -31,8 +31,7 @@ import XCTest
 @MainActor
 final class NetworkShapingTests: XCTestCase {
 
-    /// A ceiling for media that plays at 1× on a loaded CI host, and only a bound.
-    private let bound: Duration = .seconds(60)
+    private let bound = StockPlayback.bound
 
     /// How much longer than the trace a shaped transfer may take: one second, on transfers sized to
     /// take two and a half — a third again, so a measured rate is at least two thirds of the
@@ -69,15 +68,17 @@ final class NetworkShapingTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(measuredBps, Double(bandwidthBps) * 2 / 3)
     }
 
-    /// The control on the shaping: the same transfer from an origin with no trace is not held to
-    /// one, so the bound above is the trace's doing and not the loopback's.
-    func testAnUnshapedTransferIsNotHeldToATrace() async throws {
+    /// The control on the reporting: an origin with no trace paces nothing and reports no
+    /// transport — read off the origin, not timed, since the one timing claim here is the bound
+    /// above and a ceiling on an unshaped loopback transfer would be a flake on a loaded host.
+    func testAnUnshapedOriginReportsNoTransport() async throws {
         let origin = try await harness.serve(.hls())
 
-        let elapsed = try await timedFetch(origin.url(path: "segment0.aac"))
+        _ = try await timedFetch(origin.url(path: "segment0.aac"))
 
-        XCTAssertLessThan(elapsed, .milliseconds(2_500))
-        XCTAssertNil(origin.responses().first?.transport)
+        XCTAssertNil(origin.network)
+        XCTAssertEqual(origin.responses().map(\.transport), [nil])
+        XCTAssertEqual(origin.responses().map(\.faults), [[]])
         XCTAssertNil(origin.transport())
     }
 
@@ -100,12 +101,7 @@ final class NetworkShapingTests: XCTestCase {
     /// own rate, so the stream plays, every response paced on the profile's cellular link.
     func testAStockPlayerPlaysThroughAProfile() async throws {
         let origin = try await harness.serve(.hls(), network: NetworkProfile.threeG.trace)
-        let item = AVPlayerItem(url: origin.sourceURL)
-        let player = AVPlayer(playerItem: item)
-        let ended = EndObserver(item)
-        player.play()
-        try await harness.until("the stream plays to its end", timeout: bound) { ended.hasEnded }
-        player.pause()
+        try await StockPlayback.playToEnd(origin, with: harness)
 
         let responses = origin.responses()
         XCTAssertTrue(responses.contains { $0.request.kind == .mediaSegment })
@@ -138,14 +134,9 @@ final class NetworkShapingTests: XCTestCase {
 
     /// Fetches `url` with a session of its own, returning how long the whole body took to arrive.
     private func timedFetch(_ url: URL) async throws -> Duration {
-        let session = URLSession(configuration: .ephemeral)
-        defer { session.invalidateAndCancel() }
-        let clock = ContinuousClock()
-        let start = clock.now
-        let (data, response) = try await session.data(from: url)
-        let elapsed = clock.now - start
-        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
-        XCTAssertEqual(data.count, segmentBytes)
+        let (body, status, elapsed) = try await StockPlayback.fetch(url)
+        XCTAssertEqual(status, 200)
+        XCTAssertEqual(body.count, segmentBytes)
         return elapsed
     }
 }

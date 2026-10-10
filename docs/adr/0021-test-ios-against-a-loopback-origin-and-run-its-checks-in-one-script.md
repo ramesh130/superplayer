@@ -104,6 +104,19 @@ rule names the ticket that brings its enforcement, and *What nothing enforces* s
    *Enforced by #411's structural comparison; a timing assertion is visible in review and, on a
    loaded CI host, by flaking.*
 
+   *Addendum (2026-10-11, #410).* One test asserts a duration, and it is the one whose subject is a
+   duration: #410's acceptance asks that a shaped transfer's measured rate be within a stated
+   tolerance of its `ThroughputTrace`, and no count or order can say that. `NetworkShapingTests`
+   holds it as a bound with two sides argued differently. **Never faster than the trace** is exact,
+   not a tolerance: the origin sends each chunk no earlier than the trace says its last byte is due,
+   scheduling from the request's arrival rounded *up* to the millisecond, and the client's stopwatch
+   starts before the request reaches the origin — so a loaded host can only lengthen the transfer.
+   **Not more than a second slower**, on transfers sized to take two and a half, is the tolerance:
+   a late wake is not carried into the next chunk's schedule, so what a loaded host adds is one
+   wake's lateness and a loopback connection's setup, not one per chunk. Nothing else under
+   `ios/check` asserts a duration, an unshaped transfer's included, and a new timing assertion needs
+   an addendum here of its own.
+
 5. **What needs a device is listed and not faked, and `check` covers the logic around it at one
    package-scoped protocol per feature.** The list: FairPlay key exchange and playback; background
    download resumption across process death; tvOS display criteria switching the display mode; HDCP

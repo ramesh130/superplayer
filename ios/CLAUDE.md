@@ -70,7 +70,7 @@ origin.responses()                         // how each was answered: status, fau
   redundant stream; `origin.url(path:host:)` addresses one, and a fault's `host:` narrows to it.
 - **One place a test measures time**: `NetworkShapingTests` holds a shaped transfer to the trace's
   rate as a bound — never faster, exactly, and within a stated slack slower — because #410's
-  acceptance asks for a rate. Nothing else does.
+  acceptance asks for a rate; ADR-0021 rule 4's #410 addendum records it. Nothing else does.
 
 ## Commands
 

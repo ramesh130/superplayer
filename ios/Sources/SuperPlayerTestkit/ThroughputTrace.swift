@@ -60,7 +60,7 @@ public struct ThroughputTrace: Sendable, Hashable, CustomStringConvertible {
     /// guarded separately, at construction.
     static let maximumBandwidthBps: Int64 = 100_000_000_000
 
-    private static let bitMillisPerByte: Int64 = 8 * 1_000
+    static let bitMillisPerByte: Int64 = 8 * 1_000
     private static let atEndDirective = "at-end"
     private static let atEndLoop = "loop"
     private static let atEndHold = "hold"
@@ -162,7 +162,7 @@ public struct ThroughputTrace: Sendable, Hashable, CustomStringConvertible {
         return stretches[low]
     }
 
-    private static func ceilDiv(_ numerator: Int64, _ denominator: Int64) -> Int64 {
+    static func ceilDiv(_ numerator: Int64, _ denominator: Int64) -> Int64 {
         (numerator + denominator - 1) / denominator
     }
 

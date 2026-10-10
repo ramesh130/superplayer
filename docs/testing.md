@@ -712,7 +712,9 @@ see a request.
   `URLSession` load of the same origin and none of the player's.
 - **Faults and shaping are applied at the server** (#410, ADR-0021 rule 3). `serve(_:faults:network:)`
   takes the Kotlin harness's two arguments: a `FaultScript`, addressed by kind, index, attempt and
-  host exactly as the Kotlin builder is, and a `ThroughputTrace` — a `NetworkProfile`'s, or one read
+  host as the Kotlin builder is — a resource its path without the query at the offset read from,
+  indices one sequence per kind across hosts, latencies adding and the smallest truncation and cap
+  governing, as the Kotlin injector does — and a `ThroughputTrace` — a `NetworkProfile`'s, or one read
   from `docs/throughput-traces.md`'s format. An origin records a request, *answers* it — the script
   applied to its address, the published bytes resolved where no fault replaces them — and sends it,
   held for the trace's round trip and any latency, then paced chunk by chunk. The script carries
@@ -744,7 +746,7 @@ see a request.
   last byte is due and the client's stopwatch starts first — and no more than a second slower on a
   two-and-a-half-second transfer, because a late wake is not carried into the next chunk's schedule,
   so what a loaded host adds is one wake and a loopback connection. It is the one exception to rule
-  4, and the acceptance asked for it by name.
+  4, recorded at that rule's #410 addendum, and the acceptance asked for it by name.
 - **The trace grammar is one reading on both platforms.** `ios/Tests/Fixtures/throughput-traces/`
   holds every profile as the Kotlin `format()` writes it and a hand-written `sample.trace`, each with
   a `.readings` file `superplayer-testkit`'s `ThroughputTraceFixturesTest` writes — the trace written

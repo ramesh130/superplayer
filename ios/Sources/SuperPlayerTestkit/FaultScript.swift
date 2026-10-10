@@ -34,11 +34,15 @@
 /// - **Host.** An origin's listeners are its hosts — ``TestContent/hls(segmentCount:variantCount:hosts:)``
 ///   says how many — numbered from zero in ``LoopbackOrigin/url(path:host:)``. The Kotlin
 ///   coordinate is a host *name*; on iOS every host is `127.0.0.1` at a port of its own, so the
-///   number is what tells them apart (ADR-0021 rule 2: a second listener is a second host). Indices
-///   are per host, for the Kotlin reason: the same segment on two hosts is two resources.
+///   number is what tells them apart (ADR-0021 rule 2: a second listener is a second host). The
+///   same segment on two hosts is two resources, numbered in one sequence per kind, as on Android.
 ///
-/// A resource is its *path*: a query is not part of what is addressed, so a signed URL whose
-/// signature changes is still the same segment — which is what a refreshable token expiry needs.
+/// A resource is the Kotlin injector's: its path without the query, at the byte offset read from.
+/// So a signed URL whose signature changes is still the same segment — which is what a refreshable
+/// token expiry needs — and a read resumed from an offset is a resource of its own. Like the Kotlin
+/// builder, there is no *path* coordinate: a test that means one file names it by kind and index.
+/// Several matched faults compose as they do there: latencies add, and the smallest truncation and
+/// cap govern.
 ///
 /// **What is not here is what a server cannot produce** (ADR-0021 rule 3), and it is said rather
 /// than approximated. The Kotlin `failDnsResolution` and `failTlsHandshake` are failures inside the
@@ -176,7 +180,9 @@ public struct FaultScript: Sendable {
         ///
         /// `refreshable` makes the 403s stop once a request arrives bearing a different credential
         /// from the one that first met the fault — its `Authorization` header if it has one,
-        /// otherwise its query string, where a signed URL carries its signature.
+        /// otherwise its query string, where a signed URL carries its signature. A stock `AVPlayer`
+        /// has no way to present a new credential — the playlist's relative URIs carry no query —
+        /// so the refresh is something a SuperPlayer's resilience does and a stock player cannot.
         public func expireTokenAtSegment(_ index: Int, refreshable: Bool = false) -> Builder {
             precondition(index >= 0, "A segment index is at least 0, not \(index)")
             var builder = self

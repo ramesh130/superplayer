@@ -34,10 +34,14 @@ final class OriginFaultsTests: XCTestCase {
         let again = faults.address(host: 0, path: "/segment2.aac")
         XCTAssertEqual(again.index, 0)
         XCTAssertEqual(again.attempt, 2)
-        // The same path on another host is another resource, indexed from zero there.
+        // The same path on another host is another resource, numbered on in its kind's one
+        // sequence, as the Kotlin injector numbers a URI on another host.
         let elsewhere = faults.address(host: 1, path: "/segment0.aac")
-        XCTAssertEqual(elsewhere.index, 0)
+        XCTAssertEqual(elsewhere.index, 2)
         XCTAssertEqual(elsewhere.attempt, 1)
+        // And a read resumed from an offset is a resource of its own, as a `DataSpec.position` is.
+        XCTAssertEqual(faults.address(host: 0, path: "/segment0.aac", offset: 100).index, 3)
+        XCTAssertEqual(faults.address(host: 0, path: "/segment0.aac").attempt, 2)
     }
 
     func testAFaultAddressedAtAnIndexReachesThatResourceAlone() {
@@ -107,7 +111,13 @@ final class OriginFaultsTests: XCTestCase {
             ) { HttpExchange.resolve(request, body: Array("v\(version)".utf8)) }
         }
 
-        XCTAssertFalse(ask(at: 0).servedFromCache)
+        let fill = ask(at: 0)
+        XCTAssertFalse(fill.servedFromCache)
+        XCTAssertTrue(
+            fill.response?.headers.contains { $0 == ("Cache-Control", "public, max-age=6") }
+                ?? false)
+        // `Age` is what a hit carries, as the Kotlin cache's does; the response that fills has none.
+        XCTAssertFalse(fill.response?.headers.contains { $0.0 == "Age" } ?? true)
         version = 2
         let hit = ask(at: 5_999)
         XCTAssertTrue(hit.servedFromCache)
@@ -120,6 +130,46 @@ final class OriginFaultsTests: XCTestCase {
         // spec: RFC 9111 §5.2.1.4 — a request's `no-cache` goes to the origin.
         version = 3
         XCTAssertEqual(ask(at: 6_001, noCache: true).response?.body, Array("v3".utf8))
+    }
+
+    /// spec: RFC 9111 §4.1 — the cache keys on the whole URI, so a playlist asked for under a new
+    /// query is a miss, while the addressing still calls it the same resource.
+    func testTheCacheKeysOnTheWholeUriAndReadsNoCacheAsADirective() {
+        var faults = OriginFaults(
+            FaultScript.Builder().serveThroughCache(maxAgeSeconds: 60, kind: .manifest).build())
+        func ask(query: String?, cacheControl: String? = nil) -> OriginFaults.Answer {
+            let request = Self.request(
+                "/media.m3u8", query: query,
+                headers: cacheControl.map { ["cache-control": $0] } ?? [:])
+            return faults.answer(
+                request, at: faults.address(host: 0, path: request.path), nowMs: 0
+            ) { HttpExchange.resolve(request, body: [1]) }
+        }
+
+        _ = ask(query: "a")
+        XCTAssertTrue(ask(query: "a").servedFromCache)
+        XCTAssertFalse(ask(query: "b").servedFromCache)
+        // A directive list, not text: `no-cache-ish` asks nothing of a cache.
+        XCTAssertTrue(ask(query: "a", cacheControl: "max-age=0, no-cache-ish").servedFromCache)
+        XCTAssertFalse(ask(query: "a", cacheControl: "max-age=0, No-Cache").servedFromCache)
+    }
+
+    /// Several faults matching one request compose as the Kotlin injector composes them.
+    func testLatenciesAddAndTheSmallestTruncationAndCapGovern() {
+        var faults = OriginFaults(
+            FaultScript.Builder()
+                .addLatencyMs(100).addLatencyMs(250)
+                .truncateAfterBytes(4).truncateAfterBytes(2)
+                .capThroughputBps(9_000).capThroughputBps(8_000)
+                .build())
+        let request = Self.request("/segment0.aac")
+        let answer = faults.answer(
+            request, at: faults.address(host: 0, path: request.path), nowMs: 0
+        ) { HttpExchange.resolve(request, body: [1, 2, 3, 4, 5]) }
+
+        XCTAssertEqual(answer.latencyMs, 350)
+        XCTAssertEqual(answer.truncateAfterBytes, 2)
+        XCTAssertEqual(answer.capBps, 8_000)
     }
 
     func testACacheThatDisregardsNoCacheServesItsCopyAnyway() {

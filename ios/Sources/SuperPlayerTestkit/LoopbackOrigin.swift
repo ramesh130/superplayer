@@ -40,7 +40,7 @@ import os
 /// listener for each, every one answering from the same publication clock and counted in the same
 /// ``networkRequests()``, each request carrying the ``NetworkRequest/host`` it arrived at.
 ///
-/// **Three stages, each one function below.** A request is *recorded* (``networkRequests()``),
+/// **Three stages, in `answer` and `send` below.** A request is *recorded* (``networkRequests()``),
 /// *answered* — the ``FaultScript`` is applied to its address, and what the origin publishes at its
 /// path is resolved where no fault replaces it (``responses()``) — and *sent*, held for the trace's
 /// round trip and any injected latency, then paced by the ``ThroughputTrace`` and any cap, and cut
@@ -267,63 +267,96 @@ public final class LoopbackOrigin: Sendable {
         }
     }
 
-    /// The three stages the type's doc comment names: record, answer, send.
+    /// The three stages the type's doc comment names: record and answer, under the origin's lock so
+    /// the record and the fault state move together, then send.
     private func serve(
         _ request: HttpExchange.Request, on connection: NWConnection, at arrival: Arrival,
         then next: @escaping @Sendable () -> Void
     ) {
-        let nowMs = elapsedMs()
-        let transport = network?.transport(at: nowMs)
-        let (answer, framed) = state.withLock { state in
-            let recorded = NetworkRequest(
-                method: request.method, path: request.path, query: request.query,
-                kind: ResourceKind.of(path: request.path), headers: request.headers,
-                connection: arrival.ordinal, host: arrival.host)
-            state.requests.append(recorded)
-            let address = state.faults.address(host: arrival.host, path: request.path)
-            let answer = state.faults.answer(request, at: address, nowMs: nowMs) {
-                let published = content.publication(nowMs, ports)[String(request.path.dropFirst())]
-                return HttpExchange.resolve(request, body: published)
-            }
-            let framed = answer.response.map {
-                Self.withExtraHeaders(HttpExchange.frame($0, for: request), answer.extraHeaders)
-            }
-            state.responses.append(
-                OriginResponse(
-                    request: recorded, status: framed?.status,
-                    headers: Dictionary(
-                        (framed?.headers ?? []).map { ($0.0.lowercased(), $0.1) },
-                        uniquingKeysWith: { _, last in last }),
-                    bodyBytesSent: request.method == "HEAD"
-                        ? 0 : min(answer.truncateAfterBytes ?? Int.max, framed?.body.count ?? 0),
-                    faults: answer.faults, servedFromCache: answer.servedFromCache,
-                    transport: transport))
-            return (answer, framed)
+        // Rounded up, so that every time derived from it — the first byte, each chunk's due time —
+        // is no earlier than the request's real arrival plus what the trace and the script add.
+        let arrivedMs = elapsedMs(roundingUp: true)
+        let reply = state.withLock { state in
+            answer(request, at: arrival, arrivedMs: arrivedMs, in: &state)
         }
+        send(reply, on: connection, then: next)
+    }
 
-        let pacing = Pacing(
-            firstByteMs: nowMs + (network?.rttMs(at: nowMs) ?? 0) + answer.latencyMs,
-            trace: network, capBps: answer.capBps)
-        guard let framed else {
-            // A reset: nothing is answered, after whatever a response would have waited for.
+    /// What the origin will send for one request, decided once: the framed head or nothing, the
+    /// body bytes that actually go, and when.
+    private struct Reply: Sendable {
+        let head: Data?
+        let body: [UInt8]
+        let truncated: Bool
+        let pacing: Pacing
+    }
+
+    /// Records `request`, applies the script to its address, resolves what is published where no
+    /// fault replaces it, and records the answer.
+    private func answer(
+        _ request: HttpExchange.Request, at arrival: Arrival, arrivedMs: Int64,
+        in state: inout State
+    ) -> Reply {
+        let recorded = NetworkRequest(
+            method: request.method, path: request.path, query: request.query,
+            kind: ResourceKind.of(path: request.path), headers: request.headers,
+            connection: arrival.ordinal, host: arrival.host)
+        state.requests.append(recorded)
+        let address = state.faults.address(
+            host: arrival.host, path: request.path,
+            offset: HttpExchange.rangeStart(request.headers["range"]))
+        let answer = state.faults.answer(request, at: address, nowMs: arrivedMs) {
+            let published = content.publication(arrivedMs, ports)[String(request.path.dropFirst())]
+            return HttpExchange.resolve(request, body: published)
+        }
+        let framed = answer.response.map {
+            Self.withExtraHeaders(HttpExchange.frame($0, for: request), answer.extraHeaders)
+        }
+        let whole = request.method == "HEAD" ? [] : framed?.body ?? []
+        let body = answer.truncateAfterBytes.map { Array(whole.prefix($0)) } ?? whole
+        state.responses.append(
+            OriginResponse(
+                request: recorded, status: framed?.status,
+                headers: Dictionary(
+                    (framed?.headers ?? []).map { ($0.0.lowercased(), $0.1) },
+                    uniquingKeysWith: { _, last in last }),
+                bodyBytesSent: body.count, faults: answer.faults,
+                servedFromCache: answer.servedFromCache,
+                transport: network?.transport(at: arrivedMs)))
+        // A reset is dropped after the round trip and before any latency: the Kotlin injector
+        // raises the failures below a response before it waits out a latency.
+        let rttMs = network?.rttMs(at: arrivedMs) ?? 0
+        return Reply(
+            head: framed?.serialized(forHead: true), body: body,
+            truncated: answer.truncateAfterBytes != nil,
+            pacing: Pacing(
+                firstByteMs: arrivedMs + rttMs + (framed == nil ? 0 : answer.latencyMs),
+                trace: network, capBps: answer.capBps))
+    }
+
+    /// Sends `reply` on `connection`: nothing at all for a reset, the whole response at its first
+    /// byte when nothing paces it, and otherwise the head and then the body chunk by chunk. A
+    /// truncated body closes the connection where it stops; anything else hands on to `next`.
+    private func send(
+        _ reply: Reply, on connection: NWConnection, then next: @escaping @Sendable () -> Void
+    ) {
+        let pacing = reply.pacing
+        guard let head = reply.head else {
             return at(pacing.firstByteMs) { connection.forceCancel() }
         }
-        let whole = request.method == "HEAD" ? [] : framed.body
-        let body = answer.truncateAfterBytes.map { Array(whole.prefix($0)) } ?? whole
-        let head = framed.serialized(forHead: true)
         let finish: @Sendable () -> Void
-        if answer.truncateAfterBytes != nil {
+        if reply.truncated {
             finish = { connection.cancel() }
         } else {
             finish = next
         }
         if pacing.isUnpaced {
-            let bytes = head + body
+            let bytes = head + reply.body
             return at(pacing.firstByteMs) { self.send(bytes, on: connection, then: finish) }
         }
         at(pacing.firstByteMs) {
             self.send(head, on: connection) {
-                self.sendBody(body, from: 0, pacing: pacing, on: connection, then: finish)
+                self.sendBody(reply.body, from: 0, pacing: pacing, on: connection, then: finish)
             }
         }
     }
@@ -381,9 +414,13 @@ public final class LoopbackOrigin: Sendable {
     }
 
     /// How long this origin has been serving: trace time, and the clock a live stream publishes on.
-    private func elapsedMs() -> Int64 {
+    /// Whole milliseconds, rounded down unless `roundingUp`, which a time something is scheduled
+    /// *from* is, so that nothing derived from it can come early.
+    private func elapsedMs(roundingUp: Bool = false) -> Int64 {
         let (seconds, attoseconds) = (ContinuousClock.now - startedAt).components
-        return seconds * 1_000 + attoseconds / 1_000_000_000_000_000
+        let attosecondsPerMs: Int64 = 1_000_000_000_000_000
+        let partial = roundingUp && attoseconds % attosecondsPerMs != 0 ? 1 : 0
+        return seconds * 1_000 + attoseconds / attosecondsPerMs + Int64(partial)
     }
 
     deinit { for listener in listeners { listener.cancel() } }
@@ -404,8 +441,8 @@ struct Pacing: Sendable {
         var due = firstByteMs
         if let trace { due = max(due, trace.arrivalMs(startMs: firstByteMs, bytes: Int64(bytes))) }
         if let capBps {
-            let bitMillis = Int64(bytes) * 8_000
-            due = max(due, firstByteMs + (bitMillis + capBps - 1) / capBps)
+            let bitMillis = Int64(bytes) * ThroughputTrace.bitMillisPerByte
+            due = max(due, firstByteMs + ThroughputTrace.ceilDiv(bitMillis, capBps))
         }
         return due
     }

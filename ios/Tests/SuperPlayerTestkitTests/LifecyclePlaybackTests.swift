@@ -143,6 +143,16 @@ final class LifecyclePlaybackTests: XCTestCase {
         }
     }
 
+    /// A player released while playing holds the session no longer: `release()` withdraws what it
+    /// needed at once, rather than leaving it to whenever the player is deallocated.
+    func testReleasingAPlayingPlayerDeactivatesTheSession() async throws {
+        let (player, platform) = try await playing()
+
+        player.release()
+
+        XCTAssertEqual(platform.calls, [.activate, .deactivate])
+    }
+
     /// A `SuperPlayer` over a recording platform, playing the synthetic stream past its first
     /// second, with the session activated by then.
     private func playing() async throws -> (SuperPlayer, RecordingPlatform) {

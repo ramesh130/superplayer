@@ -145,6 +145,7 @@ extension SuperPlayer {
     /// snapshot with no ``PlaybackSnapshot/request`` restores the positions and the intent and leaves
     /// the current content alone, the honest answer for content that had no identity to save.
     public func restoreSnapshot(_ snapshot: PlaybackSnapshot) {
+        guard !isReleased else { return }
         // Ahead of the item, so the restored memory is in place before anything reads it, and in the
         // saved order, so least-recently-used order is inherited. Clamped, because a stored negative
         // position is corruption rather than intent.

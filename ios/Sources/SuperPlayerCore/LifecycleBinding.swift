@@ -202,6 +202,13 @@ final class LifecycleBinding {
         }
     }
 
+    /// Stops hearing the signals and withdraws what this player needed, so a released player holds
+    /// neither the session nor the idle timer however it was left (`SuperPlayer.release()`).
+    func release() {
+        observations = []
+        shared.withdraw(token)
+    }
+
     deinit {
         // `deinit` is not isolated to the main actor — an isolated `deinit` needs a runtime newer
         // than the iOS 17 floor — so the release is withdrawn one main-actor turn after it.

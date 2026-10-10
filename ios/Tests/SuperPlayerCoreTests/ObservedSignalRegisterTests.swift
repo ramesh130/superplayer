@@ -82,6 +82,16 @@ final class ObservedSignalRegisterTests: XCTestCase {
         XCTAssertEqual(player.liveObservations, everySignalOnce)
     }
 
+    /// A released player observes nothing at all, the lifecycle included.
+    func testAReleasedPlayerObservesNothing() {
+        let player = SuperPlayer()
+        player.setMediaRequest(request("a"))
+
+        player.release()
+
+        XCTAssertEqual(player.liveObservations, [:])
+    }
+
     /// An item with no identity has nothing to remember, so nothing is observed on it — and the
     /// identified item it replaced has its observations removed. The lifecycle is untouched.
     func testAnItemFromABareURLIsObservedForNothing() {

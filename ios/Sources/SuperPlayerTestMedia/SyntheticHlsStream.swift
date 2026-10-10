@@ -34,9 +34,11 @@
 /// no fake transport, so an iOS test plays from a loopback origin (ADR-0021 rule 2) and a stream is
 /// served by path under that origin's address. ``files(segmentCount:variantCount:)`` is therefore the
 /// public form here, and it is the Kotlin generator's own `files` — the form whose every reference
-/// is relative, and so the one form that is the same bytes wherever it is served. The second-host
-/// variant, the live window and the Widevine-protected forms are not ported: the first two are the
-/// harness's (#399), and protection on iOS is FairPlay, which is later.
+/// is relative, and so the one form that is the same bytes wherever it is served. The live window
+/// is ported as ``liveFiles(publishedSegmentCount:)``, the Kotlin `liveResources` under the same
+/// relative naming, and `SuperPlayerTestkit`'s `TestContent.liveHls()` is what keeps publishing it
+/// (#399). The second-host variant and the Widevine-protected forms are not ported: a second host is
+/// the harness's second listener (#410), and protection on iOS is FairPlay, which is later.
 ///
 /// The library names no type outside the standard library — not even Foundation — for
 /// `superplayer-testmedia`'s reason: it sits below core and testkit, and a module with no edges
@@ -55,6 +57,15 @@ public enum SyntheticHlsStream {
 
     /// What every segment's name ends in, so a test can tell a segment request from a playlist one.
     public static let segmentSuffix = ".aac"
+
+    /// How many segments a live playlist from ``liveFiles(publishedSegmentCount:)`` lists at once:
+    /// twelve seconds.
+    ///
+    /// spec: RFC 8216 §6.2.2 — a server must not remove a segment while the playlist would then last
+    /// less than three target durations, so a window of four two-second segments is the least a
+    /// conforming live playlist can be. Six leaves the player's own three-target-duration hold-back
+    /// from the live edge (§6.3.3) some media behind it to start on.
+    public static let liveWindowSegmentCount = 6
 
     /// Declared in the multivariant playlist, and therefore what the selected track should report.
     public static let declaredBitrateBps = 128_000
@@ -131,11 +142,43 @@ public enum SyntheticHlsStream {
 
         var files: [String: [UInt8]] = [:]
         files[multivariantPlaylistName] = Array(multivariantPlaylist(variantCount).utf8)
-        files[mediaPlaylistName] = Array(mediaPlaylist(segmentCount).utf8)
+        files[mediaPlaylistName] = Array(mediaPlaylist(0..<segmentCount, live: false).utf8)
         if variantCount == 2 {
-            files[secondMediaPlaylistName] = Array(mediaPlaylist(segmentCount).utf8)
+            files[secondMediaPlaylistName] = Array(
+                mediaPlaylist(0..<segmentCount, live: false).utf8)
         }
         for index in 0..<segmentCount {
+            files[segmentName(index)] = adtsSegment(index)
+        }
+        return files
+    }
+
+    /// The live form of this stream, as it stands once `publishedSegmentCount` segments have been
+    /// published: a media playlist with no `EXT-X-ENDLIST` listing the newest
+    /// ``liveWindowSegmentCount`` of them, and those segments, as file name to bytes.
+    ///
+    /// A function of how much has been published rather than of a clock, because this module names
+    /// no clock: whoever serves it asks again with a larger count as time passes, and a player
+    /// reloading the playlist sees exactly what RFC 8216 §6.2.1 promises it — a new version each time
+    /// a segment is published. Segments that have slid out of the window are absent, as they are from
+    /// a real origin. Every segment is ``files(segmentCount:variantCount:)``'s segment of the same
+    /// index, timestamp tag and all, so the timeline runs on across the window as a live stream's
+    /// does.
+    ///
+    /// The Kotlin `liveResources`, without its two options: the window is undated, because the
+    /// `EXT-X-PROGRAM-DATE-TIME` form exists on Android for one test of a live-offset policy that is
+    /// i3's here, and it is unprotected, because protection on iOS is FairPlay.
+    public static func liveFiles(publishedSegmentCount: Int) -> [String: [UInt8]] {
+        precondition(
+            publishedSegmentCount >= liveWindowSegmentCount,
+            "A live window of \(liveWindowSegmentCount) segments needs that many published, "
+                + "not \(publishedSegmentCount)")
+        let window = (publishedSegmentCount - liveWindowSegmentCount)..<publishedSegmentCount
+
+        var files: [String: [UInt8]] = [:]
+        files[multivariantPlaylistName] = Array(multivariantPlaylist(1).utf8)
+        files[mediaPlaylistName] = Array(mediaPlaylist(window, live: true).utf8)
+        for index in window {
             files[segmentName(index)] = adtsSegment(index)
         }
         return files
@@ -156,21 +199,22 @@ public enum SyntheticHlsStream {
         return lines.joined(separator: "\n")
     }
 
-    // spec: RFC 8216 §4.3.3 — a VOD media playlist: EXT-X-TARGETDURATION is the rounded-up maximum
-    // EXTINF, EXT-X-MEDIA-SEQUENCE the first segment's number (§4.3.3.2), and EXT-X-ENDLIST is what
+    // spec: RFC 8216 §4.3.3 — a media playlist: EXT-X-TARGETDURATION is the rounded-up maximum
+    // EXTINF, EXT-X-MEDIA-SEQUENCE the first listed segment's number (§4.3.3.2), which is what lets a
+    // live playlist slide its window and still name every segment once, and EXT-X-ENDLIST is what
     // makes the playlist finite rather than live. Lines joined with `\n` and no trailing newline,
     // as the Kotlin generator joins them.
-    private static func mediaPlaylist(_ segmentCount: Int) -> String {
+    private static func mediaPlaylist(_ indices: Range<Int>, live: Bool) -> String {
         let header = [
             "#EXTM3U",
             "#EXT-X-VERSION:3",
             "#EXT-X-TARGETDURATION:\(Int(segmentDurationSeconds.rounded(.up)))",
-            "#EXT-X-MEDIA-SEQUENCE:0",
+            "#EXT-X-MEDIA-SEQUENCE:\(indices.lowerBound)",
         ]
-        let segments = (0..<segmentCount).flatMap { index in
+        let segments = indices.flatMap { index in
             ["#EXTINF:\(segmentDurationSeconds),", segmentName(index)]
         }
-        return (header + segments + ["#EXT-X-ENDLIST"]).joined(separator: "\n")
+        return (header + segments + (live ? [] : ["#EXT-X-ENDLIST"])).joined(separator: "\n")
     }
 
     /// The good stream's segment `index`: two seconds long, starting where the one before it ends.

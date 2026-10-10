@@ -102,6 +102,9 @@ enum Fixtures {
             case "SyntheticHlsStream.files":
                 return SyntheticHlsStream.files(
                     segmentCount: segmentCount, variantCount: variantCount)
+            // The row's segment count is the published count; its variant count is always one.
+            case "SyntheticHlsStream.liveResources":
+                return SyntheticHlsStream.liveFiles(publishedSegmentCount: segmentCount)
             default:
                 throw FixtureError("\(name): no Swift port of the generator \(generator)")
             }

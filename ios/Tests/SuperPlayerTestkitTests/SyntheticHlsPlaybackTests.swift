@@ -16,22 +16,26 @@ import AVFoundation
 import SuperPlayerTestMedia
 import XCTest
 
+@testable import SuperPlayerTestkit
+
 /// The synthetic stream plays to its end in a stock `AVPlayer` on the simulator — the claim #398
 /// asks of a port whose bytes were chosen for a decoder that never decodes them (Robolectric's
 /// shadow codec passes bytes through, so on Android the ADTS payload is "a plausible frame size"
 /// and nothing more).
 ///
-/// Here rather than in the harness ticket (#399) because the answer decides the bytes, and it did:
+/// Written for #398 rather than for the harness because the answer decides the bytes, and it did:
 /// the frames' payload was all zeros, and `AVPlayer` played that stream to its end too — while its
 /// decoder refused every packet. Playing to the end is therefore necessary and not sufficient, and
 /// `SyntheticAacDecodingTests` is the half that says the frames decode; both generators now write a
 /// silent `raw_data_block`.
 ///
-/// The stream is served from `StaticLoopbackOrigin`, a stopgap in this test target until #399's
-/// origin exists, because `AVPlayer` loads HLS over HTTP and not from a `file:` URL — the Kotlin
-/// `writeTo` route has no iOS twin, which that file says. Time is real and nothing is asserted
-/// about it: the assertions are an outcome — the end was reached, an audio track was presented and
-/// nothing failed — and the duration the playlists declare, which is a count of segments.
+/// It lives in testkit's tests, beside the origin it plays from, rather than in testmedia's: an
+/// `AVPlayer` loads HLS over HTTP and never from a `file:` URL, so the Kotlin `writeTo` route has no
+/// iOS twin, and testmedia is phase 1 and may not depend on the phase 2 harness — its tests included
+/// (`docs/modules.md`). #398 played it from a stopgap origin in testmedia's test target, which this
+/// ticket's origin replaced. Time is real and nothing is asserted about it: the assertions are an
+/// outcome — the end was reached, an audio track was presented and nothing failed — and the
+/// duration the playlists declare, which is a count of segments.
 @MainActor
 final class SyntheticHlsPlaybackTests: XCTestCase {
 
@@ -48,12 +52,19 @@ final class SyntheticHlsPlaybackTests: XCTestCase {
     /// those two tests' own durations are in the same result bundle.
     private let missingEndBound: TimeInterval = 18
 
+    private let harness = PlaybackHarness()
+
+    override func tearDown() async throws {
+        harness.stop()
+        try await super.tearDown()
+    }
+
     func testTheOneVariantStreamPlaysToItsEndInAVPlayer() async throws {
-        try await assertPlaysToItsEnd(SyntheticHlsStream.files(segmentCount: 3, variantCount: 1))
+        try await assertPlaysToItsEnd(.hls(segmentCount: 3, variantCount: 1))
     }
 
     func testTheTwoVariantLadderPlaysToItsEndInAVPlayer() async throws {
-        try await assertPlaysToItsEnd(SyntheticHlsStream.files(segmentCount: 3, variantCount: 2))
+        try await assertPlaysToItsEnd(.hls(segmentCount: 3, variantCount: 2))
     }
 
     /// The control: the same origin and the same player, with one segment the playlist names not
@@ -62,14 +73,14 @@ final class SyntheticHlsPlaybackTests: XCTestCase {
     /// no error a test can read, so what is waited for is an end that must not come, for a bound
     /// three times the media's length.
     func testAStreamWithASegmentMissingDoesNotPlayToItsEnd() async throws {
-        var files = SyntheticHlsStream.files(segmentCount: 3, variantCount: 1)
-        files[SyntheticHlsStream.segmentName(1)] = nil
+        let content = TestContent.hls(segmentCount: 3, variantCount: 1)
+            .withholding(SyntheticHlsStream.segmentName(1))
 
-        _ = try await play(files, untilEnd: false, bound: missingEndBound)
+        _ = try await play(content, untilEnd: false, bound: missingEndBound)
     }
 
-    private func assertPlaysToItsEnd(_ files: [String: [UInt8]]) async throws {
-        let item = try await play(files, untilEnd: true, bound: playbackBound)
+    private func assertPlaysToItsEnd(_ content: TestContent) async throws {
+        let item = try await play(content, untilEnd: true, bound: playbackBound)
 
         XCTAssertEqual(item.status, .readyToPlay, "\(String(describing: item.error))")
         XCTAssertNil(item.error)
@@ -85,15 +96,14 @@ final class SyntheticHlsPlaybackTests: XCTestCase {
         }
     }
 
-    /// Serves `files`, plays the multivariant playlist in a stock `AVPlayer`, and waits up to
-    /// `bound` for the end — which must come when `untilEnd` and must not otherwise.
-    private func play(_ files: [String: [UInt8]], untilEnd: Bool, bound: TimeInterval)
+    /// Serves `content`, plays it in a stock `AVPlayer`, and waits up to `bound` for the end — which
+    /// must come when `untilEnd` and must not otherwise.
+    private func play(_ content: TestContent, untilEnd: Bool, bound: TimeInterval)
         async throws -> AVPlayerItem
     {
-        let origin = try await StaticLoopbackOrigin(files: files)
-        defer { origin.stop() }
+        let origin = try await harness.serve(content)
 
-        let item = AVPlayerItem(url: origin.url(SyntheticHlsStream.multivariantPlaylistName))
+        let item = AVPlayerItem(url: origin.sourceURL)
         let player = AVPlayer(playerItem: item)
         let ended = XCTNSNotificationExpectation(
             name: AVPlayerItem.didPlayToEndTimeNotification, object: item)

@@ -160,7 +160,7 @@ let package = Package(
         ),
         .testTarget(
             name: "SuperPlayerTestkitTests",
-            dependencies: ["SuperPlayerTestkit"],
+            dependencies: ["SuperPlayerTestkit", "SuperPlayerTestMedia"],
             path: "ios/Tests/SuperPlayerTestkitTests"
         ),
         .testTarget(

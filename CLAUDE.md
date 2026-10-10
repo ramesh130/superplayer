@@ -1763,6 +1763,45 @@ repository.
   metrics, loses bandwidth samples, and reports **no upstream loss at all**, with `SCHEMA_VERSION`
   unmoved. Signalling does **not** travel `HttpTransport`. Nine of its thirteen rules are enforced by
   nothing in `check`, which the record says at each rule and then sums.
+- **[ADR-0020](docs/adr/0020-compose-on-avfoundations-avplayer-and-bring-no-other-engine.md)** —
+  decides the iOS and tvOS port's shape (`docs/ios-plan.md`): ADR-0001 restated for Apple platforms.
+  The engine is AVFoundation's `AVPlayer` and no other is brought — no third-party player, no port of
+  Media3, no VideoToolbox decode on the HLS path. The facade **owns** an `AVPlayer`, subclasses no
+  AVFoundation class, and exposes it as `player.avPlayer`, the one escape hatch, outside the
+  compatibility promise as `player.exoPlayer` is. What the platforms share is **the documents and the
+  fixtures, never the code**, so there is no Kotlin Multiplatform. What does not port is **not ported, by rule** — the chain and its stamps, `HttpStack`/`HttpTransport`, the
+  streaming cache, rungs 1–3, per-transfer bandwidth sampling, token refresh inside a transfer, DASH,
+  provisioning, `NetworkAwareTrackSelection`/`SelectionPace`, `TvPlaybackControls` — and none may be
+  reopened by intercepting segments through `AVAssetResourceLoaderDelegate`, which is ADR-0002's proxy
+  in-process. A player is configured by a value (`SuperPlayer(configuration:)`) rather than built,
+  Swift 6 strict concurrency is on, the floor is iOS 17 and tvOS 17 with iOS 18 features gated and
+  refused typed below it, CMCD on iOS is closed by a negative spike finding, and the doctor's HLS lint
+  parser is ADR-0015 rule 6's one argued departure. The Swift products ride ADR-0017's version line
+  in lockstep with the API digester as their arbiter, and `RealtimePlayer` is the one place the "one
+  player" claim splits.
+- **[ADR-0021](docs/adr/0021-test-ios-against-a-loopback-origin-and-run-its-checks-in-one-script.md)** —
+  decides testing on iOS. Tests drive the public API with XCTest on the simulator, and the harness is
+  a **loopback HTTP origin** started per test — `docs/testing.md`'s carve-out widened to every iOS
+  test, because `AVPlayer` takes no fake transport and there is no narrower option — with faults and
+  shaping applied at the socket in the Android harness's vocabulary. Time is real, so no test asserts
+  a duration and golden traces are **structural**. What needs a device is listed and not faked
+  (FairPlay, background download resumption across process death, tvOS display criteria, HDCP, MoQ
+  over QUIC), with the logic around each covered at one package-scoped protocol per feature, and the
+  shared documents are tested on both platforms. Every file-reading check is in Gradle's `check`; the
+  Swift build, tests, format and digester run in **`ios/check`**, which the macOS CI job and a
+  contributor both run — the one departure from "a check that can be a Gradle task belongs in
+  `check`", and only because the Swift products cannot be built where `check` runs.
+- **[ADR-0022](docs/adr/0022-give-an-effect-the-decoded-frame-through-a-second-output-slot.md)** —
+  decides the frame-output seam: one `FrameOutput` type a consumer implements, handed a decoded frame
+  and its presentation time, fixed at build time and naming no engine effect API. On Android it fills
+  a **second** core slot, `EngineConfiguration.frameOutput`, beside ADR-0014's `videoOutput` (which
+  is amended at rule 3), from its own module over `setVideoEffects` as core's eleventh friend, because
+  a filled slot is the whole signal and an effects player must not pay for TV correctness; tunneling
+  yields to it. On iOS frames are pulled from `AVPlayerItemVideoOutput` and enqueued to an
+  **`AVSampleBufferDisplayLayer`**, not a bare Metal layer, so Picture in Picture survives and the
+  realtime path shares the layer; `AVPlayerViewController` is lost either way. A player built with
+  protection or for realtime has its output off for its lifetime, reported as a typed reason and
+  never as a playback failure; a player built without one pays nothing, which a test counts.
 - **[`docs/api-surface.md`](docs/api-surface.md)** — every published module's public API is tracked
   in `<module>/api/<module>.api` and validated by `check`. Changing it means running
   `./gradlew updateApiSurface` and committing the diff in the same change. A leaked `@UnstableApi`
@@ -1773,7 +1812,8 @@ repository.
   The rule binds every change, not only the one that introduced it. It has one carve-out, argued in
   that document's *The conformance test a consumer runs*: `HttpTransportConformance` binds a server
   socket on the **loopback** interface and reaches nothing off the host, because an HTTP client's
-  obligations are claims about what it puts on a wire.
+  obligations are claims about what it puts on a wire. The Swift products are held to ADR-0021's
+  seam instead, which widens that carve-out to every iOS test.
 - Every dependency version lives in `gradle/libs.versions.toml`; the library and demo builds read
   that one file.
 - A new dependency arrives with its `THIRD_PARTY.md` row in the same change.

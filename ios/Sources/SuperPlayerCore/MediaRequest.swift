@@ -46,7 +46,7 @@ import Foundation
 ///   the app.
 ///
 /// A value type, as `docs/ios-plan.md` §3.1 has it, and therefore `Codable`, `Sendable` and
-/// `Hashable` where the Kotlin class is none of them: a snapshot (#401) carries one, and a consumer
+/// `Hashable` where the Kotlin class is none of them: a ``PlaybackSnapshot`` carries one, and a consumer
 /// stores that wherever it chooses (ADR-0006 rule 2). It names no AVFoundation type, because its
 /// meaning is a shared document's (ADR-0020 rule 3).
 public struct MediaRequest: Codable, Sendable, Hashable {
@@ -142,9 +142,9 @@ public struct MediaRequest: Codable, Sendable, Hashable {
     /// hand-rolling the same seek-when-ready observation, and each gets a slightly different answer
     /// for content that had already finished.
     ///
-    /// Its encoded shape is Swift's synthesized one and is not yet a stored format: the snapshot
-    /// (#401) is the first thing to persist a request, and it decides — and pins in a test — what a
-    /// stored value looks like.
+    /// Its encoded shape is Swift's synthesized one, keyed by case name, and it is a stored format:
+    /// a ``PlaybackSnapshot`` persists a request, and `PlaybackSnapshotTests` pins the document, so
+    /// renaming a case is a format change that fails a test.
     public enum StartPosition: Codable, Sendable, Hashable {
 
         /// The content's own default position: the start of on-demand content, and wherever
@@ -167,7 +167,7 @@ public struct MediaRequest: Codable, Sendable, Hashable {
         ///
         /// "Last known" means what this ``SuperPlayer`` observed: positions are remembered in
         /// memory, for the life of the player, and not persisted — outliving the player is what the
-        /// snapshot is for (#401), and where it is kept is the consumer's decision (ADR-0006 rule 2).
+        /// ``PlaybackSnapshot`` is for, and where it is kept is the consumer's decision (ADR-0006 rule 2).
         /// The memory is bounded to the ``SuperPlayer/maxRememberedPositions`` most recently used
         /// content ids, so a session moving through more content than that resumes the oldest of it
         /// from the beginning: a best effort rather than a guarantee, which is the honest contract

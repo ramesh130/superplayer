@@ -48,7 +48,9 @@ sessions. The `sessionId` is what separates them; nothing else does.
 **One gap, stated plainly.** A consumer that drives a player with Media3's own `setMediaItem` instead
 of `setMediaRequest` moves it to content that has no identity, so no session can be opened for it and
 what follows is reported under the previous content's id. A player driven through `setMediaRequest`
-throughout cannot produce this. Mixing the two APIs on one player is what does.
+throughout cannot produce this. Mixing the two APIs on one player is what does. On iOS and tvOS the
+counterpart, `setMediaURL`, is the facade's own method, so it ends the open session and opens none;
+the gap there is an item handed to `player.avPlayer` directly, which the facade never sees.
 
 ### Joining to the CDN's log
 
@@ -439,23 +441,30 @@ additions is what you want.
 
 ## The events
 
-| Event | Fired when | Carries |
-| --- | --- | --- |
-| `SessionStarted` | A player takes content on | `profile`, `decision` |
-| `DecisionChanged` | The policy answered differently on a named trigger | `decision`, `trigger` |
-| `SessionEnded` | Released, recycled, or moved to other content | `droppedEventCount`, `securityLevel` |
-| `FirstFrameRendered` | The first video frame reaches the display | `timeToFirstFrameMs`, `startBoundary` |
-| `RebufferStarted` | Playback stalls for data after it started | `seekInduced` |
-| `RebufferEnded` | Playback resumes from that stall | `durationMs`, `seekInduced` |
-| `StartupFailed` | Playback fails before the first frame | `failure` |
-| `MidStreamFailed` | Playback fails after the first frame | `failure`, `positionMs` |
-| `TrackSwitched` | The video rendition changes | `fromBitrateBps`, `toBitrateBps`, `direction` |
-| `SeekRequested` | A seek is issued | `fromPositionMs`, `toPositionMs` |
-| `SeekCompleted` | Playback resumes at the target | `toPositionMs`, `seekLatencyMs` |
-| `LicenceAcquisitionEnded` | A DRM licence acquisition finishes | `durationMs`, `outcome`, `securityLevel` |
-| `LiveLatencySampled` | Every 10 s, live content only | `liveLatencyMs`, `targetLiveLatencyMs` |
-| `PlaybackStateSampled` | Every 10 s | `samplingIntervalMs`, `videoBitrateBps`, `bufferedDurationMs`, `playing`, `throughputEstimateBps` |
-| `VideoFramesDropped` | Every 10 s, while video renders | `droppedFrames`, `repeatedFrames`, `elapsedPlayingMs` |
+| Event | Fired when | Carries | How derived on iOS |
+| --- | --- | --- | --- |
+| `SessionStarted` | A player takes content on | `profile`, `decision` |  |
+| `DecisionChanged` | The policy answered differently on a named trigger | `decision`, `trigger` |  |
+| `SessionEnded` | Released, recycled, or moved to other content | `droppedEventCount`, `securityLevel` |  |
+| `FirstFrameRendered` | The first video frame reaches the display | `timeToFirstFrameMs`, `startBoundary` |  |
+| `RebufferStarted` | Playback stalls for data after it started | `seekInduced` |  |
+| `RebufferEnded` | Playback resumes from that stall | `durationMs`, `seekInduced` |  |
+| `StartupFailed` | Playback fails before the first frame | `failure` |  |
+| `MidStreamFailed` | Playback fails after the first frame | `failure`, `positionMs` |  |
+| `TrackSwitched` | The video rendition changes | `fromBitrateBps`, `toBitrateBps`, `direction` |  |
+| `SeekRequested` | A seek is issued | `fromPositionMs`, `toPositionMs` |  |
+| `SeekCompleted` | Playback resumes at the target | `toPositionMs`, `seekLatencyMs` |  |
+| `LicenceAcquisitionEnded` | A DRM licence acquisition finishes | `durationMs`, `outcome`, `securityLevel` |  |
+| `LiveLatencySampled` | Every 10 s, live content only | `liveLatencyMs`, `targetLiveLatencyMs` |  |
+| `PlaybackStateSampled` | Every 10 s | `samplingIntervalMs`, `videoBitrateBps`, `bufferedDurationMs`, `playing`, `throughputEstimateBps` |  |
+| `VideoFramesDropped` | Every 10 s, while video renders | `droppedFrames`, `repeatedFrames`, `elapsedPlayingMs` |  |
+
+The *How derived on iOS* column is filled by the iOS collector ticket (`#409`), one row as each
+derivation lands; an empty cell is an event the iOS vocabulary already carries and no iOS collector
+emits yet. The first three columns bind both platforms, and a test on each holds its event types to
+them in both directions — `superplayer-core`'s types on Android and `TelemetrySchemaDocumentTests`
+in the Swift package — so an event or a field named here and missing from either, or carried by
+either and missing here, fails a build.
 
 **The sampling interval is 10 seconds**, and the three periodic events share it. It is stated here
 because a time-weighted quantity cannot be computed from samples whose cadence a consumer has to

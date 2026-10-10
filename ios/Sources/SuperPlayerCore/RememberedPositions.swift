@@ -56,6 +56,13 @@ struct RememberedPositions {
     /// How many content ids are remembered.
     var count: Int { order.count }
 
+    /// Every entry, least recently used first, without counting as a use — the order a
+    /// ``PlaybackSnapshot`` carries, so that a memory restored by remembering each entry in turn
+    /// drops what this one would have dropped next.
+    var entries: [(contentId: String, positionMs: Int64)] {
+        order.compactMap { id in positions[id].map { (id, $0) } }
+    }
+
     private mutating func touch(_ contentId: String) {
         if let index = order.firstIndex(of: contentId) { order.remove(at: index) }
         order.append(contentId)

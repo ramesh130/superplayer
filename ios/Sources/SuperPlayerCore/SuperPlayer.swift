@@ -55,9 +55,27 @@ public final class SuperPlayer {
     /// What a player is configured with, fixed for its lifetime (ADR-0020 rule 5).
     ///
     /// The Android `SuperPlayer.Builder`, as a value: each builder setter arrives here as a property
-    /// with a default, as the phase that needs it lands. It has none yet.
-    public struct Configuration: Sendable, Hashable {
+    /// with a default, as the phase that needs it lands.
+    ///
+    /// Not `Hashable`: ``telemetry`` is a function, and a function has no equality to derive.
+    public struct Configuration: Sendable {
         public init() {}
+
+        /// Makes the collector that measures this player, or nil — the default — for a player that
+        /// measures nothing and pays nothing for it (ADR-0008 rule 2): no collector made, no session
+        /// id minted, nothing registered.
+        ///
+        /// The Android `setTelemetry(collector)`, taking a *factory* where Android takes an instance,
+        /// which is `PlayerPool.Builder.setTelemetry { QoeCollector(sink) }`'s shape: a configuration
+        /// is a value, copied into every player made from it, and a collector observes exactly one
+        /// player, so an instance here would be shared by the second player built from the same
+        /// configuration. Called once, on the main actor, as the player is made.
+        ///
+        /// ```swift
+        /// var configuration = SuperPlayer.Configuration()
+        /// configuration.telemetry = { QoeCollector(sink: analyticsSink) }
+        /// ```
+        public var telemetry: (@MainActor @Sendable () -> any TelemetryCollector)?
     }
 
     /// The configuration this player was made with.
@@ -83,9 +101,20 @@ public final class SuperPlayer {
     /// `playbackState == STATE_ENDED`, which `AVPlayer` has no state for (``ObservedSignal``).
     private var currentItemEnded = false
 
+    /// The collector ``Configuration/telemetry`` made, or nil; with it, the session it is measuring.
+    /// Both nil on a player configured without one, which is what the pays-nothing count reads.
+    let collector: (any TelemetryCollector)?
+    var measurement: MeasurementSession?
+
+    /// Whether ``release()`` has run.
+    private(set) var isReleased = false
+
     public init(configuration: Configuration = Configuration()) {
         self.configuration = configuration
         self.avPlayer = AVPlayer()
+        self.collector = configuration.telemetry?()
+        self.measurement = collector.map { _ in MeasurementSession() }
+        collector?.attach(to: self)
     }
 
     /// Plays what `request` describes: the first of its sources, starting where its
@@ -109,14 +138,20 @@ public final class SuperPlayer {
                 to: CMTime(value: startMs, timescale: Self.millisecondsPerSecond),
                 toleranceBefore: .zero, toleranceAfter: .zero, completionHandler: nil)
         }
+        endMeasurement()
         replaceCurrentItem(with: item, identified: true)
+        beginMeasurement(of: request.contentId)
     }
 
     /// Plays `url` with no identity — the Kotlin `setMediaItem` with a bare `MediaItem`, for parity.
     ///
     /// Content played this way is nobody's: ``currentContentId`` is nil while it plays, and no
     /// position is remembered for it when it is replaced, since there is no key it could be
-    /// remembered under that would not collide with the next such item. Nothing is observed on it.
+    /// remembered under that would not collide with the next such item. Nothing is observed on it,
+    /// and nothing is measured: the session of the content it replaces ends and none starts, since
+    /// a session is *of* a content id. On Android `setMediaItem` leaves the previous session open —
+    /// the schema document's *One gap* — because the facade never sees it; this method is the
+    /// facade's.
     ///
     /// One difference from the Kotlin, deliberately: the *outgoing* content's position is
     /// remembered, as ``setMediaRequest(_:)`` remembers it. On Android `setMediaItem` is Media3's own
@@ -126,7 +161,21 @@ public final class SuperPlayer {
     /// ``MediaRequest/StartPosition/resumeFromLastKnown`` states.
     public func setMediaURL(_ url: URL) {
         rememberPositionOfCurrentContent()
+        endMeasurement()
         replaceCurrentItem(with: AVPlayerItem(url: url), identified: false)
+    }
+
+    /// Ends what this player is doing, for good: the open measurement session closes, the collector
+    /// lets go of the player, and the current item is dropped so nothing more loads. The Kotlin
+    /// `release()`, in its order — the session ends while the content it measured is still there to
+    /// read. Calling it again does nothing; a released player is not to be given content again.
+    public func release() {
+        guard !isReleased else { return }
+        endMeasurement()
+        collector?.detach()
+        isReleased = true
+        observations = []
+        avPlayer.replaceCurrentItem(with: nil)
     }
 
     /// The ``MediaRequest/contentId`` of what is playing, read back off the current item's external

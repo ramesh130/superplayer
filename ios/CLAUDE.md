@@ -23,7 +23,12 @@ placeholder test each, baselines recording no API. `SuperPlayerTestMedia` (#398)
 (#400) the first library code: `SuperPlayer(configuration:)` owning an `AVPlayer` as
 `player.avPlayer`, `MediaRequest`, `setMediaRequest(_:)` and `setMediaURL(_:)`, and remembered
 positions, with every notification the facade observes enumerated in `ObservedSignals.swift`
-(ADR-0020 rule 13). `SuperPlayerMoQ` is not declared yet — its binary target is i9's — and there is
+(ADR-0020 rule 13). The telemetry vocabulary (#408) is core's too — `TelemetryEvent` held to
+`docs/telemetry-schema.md` by `TelemetrySchemaDocumentTests`, `TelemetrySink`,
+`TelemetryCollector` made by `Configuration.telemetry`'s factory, the session edges in
+`SessionEdges.swift` — and the bounded `TelemetryDelivery` queue is `SuperPlayerTelemetry`'s, as on
+Android. `PlaybackProfile` and `PlaybackDecision` are declared there ahead of #401 and #415, which
+own what they mean. `SuperPlayerMoQ` is not declared yet — its binary target is i9's — and there is
 no `SuperPlayerCache`, since its content is the offline store's.
 
 **Dependencies point inward** under `docs/modules.md`'s phase rule, and the phase a product takes is

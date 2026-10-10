@@ -31,6 +31,7 @@ one says so.
 | [`api-surface.md`](api-surface.md) | How the public API of every published module is tracked and validated |
 | [`releasing.md`](releasing.md) | Cutting a release with `./gradlew release`: the order, the six refusals, where the artefacts go and where they do not, and how to undo one |
 | [`throughput-traces.md`](throughput-traces.md) | The network-trace format the test harness replays, and how a public dataset comes in |
+| [`ios-plan.md`](ios-plan.md) | The plan for an iOS and tvOS port over AVFoundation: what ports, what differs and what does not, the frame-output seam for effects, the phases, and the decisions still open. A plan, not a promise — nothing iOS is built |
 
 The repository root carries seven more. [`README.md`](../README.md) is the front door and the only
 one written for somebody who has not decided to be here yet: what the library is, what it does not

@@ -104,7 +104,9 @@ description of shipped code.
 - **No `cid`.** A per-title question asked of the CDN's log alone needs the join on iOS.
 - **Below iOS 18 and tvOS 18 no CMCD is sent.** The same string still reaches the CDN on every
   request as the `X-Playback-Session-Id` header, which AVFoundation documents from iOS 16, so a CDN
-  that logs that header joins an iOS 17 session on `x_playback_session_id = session_id` instead.
+  that logs that header can join an iOS 17 session on `x_playback_session_id = session_id`
+  instead. That rests on the header's documentation: the spike observed the header on a later
+  runtime only.
 - **The keys are the SDK's.** Which CTA-5004 keys arrive, and how each is computed, is AVFoundation's
   choice rather than this library's; the finding lists the ones observed.
 

@@ -111,6 +111,33 @@ public struct TestContent: Sendable {
     /// Where ``liveHls(hosts:)`` is served: a directory of its own, as the Kotlin `LIVE_BASE_URI` is.
     static let liveDirectory = "live/"
 
+    /// One entry of the hostile corpus, served at the paths it names — `hostile/<id>/<severity>/`,
+    /// the Kotlin `TestContent.hostile`'s URIs with the `fake://` host taken off — from one host.
+    ///
+    /// A token entry's files are named with their query, because the signed address is the
+    /// defect; the origin serves by path, query excluded (``NetworkRequest/path``), so each is
+    /// served under its path and the player is pointed at the signed source URL, query and all.
+    /// Nothing here checks a signature, which is the Kotlin record's reason too: what the entry
+    /// carries is the shape, and the refusal it would meet in the field is what its cause names.
+    ///
+    /// The entry's declared response headers are not content but what an origin sends, so they
+    /// are a fault script's: ``FaultScript/Builder/addDeclaredResponseHeaders(of:)``. Never live,
+    /// as on Android: `hls-cached-live-playlist` is a live playlist whose bytes never change, which
+    /// is its defect, and nothing here publishes a newer one.
+    public static func hostile(_ stream: HostileStream) -> TestContent {
+        let files = stream.files.reduce(into: [String: [UInt8]]()) { paths, file in
+            paths[withoutQuery(file.key)] = file.value
+        }
+        return TestContent(
+            sourcePath: stream.sourcePath, isLive: false, hosts: 1,
+            publication: { _, _ in files })
+    }
+
+    /// `path` up to its query, which is how the origin looks a request up.
+    static func withoutQuery(_ path: String) -> String {
+        String(path.prefix { $0 != "?" })
+    }
+
     /// `files` with its multivariant playlist listing every variant once per port after the first,
     /// as an absolute URL on that port; `files` itself for one port.
     private static func redundant(_ files: [String: [UInt8]], directory: String, ports: [UInt16])

@@ -658,7 +658,8 @@ each three segments long so the one thing that varies between segments, the ID3 
 the comparison, and `hls-live` (#399), the live window once eight segments are published, so the
 window has slid and `EXT-X-MEDIA-SEQUENCE` is not zero. The second-host variant and the Widevine forms
 are not ported: a second host is the harness's second listener (#410) and iOS protection is FairPlay.
-The HLS half of the hostile corpus joins the same directory under #412.
+The HLS half of the hostile corpus is held the same way, in a directory of its own beside this one
+(#412, *The hostile corpus on iOS* below).
 
 **A synthetic stream plays in `AVPlayer`.** On Android the ADTS payload is never decoded —
 Robolectric's shadow codec passes bytes through — so "it plays" was never a claim about the bytes.
@@ -889,6 +890,10 @@ corpus, and the test checks that it plays on, which is what makes a failing live
    defect means, what produces it and what to change. `DoctorDocumentTest` fails without it. This
    step is owed for **every** entry of the doctor's vocabulary and not only for a corpus one: the two
    defects of the *fetch* that no corpus can carry each have a section too.
+9. For an **HLS** entry, its iOS half (#412, *The hostile corpus on iOS*): `./gradlew
+   updateIosFixtures` to commit its fixtures, the same entry in `HostileManifests.swift` until
+   `HostileManifestsFixturesTests` passes, and its row in `HostileManifestCorpusTests.recorded`.
+   `ios/check` names the entry until all three are done.
 
 A defect that lives outside the manifest cannot be applied by `FakeDataSet`, which serves bytes and
 reports no response headers. That covers the `Cache-Control` mismatch and the CORS one. Such an entry
@@ -915,6 +920,50 @@ cannot be carried by fixed bytes at all. It is played instead by `LivePlaylistRe
 `FaultScript.Builder.serveThroughCache` (a cache that holds responses for a `max-age` and serves them
 with the headers that say so). That is the one place a recovery from this defect can be shown,
 because recovering needs something newer to exist.
+
+### The hostile corpus on iOS
+
+The HLS half of the corpus is ported to `SuperPlayerTestMedia` (#412) as `HostileManifests` and
+`HostileStream`, every entry at every severity, with its id, citation, cause, magnitude and declared
+headers; the DASH entries are not, because DASH is not (ADR-0020). It is **one corpus** by the rule
+*One corpus on both platforms* states, in a directory of its own, `ios/Tests/Fixtures/hostile/`:
+
+- **`<id>/<severity>/<name>`** holds each entry's files, the Kotlin URIs with
+  `fake://superplayer.test/hostile/` taken off. A token entry's names carry their query
+  (`?expires=…&signature=corpus`), because the signed address is the defect.
+- **`index.tsv`** is one row per entry in `graded()`'s order — id, severity, validity, the instant its
+  tokens were minted at, duration, source, magnitude (`-` for none), citation and cause — and
+  **`headers.tsv`** one row per declared header, against the file it is declared on.
+
+`superplayer-testmedia`'s `HostileManifestsFixturesTest` writes them under `./gradlew
+updateIosFixtures` and holds the Kotlin generator to them in `check`; `HostileManifestsFixturesTests`
+holds the Swift generator to the same files, fields and headers, reading which entries exist from the
+index, so an entry on one side and not the other fails **naming it**. The token entries are why the
+Kotlin generator gained an internal overload taking the minting instant: a token's `expires` is in
+the bytes, so a corpus minted at the wall clock is a different corpus every second. The Swift
+generator takes that instant as an argument everywhere, since `SuperPlayerTestMedia` names no clock.
+
+An iOS test serves an entry with `TestContent.hostile(_:)` — by path, query excluded, as a CDN looks
+a file up before checking a signature — and its headers with
+`FaultScript.Builder.addDeclaredResponseHeaders(of:)`, #410's header sets addressed by kind and index:
+one set per kind, or for manifests one on the multivariant playlist (index 0, what the player asks for
+first) and another on every playlist it names. Those are the only shapes the corpus declares, and a
+declaration of any other stops the test naming the entry rather than being served approximately.
+
+`SuperPlayerTestkit`'s `HostileManifestCorpusTests` **records** what a stock `AVPlayer` does with each
+entry, in `HostileManifestCorpusTest`'s shape: one table for the graded corpus, outcomes as coarse as
+the Kotlin ones and structural — failed with which error domain and code, ended, still playing,
+stalled, never started — and no duration asserted; the budget and the two-second window that
+classify an unfinished session are the ones ADR-0021 rule 4's #412 addendum admits. A stock player rather than a SuperPlayer,
+because the iOS facade adds nothing between `AVPlayer` and the corpus yet, so there is no typed
+failure to record. Every entry plays at once, from an origin of its own, inside one forty-second
+budget, so the table costs one budget rather than nineteen; it read the same on consecutive runs
+before it was committed. The table is a Swift literal edited **by hand**, as the Kotlin record is: a
+moved row fails with the whole observation printed as that literal, and the change that moves it
+writes the reason beside the row. Two rows differ from Android's, and both are findings rather than
+gaps: `hls-dangling-audio-group`, which Media3 plays, fails in AVFoundation; and
+`hls-cached-live-playlist` stalls at the live edge with no error inside the budget, where core names
+the cache.
 
 ## The layers above the fakes
 

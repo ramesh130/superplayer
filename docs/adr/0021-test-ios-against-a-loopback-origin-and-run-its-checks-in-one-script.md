@@ -135,6 +135,18 @@ rule names the ticket that brings its enforcement, and *What nothing enforces* s
    `ios/check` asserts a duration, an unshaped transfer's included, and a new timing assertion needs
    an addendum here of its own.
 
+   *Addendum (2026-10-11, #412).* The hostile corpus's record, `HostileManifestCorpusTests`, reads
+   real time in order to *classify* rather than to measure: each entry is watched for a budget of
+   forty seconds, and one that has not ended by then is still playing if its position moved within
+   the last two seconds and stalled if not — the Kotlin `HostileObservation`'s `OBSERVATION_MS` and
+   `READY_WINDOW_MS`, on the host's clock instead of the harness's. No number is asserted, but a
+   loaded host could in principle move an outcome, so the bounds are argued against that. The budget
+   is at least twice the longest entry that can end (a test holds it), so an ending is never decided
+   by host speed; the window separates a session that moves at nearly every poll from one that has
+   stood still for most of the budget, and the only unfinished row today has stood still for over
+   thirty seconds. The table read the same on consecutive runs before it was committed. These two
+   bounds are admitted here by name, and a further one needs an addendum of its own.
+
 5. **What needs a device is listed and not faked, and `check` covers the logic around it at one
    package-scoped protocol per feature.** The list: FairPlay key exchange and playback; background
    download resumption across process death; tvOS display criteria switching the display mode; HDCP

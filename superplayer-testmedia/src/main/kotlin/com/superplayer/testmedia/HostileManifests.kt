@@ -126,7 +126,18 @@ public object HostileManifests {
      * [HostileStream.severity]; each level is served from its own directory, so the whole graded
      * corpus still fits in one `FakeDataSet`.
      */
-    public fun graded(): List<HostileStream> = listOf(
+    public fun graded(): List<HostileStream> = graded(currentEpochSeconds())
+
+    /**
+     * [graded], with the token entries minted at [nowEpochSeconds] rather than at the wall clock's
+     * now — the one input the HLS half takes from outside itself.
+     *
+     * For the iOS fixtures (`HostileManifestsFixturesTest`, ADR-0021 rule 6): a token's `expires` is
+     * part of the bytes, so a corpus minted at now is a different corpus every second, and a fixture
+     * of it would be stale before it was written. The DASH half still reads the clock, because its
+     * live manifests are anchored to it and are not ported (ADR-0020).
+     */
+    internal fun graded(nowEpochSeconds: Long): List<HostileStream> = listOf(
         Severity.entries.map { hlsLadderGap(it) },
         Severity.entries.map { hlsOverstatedBitrate(it) },
         listOf(hlsMissingCodecs()),
@@ -135,8 +146,8 @@ public object HostileManifests {
         Severity.entries.map { hlsInconsistentSegmentDurations(it) },
         listOf(hlsDiscontinuityWithoutTimeline()),
         listOf(hlsCachedLivePlaylist()),
-        listOf(hlsTokenScopedToManifest()),
-        Severity.entries.map { hlsTokenExpiringInWindow(it) },
+        listOf(hlsTokenScopedToManifest(nowEpochSeconds)),
+        Severity.entries.map { hlsTokenExpiringInWindow(it, nowEpochSeconds) },
         listOf(hlsCorsRefusesCredentials()),
         Severity.entries.map { dashLadderGap(it) },
         Severity.entries.map { dashOverstatedBitrate(it) },
@@ -412,7 +423,10 @@ public object HostileManifests {
     //
     // Single severity, although a token has a lifetime, because *scope* has none: the segments carry
     // a credential or they do not. The lifetime is the next entry's, graded there.
-    public fun hlsTokenScopedToManifest(): HostileStream = hlsStream(
+    public fun hlsTokenScopedToManifest(): HostileStream = hlsTokenScopedToManifest(currentEpochSeconds())
+
+    /** [hlsTokenScopedToManifest], minted at [nowEpochSeconds]; [graded]'s overload says why. */
+    internal fun hlsTokenScopedToManifest(nowEpochSeconds: Long): HostileStream = hlsStream(
         id = "hls-token-scoped-to-manifest",
         validity = HostileStream.Validity.VALID_BUT_HOSTILE,
         spec = "RFC 3986 §3.4, §5.3; RFC 9110 §15.5.4",
@@ -420,7 +434,7 @@ public object HostileManifests {
             "the manifest is signed, its segments are addressed relatively and reach the CDN with " +
             "no credential at all, so the stream opens and then serves nothing.",
         multivariant = hlsMultivariantPlaylist(listOf(HlsVariant())),
-        sourceName = MULTIVARIANT_PLAYLIST_NAME + signature(LONG_TOKEN_LIFETIME_SECONDS),
+        sourceName = MULTIVARIANT_PLAYLIST_NAME + signature(LONG_TOKEN_LIFETIME_SECONDS, nowEpochSeconds),
     )
 
     // ref: the same convention as [hlsTokenScopedToManifest], and the other half of it. A token states
@@ -433,9 +447,13 @@ public object HostileManifests {
     // corpus grades against the content because that is the only number the stream itself states. The
     // levels are therefore multiples of the content's own duration, which is the derivation
     // `CONTRIBUTING.md`'s clean-room rules accept where no document speaks.
-    public fun hlsTokenExpiringInWindow(severity: Severity = Severity.SEVERE): HostileStream {
+    public fun hlsTokenExpiringInWindow(severity: Severity = Severity.SEVERE): HostileStream =
+        hlsTokenExpiringInWindow(severity, currentEpochSeconds())
+
+    /** [hlsTokenExpiringInWindow], minted at [nowEpochSeconds]; [graded]'s overload says why. */
+    internal fun hlsTokenExpiringInWindow(severity: Severity, nowEpochSeconds: Long): HostileStream {
         val lifetimeSeconds = tokenLifetimeSeconds(severity)
-        val token = signature(lifetimeSeconds)
+        val token = signature(lifetimeSeconds, nowEpochSeconds)
         return hlsStream(
             id = "hls-token-expiring-in-window",
             validity = HostileStream.Validity.VALID_BUT_HOSTILE,
@@ -885,8 +903,11 @@ public object HostileManifests {
      * verifies one, and a corpus that invented a real signing algorithm would be mirroring a commercial
      * scheme for no test's benefit.
      */
-    private fun signature(lifetimeSeconds: Long): String =
-        "?expires=${System.currentTimeMillis() / 1_000 + lifetimeSeconds}&signature=$TOKEN_SIGNATURE"
+    private fun signature(lifetimeSeconds: Long, nowEpochSeconds: Long): String =
+        "?expires=${nowEpochSeconds + lifetimeSeconds}&signature=$TOKEN_SIGNATURE"
+
+    /** The wall clock in seconds since the epoch: what a token is minted at outside a fixture. */
+    private fun currentEpochSeconds(): Long = System.currentTimeMillis() / 1_000
 
     /** How much media an HLS entry carries, which is what a token has to cover. */
     private fun contentDurationSeconds(): Double = SEGMENT_COUNT * SyntheticHlsStream.SEGMENT_DURATION_SECONDS

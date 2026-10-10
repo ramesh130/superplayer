@@ -101,6 +101,11 @@ them under `Added` would be worse than stating them here:
   `ios/Tests/Fixtures/throughput-traces/` with what `superplayer-testkit`'s reader makes of each, so
   both readers are held to one reading (`./gradlew updateIosFixtures` rewrites them); no Kotlin
   behaviour moved.
+- **The iOS CMCD finding (#413).** `docs/ios-cmcd-finding.md`, which records that AVFoundation
+  emits CMCD (CTA-5004) itself from iOS 18 once `AVAssetResourceLoader.sendsCommonMediaClientDataAsHTTPHeaders`
+  is set, with the asset's `httpSessionIdentifier` as `sid` — so `docs/telemetry-schema.md` keeps the
+  `sid` join on Apple platforms rather than marking it Android-only. `CmcdFindingTests` pins what a
+  stock `AVPlayer` sent with and without each candidate; the implementation is #446.
 - **Phase 9 — Diagnostics and docs.** `MediaSourceDoctor`, which names twenty pathologies over the
   chain a player would load through; the postmortem reading; `SessionBundle`; the debug HUD; and
   the documents in `docs/`.

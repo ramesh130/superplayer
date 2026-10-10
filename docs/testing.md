@@ -695,7 +695,7 @@ see a request.
   segment that has slid out is a 404. The Android harness times it on its own clock, this one on the
   host's, so a live test waits for a *segment published after it started* to be fetched rather than
   advancing to it.
-- **Every wait is `harness.until(description, timeout:)`** — a condition polled every fiftieth of a
+- **Every wait is `harness.until(description, timeout:)`** — a condition polled every twentieth of a
   second, read on the caller's actor for a player's state or awaited for a fetch, and a typed
   `ConditionTimeout` naming the condition if the bound passes. The bound is a ceiling a pass never
   approaches. No test sleeps and then asserts, and none asserts how long anything took.
@@ -711,7 +711,7 @@ see a request.
   this an observation for #399 to confirm; `StockPlayerOriginTests` registers one that sees a
   `URLSession` load of the same origin and none of the player's.
 - **Faults and shaping are #410's.** An origin records a request, resolves what is published at its
-  path into a response, and sends it, and `LoopbackOrigin`'s KDoc says which stage each fault kind
+  path into a response, and sends it, and `LoopbackOrigin`'s doc comment says which stage each fault kind
   and the throughput replay enter at. Until then the one fault the harness's own tests need — a
   segment withheld — is an internal `TestContent.withholding(_:)`.
 

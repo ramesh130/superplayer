@@ -33,6 +33,9 @@ enum HttpExchange {
         let headers: [String: String]
         /// Whether the connection stays open after the response.
         let keepAlive: Bool
+        /// Whether it came as HTTP/1.0, whose persistence the response has to state (RFC 9112
+        /// Appendix C.2.2).
+        var isHttp10 = false
     }
 
     /// What reading the front of a connection's buffer found.
@@ -100,7 +103,7 @@ enum HttpExchange {
                 path: String(target[..<(questionMark ?? target.endIndex)]),
                 query: questionMark.map { String(target[target.index(after: $0)...]) },
                 headers: headers,
-                keepAlive: keepAlive),
+                keepAlive: keepAlive, isHttp10: requestLine[2] == "HTTP/1.0"),
             consumed: consumed)
     }
 
@@ -154,7 +157,11 @@ enum HttpExchange {
             response = Response(status: 404, headers: [], body: [])
         }
         response.headers.append(("Content-Length", String(response.body.count)))
-        if !request.keepAlive { response.headers.append(("Connection", "close")) }
+        if !request.keepAlive {
+            response.headers.append(("Connection", "close"))
+        } else if request.isHttp10 {
+            response.headers.append(("Connection", "keep-alive"))
+        }
         return response
     }
 

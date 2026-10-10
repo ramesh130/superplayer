@@ -16,6 +16,8 @@ import AVFoundation
 import SuperPlayerTestMedia
 import XCTest
 
+// `@testable` for `TestContent.withholding(_:)` alone, the internal fault the control below needs
+// until #410's `FaultScript` says it publicly — the harness's own tests, as `HttpExchangeTests` argues.
 @testable import SuperPlayerTestkit
 
 /// The synthetic stream plays to its end in a stock `AVPlayer` on the simulator — the claim #398

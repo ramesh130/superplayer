@@ -31,6 +31,10 @@ final class StockPlayerOriginTests: XCTestCase {
     /// media a condition here waits for, and only a bound.
     private let bound: Duration = .seconds(60)
 
+    /// A quarter of a segment more than one segment holds, so a position beyond it is one that
+    /// played into a second segment, whatever the segment duration is.
+    private let pastOneSegment = Double(SyntheticHlsStream.segmentDurationMs) / 1_000 * 1.25
+
     private let harness = PlaybackHarness()
 
     override func tearDown() async throws {
@@ -51,7 +55,7 @@ final class StockPlayerOriginTests: XCTestCase {
         let readyAt = player.currentTime().seconds
         // Past the first segment's end, so a second segment was fetched and played into.
         try await harness.until("the position passes the first segment", timeout: bound) {
-            player.currentTime().seconds > readyAt + 2.5
+            player.currentTime().seconds > readyAt + pastOneSegment
         }
         player.pause()
 
@@ -91,7 +95,7 @@ final class StockPlayerOriginTests: XCTestCase {
         // Compared with where it stood when ready rather than with a segment's timestamp, since
         // where an undated live item's timeline starts is the engine's to choose.
         try await harness.until("the position advances past a segment", timeout: bound) {
-            player.currentTime().seconds > readyAt + 2.5
+            player.currentTime().seconds > readyAt + pastOneSegment
         }
         player.pause()
 

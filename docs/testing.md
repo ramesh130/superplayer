@@ -1016,6 +1016,23 @@ What each stand-in cannot show:
   `Scrub`, because no key injection can vary a repeat rate. Nothing is drawn to a
   screen, so how the focus indication looks from across a room is a device's (#274).
 
+## A frame output
+
+`superplayer-effects` lays a consumer's `FrameOutput` on Media3's GL effect pipeline (ADR-0022), and
+**nothing under `check` runs that pipeline**: Robolectric has no GPU and no EGL, and the harness's video
+renderer is Media3's fake, which decodes nothing and sets no pipeline up. So what is observed is the list
+*reaching the engine*. `PlaybackHarness.videoEffectsDeliveries(player)` records each
+`MSG_SET_VIDEO_EFFECTS` message at the video renderer, the place Media3 delivers `setVideoEffects` to and
+where its own `MediaCodecVideoRenderer` would build the pipeline, with the effect count and whether it
+arrived before the renderer was first enabled — which is Media3's "before `prepare()`" limit, observed
+rather than assumed. `FrameOutputPlaybackTest` reads it on clear video, on protected content played to
+the end over the harness's licence server, and on a player built without the output, its control. What
+a device alone shows: that `FrameOutput.process` is called once per frame and on time, that the copy
+shader compiles and what it draws is what the surface shows, and the frames an effect costs. ADR-0022
+rule 4's tunneling half and rule 6's realtime half are core's `SuperPlayerFrameOutputSeamTest`, the
+first because it is a selector parameter on content that plays untunneled either way, the second because
+a phase 8 module's tests cannot reach phase 13's.
+
 ## The debug HUD
 
 `superplayer-diagnostics`' `DebugHudTest` is the library's second Compose UI test (#294). It composes
@@ -1562,6 +1579,13 @@ changes. `superplayer-tv`'s `AudioCapabilityChangeTest` shows the behaviour, its
 asks for tunneling only on a player with an output. Core's tests play no video beside audio, so no core
 playback shows it. `superplayer-tv`'s `TunneledPlaybackTest` shows it applied at the renderer, its controls
 included.
+
+`superplayer-effects` is the eleventh friend, of the first shape, and its slot is ADR-0022 rule 3's second
+output slot, `EngineConfiguration.frameOutput`. Core's `SuperPlayerFrameOutputSeamTest` reads past the facade
+the same two ways: the filled configuration, counted with a profile alone and with a hand-written stand-in
+so that filling the second slot is shown not to fill `videoOutput` (rule 9), and the selector's
+`tunnelingEnabled`, which yields on a player whose frame output runs (rule 4). The effect reaching the engine
+is read at the renderer instead, through the harness (*A frame output*, above).
 
 `superplayer-diagnostics` is the ninth friend, and the first bounded by a **closed list** rather than by
 a slot (ADR-0015 rule 3): a doctor fills nothing, and what it reaches is `TransferChain.diagnosticChain`

@@ -24,6 +24,7 @@ import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.HandlerWrapper
 import androidx.media3.exoplayer.ExoPlaybackException
+import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.RendererCapabilities
 import androidx.media3.exoplayer.audio.AudioCapabilities
 import androidx.media3.exoplayer.audio.AudioCapabilitiesReceiver
@@ -84,6 +85,19 @@ internal class ControllableVideoRenderer(
     var enabledTunneled: Boolean? = null
         private set
 
+    /** Whether the engine has enabled this renderer at all, which a delivered effect list is read against. */
+    @Volatile
+    private var everEnabled = false
+
+    private val effectsDelivered = mutableListOf<VideoEffectsDelivery>()
+
+    /**
+     * Every effect list the engine handed this renderer, in order — `ExoPlayer.setVideoEffects`, which
+     * Media3 delivers to each video renderer as a message on the playback thread.
+     */
+    val videoEffectsDeliveries: List<VideoEffectsDelivery>
+        get() = synchronized(effectsDelivered) { effectsDelivered.toList() }
+
     /** Stops being ready, which is what moves the player into `STATE_BUFFERING`. */
     fun stall() {
         stalled.set(true)
@@ -119,7 +133,24 @@ internal class ControllableVideoRenderer(
 
     override fun onEnabled(joining: Boolean, mayRenderStartOfStream: Boolean) {
         super.onEnabled(joining, mayRenderStartOfStream)
+        everEnabled = true
         enabledTunneled = configuration.tunneling
+    }
+
+    /**
+     * Records an effect list where Media3's own video renderer would set its pipeline up, and hands every
+     * message on, so the fake's own handling is unchanged.
+     *
+     * ref: Media3 1.11's `ExoPlayerImpl.setVideoEffects` sends `MSG_SET_VIDEO_EFFECTS` with the list to
+     * every video renderer:
+     * https://github.com/androidx/media/blob/1.11.0/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/ExoPlayerImpl.java
+     */
+    override fun handleMessage(messageType: Int, message: Any?) {
+        if (messageType == Renderer.MSG_SET_VIDEO_EFFECTS) {
+            val effects = checkNotNull(message as? List<*>) { "MSG_SET_VIDEO_EFFECTS carried no list" }
+            synchronized(effectsDelivered) { effectsDelivered += VideoEffectsDelivery(effects.size, beforeRendererEnabled = !everEnabled) }
+        }
+        super.handleMessage(messageType, message)
     }
 
     /**

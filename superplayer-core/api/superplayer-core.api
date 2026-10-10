@@ -97,6 +97,18 @@ public final class com/superplayer/core/FailureCategory : java/lang/Enum {
 	public static fun values ()[Lcom/superplayer/core/FailureCategory;
 }
 
+public abstract interface class com/superplayer/core/FrameOutput {
+	public abstract fun process (Lcom/superplayer/core/VideoFrame;J)Lcom/superplayer/core/VideoFrame;
+}
+
+public final class com/superplayer/core/FrameOutputOffReason : java/lang/Enum {
+	public static final field PROTECTED_CONTENT Lcom/superplayer/core/FrameOutputOffReason;
+	public static final field REALTIME Lcom/superplayer/core/FrameOutputOffReason;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/core/FrameOutputOffReason;
+	public static fun values ()[Lcom/superplayer/core/FrameOutputOffReason;
+}
+
 public abstract interface class com/superplayer/core/FrameSink {
 	public abstract fun onEnded ()V
 	public abstract fun onError (Ljava/lang/Throwable;)V
@@ -393,6 +405,9 @@ public final class com/superplayer/core/PlaybackFailure {
 	public fun toString ()Ljava/lang/String;
 }
 
+public abstract interface class com/superplayer/core/PlaybackFrameOutput {
+}
+
 public abstract interface class com/superplayer/core/PlaybackOutput {
 }
 
@@ -474,6 +489,7 @@ public final class com/superplayer/core/PlayerPool$Builder {
 	public final fun setCache (Lcom/superplayer/core/ContentCache;)Lcom/superplayer/core/PlayerPool$Builder;
 	public final fun setDrm (Lcom/superplayer/core/PlaybackDrm;)Lcom/superplayer/core/PlayerPool$Builder;
 	public final fun setFeedCodecs ([Lcom/superplayer/core/VideoCodec;)Lcom/superplayer/core/PlayerPool$Builder;
+	public final fun setFrameOutput (Lcom/superplayer/core/PlaybackFrameOutput;)Lcom/superplayer/core/PlayerPool$Builder;
 	public final fun setHttpStack (Lcom/superplayer/core/HttpStack;)Lcom/superplayer/core/PlayerPool$Builder;
 	public final fun setMaxSize (I)Lcom/superplayer/core/PlayerPool$Builder;
 	public final fun setOutput (Lcom/superplayer/core/PlaybackOutput;)Lcom/superplayer/core/PlayerPool$Builder;
@@ -749,6 +765,7 @@ public final class com/superplayer/core/SuperPlayer : androidx/media3/common/Pla
 	public fun getDeviceVolume ()I
 	public fun getDuration ()J
 	public final fun getExoPlayer ()Landroidx/media3/exoplayer/ExoPlayer;
+	public final fun getFrameOutputOffReason ()Lcom/superplayer/core/FrameOutputOffReason;
 	public fun getMaxSeekToPreviousPosition ()J
 	public fun getMediaItemAt (I)Landroidx/media3/common/MediaItem;
 	public fun getMediaItemCount ()I
@@ -847,6 +864,7 @@ public final class com/superplayer/core/SuperPlayer$Builder {
 	public final fun setCache (Lcom/superplayer/core/ContentCache;)Lcom/superplayer/core/SuperPlayer$Builder;
 	public final fun setCmcdMode (Lcom/superplayer/core/CmcdMode;)Lcom/superplayer/core/SuperPlayer$Builder;
 	public final fun setDrm (Lcom/superplayer/core/PlaybackDrm;)Lcom/superplayer/core/SuperPlayer$Builder;
+	public final fun setFrameOutput (Lcom/superplayer/core/PlaybackFrameOutput;)Lcom/superplayer/core/SuperPlayer$Builder;
 	public final fun setHttpStack (Lcom/superplayer/core/HttpStack;)Lcom/superplayer/core/SuperPlayer$Builder;
 	public final fun setOutput (Lcom/superplayer/core/PlaybackOutput;)Lcom/superplayer/core/SuperPlayer$Builder;
 	public final fun setPolicy (Lcom/superplayer/core/PlaybackPolicy;)Lcom/superplayer/core/SuperPlayer$Builder;
@@ -1303,5 +1321,12 @@ public final class com/superplayer/core/VideoCodec : java/lang/Enum {
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/core/VideoCodec;
 	public static fun values ()[Lcom/superplayer/core/VideoCodec;
+}
+
+public final class com/superplayer/core/VideoFrame {
+	public fun <init> (III)V
+	public final fun getHeight ()I
+	public final fun getTextureId ()I
+	public final fun getWidth ()I
 }
 

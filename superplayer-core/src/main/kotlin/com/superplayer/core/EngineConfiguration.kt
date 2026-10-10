@@ -16,6 +16,7 @@
 
 package com.superplayer.core
 
+import androidx.media3.common.Effect
 import androidx.media3.common.util.Clock
 import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.ExoPlayer
@@ -250,6 +251,29 @@ internal class EngineConfiguration(
      * `SuperPlayerOutputSeamTest`.
      */
     var videoOutput: VideoOutputBinding? = null
+
+    /**
+     * The second output slot, ADR-0022 rule 3's: the one Media3 effect a [FrameOutput] is laid on the
+     * engine as, which core hands to `ExoPlayer.setVideoEffects` once, as the engine is built and so
+     * before any `prepare()`.
+     *
+     * **A slot of its own rather than a second meaning of [videoOutput]**, because a filled slot is the
+     * whole signal and the two signals differ: filling [videoOutput] switches off Media3's frame-rate
+     * strategy, registers the display watch, lays tunneling and allows audio re-selection, none of which
+     * a phone app adding an effect wants. Filling this one changes one more thing: the decision's
+     * tunneling half is **not** laid, because a tunneled video path bypasses the effect pipeline
+     * (rule 4) — `playbackDecision` keeps saying what was asked, as ADR-0014 rule 7 already allows.
+     *
+     * Read only where the player's output is on: a player built with `setDrm` or `setRealtime` has its
+     * output off for its lifetime, its extension is never asked, and a slot filled by any other hand is
+     * not laid either (rule 6).
+     *
+     * Null is every player built without `setFrameOutput`: `setVideoEffects` is never called and no
+     * class of `superplayer-effects` is loaded, which is rule 9 and is counted by
+     * `SuperPlayerFrameOutputSeamTest`. The type is Media3's own `Effect` from `media3-common`, so core
+     * names it without depending on `media3-effect`, which only the module that fills the slot carries.
+     */
+    var frameOutput: Effect? = null
 
     /**
      * The decision in force on this player, readable from whatever thread a load fails on.

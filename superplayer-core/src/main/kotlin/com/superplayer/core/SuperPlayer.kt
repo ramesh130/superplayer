@@ -262,7 +262,30 @@ public class SuperPlayer private constructor(
      * none.
      */
     private val realtimeSchemes: Set<String>,
+    /**
+     * Why this player's frame output is off, or null; see [frameOutputOffReason].
+     *
+     * Deliberately without a default value, for the reason [builtWithTrackSelectionParameters] has
+     * none.
+     */
+    private val frameOutputOff: FrameOutputOffReason?,
 ) : Player by delegate {
+
+    /**
+     * Why the frame output this player was built with is not running, or null — ADR-0022 rule 6.
+     *
+     * [FrameOutputOffReason.PROTECTED_CONTENT] on a player built with both `setFrameOutput` and
+     * `setDrm`, and [FrameOutputOffReason.REALTIME] on one built with both `setFrameOutput` and
+     * `setRealtime`; protection is named where both apply. Null on a player whose output runs, and on
+     * one built without `setFrameOutput` at all, which knows it has none.
+     *
+     * **Fixed when the player is built** and the same on every item it adopts, because protection and
+     * the output are both fixed per player and they meet there. It is a reading and never an error: such
+     * a player plays every item, its clear ones included, exactly as it would without the output, and
+     * nothing reaches `onPlayerError` (ADR-0022 rule 6).
+     */
+    public val frameOutputOffReason: FrameOutputOffReason?
+        get() = frameOutputOff
 
     /**
      * The `securityLevel` this player's protected sessions were actually opened at — `"L1"`, `"L3"`,
@@ -416,6 +439,8 @@ public class SuperPlayer private constructor(
         // Empty for an engine somebody else built: no realtime slot of core's dispatches on it, so
         // there is no scheme whose start position this player could refuse.
         realtimeSchemes: Set<String> = emptySet(),
+        // Null for an engine somebody else built: no frame output of core's was refused on it.
+        frameOutputOff: FrameOutputOffReason? = null,
     ) : this(
         exoPlayer,
         profile,
@@ -434,6 +459,7 @@ public class SuperPlayer private constructor(
         licenceSessions,
         videoOutput,
         realtimeSchemes,
+        frameOutputOff,
     )
 
     /**
@@ -1435,6 +1461,7 @@ public class SuperPlayer private constructor(
         private var resilience: PlaybackResilience? = null
         private var drm: PlaybackDrm? = null
         private var output: PlaybackOutput? = null
+        private var frameOutput: PlaybackFrameOutput? = null
         private var realtime: RealtimeSources? = null
         private var httpStack: HttpStack? = null
         private var pooledEngine: PooledEngine? = null
@@ -1615,6 +1642,34 @@ public class SuperPlayer private constructor(
         public fun setOutput(output: PlaybackOutput): Builder = apply { this.output = output }
 
         /**
+         * Hands every decoded frame of this player's video to [output] before it is shown (ADR-0022).
+         *
+         * ```kotlin
+         * val player = SuperPlayer.Builder(context)
+         *     .setFrameOutput(VideoEffects.frameOutput(segmentation))
+         *     .build()
+         * ```
+         *
+         * The handle is `superplayer-effects`', which lays the consumer's [FrameOutput] on Media3's
+         * effect pipeline, and this call is the only thing that turns any of it on. **Fixed for the
+         * player's lifetime**: Media3 sets its pipeline up before `prepare()`, so the effect is laid as
+         * the engine is built, and what changes during playback is what the output does inside
+         * [FrameOutput.process] (rule 2).
+         *
+         * Beside [setOutput] rather than through it, and both may be set: frame-rate matching and the
+         * display watch act on the surface the pipeline renders to, while tunneling, which would carry
+         * frames past the pipeline, is not laid on a player that runs a frame output (rule 4).
+         *
+         * **Off, with a reason, on a player that can play protected or realtime content**:
+         * with [setDrm] or [setRealtime] the player builds and plays exactly as it would without this
+         * call, and [SuperPlayer.frameOutputOffReason] says why — never an error (rule 6).
+         *
+         * Leave it unset and `setVideoEffects` is never called, nothing is allocated and no class of the
+         * module is loaded — which is rule 9, and is counted rather than asserted about.
+         */
+        public fun setFrameOutput(output: PlaybackFrameOutput): Builder = apply { this.frameOutput = output }
+
+        /**
          * Plays realtime streams through [sources]: the transports this player reaches, and the URI
          * schemes that reach them.
          *
@@ -1750,7 +1805,15 @@ public class SuperPlayer private constructor(
             // And the output, per player for the same reason: what it fills holds one player's surface
             // (ADR-0014 rule 3). An output never set fills nothing, which is rule 14.
             (output as? EngineOutputExtension)?.configureEngine(configuration)
+            // And the frame output, per player, and only where it is on: a player built with protection
+            // or for realtime has it off for its lifetime, so its extension is never asked and nothing of
+            // the module runs there (ADR-0022 rules 6 and 9). An output never set fills nothing.
+            val frameOutputOff = frameOutputOffReason(frameOutput, protected = drm != null, realtime = realtime != null)
+            if (frameOutputOff == null) (frameOutput as? EngineFrameOutputExtension)?.configureEngine(configuration)
             engineConfigurator?.invoke(configuration)
+            // What is laid is decided here, after the test seam, so that an effect filled by any hand is
+            // still not laid on a player whose output is off.
+            val videoEffect = configuration.frameOutput?.takeIf { frameOutputOff == null }
             configuration.clock?.let(engineBuilder::setClock)
             configuration.renderersFactory?.let(engineBuilder::setRenderersFactory)
             // A filled output slot is the binding's to ask the display with, and two callers of
@@ -1803,7 +1866,9 @@ public class SuperPlayer private constructor(
             val reselectingSelector = configuration.videoOutput?.let {
                 ReselectingTrackSelector(context, trackSelectionFactory ?: AdaptiveTrackSelection.Factory()).apply {
                     setParameters(buildUponParameters().setAllowInvalidateSelectionsOnRendererCapabilitiesChange(true))
-                    setParameters(decision.output.applyTo(parameters))
+                    // Not where a frame output runs: a tunneled path hands frames to the display past
+                    // the effect pipeline, so the decision's half yields (ADR-0022 rule 4).
+                    if (videoEffect == null) setParameters(decision.output.applyTo(parameters))
                 }
             }
             when {
@@ -1839,6 +1904,9 @@ public class SuperPlayer private constructor(
             engineBuilder.setMediaSourceFactory(mediaSourceFactory)
 
             val engine = engineBuilder.build()
+            // The effect pipeline, set up once and before anything can prepare the engine — nothing
+            // outside this method holds it yet — which is the first of Media3's limits (ADR-0022 rule 2).
+            videoEffect?.let { engine.setVideoEffects(listOf(it)) }
             // The selection half, laid into the parameters only where no target owns it. Built upon
             // rather than replaced, so the engine's own device-derived defaults survive the
             // ceilings; a consumer setting their own parameters afterwards overrides this, and no
@@ -1888,6 +1956,7 @@ public class SuperPlayer private constructor(
                 // The realtime slot's facade half: the schemes alone, empty on every player without
                 // `setRealtime`, so a player that has none refuses nothing (ADR-0018 rule 5).
                 realtimeSchemes = realtime?.schemes.orEmpty(),
+                frameOutputOff = frameOutputOff,
             )
 
             // The first pooled player's components become the pool's. The factory handed on is the

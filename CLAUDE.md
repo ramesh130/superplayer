@@ -9,7 +9,7 @@ Four Gradle builds, not one. Mistaking them for a single build is the usual firs
 
 | Build | What it is |
 | --- | --- |
-| root | the 14 `superplayer-*` library modules, listed in `settings.gradle.kts` — 13 published, and `superplayer-moq` deliberately not (ADR-0017 rule 1's #364 addendum) |
+| root | the 15 `superplayer-*` library modules, listed in `settings.gradle.kts` — 14 published, and `superplayer-moq` deliberately not (ADR-0017 rule 1's #364 addendum) |
 | `build-logic/` | an **included build** holding the convention plugins every module applies |
 | `demo/` | a **separate** build resolving the library from published Maven coordinates |
 | `benchmark/` | a **separate** build, the same way, running `PRD.md` §6's matrix |
@@ -1387,11 +1387,33 @@ statistics are not events. `MoqSessionStatisticsTest` drives all seven claims th
 assertable, with `noStatistics`, `statisticsMissingTheReceiveRate` and `statisticsThatFail` the
 controls. #354 reports the missing counters upstream and blocks nothing.
 
+`superplayer-effects` is ADR-0022's Android half (#406), and phase 8 by argument rather than by
+`PRD.md` — the roadmap schedules no Android frame output, and the record it implements amends Phase 8's
+output slot, which `docs/modules.md` says where the number is. A consumer implements core's public
+`FrameOutput` — handed a `VideoFrame` (a GL texture name and its size) and a presentation time, it
+returns the frame to show at that time, so Media3's refusal of timestamp-changing effects is the
+signature's — and hands `VideoEffects.frameOutput(output)` to `SuperPlayer.Builder.setFrameOutput` or
+`PlayerPool.Builder.setFrameOutput`. The module is core's **eleventh** Kotlin friend and carries
+`media3-effect`, so core does not: it fills the **second** output slot, `EngineConfiguration.frameOutput`,
+with one `GlEffect` whose shader program hands each frame to the consumer and copies back what it
+returns, and core calls `setVideoEffects` once, as the engine is built and before anything can prepare
+it. Three things are core's and not the module's. **Tunneling yields**: the decision's half is not laid
+where a frame output runs, and `playbackDecision` keeps saying what was asked. **A player built with
+`setDrm` or `setRealtime` has the output off for its lifetime** — the extension is never asked, an effect
+filled by any other hand is not laid, the player plays exactly as it would without it, and
+`player.frameOutputOffReason` is `PROTECTED_CONTENT` or `REALTIME`, never an error; protection is named
+where both apply, and it covers a protected player's clear items too. And **pays nothing** is counted by
+`SuperPlayerFrameOutputSeamTest` across both slots. The observation is `PlaybackHarness.videoEffectsDeliveries`,
+read at the video renderer Media3 delivers the list to, with whether it arrived before the renderer was
+first enabled; `FrameOutputPlaybackTest` plays clear video and protected content to the end through it.
+**Nothing under `check` runs a GL pipeline**, so a frame processed, on time, and what the surface then
+shows are a device's, which `docs/testing.md`'s *A frame output* says.
+
 Every other library module is still an empty placeholder: they exist so boundaries are fixed and
 enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`,
 `superplayer-abr`, `superplayer-cache`, `superplayer-preload`, `superplayer-resilience`,
 `superplayer-drm`, `superplayer-offline`, `superplayer-tv`, `superplayer-diagnostics`,
-`superplayer-realtime`, `superplayer-moq` and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
+`superplayer-realtime`, `superplayer-moq`, `superplayer-effects` and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
 requirements, and the phase table are what the issues are cut from.
 
 `benchmark/` is the fourth build and the phases' exit criteria: `PRD.md` §6's fixed matrix — six
@@ -1735,7 +1757,7 @@ repository.
   document is prose and says so. Rule 8 is #329's, and it is built:
   `./gradlew release --release-version=<x.y.z>` is the one supported way to cut a release. It
   depends on the root's `check` **and every module's**, since a dependency on the root's alone
-  reaches none of the fourteen. It then refuses before it writes a byte: a dirty tree, a version
+  reaches none of the fifteen. It then refuses before it writes a byte: a dirty tree, a version
   that is not a successor of the last release or is smaller than the surface diff requires, an
   empty `Unreleased`, a tag that exists. Only then does it move the catalog, stamp `CHANGELOG.md`,
   re-record `api/released/`, publish, tag and open the next snapshot. It **commits and tags

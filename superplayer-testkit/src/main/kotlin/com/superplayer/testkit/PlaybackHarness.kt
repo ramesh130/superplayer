@@ -60,6 +60,7 @@ import com.superplayer.core.DiagnosticEnvironment
 import com.superplayer.core.DownloadEnvironment
 import com.superplayer.core.HttpStack
 import com.superplayer.core.PlaybackDrm
+import com.superplayer.core.PlaybackFrameOutput
 import com.superplayer.core.PlaybackOutput
 import com.superplayer.core.PlaybackPolicy
 import com.superplayer.core.PlaybackProfile
@@ -245,6 +246,9 @@ public class PlaybackHarness : ExternalResource() {
      * builds is given a surface that records what is asked of the display, so what an output requests
      * is read back through [frameRateRequests]; the display it matches is [DeviceStatement]'s.
      *
+     * [frameOutput], when set, is what `SuperPlayer.Builder.setFrameOutput` takes. What its module lays
+     * on the engine is read back through [videoEffectsDeliveries], at the video renderer.
+     *
      * [bottom] chooses how the bytes make the last step: through the transport slot, as every test
      * here did before #310, or through an `HttpTransport` a consumer wrote. Everything else — the
      * origin, [faults], [network], the clock — is the same either way, which is what makes a body
@@ -273,6 +277,7 @@ public class PlaybackHarness : ExternalResource() {
         output: PlaybackOutput? = null,
         bottom: ChainBottom = ChainBottom.HARNESS_TRANSPORT_SLOT,
         httpStack: HttpStack? = null,
+        frameOutput: PlaybackFrameOutput? = null,
     ): SuperPlayer {
         // Protected content needs a `DrmSessionManagerProvider` on the media source factory, and on a
         // SuperPlayer that provider comes from the DRM slot ADR-0012 rule 3 puts on core's engine
@@ -299,7 +304,7 @@ public class PlaybackHarness : ExternalResource() {
             "Described content has no transport to reach through an HttpTransport: play " +
                 "TestContent.hls() or TestContent.dash() over ChainBottom.CONSUMERS_HTTP_TRANSPORT."
         }
-        return buildPlayerOver(composeTransport(content, faults, network), content, profile, telemetry, policy, cache, resilience, drm, pooled = null, output = output, bottom = bottom, httpStack = httpStack)
+        return buildPlayerOver(composeTransport(content, faults, network), content, profile, telemetry, policy, cache, resilience, drm, pooled = null, output = output, bottom = bottom, httpStack = httpStack, frameOutput = frameOutput)
     }
 
     /**
@@ -319,6 +324,7 @@ public class PlaybackHarness : ExternalResource() {
         output: PlaybackOutput? = null,
         bottom: ChainBottom = ChainBottom.HARNESS_TRANSPORT_SLOT,
         httpStack: HttpStack? = null,
+        frameOutput: PlaybackFrameOutput? = null,
     ): SuperPlayer {
         var built: ControllableVideoRenderer? = null
         val transfers = transport.transfers
@@ -331,6 +337,7 @@ public class PlaybackHarness : ExternalResource() {
             .apply { resilience?.let { setResilience(it) } }
             .apply { drm?.let { setDrm(it) } }
             .apply { output?.let { setOutput(it) } }
+            .apply { frameOutput?.let { setFrameOutput(it) } }
             // The consumer's half of the bottom, chosen exactly as a consumer chooses it. The
             // transport slot is left empty below when this is set, because a filled slot wins
             // (ADR-0016 rule 3) and a stack that resolved nothing would be invisible.
@@ -1192,6 +1199,17 @@ public class PlaybackHarness : ExternalResource() {
      * a sideband stream (`docs/testing.md`, *A TV device*).
      */
     public fun videoRendererTunneled(player: Player): Boolean? = rendererFor(player).enabledTunneled
+
+    /**
+     * Every effect list the engine handed [player]'s video renderer, in the order delivered — empty on a
+     * player whose engine was never given one.
+     *
+     * Read where Media3 delivers `ExoPlayer.setVideoEffects`, the renderer's own message, so it is the
+     * list *reaching the engine* and whether it got there before the renderer was first enabled. It is
+     * not evidence that a frame passed through an effect: the renderer is Media3's fake and Robolectric has
+     * no GPU, so no effect pipeline runs (`docs/testing.md`, *A frame output*).
+     */
+    public fun videoEffectsDeliveries(player: Player): List<VideoEffectsDelivery> = rendererFor(player).videoEffectsDeliveries
 
     /**
      * Every frame-rate request made so far on the surfaces this harness gave [player], withdrawals

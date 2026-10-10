@@ -37,14 +37,22 @@ dependencies {
 //
 // Here rather than in the convention plugin beside `updateGoldenTraces`: every module has golden
 // traces to hold, and only this one generates the corpus the Swift port is held to.
+//
+// The HLS half of `HostileManifests` (#412) is held the same way, under `ios/Tests/Fixtures/hostile/`,
+// by `HostileManifestsFixturesTest`: a directory of its own with an index of its own, because an entry
+// carries a citation, a cause and declared headers that a good stream's index has no column for.
 val iosFixtures = rootProject.layout.projectDirectory.dir("ios/Tests/Fixtures/synthetic")
 val iosFixturesFromModule = iosFixtures.asFile.relativeTo(projectDir).invariantSeparatorsPath
+val hostileFixtures = rootProject.layout.projectDirectory.dir("ios/Tests/Fixtures/hostile")
+val hostileFixturesFromModule = hostileFixtures.asFile.relativeTo(projectDir).invariantSeparatorsPath
 val updatingIosFixtures = gradle.startParameter.taskNames.any { it.substringAfterLast(':') == "updateIosFixtures" }
 
 tasks.withType<Test>().configureEach {
     systemProperty("superplayer.iosFixtures.dir", iosFixturesFromModule)
+    systemProperty("superplayer.hostileFixtures.dir", hostileFixturesFromModule)
     systemProperty("superplayer.iosFixtures.mode", if (updatingIosFixtures) "update" else "check")
     inputs.files(fileTree(iosFixtures)).withPropertyName("iosFixtures").withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.files(fileTree(hostileFixtures)).withPropertyName("hostileFixtures").withPathSensitivity(PathSensitivity.RELATIVE)
     if (updatingIosFixtures) {
         outputs.upToDateWhen { false }
         filter { includeTestsMatching("*FixturesTest") }
@@ -53,6 +61,6 @@ tasks.withType<Test>().configureEach {
 
 tasks.register("updateIosFixtures") {
     group = "verification"
-    description = "Rewrites ios/Tests/Fixtures/synthetic/ from what this module's generators produce now."
+    description = "Rewrites ios/Tests/Fixtures/synthetic/ and hostile/ from what this module's generators produce now."
     dependsOn("testDebugUnitTest")
 }

@@ -1,0 +1,18 @@
+# id	severity	file	name	value
+hls-cached-live-playlist	severe	media.m3u8	Cache-Control	public, max-age=600
+hls-cached-live-playlist	severe	segment0.aac	Cache-Control	no-store
+hls-cached-live-playlist	severe	segment1.aac	Cache-Control	no-store
+hls-cached-live-playlist	severe	segment2.aac	Cache-Control	no-store
+hls-cached-live-playlist	severe	segment3.aac	Cache-Control	no-store
+hls-cors-refuses-credentials	severe	master.m3u8	Access-Control-Allow-Credentials	true
+hls-cors-refuses-credentials	severe	master.m3u8	Access-Control-Allow-Origin	*
+hls-cors-refuses-credentials	severe	media.m3u8	Access-Control-Allow-Credentials	true
+hls-cors-refuses-credentials	severe	media.m3u8	Access-Control-Allow-Origin	*
+hls-cors-refuses-credentials	severe	segment0.aac	Access-Control-Allow-Credentials	true
+hls-cors-refuses-credentials	severe	segment0.aac	Access-Control-Allow-Origin	*
+hls-cors-refuses-credentials	severe	segment1.aac	Access-Control-Allow-Credentials	true
+hls-cors-refuses-credentials	severe	segment1.aac	Access-Control-Allow-Origin	*
+hls-cors-refuses-credentials	severe	segment2.aac	Access-Control-Allow-Credentials	true
+hls-cors-refuses-credentials	severe	segment2.aac	Access-Control-Allow-Origin	*
+hls-cors-refuses-credentials	severe	segment3.aac	Access-Control-Allow-Credentials	true
+hls-cors-refuses-credentials	severe	segment3.aac	Access-Control-Allow-Origin	*

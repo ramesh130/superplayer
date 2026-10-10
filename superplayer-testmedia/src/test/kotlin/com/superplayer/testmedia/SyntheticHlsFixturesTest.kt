@@ -18,7 +18,6 @@ package com.superplayer.testmedia
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -43,23 +42,7 @@ class SyntheticHlsFixturesTest {
 
     @Test
     fun theCommittedFixturesAreWhatTheGeneratorsProduceNow() {
-        // Set by this module's build script, which owns the path; unset, the test cannot know it.
-        val directory = File(checkNotNull(System.getProperty(DIRECTORY_PROPERTY)) { "$DIRECTORY_PROPERTY is unset" })
-        val expected = expectedFixtures()
-        if (System.getProperty(MODE_PROPERTY) == "update") {
-            directory.deleteRecursively()
-            write(expected, directory)
-            return
-        }
-        val differences = differences(expected, directory)
-        if (differences.isNotEmpty()) {
-            fail(
-                "ios/Tests/Fixtures/synthetic/ is not what the Kotlin generators produce now:\n" +
-                    differences.joinToString("\n") { "  $it" } +
-                    "\nIf the generator change is deliberate, run $UPDATE_COMMAND alone, then check, " +
-                    "and commit the fixtures with the change; the Swift port must then follow.",
-            )
-        }
+        IosFixtures.checkOrUpdate(expectedFixtures(), DIRECTORY_PROPERTY, "ios/Tests/Fixtures/synthetic/")
     }
 
     // The controls: a comparison that passed everything would make the test above say nothing.
@@ -67,35 +50,35 @@ class SyntheticHlsFixturesTest {
     @Test
     fun aDirectoryHoldingExactlyTheGeneratedBytesHasNoDifferences() {
         val directory = temporary.newFolder()
-        write(expectedFixtures(), directory)
+        IosFixtures.write(expectedFixtures(), directory)
 
-        assertEquals(emptyList<String>(), differences(expectedFixtures(), directory))
+        assertEquals(emptyList<String>(), IosFixtures.differences(expectedFixtures(), directory))
     }
 
     @Test
     fun oneByteChangedInOneSegmentIsNamed() {
         val directory = temporary.newFolder()
         val expected = expectedFixtures()
-        write(expected, directory)
+        IosFixtures.write(expected, directory)
         val segment = File(directory, "hls-vod/" + SyntheticHlsStream.segmentName(1))
         val bytes = segment.readBytes()
         bytes[bytes.size - 1] = (bytes[bytes.size - 1] + 1).toByte()
         segment.writeBytes(bytes)
 
-        assertEquals(listOf("hls-vod/segment1.aac differs"), differences(expected, directory))
+        assertEquals(listOf("hls-vod/segment1.aac differs"), IosFixtures.differences(expected, directory))
     }
 
     @Test
     fun aMissingFileAndAnExtraFileAreBothNamed() {
         val directory = temporary.newFolder()
         val expected = expectedFixtures()
-        write(expected, directory)
+        IosFixtures.write(expected, directory)
         File(directory, "hls-ladder/media-high.m3u8").delete()
         File(directory, "hls-vod/segment9.aac").writeBytes(byteArrayOf(0))
 
         assertEquals(
             listOf("hls-ladder/media-high.m3u8 is missing", "hls-vod/segment9.aac is not generated"),
-            differences(expected, directory),
+            IosFixtures.differences(expected, directory),
         )
     }
 
@@ -110,8 +93,6 @@ class SyntheticHlsFixturesTest {
 
     private companion object {
         const val DIRECTORY_PROPERTY = "superplayer.iosFixtures.dir"
-        const val MODE_PROPERTY = "superplayer.iosFixtures.mode"
-        const val UPDATE_COMMAND = "./gradlew updateIosFixtures"
         const val INDEX_FILE = "index.tsv"
 
         /**
@@ -163,27 +144,6 @@ class SyntheticHlsFixturesTest {
                 }
             }
             put(INDEX_FILE, index.toString().toByteArray(Charsets.UTF_8))
-        }
-
-        fun write(files: Map<String, ByteArray>, directory: File) = files.forEach { (path, bytes) ->
-            File(directory, path).apply { parentFile?.mkdirs() }.writeBytes(bytes)
-        }
-
-        /** What differs between [expected] and [directory], one line per file, in path order. */
-        fun differences(expected: Map<String, ByteArray>, directory: File): List<String> {
-            val committed = directory.walkTopDown()
-                .filter { it.isFile && it.name != ".DS_Store" }
-                .associateBy { it.relativeTo(directory).invariantSeparatorsPath }
-            return (expected.keys + committed.keys).sorted().mapNotNull { path ->
-                val want = expected[path]
-                val have = committed[path]
-                when {
-                    want == null -> "$path is not generated"
-                    have == null -> "$path is missing"
-                    !want.contentEquals(have.readBytes()) -> "$path differs"
-                    else -> null
-                }
-            }
         }
     }
 }

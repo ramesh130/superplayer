@@ -80,9 +80,14 @@ origin.responses()                         // how each was answered: status, fau
 - **Two hosts are one origin with two listeners**: `.hls(hosts: 2)` or `.liveHls(hosts: 2)`, on one
   publication clock, the multivariant playlist listing each variant again on the second host as a
   redundant stream; `origin.url(path:host:)` addresses one, and a fault's `host:` narrows to it.
+- **The HLS hostile corpus** (#412) is `.hostile(entry)` with
+  `FaultScript.Builder().addDeclaredResponseHeaders(of: entry)`; its fixtures are under
+  `ios/Tests/Fixtures/hostile/`, and `HostileManifestCorpusTests` records what a stock `AVPlayer`
+  does with each entry (`docs/testing.md`, *The hostile corpus on iOS*).
 - **One place a test measures time**: `NetworkShapingTests` holds a shaped transfer to the trace's
   rate as a bound — never faster, exactly, and within a stated slack slower — because #410's
-  acceptance asks for a rate; ADR-0021 rule 4's #410 addendum records it. Nothing else does.
+  acceptance asks for a rate; ADR-0021 rule 4's #410 addendum records it. The hostile corpus's
+  record reads time only to classify an outcome (its #412 addendum); nothing else does.
 
 ## Commands
 

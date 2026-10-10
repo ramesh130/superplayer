@@ -33,6 +33,7 @@ EnumElement NetworkTransport.wifi : (SuperPlayerTestkit.NetworkTransport.Type) -
 EnumElement ResourceKind.initialization : (SuperPlayerTestkit.ResourceKind.Type) -> SuperPlayerTestkit.ResourceKind
 EnumElement ResourceKind.manifest : (SuperPlayerTestkit.ResourceKind.Type) -> SuperPlayerTestkit.ResourceKind
 EnumElement ResourceKind.mediaSegment : (SuperPlayerTestkit.ResourceKind.Type) -> SuperPlayerTestkit.ResourceKind
+Func FaultScript.Builder.addDeclaredResponseHeaders(of:) : SuperPlayerTestkit.FaultScript.Builder, SuperPlayerTestMedia.HostileStream
 Func FaultScript.Builder.addLatencyMs(_:kind:index:firstAttempts:host:) : SuperPlayerTestkit.FaultScript.Builder, Swift.Int64, SuperPlayerTestkit.ResourceKind?, Swift.Int?, Swift.Int?, Swift.Int?
 Func FaultScript.Builder.addResponseHeaders(_:kind:index:host:) : SuperPlayerTestkit.FaultScript.Builder, [Swift.String : Swift.String], SuperPlayerTestkit.ResourceKind?, Swift.Int?, Swift.Int?
 Func FaultScript.Builder.build() : SuperPlayerTestkit.FaultScript
@@ -58,6 +59,7 @@ Func PlaybackHarness.until(_:timeout:isolation:_:) : (), Swift.String, Swift.Dur
 Func ResourceKind.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerTestkit.ResourceKind, SuperPlayerTestkit.ResourceKind [static]
 Func ResourceKind.hash(into:) : (), Swift.Hasher
 Func TestContent.hls(segmentCount:variantCount:hosts:) : SuperPlayerTestkit.TestContent, Swift.Int, Swift.Int, Swift.Int [static]
+Func TestContent.hostile(_:) : SuperPlayerTestkit.TestContent, SuperPlayerTestMedia.HostileStream [static]
 Func TestContent.liveHls(hosts:) : SuperPlayerTestkit.TestContent, Swift.Int [static]
 Func ThroughputTrace.Builder.add(durationMs:bandwidthBps:transport:rttMs:) : SuperPlayerTestkit.ThroughputTrace.Builder, Swift.Int64, Swift.Int64, SuperPlayerTestkit.NetworkTransport, Swift.Int64
 Func ThroughputTrace.Builder.build() : SuperPlayerTestkit.ThroughputTrace [throwing]

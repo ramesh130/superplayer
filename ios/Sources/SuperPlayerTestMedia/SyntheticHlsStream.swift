@@ -77,8 +77,9 @@ public enum SyntheticHlsStream {
     public static let declaredCodecs = "mp4a.40.2"
 
     /// Two seconds, as a `Double` because it is written into `EXTINF` as one: Kotlin prints `2.0`
-    /// and so does Swift, which is part of what keeps the playlists byte-equal.
-    private static let segmentDurationSeconds = 2.0
+    /// and so does Swift, which is part of what keeps the playlists byte-equal. Internal, because
+    /// `HostileManifests` writes its own playlists over the same segments.
+    static let segmentDurationSeconds = 2.0
 
     /// One segment's duration, as the playlists declare it in `EXTINF`.
     public static let segmentDurationMs: Int64 = 2_000
@@ -226,11 +227,27 @@ public enum SyntheticHlsStream {
     /// spec: ISO/IEC 13818-7 §6.2, `adts_fixed_header` followed by `adts_variable_header`, packed
     /// MSB-first across 7 bytes — the Kotlin `adtsSegment` carries the byte-by-byte layout.
     /// `buffer_fullness` is all ones, which §6.2.2 defines as "variable rate".
-    private static func adtsSegment(_ index: Int) -> [UInt8] {
-        let startSeconds = Double(index) * segmentDurationSeconds
-        let frameLength = adtsHeaderBytes + adtsPayloadBytes
+    static func adtsSegment(_ index: Int) -> [UInt8] {
+        adtsSegment(
+            startSeconds: Double(index) * segmentDurationSeconds,
+            durationSeconds: segmentDurationSeconds)
+    }
+
+    /// A segment starting at `startSeconds`, `durationSeconds` long, each frame `sizeScale` times
+    /// the good stream's — the Kotlin `adtsSegment(startSeconds, durationSeconds, sizeScale)`, and
+    /// there for its reason: `HostileManifests`' defects are sometimes in the media's shape rather
+    /// than in its manifest — a segment ten seconds long, a timestamp that restarts at a splice, a
+    /// rung whose real bitrate is a multiple of this one's. The good stream never passes them.
+    static func adtsSegment(startSeconds: Double, durationSeconds: Double, sizeScale: Int = 1)
+        -> [UInt8]
+    {
+        let frameLength = (adtsHeaderBytes + adtsPayloadBytes) * sizeScale
+        // spec: ISO/IEC 13818-7 §6.2 — frame_length is a 13-bit field.
+        precondition(
+            frameLength < (1 << 13), "An ADTS frame of \(frameLength) bytes does not fit its header"
+        )
         let frameCount = Int(
-            (segmentDurationSeconds * Double(samplingFrequencyHz) / Double(samplesPerFrame))
+            (durationSeconds * Double(samplingFrequencyHz) / Double(samplesPerFrame))
                 .rounded(.up))
         var out = id3TimestampTag(startSeconds: startSeconds)
         for _ in 0..<frameCount {

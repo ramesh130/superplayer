@@ -106,6 +106,16 @@ them under `Added` would be worse than stating them here:
   is set, with the asset's `httpSessionIdentifier` as `sid` — so `docs/telemetry-schema.md` keeps the
   `sid` join on Apple platforms rather than marking it Android-only. `CmcdFindingTests` pins what a
   stock `AVPlayer` sent with and without each candidate; the implementation is #446.
+- **The HLS hostile corpus on iOS (#412).** `SuperPlayerTestMedia` gains `HostileManifests` and
+  `HostileStream`: every HLS entry of the Kotlin corpus at every severity, each with its id,
+  citation, cause, magnitude and declared response headers, and the DASH entries not ported
+  (ADR-0020). The Kotlin generator's HLS entries are committed under `ios/Tests/Fixtures/hostile/`
+  with an index of their fields and a table of their headers, and each platform's check holds its
+  generator to them (`./gradlew updateIosFixtures` rewrites them); the Kotlin token entries take the
+  instant they are minted at internally so a fixture of them is stable, and no Kotlin output moved.
+  `SuperPlayerTestkit` serves an entry with `TestContent.hostile(_:)` and its headers with
+  `FaultScript.Builder.addDeclaredResponseHeaders(of:)`, and `HostileManifestCorpusTests` records
+  what a stock `AVPlayer` does with each entry rather than asserting it handled.
 - **The iOS telemetry vocabulary (#408).** `SuperPlayerCore` gains `TelemetryEvent` — the fifteen
   events of `docs/telemetry-schema.md`, field for field, at `schemaVersion` 2, held to the document
   by a test on each platform — with `TelemetrySink`, `.composite(...)`, `TelemetryCollector`, made

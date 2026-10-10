@@ -1,0 +1,4 @@
+superplayer-throughput-trace 1
+at-end hold
+10000 20000000 WIFI
+1000 5000000 CELLULAR

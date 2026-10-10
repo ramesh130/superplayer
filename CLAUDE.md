@@ -1457,7 +1457,7 @@ where the two disagree `PRD.md` is right.
 ./gradlew assemble check          # build, lint, tests, repo verification, tracked API surface, format
 ./gradlew updateApiSurface        # regenerate api/<module>.api after a deliberate API change
 ./gradlew updateGoldenTraces      # regenerate src/test/golden/*.trace after a deliberate behaviour change; run alone, then check
-./gradlew updateIosFixtures       # regenerate ios/Tests/Fixtures/synthetic/ after a deliberate generator change; run alone, then check (docs/testing.md)
+./gradlew updateIosFixtures       # regenerate ios/Tests/Fixtures/synthetic/ and throughput-traces/ after a deliberate generator or trace-reader change; run alone, then check (docs/testing.md)
 ./gradlew spotlessApply           # reformat and stamp the Apache-2.0 header on every .kt file
 ./gradlew convertThroughputTrace --from=… --transport=… --input=… --output=…   # docs/throughput-traces.md
 ./gradlew publishToMavenLocal     # required before the demo will build

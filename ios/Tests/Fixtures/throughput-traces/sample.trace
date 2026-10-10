@@ -1,0 +1,11 @@
+superplayer-throughput-trace 1
+# Written by hand, and read by both platforms: every line the grammar in
+# docs/throughput-traces.md has — a comment, a blank line, the at-end directive,
+# and stretches with and without their round trip, a dropout among them.
+
+at-end hold
+2000 5000000 WIFI
+1000 0 CELLULAR 80
+2000 5000000 CELLULAR 80
+500   1000000   ETHERNET
+1500 3 UNKNOWN 0

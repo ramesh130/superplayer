@@ -71,6 +71,15 @@ Three rules follow, and they are binding:
    contributor being blocked at 2am by a missing wrapper method. The exception is exactly one
    member. It does not license re-exporting any other `@UnstableApi` type, and anything reachable
    only through the escape hatch is outside SuperPlayer's compatibility promise.
+
+   *Addendum (2026-10-10, #396).* **On Apple platforms this rule and rule 1 are restated, not
+   relaxed.** [ADR-0020](0020-compose-on-avfoundations-avplayer-and-bring-no-other-engine.md) rules
+   1 to 3 are what they become where the engine is AVFoundation's: no second engine, a facade that
+   owns rather than subclasses an `AVPlayer`, and `player.avPlayer` as the one escape hatch, outside
+   the compatibility promise exactly as `player.exoPlayer` is. AVFoundation has no `@UnstableApi`,
+   so what keeps engine types off the Swift surface is the shared vocabulary rather than
+   instability. Rule 3 has no Apple counterpart: the engine ships with the OS, and the deployment
+   floor (ADR-0020 rule 9) stands in for a pinned version.
 3. **One pinned Media3 version.** Media3 versions are declared in exactly one place — the Gradle
    version catalog — and every module resolves through it. Modules document the Media3 version
    range they support.

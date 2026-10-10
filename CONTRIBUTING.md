@@ -85,6 +85,11 @@ committed to, and `Player`-compatible types wherever a `Player`-shaped concept e
 idiomatic for the ecosystem and it is independently derived from Apache-2.0 code the project already
 builds on.
 
+On Apple platforms the tie-breaker is AVFoundation's conventions and the Swift API Design Guidelines
+instead — a configuration value rather than a builder, for one — as
+[ADR-0020](docs/adr/0020-compose-on-avfoundations-avplayer-and-bring-no-other-engine.md) rule 5
+decides. Every other clean-room rule binds the Swift code unchanged.
+
 ### 4. Cite a public source for every non-obvious algorithm
 
 Any algorithm, constant, heuristic, or protocol behavior that a reader would not derive

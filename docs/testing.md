@@ -11,6 +11,12 @@ reason *The conformance test a consumer runs* gives — an HTTP client's obligat
 puts on a wire, and there is no wire in any other fake here. The eighth is #364's and departs on a
 different axis: `MoqFfiLinkageTest` drives **no SuperPlayer API at all** and loads a real native
 library into the test JVM, because what it checks is whether a natively built dependency links.
+
+**The Swift products are held to a different seam**, decided in
+[ADR-0021](adr/0021-test-ios-against-a-loopback-origin-and-run-its-checks-in-one-script.md): AVFoundation
+ships no fakes and `AVPlayer` takes no fake transport, so every iOS test plays from a loopback HTTP
+origin started per test — the seventh exception's carve-out widened to all of them — on real time,
+with structural goldens. Everything in this document binds the Kotlin modules as written.
 *The MoQ bindings* argues it, and states what no automated run can show.
 
 `SuperPlayerTransferChainTest` keeps the HTTP stack `SuperPlayer.Builder` puts at the bottom of its

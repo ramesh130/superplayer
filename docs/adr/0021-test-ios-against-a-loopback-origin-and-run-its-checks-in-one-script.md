@@ -2,6 +2,9 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-10
+- **Amended:** 2026-10-11 (#400), by an addendum at rule 1 recording what a test may read through
+  `player.avPlayer` while the facade publishes no state of its own. It narrows nothing the rule
+  decided and lapses as the facade's state arrives.
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
 - **Refines:** [`docs/testing.md`](../testing.md)'s rule — *no device and no network, through the
@@ -69,6 +72,21 @@ rule names the ticket that brings its enforcement, and *What nothing enforces* s
    `xcodebuild test` and every CI image run without a second toolchain decision, and because
    `FrameSourceConformance`'s Swift port must name no framework anyway (#433). *Enforced by review;
    no tool can tell an assertion past the facade from one through it, on either platform.*
+
+   *Addendum (2026-10-11, #400).* The first facade publishes no state: `SuperPlayer` owns an
+   `AVPlayer` and is not one (ADR-0020 rule 2), so it has no `play()`, no position and no playback
+   status of its own, and a consumer's transport controls and position readout — their own buttons,
+   or `AVPlayerViewController`'s — are `player.avPlayer`'s. Until the facade publishes that state, a
+   test may do through `player.avPlayer` exactly what a consumer's controls do and nothing more:
+   call `play()` and `pause()`, and read `currentTime()`, `timeControlStatus` and an item's
+   end-of-playback notification. What SuperPlayer *adds* is still asserted through SuperPlayer —
+   identity through `currentContentId`, start and resume positions as where the engine was first
+   seen playing — and no test reads AVFoundation state the facade wrote in order to check that the
+   facade wrote it. A package-internal seam a test reaches with `@testable`, such as the observed
+   register's count (ADR-0020 rule 13), is past the facade too and is admitted where the test's own
+   comment argues why no public reading exists; `docs/testing.md`'s *The iOS harness* lists each.
+   This lapses, reading by reading, as the facade publishes a position or a state (#401, and the
+   telemetry vocabulary of #408), from which point a test reads that instead.
 
 2. **The harness is a loopback HTTP origin, started per test, and the carve-out is widened to every
    iOS test.** `SuperPlayerTestkit` starts an HTTP/1.1 server on `127.0.0.1` at an ephemeral port

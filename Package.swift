@@ -48,7 +48,13 @@ let package = Package(
     targets: [
         .target(
             name: "SuperPlayerCore",
-            path: "ios/Sources/SuperPlayerCore"
+            path: "ios/Sources/SuperPlayerCore",
+            // Named rather than left to `import AVKit`'s autolinking: the one AVKit member core
+            // uses, `AVPlayerItem.externalMetadata`, is an Objective-C category reached by message
+            // send and references no symbol, so the linker drops an autolinked AVKit it sees unused
+            // and the setter is then an unrecognized selector at run time — observed as exactly
+            // that crash under Xcode 27 and the iOS 27.1 simulator before this line was added.
+            linkerSettings: [.linkedFramework("AVKit")]
         ),
         .target(
             name: "SuperPlayerTelemetry",
@@ -158,9 +164,11 @@ let package = Package(
             dependencies: ["SuperPlayerRealtime"],
             path: "ios/Tests/SuperPlayerRealtimeTests"
         ),
+        // Core too, because core's playback tests live here: they need the phase 2 harness, and
+        // core's own test target takes core's phase 1 (docs/testing.md, *The iOS harness*).
         .testTarget(
             name: "SuperPlayerTestkitTests",
-            dependencies: ["SuperPlayerTestkit", "SuperPlayerTestMedia"],
+            dependencies: ["SuperPlayerTestkit", "SuperPlayerTestMedia", "SuperPlayerCore"],
             path: "ios/Tests/SuperPlayerTestkitTests"
         ),
         .testTarget(

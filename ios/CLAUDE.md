@@ -17,11 +17,14 @@ orientation — this file adds only what is different under `ios/`.
 | `ios/check` | the whole definition of passing |
 | `ios/.swift-format` | the format's configuration: four-space indent and 100 columns, as the Kotlin half |
 
-**Every product is empty until its phase.** i0 (#397) is the scaffold alone: twelve products, a
+**Every product is empty until its phase.** i0 (#397) was the scaffold alone: twelve products, a
 placeholder test each, baselines recording no API. `SuperPlayerTestMedia` (#398) and
-`SuperPlayerTestkit` (#399, *The harness* below) are the first to hold code. `SuperPlayerMoQ` is
-not declared yet — its binary target is i9's — and there is no `SuperPlayerCache`, since its content
-is the offline store's.
+`SuperPlayerTestkit` (#399, *The harness* below) are the first to hold code, and `SuperPlayerCore`
+(#400) the first library code: `SuperPlayer(configuration:)` owning an `AVPlayer` as
+`player.avPlayer`, `MediaRequest`, `setMediaRequest(_:)` and `setMediaURL(_:)`, and remembered
+positions, with every notification the facade observes enumerated in `ObservedSignals.swift`
+(ADR-0020 rule 13). `SuperPlayerMoQ` is not declared yet — its binary target is i9's — and there is
+no `SuperPlayerCache`, since its content is the offline store's.
 
 **Dependencies point inward** under `docs/modules.md`'s phase rule, and the phase a product takes is
 the Android module's it ports: `docs/modules.md`'s *iOS products* table is the source, and

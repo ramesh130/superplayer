@@ -1,1 +1,36 @@
 // SuperPlayerCore: public API as ios/check reads it. Regenerate with ios/check --update-api.
+Class SuperPlayer : Sendable
+Constructor MediaRequest.StartPosition.init(from:) : SuperPlayerCore.MediaRequest.StartPosition, any Swift.Decoder [throwing]
+Constructor MediaRequest.init(contentId:sources:startPosition:title:subtitle:artworkURL:) : SuperPlayerCore.MediaRequest, Swift.String, [Foundation.URL], SuperPlayerCore.MediaRequest.StartPosition, Swift.String?, Swift.String?, Foundation.URL?
+Constructor MediaRequest.init(from:) : SuperPlayerCore.MediaRequest, any Swift.Decoder [throwing]
+Constructor SuperPlayer.Configuration.init() : SuperPlayerCore.SuperPlayer.Configuration
+Constructor SuperPlayer.init(configuration:) : SuperPlayerCore.SuperPlayer, SuperPlayerCore.SuperPlayer.Configuration
+Enum MediaRequest.StartPosition : Decodable, Encodable, Equatable, Hashable, Sendable
+EnumElement MediaRequest.StartPosition.at : (SuperPlayerCore.MediaRequest.StartPosition.Type) -> (Swift.Int64) -> SuperPlayerCore.MediaRequest.StartPosition
+EnumElement MediaRequest.StartPosition.beginning : (SuperPlayerCore.MediaRequest.StartPosition.Type) -> SuperPlayerCore.MediaRequest.StartPosition
+EnumElement MediaRequest.StartPosition.resumeFromLastKnown : (SuperPlayerCore.MediaRequest.StartPosition.Type) -> SuperPlayerCore.MediaRequest.StartPosition
+Func MediaRequest.StartPosition.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerCore.MediaRequest.StartPosition, SuperPlayerCore.MediaRequest.StartPosition [static]
+Func MediaRequest.StartPosition.encode(to:) : (), any Swift.Encoder [throwing]
+Func MediaRequest.StartPosition.hash(into:) : (), Swift.Hasher
+Func MediaRequest.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.MediaRequest, SuperPlayerCore.MediaRequest [static]
+Func MediaRequest.encode(to:) : (), any Swift.Encoder [throwing]
+Func MediaRequest.hash(into:) : (), Swift.Hasher
+Func SuperPlayer.Configuration.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.SuperPlayer.Configuration, SuperPlayerCore.SuperPlayer.Configuration [static]
+Func SuperPlayer.Configuration.hash(into:) : (), Swift.Hasher
+Func SuperPlayer.setMediaRequest(_:) : (), SuperPlayerCore.MediaRequest
+Func SuperPlayer.setMediaURL(_:) : (), Foundation.URL
+Struct MediaRequest : Decodable, Encodable, Equatable, Hashable, Sendable
+Struct SuperPlayer.Configuration : Equatable, Hashable, Sendable
+Var MediaRequest.StartPosition.hashValue : Swift.Int { get }
+Var MediaRequest.artworkURL : Foundation.URL? { get }
+Var MediaRequest.contentId : Swift.String { get }
+Var MediaRequest.hashValue : Swift.Int { get }
+Var MediaRequest.sources : [Foundation.URL] { get }
+Var MediaRequest.startPosition : SuperPlayerCore.MediaRequest.StartPosition { get }
+Var MediaRequest.subtitle : Swift.String? { get }
+Var MediaRequest.title : Swift.String? { get }
+Var SuperPlayer.Configuration.hashValue : Swift.Int { get }
+Var SuperPlayer.avPlayer : AVFoundation.AVPlayer { get }
+Var SuperPlayer.configuration : SuperPlayerCore.SuperPlayer.Configuration { get }
+Var SuperPlayer.currentContentId : Swift.String? { get }
+Var SuperPlayer.maxRememberedPositions : Swift.Int [static] { get }

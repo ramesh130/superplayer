@@ -117,6 +117,17 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
  * Restating the live-window rule in this module would make "too short" two definitions that nothing keeps in
  * step, against ADR-0011 rule 1's argument in the shape Phase 9 takes it.
  *
+ * ## The eleventh, of the first shape again
+ *
+ * ADR-0018 rule 11 admitted `superplayer-realtime` as the tenth, of the first shape, and ADR-0022 rule 3
+ * admits `superplayer-effects` as the eleventh, of the same one: what the module reaches is one
+ * core-internal extension interface on the `PlaybackFrameOutput` a consumer passes to `setFrameOutput`,
+ * through which it fills one slot core declared, `EngineConfiguration.frameOutput`. What fills it is a
+ * Media3 `GlEffect` that core hands to `ExoPlayer.setVideoEffects`, both `@UnstableApi`, so no public
+ * call could have carried it instead. What is specific to this one is why it is a module at all rather
+ * than a slot core fills itself: it carries `media3-effect`, which an app that lays no frame output must
+ * not pay for (ADR-0022 rule 9). An instance, not a shape; the ceiling does not move.
+ *
  * ## Why it is not the second seam `docs/testing.md` warns about
  *
  * That warning is about *widening what is configurable*. Nothing is widened here: the same one

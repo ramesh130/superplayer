@@ -95,6 +95,8 @@ class SuperPlayerHarness : ExternalResource() {
         drm: PlaybackDrm? = null,
         output: PlaybackOutput? = null,
         httpStack: HttpStack? = null,
+        frameOutput: PlaybackFrameOutput? = null,
+        realtime: RealtimeSources? = null,
         alsoConfigure: (EngineConfiguration) -> Unit = {},
         alsoConfigureEngine: (ExoPlayer.Builder) -> Unit = {},
         pooled: PooledEngine? = null,
@@ -115,6 +117,8 @@ class SuperPlayerHarness : ExternalResource() {
                 .apply { drm?.let { setDrm(it) } }
                 .apply { output?.let { setOutput(it) } }
                 .apply { httpStack?.let { setHttpStack(it) } }
+                .apply { frameOutput?.let { setFrameOutput(it) } }
+                .apply { realtime?.let { setRealtime(it) } }
                 .setPooledEngine(pooled)
                 .setEngineConfigurator { configuration ->
                     configuration.engine.useHarnessClock(clock)

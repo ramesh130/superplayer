@@ -286,6 +286,7 @@ public class PlayerPool private constructor(
         private var resilience: PlaybackResilience? = null
         private var drm: PlaybackDrm? = null
         private var output: PlaybackOutput? = null
+        private var frameOutput: PlaybackFrameOutput? = null
         private var httpStack: HttpStack? = null
         private var telemetry: (() -> TelemetryCollector)? = null
         private var playerFactory: ((PooledEngine?) -> SuperPlayer)? = null
@@ -392,6 +393,15 @@ public class PlayerPool private constructor(
         public fun setOutput(output: PlaybackOutput): Builder = apply { this.output = output }
 
         /**
+         * The frame output every player in this pool hands its decoded frames to — what
+         * [SuperPlayer.Builder.setFrameOutput] takes, for each of them. One object serves the pool, and
+         * each pooled engine is laid an effect of its own over it; on a pool built with [setDrm] every
+         * player has it off with [FrameOutputOffReason.PROTECTED_CONTENT] (ADR-0022 rule 6). Leave it
+         * unset and no pooled player pays anything for it (rule 9).
+         */
+        public fun setFrameOutput(output: PlaybackFrameOutput): Builder = apply { this.frameOutput = output }
+
+        /**
          * The HTTP client every player in this pool loads its bytes over — what
          * [SuperPlayer.Builder.setHttpStack] takes, for each of them.
          *
@@ -464,6 +474,7 @@ public class PlayerPool private constructor(
                     .apply { resilience?.let { setResilience(it) } }
                     .apply { drm?.let { setDrm(it) } }
                     .apply { output?.let { setOutput(it) } }
+                    .apply { frameOutput?.let { setFrameOutput(it) } }
                     .apply { httpStack?.let { setHttpStack(it) } }
                     .apply { telemetry?.let { setTelemetry(it()) } }
                     .setPooledEngine(pooled)

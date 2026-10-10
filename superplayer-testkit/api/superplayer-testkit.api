@@ -239,8 +239,8 @@ public final class com/superplayer/testkit/PlaybackHarness : org/junit/rules/Ext
 	public static synthetic fun advanceUntil$default (Lcom/superplayer/testkit/PlaybackHarness;Landroidx/media3/common/Player;Ljava/lang/String;JLkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public static synthetic fun advanceUntil$default (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/core/DownloadEnvironment;Ljava/lang/String;JLkotlin/jvm/functions/Function0;ILjava/lang/Object;)V
 	public final fun attachVideoOutput (Landroidx/media3/common/Player;)V
-	public final fun buildPlayer (Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;Lcom/superplayer/core/PlaybackPolicy;Lcom/superplayer/core/ContentCache;Lcom/superplayer/core/PlaybackResilience;Lcom/superplayer/core/PlaybackDrm;Lcom/superplayer/core/PlaybackOutput;Lcom/superplayer/testkit/ChainBottom;Lcom/superplayer/core/HttpStack;)Lcom/superplayer/core/SuperPlayer;
-	public static synthetic fun buildPlayer$default (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;Lcom/superplayer/core/PlaybackPolicy;Lcom/superplayer/core/ContentCache;Lcom/superplayer/core/PlaybackResilience;Lcom/superplayer/core/PlaybackDrm;Lcom/superplayer/core/PlaybackOutput;Lcom/superplayer/testkit/ChainBottom;Lcom/superplayer/core/HttpStack;ILjava/lang/Object;)Lcom/superplayer/core/SuperPlayer;
+	public final fun buildPlayer (Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;Lcom/superplayer/core/PlaybackPolicy;Lcom/superplayer/core/ContentCache;Lcom/superplayer/core/PlaybackResilience;Lcom/superplayer/core/PlaybackDrm;Lcom/superplayer/core/PlaybackOutput;Lcom/superplayer/testkit/ChainBottom;Lcom/superplayer/core/HttpStack;Lcom/superplayer/core/PlaybackFrameOutput;)Lcom/superplayer/core/SuperPlayer;
+	public static synthetic fun buildPlayer$default (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;Lcom/superplayer/core/PlaybackPolicy;Lcom/superplayer/core/ContentCache;Lcom/superplayer/core/PlaybackResilience;Lcom/superplayer/core/PlaybackDrm;Lcom/superplayer/core/PlaybackOutput;Lcom/superplayer/testkit/ChainBottom;Lcom/superplayer/core/HttpStack;Lcom/superplayer/core/PlaybackFrameOutput;ILjava/lang/Object;)Lcom/superplayer/core/SuperPlayer;
 	public final fun buildPool (Ljava/lang/Integer;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/testkit/TestContent;Lkotlin/jvm/functions/Function0;Lcom/superplayer/testkit/ThroughputTrace;Lcom/superplayer/core/ContentCache;Lcom/superplayer/core/PlaybackPolicy;Lcom/superplayer/core/PlaybackResilience;Lcom/superplayer/testkit/ChainBottom;)Lcom/superplayer/core/PlayerPool;
 	public static synthetic fun buildPool$default (Lcom/superplayer/testkit/PlaybackHarness;Ljava/lang/Integer;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/testkit/TestContent;Lkotlin/jvm/functions/Function0;Lcom/superplayer/testkit/ThroughputTrace;Lcom/superplayer/core/ContentCache;Lcom/superplayer/core/PlaybackPolicy;Lcom/superplayer/core/PlaybackResilience;Lcom/superplayer/testkit/ChainBottom;ILjava/lang/Object;)Lcom/superplayer/core/PlayerPool;
 	public final fun buildStockPlayer (Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;)Landroidx/media3/exoplayer/ExoPlayer;
@@ -273,6 +273,7 @@ public final class com/superplayer/testkit/PlaybackHarness : org/junit/rules/Ext
 	public final fun stallRendering (Landroidx/media3/common/Player;)V
 	public final fun useScheduledWork ()V
 	public final fun videoDecodersHeld (Lcom/superplayer/core/PlayerPool;)I
+	public final fun videoEffectsDeliveries (Landroidx/media3/common/Player;)Ljava/util/List;
 	public final fun videoRendererTunneled (Landroidx/media3/common/Player;)Ljava/lang/Boolean;
 }
 
@@ -418,5 +419,18 @@ public final class com/superplayer/testkit/ThroughputTrace$Builder {
 
 public final class com/superplayer/testkit/ThroughputTrace$Companion {
 	public final fun parse (Ljava/lang/String;)Lcom/superplayer/testkit/ThroughputTrace;
+}
+
+public final class com/superplayer/testkit/VideoEffectsDelivery {
+	public fun <init> (IZ)V
+	public final fun component1 ()I
+	public final fun component2 ()Z
+	public final fun copy (IZ)Lcom/superplayer/testkit/VideoEffectsDelivery;
+	public static synthetic fun copy$default (Lcom/superplayer/testkit/VideoEffectsDelivery;IZILjava/lang/Object;)Lcom/superplayer/testkit/VideoEffectsDelivery;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBeforeRendererEnabled ()Z
+	public final fun getEffectCount ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 

@@ -15,6 +15,7 @@ of truth. This file records *what* is depended on and under *what license*.
 | `androidx.media3:media3-exoplayer` | Apache-2.0 | `superplayer-core` (api), `superplayer-preload`, `benchmark` |
 | `androidx.media3:media3-exoplayer-hls` | Apache-2.0 | `superplayer-core`, `superplayer-testkit`, `superplayer-diagnostics` |
 | `androidx.media3:media3-exoplayer-dash` | Apache-2.0 | `superplayer-core`, `superplayer-testkit`, `superplayer-diagnostics` |
+| `androidx.media3:media3-effect` | Apache-2.0 | `superplayer-effects` (the GL effect pipeline `setVideoEffects` loads by name; kept out of core so an app with no frame output carries none of it, ADR-0022 rule 9) |
 | `androidx.media3:media3-datasource` | Apache-2.0 | `superplayer-core`, `superplayer-testkit`, `superplayer-cache` |
 | `androidx.media3:media3-database` | Apache-2.0 | `superplayer-cache` (the `DatabaseProvider` interface its cache index is kept through) |
 | `androidx.media3:media3-session` | Apache-2.0 | `superplayer-core` (api), `demo` |
@@ -100,11 +101,11 @@ LGPL-2.1-or-later. It is taken under **Apache-2.0**, which the dual licence perm
 | --- | --- | --- |
 | `junit:junit` | Eclipse Public License 1.0 | all modules (test), `build-logic` (test), `benchmark` (test) |
 | `androidx.media3:media3-test-utils` | Apache-2.0 | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`, `superplayer-abr`, `superplayer-cache`, `superplayer-preload`, `benchmark` (test) |
-| `androidx.media3:media3-test-utils-robolectric` | Apache-2.0 | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`, `superplayer-abr`, `superplayer-cache`, `superplayer-preload`, `superplayer-tv`, `benchmark` (test) |
+| `androidx.media3:media3-test-utils-robolectric` | Apache-2.0 | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`, `superplayer-abr`, `superplayer-cache`, `superplayer-preload`, `superplayer-tv`, `superplayer-effects`, `benchmark` (test) |
 | `androidx.compose.ui:ui-test-junit4` | Apache-2.0 | `superplayer-tv` (test), `superplayer-diagnostics` (test) |
 | `androidx.compose.ui:ui-test-manifest` | Apache-2.0 | `superplayer-tv` (test), `superplayer-diagnostics` (test) |
 | `androidx.work:work-testing` | Apache-2.0 | `superplayer-testkit` (compile only, and its own tests), `superplayer-offline` (test) |
-| `org.robolectric:robolectric` | MIT | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`, `superplayer-abr`, `superplayer-cache`, `superplayer-preload`, `superplayer-tv`, `superplayer-moq`, `benchmark` (test) |
+| `org.robolectric:robolectric` | MIT | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`, `superplayer-abr`, `superplayer-cache`, `superplayer-preload`, `superplayer-tv`, `superplayer-effects`, `superplayer-moq`, `benchmark` (test) |
 | `com.google.truth:truth` | Apache-2.0 | transitive, via `media3-test-utils` |
 | `org.mockito:mockito-core` | MIT | transitive, via `media3-test-utils` |
 | `androidx.test:core`, `androidx.test.ext:junit` | Apache-2.0 | transitive, via `media3-test-utils` |

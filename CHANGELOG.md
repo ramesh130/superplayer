@@ -71,6 +71,13 @@ them under `Added` would be worse than stating them here:
   `DownloadsService`.
 - **Phase 8 — TV.** `TvOutput`: frame-rate matching, display hotplug re-selection, audio-capability
   re-selection, tunneling as a decision half, and `TvPlaybackControls` for Compose for TV.
+- **The frame output (ADR-0022, #406).** `superplayer-core`'s `FrameOutput` — handed a decoded
+  `VideoFrame` and its presentation time, it returns the frame to show at that time — laid on
+  Media3's GL effect pipeline by a new module, `superplayer-effects`, through
+  `SuperPlayer.Builder.setFrameOutput(VideoEffects.frameOutput(output))` and the pool's twin. Tunneling
+  yields where it runs, and a player built with `setDrm` or `setRealtime` has it off for its lifetime,
+  read as `player.frameOutputOffReason` and never as an error. A player built without it pays
+  nothing, and the effect artifact is the module's dependency rather than core's.
 - **Phase 9 — Diagnostics and docs.** `MediaSourceDoctor`, which names twenty pathologies over the
   chain a player would load through; the postmortem reading; `SessionBundle`; the debug HUD; and
   the documents in `docs/`.

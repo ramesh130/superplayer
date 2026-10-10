@@ -43,6 +43,7 @@ than to wave the dependency through.
 | `superplayer-drm` | 6 | WidevineSessionManager, provisioning, offline licenses, fallback ladder | core; testkit, resilience and telemetry (tests only) |
 | `superplayer-offline` | 7 | Downloads into the ContentCache the consumer opened, on the one chain: a store over Media3's download stack, WorkManager scheduling under unmetered, battery-not-low and storage-not-low, download track selection, and the licence bound to the download (ADR-0013) | core; testkit, testmedia, cache, drm and resilience (tests only) |
 | `superplayer-tv` | 8 | CTV behind one output slot: frame-rate matching, the display as a live reading, tunneling where the policy asks, and Compose-for-TV controls on a `SurfaceView` (ADR-0014) | core; testkit, testmedia, abr, drm, resilience and telemetry (tests only) |
+| `superplayer-effects` | 8 | The frame-output seam's Android half: a consumer's `FrameOutput` laid on Media3's GL effect pipeline (`setVideoEffects`) through core's second output slot, carrying `media3-effect` so that core does not. Off with a typed reason on a protected or realtime player (ADR-0022) | core; testkit and drm (tests only) |
 | `superplayer-diagnostics` | 9 | MediaSourceDoctor — a manifest's pathologies named over the chain a player of that request would load through, as one report for preflight and postmortem — the session trace bundle with its capability snapshot, and the on-device debug HUD (ADR-0015) | core and telemetry (ADR-0015 rule 1); testkit, testmedia, abr, cache, drm and resilience (tests only) |
 | `superplayer-realtime` | 13 | The Media3 half of the push-based source seam: the `MediaSource`/`MediaPeriod` that writes a `FrameSource`'s frames into Media3 `SampleQueue`s under a live unseekable timeline, codec-string mapping and codec-specific-data conversion. The seam itself — the public `FrameSource`, naming no Media3 type — is core's, so that its conformance suite can be testkit's (ADR-0018 rule 2's #356 addendum) | core; testkit and telemetry (tests only) |
 | `superplayer-moq` | 14 | Sub-second live over Media over QUIC: `moq-dev/moq`'s Kotlin bindings behind a `FrameSource` (ADR-0018). The bindings are **built here** rather than resolved from Maven, so this module is deliberately not published (`third-party/moq/README.md`, #364) | core, realtime; testkit (tests only) |
@@ -50,9 +51,9 @@ than to wave the dependency through.
 
 `superplayer-testkit`, `superplayer-abr`, `superplayer-cache`, `superplayer-preload`,
 `superplayer-resilience`, `superplayer-drm`, `superplayer-offline`, `superplayer-tv`,
-`superplayer-diagnostics` and `superplayer-realtime` also compile as Kotlin *friends* of core (`docs/testing.md`'s *Reaching that seam from another module*,
+`superplayer-diagnostics`, `superplayer-realtime` and `superplayer-effects` also compile as Kotlin *friends* of core (`docs/testing.md`'s *Reaching that seam from another module*,
 ADR-0009 rule 7, ADR-0010 rules 3 and 6, ADR-0011 rule 13, ADR-0012 rule 4, ADR-0013 rule 4, ADR-0014
-rule 3, ADR-0015 rule 3, ADR-0018 rule 11). A friend path is a compiler flag rather than a Gradle
+rule 3, ADR-0015 rule 3, ADR-0018 rule 11, ADR-0022 rule 3). A friend path is a compiler flag rather than a Gradle
 dependency, which is why it does not appear in the column above and why it is not what the rule
 measures.
 
@@ -76,6 +77,17 @@ real. The friendship does **not** carry a closed list
 of seams in ADR-0015 rule 3's sense: what this module reaches is the one slot and the engine
 configurator its own tests use.
 
+ADR-0022 rule 3 admits `superplayer-effects` as the **eleventh**, of the first shape: it fills one
+slot core declared, `EngineConfiguration.frameOutput`, the second output slot beside ADR-0014's
+`videoOutput`, and it exists as a module at all so that `media3-effect` is carried by the apps that
+lay a frame output and by no other. **Its phase is 8, and it is the second number not read off
+`PRD.md` Part 4**, because the roadmap schedules no Android frame output (`docs/ios-plan.md` §3.11
+says so: "no Android phase yet"). Eight is the phase the decision refines rather than a phase it
+invents: ADR-0022 is an amendment of ADR-0014 rule 3, Phase 8's output slot, and the module is that
+slot's sibling. The number constrains nothing today — the module depends on core alone, and nothing
+depends on it — and it ties with `superplayer-tv` deliberately, so a later change that lets the two
+outputs meet in a test needs no exception to the rule.
+
 **Phase 10 added no module, deliberately**, and the sentence that follows is superseded on its
 tenth-friendship half by ADR-0018 rule 11 above rather than contradicted. The HTTP stack (ADR-0004,
 ADR-0016) is a seam in core and
@@ -98,8 +110,8 @@ nothing else.
 synthetic HLS and DASH streams are played by `superplayer-core`'s tests *and* by
 `superplayer-testkit`'s main source set, and core cannot depend on testkit — a later phase, and a
 cycle besides — so the one home both can see has to sit below both. Phase 1, therefore: a phase-1
-module's tests may reach it, which is the constraint that fixes the number. **That number is the one
-exception to the rule below that phases come from `PRD.md`** — the roadmap does not schedule this
+module's tests may reach it, which is the constraint that fixes the number. **That number is the first
+exception to the rule below that phases come from `PRD.md`** (`superplayer-effects`' is the second) — the roadmap does not schedule this
 module, because it is not a capability anyone ships but the fixture the other modules' tests share,
 so it is the dependency rule rather than the roadmap that decides where it sits. It names no Media3 type
 either, which is what keeps `verifyNoUnstableMedia3InPublicApi` satisfied without an `@UnstableApi`

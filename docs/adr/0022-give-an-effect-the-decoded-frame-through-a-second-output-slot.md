@@ -145,6 +145,19 @@ enforce it.
    `KotlinFriendModules.kt`'s declaration and review for the friendship, and by a seam test
    counting both slots (rule 9).*
 
+   **#406 addendum — the spelling fixed.** The module is `superplayer-effects`, phase 8 (the phase of
+   the slot this record amends; `docs/modules.md` argues the number, since `PRD.md` schedules no
+   Android frame output). What `setFrameOutput` takes on Android is a handle, `PlaybackFrameOutput`,
+   made by the module's factory `VideoEffects.frameOutput(output)` from the consumer's `FrameOutput` —
+   the shape `setOutput(TvOutput.standard(…))` and `setDrm(Drm.widevine(…))` already have. A builder
+   taking the consumer's `FrameOutput` directly would leave core no way to reach the module that
+   carries `media3-effect` other than by name at run time, which is the coupling rule 3 exists to
+   avoid. `FrameOutput` itself, its one method and `FrameOutputOffReason` are core's, so the
+   vocabulary rule 1 shares with iOS is unchanged; iOS's `Configuration.frameOutput` takes the
+   `FrameOutput` directly because its pull path is core's own. The slot holds the one Media3 `Effect`
+   (a `GlEffect`, built per player), and the Android frame is a `VideoFrame`: a GL texture name, a
+   width and a height.
+
 4. **A player built with both outputs is built, and tunneling yields to the frame output.** A
    tunneled video path bypasses the effect pipeline, so on a player whose `frameOutput` is filled,
    core does not lay ADR-0014 rule 7's tunneling half even where the decision asks for it, and

@@ -114,6 +114,21 @@ session did — which segments, in which order, failing where — rather than on
 finished or the state at one instant, which `NetworkShapingTest` asserts at the transfer level
 instead.
 
+### On iOS
+
+The same files replay on iOS (#410, ADR-0021 rule 3), at the socket rather than in a `DataSource`:
+`SuperPlayerTestkit`'s loopback origin, served with `network:`, holds each response for the round
+trip and then sends its body chunk by chunk, each chunk when `arrivalMs` — ported line for line —
+says its last byte is due. Three things differ, and each follows from `AVPlayer` running on real
+time. **Time is the host's**, so a test asserts what was fetched and in what order, and the one test
+that measures a rate holds it to a bound (never faster, exactly; a stated slack slower) rather than
+to a millisecond. **Time zero is the origin's start**, since no harness sees an `AVPlayer` built.
+**The transport is reported, not replayed**: nothing in the simulator can move the host's interface,
+so each response records the transport its request arrived on and no player observes a handover.
+Each connection still sees the whole link. `ios/Tests/Fixtures/throughput-traces/` holds every
+profile and a hand-written trace with what the Kotlin reader makes of each, and both readers are
+held to those readings (`docs/testing.md`, *The iOS harness*).
+
 ## The seven profiles
 
 `NetworkProfile` holds the six `PRD.md` Part 6 names, and `ETHERNET`, which `PRD.md` §3.8's

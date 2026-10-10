@@ -1,0 +1,88 @@
+# What ThroughputTrace.parse reads. Written by ThroughputTraceFixturesTest; ./gradlew updateIosFixtures.
+format superplayer-throughput-trace 1
+format at-end loop
+format 1000 4374064 WIFI
+format 1000 1625936 WIFI
+format 1000 3817410 WIFI
+format 1000 2182590 WIFI
+format 1000 3539816 WIFI
+format 1000 2460184 WIFI
+format 1000 3066009 WIFI
+format 1000 2933991 WIFI
+format 1000 3257863 WIFI
+format 1000 2742137 WIFI
+format 1000 4161814 WIFI
+format 1000 1838186 WIFI
+format 1000 3825522 WIFI
+format 1000 2174478 WIFI
+format 1000 2112966 WIFI
+format 1000 3887034 WIFI
+format 1000 3755673 WIFI
+format 1000 2244327 WIFI
+format 1000 4328582 WIFI
+format 1000 1671418 WIFI
+format 1000 4000792 WIFI
+format 1000 1999208 WIFI
+format 1000 2518429 WIFI
+format 1000 3481571 WIFI
+format 1000 4125510 WIFI
+format 1000 1874490 WIFI
+format 1000 2584277 WIFI
+format 1000 3415723 WIFI
+format 1000 2235454 WIFI
+format 1000 3764546 WIFI
+format 1000 4286674 WIFI
+format 1000 1713326 WIFI
+format 1000 3421696 WIFI
+format 1000 2578304 WIFI
+format 1000 1736701 WIFI
+format 1000 4263299 WIFI
+format 1000 4312830 WIFI
+format 1000 1687170 WIFI
+format 1000 1562366 WIFI
+format 1000 4437634 WIFI
+format 1000 4265268 WIFI
+format 1000 1734732 WIFI
+format 1000 3647586 WIFI
+format 1000 2352414 WIFI
+format 1000 2518438 WIFI
+format 1000 3481562 WIFI
+format 1000 3994030 WIFI
+format 1000 2005970 WIFI
+format 1000 1731084 WIFI
+format 1000 4268916 WIFI
+format 1000 2434541 WIFI
+format 1000 3565459 WIFI
+format 1000 4085997 WIFI
+format 1000 1914003 WIFI
+format 1000 3641762 WIFI
+format 1000 2358238 WIFI
+format 1000 3980504 WIFI
+format 1000 2019496 WIFI
+format 1000 2847521 WIFI
+format 1000 3152479 WIFI
+loops true
+durationMs 60000
+at 0 bandwidth 4374064 rtt 0 transport WIFI
+at 1 bandwidth 4374064 rtt 0 transport WIFI
+at 30000 bandwidth 4286674 rtt 0 transport WIFI
+at 59999 bandwidth 3152479 rtt 0 transport WIFI
+at 60000 bandwidth 4374064 rtt 0 transport WIFI
+at 60001 bandwidth 4374064 rtt 0 transport WIFI
+at 140000 bandwidth 4000792 rtt 0 transport WIFI
+at 600000 bandwidth 4374064 rtt 0 transport WIFI
+arrival 0 0 0
+arrival 0 1 1
+arrival 0 4096 8
+arrival 0 250000 458
+arrival 0 2500000 6653
+arrival 30000 0 30000
+arrival 30000 1 30001
+arrival 30000 4096 30008
+arrival 30000 250000 30467
+arrival 30000 2500000 36464
+arrival 60001 0 60001
+arrival 60001 1 60002
+arrival 60001 4096 60009
+arrival 60001 250000 60459
+arrival 60001 2500000 66654

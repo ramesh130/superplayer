@@ -1,0 +1,264 @@
+// Copyright 2026 The SuperPlayer Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+import AVFoundation
+import SuperPlayerTestMedia
+import SuperPlayerTestkit
+import XCTest
+
+/// Every ``FaultScript/Kind`` forced on a stock `AVPlayer` and read back at the origin — #410's
+/// acceptance, and ADR-0021 rule 3's enforcement: a fault is shown to have *happened* by the
+/// origin's own record of how it answered (``LoopbackOrigin/responses()``), with what the player
+/// did about it alongside, never by a duration.
+///
+/// What the player does about a fault is recorded here as the evidence that it met it, not asserted
+/// as SuperPlayer's behaviour: there is no SuperPlayer yet, and how a stock `AVPlayer` recovers is
+/// AVFoundation's. Each test's control is the rest of the stream — the requests the script does not
+/// address are answered untouched — so a script that faulted everything, or nothing, fails.
+@MainActor
+final class FaultScriptPlaybackTests: XCTestCase {
+
+    /// A ceiling for media that plays at 1× on a loaded CI host: several times the eight seconds of
+    /// the default stream, and only a bound.
+    private let bound: Duration = .seconds(60)
+
+    private let harness = PlaybackHarness()
+
+    override func tearDown() async throws {
+        harness.stop()
+        try await super.tearDown()
+    }
+
+    /// The register `FaultSweepTest`'s shape asks for: every kind, and the test here that forces it.
+    /// Checked against ``FaultScript/Kind/allCases``, so a kind added without a test fails by name.
+    static let forcedBy: [FaultScript.Kind: String] = [
+        .latency: "testALatencyHoldsTheAddressedSegmentAndThePlayerWaitsItOut",
+        .throughputCap: "testAThroughputCapPacesTheAddressedSegments",
+        .httpStatus: "testAStatusThatRelentsIsAnsweredOnceAndTheRetryIsServed",
+        .truncation: "testATruncatedSegmentIsCutShortAndAskedForAgain",
+        .connectionReset: "testAResetConnectionAnswersNothingAndTheRetryIsServed",
+        .tokenExpiry: "testAnExpiredTokenRefusesItsSegmentAndEveryOneAfterIt",
+        .intermediaryCache: "testACacheInFrontOfALiveOriginKeepsServingTheFirstPlaylist",
+        .responseHeaders: "testAHeaderSetIsSentOnTheAddressedResponsesAlone",
+    ]
+
+    func testEveryKindIsForcedByATestHere() {
+        XCTAssertEqual(Set(Self.forcedBy.keys), Set(FaultScript.Kind.allCases))
+        let methods = Set(
+            Self.defaultTestSuite.tests.compactMap { $0.name.split(separator: " ").last }
+        )
+        .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "]")) }
+        for (kind, test) in Self.forcedBy {
+            XCTAssertTrue(methods.contains(test), "\(kind): no test named \(test)")
+        }
+    }
+
+    func testALatencyHoldsTheAddressedSegmentAndThePlayerWaitsItOut() async throws {
+        let origin = try await harness.serve(
+            .hls(),
+            faults: FaultScript.Builder().addLatencyMs(1_000, kind: .mediaSegment, index: 1).build()
+        )
+        try await playToEnd(origin)
+
+        XCTAssertEqual(faults(origin, "/segment1.aac"), [[.latency]])
+        assertUntouched(origin, except: ["/segment1.aac"])
+    }
+
+    func testAThroughputCapPacesTheAddressedSegments() async throws {
+        // Twice the synthetic stream's own 25 kbit/s, so a capped stream still plays at 1×.
+        let origin = try await harness.serve(
+            .hls(),
+            faults: FaultScript.Builder().capThroughputBps(50_000, kind: .mediaSegment).build())
+        try await playToEnd(origin)
+
+        let segments = origin.responses().filter { $0.request.kind == .mediaSegment }
+        XCTAssertFalse(segments.isEmpty)
+        XCTAssertTrue(segments.allSatisfy { $0.faults == [.throughputCap] }, "\(segments)")
+        assertUntouched(origin, except: Set(segments.map(\.request.path)))
+    }
+
+    func testAStatusThatRelentsIsAnsweredOnceAndTheRetryIsServed() async throws {
+        let origin = try await harness.serve(
+            .hls(),
+            faults: FaultScript.Builder()
+                .failWithHttpStatus(
+                    FaultScript.httpServerError, kind: .mediaSegment, index: 1, firstAttempts: 1
+                )
+                .build())
+        let player = AVPlayer(url: origin.sourceURL)
+        player.play()
+        try await harness.until("segment 1 is asked for again", timeout: bound) {
+            origin.responses().filter { $0.request.path == "/segment1.aac" }.count >= 2
+        }
+        player.pause()
+
+        XCTAssertEqual(statuses(origin, "/segment1.aac").prefix(2), [500, 200])
+        assertUntouched(origin, except: ["/segment1.aac"])
+    }
+
+    func testATruncatedSegmentIsCutShortAndAskedForAgain() async throws {
+        let origin = try await harness.serve(
+            .hls(),
+            faults: FaultScript.Builder()
+                .truncateAfterBytes(100, kind: .mediaSegment, index: 1, firstAttempts: 1).build())
+        let player = AVPlayer(url: origin.sourceURL)
+        player.play()
+        try await harness.until("segment 1 is asked for again", timeout: bound) {
+            origin.responses().filter { $0.request.path == "/segment1.aac" }.count >= 2
+        }
+        player.pause()
+
+        let cut = try XCTUnwrap(origin.responses().first { $0.request.path == "/segment1.aac" })
+        XCTAssertEqual(cut.faults, [.truncation])
+        XCTAssertEqual(cut.bodyBytesSent, 100)
+        // The promise that was broken: the full length, declared.
+        XCTAssertEqual(
+            cut.headers["content-length"], String(SyntheticHlsStream.files()["segment0.aac"]!.count)
+        )
+        assertUntouched(origin, except: ["/segment1.aac"])
+    }
+
+    func testAResetConnectionAnswersNothingAndTheRetryIsServed() async throws {
+        let origin = try await harness.serve(
+            .hls(),
+            faults: FaultScript.Builder()
+                .resetConnection(kind: .mediaSegment, index: 1, firstAttempts: 1).build())
+        let player = AVPlayer(url: origin.sourceURL)
+        player.play()
+        try await harness.until("segment 1 is asked for again", timeout: bound) {
+            origin.responses().filter { $0.request.path == "/segment1.aac" }.count >= 2
+        }
+        player.pause()
+
+        XCTAssertEqual(statuses(origin, "/segment1.aac").prefix(2), [nil, 200])
+        XCTAssertEqual(faults(origin, "/segment1.aac").first, [.connectionReset])
+        assertUntouched(origin, except: ["/segment1.aac"])
+    }
+
+    func testAnExpiredTokenRefusesItsSegmentAndEveryOneAfterIt() async throws {
+        let origin = try await harness.serve(
+            .hls(), faults: FaultScript.Builder().expireTokenAtSegment(1).build())
+        let player = AVPlayer(url: origin.sourceURL)
+        player.play()
+        try await harness.until("a segment is refused", timeout: bound) {
+            origin.responses().contains { $0.status == FaultScript.httpForbidden }
+        }
+        player.pause()
+
+        let segments = origin.responses().filter { $0.request.kind == .mediaSegment }
+        XCTAssertEqual(statuses(origin, "/segment0.aac").first, 200)
+        for response in segments where response.request.path != "/segment0.aac" {
+            XCTAssertEqual(response.status, 403, "\(response)")
+            XCTAssertEqual(response.faults, [.tokenExpiry])
+        }
+        assertUntouched(
+            origin, except: Set(segments.map(\.request.path)).subtracting(["/segment0.aac"]))
+    }
+
+    /// The Kotlin `hlsCachedLivePlaylist`'s cause, served for real: the origin keeps publishing and
+    /// the player keeps being handed the copy the cache took first.
+    func testACacheInFrontOfALiveOriginKeepsServingTheFirstPlaylist() async throws {
+        let origin = try await harness.serve(
+            .liveHls(),
+            faults: FaultScript.Builder()
+                .serveThroughCache(maxAgeSeconds: 600, kind: .manifest, index: 1).build())
+        let player = AVPlayer(url: origin.sourceURL)
+        player.play()
+        let mediaPlaylist = "/live/" + SyntheticHlsStream.mediaPlaylistName
+        try await harness.until("the live playlist is reloaded twice", timeout: bound) {
+            origin.responses().filter { $0.request.path == mediaPlaylist }.count >= 3
+        }
+        player.pause()
+
+        let loads = origin.responses().filter { $0.request.path == mediaPlaylist }
+        XCTAssertEqual(loads.map(\.servedFromCache).prefix(3), [false, true, true])
+        XCTAssertTrue(loads.allSatisfy { $0.faults == [.intermediaryCache] })
+        XCTAssertEqual(loads.first?.headers["cache-control"], "public, max-age=600")
+        XCTAssertNotNil(loads.last?.headers["age"])
+        // The control: the multivariant playlist, index 0, passes through the origin.
+        XCTAssertTrue(
+            origin.responses().filter { $0.request.path == "/live/master.m3u8" }
+                .allSatisfy { $0.faults.isEmpty && !$0.servedFromCache })
+    }
+
+    func testAHeaderSetIsSentOnTheAddressedResponsesAlone() async throws {
+        let origin = try await harness.serve(
+            .hls(),
+            faults: FaultScript.Builder()
+                .addResponseHeaders(
+                    ["Cache-Control": "public, max-age=31536000, immutable"], kind: .mediaSegment
+                )
+                .build())
+        try await playToEnd(origin)
+
+        let responses = origin.responses()
+        let segments = responses.filter { $0.request.kind == .mediaSegment }
+        XCTAssertFalse(segments.isEmpty)
+        XCTAssertTrue(
+            segments.allSatisfy {
+                $0.headers["cache-control"] == "public, max-age=31536000, immutable"
+                    && $0.faults == [.responseHeaders]
+            }, "\(segments)")
+        XCTAssertTrue(
+            responses.filter { $0.request.kind == .manifest }
+                .allSatisfy { $0.headers["cache-control"] == nil && $0.faults.isEmpty })
+    }
+
+    // MARK: -
+
+    /// Plays `origin`'s content in a stock `AVPlayer` until its item reports the end.
+    private func playToEnd(_ origin: LoopbackOrigin) async throws {
+        let item = AVPlayerItem(url: origin.sourceURL)
+        let player = AVPlayer(playerItem: item)
+        let ended = EndObserver(item)
+        player.play()
+        try await harness.until("the stream plays to its end", timeout: bound) { ended.hasEnded }
+        player.pause()
+    }
+
+    private func statuses(_ origin: LoopbackOrigin, _ path: String) -> [Int?] {
+        origin.responses().filter { $0.request.path == path }.map(\.status)
+    }
+
+    private func faults(_ origin: LoopbackOrigin, _ path: String) -> [[FaultScript.Kind]] {
+        origin.responses().filter { $0.request.path == path }.map(\.faults)
+    }
+
+    /// Every response but those to `paths` was the origin's own: no fault, no copy from a cache.
+    private func assertUntouched(
+        _ origin: LoopbackOrigin, except paths: Set<String>, line: UInt = #line
+    ) {
+        let touched = origin.responses().filter {
+            !paths.contains($0.request.path) && (!$0.faults.isEmpty || $0.servedFromCache)
+        }
+        XCTAssertEqual(touched, [], "faulted beyond what the script addresses", line: line)
+        XCTAssertFalse(origin.responses().isEmpty, line: line)
+    }
+}
+
+/// Whether an `AVPlayerItem` has posted that it played to its end, readable from the main actor.
+@MainActor
+final class EndObserver {
+    private(set) var hasEnded = false
+    // Written once, in `init`, and read once more in `deinit`, which is not on the main actor.
+    nonisolated(unsafe) private var token: NSObjectProtocol?
+
+    init(_ item: AVPlayerItem) {
+        token = NotificationCenter.default.addObserver(
+            forName: AVPlayerItem.didPlayToEndTimeNotification, object: item, queue: .main
+        ) { [weak self] _ in MainActor.assumeIsolated { self?.hasEnded = true } }
+    }
+
+    deinit { token.map(NotificationCenter.default.removeObserver) }
+}

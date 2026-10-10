@@ -47,12 +47,19 @@ public final class PlaybackHarness: Sendable {
 
     public init() {}
 
-    /// Starts an origin serving `content` on a port of its own, and returns it once it is listening.
+    /// Starts an origin serving `content` on ports of its own — one per host the content names — and
+    /// returns it once it is listening.
     ///
-    /// Each call is a new origin, so a test that needs two hosts serves twice; the origins stop with
-    /// ``stop()``. `FaultScript` and `ThroughputTrace` arrive as arguments here with #410.
-    public func serve(_ content: TestContent) async throws -> LoopbackOrigin {
-        let origin = try await LoopbackOrigin.start(serving: content)
+    /// `faults` is what the origin does wrong, and `network` the link its responses are paced
+    /// against: the Kotlin `buildPlayer(faults:network:)`'s two arguments, applied at the server
+    /// (ADR-0021 rule 3). Two hosts of one stream are one `serve` of content with `hosts: 2`, so
+    /// they share a publication clock; two `serve` calls are two unrelated origins. The origins stop
+    /// with ``stop()``.
+    public func serve(
+        _ content: TestContent, faults: FaultScript = .none, network: ThroughputTrace? = nil
+    ) async throws -> LoopbackOrigin {
+        let origin = try await LoopbackOrigin.start(
+            serving: content, faults: faults, network: network)
         origins.withLock { $0.append(origin) }
         return origin
     }

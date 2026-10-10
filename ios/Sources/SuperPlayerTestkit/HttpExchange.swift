@@ -134,9 +134,13 @@ enum HttpExchange {
             case 200: "OK"
             case 206: "Partial Content"
             case 400: "Bad Request"
+            case 403: "Forbidden"
             case 404: "Not Found"
             case 405: "Method Not Allowed"
             case 416: "Range Not Satisfiable"
+            case 500: "Internal Server Error"
+            case 502: "Bad Gateway"
+            case 503: "Service Unavailable"
             default: "Status \(status)"
             }
         }
@@ -144,18 +148,34 @@ enum HttpExchange {
 
     /// The answer to `request` when `body` is what is published at its path, or nil when nothing is.
     static func respond(to request: Request, body: [UInt8]?) -> Response {
-        var response: Response
+        frame(resolve(request, body: body), for: request)
+    }
+
+    /// ``respond(to:body:)`` before framing: the status, the content headers and the body, with no
+    /// `Content-Length` or `Connection` yet — the form a `FaultScript` acts on, since a fault
+    /// replaces or stores a response and the framing belongs to the request it finally answers.
+    static func resolve(_ request: Request, body: [UInt8]?) -> Response {
         if request.method != "GET" && request.method != "HEAD" {
             // spec: RFC 9110 §15.5.6 — a 405 lists the methods the resource does support.
-            response = Response(status: 405, headers: [("Allow", "GET, HEAD")], body: [])
-        } else if let body {
-            response = ranged(body, request.headers["range"])
-            response.headers.insert(("Content-Type", contentType(of: request.path)), at: 0)
-            // spec: RFC 9110 §14.3 — the resource supports byte ranges, so a player may ask for one.
-            response.headers.append(("Accept-Ranges", "bytes"))
-        } else {
-            response = Response(status: 404, headers: [], body: [])
+            return Response(status: 405, headers: [("Allow", "GET, HEAD")], body: [])
         }
+        guard let body else { return Response(status: 404, headers: [], body: []) }
+        var response = ranged(body, request.headers["range"])
+        response.headers.insert(("Content-Type", contentType(of: request.path)), at: 0)
+        // spec: RFC 9110 §14.3 — the resource supports byte ranges, so a player may ask for one.
+        response.headers.append(("Accept-Ranges", "bytes"))
+        return response
+    }
+
+    /// A refusal with `status` and no body, before framing — what an injected failure answers.
+    static func refusal(_ status: Int) -> Response {
+        Response(status: status, headers: [], body: [])
+    }
+
+    /// `response` framed for `request`: its `Content-Length`, and the `Connection` field the
+    /// request's persistence asks for.
+    static func frame(_ response: Response, for request: Request) -> Response {
+        var response = response
         response.headers.append(("Content-Length", String(response.body.count)))
         if !request.keepAlive {
             response.headers.append(("Connection", "close"))

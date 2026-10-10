@@ -710,10 +710,49 @@ see a request.
 - **`AVPlayer`'s loads do not pass through a registered `URLProtocol`.** ADR-0021's *Context* left
   this an observation for #399 to confirm; `StockPlayerOriginTests` registers one that sees a
   `URLSession` load of the same origin and none of the player's.
-- **Faults and shaping are #410's.** An origin records a request, resolves what is published at its
-  path into a response, and sends it, and `LoopbackOrigin`'s doc comment says which stage each fault kind
-  and the throughput replay enter at. Until then the one fault the harness's own tests need — a
-  segment withheld — is an internal `TestContent.withholding(_:)`.
+- **Faults and shaping are applied at the server** (#410, ADR-0021 rule 3). `serve(_:faults:network:)`
+  takes the Kotlin harness's two arguments: a `FaultScript`, addressed by kind, index, attempt and
+  host exactly as the Kotlin builder is, and a `ThroughputTrace` — a `NetworkProfile`'s, or one read
+  from `docs/throughput-traces.md`'s format. An origin records a request, *answers* it — the script
+  applied to its address, the published bytes resolved where no fault replaces them — and sends it,
+  held for the trace's round trip and any latency, then paced chunk by chunk. The script carries
+  every fault a server produces: a status (with `firstAttempts` and `afterAttempts`), a latency, a
+  throughput cap, a truncation that still declares the full length, a dropped connection, a token
+  that expires at a segment (refreshable by a new credential), a shared cache in front of the origin,
+  and a header set. `FaultScript.Kind` is `CaseIterable` because Swift has no reflection over the
+  builder for an iOS `FaultSweepTest` to read, and `FaultScriptPlaybackTests` forces every kind on a
+  stock `AVPlayer`, with a register of which test forces which, checked against `allCases`.
+- **A fault is shown at the origin.** `origin.responses()` records how each request was answered —
+  status, or none for a dropped connection; the fault kinds that acted; the body bytes sent; whether
+  it came from the script's cache; and the trace's transport. On Android the injector's exception is
+  the evidence; here the server is the only party a test can read a fault from.
+- **What a server cannot produce is not in the script**, and is said rather than approximated: the
+  Kotlin `failDnsResolution` and `failTlsHandshake` are failures inside the client, and
+  `timeOutConnection` is the client giving up — a server can only be silent, which a latency is.
+- **A second host is a second listener of one origin.** `.hls(hosts: 2)` and `.liveHls(hosts: 2)`
+  serve the same files from two ports on one publication clock, the multivariant playlist listing
+  each variant again on the second host as a redundant stream; a fault's `host:` is the listener's
+  number, since every host is `127.0.0.1`. `MultiHostOriginTests` refuses the first host's media
+  playlist and watches a stock player move to the second, with the unrefused stream as the control.
+- **The replay is per connection, and a trace's transport is reported, not switched.** Each
+  connection sees the whole link, the limit the Android replay states; and nothing in the simulator
+  can move the host's interface, so the transport a stretch names is what `OriginResponse.transport`
+  says a request arrived on and nothing a player observes. Time zero is the origin's start, which on
+  Android is the moment the player was built.
+- **One test measures a duration, and argues its bound.** `NetworkShapingTests` holds a shaped
+  transfer to the trace: never faster, which is exact — the origin sends a chunk no earlier than its
+  last byte is due and the client's stopwatch starts first — and no more than a second slower on a
+  two-and-a-half-second transfer, because a late wake is not carried into the next chunk's schedule,
+  so what a loaded host adds is one wake and a loopback connection. It is the one exception to rule
+  4, and the acceptance asked for it by name.
+- **The trace grammar is one reading on both platforms.** `ios/Tests/Fixtures/throughput-traces/`
+  holds every profile as the Kotlin `format()` writes it and a hand-written `sample.trace`, each with
+  a `.readings` file `superplayer-testkit`'s `ThroughputTraceFixturesTest` writes — the trace written
+  back, its conditions at fixed times, and when fixed transfers arrive. The Swift
+  `ThroughputTraceFixturesTests` computes the same lines and compares them as text, so the grammar,
+  the profiles (`CONGESTED_WIFI` draws `java.util.Random`'s specified sequence, ported) and the
+  replay's integer arithmetic are held to each other. `./gradlew updateIosFixtures` rewrites them, as
+  it does the streams.
 
 What it cannot show is what real time cannot: a test here is evidence that something happened and in
 what order, never that it happened sooner, and a device is still the only place a FairPlay key, a

@@ -1,0 +1,29 @@
+# What ThroughputTrace.parse reads. Written by ThroughputTraceFixturesTest; ./gradlew updateIosFixtures.
+format superplayer-throughput-trace 1
+format at-end loop
+format 1000 20000000 WIFI
+loops true
+durationMs 1000
+at 0 bandwidth 20000000 rtt 0 transport WIFI
+at 1 bandwidth 20000000 rtt 0 transport WIFI
+at 500 bandwidth 20000000 rtt 0 transport WIFI
+at 999 bandwidth 20000000 rtt 0 transport WIFI
+at 1000 bandwidth 20000000 rtt 0 transport WIFI
+at 1001 bandwidth 20000000 rtt 0 transport WIFI
+at 2333 bandwidth 20000000 rtt 0 transport WIFI
+at 10000 bandwidth 20000000 rtt 0 transport WIFI
+arrival 0 0 0
+arrival 0 1 1
+arrival 0 4096 2
+arrival 0 250000 100
+arrival 0 2500000 1000
+arrival 500 0 500
+arrival 500 1 501
+arrival 500 4096 502
+arrival 500 250000 600
+arrival 500 2500000 1500
+arrival 1001 0 1001
+arrival 1001 1 1002
+arrival 1001 4096 1003
+arrival 1001 250000 1101
+arrival 1001 2500000 2001

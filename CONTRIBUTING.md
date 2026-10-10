@@ -212,6 +212,11 @@ The header text is `config/license-header.txt`. It is not free-form: `check` run
 `verifyLicenseHeader`, which compares it against the boilerplate in `LICENSE`'s own appendix, so the
 header and the license cannot drift apart. Changing one means changing the other.
 
+The iOS package's `.swift` files carry the same header written as `//` lines, which nothing stamps:
+`verifyLicenseHeader` derives the expected text from `config/license-header.txt` and fails on any
+Swift file that does not open with it. Swift is formatted by `swift-format` with
+`ios/.swift-format`, and `ios/check` lints it; `ios/CLAUDE.md` has the command that fixes it.
+
 The demo is linted as well as built, and that is not incidental: it is the only place
 `UnsafeOptInUsageError` is enabled, so it is where ADR-0001 rule 2 is proved from a consumer's side
 rather than asserted. See `docs/api-surface.md`.

@@ -18,9 +18,11 @@ package com.superplayer.build
 
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
@@ -42,6 +44,9 @@ import java.io.File
  * the text Apache-2.0 tells you to attach to each file. The copyright line is excluded: `LICENSE`
  * carries the unfilled `Copyright [yyyy] [name of copyright owner]` placeholder, and the header
  * fills it in, which is the point of the placeholder.
+ *
+ * It also checks the one header nothing stamps: every `.swift` file of the iOS package has to open
+ * with that same header written as `//` lines ([findSwiftFilesWithoutHeader]).
  *
  * The comparison itself lives in [findLicenseHeaderMismatches], a plain function over strings, so
  * it can be unit-tested without standing up a Gradle build.
@@ -69,18 +74,44 @@ abstract class VerifyLicenseHeader : DefaultTask() {
     @get:OutputFile
     abstract val stampFile: RegularFileProperty
 
+    /**
+     * Every `.swift` file of the iOS package. Spotless stamps nothing onto them and swift-format has
+     * no header rule, so the header is checked here: as text, on the Linux job every change runs.
+     */
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val swiftSources: ConfigurableFileCollection
+
     @TaskAction
     fun verify() {
+        val headerText = headerFile.get().asFile.readText()
         val failures = findLicenseHeaderMismatches(
-            headerText = headerFile.get().asFile.readText(),
+            headerText = headerText,
             licenseText = licenseFile.get().asFile.readText()
+        )
+        val unheaded = findSwiftFilesWithoutHeader(
+            headerText,
+            swiftSources.files.associate { relative(it) to it.readText() }
         )
 
         val stamp = stampFile.get().asFile
-        if (failures.isEmpty()) {
+        if (failures.isEmpty() && unheaded.isEmpty()) {
             stamp.parentFile.mkdirs()
             stamp.writeText("ok\n")
+        } else if (failures.isEmpty()) {
+            stamp.delete()
+            throw GradleException(
+                buildString {
+                    appendLine(
+                        "These Swift files do not open with config/license-header.txt as `//` " +
+                            "lines (in Package.swift, after the tools-version line):"
+                    )
+                    unheaded.forEach { appendLine("  $it") }
+                }
+            )
         } else {
+            // A header that is not the licence is reported alone: until it is, every Swift file's
+            // header is derived from the wrong text, and listing them would bury the cause.
             stamp.delete()
             throw GradleException(
                 buildString {
@@ -96,6 +127,38 @@ abstract class VerifyLicenseHeader : DefaultTask() {
     private fun relative(file: File): String =
         file.relativeTo(projectRoot.get().asFile).path
 }
+
+/**
+ * [headerText] — `config/license-header.txt`, a block comment — as the `//` lines Swift's own
+ * projects open a file with. Derived rather than kept as a second copy, so that
+ * [findLicenseHeaderMismatches] holding that file to `LICENSE` vouches for every Swift file too.
+ */
+internal fun swiftLicenseHeader(headerText: String): List<String> =
+    headerText.lines()
+        .filter { it.startsWith(" *") && !it.startsWith(" */") }
+        .map { ("//" + it.removePrefix(" *")).trimEnd() }
+
+/**
+ * The paths of [swiftFiles] (path to contents) that do not open with [swiftLicenseHeader], sorted.
+ * A manifest must open with its `// swift-tools-version` line, so there the header starts after it
+ * and the `//` line separating the two.
+ */
+internal fun findSwiftFilesWithoutHeader(
+    headerText: String,
+    swiftFiles: Map<String, String>
+): List<String> {
+    val header = swiftLicenseHeader(headerText)
+    return swiftFiles
+        .filterValues { text ->
+            val lines = text.lines()
+            val start = if (lines.firstOrNull()?.startsWith(TOOLS_VERSION) == true) 2 else 0
+            lines.drop(start).take(header.size) != header
+        }
+        .keys
+        .sorted()
+}
+
+private const val TOOLS_VERSION = "// swift-tools-version"
 
 /**
  * Returns one human-readable entry per way in which [headerText] fails to carry the licence

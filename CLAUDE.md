@@ -5,7 +5,8 @@ lifecycle. Not a fork of Media3 and not a new player. Apache-2.0, Kotlin, JDK 17
 
 ## Orientation
 
-Four Gradle builds, not one. Mistaking them for a single build is the usual first wrong turn.
+Four Gradle builds and one Swift package, not one build. Mistaking them for a single build is the
+usual first wrong turn.
 
 | Build | What it is |
 | --- | --- |
@@ -13,6 +14,7 @@ Four Gradle builds, not one. Mistaking them for a single build is the usual firs
 | `build-logic/` | an **included build** holding the convention plugins every module applies |
 | `demo/` | a **separate** build resolving the library from published Maven coordinates |
 | `benchmark/` | a **separate** build, the same way, running `PRD.md` §6's matrix |
+| `Package.swift` + `ios/` | the **iOS and tvOS** Swift package (`docs/ios-plan.md`): manifest at the root so SwiftPM can resolve it by git URL, sources under `ios/`, empty products until their phase, checked by `ios/check` on macOS rather than by Gradle. `ios/CLAUDE.md` is its orientation |
 
 A module's own build file holds only its dependencies; Android setup, SDK levels, Java and Kotlin
 targets, lint, and publishing all live in the `superplayer.android.library` convention plugin.
@@ -1444,14 +1446,21 @@ devicelab/lab run smoke           # device run: trace, report, metadata (devicel
 devicelab/lab run startup [--plant P]  # twenty cold starts in one trace; a plant is a patch built in and reverted (devicelab/plants/README.md)
 devicelab/lab run jank [--plant P]     # the feed scrolled and tapped in one trace: frames, main thread, GC (devicelab/jank/README.md)
 ./gradlew huntLeaks                # the leak hunt on a device; NOT in check (devicelab/leak/README.md)
+ios/check                         # the iOS package's whole check, on macOS: format, simulator tests, tvOS build, API baselines
+ios/check --update-api            # regenerate ios/api/<Product>.baseline after a deliberate API change (docs/api-surface.md)
 ```
+
+`ios/check` is to the Swift package what `check` is to the library, and the macOS CI job runs it
+alone; `ios/CLAUDE.md` says what it needs. Two iOS readings stay in Gradle's `check` because they
+are text and need no Swift toolchain: `verifyModulePhaseRule` reads `Package.swift`, and
+`verifyLicenseHeader` holds every Swift file to `config/license-header.txt` written as `//` lines.
 
 `check` is the complete definition of the library's checks. Because `build-logic` is an included
 build, its tasks are invisible to the root build's aggregate tasks — its tests run only because
 `check` depends on them explicitly. A new check that can be a Gradle task belongs in `check`, not
 only in CI (`.github/workflows/ci.yml`), so local and CI agree on what passing means.
 
-`spotlessApply` at the root covers **all four builds**. Spotless is configured by path rather than
+`spotlessApply` at the root covers **all four Gradle builds** (the Swift package is `swift-format`'s). Spotless is configured by path rather than
 by project, so the root build's `**/*.kt` reaches `demo/` and `build-logic/` too, and one invocation
 formats the repository. The demo and the benchmark each apply Spotless a second time over their own
 sources, which is why `spotlessCheck` is in their command lines: each has its own wrapper and CI

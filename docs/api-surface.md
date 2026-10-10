@@ -151,3 +151,48 @@ convention plugin is the one place to revisit.
 The generated format is unchanged from `binary-compatibility-validator`'s own, so the files are the
 ones any Kotlin developer already knows how to read, and switching back to the plugin later would
 not churn them.
+
+## The iOS products
+
+The Swift package at the repository root is held to the same rule by a different tool: each
+product's public API is `ios/api/<Product>.baseline`, `ios/check` diffs it on every run, and
+`ios/check --update-api` is the `updateApiSurface` analog — the one deliberate step that rewrites
+it, whose diff is committed with the change that caused it. A baseline with no product, and a
+product with no baseline, both fail. Every product is empty until its phase, so every baseline is
+its header line alone today; that is a recorded fact about the API, not a missing file.
+
+```bash
+ios/check                 # includes the API diff, after the simulator tests and the tvOS build
+ios/check --update-api    # rewrite every baseline
+```
+
+**What is read is the iOS SDK's view, not the host's.** `ios/check` runs
+`xcrun swift-api-digester -dump-sdk` over the `.swiftmodule`s the simulator test build has just
+produced, with `-sdk` the iPhone simulator SDK and `-target` the host's architecture at the iOS 17
+floor. A digester run without those reads the module as a macOS client would, and this package
+declares no macOS platform; reading at the floor is reading what an adopter at the floor compiles
+against. The simulator build rather than a device build because it is the one `ios/check` has
+already made, and a module's public declarations do not differ between the two.
+
+**`swift package diagnose-api-breaking-changes` was the plan's first choice and is not used.** It
+compares the working tree against a git revision rather than a committed file, so there is no
+reviewable record of the surface — the property `<module>.api` exists for — and it builds the
+package for the host, which here is macOS and not a platform the package declares.
+
+**The digester's JSON is reduced before it is committed**, by `ios/scripts/api-surface.swift`, to
+one sorted line per public declaration: its kind, its path, its signature's types, its generic
+signature, the flags a call site depends on (static, throwing, open, mutating, a default argument,
+the accessors) and a type's declared conformances. The raw dump is not committed for two reasons.
+It is not readable in review, which is the point of the file. And it moves with the compiler rather
+than with the package — mangled names, USRs, the dump's own format version and the tool's
+arguments, and the marker conformances (`Copyable`, `Escapable`, `SendableMetatype`) each newer
+Swift infers on every type — so a baseline recorded under one Xcode would fail under another for
+nothing an adopter can see. Sorting is for the same reason: the order is the digester's.
+
+What the reduction cannot promise is that two Xcode versions print a *type* the same way, since a
+printed name is the compiler's. CI pins its Xcode (`.github/workflows/ci.yml`), and a baseline diff
+that appears only under a newer local Xcode is that, to be read as such before it is committed.
+
+The Android half's `verifyNoUnstableMedia3InPublicApi` has no counterpart: AVFoundation has no
+`@UnstableApi`, and what `player.avPlayer` exposes is the iOS plan's one named escape hatch
+(`docs/ios-plan.md` §2), which i1 records in its baseline like any other declaration.

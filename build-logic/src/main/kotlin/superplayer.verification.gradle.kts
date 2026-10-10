@@ -36,17 +36,20 @@ val verifyNoHardcodedMedia3Versions =
     }
 
 // docs/modules.md states the phase rule; this reads that document's own table and holds every
-// module's `project(...)` dependencies to it, so the rule is enforced rather than remembered.
+// module's `project(...)` dependencies to it, so the rule is enforced rather than remembered. The
+// root Package.swift's target dependencies are held to the same document's iOS table, here on Linux
+// rather than in ios/check, since the reading is text and needs no Swift toolchain.
 val verifyModulePhaseRule =
     tasks.register<VerifyModulePhaseRule>("verifyModulePhaseRule") {
         group = "verification"
-        description = "Fails if a module depends on a module from a later phase."
+        description = "Fails if a module or a Swift target depends on one from a later phase."
         modulesDocument.set(layout.projectDirectory.file("docs/modules.md"))
         moduleBuildScripts.from(
             fileTree(layout.projectDirectory) {
                 include("superplayer-*/build.gradle.kts")
             }
         )
+        swiftPackageManifest.set(layout.projectDirectory.file("Package.swift"))
         stampFile.set(layout.buildDirectory.file("verification/module-phase-rule.txt"))
     }
 
@@ -158,13 +161,21 @@ tasks.register<CutRelease>("release") {
 
 // Spotless stamps `config/license-header.txt` onto every `.kt` file; nothing in Spotless checks
 // that the file names the license this project is under. This does, against `LICENSE` itself, so
-// the header and the license cannot drift apart.
+// the header and the license cannot drift apart. Nothing stamps a `.swift` file, so this also holds
+// every one of the iOS package's to that header written as `//` lines — here rather than in
+// ios/check, because the reading is text and a check that can be a Gradle task belongs in `check`.
 val verifyLicenseHeader =
     tasks.register<VerifyLicenseHeader>("verifyLicenseHeader") {
         group = "verification"
-        description = "Fails if the Spotless license header does not match LICENSE."
+        description = "Fails if the license header does not match LICENSE, or a Swift file lacks it."
         headerFile.set(layout.projectDirectory.file("config/license-header.txt"))
         licenseFile.set(layout.projectDirectory.file("LICENSE"))
+        swiftSources.from(
+            fileTree(layout.projectDirectory) {
+                include("Package.swift", "ios/**/*.swift")
+                exclude("**/.build/**")
+            }
+        )
         projectRoot.set(layout.projectDirectory)
         stampFile.set(layout.buildDirectory.file("verification/license-header.txt"))
     }

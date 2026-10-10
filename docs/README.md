@@ -31,7 +31,7 @@ one says so.
 | [`api-surface.md`](api-surface.md) | How the public API of every published module is tracked and validated |
 | [`releasing.md`](releasing.md) | Cutting a release with `./gradlew release`: the order, the six refusals, where the artefacts go and where they do not, and how to undo one |
 | [`throughput-traces.md`](throughput-traces.md) | The network-trace format the test harness replays, and how a public dataset comes in |
-| [`ios-plan.md`](ios-plan.md) | The plan for an iOS and tvOS port over AVFoundation: what ports, what differs and what does not, the frame-output seam for effects, the phases, and the decisions still open. A plan, not a promise — nothing iOS is built |
+| [`ios-plan.md`](ios-plan.md) | The plan for an iOS and tvOS port over AVFoundation: what ports, what differs and what does not, the frame-output seam for effects, the phases, and the decisions still open. A plan, not a promise — only the scaffold is built (`Package.swift`, `ios/`, `ios/check`), and every product is empty |
 
 The repository root carries seven more. [`README.md`](../README.md) is the front door and the only
 one written for somebody who has not decided to be here yet: what the library is, what it does not
@@ -39,7 +39,7 @@ yet promise, and which of these documents to open next. The rest are for a reade
 `CONTEXT.md` is the vocabulary the code, the ADRs and the
 issues share; `CONTRIBUTING.md` is the clean-room discipline and the citation rule every non-obvious
 algorithm is held to; `PRD.md` is the problem inventory and the phase table the issues are cut from;
-and `CLAUDE.md` is the orientation for someone — or something — about to change the library, with
+and `CLAUDE.md` is the orientation for someone — or something — about to change the library (`ios/CLAUDE.md` adds the Swift package's), with
 `THIRD_PARTY.md` beside them as the dependency register. `CHANGELOG.md` is the last: what changed
 between two versions, in the shape
 [`adr/0017-version-the-library-by-semver-in-lockstep-with-the-tracked-api-surface-as-the-arbiter.md`](adr/0017-version-the-library-by-semver-in-lockstep-with-the-tracked-api-surface-as-the-arbiter.md)

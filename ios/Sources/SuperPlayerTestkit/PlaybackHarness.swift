@@ -90,7 +90,7 @@ public final class PlaybackHarness: Sendable {
         let deadline = clock.now + timeout
         while try !condition() {
             guard clock.now < deadline else {
-                throw ConditionTimeout(description: description, timeout: timeout)
+                throw ConditionTimeout(condition: description, timeout: timeout)
             }
             try await Task.sleep(for: Self.pollInterval)
         }
@@ -98,7 +98,9 @@ public final class PlaybackHarness: Sendable {
 
     /// ``until(_:timeout:isolation:_:)`` for a condition that has to await something itself — a
     /// fetch from an origin, say — and therefore crosses isolation and must be `Sendable`. A wait on
-    /// a player's state is the other one, whose condition runs on the caller's actor.
+    /// a player's state is the other one, whose condition runs on the caller's actor. The two bodies
+    /// are one loop written twice: one calls its condition synchronously in the caller's isolation
+    /// and the other awaits it, and no single signature does both.
     public func until(
         _ description: String = "the condition",
         timeout: Duration,
@@ -108,7 +110,7 @@ public final class PlaybackHarness: Sendable {
         let deadline = clock.now + timeout
         while try await !condition() {
             guard clock.now < deadline else {
-                throw ConditionTimeout(description: description, timeout: timeout)
+                throw ConditionTimeout(condition: description, timeout: timeout)
             }
             try await Task.sleep(for: Self.pollInterval)
         }
@@ -126,8 +128,8 @@ public struct ConditionTimeout: Error, CustomStringConvertible {
     /// The bound that passed.
     public let timeout: Duration
 
-    init(description: String, timeout: Duration) {
-        self.condition = description
+    init(condition: String, timeout: Duration) {
+        self.condition = condition
         self.timeout = timeout
     }
 

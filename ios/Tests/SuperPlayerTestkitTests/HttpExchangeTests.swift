@@ -91,6 +91,15 @@ final class HttpExchangeTests: XCTestCase {
         XCTAssertEqual(HttpExchange.ranged(body, "bytes=4-2").status, 200)
     }
 
+    func testAnHttp10ConnectionKeptAliveIsSaidToBeInTheResponse() {
+        let request = HttpExchange.Request(
+            method: "GET", path: "/a.m3u8", query: nil, headers: [:], keepAlive: true,
+            isHttp10: true)
+        let headers = HttpExchange.respond(to: request, body: [1]).headers
+
+        XCTAssertTrue(headers.contains { $0 == ("Connection", "keep-alive") }, "\(headers)")
+    }
+
     func testAMethodOtherThanGetOrHeadIsA405() {
         let request = HttpExchange.Request(
             method: "POST", path: "/a.m3u8", query: nil, headers: [:], keepAlive: true)

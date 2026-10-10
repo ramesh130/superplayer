@@ -73,7 +73,9 @@ public final class LoopbackOrigin: Sendable {
         return url
     }
 
-    /// Every request this origin has received, in the order their heads arrived, repeats included.
+    /// Every request this origin has received, in the order their heads arrived, repeats included —
+    /// every request that *is* one: bytes that do not parse as HTTP are answered 400 and not
+    /// recorded, since they name no path or kind to count them under.
     ///
     /// The `networkRequests` of `superplayer-testkit`'s harness, counted at the server rather than
     /// at a transport slot: on iOS the origin is the only place a request is visible from outside
@@ -83,7 +85,7 @@ public final class LoopbackOrigin: Sendable {
     /// Starts an origin serving `content`, returning once its listener is ready on a port.
     static func start(serving content: TestContent) async throws -> LoopbackOrigin {
         let parameters = NWParameters.tcp
-        // spec: ADR-0021 rule 2 — the loopback address and nothing else; `.any` is an ephemeral port.
+        // ADR-0021 rule 2: the loopback address and nothing else; `.any` is an ephemeral port.
         parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
         let listener = try NWListener(using: parameters)
         let queue = DispatchQueue(label: "SuperPlayerTestkit.LoopbackOrigin")
@@ -97,9 +99,13 @@ public final class LoopbackOrigin: Sendable {
         self.queue = queue
         self.port = port
         self.startedAt = .now
-        listener.newConnectionHandler = { [weak self] connection in
-            guard let self else { return connection.cancel() }
-            self.accept(connection)
+        // On the listener's own queue, since the listener is already running and calls the handler
+        // from there.
+        queue.sync {
+            listener.newConnectionHandler = { [weak self] connection in
+                guard let self else { return connection.cancel() }
+                self.accept(connection)
+            }
         }
     }
 
@@ -159,7 +165,10 @@ public final class LoopbackOrigin: Sendable {
         guard let ordinal else { return connection.cancel() }
         connection.stateUpdateHandler = { [weak self] connectionState in
             switch connectionState {
-            case .failed, .cancelled:
+            case .failed:
+                // Network.framework still expects a failed connection to be cancelled.
+                connection.cancel()
+            case .cancelled:
                 _ = self?.state.withLock { $0.connections.removeValue(forKey: ordinal) }
             default: break
             }
@@ -182,6 +191,8 @@ public final class LoopbackOrigin: Sendable {
                 connection.cancel()
             }
         case .incomplete:
+            // A read size and not a bound on a request — `HttpExchange.maximumHeadBytes` is that —
+            // large enough that any request a player sends arrives in one read.
             connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) {
                 [weak self] content, _, _, error in
                 guard let self, error == nil, let content, !content.isEmpty else {
@@ -194,7 +205,7 @@ public final class LoopbackOrigin: Sendable {
         }
     }
 
-    /// The three stages the type's KDoc names: record, resolve, send.
+    /// The three stages the type's doc comment names: record, resolve, send.
     private func serve(
         _ request: HttpExchange.Request, on connection: NWConnection, ordinal: Int,
         then next: @escaping @Sendable () -> Void

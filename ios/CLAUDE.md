@@ -46,7 +46,7 @@ origin.networkRequests()                   // path, kind (manifest / mediaSegmen
 - **An origin is `NWListener` on `127.0.0.1` at an ephemeral port**, one per `serve`, so two tests
   never share a port or a count. It speaks `GET` and `HEAD` over persistent HTTP/1.1 connections,
   single byte ranges, and RFC 8216's content types; `HttpExchange.swift` is the protocol as pure
-  functions and `LoopbackOrigin`'s KDoc argues Network.framework over BSD sockets.
+  functions and `LoopbackOrigin`'s doc comment argues Network.framework over BSD sockets.
 - **Time is real.** Wait with `harness.until`, whose bound is a ceiling and never an assertion; the
   synchronous form reads an `AVPlayer` on the caller's actor, the `@Sendable` async one can fetch.
   Never sleep and then assert.
@@ -57,7 +57,8 @@ origin.networkRequests()                   // path, kind (manifest / mediaSegmen
   by Xcode's `xctest` host, whose embedded `Info.plist` sets `NSAllowsArbitraryLoads`, and
   `LoopbackOriginTests` pins that; a test hosted in an app would need `NSAllowsLocalNetworking`
   there (`docs/testing.md`, *The iOS harness*).
-- **Faults and shaping are #410's**, and `LoopbackOrigin`'s KDoc names the three stages they enter.
+- **Faults and shaping are #410's**, and `LoopbackOrigin`'s doc comment names the three stages
+  they enter.
 
 ## Commands
 

@@ -14,11 +14,8 @@
 
 import AVFoundation
 import SuperPlayerTestMedia
+import SuperPlayerTestkit
 import XCTest
-
-// `@testable` for `TestContent.withholding(_:)` alone, the internal fault the control below needs
-// until #410's `FaultScript` says it publicly — the harness's own tests, as `HttpExchangeTests` argues.
-@testable import SuperPlayerTestkit
 
 /// The synthetic stream plays to its end in a stock `AVPlayer` on the simulator — the claim #398
 /// asks of a port whose bytes were chosen for a decoder that never decodes them (Robolectric's
@@ -75,10 +72,14 @@ final class SyntheticHlsPlaybackTests: XCTestCase {
     /// no error a test can read, so what is waited for is an end that must not come, for a bound
     /// three times the media's length.
     func testAStreamWithASegmentMissingDoesNotPlayToItsEnd() async throws {
-        let content = TestContent.hls(segmentCount: 3, variantCount: 1)
-            .withholding(SyntheticHlsStream.segmentName(1))
+        // Segment 1 is the second segment the player asks for, and a 404 on every attempt.
+        let missing = FaultScript.Builder()
+            .failWithHttpStatus(FaultScript.httpNotFound, kind: .mediaSegment, index: 1)
+            .build()
 
-        _ = try await play(content, untilEnd: false, bound: missingEndBound)
+        _ = try await play(
+            .hls(segmentCount: 3, variantCount: 1), faults: missing, untilEnd: false,
+            bound: missingEndBound)
     }
 
     private func assertPlaysToItsEnd(_ content: TestContent) async throws {
@@ -100,10 +101,10 @@ final class SyntheticHlsPlaybackTests: XCTestCase {
 
     /// Serves `content`, plays it in a stock `AVPlayer`, and waits up to `bound` for the end — which
     /// must come when `untilEnd` and must not otherwise.
-    private func play(_ content: TestContent, untilEnd: Bool, bound: TimeInterval)
-        async throws -> AVPlayerItem
-    {
-        let origin = try await harness.serve(content)
+    private func play(
+        _ content: TestContent, faults: FaultScript = .none, untilEnd: Bool, bound: TimeInterval
+    ) async throws -> AVPlayerItem {
+        let origin = try await harness.serve(content, faults: faults)
 
         let item = AVPlayerItem(url: origin.sourceURL)
         let player = AVPlayer(playerItem: item)

@@ -72,5 +72,53 @@ public struct NetworkRequest: Sendable, Hashable, CustomStringConvertible {
     /// accepted them: two requests with one ordinal shared a kept-alive connection.
     public let connection: Int
 
-    public var description: String { "\(kind) \(method) \(path)" }
+    /// Which of the origin's hosts — its listeners, numbered from zero — the request arrived at.
+    /// Zero unless the content was served on several (``TestContent/hls(segmentCount:variantCount:hosts:)``).
+    public let host: Int
+
+    public var description: String {
+        host == 0 ? "\(kind) \(method) \(path)" : "\(kind) \(method) \(path) @host\(host)"
+    }
+}
+
+/// How a ``LoopbackOrigin`` answered one ``NetworkRequest``: what it decided to send, recorded
+/// before the bytes go — so a test can show that a fault happened by reading the origin rather than
+/// by inferring it from what the player did.
+///
+/// No Android counterpart: there the injector throws inside the engine and the engine's own error
+/// is the evidence. Here a fault is a server's answer, and the server is the only party a test can
+/// read it from.
+public struct OriginResponse: Sendable, Hashable, CustomStringConvertible {
+
+    /// The request this answers.
+    public let request: NetworkRequest
+
+    /// The status sent, or nil when the connection was dropped with no response at all
+    /// (``FaultScript/Builder/resetConnection(kind:index:firstAttempts:host:)``).
+    public let status: Int?
+
+    /// The response's header fields, names lowercased, as sent.
+    public let headers: [String: String]
+
+    /// The body bytes the origin sends — fewer than `Content-Length` declares when the response is
+    /// truncated, and none for a `HEAD`.
+    public let bodyBytesSent: Int
+
+    /// The fault kinds that shaped this answer, in the order the script declares them; empty for an
+    /// answer the script did not touch. A shared cache appears on the response that filled it and on
+    /// every one served from it; ``servedFromCache`` says which.
+    public let faults: [FaultScript.Kind]
+
+    /// Whether the answer is a stored copy from the script's intermediary cache rather than what the
+    /// origin publishes now.
+    public let servedFromCache: Bool
+
+    /// The transport the origin's ``ThroughputTrace`` was on when the request arrived, or nil when
+    /// none was given. Reported rather than switched — see ``NetworkTransport``.
+    public let transport: NetworkTransport?
+
+    public var description: String {
+        let answer = status.map(String.init) ?? "reset"
+        return "\(request) -> \(answer)" + (faults.isEmpty ? "" : " \(faults)")
+    }
 }

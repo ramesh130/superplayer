@@ -90,6 +90,17 @@ them under `Added` would be worse than stating them here:
   waits on a condition with a bound rather than sleeping. `SuperPlayerTestMedia` gains the live
   window, `SyntheticHlsStream.liveFiles(publishedSegmentCount:)`, committed beside the on-demand
   fixtures as `hls-live`; no Kotlin generator's output moved.
+- **Faults and network shaping in the iOS harness (#410).** `PlaybackHarness.serve(_:faults:network:)`
+  takes a `FaultScript` — every fault a server can produce (a status, a latency, a throughput cap, a
+  truncation, a dropped connection, a token's expiry, a shared cache, a header set), addressed by
+  kind, index, attempt and host as the Kotlin builder addresses them, with the kinds enumerable — and
+  a `ThroughputTrace` paced at the socket, with `NetworkProfile`'s seven profiles ported constant for
+  constant. Content served on several hosts is several listeners of one origin on one publication
+  clock, and `LoopbackOrigin.responses()` records how each request was answered. A trace's transport
+  is reported on iOS, not switched. Every profile and a hand-written sample trace are committed under
+  `ios/Tests/Fixtures/throughput-traces/` with what `superplayer-testkit`'s reader makes of each, so
+  both readers are held to one reading (`./gradlew updateIosFixtures` rewrites them); no Kotlin
+  behaviour moved.
 - **The iOS CMCD finding (#413).** `docs/ios-cmcd-finding.md`, which records that AVFoundation
   emits CMCD (CTA-5004) itself from iOS 18 once `AVAssetResourceLoader.sendsCommonMediaClientDataAsHTTPHeaders`
   is set, with the asset's `httpSessionIdentifier` as `sid` — so `docs/telemetry-schema.md` keeps the

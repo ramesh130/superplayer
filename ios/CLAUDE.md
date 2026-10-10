@@ -18,8 +18,10 @@ orientation — this file adds only what is different under `ios/`.
 | `ios/.swift-format` | the format's configuration: four-space indent and 100 columns, as the Kotlin half |
 
 **Every product is empty until its phase.** i0 (#397) is the scaffold alone: twelve products, a
-placeholder test each, baselines recording no API. `SuperPlayerMoQ` is not declared yet — its binary
-target is i9's — and there is no `SuperPlayerCache`, since its content is the offline store's.
+placeholder test each, baselines recording no API. `SuperPlayerTestMedia` (#398) and
+`SuperPlayerTestkit` (#399, *The harness* below) are the first to hold code. `SuperPlayerMoQ` is
+not declared yet — its binary target is i9's — and there is no `SuperPlayerCache`, since its content
+is the offline store's.
 
 **Dependencies point inward** under `docs/modules.md`'s phase rule, and the phase a product takes is
 the Android module's it ports: `docs/modules.md`'s *iOS products* table is the source, and
@@ -27,6 +29,35 @@ the Android module's it ports: `docs/modules.md`'s *iOS products* table is the s
 keeps the documented `.target(name:dependencies:path:)` shape and is never assembled from a
 variable, and a new product arrives with its row in that table in the same change. Kotlin friend
 modules have no analog: a seam a later product reaches is `package`-scoped, not `internal`.
+
+## The harness
+
+Every iOS test plays from **`SuperPlayerTestkit`'s loopback origin** (ADR-0021 rule 2), because
+`AVPlayer` takes no fake transport and never loads an HLS playlist from a `file:` URL:
+
+```swift
+let harness = PlaybackHarness()            // one per test; harness.stop() in tearDown
+let origin = try await harness.serve(.hls())   // or .liveHls(), which keeps publishing
+let player = AVPlayer(url: origin.sourceURL)
+try await harness.until("the position advances", timeout: .seconds(60)) { … }
+origin.networkRequests()                   // path, kind (manifest / mediaSegment), headers, connection
+```
+
+- **An origin is `NWListener` on `127.0.0.1` at an ephemeral port**, one per `serve`, so two tests
+  never share a port or a count. It speaks `GET` and `HEAD` over persistent HTTP/1.1 connections,
+  single byte ranges, and RFC 8216's content types; `HttpExchange.swift` is the protocol as pure
+  functions and `LoopbackOrigin`'s KDoc argues Network.framework over BSD sockets.
+- **Time is real.** Wait with `harness.until`, whose bound is a ceiling and never an assertion; the
+  synchronous form reads an `AVPlayer` on the caller's actor, the `@Sendable` async one can fetch.
+  Never sleep and then assert.
+- **`.liveHls()` publishes a segment every two seconds of real time** from the moment the origin
+  starts, in a six-segment window under `live/` — the Kotlin `TestContent.liveHls()`'s stream and
+  timing, on the host's clock.
+- **No App Transport Security key is set in this repository.** Plain HTTP to the origin is allowed
+  by Xcode's `xctest` host, whose embedded `Info.plist` sets `NSAllowsArbitraryLoads`, and
+  `LoopbackOriginTests` pins that; a test hosted in an app would need `NSAllowsLocalNetworking`
+  there (`docs/testing.md`, *The iOS harness*).
+- **Faults and shaping are #410's**, and `LoopbackOrigin`'s KDoc names the three stages they enter.
 
 ## Commands
 

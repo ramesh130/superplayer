@@ -84,6 +84,12 @@ them under `Added` would be worse than stating them here:
   count and no Android behaviour moved. Its output is committed under `ios/Tests/Fixtures/synthetic/`,
   `check` holds it to those files and `ios/check` holds the Swift port to the same bytes
   (`./gradlew updateIosFixtures` rewrites them).
+- **The iOS test harness (#399).** `SuperPlayerTestkit`'s `PlaybackHarness` serves a `TestContent`
+  — the synthetic HLS stream, or `liveHls()`, which keeps publishing on real time — from a
+  `LoopbackOrigin` of its own on `127.0.0.1`, counts every request by path and `ResourceKind`, and
+  waits on a condition with a bound rather than sleeping. `SuperPlayerTestMedia` gains the live
+  window, `SyntheticHlsStream.liveFiles(publishedSegmentCount:)`, committed beside the on-demand
+  fixtures as `hls-live`; no Kotlin generator's output moved.
 - **Phase 9 — Diagnostics and docs.** `MediaSourceDoctor`, which names twenty pathologies over the
   chain a player would load through; the postmortem reading; `SessionBundle`; the debug HUD; and
   the documents in `docs/`.

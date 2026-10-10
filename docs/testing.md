@@ -16,7 +16,8 @@ library into the test JVM, because what it checks is whether a natively built de
 [ADR-0021](adr/0021-test-ios-against-a-loopback-origin-and-run-its-checks-in-one-script.md): AVFoundation
 ships no fakes and `AVPlayer` takes no fake transport, so every iOS test plays from a loopback HTTP
 origin started per test — the seventh exception's carve-out widened to all of them — on real time,
-with structural goldens. Everything in this document binds the Kotlin modules as written.
+with structural goldens; *The iOS harness* below is that origin. Everything else in this document
+binds the Kotlin modules as written.
 *The MoQ bindings* argues it, and states what no automated run can show.
 
 `SuperPlayerTransferChainTest` keeps the HTTP stack `SuperPlayer.Builder` puts at the bottom of its
@@ -652,11 +653,12 @@ What is committed is the **relative** form of the stream — the Kotlin generato
 `writeTo` uses — because every reference inside it is relative and it therefore names no `fake://`
 host. The `fake://` keys of `resources` are a Media3 `FakeDataSet`'s addresses and nothing on iOS can
 serve them; an iOS test serves the files by path from a loopback origin. Nothing about the Android
-streams changed to make that true. Two fixtures are committed today, `hls-vod` and `hls-ladder`, each
-three segments long so the one thing that varies between segments, the ID3 timestamp tag, is in the
-comparison. The live window, the second-host variant and the Widevine forms are not ported: the first
-two are the harness's (#399) and iOS protection is FairPlay. The HLS half of the hostile corpus joins
-the same directory under #412.
+streams changed to make that true. Three fixtures are committed today: `hls-vod` and `hls-ladder`,
+each three segments long so the one thing that varies between segments, the ID3 timestamp tag, is in
+the comparison, and `hls-live` (#399), the live window once eight segments are published, so the
+window has slid and `EXT-X-MEDIA-SEQUENCE` is not zero. The second-host variant and the Widevine forms
+are not ported: a second host is the harness's second listener (#410) and iOS protection is FairPlay.
+The HLS half of the hostile corpus joins the same directory under #412.
 
 **A synthetic stream plays in `AVPlayer`.** On Android the ADTS payload is never decoded —
 Robolectric's shadow codec passes bytes through — so "it plays" was never a claim about the bytes.
@@ -667,8 +669,55 @@ payload wrong: an all-zero ADTS payload, what both generators wrote until then, 
 — on time, with no error any API reports — while AVFoundation's decoder refuses every frame. So
 `SyntheticAacDecodingTests` decompresses a segment to PCM with an `AVAssetReader` and counts the
 samples, with the all-zero payload as its control, and both generators now write a silent
-`raw_data_block`. It plays over HTTP from a stopgap loopback origin in that test target, because
-`AVPlayer` never loads an HLS playlist handed to it as a `file:` URL; #399's origin replaces it.
+`raw_data_block`. It plays over HTTP from the harness's origin, because `AVPlayer` never loads an HLS
+playlist handed to it as a `file:` URL, and so it lives in `SuperPlayerTestkitTests` rather than
+beside the generator: testmedia is phase 1, and its tests may not reach the phase 2 harness.
+
+### The iOS harness
+
+ADR-0021 rule 2's origin is `SuperPlayerTestkit`'s (#399). A test makes a `PlaybackHarness`, asks it
+to `serve` a `TestContent` — `.hls(segmentCount:variantCount:)` or `.liveHls()` — and points a player
+at the `LoopbackOrigin`'s `sourceURL`; the harness's `stop()` in `tearDown` closes every origin it
+started. What a test then reads is what the origin received, `networkRequests()`: method, path,
+`ResourceKind` by the Kotlin harness's own rule (`manifest`, `initialization`, `mediaSegment`),
+headers, and the ordinal of the connection it arrived on. That is the `networkRequests` of the
+Android harness counted at the server, because on iOS nothing between the engine and the server can
+see a request.
+
+- **One origin per `serve`, on `127.0.0.1` at a port the system chose.** `NWListener` binds the
+  loopback address alone, so nothing off the host is reachable, and two tests in one process never
+  share a port or a count — `LoopbackOriginTests` runs two harnesses at once to show it.
+- **The HTTP is a real origin's, as little of it as a player needs:** `GET` and `HEAD`, persistent
+  HTTP/1.1 connections with requests answered in order, single byte ranges with a 416 past the end
+  (a set of ranges is answered whole, as RFC 9110 §14.2 allows), and RFC 8216's content types.
+- **The live stream publishes on real time.** `.liveHls()` is the Kotlin `TestContent.liveHls()`'s
+  six-segment window, sliding one two-second segment per two seconds since the origin started; a
+  segment that has slid out is a 404. The Android harness times it on its own clock, this one on the
+  host's, so a live test waits for a *segment published after it started* to be fetched rather than
+  advancing to it.
+- **Every wait is `harness.until(description, timeout:)`** — a condition polled every fiftieth of a
+  second, read on the caller's actor for a player's state or awaited for a fetch, and a typed
+  `ConditionTimeout` naming the condition if the bound passes. The bound is a ceiling a pass never
+  approaches. No test sleeps and then asserts, and none asserts how long anything took.
+- **App Transport Security allows the origin's plain HTTP in the test host, not in this
+  repository.** ATS is the host process's, and a SwiftPM test bundle on the simulator runs in
+  Xcode's `xctest`, whose embedded `Info.plist` sets `NSAllowsArbitraryLoads`; the bundle has no
+  `Info.plist` of its own to set a key in, and none is set anywhere here.
+  `LoopbackOriginTests.testTheTestHostAllowsPlainHttpToTheOrigin` asserts the host's setting, so an
+  Xcode that drops it fails there by name rather than as every playback test timing out. A test
+  hosted in an app — the demo's, later — needs `NSAllowsLocalNetworking` in that app's `Info.plist`,
+  which is the narrow key and the one to choose.
+- **`AVPlayer`'s loads do not pass through a registered `URLProtocol`.** ADR-0021's *Context* left
+  this an observation for #399 to confirm; `StockPlayerOriginTests` registers one that sees a
+  `URLSession` load of the same origin and none of the player's.
+- **Faults and shaping are #410's.** An origin records a request, resolves what is published at its
+  path into a response, and sends it, and `LoopbackOrigin`'s KDoc says which stage each fault kind
+  and the throughput replay enter at. Until then the one fault the harness's own tests need — a
+  segment withheld — is an internal `TestContent.withholding(_:)`.
+
+What it cannot show is what real time cannot: a test here is evidence that something happened and in
+what order, never that it happened sooner, and a device is still the only place a FairPlay key, a
+display mode or a QUIC session is real (ADR-0021 rule 5).
 
 ### The hostile manifest corpus
 

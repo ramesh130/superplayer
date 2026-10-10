@@ -105,6 +105,7 @@ class SyntheticHlsFixturesTest {
 
         assertTrue(index, index.contains("hls-vod\tSyntheticHlsStream.files\t3\t1\n"))
         assertTrue(index, index.contains("hls-ladder\tSyntheticHlsStream.files\t3\t2\n"))
+        assertTrue(index, index.contains("hls-live\tSyntheticHlsStream.liveResources\t8\t1\n"))
     }
 
     private companion object {
@@ -119,22 +120,45 @@ class SyntheticHlsFixturesTest {
          * Three segments, because one hides the one thing that varies between segments — the ID3
          * timestamp tag — and two ladders are the two forms #398 ports: the one-variant stream every
          * test plays, and the two-variant ladder a test of selection plays. Neither names a host,
-         * because [SyntheticHlsStream.files] is the relative form. The live window, the second-host
-         * variant and the protected forms are not here; the KDoc on the Swift port says whose each is.
+         * because [SyntheticHlsStream.files] is the relative form. The live window is the third
+         * (#399), as [SyntheticHlsStream.liveResources] stands once eight segments are published:
+         * two past the window, so the window has slid and `EXT-X-MEDIA-SEQUENCE` is not zero, which
+         * is the one line a live playlist has that a VOD one gets wrong silently. Its segment count
+         * is the published count, its variant count one, and its keys lose their `fake://` directory,
+         * since every reference inside it is relative. The second-host variant and the protected
+         * forms are not here; the KDoc on the Swift port says whose each is.
          */
         val FIXTURES = listOf(
             Fixture("hls-vod", segmentCount = 3, variantCount = 1),
             Fixture("hls-ladder", segmentCount = 3, variantCount = 2),
+            Fixture("hls-live", segmentCount = 8, variantCount = 1, generator = LIVE_GENERATOR),
         )
 
-        data class Fixture(val name: String, val segmentCount: Int, val variantCount: Int)
+        const val FILES_GENERATOR = "SyntheticHlsStream.files"
+        const val LIVE_GENERATOR = "SyntheticHlsStream.liveResources"
+
+        data class Fixture(
+            val name: String,
+            val segmentCount: Int,
+            val variantCount: Int,
+            val generator: String = FILES_GENERATOR,
+        ) {
+            fun generate(): Map<String, ByteArray> = when (generator) {
+                FILES_GENERATOR -> SyntheticHlsStream.files(segmentCount, variantCount)
+
+                LIVE_GENERATOR -> SyntheticHlsStream.liveResources(segmentCount)
+                    .mapKeys { (uri, _) -> uri.substringAfterLast('/') }
+
+                else -> error("$name: no generator $generator")
+            }
+        }
 
         /** Every committed file, as its path under the fixtures directory to its bytes. */
         fun expectedFixtures(): Map<String, ByteArray> = buildMap {
             val index = StringBuilder("# name\tgenerator\tsegmentCount\tvariantCount\n")
             FIXTURES.forEach { fixture ->
-                index.append("${fixture.name}\tSyntheticHlsStream.files\t${fixture.segmentCount}\t${fixture.variantCount}\n")
-                SyntheticHlsStream.files(fixture.segmentCount, fixture.variantCount).forEach { (name, bytes) ->
+                index.append("${fixture.name}\t${fixture.generator}\t${fixture.segmentCount}\t${fixture.variantCount}\n")
+                fixture.generate().forEach { (name, bytes) ->
                     put("${fixture.name}/$name", bytes)
                 }
             }

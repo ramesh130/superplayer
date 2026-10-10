@@ -47,7 +47,11 @@ final class StaticLoopbackOrigin: Sendable {
             listener.stateUpdateHandler = { [weak listener] state in
                 let outcome: Result<UInt16, Error>?
                 switch state {
-                case .ready: outcome = .success(listener?.port?.rawValue ?? 0)
+                case .ready:
+                    // A ready listener with no port is not one to hand a URL to.
+                    outcome =
+                        listener?.port.map { .success($0.rawValue) }
+                        ?? .failure(URLError(.cannotConnectToHost))
                 case .failed(let error): outcome = .failure(error)
                 case .cancelled: outcome = .failure(CancellationError())
                 default: outcome = nil

@@ -43,7 +43,8 @@ class SyntheticHlsFixturesTest {
 
     @Test
     fun theCommittedFixturesAreWhatTheGeneratorsProduceNow() {
-        val directory = File(System.getProperty(DIRECTORY_PROPERTY) ?: DEFAULT_DIRECTORY)
+        // Set by this module's build script, which owns the path; unset, the test cannot know it.
+        val directory = File(checkNotNull(System.getProperty(DIRECTORY_PROPERTY)) { "$DIRECTORY_PROPERTY is unset" })
         val expected = expectedFixtures()
         if (System.getProperty(MODE_PROPERTY) == "update") {
             directory.deleteRecursively()
@@ -109,7 +110,6 @@ class SyntheticHlsFixturesTest {
     private companion object {
         const val DIRECTORY_PROPERTY = "superplayer.iosFixtures.dir"
         const val MODE_PROPERTY = "superplayer.iosFixtures.mode"
-        const val DEFAULT_DIRECTORY = "../ios/Tests/Fixtures/synthetic"
         const val UPDATE_COMMAND = "./gradlew updateIosFixtures"
         const val INDEX_FILE = "index.tsv"
 

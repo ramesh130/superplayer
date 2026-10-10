@@ -498,7 +498,7 @@ public object SyntheticHlsStream {
      * whose minimum buffer is longer than one segment. A single-segment stream hides this completely,
      * which is why it went unnoticed until a test needed a long one.
      *
-     * spec: ID3v2.3.0 §3.1 (tag header, size in syncsafe integers) and §4.27 (the PRIV frame).
+     * spec: ID3v2.3.0 §3.1 (tag header, size in syncsafe integers) and §4.28 (the PRIV frame).
      */
     private fun id3TimestampTag(startSeconds: Double): ByteArray {
         val owner = "com.apple.streaming.transportStreamTimestamp".toByteArray(Charsets.US_ASCII)

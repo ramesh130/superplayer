@@ -27,7 +27,12 @@ positions, with every notification the facade observes enumerated in `ObservedSi
 live in the internal `StaticProfilePolicy` and reach the engine only through `EngineBinding.swift`
 — every departure from Apple's default argued at its row, read off a stock item by
 `ProfileTableTests` — and `PlaybackSnapshot`, a `Codable` value whose JSON is a stored format
-pinned by `PlaybackSnapshotTests`. `SuperPlayerMoQ` is not declared yet — its binary target is
+pinned by `PlaybackSnapshotTests`. The telemetry vocabulary (#408) is core's too — `TelemetryEvent`
+held to `docs/telemetry-schema.md` by `TelemetrySchemaDocumentTests`, `TelemetrySink`,
+`TelemetryCollector` made by `Configuration.telemetry`'s factory, the session edges in
+`SessionEdges.swift` — and the bounded `TelemetryDelivery` queue is `SuperPlayerTelemetry`'s, as on
+Android. `PlaybackDecision` is declared there ahead of #415, which owns what it means.
+`SuperPlayerMoQ` is not declared yet — its binary target is
 i9's — and there is no `SuperPlayerCache`, since its content is the offline store's.
 
 **Dependencies point inward** under `docs/modules.md`'s phase rule, and the phase a product takes is

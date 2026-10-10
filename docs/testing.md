@@ -755,6 +755,20 @@ see a request.
   the profiles (`CONGESTED_WIFI` draws `java.util.Random`'s specified sequence, ported) and the
   replay's integer arithmetic are held to each other. `./gradlew updateIosFixtures` rewrites them, as
   it does the streams.
+- **Core's playback tests are in testkit's target.** `SuperPlayerPlaybackTests` (#400) plays a
+  `SuperPlayer` from the origin, and lives in `SuperPlayerTestkitTests` for the reason
+  `SyntheticHlsPlaybackTests` does: a test target takes its product's phase, and core's is phase 1,
+  below the harness. The Kotlin core tests have a harness of core's own instead; an iOS one would be
+  a second loopback origin. What needs no origin — `MediaRequest` as a value, the remembered-position
+  memory and the observed register (ADR-0020 rule 13) — stays in `SuperPlayerCoreTests`. Playback is
+  driven through `player.avPlayer`, since that is where a consumer's transport controls are too, and
+  ADR-0021 rule 1's addendum bounds what a test may do there; a start is asserted as the position at
+  the first poll that finds the player playing, inside a window argued at
+  `SuperPlayerPlaybackTests.startTolerance` — a position, never a duration. Two core tests import
+  core `@testable`, each arguing it in its own comment: `RememberedPositionsTests`, for the order
+  rule a read-is-a-use that no playback can isolate, and `ObservedSignalRegisterTests`, for the
+  register's live count, which no public reading can see until the notification it waits for
+  arrives. Neither seam is `package`, because no later product reaches it.
 
 What it cannot show is what real time cannot: a test here is evidence that something happened and in
 what order, never that it happened sooner, and a device is still the only place a FairPlay key, a

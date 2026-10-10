@@ -136,8 +136,9 @@ class FrameOutputPlaybackTest {
     /**
      * Nothing here is a component, a permission or a provider, so the module publishes no manifest and
      * an app's merged one carries nothing of it; and core declares no `media3-effect`, so an app that
-     * does not add this module does not carry the artifact (ADR-0022 rule 9). Read off the build, with
-     * this module's own declaration as the control that makes the reading a reading.
+     * does not add this module does not carry the artifact (ADR-0022 rule 9). Read off the build files'
+     * declarations, not the resolved classpath, so an artifact core gained transitively would pass this;
+     * this module's own declaration is the control that makes the reading a reading.
      */
     @Test
     fun onlyThisModuleCarriesMediaThreesEffectPipeline() {

@@ -268,9 +268,9 @@ internal class EngineConfiguration(
      * output off for its lifetime, its extension is never asked, and a slot filled by any other hand is
      * not laid either (rule 6).
      *
-     * Null is every player built without `setFrameOutput`: `setVideoEffects` is never called and no
-     * class of `superplayer-effects` is loaded, which is rule 9 and is counted by
-     * `SuperPlayerFrameOutputSeamTest`. The type is Media3's own `Effect` from `media3-common`, so core
+     * Null is every player built without `setFrameOutput`: `setVideoEffects` is never called, which is
+     * rule 9, counted by `SuperPlayerFrameOutputSeamTest` (the slot) and `superplayer-effects`'
+     * `FrameOutputPlaybackTest` (the call, at the renderer). The type is Media3's own `Effect` from `media3-common`, so core
      * names it without depending on `media3-effect`, which only the module that fills the slot carries.
      */
     var frameOutput: Effect? = null

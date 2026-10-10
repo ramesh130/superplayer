@@ -241,6 +241,45 @@ class PlayerPoolTest {
     }
 
     /**
+     * ADR-0022 rules 2 and 6 for a pool: one frame output handed to the pool fills every player it builds
+     * with an effect of that player's own, and on a pool built with `setDrm` it is asked by none of them
+     * and every player says why. Through the real factory, for the reason
+     * [aPoolWithResilienceFillsTheSlotsOfEveryPlayerItBuildsFromTheOneObject] gives.
+     */
+    @Test
+    fun aPoolWithAFrameOutputFillsEveryPlayerAndAProtectedPoolFillsNone() {
+        val filled = mutableListOf<EngineConfiguration>()
+        val clear = PlayerPool.Builder(ApplicationProvider.getApplicationContext())
+            .setMaxSize(2)
+            .setFrameOutput(RecordingFrameOutput(filled))
+            .build()
+        try {
+            val players = listOf(checkNotNull(clear.acquire()), checkNotNull(clear.acquire()))
+
+            assertThat(filled.map { it.frameOutput }.toSet()).hasSize(2)
+            assertThat(players.map { it.frameOutputOffReason }).containsExactly(null, null)
+        } finally {
+            clear.release()
+        }
+
+        val protectedFilled = mutableListOf<EngineConfiguration>()
+        val protectedPool = PlayerPool.Builder(ApplicationProvider.getApplicationContext())
+            .setMaxSize(2)
+            .setDrm(object : PlaybackDrm {})
+            .setFrameOutput(RecordingFrameOutput(protectedFilled))
+            .build()
+        try {
+            val players = listOf(checkNotNull(protectedPool.acquire()), checkNotNull(protectedPool.acquire()))
+
+            assertThat(protectedFilled).isEmpty()
+            assertThat(players.map { it.frameOutputOffReason })
+                .containsExactly(FrameOutputOffReason.PROTECTED_CONTENT, FrameOutputOffReason.PROTECTED_CONTENT)
+        } finally {
+            protectedPool.release()
+        }
+    }
+
+    /**
      * ADR-0010 rules 1 and 13 for a pool: the cache a consumer opened and handed the pool is composed
      * into every player it builds, and a pool handed none gives its players none.
      *
@@ -684,6 +723,15 @@ class PlayerPoolTest {
      * with a token refresh, and it is what makes the shared-instance requirement in
      * [PlaybackResilience]'s KDoc visible here rather than only stated there.
      */
+
+    /** A frame output that fills each player's slot with an effect of its own, and records the configuration. */
+    private class RecordingFrameOutput(private val filled: MutableList<EngineConfiguration>) : EngineFrameOutputExtension {
+        override fun configureEngine(configuration: EngineConfiguration) {
+            configuration.frameOutput = object : androidx.media3.common.Effect {}
+            filled += configuration
+        }
+    }
+
     private class RecordingOutput(private val filled: MutableList<EngineConfiguration>) : EngineOutputExtension {
         override fun configureEngine(configuration: EngineConfiguration) {
             configuration.videoOutput = object : VideoOutputBinding {

@@ -1664,8 +1664,10 @@ public class SuperPlayer private constructor(
          * with [setDrm] or [setRealtime] the player builds and plays exactly as it would without this
          * call, and [SuperPlayer.frameOutputOffReason] says why — never an error (rule 6).
          *
-         * Leave it unset and `setVideoEffects` is never called, nothing is allocated and no class of the
-         * module is loaded — which is rule 9, and is counted rather than asserted about.
+         * Leave it unset and the slot stays empty and `setVideoEffects` is never called — which is rule 9,
+         * and is counted rather than asserted about. That no class of the module is then loaded follows
+         * from nothing of it being reachable, and is asserted by nothing (ADR-0022, *What nothing
+         * enforces*).
          */
         public fun setFrameOutput(output: PlaybackFrameOutput): Builder = apply { this.frameOutput = output }
 
@@ -1808,7 +1810,7 @@ public class SuperPlayer private constructor(
             // And the frame output, per player, and only where it is on: a player built with protection
             // or for realtime has it off for its lifetime, so its extension is never asked and nothing of
             // the module runs there (ADR-0022 rules 6 and 9). An output never set fills nothing.
-            val frameOutputOff = frameOutputOffReason(frameOutput, protected = drm != null, realtime = realtime != null)
+            val frameOutputOff = frameOutputOffFor(frameOutput, protected = drm != null, realtime = realtime != null)
             if (frameOutputOff == null) (frameOutput as? EngineFrameOutputExtension)?.configureEngine(configuration)
             engineConfigurator?.invoke(configuration)
             // What is laid is decided here, after the test seam, so that an effect filled by any hand is

@@ -145,7 +145,7 @@ enforce it.
    `KotlinFriendModules.kt`'s declaration and review for the friendship, and by a seam test
    counting both slots (rule 9).*
 
-   **#406 addendum — the spelling fixed.** The module is `superplayer-effects`, phase 8 (the phase of
+   **#406 addendum — the spelling fixed, which also refines rule 2's parameter on Android.** The module is `superplayer-effects`, phase 8 (the phase of
    the slot this record amends; `docs/modules.md` argues the number, since `PRD.md` schedules no
    Android frame output). What `setFrameOutput` takes on Android is a handle, `PlaybackFrameOutput`,
    made by the module's factory `VideoEffects.frameOutput(output)` from the consumer's `FrameOutput` —

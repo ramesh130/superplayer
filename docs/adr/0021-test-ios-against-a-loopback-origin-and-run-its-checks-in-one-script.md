@@ -4,7 +4,8 @@
 - **Date:** 2026-10-10
 - **Amended:** 2026-10-11 (#400), by an addendum at rule 1 recording what a test may read through
   `player.avPlayer` while the facade publishes no state of its own. It narrows nothing the rule
-  decided and lapses as the facade's state arrives.
+  decided and lapses as the facade's state arrives. Amended again (#401) at the same rule, admitting
+  a profile's knobs and an item's readiness until the facade publishes its own.
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
 - **Refines:** [`docs/testing.md`](../testing.md)'s rule — *no device and no network, through the
@@ -87,6 +88,19 @@ rule names the ticket that brings its enforcement, and *What nothing enforces* s
    comment argues why no public reading exists; `docs/testing.md`'s *The iOS harness* lists each.
    This lapses, reading by reading, as the facade publishes a position or a state (#401, and the
    telemetry vocabulary of #408), from which point a test reads that instead.
+
+   *Addendum (2026-10-11, #401).* Two readings are admitted beside those, each until the facade
+   publishes its own. **A profile's knobs**: the numbers `StaticProfilePolicy` puts on the engine
+   are internal by design (a consumer names the profile, not the table) and the facade publishes no
+   decision until the policy boundary's `playbackDecision` (`docs/ios-plan.md` §3.3), while the
+   synthetic streams carry one audio rendition, so no variant the origin serves can show a ceiling.
+   `ProfileTableTests` therefore reads the knobs off the item and the player through
+   `player.avPlayer` — the one place a test reads AVFoundation state the facade wrote to check that
+   it wrote it, which the issue that built it asked for by name — and holds the reading against a
+   stock item's, so a departure is a departure from what the engine reports and not from a comment.
+   **An item's readiness**: `currentItem.status`, which a consumer's own controls read to enable a
+   play button, so a test can say a restored player is ready and still paused rather than waiting
+   on a time. Both lapse as the facade publishes a decision and a state.
 
 2. **The harness is a loopback HTTP origin, started per test, and the carve-out is widened to every
    iOS test.** `SuperPlayerTestkit` starts an HTTP/1.1 server on `127.0.0.1` at an ephemeral port

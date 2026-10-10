@@ -35,7 +35,9 @@ into a `PlayerPool`, or given different content.
 - `sessionId` is opaque, unique, and the same on every event of one session. **It is also CMCD's
   `sid`** — the same string, sent to the CDN on every request of the session, which is what makes the
   join below possible. Minted by `superplayer-core`, not by the collector, precisely so that the two
-  seams cannot drift apart.
+  seams cannot drift apart. On iOS and tvOS it is to be *read* by core rather than minted — the SDK fills
+  CMCD's `sid` itself and cannot be told what to put there — for the same reason; see
+  [On iOS and tvOS](#on-ios-and-tvos).
 - `contentId` is the app's own `MediaRequest.contentId`. **Never a URL.** The same content behind two
   CDNs is one `contentId`, which is what makes a per-title metric a per-title metric.
 - A session begins with exactly one `SessionStarted` and ends with exactly one `SessionEnded`.
@@ -84,6 +86,29 @@ Three things a data engineer needs before writing that query.
 
 `cid` is the same `contentId` these events carry, so a per-title question can be asked of the CDN's
 log directly, without joining at all.
+
+#### On iOS and tvOS
+
+The join holds on Apple platforms too, from iOS 18 and tvOS 18, and the promise above is not
+Android-only. What differs is where the string comes from and which keys arrive with it; the
+evidence is [`ios-cmcd-finding.md`](ios-cmcd-finding.md). **Nothing below is built yet** — the
+implementation is `#446` — so this is the derivation the iOS half is held to rather than a
+description of shipped code.
+
+- **The SDK sends CMCD itself**, once core sets `AVAssetResourceLoader.sendsCommonMediaClientDataAsHTTPHeaders`
+  on the asset, and its `sid` is the asset's `httpSessionIdentifier` — which core reads and uses as
+  `sessionId`, so the equality is the same equality. One asset is one session, because copies of an
+  asset share the identifier. The value is an uppercase UUID string.
+- **Headers only.** The SDK has no query-parameter mode, so `CmcdMode.QUERY_PARAMETER` does not port
+  and a CDN that logs query strings alone sees no CMCD from an iOS device.
+- **No `cid`.** A per-title question asked of the CDN's log alone needs the join on iOS.
+- **Below iOS 18 and tvOS 18 no CMCD is sent.** The same string still reaches the CDN on every
+  request as the `X-Playback-Session-Id` header, which AVFoundation documents from iOS 16, so a CDN
+  that logs that header can join an iOS 17 session on `x_playback_session_id = session_id`
+  instead. That rests on the header's documentation: the spike observed the header on a later
+  runtime only.
+- **The keys are the SDK's.** Which CTA-5004 keys arrive, and how each is computed, is AVFoundation's
+  choice rather than this library's; the finding lists the ones observed.
 
 ### The stream is lossy, and it says so
 

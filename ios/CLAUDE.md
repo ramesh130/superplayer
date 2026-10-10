@@ -47,7 +47,8 @@ let harness = PlaybackHarness()            // one per test; harness.stop() in te
 let origin = try await harness.serve(.hls())   // or .liveHls(), which keeps publishing
 let player = AVPlayer(url: origin.sourceURL)
 try await harness.until("the position advances", timeout: .seconds(60)) { … }
-origin.networkRequests()                   // path, kind (manifest / mediaSegment), headers, connection
+origin.networkRequests()                   // path, kind (manifest / mediaSegment), headers, connection, host
+origin.responses()                         // how each was answered: status, faults, bytes sent
 ```
 
 - **An origin is `NWListener` on `127.0.0.1` at an ephemeral port**, one per `serve`, so two tests
@@ -64,8 +65,19 @@ origin.networkRequests()                   // path, kind (manifest / mediaSegmen
   by Xcode's `xctest` host, whose embedded `Info.plist` sets `NSAllowsArbitraryLoads`, and
   `LoopbackOriginTests` pins that; a test hosted in an app would need `NSAllowsLocalNetworking`
   there (`docs/testing.md`, *The iOS harness*).
-- **Faults and shaping are #410's**, and `LoopbackOrigin`'s doc comment names the three stages
-  they enter.
+- **Faults and shaping are applied at the server** (#410): `harness.serve(content, faults:
+  network:)` takes a `FaultScript` — addressed by kind, index, attempt and host, as the Kotlin
+  builder is — and a `ThroughputTrace` or `NetworkProfile.….trace` paced at the socket.
+  `origin.responses()` is how each request was answered — status, faults, bytes sent, whether from
+  the script's cache — and is what a test shows a fault happened with. What a server cannot produce
+  (a DNS or TLS failure, the client's own timeout) is not in the script, and a trace's transport is
+  reported on each response rather than switched.
+- **Two hosts are one origin with two listeners**: `.hls(hosts: 2)` or `.liveHls(hosts: 2)`, on one
+  publication clock, the multivariant playlist listing each variant again on the second host as a
+  redundant stream; `origin.url(path:host:)` addresses one, and a fault's `host:` narrows to it.
+- **One place a test measures time**: `NetworkShapingTests` holds a shaped transfer to the trace's
+  rate as a bound — never faster, exactly, and within a stated slack slower — because #410's
+  acceptance asks for a rate; ADR-0021 rule 4's #410 addendum records it. Nothing else does.
 
 ## Commands
 

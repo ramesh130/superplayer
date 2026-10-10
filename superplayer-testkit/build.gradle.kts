@@ -56,3 +56,30 @@ dependencies {
     testImplementation(libs.androidx.work.runtime)
     testImplementation(libs.androidx.work.testing)
 }
+
+// The shared trace fixtures: every `NetworkProfile` written out, and what this module's reader makes
+// of each trace there, committed under `ios/Tests/Fixtures/throughput-traces/` so the Swift reader is
+// held to the same readings without a JVM (ADR-0021 rule 6, `docs/throughput-traces.md`).
+// `ThroughputTraceFixturesTest` fails `check` when the committed files are not what this module
+// produces now, and `updateIosFixtures` — the task `superplayer-testmedia` registers for its streams,
+// registered here under the same name so one command rewrites every iOS fixture — is the one thing
+// that rewrites them, run alone, then `check`. The wiring is that module's, for its reasons.
+val traceFixtures = rootProject.layout.projectDirectory.dir("ios/Tests/Fixtures/throughput-traces")
+val traceFixturesFromModule = traceFixtures.asFile.relativeTo(projectDir).invariantSeparatorsPath
+val updatingIosFixtures = gradle.startParameter.taskNames.any { it.substringAfterLast(':') == "updateIosFixtures" }
+
+tasks.withType<Test>().configureEach {
+    systemProperty("superplayer.traceFixtures.dir", traceFixturesFromModule)
+    systemProperty("superplayer.iosFixtures.mode", if (updatingIosFixtures) "update" else "check")
+    inputs.files(fileTree(traceFixtures)).withPropertyName("traceFixtures").withPathSensitivity(PathSensitivity.RELATIVE)
+    if (updatingIosFixtures) {
+        outputs.upToDateWhen { false }
+        filter { includeTestsMatching("*FixturesTest") }
+    }
+}
+
+tasks.register("updateIosFixtures") {
+    group = "verification"
+    description = "Rewrites ios/Tests/Fixtures/throughput-traces/ from what this module's trace reader produces now."
+    dependsOn("testDebugUnitTest")
+}

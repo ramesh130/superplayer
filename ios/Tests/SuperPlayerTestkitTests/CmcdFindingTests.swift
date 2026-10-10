@@ -48,42 +48,40 @@ final class CmcdFindingTests: XCTestCase {
     /// test sees are the flag's doing. It does send `X-Playback-Session-Id` — the same string the
     /// flag later puts in `sid`, and the one session identifier iOS 17 sends.
     func testAnAssetLeftAloneSendsNoCmcdAndNamesItsSessionInXPlaybackSessionId() async throws {
-        let (asset, requests) = try await play(.hls(segmentCount: 3)) { _ in }
+        let (asset, requests) = try await play(.hls(segmentCount: 3), sendingCmcd: false)
 
         for request in requests {
-            XCTAssertTrue(
-                Self.cmcdHeaders(request).isEmpty, "\(request) \(Self.finding)")
-            XCTAssertFalse(
-                request.query?.contains("CMCD") ?? false, "\(request) \(Self.finding)")
+            XCTAssertTrue(Self.cmcdHeaders(request).isEmpty, "\(request) \(Self.finding)")
+            XCTAssertNil(request.query, "\(request) \(Self.finding)")
             XCTAssertEqual(
                 request.headers["x-playback-session-id"], asset.httpSessionIdentifier.uuidString,
-                "\(request)")
+                "\(request) \(Self.finding)")
         }
     }
 
-    /// The flag sends CMCD on every request, manifests and segments alike, as headers and never as a
-    /// query — and the `sid` on every one is the asset's `httpSessionIdentifier`, which can be read
-    /// before the first request leaves. That is what lets the iOS session id be *read* where Android's
-    /// is minted: the join is an equality on a string the app already holds.
+    /// The flag sends CMCD on every request, manifests and segments alike, as headers and never as
+    /// a query — and the `sid` on every one is the asset's `httpSessionIdentifier`, which can be
+    /// read before the first request leaves. That is what lets the iOS session id be *read* where
+    /// Android's is minted: the join is an equality on a string the app already holds.
     func testTheFlagSendsCmcdHeadersOnEveryRequestWhoseSidIsTheAssetsSessionIdentifier()
         async throws
     {
-        guard #available(iOS 18, tvOS 18, *) else {
-            throw XCTSkip("sendsCommonMediaClientDataAsHTTPHeaders needs iOS 18")
-        }
-        let (asset, requests) = try await play(.hls(segmentCount: 3)) {
-            $0.resourceLoader.sendsCommonMediaClientDataAsHTTPHeaders = true
-        }
-        let sid = asset.httpSessionIdentifier.uuidString
+        let (asset, requests) = try await play(.hls(segmentCount: 3), sendingCmcd: true)
 
         for request in requests {
+            // spec: CTA-5004 §3.2 — the keys travel in header groups; these three carry a key on
+            // every request here, and no request carries a fourth, `CMCD-Status`.
+            XCTAssertEqual(
+                Set(Self.cmcdHeaders(request).keys),
+                ["cmcd-object", "cmcd-request", "cmcd-session"], "\(request) \(Self.finding)")
+            XCTAssertNil(request.query, "headers only: \(request) \(Self.finding)")
             let session = Self.keys(request.headers["cmcd-session"])
-            // spec: CTA-5004 §3.1 — `sid` is a quoted string.
-            XCTAssertEqual(session["sid"], "\"\(sid)\"", "\(request) \(Self.finding)")
-            XCTAssertEqual(session["sf"], "h", "streaming format HLS: \(request)")
-            XCTAssertFalse(
-                request.query?.contains("CMCD") ?? false, "headers only: \(request) \(Self.finding)"
-            )
+            XCTAssertEqual(session["sid"], Self.sid(of: asset), "\(request) \(Self.finding)")
+            XCTAssertEqual(
+                request.headers["x-playback-session-id"], asset.httpSessionIdentifier.uuidString,
+                "\(request) \(Self.finding)")
+            // spec: CTA-5004 §3.1 — `sf=h` is the streaming format HLS.
+            XCTAssertEqual(session["sf"], "h", "\(request) \(Self.finding)")
             // Absent today, and the one key the Android half sends that this one does not; an SDK
             // that starts sending it closes a gap the finding names rather than breaking anything.
             XCTAssertNil(session["cid"], "\(request) \(Self.finding)")
@@ -92,69 +90,68 @@ final class CmcdFindingTests: XCTestCase {
         XCTAssertFalse(segments.isEmpty, "\(requests)")
         for segment in segments {
             // spec: CTA-5004 §3.1 — `st=v` is on-demand, `ot=a` an audio-only object.
-            XCTAssertEqual(Self.keys(segment.headers["cmcd-session"])["st"], "v", "\(segment)")
-            XCTAssertEqual(Self.keys(segment.headers["cmcd-object"])["ot"], "a", "\(segment)")
+            XCTAssertEqual(
+                Self.keys(segment.headers["cmcd-session"])["st"], "v", "\(segment) \(Self.finding)")
+            XCTAssertEqual(
+                Self.keys(segment.headers["cmcd-object"])["ot"], "a", "\(segment) \(Self.finding)")
         }
         for manifest in requests.filter({ $0.kind == .manifest }) {
-            XCTAssertEqual(Self.keys(manifest.headers["cmcd-object"])["ot"], "m", "\(manifest)")
+            // spec: CTA-5004 §3.1 — `ot=m` is a manifest or playlist.
+            XCTAssertEqual(
+                Self.keys(manifest.headers["cmcd-object"])["ot"], "m",
+                "\(manifest) \(Self.finding)")
         }
     }
 
-    /// The other candidate the plan named: `AVURLAssetPrimarySessionIdentifierKey` takes a UUID the
-    /// app chooses, which would have let the app *set* `sid`. It does not reach CMCD at all — `sid`
-    /// stays the asset's own identifier — and what it does send is an `_HLS_primary_id` query on the
-    /// multivariant playlist alone, which is the interstitial-matching key its header documents.
+    /// The other candidate the plan named: `AVURLAssetPrimarySessionIdentifierKey`, whose value the
+    /// header says is to equal a primary item's asset's `httpSessionIdentifier`, so that
+    /// interstitial assets can be matched to it. Given a UUID of the test's own, it reaches no CMCD
+    /// key — `sid` stays the asset's own identifier — and what it does send is an
+    /// `_HLS_primary_id` query on the multivariant playlist alone.
     func testThePrimarySessionIdentifierKeyDoesNotReachSid() async throws {
-        guard #available(iOS 18, tvOS 18, *) else {
-            throw XCTSkip("sendsCommonMediaClientDataAsHTTPHeaders needs iOS 18")
-        }
         let chosen = UUID()
         let (asset, requests) = try await play(
-            .hls(segmentCount: 3),
-            options: [AVURLAssetPrimarySessionIdentifierKey: chosen]
-        ) {
-            $0.resourceLoader.sendsCommonMediaClientDataAsHTTPHeaders = true
-        }
+            .hls(segmentCount: 3), sendingCmcd: true,
+            options: [AVURLAssetPrimarySessionIdentifierKey: chosen])
 
-        XCTAssertNotEqual(asset.httpSessionIdentifier, chosen)
+        XCTAssertNotEqual(asset.httpSessionIdentifier, chosen, Self.finding)
         for request in requests {
             XCTAssertEqual(
-                Self.keys(request.headers["cmcd-session"])["sid"],
-                "\"\(asset.httpSessionIdentifier.uuidString)\"", "\(request) \(Self.finding)")
+                Self.keys(request.headers["cmcd-session"])["sid"], Self.sid(of: asset),
+                "\(request) \(Self.finding)")
         }
-        let carrying = requests.filter {
-            $0.query == "_HLS_primary_id=\(chosen.uuidString)"
-        }
-        XCTAssertEqual(carrying.map(\.path), ["/master.m3u8"], "\(requests)")
+        let carrying = requests.filter { $0.query == "_HLS_primary_id=\(chosen.uuidString)" }
+        XCTAssertEqual(carrying.map(\.path), ["/master.m3u8"], "\(requests) \(Self.finding)")
     }
 
     /// A live stream carries the same `sid` on every request and says it is live, so the join holds
     /// for the content where a CDN's view matters most.
     func testALiveStreamCarriesTheSameSidAndSaysItIsLive() async throws {
-        guard #available(iOS 18, tvOS 18, *) else {
-            throw XCTSkip("sendsCommonMediaClientDataAsHTTPHeaders needs iOS 18")
-        }
-        let (asset, requests) = try await play(.liveHls()) {
-            $0.resourceLoader.sendsCommonMediaClientDataAsHTTPHeaders = true
-        }
+        let (asset, requests) = try await play(.liveHls(), sendingCmcd: true)
 
         let sids = Set(requests.map { Self.keys($0.headers["cmcd-session"])["sid"] })
-        XCTAssertEqual(sids, ["\"\(asset.httpSessionIdentifier.uuidString)\""], "\(requests)")
+        XCTAssertEqual(sids, [Self.sid(of: asset)], "\(requests) \(Self.finding)")
         for segment in requests.filter({ $0.kind == .mediaSegment }) {
             // spec: CTA-5004 §3.1 — `st=l` is live.
-            XCTAssertEqual(Self.keys(segment.headers["cmcd-session"])["st"], "l", "\(segment)")
+            XCTAssertEqual(
+                Self.keys(segment.headers["cmcd-session"])["st"], "l", "\(segment) \(Self.finding)")
         }
     }
 
-    /// Plays `content` from a stock player over an asset `configure` was given first, until two
-    /// segments have been fetched, and answers the asset and everything the origin saw.
+    /// Plays `content` from a stock player, with or without the CMCD flag set on its asset first,
+    /// until two segments have been fetched, and answers the asset and everything the origin saw.
+    /// Skips where the flag does not exist, which is the one gate on iOS 18 the suite needs.
     private func play(
-        _ content: TestContent, options: [String: any Sendable] = [:],
-        configure: (AVURLAsset) -> Void
+        _ content: TestContent, sendingCmcd: Bool, options: [String: any Sendable] = [:]
     ) async throws -> (AVURLAsset, [NetworkRequest]) {
         let origin = try await harness.serve(content)
         let asset = AVURLAsset(url: origin.sourceURL, options: options)
-        configure(asset)
+        if sendingCmcd {
+            guard #available(iOS 18, tvOS 18, *) else {
+                throw XCTSkip("sendsCommonMediaClientDataAsHTTPHeaders needs iOS 18 and tvOS 18")
+            }
+            asset.resourceLoader.sendsCommonMediaClientDataAsHTTPHeaders = true
+        }
         let player = AVPlayer(playerItem: AVPlayerItem(asset: asset))
         player.play()
         try await harness.until("two segments are fetched", timeout: bound) {
@@ -166,14 +163,21 @@ final class CmcdFindingTests: XCTestCase {
         return (asset, origin.networkRequests())
     }
 
-    /// The four CMCD header fields a request carried, by lowercased name.
+    /// `sid` as it arrives for `asset`: its session identifier, quoted (spec: CTA-5004 §3.1 sends a
+    /// string-valued key quoted).
+    private static func sid(of asset: AVURLAsset) -> String {
+        "\"\(asset.httpSessionIdentifier.uuidString)\""
+    }
+
+    /// The CMCD header fields a request carried, by lowercased name.
     private static func cmcdHeaders(_ request: NetworkRequest) -> [String: String] {
         request.headers.filter { $0.key.hasPrefix("cmcd-") }
     }
 
     /// One CMCD header's keys: comma-separated within a header group (spec: CTA-5004 §3.2), each
-    /// `key=value` or a bare key for a valueless true (§3.1). A value holding a comma inside quotes is not split correctly, and no
-    /// key read here can carry one.
+    /// `key=value` or a bare key for a valueless true (§3.1). A quoted value holding a comma — a
+    /// `nor` URL in `CMCD-Request` can — would be split wrongly, which is why only `CMCD-Session`
+    /// and `CMCD-Object` are read through it.
     private static func keys(_ field: String?) -> [String: String] {
         guard let field else { return [:] }
         var keys: [String: String] = [:]

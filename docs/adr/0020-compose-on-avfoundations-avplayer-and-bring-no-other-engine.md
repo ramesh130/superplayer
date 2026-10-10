@@ -199,7 +199,8 @@ that, and *What nothing enforces* sums them.
    route: core reads the asset's identifier and uses it as the telemetry `sessionId`, rather than
    minting one and handing it out as Android's core does. Below 18 no CMCD is sent, which is rule
    9's measurement shape rather than a refusal. The implementation is #446, and
-   `CmcdFindingTests` pins the three facts it rests on.
+   `CmcdFindingTests` pins the three facts it rests on — which pins the SDK's behaviour, not this
+   rule, so the rule is still enforced by nothing.
 
 8. **The doctor parses HLS with a lint parser of its own, written to RFC 8216, and says so.**
    ADR-0015 rule 6 has the doctor parse with the parsers the engine would run, so that the doctor and

@@ -24,26 +24,27 @@ Read in Xcode 27's iOS simulator SDK, `iPhoneSimulator27.1.sdk`, under
 | --- | --- | --- | --- |
 | `AVAssetResourceLoader.sendsCommonMediaClientDataAsHTTPHeaders` | `AVAssetResourceLoader.h:418–428`, category `AVAssetResourceLoaderCommonMediaClientDataSupport` | iOS 18, tvOS 18 | "Enables Common Media Client Data to be attached as HTTP request headers." Defaults to `NO`. |
 | `AVURLAsset.httpSessionIdentifier` | `AVAsset.h:691–695` | iOS 16, tvOS 16 | A read-only `NSUUID` "automatically included in any HTTP request issued on behalf of this asset in the HTTP header field `X-Playback-Session-Id`". Copies of an asset vend an equal one. |
-| `AVURLAssetPrimarySessionIdentifierKey` | `AVAsset.h:616–620` | iOS 16, tvOS 16 | A UUID the app chooses, appended as the query parameter `_HLS_primary_id` "to selected HTTP requests"; documented for matching interstitial assets to the primary item's (`AVPlayerInterstitialEventController.h:127`, `:244`). |
+| `AVURLAssetPrimarySessionIdentifierKey` | `AVAsset.h:616–620` | iOS 16, tvOS 16 | A UUID appended as the query parameter `_HLS_primary_id` "to selected HTTP requests", HLS assets only. Its documented use is matching interstitial assets to a primary item, whose asset's `httpSessionIdentifier` the value is then to equal (`AVPlayerInterstitialEventController.h:127`, `:244`). |
 
 The headers state no query-parameter mode, no per-key control, no `cid`, and no way to *set* the
-session identifier: the property is read-only, and the one key that takes an app-chosen UUID is the
-interstitial one. They do not say what `sid` will be — that is what the observation below is for.
+session identifier: the property is read-only, and the one key that takes a UUID from the app is
+the interstitial one. They do not say what `sid` will be — that is what the observation below is for.
 
 ## What the origin saw
 
 `CmcdFindingTests`, in `ios/Tests/SuperPlayerTestkitTests/`, plays a stock `AVPlayer` from the
 harness's loopback origin ([ADR-0021](adr/0021-test-ios-against-a-loopback-origin-and-run-its-checks-in-one-script.md)
 rule 2) and asserts on the request line and headers the origin recorded, with and without each
-candidate. It is kept rather than run once, so that an SDK which changes any of what follows fails
-it with a message pointing here. Observed on the iOS 27.1 simulator runtime, Xcode 27, against the
-synthetic on-demand stream (three 2 s AAC segments) and the live one:
+candidate. It is kept rather than run once, so that an SDK which changes what the table below says
+fails it with a message pointing here; the key inventory and the sample request after the table are
+a recorded run, not asserted, bar `cid`'s absence. Observed on the iOS 27.1 simulator runtime, Xcode 27, against the
+synthetic on-demand stream (three 2 s AAC segments) and the live one, with each candidate's value a UUID of the test's own:
 
 | Configuration | `CMCD-*` headers | `sid` | Query string |
 | --- | --- | --- | --- |
 | Asset left alone | none, on any request | — | none |
 | `sendsCommonMediaClientDataAsHTTPHeaders = true` | `CMCD-Object`, `CMCD-Request`, `CMCD-Session` on **every** playlist and segment request | `"<httpSessionIdentifier>"` on every request | none |
-| The flag, plus `AVURLAssetPrimarySessionIdentifierKey: <chosen UUID>` | as above | still `"<httpSessionIdentifier>"`; the chosen UUID appears in no CMCD key | `_HLS_primary_id=<chosen UUID>` on the multivariant playlist only |
+| The flag, plus `AVURLAssetPrimarySessionIdentifierKey: <a UUID>` | as above | still `"<httpSessionIdentifier>"`; the given UUID appears in no CMCD key | `_HLS_primary_id=<that UUID>` on the multivariant playlist only |
 | The flag, live stream | as above | one value across every request | none |
 
 `X-Playback-Session-Id: <httpSessionIdentifier>` is on every request in every configuration,
@@ -74,15 +75,16 @@ SDK fills `sid` itself and cannot be told what to put there, so the direction re
 comes from — the asset rather than a `UUID()` call. Three consequences, each carried into #446:
 
 - **One asset per session.** Copies of an asset vend an equal identifier, so an asset reused across
-  two adoptions would put two sessions under one `sid`. Core builds a fresh `AVURLAsset` per
+  two adoptions would put two sessions under one `sid`. Core is to build a fresh `AVURLAsset` per
   `MediaRequest` adopted.
 - **A fallback to the next source is the open question.** Android keeps a rung-4 fallback one session
   with one `sid`; on iOS the next source is a new asset with a new identifier. Whether that is one
   session reported under the first id (and the CDN then sees a second `sid` for it) or two is the rung
   4 ticket's (#420) to decide and the schema's to state.
 - **Below iOS 18 and tvOS 18 there is no CMCD**, and nothing is refused: CMCD is not a call a consumer
-  makes, so ADR-0020 rule 9's second shape applies — the measurement is coarser below 18 and the
-  schema says which derivation applies where. The same string still reaches the CDN as
+  makes, so rule 9's first shape does not apply. Nor is it quite the second, which is about the
+  library's own measurements, but it is the nearer fit and is treated the same way — the schema says
+  which version carries what. The same string still reaches the CDN as
   `X-Playback-Session-Id`, which the header documents from iOS 16, so a CDN that logs that header can
   join a session from an iOS 17 device too. That is a fact about the header's documentation; this
   spike observed only the 27.1 runtime.
@@ -95,10 +97,11 @@ exercise either — every row of `StaticCmcdPolicy` is `REQUEST_HEADERS`.
 ## What the spike could not see
 
 - **Any runtime but iOS 27.1 on the simulator.** It is the only iOS runtime installed on the host the
-  spike ran on; the macOS CI job runs the test on the newest runtime its image carries. iOS 18's behaviour is inferred from the header's availability, not observed, and a
-  device was not used.
-- **tvOS.** Built, not tested, as every iOS test is today (`ios/CLAUDE.md`); the header declares the
-  same availability.
+  spike ran on. The macOS CI job selects Xcode 26.6 and so runs `CmcdFindingTests` on an iOS 26
+  runtime, which makes CI the first place a difference between the two would show. iOS 18's
+  behaviour is inferred from the header's availability, not observed, and no device was used.
+- **tvOS.** Built and not tested, by `ios/CLAUDE.md`'s policy for every product until i7 rather than
+  for want of a runtime; the header declares the same availability.
 - **A download.** `AVAssetDownloadURLSession` loads through its own task, not an `AVPlayer`; whether
   the flag reaches it is outside this question, and Android sends no CMCD from a download either
   (ADR-0013 rule 6: no CMCD on the download chain).

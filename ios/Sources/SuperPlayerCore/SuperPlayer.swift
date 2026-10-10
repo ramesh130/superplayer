@@ -125,6 +125,7 @@ public final class SuperPlayer {
     /// first, so a later ``MediaRequest/StartPosition/resumeFromLastKnown`` for it returns here; that
     /// order is also why a request resuming the content already playing resumes where it is.
     public func setMediaRequest(_ request: MediaRequest) {
+        guard !isReleased else { return }
         rememberPositionOfCurrentContent()
         let item = AVPlayerItem(url: request.sources[0])
         item.externalMetadata = ContentIdentity.metadata(of: request)
@@ -160,6 +161,7 @@ public final class SuperPlayer {
     /// remembering at every replacement it makes is the promise
     /// ``MediaRequest/StartPosition/resumeFromLastKnown`` states.
     public func setMediaURL(_ url: URL) {
+        guard !isReleased else { return }
         rememberPositionOfCurrentContent()
         endMeasurement()
         replaceCurrentItem(with: AVPlayerItem(url: url), identified: false)
@@ -168,7 +170,8 @@ public final class SuperPlayer {
     /// Ends what this player is doing, for good: the open measurement session closes, the collector
     /// lets go of the player, and the current item is dropped so nothing more loads. The Kotlin
     /// `release()`, in its order — the session ends while the content it measured is still there to
-    /// read. Calling it again does nothing; a released player is not to be given content again.
+    /// read. Calling it again does nothing, and so does giving a released player content: it is
+    /// finished.
     public func release() {
         guard !isReleased else { return }
         endMeasurement()

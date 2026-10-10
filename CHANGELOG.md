@@ -95,6 +95,13 @@ them under `Added` would be worse than stating them here:
   is set, with the asset's `httpSessionIdentifier` as `sid` — so `docs/telemetry-schema.md` keeps the
   `sid` join on Apple platforms rather than marking it Android-only. `CmcdFindingTests` pins what a
   stock `AVPlayer` sent with and without each candidate; the implementation is #446.
+- **The iOS telemetry vocabulary (#408).** `SuperPlayerCore` gains `TelemetryEvent` — the fifteen
+  events of `docs/telemetry-schema.md`, field for field, at `schemaVersion` 2, held to the document
+  by a test on each platform — with `TelemetrySink`, `.composite(...)`, `TelemetryCollector`, made
+  per player by `Configuration.telemetry`, core-minted session ids, and `SuperPlayer.release()`.
+  `SuperPlayer.Configuration` is no longer `Hashable`, because it now carries a function.
+  `SuperPlayerTelemetry` gains the bounded delivery queue: 256 events per player, the newest refused,
+  every refusal stamped on `SessionEnded`. No Android behaviour moved.
 - **Phase 9 — Diagnostics and docs.** `MediaSourceDoctor`, which names twenty pathologies over the
   chain a player would load through; the postmortem reading; `SessionBundle`; the debug HUD; and
   the documents in `docs/`.

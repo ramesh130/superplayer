@@ -18,9 +18,9 @@ package com.superplayer.core
 
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
+import org.junit.Test
 import java.io.File
 import java.lang.reflect.Modifier
-import org.junit.Test
 
 /**
  * `docs/telemetry-schema.md`'s *The events* table against [TelemetryEvent], in both directions: every
@@ -42,6 +42,8 @@ class TelemetrySchemaDocumentTest {
     @Test
     fun everyDocumentedEventAndFieldIsInTheVocabularyAndNothingElse() {
         val documented = documentedEvents()
+        // A guard on the parser rather than a second authority on the count: a table it read none of
+        // would otherwise compare as "nothing documented" and fail less legibly.
         assertWithMessage("the parser found ${documented.keys}; the table has fifteen events")
             .that(documented).hasSize(15)
 

@@ -27,7 +27,9 @@ import XCTest
 /// resource would be a second place for the table to go stale.
 ///
 /// The Swift side is read by reflection over one sample of each case. A case added to
-/// ``TelemetryEvent`` stops ``payload(of:)`` compiling, which is where its sample goes in too.
+/// ``TelemetryEvent`` stops ``payload(of:)`` compiling until it has a ``Case`` of its own, and
+/// `testThereIsASampleOfEveryCase` then fails until it has a sample — so no case can be added
+/// that this test does not read.
 final class TelemetrySchemaDocumentTests: XCTestCase {
 
     /// The four fields every event carries, which the table leaves out of each row's *Carries*.
@@ -35,6 +37,8 @@ final class TelemetrySchemaDocumentTests: XCTestCase {
 
     func testEveryDocumentedEventAndFieldIsInTheVocabularyAndNothingElse() throws {
         let documented = try SchemaDocument.events()
+        // A guard on the parser rather than a second authority on the count: a table it read none of
+        // would otherwise compare as "nothing documented" and fail less legibly.
         XCTAssertEqual(
             documented.count, 15,
             "the parser found \(documented.count) rows; the table has fifteen events")
@@ -42,9 +46,13 @@ final class TelemetrySchemaDocumentTests: XCTestCase {
         XCTAssertEqual(Self.differences(documented: documented, carried: carried()), [])
     }
 
+    func testThereIsASampleOfEveryCase() {
+        XCTAssertEqual(Set(Self.samples.map { Self.payload(of: $0).case }), Set(Case.allCases))
+    }
+
     func testEveryPayloadCarriesTheFourCommonFieldsUnderTheirNames() {
         for event in Self.samples {
-            let payload = Self.payload(of: event)
+            let payload = Self.payload(of: event).payload
             let fields = Set(Mirror(reflecting: payload).children.compactMap(\.label))
             XCTAssertTrue(
                 common.isSubset(of: fields), "\(type(of: payload)) carries \(fields.sorted())")
@@ -79,7 +87,7 @@ final class TelemetrySchemaDocumentTests: XCTestCase {
     private func carried() -> [String: Set<String>] {
         Dictionary(
             uniqueKeysWithValues: Self.samples.map { event in
-                let payload = Self.payload(of: event)
+                let payload = Self.payload(of: event).payload
                 let fields = Mirror(reflecting: payload).children.compactMap(\.label)
                 return ("\(type(of: payload))", Set(fields).subtracting(common))
             })
@@ -106,25 +114,33 @@ final class TelemetrySchemaDocumentTests: XCTestCase {
         return found.sorted()
     }
 
-    /// The payload of `event`. Exhaustive on purpose: a new case does not compile here until it is
-    /// handled, and its sample belongs in ``samples`` beside it.
-    private static func payload(of event: TelemetryEvent) -> Any {
+    /// One name per ``TelemetryEvent`` case, so that the samples can be held to all of them.
+    private enum Case: CaseIterable {
+        case sessionStarted, decisionChanged, sessionEnded, firstFrameRendered, rebufferStarted,
+            rebufferEnded, startupFailed, midStreamFailed, trackSwitched, seekRequested,
+            seekCompleted, licenceAcquisitionEnded, liveLatencySampled, playbackStateSampled,
+            videoFramesDropped
+    }
+
+    /// The case and payload of `event`. Exhaustive on purpose: a new case does not compile here
+    /// until it has a ``Case``, and ``samples`` must then carry one.
+    private static func payload(of event: TelemetryEvent) -> (case: Case, payload: Any) {
         switch event {
-        case .sessionStarted(let payload): payload
-        case .decisionChanged(let payload): payload
-        case .sessionEnded(let payload): payload
-        case .firstFrameRendered(let payload): payload
-        case .rebufferStarted(let payload): payload
-        case .rebufferEnded(let payload): payload
-        case .startupFailed(let payload): payload
-        case .midStreamFailed(let payload): payload
-        case .trackSwitched(let payload): payload
-        case .seekRequested(let payload): payload
-        case .seekCompleted(let payload): payload
-        case .licenceAcquisitionEnded(let payload): payload
-        case .liveLatencySampled(let payload): payload
-        case .playbackStateSampled(let payload): payload
-        case .videoFramesDropped(let payload): payload
+        case .sessionStarted(let payload): (.sessionStarted, payload)
+        case .decisionChanged(let payload): (.decisionChanged, payload)
+        case .sessionEnded(let payload): (.sessionEnded, payload)
+        case .firstFrameRendered(let payload): (.firstFrameRendered, payload)
+        case .rebufferStarted(let payload): (.rebufferStarted, payload)
+        case .rebufferEnded(let payload): (.rebufferEnded, payload)
+        case .startupFailed(let payload): (.startupFailed, payload)
+        case .midStreamFailed(let payload): (.midStreamFailed, payload)
+        case .trackSwitched(let payload): (.trackSwitched, payload)
+        case .seekRequested(let payload): (.seekRequested, payload)
+        case .seekCompleted(let payload): (.seekCompleted, payload)
+        case .licenceAcquisitionEnded(let payload): (.licenceAcquisitionEnded, payload)
+        case .liveLatencySampled(let payload): (.liveLatencySampled, payload)
+        case .playbackStateSampled(let payload): (.playbackStateSampled, payload)
+        case .videoFramesDropped(let payload): (.videoFramesDropped, payload)
         }
     }
 

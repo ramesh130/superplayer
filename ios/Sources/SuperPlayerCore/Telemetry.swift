@@ -22,9 +22,8 @@ import os
 /// ## What a sink must tolerate
 ///
 /// **Gaps.** Delivery is at-most-once, bounded and lossy under pressure (ADR-0008 rule 3); the count
-/// of what was lost arrives on ``TelemetryEvent/SessionEnded/droppedEventCount``. **New cases.**
-/// ``TelemetryEvent`` is closed, so give a `switch` over it a `default` unless being told about
-/// additions is what you want.
+/// of what was lost arrives on ``TelemetryEvent/SessionEnded/droppedEventCount``. **New cases**,
+/// which ``TelemetryEvent``'s own doc comment says how to switch over.
 ///
 /// ## Which thread this is called on, and why the compiler says so
 ///
@@ -99,7 +98,7 @@ public struct CompositeTelemetrySink: TelemetrySink {
                 try child.onEvent(event)
             } catch {
                 TelemetryLog.logger.warning(
-                    "Telemetry sink \(String(describing: type(of: child)), privacy: .public) threw; other sinks unaffected: \(String(describing: error), privacy: .public)"
+                    "Telemetry sink \(String(describing: type(of: child)), privacy: .public) threw; other sinks unaffected: \(String(describing: error), privacy: .private)"
                 )
             }
         }

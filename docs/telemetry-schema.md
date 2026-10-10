@@ -48,7 +48,9 @@ sessions. The `sessionId` is what separates them; nothing else does.
 **One gap, stated plainly.** A consumer that drives a player with Media3's own `setMediaItem` instead
 of `setMediaRequest` moves it to content that has no identity, so no session can be opened for it and
 what follows is reported under the previous content's id. A player driven through `setMediaRequest`
-throughout cannot produce this. Mixing the two APIs on one player is what does.
+throughout cannot produce this. Mixing the two APIs on one player is what does. On iOS and tvOS the
+counterpart, `setMediaURL`, is the facade's own method, so it ends the open session and opens none;
+the gap there is an item handed to `player.avPlayer` directly, which the facade never sees.
 
 ### Joining to the CDN's log
 

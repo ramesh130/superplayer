@@ -30,7 +30,9 @@ import os
 /// One serial `DispatchQueue` for the process, ``sharedQueue``: shared because a feed of pooled
 /// players must not mean a thread each (rule 4), serial so a sink needs no locking, and created on
 /// first use — a Swift `static let` is lazy — so a process whose players measure nothing creates
-/// none (rule 2). Its quality of service is `.utility`, which is what Apple names for work whose
+/// none (rule 2). That half is held by construction and counted by nothing: core never names this
+/// type, so only a collector can reach it, and `TelemetryPaysNothingTests` counts that a player
+/// configured without one makes none. Its quality of service is `.utility`, which is what Apple names for work whose
 /// result the user is not waiting on; the Kotlin thread is a daemon for the same reason, that
 /// telemetry must never be what keeps anything running.
 ///
@@ -63,7 +65,8 @@ final class TelemetryDelivery: Sendable {
     static let maxTrackedSessions = 64
 
     /// Core's `TelemetryLog` names, repeated: a sink that threw is filed where a person debugging
-    /// telemetry already filters.
+    /// telemetry already filters. The sink's type is logged in the clear and its error `.private`,
+    /// because an error a consumer's analytics SDK raised can carry a URL or a credential.
     private static let logger = Logger(subsystem: "com.superplayer", category: "SuperPlayerQoE")
 
     /// The process's one delivery queue.
@@ -76,8 +79,12 @@ final class TelemetryDelivery: Sendable {
 
     /// Everything the lock guards.
     private struct State: Sendable {
-        /// FIFO, so a session's events reach the sink in the order they occurred.
-        var pending: [TelemetryEvent] = []
+        /// FIFO, so a session's events reach the sink in the order they occurred: the events from
+        /// ``head`` on are pending. A head index rather than `removeFirst()`, which shifts the whole
+        /// array under the lock every submitter takes; the Kotlin class has a deque for this, and
+        /// the standard library has none.
+        var events: [TelemetryEvent] = []
+        var head = 0
         /// Whether a drain is scheduled or running; one at a time, since a drain loops until empty.
         var draining = false
         /// Drops so far per session id, removed when that session's terminal event is delivered.
@@ -85,6 +92,24 @@ final class TelemetryDelivery: Sendable {
         /// Session ids by when ``drops`` last touched them, least recent first — the Kotlin
         /// access-ordered map, as `RememberedPositions` keeps it, for the same bound.
         var dropOrder: [String] = []
+
+        var pendingCount: Int { events.count - head }
+
+        /// The oldest pending event, removed. The consumed prefix is let go of once it is half the
+        /// array, so the cost of each removal is constant over a run of them.
+        mutating func popFirst() -> TelemetryEvent? {
+            guard head < events.count else { return nil }
+            let event = events[head]
+            head += 1
+            if head == events.count {
+                events.removeAll(keepingCapacity: true)
+                head = 0
+            } else if head * 2 >= events.count {
+                events.removeFirst(head)
+                head = 0
+            }
+            return event
+        }
 
         mutating func countDrop(of sessionId: String) {
             drops[sessionId, default: 0] += 1
@@ -117,11 +142,11 @@ final class TelemetryDelivery: Sendable {
         let schedule = state.withLock { state -> Bool in
             if case .sessionEnded = event {
                 // Rule 3's reserve: the terminal event is never refused.
-            } else if state.pending.count >= capacity {
+            } else if state.pendingCount >= capacity {
                 state.countDrop(of: event.sessionId)
                 return false
             }
-            state.pending.append(event)
+            state.events.append(event)
             defer { state.draining = true }
             return !state.draining
         }
@@ -135,14 +160,15 @@ final class TelemetryDelivery: Sendable {
     func onMemoryPressure() {
         state.withLock { state in
             var kept: [TelemetryEvent] = []
-            for event in state.pending {
+            for event in state.events[state.head...] {
                 if case .sessionEnded = event {
                     kept.append(event)
                 } else {
                     state.countDrop(of: event.sessionId)
                 }
             }
-            state.pending = kept
+            state.events = kept
+            state.head = 0
         }
     }
 
@@ -155,7 +181,7 @@ final class TelemetryDelivery: Sendable {
                 try sink.onEvent(event)
             } catch {
                 Self.logger.warning(
-                    "Telemetry sink \(String(describing: type(of: self.sink)), privacy: .public) threw; delivery continues: \(String(describing: error), privacy: .public)"
+                    "Telemetry sink \(String(describing: type(of: self.sink)), privacy: .public) threw; delivery continues: \(String(describing: error), privacy: .private)"
                 )
             }
         }
@@ -165,11 +191,10 @@ final class TelemetryDelivery: Sendable {
     /// marked finished, when nothing is pending.
     private func next() -> TelemetryEvent? {
         state.withLock { state in
-            guard !state.pending.isEmpty else {
+            guard let event = state.popFirst() else {
                 state.draining = false
                 return nil
             }
-            let event = state.pending.removeFirst()
             guard case .sessionEnded(let ended) = event else { return event }
             return .sessionEnded(
                 TelemetryEvent.SessionEnded(

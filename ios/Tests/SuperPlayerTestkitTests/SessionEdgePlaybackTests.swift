@@ -89,11 +89,12 @@ final class SessionEdgePlaybackTests: XCTestCase {
         try await play(MediaRequest(contentId: "a", sources: [origin.sourceURL]), on: player)
         player.release()
         player.release()
+        player.setMediaRequest(MediaRequest(contentId: "b", sources: [origin.sourceURL]))
 
         XCTAssertEqual(
             recorder.edges.map(\.description),
             ["attach", "start a (playing a)", "end (playing a)", "detach"])
-        XCTAssertNil(player.avPlayer.currentItem, "a released player loads nothing more")
+        XCTAssertNil(player.avPlayer.currentItem, "a released player takes no content")
     }
 
     private func measuredPlayer(_ recorder: EdgeRecorder) -> SuperPlayer {

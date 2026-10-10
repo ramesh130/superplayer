@@ -135,7 +135,7 @@ internal interface EngineFrameOutputExtension : PlaybackFrameOutput {
  * Why a player built with [output] is not running it, or null where it is or where there is none to
  * run: protection first, because it is the stronger statement of the two (ADR-0022 rule 6).
  */
-internal fun frameOutputOffReason(
+internal fun frameOutputOffFor(
     output: PlaybackFrameOutput?,
     protected: Boolean,
     realtime: Boolean,

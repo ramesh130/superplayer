@@ -5,7 +5,7 @@ Every notable change to SuperPlayer, for someone deciding whether to take a new 
 The format is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions are
 [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html) as
 [ADR-0017](docs/adr/0017-version-the-library-by-semver-in-lockstep-with-the-tracked-api-surface-as-the-arbiter.md)
-reads it here: one version for all fourteen published modules, moved in lockstep (rule 1), with the
+reads it here: one version for all fifteen published modules, moved in lockstep (rule 1), with the
 tracked API surface in `<module>/api/<module>.api` as the arbiter of how far it moves (rule 2). A
 behaviour change that moves no declaration still moves the version, and this file is where that
 judgement is written down rather than made silently (rule 3).

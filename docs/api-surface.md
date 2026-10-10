@@ -76,8 +76,8 @@ tracked surface against is `api/released/`, the surface recorded at the last rel
 when `gradle/libs.versions.toml`'s `superplayer` version is too small for that difference —
 [ADR-0017](adr/0017-version-the-library-by-semver-in-lockstep-with-the-tracked-api-surface-as-the-arbiter.md)
 rule 2's arbitration, made mechanical. It reads no compiled class at all. It is the root's because
-rule 1 releases all fourteen modules at one number, so the verdict is fourteen surfaces against one
-catalog entry rather than fourteen independent answers, and
+rule 1 releases all fifteen modules at one number, so the verdict is fifteen surfaces against one
+catalog entry rather than fifteen independent answers, and
 [`api/released/README.md`](../api/released/README.md) says what writes that record (the release
 command, issue #329) and why an absent one — today's state, nothing having been released — passes
 rather than fails.

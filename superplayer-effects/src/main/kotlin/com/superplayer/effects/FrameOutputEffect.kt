@@ -97,7 +97,10 @@ internal class FrameOutputShaderProgram(
         /** The four corners `GlUtil.getNormalizedCoordinateBounds` lists, drawn as a triangle strip. */
         const val QUAD_VERTICES = 4
 
+        /** The vertex attribute [VERTEX_SHADER] declares; the two must name the same thing. */
         const val POSITION = "aFramePosition"
+
+        /** The sampler uniform [FRAGMENT_SHADER] declares; the two must name the same thing. */
         const val SAMPLER = "uTexSampler"
 
         /**

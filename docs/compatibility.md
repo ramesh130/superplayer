@@ -25,7 +25,7 @@ The group is `com.superplayer` and the artifact id is the module's own directory
 other module is additive, and an APK does not grow for a module the app does not depend on
 ([`modules.md`](modules.md)).
 
-**Every module carries the same version, and they all move together.** A release moves all fourteen
+**Every module carries the same version, and they all move together.** A release moves all fifteen
 to one number, including the modules nothing changed in (ADR-0017 rule 1). The consequence for you
 is the part worth acting on:
 
@@ -33,11 +33,11 @@ is the part worth acting on:
 > `superplayer-core:0.3.0` is not a combination that was ever built, tested or benchmarked, and
 > nothing in the library will tell you at runtime that you assembled one.
 
-That is stronger than the usual multi-module caution, and the reason is mechanical. **Ten** of the
-fourteen reach into `superplayer-core` through Kotlin *friend* compilation — a compiler flag, not a
+That is stronger than the usual multi-module caution, and the reason is mechanical. **Eleven** of the
+fifteen reach into `superplayer-core` through Kotlin *friend* compilation — a compiler flag, not a
 Gradle dependency, carrying no binary-compatibility guarantee at all — so a change core is entitled
 to make under rule 2 can break a module compiled against the previous core without any check seeing
-it (ADR-0017 rule 1; [`modules.md`](modules.md) lists the ten). Pin one version for all of them, in
+it (ADR-0017 rule 1; [`modules.md`](modules.md) lists the eleven). Pin one version for all of them, in
 one place.
 
 **A `-SNAPSHOT` version is not a release and carries none of this.** An artefact resolved from a

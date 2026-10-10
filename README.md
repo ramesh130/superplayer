@@ -102,6 +102,7 @@ depend on one from a later phase ([`docs/modules.md`](docs/modules.md)).
 | `superplayer-drm` | Widevine online and offline, provisioning, the security-level ladder |
 | `superplayer-offline` | Downloads into the cache you opened, on a battery-aware schedule |
 | `superplayer-tv` | Frame-rate matching, display and audio changes, D-pad controls |
+| `superplayer-effects` | A decoded-frame hook on Media3's GL effect pipeline (`setFrameOutput`), off on a protected or realtime player |
 | `superplayer-diagnostics` | A doctor that names a manifest's pathology, a trace bundle, a debug HUD |
 | `superplayer-realtime` | Encoded frames pushed into Media3's sample queues under a live timeline |
 | `superplayer-moq` | Media over QUIC over that seam — **local-only, see Status** |

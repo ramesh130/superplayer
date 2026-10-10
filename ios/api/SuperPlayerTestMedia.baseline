@@ -2,11 +2,13 @@
 Enum SyntheticHlsStream
 Func SyntheticHlsStream.durationMs(segmentCount:) : Swift.Int64, Swift.Int [static]
 Func SyntheticHlsStream.files(segmentCount:variantCount:) : [Swift.String : [Swift.UInt8]], Swift.Int, Swift.Int [static]
+Func SyntheticHlsStream.liveFiles(publishedSegmentCount:) : [Swift.String : [Swift.UInt8]], Swift.Int [static]
 Func SyntheticHlsStream.segmentName(_:) : Swift.String, Swift.Int [static]
 Var SyntheticHlsStream.declaredBitrateBps : Swift.Int [static] { get }
 Var SyntheticHlsStream.declaredCodecs : Swift.String [static] { get }
 Var SyntheticHlsStream.durationMs : Swift.Int64 [static] { get }
 Var SyntheticHlsStream.higherDeclaredBitrateBps : Swift.Int [static] { get }
+Var SyntheticHlsStream.liveWindowSegmentCount : Swift.Int [static] { get }
 Var SyntheticHlsStream.mediaPlaylistName : Swift.String [static] { get }
 Var SyntheticHlsStream.multivariantPlaylistName : Swift.String [static] { get }
 Var SyntheticHlsStream.secondMediaPlaylistName : Swift.String [static] { get }

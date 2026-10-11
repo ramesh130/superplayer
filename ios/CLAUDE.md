@@ -111,6 +111,15 @@ epoch of its own, and ends the stream on core's `RealtimeTrackStalledError` past
 and three-second stalled bounds, **in media time against the leading track**. An AAC magic cookie is the
 `ES_Descriptor` around the AudioSpecificConfig, never the bare config, which an audio renderer takes and
 then silently fails to decode.
+#417 put preload over the pool: `SuperPlayerPreload`'s `PreloadCoordinator(pool:)`, attached through
+core's `package` `PoolAttachment` before the pool's first player, which a pooled player asks for a
+`WarmStart` at adoption. Two AVFoundation facts shape it, both counted at the origin: an asset asked
+for its `duration` loads its playlists with no player and an item made on it later fetches neither
+again, while an item buffers only on a player and is that player's for life — so every prefetched
+row is an asset, and at a loaded depth the nearest rows are held on idle pooled players
+(`SuperPlayer.holdWarm`) and, at `decoderWarmed`, prerolled. The memory guard and the Low Data Mode
+rule are `PlatformRules.swift`, and what the coordinator observes is its own register,
+`PreloadSignals.swift`, counted process-wide.
 `SuperPlayerMoQ` is not declared yet — its binary target is
 i9's — and there is no `SuperPlayerCache`, since its content is the offline store's.
 

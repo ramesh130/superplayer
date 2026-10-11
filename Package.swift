@@ -131,9 +131,11 @@ let package = Package(
             dependencies: ["SuperPlayerABR"],
             path: "ios/Tests/SuperPlayerABRTests"
         ),
+        // The harness and core too, because a prefetch is a count of what reached an origin:
+        // testkit is phase 2, and superplayer-preload's own tests drive the Kotlin harness.
         .testTarget(
             name: "SuperPlayerPreloadTests",
-            dependencies: ["SuperPlayerPreload"],
+            dependencies: ["SuperPlayerPreload", "SuperPlayerTestkit", "SuperPlayerCore"],
             path: "ios/Tests/SuperPlayerPreloadTests"
         ),
         .testTarget(

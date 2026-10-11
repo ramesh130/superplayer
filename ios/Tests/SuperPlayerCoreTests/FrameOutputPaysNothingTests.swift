@@ -49,7 +49,7 @@ final class FrameOutputPaysNothingTests: XCTestCase {
     private func player(output: (any FrameOutput)?, protected: Bool = false) -> SuperPlayer {
         var configuration = SuperPlayer.Configuration()
         configuration.frameOutput = output
-        if protected { configuration.protection = StandInProtection() }
+        if protected { configuration.drm = StandInDrm() }
         let player = SuperPlayer(configuration: configuration)
         players.append(player)
         player.setMediaRequest(MediaRequest(contentId: "a", sources: [nowhere]))
@@ -129,7 +129,7 @@ final class FrameOutputPaysNothingTests: XCTestCase {
         XCTAssertEqual(player.liveObservations[.frameOutputItemTimeJumped], 1)
     }
 
-    /// ADR-0022 rule 6 through #422's stub: protection and an output meet when the player is made,
+    /// ADR-0022 rule 6 through `Configuration.drm`, set at all: protection and an output meet when the player is made,
     /// and the answer is a reason, with nothing of the output made — the view is an `AVPlayerLayer`.
     func testAProtectedPlayerHasItsOutputOffAndMakesNothingForIt() throws {
         let player = player(output: StandInOutput(), protected: true)
@@ -168,5 +168,5 @@ private struct StandInOutput: FrameOutput {
     func process(_ frame: CVPixelBuffer, presentationTime: CMTime) -> CVPixelBuffer { frame }
 }
 
-/// What #422's configuration will be, as far as the frame output can tell.
-private struct StandInProtection: PlaybackProtection {}
+/// A `PlaybackDrm` that acquires nothing: still a declaration that the content is protected, which is all the frame output reads (ADR-0012 rule 13).
+private struct StandInDrm: PlaybackDrm {}

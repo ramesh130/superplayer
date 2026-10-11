@@ -33,6 +33,7 @@ EnumElement NetworkTransport.ethernet : (SuperPlayerTestkit.NetworkTransport.Typ
 EnumElement NetworkTransport.unknown : (SuperPlayerTestkit.NetworkTransport.Type) -> SuperPlayerTestkit.NetworkTransport
 EnumElement NetworkTransport.wifi : (SuperPlayerTestkit.NetworkTransport.Type) -> SuperPlayerTestkit.NetworkTransport
 EnumElement ResourceKind.initialization : (SuperPlayerTestkit.ResourceKind.Type) -> SuperPlayerTestkit.ResourceKind
+EnumElement ResourceKind.licence : (SuperPlayerTestkit.ResourceKind.Type) -> SuperPlayerTestkit.ResourceKind
 EnumElement ResourceKind.manifest : (SuperPlayerTestkit.ResourceKind.Type) -> SuperPlayerTestkit.ResourceKind
 EnumElement ResourceKind.mediaSegment : (SuperPlayerTestkit.ResourceKind.Type) -> SuperPlayerTestkit.ResourceKind
 Func FaultScript.Builder.addDeclaredResponseHeaders(of:) : SuperPlayerTestkit.FaultScript.Builder, SuperPlayerTestMedia.HostileStream
@@ -63,6 +64,8 @@ Func ResourceKind.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerTestkit.R
 Func ResourceKind.hash(into:) : (), Swift.Hasher
 Func TestContent.hls(segmentCount:variantCount:hosts:) : SuperPlayerTestkit.TestContent, Swift.Int, Swift.Int, Swift.Int [static]
 Func TestContent.hostile(_:) : SuperPlayerTestkit.TestContent, SuperPlayerTestMedia.HostileStream [static]
+Func TestContent.licence(for:) : [Swift.UInt8], [Swift.UInt8] [static]
+Func TestContent.licenceServer() : SuperPlayerTestkit.TestContent [static]
 Func TestContent.liveHls(hosts:) : SuperPlayerTestkit.TestContent, Swift.Int [static]
 Func TestContent.videoHls(segmentCount:) : SuperPlayerTestkit.TestContent, Swift.Int [static]
 Func ThroughputTrace.Builder.add(durationMs:bandwidthBps:transport:rttMs:) : SuperPlayerTestkit.ThroughputTrace.Builder, Swift.Int64, Swift.Int64, SuperPlayerTestkit.NetworkTransport, Swift.Int64
@@ -111,6 +114,7 @@ Var NetworkProfile.handoverAtMs : Swift.Int64 [static] { get }
 Var NetworkProfile.lteDropoutPeriodMs : Swift.Int64 [static] { get }
 Var NetworkProfile.rawValue : Swift.String { get }
 Var NetworkProfile.trace : SuperPlayerTestkit.ThroughputTrace { get }
+Var NetworkRequest.body : [Swift.UInt8] { get }
 Var NetworkRequest.connection : Swift.Int { get }
 Var NetworkRequest.description : Swift.String { get }
 Var NetworkRequest.hashValue : Swift.Int { get }
@@ -139,6 +143,9 @@ Var ResourceKind.hashValue : Swift.Int { get }
 Var TestContent.defaultSegmentCount : Swift.Int [static] { get }
 Var TestContent.hosts : Swift.Int { get }
 Var TestContent.isLive : Swift.Bool { get }
+Var TestContent.licenceCertificate : [Swift.UInt8] [static] { get }
+Var TestContent.licenceCertificatePath : Swift.String [static] { get }
+Var TestContent.licencePath : Swift.String [static] { get }
 Var ThroughputTrace.description : Swift.String { get }
 Var ThroughputTrace.durationMs : Swift.Int64 { get }
 Var ThroughputTrace.formatHeader : Swift.String [static] { get }

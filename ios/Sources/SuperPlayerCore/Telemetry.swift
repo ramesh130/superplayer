@@ -209,6 +209,18 @@ public protocol TelemetryCollector {
     /// hear. A default that does nothing is provided, so a collector that observes no item is
     /// unchanged.
     func sessionFailed(_ failure: SuperPlayerError)
+
+    /// A FairPlay licence acquisition ended after `durationMs` on `CLOCK_MONOTONIC`, with `outcome` —
+    /// one ``TelemetryEvent/LicenceAcquisitionEnded`` under the open session, whose definition is
+    /// `docs/telemetry-schema.md`'s *Licence acquisition*.
+    ///
+    /// Core signals it, as it signals ``contentReopened(after:)``, because the exchange is this
+    /// library's own (`docs/ios-plan.md` §3.6): on Android the collector derives the span from
+    /// Media3's DRM analytics callbacks, while here no AVFoundation interface a collector could
+    /// observe reports a licence at all — the key session's delegate is `SuperPlayerDRM`'s. A key
+    /// rotation is not signalled, for the schema's reason. A default that does nothing is provided,
+    /// so a collector written before it is unchanged.
+    func licenceAcquisitionEnded(durationMs: Int64, outcome: LicenceOutcome)
 }
 
 extension TelemetryCollector {
@@ -218,6 +230,9 @@ extension TelemetryCollector {
 
     /// Does nothing: a collector that hears no failure has nothing to report.
     public func sessionFailed(_ failure: SuperPlayerError) {}
+
+    /// Does nothing: a collector that measures no licence reports none.
+    public func licenceAcquisitionEnded(durationMs: Int64, outcome: LicenceOutcome) {}
 }
 
 extension SuperPlayer {

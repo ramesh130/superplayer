@@ -751,7 +751,8 @@ see a request.
 - **One origin per `serve`, on `127.0.0.1` at a port the system chose.** `NWListener` binds the
   loopback address alone, so nothing off the host is reachable, and two tests in one process never
   share a port or a count — `LoopbackOriginTests` runs two harnesses at once to show it.
-- **The HTTP is a real origin's, as little of it as a player needs:** `GET` and `HEAD`, persistent
+- **The HTTP is a real origin's, as little of it as a player needs:** `GET` and `HEAD` (and a `POST`,
+  to `.licenceServer()` alone, *FairPlay on iOS*), persistent
   HTTP/1.1 connections with requests answered in order, single byte ranges with a 416 past the end
   (a set of ranges is answered whole, as RFC 9110 §14.2 allows), and RFC 8216's content types.
 - **The live stream publishes on real time.** `.liveHls()` is the Kotlin `TestContent.liveHls()`'s
@@ -847,7 +848,10 @@ see a request.
   target (*A frame output*). A seventh, `ResiliencePaysNothingTests` (#419), for the item-failure
   observations a player registers, which no public reading can see until an item fails; the
   classifying seam it fills with a stand-in, `FailureClassifying`, is `package`, because
-  `SuperPlayerResilience` fills it. `TypedErrorPlaybackTests` reads a failed item's `error` and its
+  `SuperPlayerResilience` fills it. An eighth, `DrmPaysNothingTests` (#422), for the key session a
+  player holds, which nothing reports until a key is asked for and no simulator asks for one; the
+  seam it fills with a stand-in, `ContentProtecting`, is `package`, because `SuperPlayerDRM` fills
+  it. `TypedErrorPlaybackTests` reads a failed item's `error` and its
   error log's last entry off `player.avPlayer`, under rule 1's #419 addendum.
   `ProfileTableTests` reads each profile's knobs off `player.avPlayer`, and `SnapshotPlaybackTests`
   an item's readiness, under rule 1's #401 addendum.
@@ -1237,6 +1241,56 @@ playlist that froze while the video's advanced would not be judged stale; the re
 playlist but carry no body to tell it was unchanged. A real CDN's cache, and a packager that publishes segments in bursts under
 a target far above their length, are also unobserved.
 
+### FairPlay on iOS
+
+**The simulator has no FairPlay** (ADR-0021 rule 5): an `AVContentKeySession` there never composes
+a key request, so no test here plays protected content. What `check` holds is everything around a
+key request, with the key session stood in at the one `package` protocol `SuperPlayerDRM` defines,
+`FairPlayKeySession`, reached through the `package` overload `Drm.fairPlay(_:keySession:)`. A test
+makes the key request a device's session would — an `skd://` identifier, and a key request composed
+from the certificate — and everything after it is the shipped code: the certificate fetch, the `POST`,
+`RetryPolicy.licence` and `Backoff`, the credential repair, the classifier and the collector.
+
+The licence server is `TestContent.licenceServer()`, the Kotlin `FakeLicenceServer`: an origin of its
+own on the loopback interface, answering a `GET` of its certificate and a `POST` of a key request with
+a licence derived from the request's bytes, so a test can tell which request a licence answered. Its
+requests are `ResourceKind.licence`, refusable and relenting through `FaultScript` like any other, and
+the origin records a request's body, which is how the key request posted is compared with the one
+composed. `LicenceExchangeTests` (`SuperPlayerDRMTests`, reaching the stand-in's protocol as `package`
+and nothing internal) drives it through a real `SuperPlayer` configured
+as a consumer configures one, `drm` beside `resilience`, each claim beside its control: a budget that
+relents within it and one that never does, counted at the server; one 401 repaired with the budget at
+nothing, and a provider that declines; a key request the device will not compose, which asks no
+server; a rotation and a renewal counted at the server and measured as nothing; a failed renewal that
+ends nothing; and a player without resilience, which refuses the request and names nothing.
+`BackoffTests` holds the jitter as a spread, importing the product `@testable` for the internal
+`Backoff`, since no public reading shows a wait's spread. `DrmPaysNothingTests`, in core's target, counts ADR-0012
+rule 13 as the session a player holds — the **set**, never the answer, as `SuperPlayerDrmSeamTest`
+counts it — and `CollectorSignalRegisterTests` the output reading a protected player's session alone
+registers.
+
+**What only a device shows**, and none of it is faked — the i6 device ticket's run:
+
+- that a FairPlay item reaches a key request at all, and that `SystemFairPlayKeySession`, the one
+  implementation that touches AVFoundation, composes it and plays with the licence it is handed —
+  no line of it runs under `check`;
+- that a real key server accepts the request as `POST`ed — the raw SPC, `application/octet-stream`,
+  with the `skd://` URI's host as the content identifier — rather than a wrapping of its own;
+- which error a FairPlay item fails with after `processContentKeyResponseError`, and so whether
+  `player.classify(_:)` of that item error agrees with the typed error core already delivered for the
+  exchange: the exchange's failure is offered to the ladder first, so the item's own is not climbed
+  again, but a collector asking about the item's error is answered from that error alone;
+- that a rotation in a real stream is one `didProvide` request per new key, and a renewal one
+  `didProvideRenewingContentKeyRequest`;
+- that `isOutputObscuredDueToInsufficientExternalProtection` moves on a display without HDCP, and that
+  the frame output under FairPlay yields no pixel buffer (#405's claim).
+
+**Two gaps are not a device's.** An `AVContentKeySession` names a key and never the asset that asked
+for it, so a licence still in flight when its content is replaced fails the content that replaced it.
+And an asset `SuperPlayerPreload` prefetched for a pooled player is handed to the key session at
+adoption, not as it was prefetched, so a key its prefetch would have asked for waits for the adoption.
+No test covers either.
+
 ## The layers above the fakes
 
 Both harnesses put their fakes where the *transport* goes — the HTTP stack — and not in place of the
@@ -1521,8 +1575,9 @@ and asserts the frames handed over in presentation order, off the main thread, n
 frame of the stream, and at least half of those that played, which is a bound and not a rate
 (ADR-0021 rule 4; the class comment argues the half); that the layer's renderer took them; that
 after a seek back the frames follow the new position; and that a player configured for protected
-content plays to its end with the output never called. Protection is #422's, so the test fills
-`Configuration.protection`, a `package` stub standing where `drm` will. `FrameOutputPaysNothingTests`
+content plays to its end with the output never called. The test sets `Configuration.drm` to a
+value conforming to `PlaybackDrm` alone, which acquires nothing and is still declared protection
+(ADR-0012 rule 13), so no key session is needed to show it. `FrameOutputPaysNothingTests`
 is rule 9's count, in core's own target: no output, link or sample-buffer layer on a player without a
 frame output and an `AVPlayerLayer` in the view, each of them once with a stand-in, none on a protected
 player, and a Picture in Picture content source made from either layer. What only a device shows, and

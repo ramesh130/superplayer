@@ -18,10 +18,16 @@ import Foundation
 /// only the app can mint one — the Kotlin `HeaderProvider`, its contract kept and its mechanism
 /// changed.
 ///
+/// **Core's, as the Kotlin type is** (ADR-0012 rule 2): two optional products ask it —
+/// `SuperPlayerResilience`, for a refused playlist or segment, and `SuperPlayerDRM`, for a refused
+/// FairPlay licence — and neither may depend on the other, so the one credential lives below both.
+/// It reaches a player through `Resilience.standard(headers:)` and nowhere else, so one provider
+/// serves the content and its licence alike, as on Android.
+///
 /// `PRD.md` §3.3 calls the failure this closes among the commonest in production and almost never
 /// handled in an app: a CDN token expires mid-session, every segment after it is refused, and the
 /// session ends on an authorization refresh nobody performed. Hand one of these to
-/// ``Resilience/standard(headers:)`` and the refusal is repaired before any rung is climbed for it
+/// `Resilience.standard(headers:)` and the refusal is repaired before any rung is climbed for it
 /// (ADR-0011 rule 12).
 ///
 /// ```swift
@@ -51,6 +57,12 @@ import Foundation
 /// — which **costs a fetch of every playlist again** before the segment at that position, where
 /// the Kotlin repair cost one request. Each refused request is asked about once, so a refreshed
 /// credential refused again by the same request ends the climb rather than loops it.
+///
+/// **A refused FairPlay licence is repaired as Android's is**, inside the exchange: the key request
+/// is this library's own `POST` (`SuperPlayerDRM`), so a 401 or 403 from the licence server asks
+/// this once and the licence is asked for again with what it returned, spending none of the licence
+/// budget. Those headers are the licence exchange's from then on; the content's assets keep their
+/// own, because one request header is not two parties' to share by accident.
 ///
 /// **The headers reach the wire through an asset option the SDK does not declare**,
 /// `AVURLAssetHTTPHeaderFieldsKey`, because no declared option carries a request header and a
@@ -83,7 +95,8 @@ public protocol HeaderProvider: Sendable {
 public struct CredentialRefusal: Sendable, CustomStringConvertible {
 
     /// The address that was refused, query included: the request AVFoundation's error log named,
-    /// or the multivariant playlist where it named none — which it does for that playlist itself.
+    /// or the multivariant playlist where it named none — which it does for that playlist itself —
+    /// or, for a refused licence, the licence server's URL the configuration named.
     public let uri: URL
 
     /// 401 or 403, and no other — the two a CDN uses for a credential it will not accept.
@@ -95,7 +108,8 @@ public struct CredentialRefusal: Sendable, CustomStringConvertible {
     /// until it has returned anything. Returning them unchanged declines.
     public let sentHeaders: [String: String]
 
-    init(uri: URL, status: Int, sentHeaders: [String: String]) {
+    /// `package` because the two products that ask a provider make one, and nothing else does.
+    package init(uri: URL, status: Int, sentHeaders: [String: String]) {
         self.uri = uri
         self.status = status
         self.sentHeaders = sentHeaders

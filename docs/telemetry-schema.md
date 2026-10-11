@@ -464,6 +464,20 @@ putting both platforms in one query, and none of them is a changed definition:
 | `PlaybackStateSampled.throughputEstimateBps` | AVFoundation's `observedBitrate` | The field was always "the engine's estimate, saying whose"; on iOS the engine is AVFoundation |
 | `SeekCompleted.seekLatencyMs` | Resolved to a 500 ms reading of the playhead | The boundary is the same — playback resuming at the target — read as often as iOS lets a collector read it |
 
+**Version 2 stands — FairPlay on iOS and tvOS (`#422`).** `LicenceAcquisitionEnded` is now emitted on
+Apple platforms, from the library's own FairPlay exchange, with the boundaries *Licence acquisition*
+defines; and the vocabulary gained one event, **`OutputObscuredChanged`**, which an iOS or tvOS player
+configured for FairPlay emits when an external display without HDCP obscures the picture and again when
+it stops. **`SCHEMA_VERSION` does not move**: a new event type is an addition of shape, no existing
+field's definition changes, and the event is declared on Android and emitted by nothing there, as
+`SERVED_FROM_OFFLINE_STORE` was before `#210`. Two readings worth knowing before putting both platforms
+in one query:
+
+| On iOS | What a pipeline sees | Why the version does not move |
+| --- | --- | --- |
+| `SessionEnded.securityLevel`, `LicenceAcquisitionEnded.securityLevel` | Null on every session, protected or not | The field was always "the level in force, or null where none was negotiated"; FairPlay negotiates none |
+| `OutputObscuredChanged` | A new event, on protected iOS and tvOS sessions only | A population Android never had, measured by nothing else; a session with `obscured = true` and no later `false` ended with the picture still hidden |
+
 **A sink must tolerate a new event type.** `TelemetryEvent` is sealed, so a `when` over it can be
 exhaustive without an `else` — and such a `when` fails to compile when a later version adds an event.
 An `else` branch is the forward-compatible spelling; take the exhaustive one only if being told about
@@ -477,7 +491,7 @@ additions is what you want.
 | --- | --- | --- | --- |
 | `SessionStarted` | A player takes content on | `profile`, `decision` | Core's adoption edge (`setMediaRequest`, `restoreSnapshot`; `SessionEdges.swift`). `profile` is `Configuration.profile`; `decision` is `player.playbackDecision` as the session opens. An iOS decision carries the halves an iOS player has knobs for — `buffer.maxBufferMs` is `preferredForwardBufferDuration`, its live half an offset rather than a speed range (`PlaybackDecision.swift`) — so it is the same decision in Android's vocabulary and not field for field |
 | `DecisionChanged` | The policy answered differently on a named trigger | `decision`, `trigger` | Core's `DecisionReapplication.swift`, on the same five triggers from `ConditionsBinding.swift`'s readings: `NWPathMonitor`'s path, the item's `duration` and access log, `timeControlStatus`, and `AVPlayer.rate`. **Every player whose `Configuration.policy` is not its profile's static one emits it**, a consumer's own policy included, because every knob a decision reaches is live-settable on the item (ADR-0009 rule 5 met by the platform); on Android only `superplayer-abr`'s policy is re-consulted. A static player emits none |
-| `SessionEnded` | Released, recycled, or moved to other content | `droppedEventCount`, `securityLevel` | Core's edges: a replacement, `setMediaURL`, `release()`. `droppedEventCount` is stamped by `TelemetryDelivery` as the event leaves the queue, as on Android; `securityLevel` is absent until FairPlay (`#422`) |
+| `SessionEnded` | Released, recycled, or moved to other content | `droppedEventCount`, `securityLevel` | Core's edges: a replacement, `setMediaURL`, `release()`. `droppedEventCount` is stamped by `TelemetryDelivery` as the event leaves the queue, as on Android; **`securityLevel` is null on every iOS session**, protected or not, because FairPlay has no security levels to negotiate (`docs/ios-plan.md` §3.6) — the output's protection is `OutputObscuredChanged` instead |
 | `FirstFrameRendered` | The first video frame reaches the display | `timeToFirstFrameMs`, `startBoundary` | The session's first `AVPlayer.timeControlStatus` of `.playing` (key-value observed): presentation beginning. Not `AVPlayerLayer.isReadyForDisplay`, which is the consumer's layer and invisible to a collector. For video that is the clock starting with its first frame due, which can be a display refresh before the frame is on screen, so it can read slightly lower than a layer's reading; **for audio-only content it is the first audio presented, where Android reports no event**. The boundary is `declarePlaybackIntent()` on `CLOCK_MONOTONIC`, else the session's start, as on Android |
 | `RebufferStarted` | Playback stalls for data after it started | `seekInduced` | After the first frame: `timeControlStatus` becoming `.waitingToPlayAtSpecifiedRate` with `reasonForWaitingToPlay` of `.toMinimizeStalls`, or `AVPlayerItemPlaybackStalled` on a player that does not wait to minimise stalls. **iOS 18 and later** also open one on `AVMetricPlayerItemStallEvent`; iOS 17 has the first two alone. `seekInduced` as on Android |
 | `RebufferEnded` | Playback resumes from that stall | `durationMs`, `seekInduced` | `timeControlStatus` becoming `.playing` (resumed) or `.paused` (stopped stalling); a failure or the session's end closes an open one |
@@ -486,9 +500,10 @@ additions is what you want.
 | `TrackSwitched` | The video rendition changes | `fromBitrateBps`, `toBitrateBps`, `direction` | Items with an enabled video track only, as on Android: the access log's last `indicatedBitrate` (the variant's `BANDWIDTH`), read at `AVPlayerItemNewAccessLogEntry` and at `.readyToPlay`. **On iOS 18 and later** the initial rendition can arrive first, from the variant of `AVMetricPlayerItemInitialLikelyToKeepUpEvent` |
 | `SeekRequested` | A seek is issued | `fromPositionMs`, `toPositionMs` | `AVPlayerItemTimeJumped` after the first frame. `toPositionMs` is `currentTime()` at the notification, which AVFoundation posts on the main thread with no position, so a main thread busy as the time jumped reads the target plus what played meanwhile (#459); `fromPositionMs` is the collector's last periodic reading (every 500 ms) carried forward at its rate, because the notification carries neither position. It does not say who moved the time, so a jump AVFoundation makes itself, back inside a live window, is counted too |
 | `SeekCompleted` | Playback resumes at the target | `toPositionMs`, `seekLatencyMs` | The first periodic reading past the target while `timeControlStatus` is `.playing`, so the latency is resolved to that 500 ms reading; a seek made while paused completes on `isPlaybackLikelyToKeepUp`, at once if it landed in what is buffered |
-| `LicenceAcquisitionEnded` | A DRM licence acquisition finishes | `durationMs`, `outcome`, `securityLevel` | Not emitted until FairPlay's `AVContentKeySession` (`#422`) |
+| `LicenceAcquisitionEnded` | A DRM licence acquisition finishes | `durationMs`, `outcome`, `securityLevel` | Core signals it from `SuperPlayerDRM`'s FairPlay exchange (`#422`), since the key session's delegate is the library's and no AVFoundation interface reports a licence: opened as the `AVContentKeySession` hands over a key request for content that holds no key yet, closed as the licence is handed back (`ACQUIRED_FROM_SERVER`) or refused with the budget spent (`REFUSED`). A rotation to a later key and a renewal emit nothing, as on Android. `securityLevel` is null: FairPlay has none. `SERVED_FROM_OFFLINE_STORE` waits on the iOS offline store |
 | `LiveLatencySampled` | Every 10 s, live content only | `liveLatencyMs`, `targetLiveLatencyMs` | On the sampling timer, for an item whose `duration` is indefinite: the end of the last `seekableTimeRanges` entry less `currentTime()` — AVFoundation's own live edge, where Android reads the program clock. The target is `configuredTimeOffsetFromLive` where the profile set one, else `recommendedTimeOffsetFromLive` |
 | `PlaybackStateSampled` | Every 10 s | `samplingIntervalMs`, `videoBitrateBps`, `bufferedDurationMs`, `playing`, `throughputEstimateBps` | On the sampling timer. `bufferedDurationMs` from the `loadedTimeRanges` entry holding `currentTime()`; `playing` is `timeControlStatus` of `.playing`; `throughputEstimateBps` is the access log's last `observedBitrate` — **Apple's own figure**, smoothed over everything the item downloaded and not a sample, where Android's is Media3's meter |
+| `OutputObscuredChanged` | The picture began or stopped being obscured for want of output protection | `obscured` | Key-value observation of `AVPlayer.isOutputObscuredDueToInsufficientExternalProtection` — HDCP on an external display — on a player configured with `drm` alone, and read once as each session opens. **Reported and never acted on**: what an output may show is the licence's policy, which the platform enforces ([ADR-0012][adr12] rule 11). **Android emits none**: it has no such reading, and an output that cannot be secured fails as `Device.SecureDecoderInit` there |
 | `VideoFramesDropped` | Every 10 s, while video renders | `droppedFrames`, `repeatedFrames`, `elapsedPlayingMs` | On the sampling timer, video items only: the change since the last sample in the access log's summed `numberOfDroppedVideoFrames` and `durationWatched`. `repeatedFrames` is 0, unobservable as on Android |
 
 The *How derived on iOS* column says which AVFoundation API each event comes from on iOS and
@@ -837,6 +852,15 @@ same meaning, as on `SessionEnded`, read at a different moment. It is null on ev
 negotiated no level, and it is per-acquisition rather than per-session because
 [ADR-0012][adr12] rule 11's ladder settles a level after a refusal: a session's first acquisition and
 its second need not have run at the same one.
+
+**On iOS and tvOS** the span is the library's own FairPlay exchange (`#422`) rather than an engine's
+callbacks: it opens as the `AVContentKeySession` hands over a key request for content that holds no key
+yet, and closes as the licence is handed back or the exchange gives up. It includes the certificate
+fetch where this request was the one that fetched it, the composing of the key request, the
+`RetryPolicy.licence` retries with their jittered waits, and the one credential repair — the same
+contents as the Android span. "Content" moves with each asset the player plays, so a rung's re-adoption,
+which asks for its keys again, is a second acquisition. Each later key the session asks for, and each
+renewal, is a rotation and emits nothing.
 
 **Redaction.** Nothing about the licence itself is in this event: no licence URI, no key id, no key
 request or response, no device identifier. That is not a property of this event alone — the trace

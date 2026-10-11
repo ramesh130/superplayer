@@ -20,8 +20,9 @@ import Foundation
 /// are pure functions of their input.
 ///
 /// The least HTTP/1.1 a media player needs and no more: `GET` and `HEAD`, persistent connections,
-/// and single byte ranges. No chunked request bodies (a player sends no body), no multipart ranges
-/// (which a server may decline by ignoring the header), no conditional requests.
+/// and single byte ranges — and `POST` with a `Content-Length` body, for the one party that sends
+/// one, a FairPlay key request (``TestContent/licenceServer()``). No chunked request bodies, no
+/// multipart ranges (which a server may decline by ignoring the header), no conditional requests.
 enum HttpExchange {
 
     /// One request head, parsed.
@@ -36,6 +37,9 @@ enum HttpExchange {
         /// Whether it came as HTTP/1.0, whose persistence the response has to state (RFC 9112
         /// Appendix C.2.2).
         var isHttp10 = false
+        /// The request's body, as many bytes as its `Content-Length` declared; empty for a request
+        /// that declared none, which is every request a player sends but a key request.
+        var body: [UInt8] = []
     }
 
     /// What reading the front of a connection's buffer found.
@@ -103,7 +107,8 @@ enum HttpExchange {
                 path: String(target[..<(questionMark ?? target.endIndex)]),
                 query: questionMark.map { String(target[target.index(after: $0)...]) },
                 headers: headers,
-                keepAlive: keepAlive, isHttp10: requestLine[2] == "HTTP/1.0"),
+                keepAlive: keepAlive, isHttp10: requestLine[2] == "HTTP/1.0",
+                body: Array(buffer[end.upperBound..<(buffer.startIndex + consumed)])),
             consumed: consumed)
     }
 
@@ -165,6 +170,17 @@ enum HttpExchange {
         // spec: RFC 9110 §14.3 — the resource supports byte ranges, so a player may ask for one.
         response.headers.append(("Accept-Ranges", "bytes"))
         return response
+    }
+
+    /// The answer a `POST` gets from content that computes one (``TestContent/licenceServer()``):
+    /// `body`, opaque bytes, before framing — or the 405 a `GET`-only resource gives where the content
+    /// answers no `POST` at that path.
+    static func answered(_ request: Request, body: [UInt8]?) -> Response {
+        guard let body else { return resolve(request, body: nil) }
+        // ref: RFC 2046 §4.5.1 — `application/octet-stream`, uninterpreted binary data, which a key
+        // request and a licence each are to everything but the two parties to them.
+        return Response(
+            status: 200, headers: [("Content-Type", "application/octet-stream")], body: body)
     }
 
     /// A refusal with `status` and no body, before framing — what an injected failure answers.

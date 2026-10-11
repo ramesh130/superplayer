@@ -371,6 +371,8 @@ public class SessionTraceRecorder : TelemetrySink {
             "durationMs=${event.durationMs} outcome=${event.outcome}" +
                 event.securityLevel?.let { " securityLevel=$it" }.orEmpty()
 
+        is TelemetryEvent.OutputObscuredChanged -> "obscured=${event.obscured}"
+
         is TelemetryEvent.VideoFramesDropped ->
             "droppedFrames=${event.droppedFrames} repeatedFrames=${event.repeatedFrames} " +
                 "elapsedPlayingMs=${event.elapsedPlayingMs}"

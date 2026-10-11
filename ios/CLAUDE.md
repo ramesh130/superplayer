@@ -87,8 +87,7 @@ and `FramePath.swift` is the whole display path, made only on a player configure
 control timebase is the item's own. `PlayerLayerView` (UIKit) and `PlayerView` (SwiftUI) host that
 layer, or an `AVPlayerLayer` they make for a player without one, and make a Picture in Picture
 content source from either. A player configured for protection has the output off for its lifetime
-and says so in `frameOutputOffReason`; protection is a `package` stub, `Configuration.protection`,
-until #422's `drm` replaces it.
+and says so in `frameOutputOffReason`; protection is `Configuration.drm` set at all (#422).
 #431 is the realtime tracer. The seam is core's (`FrameSource.swift`: `FrameSource`, `FrameSink`,
 `RealtimeTrack`, `EncodedFrame`, `FrameSourceFactory` and the obligations, plus three typed errors),
 and `SuperPlayerRealtime` holds `RealtimePlayer` — the second public player type, because an
@@ -160,6 +159,21 @@ fields the log cannot carry are nil. `FaultSweepTests` plays every `FaultScript.
 `FallbackRungCoverageTests` names the forcing test per rung and says why rungs 1–3 have none. One
 fault still stalls: a segment that never answers inside AVFoundation's wait (`docs/testing.md`, *The
 fault sweep on iOS*).
+#422 is the first of i6: `SuperPlayerDRM`'s `Drm.fairPlay(FairPlayConfig(certificateURL:licenceURL:))`
+fills `Configuration.drm` — core's public marker `PlaybackDrm` over the `package` `ContentProtecting`,
+which makes one `AVContentKeySession` per player with every asset the facade plays a recipient
+(`Protection.swift`). The exchange is the library's own, `LicenceExchange.swift`: the certificate once
+per player, the SPC `POST`ed raw to the configured server only — never an address the `skd://` URI
+names — every failure asked again on `RetryPolicy.licence` with `Backoff`'s equal jitter (ported here,
+its only caller), and one 401 or 403 per request offered to the `HeaderProvider`, which moved to core so
+that neither optional product depends on the other. A failure reaches core's ladder as a
+`LicenceExchangeError` the classifier maps (`Drm.LicenceAcquisition`, or `Drm.SystemError` for a key
+request the device will not compose); an acquisition reaches the collector through
+`TelemetryCollector.licenceAcquisitionEnded`, a rotation or renewal emitting nothing; and the collector
+reports `OutputObscuredChanged` from `isOutputObscuredDueToInsufficientExternalProtection` on a
+protected player alone. **The simulator has no FairPlay**: the key session is stood in at the one
+`package` protocol `FairPlayKeySession`, and the licence server is testkit's `.licenceServer()`
+(`docs/testing.md`, *FairPlay on iOS*).
 `SuperPlayerMoQ` is not declared yet — its binary target is
 i9's — and there is no `SuperPlayerCache`, since its content is the offline store's.
 
@@ -185,7 +199,8 @@ origin.responses()                         // how each was answered: status, fau
 ```
 
 - **An origin is `NWListener` on `127.0.0.1` at an ephemeral port**, one per `serve`, so two tests
-  never share a port or a count. It speaks `GET` and `HEAD` over persistent HTTP/1.1 connections,
+  never share a port or a count. It speaks `GET` and `HEAD` (and a `POST`, to `.licenceServer()`
+  alone) over persistent HTTP/1.1 connections,
   single byte ranges, and RFC 8216's content types; `HttpExchange.swift` is the protocol as pure
   functions and `LoopbackOrigin`'s doc comment argues Network.framework over BSD sockets.
 - **Time is real.** Wait with `harness.until`, whose bound is a ceiling and never an assertion; the

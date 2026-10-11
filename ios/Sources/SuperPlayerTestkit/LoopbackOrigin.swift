@@ -33,7 +33,8 @@ import os
 /// thing.
 ///
 /// **What it speaks** is `HttpExchange`'s: `GET` and `HEAD`, persistent connections, single byte
-/// ranges, and the `Content-Type` RFC 8216 gives each resource. Requests on one connection are
+/// ranges, and the `Content-Type` RFC 8216 gives each resource — and a `POST` answered by content
+/// that computes its answer from the body, which is the licence server's alone. Requests on one connection are
 /// answered in the order they arrived, one at a time.
 ///
 /// **One listener per host.** Content served on several hosts (``TestContent/hosts``) opens a
@@ -300,14 +301,17 @@ public final class LoopbackOrigin: Sendable {
         let recorded = NetworkRequest(
             method: request.method, path: request.path, query: request.query,
             kind: ResourceKind.of(path: request.path), headers: request.headers,
-            connection: arrival.ordinal, host: arrival.host)
+            connection: arrival.ordinal, host: arrival.host, body: request.body)
         state.requests.append(recorded)
         let address = state.faults.address(
             host: arrival.host, path: request.path,
             offset: HttpExchange.rangeStart(request.headers["range"]))
         let answer = state.faults.answer(request, at: address, nowMs: arrivedMs) {
-            let published = content.publication(arrivedMs, ports)[String(request.path.dropFirst())]
-            return HttpExchange.resolve(request, body: published)
+            let path = String(request.path.dropFirst())
+            if request.method == "POST" {
+                return HttpExchange.answered(request, body: content.answering?(path, request.body))
+            }
+            return HttpExchange.resolve(request, body: content.publication(arrivedMs, ports)[path])
         }
         let framed = answer.response.map {
             Self.withExtraHeaders(HttpExchange.frame($0, for: request), answer.extraHeaders)

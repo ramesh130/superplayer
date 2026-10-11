@@ -131,6 +131,7 @@ final class ResiliencePaysNothingTests: XCTestCase {
 /// A hand-written resilience that names every failure the same and takes on no rung, so what is
 /// read is the seam.
 private struct StandInResilience: FailureClassifying {
+    let headerProvider: (any HeaderProvider)? = nil
     func playerStateRungs() -> any PlayerStateRungs { StandInLadder() }
 }
 

@@ -88,11 +88,26 @@ enum CollectorSignal: CaseIterable, Hashable, Sendable {
     /// and its initial likely-to-keep-up event, with the variant playback started on.
     case metricEvents
 
-    /// The signals a session registers on this OS: every case, less ``metricEvents`` below 18, which
-    /// is what the register's test expects rather than ``allCases``.
+    /// Key-value observation of `AVPlayer.isOutputObscuredDueToInsufficientExternalProtection`: an
+    /// external display without the output protection protected content needs, which is
+    /// `OutputObscuredChanged` (#422). **On a player configured with `drm` alone**, because clear
+    /// content is never obscured, and an observation that can never fire is what ADR-0020 rule 13
+    /// forbids.
+    case outputObscured
+
+    /// The signals a session of an unprotected player registers on this OS: every case less
+    /// ``metricEvents`` below 18 and less ``outputObscured`` — what the register's test expects
+    /// rather than ``allCases``.
     static var registered: [CollectorSignal] {
-        if #available(iOS 18, tvOS 18, *) { return allCases }
-        return allCases.filter { $0 != .metricEvents }
+        let unprotected = allCases.filter { $0 != .outputObscured }
+        if #available(iOS 18, tvOS 18, *) { return unprotected }
+        return unprotected.filter { $0 != .metricEvents }
+    }
+
+    /// The signals a session registers on a player configured with `drm` when `protected`: the
+    /// unprotected ones and ``outputObscured``.
+    static func registered(protected: Bool) -> [CollectorSignal] {
+        protected ? registered + [.outputObscured] : registered
     }
 
     /// The notification this signal is, for the cases that are one.
@@ -109,7 +124,9 @@ enum CollectorSignal: CaseIterable, Hashable, Sendable {
             #else
                 nil
             #endif
-        case .timeControlStatus, .itemStatus, .likelyToKeepUp, .periodicTime, .metricEvents: nil
+        case .timeControlStatus, .itemStatus, .likelyToKeepUp, .periodicTime, .metricEvents,
+            .outputObscured:
+            nil
         }
     }
 }
@@ -148,10 +165,10 @@ final class CollectorObservation {
     /// reads the current state itself, so a change delivered late or twice is reconciled rather than
     /// replayed — the reason no handler is handed a key-value change's old and new values.
     static func registerAll(
-        on player: AVPlayer, item: AVPlayerItem, positionIntervalMs: Int64,
+        on player: AVPlayer, item: AVPlayerItem, positionIntervalMs: Int64, protected: Bool,
         _ handler: @escaping @MainActor @Sendable (CollectorEvent) -> Void
     ) -> [CollectorObservation] {
-        CollectorSignal.registered.compactMap { signal in
+        CollectorSignal.registered(protected: protected).compactMap { signal in
             register(
                 signal, on: player, item: item, positionIntervalMs: positionIntervalMs, handler)
         }
@@ -196,6 +213,13 @@ final class CollectorObservation {
         case .likelyToKeepUp:
             return keyValue(signal, handler) {
                 item.observe(\.isPlaybackLikelyToKeepUp, changeHandler: $0)
+            }
+        case .outputObscured:
+            // ref: https://developer.apple.com/documentation/avfoundation/avplayer/isoutputobscuredduetoinsufficientexternalprotection
+            // — "This property is key-value observable."
+            return keyValue(signal, handler) {
+                player.observe(
+                    \.isOutputObscuredDueToInsufficientExternalProtection, changeHandler: $0)
             }
         case .periodicTime:
             let token = player.addPeriodicTimeObserver(

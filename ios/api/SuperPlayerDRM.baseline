@@ -1,1 +1,10 @@
 // SuperPlayerDRM: public API as ios/check reads it. Regenerate with ios/check --update-api.
+Constructor FairPlayConfig.init(certificateURL:licenceURL:) : SuperPlayerDRM.FairPlayConfig, Foundation.URL, Foundation.URL
+Enum Drm
+Func Drm.fairPlay(_:) : any SuperPlayerCore.PlaybackDrm, SuperPlayerDRM.FairPlayConfig [static]
+Func FairPlayConfig.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerDRM.FairPlayConfig, SuperPlayerDRM.FairPlayConfig [static]
+Func FairPlayConfig.hash(into:) : (), Swift.Hasher
+Struct FairPlayConfig : Equatable, Hashable, Sendable
+Var FairPlayConfig.certificateURL : Foundation.URL { get }
+Var FairPlayConfig.hashValue : Swift.Int { get }
+Var FairPlayConfig.licenceURL : Foundation.URL { get }

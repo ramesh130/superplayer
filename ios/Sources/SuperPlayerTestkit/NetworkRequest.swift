@@ -20,9 +20,8 @@
 /// rather than over what the origin happens to serve, so a request for a resource that is not there
 /// still has a kind — which is what a fault addressed at a kind (#410) needs.
 ///
-/// Android's fourth kind, `LICENCE`, is not here: a FairPlay key request is the app's own exchange
-/// with its key server through `AVContentKeySession`, not a load the origin serves, and it arrives
-/// with i6.
+/// The fourth kind, ``licence``, is Android's `LICENCE`, read by where it is rather than by its name:
+/// anything under the licence server's directory (``TestContent/licenceServer()``).
 public enum ResourceKind: Sendable, Hashable, CaseIterable {
 
     /// A multivariant or media playlist (HLS) or an MPD.
@@ -34,8 +33,15 @@ public enum ResourceKind: Sendable, Hashable, CaseIterable {
     /// A segment carrying media samples.
     case mediaSegment
 
-    /// The kind `path` names, by its last component, ignoring case.
+    /// A FairPlay key server's: its application certificate, or a key request `POST`ed for a
+    /// licence — the Kotlin `LICENCE`, which a fault addresses to refuse a licence without touching
+    /// the content, because on both platforms the licence server is a host of its own.
+    case licence
+
+    /// The kind `path` names, by its last component, ignoring case — or ``licence`` for anything
+    /// under the licence server's directory, whatever its name.
     static func of(path: String) -> ResourceKind {
+        if path.hasPrefix("/" + TestContent.licenceDirectory) { return .licence }
         let name = (path.split(separator: "/").last.map(String.init) ?? path).lowercased()
         if name.hasSuffix(".m3u8") || name.hasSuffix(".mpd") { return .manifest }
         if name.contains("init") { return .initialization }
@@ -51,7 +57,7 @@ public enum ResourceKind: Sendable, Hashable, CaseIterable {
 /// served, or one a fault refuses (#410), is counted like any other: it left the player.
 public struct NetworkRequest: Sendable, Hashable, CustomStringConvertible {
 
-    /// The request method, `GET` or `HEAD` from `AVPlayer`.
+    /// The request method, `GET` or `HEAD` from `AVPlayer`, and `POST` for a key request.
     public let method: String
 
     /// The path of the request target, query excluded, with its leading `/`.
@@ -75,6 +81,10 @@ public struct NetworkRequest: Sendable, Hashable, CustomStringConvertible {
     /// Which of the origin's hosts — its listeners, numbered from zero — the request arrived at.
     /// Zero unless the content was served on several (``TestContent/hls(segmentCount:variantCount:hosts:)``).
     public let host: Int
+
+    /// The request's body: empty for everything a player sends but a key request, whose body is
+    /// the SPC the device composed — what a test holds the exchange's `POST` to.
+    public let body: [UInt8]
 
     public var description: String {
         host == 0 ? "\(kind) \(method) \(path)" : "\(kind) \(method) \(path) @host\(host)"

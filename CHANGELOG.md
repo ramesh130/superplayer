@@ -140,6 +140,16 @@ them under `Added` would be worse than stating them here:
   requirement, `decisionChanged(_:trigger:)`**, so a consumer's own collector no longer compiles
   until it adds one; `QoeCollector` emits `DecisionChanged` from it, and `SessionStarted.decision` is
   the decision in force. ADR-0009 rule 5 gains a #415 addendum. No Android behaviour moved.
+- **The iOS benchmark (#414).** `SuperPlayerTelemetry` gains `SessionMetrics` and `QoeScore`, the
+  Kotlin reduction and objective ported definition for definition and held to the Kotlin test's
+  numbers. `SuperPlayerTestMedia` gains `SyntheticVideoLadder` and `SuperPlayerTestkit`
+  `TestContent.videoLadder(bitratesBps:segmentCount:)` and `liveVideoLadder(bitratesBps:)`: the
+  decodable video as a rendition ladder whose every segment is padded to the bitrate its rung
+  declares, at the Kotlin `Rung.of` frame sizes. `PRD.md` §6's matrix runs on the simulator from
+  `ios/Benchmark/bench`, outside `ios/check` — stock `AVPlayer`, stock with intuitive settings and
+  the static profile, the adaptive arm an empty slot until i3 — with `StockTelemetryAgreementTests`
+  in `ios/check`, and the baseline is committed under `benchmark/ios-baseline/`. No Android
+  behaviour moved.
 - **Preload on iOS (#417).** `SuperPlayerPreload` gains `PreloadCoordinator(pool:)` —
   `setItems(_:)`, `setScrollPosition(index:velocity:)`, `release()` and `warmDecoderCount` —
   attached to a `PlayerPool` before its first player. A row ahead is prefetched as an asset whose

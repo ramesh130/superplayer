@@ -311,7 +311,7 @@ public final class LoopbackOrigin: Sendable {
             if request.method == "POST" {
                 return HttpExchange.answered(request, body: content.answering?(path, request.body))
             }
-            return HttpExchange.resolve(request, body: content.publication(arrivedMs, ports)[path])
+            return HttpExchange.resolve(request, body: content.file(path, arrivedMs, ports))
         }
         let framed = answer.response.map {
             Self.withExtraHeaders(HttpExchange.frame($0, for: request), answer.extraHeaders)

@@ -5,6 +5,7 @@ Enum HostileStream.Severity : CaseIterable, Equatable, Hashable, RawRepresentabl
 Enum HostileStream.Validity : CaseIterable, Equatable, Hashable, Sendable
 Enum SyntheticHlsStream
 Enum SyntheticVideoHlsStream
+Enum SyntheticVideoLadder
 EnumElement HostileStream.Severity.benign : (SuperPlayerTestMedia.HostileStream.Severity.Type) -> SuperPlayerTestMedia.HostileStream.Severity
 EnumElement HostileStream.Severity.borderline : (SuperPlayerTestMedia.HostileStream.Severity.Type) -> SuperPlayerTestMedia.HostileStream.Severity
 EnumElement HostileStream.Severity.severe : (SuperPlayerTestMedia.HostileStream.Severity.Type) -> SuperPlayerTestMedia.HostileStream.Severity
@@ -39,6 +40,13 @@ Func SyntheticVideoHlsStream.durationMs(segmentCount:) : Swift.Int64, Swift.Int 
 Func SyntheticVideoHlsStream.elementaryFrame(_:) : (sample: [Swift.UInt8], isKeyFrame: Swift.Bool), Swift.Int [static]
 Func SyntheticVideoHlsStream.files(segmentCount:) : [Swift.String : [Swift.UInt8]], Swift.Int [static]
 Func SyntheticVideoHlsStream.segmentName(_:) : Swift.String, Swift.Int [static]
+Func SyntheticVideoLadder.declaredHeightPx(bitrateBps:) : Swift.Int, Swift.Int [static]
+Func SyntheticVideoLadder.declaredWidthPx(bitrateBps:) : Swift.Int, Swift.Int [static]
+Func SyntheticVideoLadder.file(_:bitratesBps:segmentCount:) : [Swift.UInt8]?, Swift.String, [Swift.Int], Swift.Int [static]
+Func SyntheticVideoLadder.liveFile(_:bitratesBps:publishedSegmentCount:) : [Swift.UInt8]?, Swift.String, [Swift.Int], Swift.Int [static]
+Func SyntheticVideoLadder.mediaPlaylistName(rung:) : Swift.String, Swift.Int [static]
+Func SyntheticVideoLadder.segmentBytes(bitrateBps:) : Swift.Int, Swift.Int [static]
+Func SyntheticVideoLadder.segmentName(rung:index:) : Swift.String, Swift.Int, Swift.Int [static]
 Struct HostileStream : CustomStringConvertible, Equatable, Hashable, Sendable
 TypeAlias HostileManifests.Severity : SuperPlayerTestMedia.HostileStream.Severity
 TypeAlias HostileStream.Severity.AllCases : [SuperPlayerTestMedia.HostileStream.Severity]
@@ -83,3 +91,7 @@ Var SyntheticVideoHlsStream.multivariantPlaylistName : Swift.String [static] { g
 Var SyntheticVideoHlsStream.segmentDurationMs : Swift.Int64 [static] { get }
 Var SyntheticVideoHlsStream.segmentSuffix : Swift.String [static] { get }
 Var SyntheticVideoHlsStream.width : Swift.Int [static] { get }
+Var SyntheticVideoLadder.initializationSegmentName : Swift.String [static] { get }
+Var SyntheticVideoLadder.liveWindowSegmentCount : Swift.Int [static] { get }
+Var SyntheticVideoLadder.multivariantPlaylistName : Swift.String [static] { get }
+Var SyntheticVideoLadder.segmentDurationMs : Swift.Int64 [static] { get }

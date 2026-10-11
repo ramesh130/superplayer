@@ -221,7 +221,8 @@ enforce it.
    the publisher #405's issue named, because a value fixed before the first item has nothing to
    publish. Until #422 adds `Configuration.drm`, protection is a `package`-scoped stub,
    `Configuration.protection`, of a marker protocol `SuperPlayerDRM` will conform to, and
-   `FrameOutputOffReason.realtime` is reported by no player until `RealtimePlayer` exists.
+   `FrameOutputOffReason.realtime` is reported by no player until `RealtimePlayer` exists — which
+   since #431 reports it always, as `RealtimePlayer.frameOutputOffReason`.
 
 ### What is out of reach
 

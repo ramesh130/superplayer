@@ -2,7 +2,8 @@
 Class PlaybackSession : Sendable
 Class PlayerLayerView : superclass UIKit.UIView
 Class PlayerPool : Sendable
-Class SuperPlayer : Sendable
+Class SuperPlayer : PlaybackEngine, Sendable
+Constructor EncodedFrame.init(timestampUs:payload:keyFrame:trackIndex:) : SuperPlayerCore.EncodedFrame, Swift.Int64, Foundation.Data, Swift.Bool, Swift.Int
 Constructor MediaRequest.StartPosition.init(from:) : SuperPlayerCore.MediaRequest.StartPosition, any Swift.Decoder [throwing]
 Constructor MediaRequest.init(contentId:sources:startPosition:title:subtitle:artworkURL:) : SuperPlayerCore.MediaRequest, Swift.String, [Foundation.URL], SuperPlayerCore.MediaRequest.StartPosition, Swift.String?, Swift.String?, Foundation.URL?
 Constructor MediaRequest.init(from:) : SuperPlayerCore.MediaRequest, any Swift.Decoder [throwing]
@@ -15,6 +16,8 @@ Constructor PlayerLayerView.init(player:) : SuperPlayerCore.PlayerLayerView, Sup
 Constructor PlayerPool.Configuration.init() : SuperPlayerCore.PlayerPool.Configuration
 Constructor PlayerPool.init(configuration:) : SuperPlayerCore.PlayerPool, SuperPlayerCore.PlayerPool.Configuration
 Constructor PlayerView.init(player:videoGravity:) : SuperPlayerCore.PlayerView, SuperPlayerCore.SuperPlayer, AVFoundation.AVLayerVideoGravity
+Constructor RealtimeTrack.CodedSize.init(width:height:) : SuperPlayerCore.RealtimeTrack.CodedSize?, Swift.Int, Swift.Int
+Constructor RealtimeTrack.init(codec:codecConfiguration:codedSize:) : SuperPlayerCore.RealtimeTrack, Swift.String, SuperPlayerCore.RealtimeTrack.CodecConfiguration, SuperPlayerCore.RealtimeTrack.CodedSize?
 Constructor SuperPlayer.Configuration.init() : SuperPlayerCore.SuperPlayer.Configuration
 Constructor SuperPlayer.Configuration.init(profile:) : SuperPlayerCore.SuperPlayer.Configuration, SuperPlayerCore.PlaybackProfile
 Constructor SuperPlayer.init(configuration:) : SuperPlayerCore.SuperPlayer, SuperPlayerCore.SuperPlayer.Configuration
@@ -40,6 +43,7 @@ Enum FrameOutputOffReason : Equatable, Hashable, Sendable
 Enum LicenceOutcome : Equatable, Hashable, Sendable
 Enum MediaRequest.StartPosition : Decodable, Encodable, Equatable, Hashable, Sendable
 Enum PlaybackProfile : CaseIterable, Equatable, Hashable, Sendable
+Enum RealtimeTrack.CodecConfiguration : Equatable, Hashable, Sendable
 Enum TelemetryEvent : Equatable, Hashable, Sendable
 Enum TrackSwitchDirection : Equatable, Hashable, Sendable
 Enum TtffStartBoundary : Equatable, Hashable, Sendable
@@ -71,6 +75,8 @@ EnumElement PlaybackProfile.liveLinear : (SuperPlayerCore.PlaybackProfile.Type) 
 EnumElement PlaybackProfile.shortForm : (SuperPlayerCore.PlaybackProfile.Type) -> SuperPlayerCore.PlaybackProfile
 EnumElement PlaybackProfile.tvLeanback : (SuperPlayerCore.PlaybackProfile.Type) -> SuperPlayerCore.PlaybackProfile
 EnumElement PlaybackProfile.videoOnDemand : (SuperPlayerCore.PlaybackProfile.Type) -> SuperPlayerCore.PlaybackProfile
+EnumElement RealtimeTrack.CodecConfiguration.inBand : (SuperPlayerCore.RealtimeTrack.CodecConfiguration.Type) -> SuperPlayerCore.RealtimeTrack.CodecConfiguration
+EnumElement RealtimeTrack.CodecConfiguration.record : (SuperPlayerCore.RealtimeTrack.CodecConfiguration.Type) -> (Foundation.Data) -> SuperPlayerCore.RealtimeTrack.CodecConfiguration
 EnumElement TelemetryEvent.decisionChanged : (SuperPlayerCore.TelemetryEvent.Type) -> (SuperPlayerCore.TelemetryEvent.DecisionChanged) -> SuperPlayerCore.TelemetryEvent
 EnumElement TelemetryEvent.firstFrameRendered : (SuperPlayerCore.TelemetryEvent.Type) -> (SuperPlayerCore.TelemetryEvent.FirstFrameRendered) -> SuperPlayerCore.TelemetryEvent
 EnumElement TelemetryEvent.licenceAcquisitionEnded : (SuperPlayerCore.TelemetryEvent.Type) -> (SuperPlayerCore.TelemetryEvent.LicenceAcquisitionEnded) -> SuperPlayerCore.TelemetryEvent
@@ -98,13 +104,24 @@ Func CmcdModeUnsupportedError.hash(into:) : (), Swift.Hasher
 Func CompositeTelemetrySink.onEvent(_:) : (), SuperPlayerCore.TelemetryEvent
 Func DecisionTrigger.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerCore.DecisionTrigger, SuperPlayerCore.DecisionTrigger [static]
 Func DecisionTrigger.hash(into:) : (), Swift.Hasher
+Func EncodedFrame.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.EncodedFrame, SuperPlayerCore.EncodedFrame [static]
+Func EncodedFrame.hash(into:) : (), Swift.Hasher
 Func FailureCategory.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerCore.FailureCategory, SuperPlayerCore.FailureCategory [static]
 Func FailureCategory.hash(into:) : (), Swift.Hasher
 Func FrameOutput.process(_:presentationTime:) : CoreVideo.CVPixelBuffer, CoreVideo.CVPixelBuffer, CoreMedia.CMTime where <Self where Self : SuperPlayerCore.FrameOutput>
 Func FrameOutputOffReason.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerCore.FrameOutputOffReason, SuperPlayerCore.FrameOutputOffReason [static]
 Func FrameOutputOffReason.hash(into:) : (), Swift.Hasher
+Func FrameSink.onEnded() : () where <Self where Self : SuperPlayerCore.FrameSink>
+Func FrameSink.onError(_:) : (), any Swift.Error where <Self where Self : SuperPlayerCore.FrameSink>
+Func FrameSink.onFrame(_:) : (), SuperPlayerCore.EncodedFrame where <Self where Self : SuperPlayerCore.FrameSink>
+Func FrameSink.onTracks(_:) : (), [SuperPlayerCore.RealtimeTrack] where <Self where Self : SuperPlayerCore.FrameSink>
+Func FrameSource.cancel() : () where <Self where Self : SuperPlayerCore.FrameSource>
+Func FrameSource.subscribe(_:) : (), any SuperPlayerCore.FrameSink where <Self where Self : SuperPlayerCore.FrameSource>
+Func FrameSourceFactory.open(_:) : any SuperPlayerCore.FrameSource, Foundation.URL where <Self where Self : SuperPlayerCore.FrameSourceFactory>
 Func LicenceOutcome.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerCore.LicenceOutcome, SuperPlayerCore.LicenceOutcome [static]
 Func LicenceOutcome.hash(into:) : (), Swift.Hasher
+Func MalformedRealtimeBitstreamError.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.MalformedRealtimeBitstreamError, SuperPlayerCore.MalformedRealtimeBitstreamError [static]
+Func MalformedRealtimeBitstreamError.hash(into:) : (), Swift.Hasher
 Func MediaRequest.StartPosition.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerCore.MediaRequest.StartPosition, SuperPlayerCore.MediaRequest.StartPosition [static]
 Func MediaRequest.StartPosition.encode(to:) : (), any Swift.Encoder [throwing]
 Func MediaRequest.StartPosition.hash(into:) : (), Swift.Hasher
@@ -131,6 +148,14 @@ Func PlayerPool.recycle(_:) : (), SuperPlayerCore.SuperPlayer
 Func PlayerPool.release() : ()
 Func PlayerView.makeUIView(context:) : SuperPlayerCore.PlayerLayerView, SuperPlayerCore.PlayerView.Context
 Func PlayerView.updateUIView(_:context:) : (), SuperPlayerCore.PlayerLayerView, SuperPlayerCore.PlayerView.Context
+Func RealtimeStreamNotSeekableError.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.RealtimeStreamNotSeekableError, SuperPlayerCore.RealtimeStreamNotSeekableError [static]
+Func RealtimeStreamNotSeekableError.hash(into:) : (), Swift.Hasher
+Func RealtimeTrack.CodecConfiguration.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerCore.RealtimeTrack.CodecConfiguration, SuperPlayerCore.RealtimeTrack.CodecConfiguration [static]
+Func RealtimeTrack.CodecConfiguration.hash(into:) : (), Swift.Hasher
+Func RealtimeTrack.CodedSize.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.RealtimeTrack.CodedSize, SuperPlayerCore.RealtimeTrack.CodedSize [static]
+Func RealtimeTrack.CodedSize.hash(into:) : (), Swift.Hasher
+Func RealtimeTrack.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.RealtimeTrack, SuperPlayerCore.RealtimeTrack [static]
+Func RealtimeTrack.hash(into:) : (), Swift.Hasher
 Func SuperPlayer.Configuration.setCmcdMode(_:) : (), SuperPlayerCore.CmcdMode [throwing] [Mutating]
 Func SuperPlayer.declarePlaybackIntent() : ()
 Func SuperPlayer.release() : ()
@@ -181,18 +206,28 @@ Func TrackSwitchDirection.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerC
 Func TrackSwitchDirection.hash(into:) : (), Swift.Hasher
 Func TtffStartBoundary.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerCore.TtffStartBoundary, SuperPlayerCore.TtffStartBoundary [static]
 Func TtffStartBoundary.hash(into:) : (), Swift.Hasher
+Func UnsupportedRealtimeCodecError.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.UnsupportedRealtimeCodecError, SuperPlayerCore.UnsupportedRealtimeCodecError [static]
+Func UnsupportedRealtimeCodecError.hash(into:) : (), Swift.Hasher
 Protocol FrameOutput where <Self : Swift.Sendable> : Sendable
+Protocol FrameSink where <Self : Swift.Sendable> : Sendable
+Protocol FrameSource where <Self : AnyObject, Self : Swift.Sendable> : Sendable
+Protocol FrameSourceFactory where <Self : Swift.Sendable> : Sendable
 Protocol MediaRequestResolver
 Protocol TelemetryCollector
 Protocol TelemetrySink where <Self : Swift.Sendable> : Sendable
 Struct CmcdModeUnsupportedError : CustomStringConvertible, Equatable, Error, Hashable, Sendable
 Struct CompositeTelemetrySink : Sendable, TelemetrySink
+Struct EncodedFrame : Equatable, Hashable, Sendable
+Struct MalformedRealtimeBitstreamError : CustomStringConvertible, Equatable, Error, Hashable, Sendable
 Struct MediaRequest : Decodable, Encodable, Equatable, Hashable, Sendable
 Struct PlaybackDecision : Equatable, Hashable, Sendable
 Struct PlaybackFailure : Equatable, Hashable, Sendable
 Struct PlaybackSnapshot : Decodable, Encodable, Equatable, Hashable, Sendable
 Struct PlayerPool.Configuration : Sendable
 Struct PlayerView : Sendable, UIViewRepresentable, View
+Struct RealtimeStreamNotSeekableError : CustomStringConvertible, Equatable, Error, Hashable, Sendable
+Struct RealtimeTrack : Equatable, Hashable, Sendable
+Struct RealtimeTrack.CodedSize : CustomStringConvertible, Equatable, Hashable, Sendable
 Struct SuperPlayer.Configuration : Sendable
 Struct TelemetryEvent.DecisionChanged : Equatable, Hashable, Sendable
 Struct TelemetryEvent.FirstFrameRendered : Equatable, Hashable, Sendable
@@ -209,6 +244,7 @@ Struct TelemetryEvent.SessionStarted : Equatable, Hashable, Sendable
 Struct TelemetryEvent.StartupFailed : Equatable, Hashable, Sendable
 Struct TelemetryEvent.TrackSwitched : Equatable, Hashable, Sendable
 Struct TelemetryEvent.VideoFramesDropped : Equatable, Hashable, Sendable
+Struct UnsupportedRealtimeCodecError : CustomStringConvertible, Equatable, Error, Hashable, Sendable
 TypeAlias CmcdMode.AllCases : [SuperPlayerCore.CmcdMode]
 TypeAlias PlaybackProfile.AllCases : [SuperPlayerCore.PlaybackProfile]
 TypeAlias PlayerView.Body : Swift.Never
@@ -220,9 +256,18 @@ Var CmcdModeUnsupportedError.description : Swift.String { get }
 Var CmcdModeUnsupportedError.hashValue : Swift.Int { get }
 Var CmcdModeUnsupportedError.mode : SuperPlayerCore.CmcdMode { get }
 Var DecisionTrigger.hashValue : Swift.Int { get }
+Var EncodedFrame.hashValue : Swift.Int { get }
+Var EncodedFrame.keyFrame : Swift.Bool { get }
+Var EncodedFrame.payload : Foundation.Data { get }
+Var EncodedFrame.timestampUs : Swift.Int64 { get }
+Var EncodedFrame.trackIndex : Swift.Int { get }
 Var FailureCategory.hashValue : Swift.Int { get }
 Var FrameOutputOffReason.hashValue : Swift.Int { get }
 Var LicenceOutcome.hashValue : Swift.Int { get }
+Var MalformedRealtimeBitstreamError.codec : Swift.String { get }
+Var MalformedRealtimeBitstreamError.description : Swift.String { get }
+Var MalformedRealtimeBitstreamError.hashValue : Swift.Int { get }
+Var MalformedRealtimeBitstreamError.reason : Swift.String { get }
 Var MediaRequest.StartPosition.hashValue : Swift.Int { get }
 Var MediaRequest.artworkURL : Foundation.URL? { get }
 Var MediaRequest.contentId : Swift.String { get }
@@ -254,6 +299,19 @@ Var PlayerPool.configuration : SuperPlayerCore.PlayerPool.Configuration { get }
 Var PlayerPool.inUseCount : Swift.Int { get }
 Var PlayerPool.maxSize : Swift.Int { get }
 Var PlayerPool.size : Swift.Int { get }
+Var RealtimeStreamNotSeekableError.description : Swift.String { get }
+Var RealtimeStreamNotSeekableError.hashValue : Swift.Int { get }
+Var RealtimeStreamNotSeekableError.scheme : Swift.String { get }
+Var RealtimeStreamNotSeekableError.startPosition : Swift.String { get }
+Var RealtimeTrack.CodecConfiguration.hashValue : Swift.Int { get }
+Var RealtimeTrack.CodedSize.description : Swift.String { get }
+Var RealtimeTrack.CodedSize.hashValue : Swift.Int { get }
+Var RealtimeTrack.CodedSize.height : Swift.Int { get }
+Var RealtimeTrack.CodedSize.width : Swift.Int { get }
+Var RealtimeTrack.codec : Swift.String { get }
+Var RealtimeTrack.codecConfiguration : SuperPlayerCore.RealtimeTrack.CodecConfiguration { get }
+Var RealtimeTrack.codedSize : SuperPlayerCore.RealtimeTrack.CodedSize? { get }
+Var RealtimeTrack.hashValue : Swift.Int { get }
 Var SuperPlayer.Configuration.cmcdMode : SuperPlayerCore.CmcdMode? { get }
 Var SuperPlayer.Configuration.frameOutput : (any SuperPlayerCore.FrameOutput)? { get set }
 Var SuperPlayer.Configuration.profile : SuperPlayerCore.PlaybackProfile { get set }
@@ -382,3 +440,6 @@ Var TelemetryEvent.sessionId : Swift.String { get }
 Var TelemetryEvent.timestampMs : Swift.Int64 { get }
 Var TrackSwitchDirection.hashValue : Swift.Int { get }
 Var TtffStartBoundary.hashValue : Swift.Int { get }
+Var UnsupportedRealtimeCodecError.codec : Swift.String { get }
+Var UnsupportedRealtimeCodecError.description : Swift.String { get }
+Var UnsupportedRealtimeCodecError.hashValue : Swift.Int { get }

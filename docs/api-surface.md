@@ -187,7 +187,11 @@ It is not readable in review, which is the point of the file. And it moves with 
 than with the package — mangled names, USRs, the dump's own format version and the tool's
 arguments, and the marker conformances (`Copyable`, `Escapable`, `SendableMetatype`) each newer
 Swift infers on every type — so a baseline recorded under one Xcode would fail under another for
-nothing an adopter can see. Sorting is for the same reason: the order is the digester's.
+nothing an adopter can see. Sorting is for the same reason: the order is the digester's. And a
+**subclass of a platform class** is recorded by its superclass rather than its conformances (#405's
+`PlayerLayerView`, a `UIView`): the digester lists every conformance a class inherits, and those are
+the SDK's — iOS 27 gave `UIView` two that iOS 26 does not have, so CI's SDK and a newer local one
+disagreed about a class whose declaration had not moved.
 
 **A `package` declaration is left out.** The digester dumps it beside the public ones, marked
 `isInternal`, and the reduction drops it: a `package` seam is what another product of this package

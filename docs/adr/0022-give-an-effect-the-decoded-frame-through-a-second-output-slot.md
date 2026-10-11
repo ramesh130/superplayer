@@ -201,6 +201,28 @@ enforce it.
    a sample-buffer layer and that a Picture in Picture content source can be made from it; that
    Picture in Picture actually runs is a device claim, under #435.*
 
+   **#405 addendum — the iOS spelling fixed.** `Configuration.frameOutput` takes the consumer's
+   `FrameOutput` directly, as the #406 addendum to rule 3 foresaw, and its one method is
+   `process(_ frame: CVPixelBuffer, presentationTime: CMTime) -> CVPixelBuffer`, called on a serial
+   queue of the player's and never the main actor, because the method is on the path to the screen
+   and a main-actor effect would stall the display link and the app's UI together; while one call
+   runs the display link copies no further frame, so a slow effect costs frames rather than a
+   queue, which rule 10's dropped-frame count already measures. The frames are 32-bit BGRA,
+   IOSurface-backed and Metal-compatible (`SuperPlayer.frameOutputPixelFormat`), because an effect
+   reads them through Core Image, Metal or Vision and the layer shows an IOSurface without a copy.
+   The layer's control timebase is the item's own `AVPlayerItem.timebase`, so presentation follows
+   the item through a pause or a rate change with nothing of core's scheduling it. The library's
+   view is two types, `PlayerLayerView` (UIKit) and `PlayerView` (SwiftUI, over it), and Picture in
+   Picture is reached through `PlayerLayerView.makePictureInPictureContentSource()`, which answers
+   for either layer so an app writes one Picture in Picture path whether or not it has an output.
+   An output is laid on each item the facade itself plays — `setMediaRequest`, `setMediaURL`,
+   `restoreSnapshot` — and an item handed to `avPlayer` directly gets none, which is ADR-0020 rule
+   3's escape hatch. Rule 6's reason is `SuperPlayer.frameOutputOffReason`, a property rather than
+   the publisher #405's issue named, because a value fixed before the first item has nothing to
+   publish. Until #422 adds `Configuration.drm`, protection is a `package`-scoped stub,
+   `Configuration.protection`, of a marker protocol `SuperPlayerDRM` will conform to, and
+   `FrameOutputOffReason.realtime` is reported by no player until `RealtimePlayer` exists.
+
 ### What is out of reach
 
 6. **Protected content and realtime are not reached, and a player that can play either reports the

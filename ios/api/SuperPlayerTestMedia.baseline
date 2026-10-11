@@ -4,6 +4,7 @@ Enum HostileManifests
 Enum HostileStream.Severity : CaseIterable, Equatable, Hashable, RawRepresentable, Sendable
 Enum HostileStream.Validity : CaseIterable, Equatable, Hashable, Sendable
 Enum SyntheticHlsStream
+Enum SyntheticVideoHlsStream
 EnumElement HostileStream.Severity.benign : (SuperPlayerTestMedia.HostileStream.Severity.Type) -> SuperPlayerTestMedia.HostileStream.Severity
 EnumElement HostileStream.Severity.borderline : (SuperPlayerTestMedia.HostileStream.Severity.Type) -> SuperPlayerTestMedia.HostileStream.Severity
 EnumElement HostileStream.Severity.severe : (SuperPlayerTestMedia.HostileStream.Severity.Type) -> SuperPlayerTestMedia.HostileStream.Severity
@@ -31,6 +32,9 @@ Func SyntheticHlsStream.durationMs(segmentCount:) : Swift.Int64, Swift.Int [stat
 Func SyntheticHlsStream.files(segmentCount:variantCount:) : [Swift.String : [Swift.UInt8]], Swift.Int, Swift.Int [static]
 Func SyntheticHlsStream.liveFiles(publishedSegmentCount:) : [Swift.String : [Swift.UInt8]], Swift.Int [static]
 Func SyntheticHlsStream.segmentName(_:) : Swift.String, Swift.Int [static]
+Func SyntheticVideoHlsStream.durationMs(segmentCount:) : Swift.Int64, Swift.Int [static]
+Func SyntheticVideoHlsStream.files(segmentCount:) : [Swift.String : [Swift.UInt8]], Swift.Int [static]
+Func SyntheticVideoHlsStream.segmentName(_:) : Swift.String, Swift.Int [static]
 Struct HostileStream : CustomStringConvertible, Equatable, Hashable, Sendable
 TypeAlias HostileManifests.Severity : SuperPlayerTestMedia.HostileStream.Severity
 TypeAlias HostileStream.Severity.AllCases : [SuperPlayerTestMedia.HostileStream.Severity]
@@ -63,3 +67,13 @@ Var SyntheticHlsStream.multivariantPlaylistName : Swift.String [static] { get }
 Var SyntheticHlsStream.secondMediaPlaylistName : Swift.String [static] { get }
 Var SyntheticHlsStream.segmentDurationMs : Swift.Int64 [static] { get }
 Var SyntheticHlsStream.segmentSuffix : Swift.String [static] { get }
+Var SyntheticVideoHlsStream.declaredCodecs : Swift.String [static] { get }
+Var SyntheticVideoHlsStream.framesPerSecond : Swift.Int [static] { get }
+Var SyntheticVideoHlsStream.framesPerSegment : Swift.Int [static] { get }
+Var SyntheticVideoHlsStream.height : Swift.Int [static] { get }
+Var SyntheticVideoHlsStream.initializationSegmentName : Swift.String [static] { get }
+Var SyntheticVideoHlsStream.mediaPlaylistName : Swift.String [static] { get }
+Var SyntheticVideoHlsStream.multivariantPlaylistName : Swift.String [static] { get }
+Var SyntheticVideoHlsStream.segmentDurationMs : Swift.Int64 [static] { get }
+Var SyntheticVideoHlsStream.segmentSuffix : Swift.String [static] { get }
+Var SyntheticVideoHlsStream.width : Swift.Int [static] { get }

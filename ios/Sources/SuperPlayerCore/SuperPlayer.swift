@@ -96,6 +96,20 @@ public final class SuperPlayer {
             guard mode != .queryParameter else { throw CmcdModeUnsupportedError(mode: mode) }
             cmcdMode = mode
         }
+
+        /// What an effect does to each decoded frame, or nil — the default — for a player whose
+        /// frames go straight to an `AVPlayerLayer` and which makes nothing for an output it lacks
+        /// (ADR-0022 rules 7 and 9). The Android `setFrameOutput`, fixed for the player's lifetime
+        /// as every configuration is (rule 2); ``FrameOutput`` says how a frame reaches it, and
+        /// ``PlayerView`` is what shows the result — `AVPlayerViewController` would show the
+        /// unprocessed picture. An instance rather than ``telemetry``'s factory, because one output
+        /// may serve many players, as the Kotlin handle may.
+        public var frameOutput: (any FrameOutput)?
+
+        /// The protection this player plays under, or nil: the stub #422's public `drm` replaces
+        /// (``PlaybackProtection``). A frame output on a player that has one is off
+        /// (``SuperPlayer/frameOutputOffReason``).
+        package var protection: (any PlaybackProtection)?
     }
 
     /// The configuration this player was made with.
@@ -142,6 +156,9 @@ public final class SuperPlayer {
     /// The platform's lifecycle rules, on for every player (`LifecycleBinding.swift`).
     private let lifecycle: LifecycleBinding
 
+    /// The frame output's display path (`FramePath.swift`), or nil on a player without one running.
+    let framePath: FramePath?
+
     public convenience init(configuration: Configuration = Configuration()) {
         self.init(configuration: configuration, lifecycle: .system)
     }
@@ -156,6 +173,7 @@ public final class SuperPlayer {
             configuration.cmcdMode ?? StaticCmcdPolicy.defaultMode(for: configuration.profile)
         self.lifecycle = LifecycleBinding(player: avPlayer, shared: lifecycle)
         knobs.apply(to: avPlayer)
+        self.framePath = FramePath.make(configuration: configuration, player: avPlayer)
         self.collector = configuration.telemetry?()
         self.measurement = collector.map { _ in MeasurementSession() }
         collector?.attach(to: self)
@@ -236,6 +254,7 @@ public final class SuperPlayer {
         isReleased = true
         observations = []
         lifecycle.release()
+        framePath?.detach()
         avPlayer.replaceCurrentItem(with: nil)
     }
 
@@ -302,10 +321,14 @@ public final class SuperPlayer {
 
     /// Lets go of the output this player owns, before anything else in ``resetForReuse()``.
     ///
-    /// Empty today, and named so the frame output (#405, ADR-0022) has its place in the order: the
-    /// facade owns no layer yet — an `AVPlayerLayer` an app made from ``avPlayer`` is the app's, and
-    /// the app detaches it, as ``PlayerPool/recycle(_:)`` says.
-    private func detachOwnedOutput() {}
+    /// The one output the facade owns is the frame output's (#405, ADR-0022): its item output comes
+    /// off, its display link stops, and its sample-buffer layer is flushed with the displayed image
+    /// removed, so the next row's view never shows this one's last frame. The layer itself stays the
+    /// player's, for the next item to be shown on. An `AVPlayerLayer` an app made from ``avPlayer``
+    /// is the app's, and the app detaches it, as ``PlayerPool/recycle(_:)`` says.
+    private func detachOwnedOutput() {
+        framePath?.detach()
+    }
 
     /// The ``MediaRequest/contentId`` of what is playing, read back off the current item's external
     /// metadata, where ``setMediaRequest(_:)`` wrote it; nil for an item played from a bare URL or
@@ -318,7 +341,8 @@ public final class SuperPlayer {
     /// counts (ADR-0020 rule 13). Internal, and reached by that test through `@testable`: no later
     /// product needs it, so it is not a `package` seam and stays off the tracked API surface.
     var liveObservations: [ObservedSignal: Int] {
-        (observations + lifecycle.observations).reduce(into: [:]) { counts, observation in
+        let all = observations + lifecycle.observations + (framePath?.observations ?? [])
+        return all.reduce(into: [:]) { counts, observation in
             counts[observation.signal, default: 0] += 1
         }
     }
@@ -338,6 +362,7 @@ public final class SuperPlayer {
                 },
             ]
         }
+        framePath?.attach(to: item)
         avPlayer.replaceCurrentItem(with: item)
     }
 

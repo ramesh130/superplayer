@@ -76,7 +76,16 @@ func declarationLines(_ node: [String: Any], path: [String]) -> [String] {
     let accessors = (node["accessors"] as? [[String: Any]] ?? [])
         .compactMap { $0["accessorKind"] as? String }
     if !accessors.isEmpty { line += " { \(accessors.joined(separator: " ")) }" }
-    let conformances = (node["conformances"] as? [[String: Any]] ?? [])
+    // A subclass of a platform class — `PlayerLayerView` is a `UIView` — is listed with every
+    // conformance it inherits, and that list is the SDK's: iOS 27 added two to `UIView` that iOS 26
+    // does not have, so a baseline recorded on one SDK failed on the other for nothing this package
+    // declared. Such a class is recorded by its superclass instead, which is what an adopter
+    // depends on. The digester does not say which conformances are inherited, so one a subclass
+    // declared itself is not recorded either; the first such declaration is to revisit this.
+    let superclass = (node["superclassNames"] as? [String])?.first
+    let conformances =
+        superclass.map { ["superclass \($0)"] }
+        ?? (node["conformances"] as? [[String: Any]] ?? [])
         .compactMap { $0["printedName"] as? String }
         .filter { !implicitConformances.contains($0) }
         .sorted()

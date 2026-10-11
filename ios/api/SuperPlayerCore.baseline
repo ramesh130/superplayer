@@ -156,6 +156,8 @@ Func RealtimeTrack.CodedSize.__derived_struct_equals(_:_:) : Swift.Bool, SuperPl
 Func RealtimeTrack.CodedSize.hash(into:) : (), Swift.Hasher
 Func RealtimeTrack.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.RealtimeTrack, SuperPlayerCore.RealtimeTrack [static]
 Func RealtimeTrack.hash(into:) : (), Swift.Hasher
+Func RealtimeTrackStalledError.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.RealtimeTrackStalledError, SuperPlayerCore.RealtimeTrackStalledError [static]
+Func RealtimeTrackStalledError.hash(into:) : (), Swift.Hasher
 Func SuperPlayer.Configuration.setCmcdMode(_:) : (), SuperPlayerCore.CmcdMode [throwing] [Mutating]
 Func SuperPlayer.declarePlaybackIntent() : ()
 Func SuperPlayer.release() : ()
@@ -228,6 +230,7 @@ Struct PlayerView : Sendable, UIViewRepresentable, View
 Struct RealtimeStreamNotSeekableError : CustomStringConvertible, Equatable, Error, Hashable, Sendable
 Struct RealtimeTrack : Equatable, Hashable, Sendable
 Struct RealtimeTrack.CodedSize : CustomStringConvertible, Equatable, Hashable, Sendable
+Struct RealtimeTrackStalledError : CustomStringConvertible, Equatable, Error, Hashable, Sendable
 Struct SuperPlayer.Configuration : Sendable
 Struct TelemetryEvent.DecisionChanged : Equatable, Hashable, Sendable
 Struct TelemetryEvent.FirstFrameRendered : Equatable, Hashable, Sendable
@@ -312,6 +315,11 @@ Var RealtimeTrack.codec : Swift.String { get }
 Var RealtimeTrack.codecConfiguration : SuperPlayerCore.RealtimeTrack.CodecConfiguration { get }
 Var RealtimeTrack.codedSize : SuperPlayerCore.RealtimeTrack.CodedSize? { get }
 Var RealtimeTrack.hashValue : Swift.Int { get }
+Var RealtimeTrackStalledError.behindByMs : Swift.Int64 { get }
+Var RealtimeTrackStalledError.boundMs : Swift.Int64 { get }
+Var RealtimeTrackStalledError.codec : Swift.String { get }
+Var RealtimeTrackStalledError.description : Swift.String { get }
+Var RealtimeTrackStalledError.hashValue : Swift.Int { get }
 Var SuperPlayer.Configuration.cmcdMode : SuperPlayerCore.CmcdMode? { get }
 Var SuperPlayer.Configuration.frameOutput : (any SuperPlayerCore.FrameOutput)? { get set }
 Var SuperPlayer.Configuration.profile : SuperPlayerCore.PlaybackProfile { get set }

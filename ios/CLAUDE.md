@@ -85,6 +85,16 @@ core's `package` protocol `PlaybackEngine` — the view hosts either, and `Share
 — and what they do not yet (telemetry, sessions, interruptions) is listed in `docs/testing.md`'s *A
 realtime transport on iOS*. #340's observed bytes are `ios/Tests/Fixtures/realtime/observed-bytes.tsv`,
 read by both platforms' tests.
+#432 mirrored the codec configuration and made it several tracks. `CodecConfigurationRecords.swift`
+runs the Kotlin conversion **the other way**: an `avcC`/`hvcC` is parsed for its NAL length width and
+passed into the description's atom untouched, its samples walked at that width; in-band parameter sets
+are lifted into a description by `CMVideoFormatDescriptionCreateFromH264ParameterSets` (or HEVC's) and
+Annex-B samples re-framed to four-byte lengths — `TrackFraming` per track, with the same refusals. The
+engine anchors every track on the first frame of any, reconciles one more than thirty seconds off as an
+epoch of its own, and ends the stream on core's `RealtimeTrackStalledError` past the five-second late
+and three-second stalled bounds, **in media time against the leading track**. An AAC magic cookie is the
+`ES_Descriptor` around the AudioSpecificConfig, never the bare config, which an audio renderer takes and
+then silently fails to decode.
 `SuperPlayerMoQ` is not declared yet — its binary target is
 i9's — and there is no `SuperPlayerCache`, since its content is the offline store's.
 

@@ -24,7 +24,9 @@ import SuperPlayerCore
 // | --- | --- |
 // | a `SampleQueue` per track, read by Media3's renderers | the display layer's `AVSampleBufferVideoRenderer`, or an `AVSampleBufferAudioRenderer`, per track |
 // | a `SinglePeriodTimeline`, live, unseekable, of unknown duration | an `AVSampleBufferRenderSynchronizer` whose clock starts at the first frame and is never sought |
-// | `Format` from `RealtimeFormats`, init data from `CodecConfigurationRecords` | a `CMFormatDescription` from `RealtimeFormats`, the record passed through as its atom |
+// | `Format` from `RealtimeFormats`, init data from `CodecConfigurationRecords` | a `CMFormatDescription` from `RealtimeFormats`, the record passed through as its atom; in-band parameter sets converted by `TrackFraming` — mirrored (`CodecConfigurationRecords.swift`) |
+// | the period's anchor, shared across tracks, and `SHARED_EPOCH_BOUND_US` | the same anchor and bound, in `anchor(for:among:)` |
+// | `LATE_TRACK_START_BOUND_US` and `STALLED_TRACK_BOUND_US`, polled in `continueLoading` | the same bounds, checked as each frame is enqueued (`failIfATrackHasFallenBehind()`) |
 // | the first frame's timestamp subtracted | the same, before the frame is stamped as a `CMSampleBuffer` |
 //
 // **Nothing here decodes** (ADR-0018 rule 1): a frame is wrapped, not transformed — its payload
@@ -83,12 +85,26 @@ final class RealtimeEngine: @unchecked Sendable {
     private var firstFrameEnqueued = false
     private var firstPresentation: CMTime?
 
-    /// One declared track: what its frames are described as and who renders them.
+    /// One declared track: how its frames are framed and described, and who renders them.
+    ///
+    /// The framing is per track and not per subscription, which is #345's NAL length size made
+    /// plural, as on Android: two tracks may declare different widths, and reading one track's
+    /// samples at the other's frames every one of them wrongly while looking like it worked.
     private struct TrackState {
-        let description: CMFormatDescription
+        var framing: TrackFraming
         let renderer: any AVQueuedSampleBufferRendering
-        /// What this track's timestamps are rebased by, fixed at its first frame (``anchor(for:)``).
+        /// What this track's timestamps are rebased by, fixed at its first frame
+        /// (``anchor(for:among:)``). Nil until that frame, which is also how "this track has
+        /// delivered nothing" is read.
         var offsetUs: Int64?
+        /// The rebased presentation time of the first sample enqueued, and of the latest — the
+        /// Kotlin queue's `largestQueuedTimestampUs` — in microseconds on the stream's timeline.
+        var firstUs: Int64?
+        var largestUs: Int64?
+
+        /// How far this track has been written, on the stream's timeline: its start where it has
+        /// written nothing, which is what "buffered nothing" means here, as on Android.
+        var bufferedUs: Int64 { largestUs ?? 0 }
     }
 
     /// `report` is called on the main queue, in the order the events happened, with the number of
@@ -123,6 +139,25 @@ final class RealtimeEngine: @unchecked Sendable {
     /// one: zero whatever the transport's epoch, which is the subtraction made visible.
     var firstPresentationTime: CMTime? {
         queue.sync { firstPresentation }
+    }
+
+    /// Per declared track, the rebased presentation times of its first and its latest enqueued
+    /// sample, in microseconds — nil for a track that has enqueued nothing — in declaration order.
+    /// What each renderer was handed to render against the one clock, which is the reading of A/V
+    /// sync a test has (`docs/testing.md`, *A realtime transport on iOS*).
+    var enqueuedPresentations: [(firstUs: Int64, largestUs: Int64)?] {
+        queue.sync {
+            (tracks ?? []).map { state in
+                guard let first = state.firstUs, let largest = state.largestUs else { return nil }
+                return (first, largest)
+            }
+        }
+    }
+
+    /// The renderer of each declared track, in declaration order — an audio renderer's status and
+    /// error being the one reading of a played audio track a test has.
+    var trackRenderers: [any AVQueuedSampleBufferRendering] {
+        queue.sync { (tracks ?? []).map(\.renderer) }
     }
 
     /// Starts or stops the clock as the player is asked to play or pause.
@@ -179,16 +214,15 @@ final class RealtimeEngine: @unchecked Sendable {
                 // One track refused refuses the whole subscription, for the Kotlin reason: a player
                 // told only about the tracks that did map would be playing content the publisher
                 // did not send.
-                let description = try RealtimeFormats.formatDescription(for: track)
-                states.append(
-                    TrackState(description: description, renderer: renderer(for: description)))
+                let framing = try TrackFraming(track: track)
+                states.append(TrackState(framing: framing, renderer: renderer(for: framing.kind)))
             }
         } catch {
             return fail(error)
         }
         for state in states { synchronizer.addRenderer(state.renderer) }
         tracks = states
-        let hasVideo = states.contains { $0.description.mediaType == .video }
+        let hasVideo = states.contains { $0.framing.kind == .video }
         deliver(.tracksDeclared(hasVideo: hasVideo))
     }
 
@@ -210,32 +244,46 @@ final class RealtimeEngine: @unchecked Sendable {
                         + "declared \(states.count) track(s). A frame's trackIndex is a position in "
                         + "the list handed to FrameSink.onTracks."))
         }
-        let offsetUs = states[frame.trackIndex].offsetUs ?? anchor(for: frame.timestampUs)
+        let offsetUs =
+            states[frame.trackIndex].offsetUs ?? anchor(for: frame.timestampUs, among: states)
         states[frame.trackIndex].offsetUs = offsetUs
-        tracks = states
-        let state = states[frame.trackIndex]
+        let presentationUs = frame.timestampUs - offsetUs
         do {
+            guard let payload = try states[frame.trackIndex].framing.sample(from: frame.payload),
+                let description = states[frame.trackIndex].framing.description
+            else {
+                // Parameter sets and nothing to decode: the description moved, no sample did.
+                tracks = states
+                return
+            }
+            let renderer = states[frame.trackIndex].renderer
             let sample = try Self.sampleBuffer(
-                frame, description: state.description, presentationUs: frame.timestampUs - offsetUs)
+                payload, keyFrame: frame.keyFrame, description: description,
+                presentationUs: presentationUs)
             // A video renderer that failed — a decoder lost while backgrounded, say — refuses
             // everything until it is flushed, and says so; flushing then is the documented recovery.
             // ref: https://developer.apple.com/documentation/avfoundation/avsamplebuffervideorenderer/requiresflushtoresumedecoding
-            if let video = state.renderer as? AVSampleBufferVideoRenderer,
+            if let video = renderer as? AVSampleBufferVideoRenderer,
                 video.requiresFlushToResumeDecoding
             {
                 video.flush()
             }
-            state.renderer.enqueue(sample)
+            renderer.enqueue(sample)
         } catch {
+            tracks = states
             return fail(error)
         }
+        states[frame.trackIndex].firstUs = states[frame.trackIndex].firstUs ?? presentationUs
+        states[frame.trackIndex].largestUs = max(
+            states[frame.trackIndex].largestUs ?? presentationUs, presentationUs)
+        tracks = states
         if !firstFrameEnqueued {
             firstFrameEnqueued = true
-            firstPresentation = CMTime(
-                value: frame.timestampUs - offsetUs, timescale: Self.microsecondsPerSecond)
+            firstPresentation = CMTime(value: presentationUs, timescale: Self.microsecondsPerSecond)
             deliver(.firstFrameEnqueued)
             applyRate()
         }
+        failIfATrackHasFallenBehind()
     }
 
     fileprivate func onEnded() {
@@ -249,15 +297,96 @@ final class RealtimeEngine: @unchecked Sendable {
         fail(error)
     }
 
-    /// What a track's first frame is rebased by — the first frame delivered on **any** track, which
-    /// anchors the stream (the Kotlin `anchorFor`'s shared epoch). The reconciliation of a track
-    /// plainly on another epoch, and the bounds on a track that starts late or stops, are #432's,
-    /// and land here.
-    private func anchor(for timestampUs: Int64) -> Int64 {
-        if let anchorUs { return anchorUs }
-        anchorUs = timestampUs
-        return timestampUs
+    /// What a track's first frame is rebased by, which is the whole of the timebase rule — the
+    /// Kotlin `anchorFor`, ported with its reasons.
+    ///
+    /// The first frame on **any** track anchors the stream, and every track that looks like it
+    /// shares that epoch is rebased by the same amount — so a publisher whose audio genuinely leads
+    /// its video by 40 ms sends two tracks on one clock and the 40 ms arrives as 40 ms. Rebasing
+    /// each track on its own first frame would put both at zero and flatten the skew away, and a
+    /// skew flattened to zero is lip sync silently lost.
+    ///
+    /// A track whose first frame lands further than ``sharedEpochBoundUs`` from the anchor is taken
+    /// to be on an epoch of its own instead: obligation 4 promises monotonicity within a track and
+    /// nothing across tracks, and an RTP stream's initial timestamp is random per SSRC (spec: RFC
+    /// 3550 §5.1 — "the initial value of the timestamp SHOULD be random"). Such a track is anchored
+    /// at the point the stream had reached when its first frame arrived — the furthest any track has
+    /// been written — because with no common clock that is the only estimate of "now" either side
+    /// has. It recovers playback and not lip sync. Honouring the difference instead would stamp one
+    /// track's samples hours before the synchronizer's clock, where the renderer drops them as late,
+    /// or hours after it, where they wait for ever.
+    private func anchor(for timestampUs: Int64, among states: [TrackState]) -> Int64 {
+        guard let anchorUs else {
+            anchorUs = timestampUs
+            return timestampUs
+        }
+        // No overflow to guard: a microsecond timestamp from any clock a transport can read is many
+        // orders of magnitude inside `Int64`, which holds ~292,000 years of them.
+        if abs(timestampUs - anchorUs) <= Self.sharedEpochBoundUs { return anchorUs }
+        return timestampUs - (Self.leadingBufferedUs(states) ?? 0)
     }
+
+    /// How far the furthest-ahead track has been written, or nil where no track has delivered —
+    /// one reading for ``anchor(for:among:)``, as the point to place a track on another clock, and
+    /// for ``failIfATrackHasFallenBehind()``, as the line every other track is measured against.
+    private static func leadingBufferedUs(_ states: [TrackState]) -> Int64? {
+        states.filter { $0.offsetUs != nil }.map(\.bufferedUs).max()
+    }
+
+    /// Ends the stream where one track has fallen far enough behind the others to have stopped
+    /// playback, rather than letting it play on half silent or half frozen — the Kotlin
+    /// `failIfATrackHasFallenBehind`.
+    ///
+    /// Two bounds rather than one, because the two silences are not the same thing: a track that
+    /// has never delivered is still *connecting* and gets ``lateTrackStartBoundUs``; a track that
+    /// was delivering and stopped gets the shorter ``stalledTrackBoundUs``.
+    ///
+    /// Both are **media time against the furthest-ahead track, never a clock** — so the same
+    /// delivery reaches the same verdict on any host, which is what makes it assertable under
+    /// ADR-0021's real time, and so *all* the tracks going quiet together is a non-event: the leader
+    /// stops advancing too, nobody falls behind, and the player sits at the live edge. Checked as
+    /// each frame is enqueued, the one moment the leader can move; Android polls it from
+    /// `continueLoading` because that is where Media3 asks. A single-track subscription can reach
+    /// neither bound, so #431's behaviour is unchanged by this whole rule.
+    private func failIfATrackHasFallenBehind() {
+        guard let states = tracks, !finished, states.count > 1,
+            let leaderUs = Self.leadingBufferedUs(states)
+        else { return }
+        for state in states {
+            let boundUs =
+                state.offsetUs != nil ? Self.stalledTrackBoundUs : Self.lateTrackStartBoundUs
+            let behindUs = leaderUs - state.bufferedUs
+            if behindUs > boundUs {
+                return fail(
+                    RealtimeTrackStalledError(
+                        codec: state.framing.codec, behindByMs: behindUs / 1_000,
+                        boundMs: boundUs / 1_000))
+            }
+        }
+    }
+
+    /// How far apart two tracks' first frames may be and still be read as one epoch: thirty
+    /// seconds, the Kotlin `SHARED_EPOCH_BOUND_US`, chosen to sit in the wide gap between the two
+    /// populations it separates. Below it is every real start skew — a second track a GOP or a
+    /// subscription round trip behind the first is seconds at worst, and anything past
+    /// ``lateTrackStartBoundUs`` ends the stream anyway. Above it is every genuinely different
+    /// origin — a random RTP start, a monotonic clock beside a wall clock — none of which lands
+    /// inside half a minute except by coincidence.
+    static let sharedEpochBoundUs: Int64 = 30_000_000
+
+    /// How far the other tracks may advance while a declared track has delivered nothing: five
+    /// seconds, the Kotlin `LATE_TRACK_START_BOUND_US`. A realtime transport negotiates per track —
+    /// a subscription round trip, an encoder asked for a keyframe and the first GOP — a plausible
+    /// few seconds on a slow link, more than the two-second keyframe interval a live encoder
+    /// typically runs. Longer than ``stalledTrackBoundUs`` because connecting is slower than
+    /// continuing.
+    static let lateTrackStartBoundUs: Int64 = 5_000_000
+
+    /// How far the other tracks may advance while a track that *was* delivering stays quiet: three
+    /// seconds, the Kotlin `STALLED_TRACK_BOUND_US`. A publisher sends its tracks together, so a gap
+    /// this size is not jitter at any buffer a sub-second-latency stream runs; it is a lost
+    /// subscription rather than a slow one.
+    static let stalledTrackBoundUs: Int64 = 3_000_000
 
     /// Starts the clock at the stream's zero the first time there is both a frame and a wish to
     /// play, and otherwise follows the wish. Never sought: a realtime timeline has no past.
@@ -287,33 +416,51 @@ final class RealtimeEngine: @unchecked Sendable {
         DispatchQueue.main.async { report(subscription, event) }
     }
 
-    /// The renderer a track of `description` is enqueued to: the display layer's for video, a fresh
-    /// audio renderer for audio.
-    private func renderer(for description: CMFormatDescription) -> any AVQueuedSampleBufferRendering
-    {
-        description.mediaType == .video ? videoRenderer : AVSampleBufferAudioRenderer()
+    /// The renderer a track of `kind` is enqueued to: the display layer's for video, a fresh audio
+    /// renderer for audio.
+    private func renderer(for kind: RealtimeFormat.MediaKind) -> any AVQueuedSampleBufferRendering {
+        kind == .video ? videoRenderer : AVSampleBufferAudioRenderer()
     }
 
-    /// `frame` as a sample buffer: its payload copied into a block buffer, stamped at
-    /// `presentationUs` microseconds, and marked as not a sync sample unless it is a keyframe.
+    /// `payload` as a sample buffer: copied into a block buffer, stamped at `presentationUs`
+    /// microseconds, and for video marked as not a sync sample unless it is a keyframe.
     ///
     /// spec: CoreMedia's `kCMSampleAttachmentKey_NotSync` — a sample without it is taken to be a
     /// sync sample, so a dependent frame must say it is one.
+    ///
+    /// Compressed audio is described by a **packet description** rather than a sample size: an
+    /// audio sample buffer counts packets, and one encoded audio frame is one packet of a variable
+    /// size, which is how CoreMedia is told where it ends.
+    /// ref: https://developer.apple.com/documentation/coremedia/cmaudiosamplebuffercreatereadywithpacketdescriptions(allocator:databuffer:formatdescription:samplecount:presentationtimestamp:packetdescriptions:samplebufferout:)
     static func sampleBuffer(
-        _ frame: EncodedFrame, description: CMFormatDescription, presentationUs: Int64
+        _ payload: Data, keyFrame: Bool, description: CMFormatDescription, presentationUs: Int64
     ) throws -> CMSampleBuffer {
-        let blockBuffer = try CMBlockBuffer(length: frame.payload.count)
-        try frame.payload.withUnsafeBytes { bytes in
+        let blockBuffer = try CMBlockBuffer(length: payload.count)
+        try payload.withUnsafeBytes { bytes in
             try blockBuffer.replaceDataBytes(with: bytes)
         }
+        let presentation = CMTime(value: presentationUs, timescale: microsecondsPerSecond)
+        if description.mediaType == .audio {
+            var packet = AudioStreamPacketDescription(
+                mStartOffset: 0, mVariableFramesInPacket: 0, mDataByteSize: UInt32(payload.count))
+            var sample: CMSampleBuffer?
+            let status = CMAudioSampleBufferCreateReadyWithPacketDescriptions(
+                allocator: kCFAllocatorDefault, dataBuffer: blockBuffer,
+                formatDescription: description, sampleCount: 1,
+                presentationTimeStamp: presentation, packetDescriptions: &packet,
+                sampleBufferOut: &sample)
+            guard status == noErr, let sample else {
+                throw RealtimeDescriptionError(
+                    codec: "\(description.mediaSubType)", status: status)
+            }
+            return sample
+        }
         let timing = CMSampleTimingInfo(
-            duration: .invalid,
-            presentationTimeStamp: CMTime(value: presentationUs, timescale: microsecondsPerSecond),
-            decodeTimeStamp: .invalid)
+            duration: .invalid, presentationTimeStamp: presentation, decodeTimeStamp: .invalid)
         let sample = try CMSampleBuffer(
             dataBuffer: blockBuffer, formatDescription: description, numSamples: 1,
-            sampleTimings: [timing], sampleSizes: [frame.payload.count])
-        if !frame.keyFrame { sample.sampleAttachments[0][.notSync] = true }
+            sampleTimings: [timing], sampleSizes: [payload.count])
+        if !keyFrame { sample.sampleAttachments[0][.notSync] = true }
         return sample
     }
 

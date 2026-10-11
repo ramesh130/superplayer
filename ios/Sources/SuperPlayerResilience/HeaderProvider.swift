@@ -49,12 +49,21 @@ import Foundation
 /// So the content is **re-adopted at the position playback had reached**, on a new asset carrying
 /// what this returned — the same identity and the same measurement session, the mechanism of rung 4
 /// — which **costs a fetch of every playlist again** before the segment at that position, where
-/// the Kotlin repair cost one request. A refusal is asked about once per position, so a refreshed
-/// credential refused again where the last one was ends the climb rather than loops it.
+/// the Kotlin repair cost one request. Each refused request is asked about once, so a refreshed
+/// credential refused again by the same request ends the climb rather than loops it.
+///
+/// **The headers reach the wire through an asset option the SDK does not declare**,
+/// `AVURLAssetHTTPHeaderFieldsKey`, because no declared option carries a request header and a
+/// resource-loader delegate is the in-process proxy ADR-0020 rule 6 forbids. ADR-0020 rule 6's #420
+/// addendum argues the choice. An app that would rather depend on nothing undeclared signs its URLs
+/// instead, a query AVFoundation carries on its own, and passes no provider. Its assets are then
+/// built exactly as before.
 ///
 /// **It is asked off the main actor**, and may take its time: fetching a token over the network is
 /// the expected use, and playback has already stopped for the refusal. Content replaced or a player
-/// released while it is asked is not repaired.
+/// released while it is asked is not repaired. Nothing bounds the wait, so a provider that never
+/// returns leaves the failure unanswered. Give a token fetch a timeout of your own, and throw when
+/// it passes.
 ///
 /// spec: the headers it returns are ordinary request headers (RFC 9110 §5), and the credential a
 /// CDN checks is conventionally `Authorization` (RFC 9110 §11.6.2). A signed URL carries its

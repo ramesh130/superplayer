@@ -6,6 +6,7 @@ Constructor QoeCollector.init(sink:) : SuperPlayerTelemetry.QoeCollector, any Su
 Constructor SessionTraceRecorder.init() : SuperPlayerTelemetry.SessionTraceRecorder
 Func OSLogSink.onEvent(_:) : (), SuperPlayerCore.TelemetryEvent
 Func QoeCollector.attach(to:) : (), SuperPlayerCore.SuperPlayer
+Func QoeCollector.contentReopened(after:) : (), SuperPlayerCore.SuperPlayerError
 Func QoeCollector.decisionChanged(_:trigger:) : (), SuperPlayerCore.PlaybackDecision, SuperPlayerCore.DecisionTrigger
 Func QoeCollector.declareIntent(monotonicTimeMs:) : (), Swift.Int64
 Func QoeCollector.detach() : ()

@@ -81,14 +81,23 @@ final class MediaServicesResetPlaybackTests: XCTestCase {
         return milliseconds(player.avPlayer.currentTime())
     }
 
-    /// Posts the reset and waits for the item to be rebuilt and ready.
-    private func resetAndAwaitRebuild(_ player: SuperPlayer) async throws {
-        let before = try XCTUnwrap(player.avPlayer.currentItem)
+    /// Posts the reset and waits for the item to be rebuilt and ready. The rebuild is seen where a
+    /// consumer's CDN would see it, as the multivariant playlist asked for again, rather than by
+    /// reading which item the facade made current (ADR-0021 rule 1).
+    private func resetAndAwaitRebuild(_ player: SuperPlayer, _ origin: LoopbackOrigin)
+        async throws
+    {
+        let before = playlistRequests(origin)
         postMediaServicesReset()
         try await harness.until("the item is rebuilt and ready", timeout: bound) {
-            let item = player.avPlayer.currentItem
-            return item != nil && item !== before && item?.status == .readyToPlay
+            self.playlistRequests(origin) == before + 1
+                && player.avPlayer.currentItem?.status == .readyToPlay
         }
+    }
+
+    /// How many times the origin was asked for the multivariant playlist: once per item built.
+    private func playlistRequests(_ origin: LoopbackOrigin) -> Int {
+        origin.networkRequests().filter { $0.path == "/master.m3u8" }.count
     }
 
     private func postMediaServicesReset() {
@@ -107,14 +116,13 @@ final class MediaServicesResetPlaybackTests: XCTestCase {
         let heldMs = try await playPast(1.5, player)
 
         for rebuild in 1...SuperPlayer.maxDecoderRecreations {
-            try await resetAndAwaitRebuild(player)
+            try await resetAndAwaitRebuild(player, origin)
             XCTAssertEqual(
                 Double(milliseconds(player.avPlayer.currentTime())), Double(heldMs),
                 accuracy: Double(samePositionMs), "rebuild \(rebuild)")
             XCTAssertEqual(player.currentContentId, "a")
             XCTAssertTrue(record.errors.isEmpty, "\(record.errors)")
         }
-        let lastItem = player.avPlayer.currentItem
         postMediaServicesReset()
         try await harness.until("the typed error arrives", timeout: bound) {
             !record.errors.isEmpty
@@ -128,11 +136,9 @@ final class MediaServicesResetPlaybackTests: XCTestCase {
             Double(try XCTUnwrap(typed.positionMs)), Double(heldMs),
             accuracy: Double(samePositionMs))
         XCTAssertEqual(typed.underlyingError.code, AVError.Code.mediaServicesWereReset.rawValue)
-        XCTAssertTrue(player.avPlayer.currentItem === lastItem, "rung 6 rebuilds nothing")
-        // What each rebuild cost: the playlist again, once per rebuild (the re-adoption's price).
-        XCTAssertEqual(
-            origin.networkRequests().filter { $0.path == "/master.m3u8" }.count,
-            1 + SuperPlayer.maxDecoderRecreations)
+        // What each rebuild cost: the playlist again, once per rebuild (the re-adoption's price),
+        // and nothing for the third, which rung 6 rebuilds nothing for.
+        XCTAssertEqual(playlistRequests(origin), 1 + SuperPlayer.maxDecoderRecreations)
         // One viewing, one session, however many items it took.
         XCTAssertEqual(sink.sessionsStarted.count, 1)
         XCTAssertEqual(sink.sessionsEnded, 0)
@@ -147,11 +153,11 @@ final class MediaServicesResetPlaybackTests: XCTestCase {
         player.setMediaRequest(MediaRequest(contentId: "a", sources: [origin.sourceURL]))
         _ = try await playPast(1.5, player)
         for _ in 1...SuperPlayer.maxDecoderRecreations {
-            try await resetAndAwaitRebuild(player)
+            try await resetAndAwaitRebuild(player, origin)
         }
 
         let laterMs = try await playPast(3.5, player)
-        try await resetAndAwaitRebuild(player)
+        try await resetAndAwaitRebuild(player, origin)
 
         XCTAssertTrue(record.errors.isEmpty, "\(record.errors)")
         XCTAssertEqual(
@@ -165,7 +171,6 @@ final class MediaServicesResetPlaybackTests: XCTestCase {
         let (player, record) = player(resilient: false)
         player.setMediaRequest(MediaRequest(contentId: "a", sources: [origin.sourceURL]))
         _ = try await playPast(1.5, player)
-        let item = player.avPlayer.currentItem
 
         postMediaServicesReset()
         // A later play proves the main queue has run past the post, which a rebuild would have used.
@@ -174,7 +179,6 @@ final class MediaServicesResetPlaybackTests: XCTestCase {
             player.avPlayer.currentTime().seconds > 2.5
         }
 
-        XCTAssertTrue(player.avPlayer.currentItem === item)
         XCTAssertTrue(record.errors.isEmpty)
         XCTAssertEqual(origin.networkRequests().filter { $0.path == "/master.m3u8" }.count, 1)
     }

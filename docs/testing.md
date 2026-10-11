@@ -1164,7 +1164,10 @@ nothing surfaces.
   is posted from `AVAudioSession.sharedInstance()`, as `LifecyclePlaybackTests` posts an
   interruption, with the player paused so the held position is one the test read. Two resets at one
   position are rebuilt and the third ends on rung 6. The control is playback that advanced, which
-  starts the count over.
+  starts the count over. A rebuild is seen as the multivariant playlist asked for again, never as
+  which item the facade made current. The bound is read off `SuperPlayer.maxDecoderRecreations`.
+  That is a `package` constant, because it bounds no promise a consumer writes code against and a
+  test in another target has to name it. It is the one `package` reading these tests make.
 
 **What only a device shows**, and none of it is faked. The post resets nothing on the simulator, so
 what a real reset does to the decoders under an item is unobserved. So is whether the item rebuilt

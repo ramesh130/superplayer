@@ -100,7 +100,10 @@ package protocol PlayerStateRungs: AnyObject, Sendable {
 /// credential to send builds every asset exactly as before. A consumer who would rather not rely on
 /// it signs the URL instead — a query AVFoundation carries unaided — and names no provider.
 ///
-/// ref: `docs/ios-plan.md` §3.5, `HeaderProvider` row — "headers are set at `AVURLAsset` creation"
+/// **There is no public source for it**, and that is the exception this declaration argues rather
+/// than a citation it lacks. ADR-0020 rule 6's #420 addendum records the decision and what it
+/// risks: a runtime that drops the option, which the test catches, and an app review that objects
+/// to the string, which an app that names no provider never ships a request with.
 let assetHTTPHeaderFieldsKey = "AVURLAssetHTTPHeaderFieldsKey"
 
 extension SuperPlayer {
@@ -160,6 +163,11 @@ extension SuperPlayer {
     /// (`docs/ios-plan.md` §3.5: "exactly the case"). Only the item playing now is offered it, and
     /// only once per item, as an item's own failure is.
     ///
+    /// A reset the ladder cannot rebuild for is delivered as rung 6 at once, though the item has not
+    /// reported a failure of its own. That covers an item from a bare URL, which has no request to
+    /// re-adopt, and a third reset at one position. The decoders beneath it are gone either way, and
+    /// a consumer told now can act before a frozen picture tells the viewer.
+    ///
     /// ref: https://developer.apple.com/documentation/avfaudio/avaudiosession/mediaserviceswereresetnotification
     func mediaServicesWereReset() {
         guard let item = avPlayer.currentItem, !failureDelivered, let rungs else { return }
@@ -194,7 +202,11 @@ extension SuperPlayer {
     /// again; whether a device ever needs the `AVPlayer` itself rebuilt is a device's question, which
     /// `docs/testing.md`'s *Rungs 4 and 5 on iOS* lists.
     func reopen(sourceAt index: Int, atMs: Int64, repairing failure: SuperPlayerError) {
-        guard let request = currentRequest, request.sources.indices.contains(index) else { return }
+        guard let request = currentRequest, request.sources.indices.contains(index) else {
+            // Unreachable: every caller asked `currentRequestIsPlaying` or `hasNextSource` first.
+            assertionFailure("a rung re-adopts only the request playing, at a source it has")
+            return
+        }
         rememberedPositions.remember(atMs, for: request.contentId)
         let item = makeItem(for: request, source: index, startingAtMs: atMs).item
         replaceCurrentItem(with: item, identified: true)

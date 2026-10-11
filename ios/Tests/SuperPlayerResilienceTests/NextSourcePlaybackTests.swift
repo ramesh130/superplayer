@@ -87,7 +87,8 @@ final class NextSourcePlaybackTests: XCTestCase {
             [first.sourceURL, second.sourceURL], resilient: true, sink: sink)
 
         try await harness.until("the second source plays past the held position", timeout: bound) {
-            (player.avPlayer.currentItem?.asset as? AVURLAsset)?.url == second.sourceURL
+            // Which source plays is which origin served it, never the item the facade made.
+            second.networkRequests().contains { $0.path == "/segment4.aac" }
                 && player.avPlayer.currentTime().seconds > 6.5
         }
 

@@ -302,9 +302,6 @@ enum CollectorEvent {
     case metric(MetricSignal)
 }
 
-/// A value the compiler cannot see is safe to send, asserted so where the reason is local: a
-/// notification token and a time-observer token are opaque handles only ever handed back to the API
-/// that made them.
 /// Whether a registration is still wanted, read by a delivery already queued when it was cancelled.
 /// Unchecked, and safe: it is written by a cancellation and read by a delivery, both on the main
 /// queue, so it is never touched from two threads at once.
@@ -312,6 +309,9 @@ final class Liveness: @unchecked Sendable {
     var isLive = true
 }
 
+/// A value the compiler cannot see is safe to send, asserted so where the reason is local: a
+/// notification token and a time-observer token are opaque handles only ever handed back to the API
+/// that made them.
 struct UncheckedSendable<Value>: @unchecked Sendable {
     let value: Value
     init(_ value: Value) { self.value = value }

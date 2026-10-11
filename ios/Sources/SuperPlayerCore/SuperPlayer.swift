@@ -213,6 +213,74 @@ public final class SuperPlayer {
         avPlayer.replaceCurrentItem(with: nil)
     }
 
+    /// Returns this player to the state a freshly made one is in, so ``PlayerPool`` can hand it to a
+    /// different item with nothing of the previous one coming along — the Kotlin `resetForReuse`.
+    ///
+    /// Internal because it is the pool's: a consumer holding a player it made has no second item to
+    /// hand it to, and one holding a pooled player goes through ``PlayerPool/recycle(_:)`` so the
+    /// pool's bookkeeping stays true.
+    ///
+    /// **The output goes first**, for the Kotlin reason: a player that cleared its content before
+    /// its surface has a window in which the outgoing item's last frame reaches a view that now
+    /// belongs to another row — the tell of a hand-rolled pool. Today the facade owns no output to
+    /// detach; ``detachOwnedOutput()`` is where #405's frame output will be let go.
+    ///
+    /// **Then the content**, after the session that measured it ends (`SessionEdges.swift`: before
+    /// the outgoing item is replaced, while its content is still there to read). The Kotlin facade
+    /// ends the session last; the order moved with the edge's contract, not with any argument
+    /// about reuse. The collector stays attached, so the next request opens a fresh session.
+    ///
+    /// **Then the observers**: every registration of the observed register goes with the item, so
+    /// the next user's item is observed exactly once (ADR-0020 rule 13). The lifecycle's player
+    /// signals stay, being the player's for its life as a fresh player's are, and the binding is
+    /// left idle — needing neither the session nor the idle timer. Observers a consumer added
+    /// to ``avPlayer`` itself — a periodic time observer, a key-value observation — are the
+    /// consumer's and are not the facade's to find; a recycling row removes its own, as it detaches
+    /// its own layer.
+    ///
+    /// **Then the playback state** a previous holder may have changed through ``avPlayer``: paused,
+    /// the default rate, full volume and unmuted, pausing at an item's end (`AVPlayer`'s own
+    /// default), the profile's player knobs again, and no media
+    /// selection criteria — the Kotlin reset's forced audio language, which here a holder sets on
+    /// the player rather than on the selector.
+    ///
+    /// **And the remembered positions go**, for the Kotlin KDoc's reason: resume that survives a
+    /// recycle works only when the row lands on the same pooled player, which a viewer experiences
+    /// as resume that works sometimes. A feed that wants resume across recycling keeps a
+    /// ``PlaybackSnapshot`` per row, which is right every time.
+    func resetForReuse() {
+        guard !isReleased else { return }
+        detachOwnedOutput()
+
+        endMeasurement()
+        avPlayer.pause()
+        observations = []
+        currentItemEnded = false
+        currentRequest = nil
+        avPlayer.replaceCurrentItem(with: nil)
+
+        avPlayer.defaultRate = 1
+        avPlayer.volume = 1
+        avPlayer.isMuted = false
+        avPlayer.actionAtItemEnd = .pause
+        knobs.apply(to: avPlayer)
+        for characteristic in [AVMediaCharacteristic.audible, .legible] {
+            avPlayer.setMediaSelectionCriteria(nil, forMediaCharacteristic: characteristic)
+        }
+
+        // After the item has gone, so the binding reads no picture: idle, as a fresh player's is.
+        lifecycle.resetForReuse()
+
+        rememberedPositions = RememberedPositions(bound: Self.maxRememberedPositions)
+    }
+
+    /// Lets go of the output this player owns, before anything else in ``resetForReuse()``.
+    ///
+    /// Empty today, and named so the frame output (#405, ADR-0022) has its place in the order: the
+    /// facade owns no layer yet — an `AVPlayerLayer` an app made from ``avPlayer`` is the app's, and
+    /// the app detaches it, as ``PlayerPool/recycle(_:)`` says.
+    private func detachOwnedOutput() {}
+
     /// The ``MediaRequest/contentId`` of what is playing, read back off the current item's external
     /// metadata, where ``setMediaRequest(_:)`` wrote it; nil for an item played from a bare URL or
     /// when nothing is.

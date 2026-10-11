@@ -43,6 +43,12 @@ observation, notifications, the access and error logs and, on 18, `AVMetrics` �
 in its own register, `CollectorSignals.swift`, held as core's is — and
 `player.declarePlaybackIntent()` on core; each event's derivation is the *How derived on iOS*
 column of `docs/telemetry-schema.md`.
+#404 added
+`PlayerPool(configuration:)` — `acquire()` nil past the bound, `recycle(_:)` through the facade's
+internal `resetForReuse`, which ends the session edge `SessionEdges.swift` names — bounded by
+`DeviceCapacity.swift`, the one place the device is read: no decoder limit is reported on Apple's
+platforms, so the bound is a per-player budget against `os_proc_available_memory()` under an argued
+ceiling of four, never below one, both numbers i10's (#439) to measure.
 `SuperPlayerMoQ` is not declared yet — its binary target is
 i9's — and there is no `SuperPlayerCache`, since its content is the offline store's.
 

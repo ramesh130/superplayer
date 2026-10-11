@@ -44,6 +44,13 @@ enum DemoStream: String, CaseIterable {
         }
     }
 
+    /// What the lock screen calls the stream, and what a feed row is labelled with.
+    var title: String {
+        switch self {
+        case .bipbopAdvanced: "Bip Bop"
+        }
+    }
+
     /// The request for this stream, with everything the lock screen and Control Centre show. One
     /// function for every screen and for the catalog, because two descriptions of one stream — one
     /// for the app, one for Now Playing — are how the lock screen comes to disagree with the app.
@@ -52,7 +59,7 @@ enum DemoStream: String, CaseIterable {
             contentId: contentId,
             sources: [url],
             startPosition: startPosition,
-            title: "Bip Bop",
+            title: title,
             subtitle: "Apple's advanced HLS example")
     }
 }

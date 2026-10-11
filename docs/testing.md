@@ -943,7 +943,9 @@ see a request.
   because a pool with no coordinator has nothing to ask. **That a prerolled player reaches its first
   frame sooner, and that memory stays flat over a long scroll, are a device's** — real time cannot
   show "sooner" (ADR-0021 rule 4), and the feed demo under `xctrace` is i4's exit (`docs/ios-plan.md`
-  §7).
+  §7). `ios/hunt-leaks` (#418) records that feed on a **simulator**, outside every check, and says
+  whether the app keeps what a scroll made; the same scroll on an iPhone, memory flat over 200 rows
+  and TTFF there, is #435's.
 - **A realtime player's engine is read where no public reading exists** (#431).
   `SuperPlayerRealtimeTests` imports the realtime product `@testable`, each file arguing it:
   `RealtimeFormatsTests`, because the codec table answers CoreMedia vocabulary and is internal, as

@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		5D0000000000000000000011 /* SuperPlayerCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5D0000000000000000000021 /* SuperPlayerCore */; };
 		5D0000000000000000000012 /* SuperPlayerTelemetry in Frameworks */ = {isa = PBXBuildFile; productRef = 5D0000000000000000000022 /* SuperPlayerTelemetry */; };
+		5D0000000000000000000013 /* SuperPlayerPreload in Frameworks */ = {isa = PBXBuildFile; productRef = 5D0000000000000000000023 /* SuperPlayerPreload */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -30,6 +31,7 @@
 			files = (
 				5D0000000000000000000011 /* SuperPlayerCore in Frameworks */,
 				5D0000000000000000000012 /* SuperPlayerTelemetry in Frameworks */,
+				5D0000000000000000000013 /* SuperPlayerPreload in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -73,6 +75,7 @@
 			packageProductDependencies = (
 				5D0000000000000000000021 /* SuperPlayerCore */,
 				5D0000000000000000000022 /* SuperPlayerTelemetry */,
+				5D0000000000000000000023 /* SuperPlayerPreload */,
 			);
 			productName = SuperPlayerDemo;
 			productReference = 5D0000000000000000000031 /* SuperPlayerDemo.app */;
@@ -234,6 +237,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 5D0000000000000000000002 /* XCLocalSwiftPackageReference "../.." */;
 			productName = SuperPlayerTelemetry;
+		};
+		5D0000000000000000000023 /* SuperPlayerPreload */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5D0000000000000000000002 /* XCLocalSwiftPackageReference "../.." */;
+			productName = SuperPlayerPreload;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

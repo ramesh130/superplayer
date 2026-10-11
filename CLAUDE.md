@@ -1472,6 +1472,7 @@ devicelab/lab run jank [--plant P]     # the feed scrolled and tapped in one tra
 ios/check                         # the iOS package's whole check, on macOS: format, simulator tests, tvOS build, API baselines
 ios/check --update-api            # regenerate ios/api/<Product>.baseline after a deliberate API change (docs/api-surface.md)
 ios/check --update-golden         # regenerate ios/Tests/Fixtures/golden/*.trace after a deliberate behaviour change; the goldens' only writer
+ios/hunt-leaks                    # the iOS leak hunt, xctrace over the feed on a simulator; NOT in check (ios/Demo/README.md)
 ```
 
 `ios/check` is to the Swift package what `check` is to the library, and the macOS CI job runs it

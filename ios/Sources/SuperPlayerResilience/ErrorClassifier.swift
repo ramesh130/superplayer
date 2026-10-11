@@ -60,10 +60,11 @@ public struct LoggedFailure: Sendable, Hashable {
 ///
 /// In this order, each step stronger evidence than the one after it, as the Kotlin steps are:
 ///
-/// 1. **What core already concluded** — the Kotlin first step — has nothing to read on Apple
-///    platforms: core's `StaleLivePlaylistException` and `LiveWindowTooShortException` are raised by
-///    the transfer chain, which does not port (ADR-0020 rule 6), and no typed exception of core's
-///    reaches an `AVPlayerItem`.
+/// 1. **What core already concluded** — the Kotlin first step: a ``StaleLivePlaylistError`` core
+///    raised for a live playlist that stopped advancing (#421), *mapped* by reading the
+///    ``StaleLivePlaylistError/likelyCause`` core filled in rather than re-derived — see
+///    ``namedByCore(_:)``. Core's other Kotlin conclusion, `LiveWindowTooShortException`, is a DASH
+///    judgement and has nothing to read here, since `AVPlayer` plays no DASH (ADR-0020 rule 6).
 /// 2. **The load that failed.** Where Android reads the `LoadKind` core stamped on the request,
 ///    here the error log's entry is the evidence (`docs/ios-plan.md` §3.5): the HTTP status, from
 ///    the `CoreMediaErrorDomain` code AVFoundation reports it as, and *which* request it was, from
@@ -117,7 +118,38 @@ public enum ErrorClassifier {
         _ error: any Error, loggedFailure: LoggedFailure? = nil, playlistURL: URL? = nil
     ) -> FailureClass {
         let evidence = evidence(error, loggedFailure)
-        return namedByTheFailedLoad(evidence, loggedFailure, playlistURL) ?? fromCodes(evidence)
+        return namedByCore(evidence) ?? namedByTheFailedLoad(evidence, loggedFailure, playlistURL)
+            ?? fromCodes(evidence)
+    }
+
+    /// The class of a defect core detected and named, or nil when it named none — the Kotlin
+    /// `namedByCore`, for the one conclusion core reaches on this platform.
+    static func namedByCore(_ evidence: [NSError]) -> FailureClass? {
+        guard let stale = staleLivePlaylist(in: evidence) else { return nil }
+        switch stale.likelyCause {
+        // An intermediary is serving a copy it holds while the origin carries on publishing: an
+        // edge defect, and another source may hold a live copy.
+        case .intermediaryCache: return .transient(.cdnEdge)
+        // Nothing served points at a cache, so the segments the playlist promised are not being
+        // produced, and asking the same origin again finds the same hole.
+        case .origin: return .content(.segmentGap)
+        // Below iOS 18 no response is readable, so which party is unknown: the edge, for the reason
+        // the -12888 row in ``named(_:)`` gives — the commoner cause (`PRD.md` §3.3), and a class
+        // that reaches rung 4 as the other does.
+        case nil: return .transient(.cdnEdge)
+        }
+    }
+
+    /// The likely party a ``StaleLivePlaylistError`` in `error`'s chain named, or nil — the Kotlin
+    /// `likelyPartyIn`, read for ``SuperPlayerError/likelyCause`` and not a classification.
+    static func likelyCause(in error: NSError) -> StaleLivePlaylistError.LikelyCause? {
+        staleLivePlaylist(in: causeChain(error))?.likelyCause
+    }
+
+    /// The first ``StaleLivePlaylistError`` in `evidence`, which bridges back from the `NSError`
+    /// core handed over.
+    private static func staleLivePlaylist(in evidence: [NSError]) -> StaleLivePlaylistError? {
+        evidence.lazy.compactMap { ($0 as any Error) as? StaleLivePlaylistError }.first
     }
 
     /// The statuses a CDN answers a credential it will not accept with, and the only two a

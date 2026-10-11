@@ -15,7 +15,8 @@ orientation — this file adds only what is different under `ios/`.
 | `ios/api/<Product>.baseline` | the tracked public API, the `<module>/api/<module>.api` analog (`docs/api-surface.md`, *The iOS products*) |
 | `ios/scripts/api-surface.swift` | reduces the digester's JSON to that baseline |
 | `ios/check` | the whole definition of passing |
-| `ios/Demo/` | the demo (#407): a hand-written Xcode project resolving the package **by path**, one target for iOS and tvOS, built by `ios/check` and run by hand — `ios/Demo/README.md` |
+| `ios/Demo/` | the demo (#407): a hand-written Xcode project resolving the package **by path**, one target for iOS and tvOS, built by `ios/check` and run by hand — `ios/Demo/README.md`; its `FeedScreen` (#418) is the pool-and-coordinator recipe |
+| `ios/hunt-leaks` | the leak hunt (#418), `huntLeaks`' analog: an `xctrace` Leaks recording over the feed scrolling itself on a simulator, **not** in `ios/check` — `ios/Demo/README.md`, *The feed and the leak hunt* |
 | `ios/.swift-format` | the format's configuration: four-space indent and 100 columns, as the Kotlin half |
 
 **Every product is empty until its phase.** i0 (#397) was the scaffold alone: twelve products, a
@@ -153,6 +154,18 @@ most `SuperPlayer.maxDecoderRecreations` (two) times at one position. A repaired
 consumer, and telemetry hears it through `TelemetryCollector.contentReopened(after:)`. A re-adoption
 resumes at the rate the viewer last asked for (`resilienceRateChanged`), because a failed item drops
 the rate to zero with no reason given. The new asset changes the CMCD `sid` and not the session.
+#421 is i5's exit, with one fault left open (below). A frozen live playlist fails nothing in AVFoundation, which waits at the edge, so on a
+player configured with resilience core watches for it (`StaleLivePlaylistDetection.swift`, ADR-0011
+rule 4's #421 addendum) and ends the session on `StaleLivePlaylistError`, the Kotlin exception's
+fields, with `SuperPlayerError.likelyCause` read off it and the ending told to telemetry through
+`TelemetryCollector.sessionFailed(_:)`. "Unchanged" is the item's live edge standing
+still past 2.5 target durations at a media-playlist answer from iOS 18's request events, with the
+target read from the longest segment. Below 18 it is AVFoundation's third -12888 log entry, and the
+fields the log cannot carry are nil. `FaultSweepTests` plays every `FaultScript.Kind`, a
+`CaseIterable` that an exhaustive `switch` holds the sweep to in place of the Kotlin reflection.
+`FallbackRungCoverageTests` names the forcing test per rung and says why rungs 1–3 have none. One
+fault still stalls: a segment that never answers inside AVFoundation's wait (`docs/testing.md`, *The
+fault sweep on iOS*).
 `SuperPlayerMoQ` is not declared yet — its binary target is
 i9's — and there is no `SuperPlayerCache`, since its content is the offline store's.
 
@@ -223,6 +236,7 @@ ios/check --update-api        # the same, rewriting ios/api/*.baseline; commit t
 ios/check --update-golden     # the same, rewriting ios/Tests/Fixtures/golden/*.trace; review and commit the diff
 SP_SIMULATOR=mine ios/check   # test on a simulator of that name instead (created if absent)
 ios/Benchmark/bench           # PRD.md §6's matrix on the simulator, ~2 h; NOT in ios/check (ios/Benchmark/README.md)
+ios/hunt-leaks                # the leak hunt on a simulator; minutes, a network, and not a check
 xcrun swift-format format --in-place --recursive --configuration ios/.swift-format ios Package.swift
 ```
 

@@ -180,6 +180,17 @@ them under `Added` would be worse than stating them here:
   consumer's collector still compiles, and `QoeCollector` follows the new item with it.
   `schemaVersion` stays 2. On the wire the CMCD `sid` changes at a repair. No Android behaviour
   moved.
+- **The iOS fault sweep, rung register and stale live playlist (#421).** `SuperPlayerCore` gains
+  `StaleLivePlaylistError`, with the Kotlin exception's fields and likely causes, and
+  `SuperPlayerError.likelyCause`. A player configured with resilience now ends a session whose live
+  playlist stopped advancing on that error, delivered on `errors`, and pauses the player. Before,
+  `AVPlayer` waited at the frozen edge with no error. It is judged from iOS 18's playlist request
+  events and the item's live edge, and below 18 from AVFoundation's own error log, which carries
+  fewer fields. The classifier maps the error by its likely cause, and `TelemetryCollector` gains
+  `sessionFailed(_:)`, defaulted to nothing, through which `QoeCollector` reports the ending. A
+  player without resilience is
+  unchanged. `FaultSweepTests` and `FallbackRungCoverageTests` are i5's exit. No Android behaviour
+  moved.
 - **Phase 9 — Diagnostics and docs.** `MediaSourceDoctor`, which names twenty pathologies over the
   chain a player would load through; the postmortem reading; `SessionBundle`; the debug HUD; and
   the documents in `docs/`.

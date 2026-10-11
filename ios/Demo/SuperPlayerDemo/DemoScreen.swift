@@ -24,12 +24,16 @@ enum DemoScreen: String, CaseIterable, Identifiable, Hashable {
     /// The same stream through a pass-through `FrameOutput` on the library's `PlayerView`.
     case frameOutput
 
+    /// Two hundred rows over a `PlayerPool` and a `PreloadCoordinator`, one row playing at a time.
+    case feed
+
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .playback: "Playback"
         case .frameOutput: "Frame output"
+        case .feed: "Feed"
         }
     }
 
@@ -37,6 +41,7 @@ enum DemoScreen: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .playback: "Apple's HLS example on the stock VideoPlayer"
         case .frameOutput: "The same stream through a pass-through frame output"
+        case .feed: "200 rows over the pool and the preload coordinator"
         }
     }
 
@@ -45,6 +50,7 @@ enum DemoScreen: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .playback: PlaybackScreen(stream: .bipbopAdvanced)
         case .frameOutput: FrameOutputScreen(stream: .bipbopAdvanced)
+        case .feed: FeedScreen()
         }
     }
 

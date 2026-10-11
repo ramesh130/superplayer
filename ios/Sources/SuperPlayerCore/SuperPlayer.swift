@@ -652,6 +652,13 @@ public final class SuperPlayer {
                         self.itemFailed(item, with: error)
                     }
                 }
+            // A live playlist that stops advancing fails nothing in AVFoundation, so it is watched
+            // for; on-demand content is never judged (`StaleLivePlaylistDetection.swift`).
+            observations += StaleLivePlaylistDetection.watch(item) {
+                [weak self, weak item] stale in
+                guard let self, let item else { return }
+                self.livePlaylistWentStale(item, stale)
+            }
         }
         framePath?.attach(to: item)
         // A warm item adopted is already current, and is kept rather than replaced with itself.
@@ -671,6 +678,30 @@ public final class SuperPlayer {
         else { return }
         failureDelivered = true
         climb(evidence(of: error, on: item), of: item, rungs)
+    }
+
+    /// Climbs the ladder for a live playlist `item` stopped advancing on — a failure AVFoundation never
+    /// reports, so the typed error is the evidence (the Kotlin `StaleLivePlaylistException` as the
+    /// load's cause), once per item as an item's own failure is.
+    ///
+    /// Where no rung takes it on, the session ends: the typed error is delivered and the player is
+    /// paused, because AVFoundation would otherwise go on waiting at the frozen edge — the Kotlin
+    /// player stops in its error state the same way. A viewer who presses play again asks
+    /// AVFoundation to go on waiting, and nothing here judges that item again.
+    private func livePlaylistWentStale(_ item: AVPlayerItem, _ stale: StaleLivePlaylistError) {
+        guard item === avPlayer.currentItem, !failureDelivered, let rungs else { return }
+        failureDelivered = true
+        // The playlist's own log entry is not handed over: the typed error is the stronger evidence,
+        // and an entry naming a playlist would read to the classifier as a refused one.
+        climb(
+            FailureEvidence(
+                error: stale as NSError, loggedFailure: nil,
+                playlistURL: (item.asset as? AVURLAsset)?.url),
+            of: item, rungs, askingForCredential: false)
+        // Still this item: no rung re-adopted, so rung 6 was delivered and the session ends here.
+        guard avPlayer.currentItem === item, let decidedFailure else { return }
+        collector?.sessionFailed(decidedFailure)
+        avPlayer.pause()
     }
 
     /// `error` with `item`'s own evidence beside it: its error log's last entry and its asset's URL.

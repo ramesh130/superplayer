@@ -27,6 +27,7 @@ Constructor RealtimeTrack.init(codec:codecConfiguration:codedSize:) : SuperPlaye
 Constructor RetryBudget.init(maxRetries:initialBackoffMs:maxBackoffMs:) : SuperPlayerCore.RetryBudget, Swift.Int, Swift.Int64, Swift.Int64
 Constructor RetryPolicy.init(manifest:segment:licence:) : SuperPlayerCore.RetryPolicy, SuperPlayerCore.RetryBudget, SuperPlayerCore.RetryBudget, SuperPlayerCore.RetryBudget
 Constructor SelectionPace.init(climbAfterBufferedMs:descendBelowBufferedMs:retainAfterDiscardMs:bandwidthFraction:) : SuperPlayerCore.SelectionPace, Swift.Int, Swift.Int, Swift.Int, Swift.Float
+Constructor StaleLivePlaylistError.LikelyCause.init(rawValue:) : SuperPlayerCore.StaleLivePlaylistError.LikelyCause?, Swift.String
 Constructor StallHistory.init(rebufferCount:msSinceLastRebufferEnded:lastRebufferDurationMs:) : SuperPlayerCore.StallHistory, Swift.Int, Swift.Int64?, Swift.Int64?
 Constructor SuperPlayer.Configuration.init() : SuperPlayerCore.SuperPlayer.Configuration
 Constructor SuperPlayer.Configuration.init(profile:) : SuperPlayerCore.SuperPlayer.Configuration, SuperPlayerCore.PlaybackProfile
@@ -59,6 +60,7 @@ Enum NetworkTransport : Equatable, Hashable, Sendable
 Enum PlaybackProfile : CaseIterable, Equatable, Hashable, Sendable
 Enum PreloadDepth : Equatable, Hashable, Sendable
 Enum RealtimeTrack.CodecConfiguration : Equatable, Hashable, Sendable
+Enum StaleLivePlaylistError.LikelyCause : CaseIterable, Equatable, Hashable, RawRepresentable, Sendable
 Enum StreamType : Equatable, Hashable, Sendable
 Enum TelemetryEvent : Equatable, Hashable, Sendable
 Enum TrackSwitchDirection : Equatable, Hashable, Sendable
@@ -104,6 +106,8 @@ EnumElement PreloadDepth.sourcePrepared : (SuperPlayerCore.PreloadDepth.Type) ->
 EnumElement PreloadDepth.tracksSelected : (SuperPlayerCore.PreloadDepth.Type) -> SuperPlayerCore.PreloadDepth
 EnumElement RealtimeTrack.CodecConfiguration.inBand : (SuperPlayerCore.RealtimeTrack.CodecConfiguration.Type) -> SuperPlayerCore.RealtimeTrack.CodecConfiguration
 EnumElement RealtimeTrack.CodecConfiguration.record : (SuperPlayerCore.RealtimeTrack.CodecConfiguration.Type) -> (Foundation.Data) -> SuperPlayerCore.RealtimeTrack.CodecConfiguration
+EnumElement StaleLivePlaylistError.LikelyCause.intermediaryCache : (SuperPlayerCore.StaleLivePlaylistError.LikelyCause.Type) -> SuperPlayerCore.StaleLivePlaylistError.LikelyCause
+EnumElement StaleLivePlaylistError.LikelyCause.origin : (SuperPlayerCore.StaleLivePlaylistError.LikelyCause.Type) -> SuperPlayerCore.StaleLivePlaylistError.LikelyCause
 EnumElement StreamType.live : (SuperPlayerCore.StreamType.Type) -> SuperPlayerCore.StreamType
 EnumElement StreamType.onDemand : (SuperPlayerCore.StreamType.Type) -> SuperPlayerCore.StreamType
 EnumElement TelemetryEvent.decisionChanged : (SuperPlayerCore.TelemetryEvent.Type) -> (SuperPlayerCore.TelemetryEvent.DecisionChanged) -> SuperPlayerCore.TelemetryEvent
@@ -212,6 +216,8 @@ Func RetryPolicy.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.Ret
 Func RetryPolicy.hash(into:) : (), Swift.Hasher
 Func SelectionPace.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.SelectionPace, SuperPlayerCore.SelectionPace [static]
 Func SelectionPace.hash(into:) : (), Swift.Hasher
+Func StaleLivePlaylistError.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.StaleLivePlaylistError, SuperPlayerCore.StaleLivePlaylistError [static]
+Func StaleLivePlaylistError.hash(into:) : (), Swift.Hasher
 Func StallHistory.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.StallHistory, SuperPlayerCore.StallHistory [static]
 Func StallHistory.hash(into:) : (), Swift.Hasher
 Func StreamType.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerCore.StreamType, SuperPlayerCore.StreamType [static]
@@ -231,6 +237,8 @@ Func TelemetryCollector.decisionChanged(_:trigger:) : (), SuperPlayerCore.Playba
 Func TelemetryCollector.declareIntent(monotonicTimeMs:) : (), Swift.Int64 where <Self where Self : SuperPlayerCore.TelemetryCollector>
 Func TelemetryCollector.detach() : () where <Self where Self : SuperPlayerCore.TelemetryCollector>
 Func TelemetryCollector.endSession() : () where <Self where Self : SuperPlayerCore.TelemetryCollector>
+Func TelemetryCollector.sessionFailed(_:) : (), SuperPlayerCore.SuperPlayerError where <Self where Self : SuperPlayerCore.TelemetryCollector>
+Func TelemetryCollector.sessionFailed(_:) : (), SuperPlayerCore.SuperPlayerError where <Self where Self : SuperPlayerCore.TelemetryCollector>
 Func TelemetryCollector.startSession(contentId:sessionId:) : (), Swift.String, Swift.String where <Self where Self : SuperPlayerCore.TelemetryCollector>
 Func TelemetryEvent.DecisionChanged.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.TelemetryEvent.DecisionChanged, SuperPlayerCore.TelemetryEvent.DecisionChanged [static]
 Func TelemetryEvent.DecisionChanged.hash(into:) : (), Swift.Hasher
@@ -310,6 +318,7 @@ Struct RealtimeTrackStalledError : CustomStringConvertible, Equatable, Error, Ha
 Struct RetryBudget : Equatable, Hashable, Sendable
 Struct RetryPolicy : Equatable, Hashable, Sendable
 Struct SelectionPace : Equatable, Hashable, Sendable
+Struct StaleLivePlaylistError : CustomStringConvertible, Equatable, Error, Hashable, Sendable
 Struct StallHistory : Equatable, Hashable, Sendable
 Struct SuperPlayer.Configuration : Sendable
 Struct SuperPlayerError : CustomNSError, CustomStringConvertible, Error, Sendable
@@ -337,6 +346,8 @@ TypeAlias PlaybackProfile.AllCases : [SuperPlayerCore.PlaybackProfile]
 TypeAlias PlayerView.Body : Swift.Never
 TypeAlias PlayerView.Coordinator : Swift.Void
 TypeAlias PlayerView.UIViewType : SuperPlayerCore.PlayerLayerView
+TypeAlias StaleLivePlaylistError.LikelyCause.AllCases : [SuperPlayerCore.StaleLivePlaylistError.LikelyCause]
+TypeAlias StaleLivePlaylistError.LikelyCause.RawValue : Swift.String
 Var BufferPolicy.hashValue : Swift.Int { get }
 Var BufferPolicy.maxBufferMs : Swift.Int? { get set }
 Var BufferPolicy.waitsToMinimizeStalling : Swift.Bool { get set }
@@ -457,6 +468,16 @@ Var SelectionPace.descendBelowBufferedMs : Swift.Int { get set }
 Var SelectionPace.engineDefault : SuperPlayerCore.SelectionPace [static] { get }
 Var SelectionPace.hashValue : Swift.Int { get }
 Var SelectionPace.retainAfterDiscardMs : Swift.Int { get set }
+Var StaleLivePlaylistError.LikelyCause.allCases : [SuperPlayerCore.StaleLivePlaylistError.LikelyCause] [static] { get }
+Var StaleLivePlaylistError.LikelyCause.rawValue : Swift.String { get }
+Var StaleLivePlaylistError.cacheBypassingReloads : Swift.Int { get }
+Var StaleLivePlaylistError.description : Swift.String { get }
+Var StaleLivePlaylistError.hashValue : Swift.Int { get }
+Var StaleLivePlaylistError.likelyCause : SuperPlayerCore.StaleLivePlaylistError.LikelyCause? { get }
+Var StaleLivePlaylistError.playlistURL : Foundation.URL { get }
+Var StaleLivePlaylistError.servedCacheControl : Swift.String? { get }
+Var StaleLivePlaylistError.targetDurationMs : Swift.Int64? { get }
+Var StaleLivePlaylistError.unchangedForMs : Swift.Int64? { get }
 Var StallHistory.hashValue : Swift.Int { get }
 Var StallHistory.lastRebufferDurationMs : Swift.Int64? { get set }
 Var StallHistory.msSinceLastRebufferEnded : Swift.Int64? { get set }
@@ -485,6 +506,7 @@ Var SuperPlayerError.errorCode : Swift.Int { get }
 Var SuperPlayerError.errorDomain : Swift.String [static] { get }
 Var SuperPlayerError.errorUserInfo : [Swift.String : Any] { get }
 Var SuperPlayerError.isRetryable : Swift.Bool { get }
+Var SuperPlayerError.likelyCause : SuperPlayerCore.StaleLivePlaylistError.LikelyCause? { get }
 Var SuperPlayerError.lowerSecurityLevelMayHelp : Swift.Bool { get }
 Var SuperPlayerError.positionMs : Swift.Int64? { get }
 Var SuperPlayerError.rungsTried : [Swift.String] { get }

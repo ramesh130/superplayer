@@ -225,6 +225,10 @@ public final class QoeCollector: TelemetryCollector {
         timeControlStatusChanged()
     }
 
+    public func sessionFailed(_ failure: SuperPlayerError) {
+        failed(with: failure.underlyingError, classified: failure)
+    }
+
     public func detach() {
         stopObserving()
         player = nil

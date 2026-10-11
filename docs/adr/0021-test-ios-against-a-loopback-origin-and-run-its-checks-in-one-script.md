@@ -14,6 +14,8 @@
   defining the structural reading a golden is compared in — times masked, periodic samples dropped,
   order kept within each kind.
   Amended again (#419) at rule 1, admitting a failed item's error and its error log's last entry.
+  Amended again (#421) at rule 4, admitting the fault sweep's ceiling and latency margin and the
+  stale-playlist tests' use of the corpus's host-dependent row.
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
 - **Refines:** [`docs/testing.md`](../testing.md)'s rule — *no device and no network, through the
@@ -210,6 +212,22 @@ rule names the ticket that brings its enforcement, and *What nothing enforces* s
    readings of one media clock — rather than equated to the target; and a live state sample is waited
    for while playing rather than assumed of the first, which a stream waiting on a segment published
    in real time can truthfully deny.
+
+   *Addendum (2026-10-12, #421).* Two more readings near the host's clock, admitted by name. The
+   **fault sweep** (`FaultSweepTests`) waits for every cell under one 120-second ceiling and judges
+   a cell still unended there by what the origin served, as the Kotlin sweep judges one at its
+   budget; the ceiling is several times the slowest cell that ends — twelve seconds of media, a
+   segment of it at half the stream's rate — and no cell has been seen near it. Its latency row is
+   one second against AVFoundation's observed wait of about one two-second target duration before it
+   gives up on a segment, a margin of a factor of two; a host slow enough to spend that margin would
+   move the row to a stall, which is the gap `docs/testing.md`'s *The fault sweep on iOS* already
+   names, not a new reading. The table read the same on consecutive runs before it was committed.
+   The **stale-playlist tests** (`StaleLivePlaylistPlaybackTests`) play `hls-cached-live-playlist`,
+   the row #459 found host-dependent, and assert one class: the four readings above come from
+   nineteen players at once on a slow host, which never reach the edge, and from a player left long
+   enough to rejoin the timeline, while here one player is judged at the edge it reached, two and a
+   half target durations into the freeze and well before a rejoin. No duration is asserted there;
+   the judgement's bounds are held over values in `StalePlaylistJudgementTests`.
 
    *Addendum (2026-10-11, #411).* What "kinds and order with every time masked" means in practice,
    decided where the first golden was written. Three readings, each forced by real time rather than

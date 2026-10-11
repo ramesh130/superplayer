@@ -35,7 +35,7 @@ into a `PlayerPool`, or given different content.
 - `sessionId` is opaque, unique, and the same on every event of one session. **It is also CMCD's
   `sid`** — the same string, sent to the CDN on every request of the session, which is what makes the
   join below possible. Minted by `superplayer-core`, not by the collector, precisely so that the two
-  seams cannot drift apart. On iOS and tvOS it is to be *read* by core rather than minted — the SDK fills
+  seams cannot drift apart. On iOS and tvOS it is *read* by core rather than minted — the SDK fills
   CMCD's `sid` itself and cannot be told what to put there — for the same reason; see
   [On iOS and tvOS](#on-ios-and-tvos).
 - `contentId` is the app's own `MediaRequest.contentId`. **Never a URL.** The same content behind two
@@ -93,16 +93,23 @@ log directly, without joining at all.
 
 The join holds on Apple platforms too, from iOS 18 and tvOS 18, and the promise above is not
 Android-only. What differs is where the string comes from and which keys arrive with it; the
-evidence is [`ios-cmcd-finding.md`](ios-cmcd-finding.md). **Nothing below is built yet** — the
-implementation is `#446` — so this is the derivation the iOS half is held to rather than a
-description of shipped code.
+evidence is [`ios-cmcd-finding.md`](ios-cmcd-finding.md), and `SuperPlayerCore`'s
+`CmcdBinding.swift` is the implementation (`#446`), held by `CmcdPlaybackTests` at the loopback
+origin.
 
 - **The SDK sends CMCD itself**, once core sets `AVAssetResourceLoader.sendsCommonMediaClientDataAsHTTPHeaders`
   on the asset, and its `sid` is the asset's `httpSessionIdentifier` — which core reads and uses as
   `sessionId`, so the equality is the same equality. One asset is one session, because copies of an
-  asset share the identifier. The value is an uppercase UUID string.
-- **Headers only.** The SDK has no query-parameter mode, so `CmcdMode.QUERY_PARAMETER` does not port
-  and a CDN that logs query strings alone sees no CMCD from an iOS device.
+  asset share the identifier, so core builds a fresh `AVURLAsset` for every `setMediaRequest` and
+  restore — the same content adopted twice is two sessions under two `sid`s. The value is an
+  uppercase UUID string. It is on for every profile, as on Android, and `setCmcdMode(.disabled)`
+  turns it off.
+- **Headers only.** The SDK has no query-parameter mode, so `CmcdMode.queryParameter` is refused at
+  configuration with `CmcdModeUnsupportedError` rather than quietly sent as headers, and a CDN that
+  logs query strings alone sees no CMCD from an iOS device.
+- **Only content with an identity.** An item from `setMediaURL` opens no session, so it is built
+  without CMCD: its `sid` would join to nothing. AVFoundation still sends it an
+  `X-Playback-Session-Id` of its own.
 - **No `cid`.** A per-title question asked of the CDN's log alone needs the join on iOS.
 - **Below iOS 18 and tvOS 18 no CMCD is sent.** The same string still reaches the CDN on every
   request as the `X-Playback-Session-Id` header, which AVFoundation documents from iOS 16, so a CDN

@@ -81,6 +81,22 @@ public final class SuperPlayer {
         /// ```
         public var telemetry: (@MainActor @Sendable () -> any TelemetryCollector)?
 
+        /// How CMCD travels, or nil — the default — for the mode ``profile`` emits under, which is
+        /// ``CmcdMode/requestHeaders`` for every profile. Set through ``setCmcdMode(_:)``.
+        public private(set) var cmcdMode: CmcdMode?
+
+        /// Chooses how CMCD travels — the Android `setCmcdMode(mode)` — refusing a mode this
+        /// platform has no mechanism for with ``CmcdModeUnsupportedError``, which is
+        /// ``CmcdMode/queryParameter``.
+        ///
+        /// A method rather than a settable property because a Swift property setter cannot throw,
+        /// and the refusal belongs here, where the consumer made the choice, rather than at a
+        /// player made later from a configuration that had already said yes (ADR-0020 rule 9).
+        public mutating func setCmcdMode(_ mode: CmcdMode) throws(CmcdModeUnsupportedError) {
+            guard mode != .queryParameter else { throw CmcdModeUnsupportedError(mode: mode) }
+            cmcdMode = mode
+        }
+
         /// What an effect does to each decoded frame, or nil — the default — for a player whose
         /// frames go straight to an `AVPlayerLayer` and which makes nothing for an output it lacks
         /// (ADR-0022 rules 7 and 9). The Android `setFrameOutput`, fixed for the player's lifetime
@@ -119,6 +135,9 @@ public final class SuperPlayer {
     /// The profile's numbers, looked up once: the profile is fixed for the player's lifetime.
     private let knobs: ProfileKnobs
 
+    /// The CMCD mode in force, resolved once: the configuration's, else the profile's.
+    private let cmcdMode: CmcdMode
+
     /// The registrations of ``ObservedSignal`` on the current item, released with it.
     private var observations: [Observation] = []
 
@@ -150,6 +169,8 @@ public final class SuperPlayer {
         self.configuration = configuration
         self.avPlayer = AVPlayer()
         self.knobs = StaticProfilePolicy.knobs(for: configuration.profile)
+        self.cmcdMode =
+            configuration.cmcdMode ?? StaticCmcdPolicy.defaultMode(for: configuration.profile)
         self.lifecycle = LifecycleBinding(player: avPlayer, shared: lifecycle)
         knobs.apply(to: avPlayer)
         self.framePath = FramePath.make(configuration: configuration, player: avPlayer)
@@ -175,7 +196,11 @@ public final class SuperPlayer {
     /// position, and makes it current — what ``setMediaRequest(_:)`` and ``restoreSnapshot(_:)``
     /// share, the second with a position it was handed rather than one it resolved.
     func load(_ request: MediaRequest, startingAtMs startMs: Int64?) {
-        let item = AVPlayerItem(url: request.sources[0])
+        // A fresh asset per adoption, never a copy: its `httpSessionIdentifier` is this session's
+        // id, on the wire and in telemetry (`CmcdBinding.swift`).
+        let asset = AVURLAsset(url: request.sources[0])
+        CmcdBinding.apply(cmcdMode, to: asset)
+        let item = AVPlayerItem(asset: asset)
         item.externalMetadata = ContentIdentity.metadata(of: request)
         if let startMs {
             // Before the item is the player's, so the first segment fetched is the one the start
@@ -190,7 +215,7 @@ public final class SuperPlayer {
         endMeasurement()
         replaceCurrentItem(with: item, identified: true)
         currentRequest = request
-        beginMeasurement(of: request.contentId)
+        beginMeasurement(of: request.contentId, playing: asset)
     }
 
     /// Plays `url` with no identity — the Kotlin `setMediaItem` with a bare `MediaItem`, for parity.
@@ -199,7 +224,8 @@ public final class SuperPlayer {
     /// position is remembered for it when it is replaced, since there is no key it could be
     /// remembered under that would not collide with the next such item. Nothing is observed on it,
     /// and nothing is measured: the session of the content it replaces ends and none starts, since
-    /// a session is *of* a content id. On Android `setMediaItem` leaves the previous session open —
+    /// a session is *of* a content id. Nor is it sent CMCD, whose `sid` would join to no session
+    /// (`CmcdBinding.swift`). On Android `setMediaItem` leaves the previous session open —
     /// the schema document's *One gap* — because the facade never sees it; this method is the
     /// facade's.
     ///

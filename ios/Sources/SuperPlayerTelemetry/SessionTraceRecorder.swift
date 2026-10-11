@@ -54,8 +54,8 @@ import os
 ///    like a URI, because an app that names content by URL would otherwise put its signed URLs in
 ///    every trace.
 /// 2. **No request or response header.** A request's transaction metrics are read for their byte
-///    count and their status code and nothing else; a cookie or an `Authorization` a session carried
-///    is never in reach.
+///    count and their status code and nothing else; a response's other headers, and a cookie or an
+///    `Authorization` a session carried, are never read.
 /// 3. **No exception message.** AVFoundation's errors name the failing URL in their descriptions as
 ///    Media3's do, so an error is recorded as its domain and code, a load's as its HTTP status where
 ///    the response carried one, and a telemetry failure as its category and code, never its
@@ -77,8 +77,8 @@ import os
 ///    trace obeys and the seventh a bundle obeys are read together.
 ///
 /// `SessionTraceRecorderPlaybackTests` drives a session that really carried a signed URL, a
-/// URL-shaped content id and a credential cookie, asserts each present in what the origin received,
-/// and then absent from the trace.
+/// URL-shaped content id and an `Authorization` header answering a `Basic` challenge, asserts each
+/// present in what the origin received, and then absent from the trace.
 ///
 /// ## What iOS records, and from what
 ///
@@ -119,8 +119,15 @@ import os
 /// telemetry fact keeps the time its event carries. A request's two times are the metric event's
 /// own, which are `Date`s; they are placed on the monotonic clock through the one pair of readings
 /// taken together at ``attach(to:)``, so a load sits at the moment it happened rather than at the
-/// moment its event was delivered, which is after the request ended. The two clocks can drift apart
-/// over a session by far less than the order of facts a trace exists to show.
+/// moment its event was delivered, which is after the request ended. A wall-clock step during a
+/// session — an NTP correction — would move every `load` and `bandwidth` line against the other
+/// kinds by its size in the *timed* trace; the structural reading a golden compares keeps no order
+/// across kinds and is untouched by it.
+///
+/// Two smaller departures, both masked structurally: `SessionStarted` prints its profile and none of
+/// the Kotlin decision's buffer and bitrate fields, which arrive with the decision's halves (#415);
+/// and a bandwidth sample divides by the transfer's `Date`s in seconds rather than by Media3's
+/// whole milliseconds, so the two platforms can differ in the last digits for one transfer.
 public final class SessionTraceRecorder: TelemetrySink, Sendable {
 
     private let recording = OSAllocatedUnfairLock(initialState: Recording())
@@ -343,7 +350,7 @@ extension SessionTraceRecorder {
 @MainActor
 final class RecorderAttachment {
 
-    /// The two conversions a bytes-over-seconds rate takes to reach bits per second.
+    /// The bits in a byte, which a bytes-over-seconds rate takes to reach bits per second.
     private static let bitsPerByte: Double = 8
 
     private weak var player: AVPlayer?
@@ -355,7 +362,7 @@ final class RecorderAttachment {
     /// The item the item-scoped registrations are on.
     private weak var item: AVPlayerItem?
     /// The last `state` and `playing` recorded, so a line is a change and never a repeat.
-    private var state: String?
+    private var state: PlayerState?
     private var playing = false
     /// Whether the current item has played, which is what makes a later wait a stall rather than
     /// start-up — the collector's rule that time before the first frame is not a rebuffer.
@@ -396,7 +403,7 @@ final class RecorderAttachment {
         case .notified(.currentItem): currentItemChanged()
         case .notified(.timeControlStatus): timeControlStatusChanged()
         case .notified(.itemStatus): itemStatusChanged()
-        case .notified(.playedToEnd): setState("ENDED")
+        case .notified(.playedToEnd): setState(.ended)
         case .notified(.requestMetrics): break
         case .request(let report): requestFinished(report)
         }
@@ -414,7 +421,7 @@ final class RecorderAttachment {
         // way an `AVPlayer` that is not a queue player changes item.
         record(.item, "id=\(SessionTraceRecorder.itemName(contentId())) reason=PLAYLIST_CHANGED")
         state = nil
-        setState("BUFFERING")
+        setState(.buffering)
         itemObservations = RecorderObservation.registerItem(current) { [weak self] in
             self?.handle($0)
         }
@@ -425,9 +432,9 @@ final class RecorderAttachment {
         guard let item else { return }
         switch item.status {
         case .readyToPlay:
-            if state == "BUFFERING" && !itemHasPlayed { setState("READY") }
+            if state == .buffering && !itemHasPlayed { setState(.ready) }
         case .failed:
-            setState("IDLE")
+            setState(.idle)
             // Rule 3: the domain and code, never the description.
             let code = (item.error as NSError?).map { "\($0.domain):\($0.code)" } ?? "null"
             record(.error, "code=\(code)")
@@ -445,19 +452,19 @@ final class RecorderAttachment {
         }
         if nowPlaying {
             itemHasPlayed = true
-            if state == "BUFFERING" { setState("READY") }
-        } else if itemHasPlayed, state == "READY",
+            if state == .buffering { setState(.ready) }
+        } else if itemHasPlayed, state == .ready,
             player.timeControlStatus == .waitingToPlayAtSpecifiedRate,
             player.reasonForWaitingToPlay == .toMinimizeStalls
         {
-            setState("BUFFERING")
+            setState(.buffering)
         }
     }
 
-    private func setState(_ next: String) {
+    private func setState(_ next: PlayerState) {
         guard next != state else { return }
         state = next
-        record(.state, next)
+        record(.state, next.rawValue)
     }
 
     /// Two lines per request, and a bandwidth sample after a network transfer that completed.
@@ -493,4 +500,13 @@ final class RecorderAttachment {
     private func record(_ kind: TraceKind, _ text: String) {
         recorder.record(atMonotonicMs: QoeCollector.now(), kind, key: "", text)
     }
+}
+
+/// A `state` line's word — the Kotlin `stateName`'s four, for the facts iOS reports that are the
+/// same fact (``SessionTraceRecorder``'s table says which).
+enum PlayerState: String {
+    case idle = "IDLE"
+    case buffering = "BUFFERING"
+    case ready = "READY"
+    case ended = "ENDED"
 }

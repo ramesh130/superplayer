@@ -1,11 +1,32 @@
 // SuperPlayerTelemetry: public API as ios/check reads it. Regenerate with ios/check --update-api.
 Class QoeCollector : Sendable, TelemetryCollector
+Class SessionTraceRecorder : Sendable, TelemetrySink
 Constructor OSLogSink.init() : SuperPlayerTelemetry.OSLogSink
 Constructor QoeCollector.init(sink:) : SuperPlayerTelemetry.QoeCollector, any SuperPlayerCore.TelemetrySink
+Constructor SessionTraceRecorder.init() : SuperPlayerTelemetry.SessionTraceRecorder
 Func OSLogSink.onEvent(_:) : (), SuperPlayerCore.TelemetryEvent
 Func QoeCollector.attach(to:) : (), SuperPlayerCore.SuperPlayer
 Func QoeCollector.declareIntent(monotonicTimeMs:) : (), Swift.Int64
 Func QoeCollector.detach() : ()
 Func QoeCollector.endSession() : ()
 Func QoeCollector.startSession(contentId:sessionId:) : (), Swift.String, Swift.String
+Func SessionTrace.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerTelemetry.SessionTrace, SuperPlayerTelemetry.SessionTrace [static]
+Func SessionTrace.format() : Swift.String
+Func SessionTrace.hash(into:) : (), Swift.Hasher
+Func SessionTrace.parse(_:) : SuperPlayerTelemetry.SessionTrace, Swift.String [static] [throwing]
+Func SessionTrace.structural() : SuperPlayerTelemetry.SessionTrace
+Func SessionTrace.withoutTimings() : SuperPlayerTelemetry.SessionTrace
+Func SessionTraceRecorder.attach(to:) : (), SuperPlayerCore.SuperPlayer
+Func SessionTraceRecorder.detach() : ()
+Func SessionTraceRecorder.onEvent(_:) : (), SuperPlayerCore.TelemetryEvent
+Func SessionTraceRecorder.trace() : SuperPlayerTelemetry.SessionTrace
 Struct OSLogSink : Sendable, TelemetrySink
+Struct SessionTrace : CustomStringConvertible, Equatable, Hashable, Sendable
+Struct SessionTraceFormatError : CustomStringConvertible, Error, Sendable
+Var SessionTrace.description : Swift.String { get }
+Var SessionTrace.formatHeader : Swift.String [static] { get }
+Var SessionTrace.formatVersion : Swift.Int [static] { get }
+Var SessionTrace.hashValue : Swift.Int { get }
+Var SessionTrace.lines : [Swift.String] { get }
+Var SessionTrace.timed : Swift.Bool { get }
+Var SessionTraceFormatError.description : Swift.String { get }

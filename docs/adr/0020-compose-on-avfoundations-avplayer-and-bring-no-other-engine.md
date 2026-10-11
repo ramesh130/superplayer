@@ -5,7 +5,8 @@
 - **Amended:** 2026-10-11 (#402), by an addendum at rule 13 placing the lifecycle's signals in the
   observed register with a player scope, since ADR-0006 rule 1 puts them on every player.
   Amended 2026-10-11 (#446), by an addendum at rule 7 recording that CMCD is built. Amended again
-  (#403) at rule 13, admitting the session's register as core's second.
+  (#403) at rule 13, admitting the session's register as core's second. Amended again (#411) at
+  rule 13, admitting the session trace recorder's register as telemetry's second.
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
 - **Refines:** [ADR-0001](0001-compose-dont-fork.md), restated for Apple platforms rather than
@@ -319,6 +320,15 @@ that, and *What nothing enforces* sums them.
     That the system's two singletons are reached by nothing else in core is held by a source scan in
     the same test. The register is not merged into the facade's because that file's count is what a
     player with nothing configured carries, and a session is something configured from outside it.
+
+    *Addendum (2026-10-11, #411).* `SuperPlayerTelemetry` gains its second register the same way:
+    a `SessionTraceRecorder` is a sink a consumer attaches to a player, not a setting of it, and it
+    observes from attach to detach where the collector observes per session — so its signals, the
+    request metric streams among them, are in `RecorderSignals.swift` beside `CollectorSignals.swift`,
+    counted by `RecorderSignalRegisterTests` (none before attaching, the player's and the current
+    item's once each while attached, none after detaching), and the product's "nowhere else" scan
+    admits exactly those two files. Merging the two would make the collector's count include signals
+    the collector never makes.
 
 ### What nothing enforces
 

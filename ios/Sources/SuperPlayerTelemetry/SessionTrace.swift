@@ -197,8 +197,21 @@ enum TraceKind: Int, CaseIterable, Comparable, Sendable {
     case error
     case telemetry
 
-    /// The column printed.
-    var token: String { "\(self)" }
+    /// The column printed, spelt out rather than read off the case name, so renaming a case cannot
+    /// change the format.
+    var token: String {
+        switch self {
+        case .item: "item"
+        case .state: "state"
+        case .playing: "playing"
+        case .tracks: "tracks"
+        case .discontinuity: "discontinuity"
+        case .load: "load"
+        case .bandwidth: "bandwidth"
+        case .error: "error"
+        case .telemetry: "telemetry"
+        }
+    }
 
     static func < (lhs: TraceKind, rhs: TraceKind) -> Bool { lhs.rawValue < rhs.rawValue }
 }

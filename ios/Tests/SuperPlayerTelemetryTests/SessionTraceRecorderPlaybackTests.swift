@@ -125,7 +125,7 @@ final class SessionTraceRecorderPlaybackTests: XCTestCase {
         // Then absent from the trace.
         for withheld in [
             token, password, credential, "viewer", signed.absoluteString, "127.0.0.1",
-            ":\(origin.port)", SyntheticHlsStreamName.multivariant, "http://",
+            ":\(origin.port)", origin.sourceURL.lastPathComponent, ".m3u8", ".aac", "http://",
         ] {
             XCTAssertFalse(text.contains(withheld), "the trace carries \(withheld):\n\(text)")
         }
@@ -180,9 +180,4 @@ final class SessionTraceRecorderPlaybackTests: XCTestCase {
     private func withoutRequestKinds(_ trace: SessionTrace) -> [String] {
         trace.lines.filter { !$0.hasPrefix("load ") && !$0.hasPrefix("bandwidth ") }
     }
-}
-
-/// The synthetic stream's playlist name, which no line may carry (rule 1).
-private enum SyntheticHlsStreamName {
-    static let multivariant = "master.m3u8"
 }

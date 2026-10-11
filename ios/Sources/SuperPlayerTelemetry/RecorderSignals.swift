@@ -247,6 +247,7 @@ final class RequestMetricSubscription {
         transactions: [URLSessionTaskTransactionMetrics]
     ) -> String? {
         let status = (transactions.last?.response as? HTTPURLResponse)?.statusCode
+        // ref: RFC 9110 §15.5 and §15.6 — 4xx and 5xx are the two error classes.
         if let status, status >= 400 { return "http=\(status)" }
         guard let error = request.errorEvent?.error as NSError? else { return nil }
         return "cause=\(error.domain):\(error.code)"

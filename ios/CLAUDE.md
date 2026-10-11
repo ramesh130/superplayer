@@ -31,7 +31,12 @@ pinned by `PlaybackSnapshotTests`. The telemetry vocabulary (#408) is core's too
 held to `docs/telemetry-schema.md` by `TelemetrySchemaDocumentTests`, `TelemetrySink`,
 `TelemetryCollector` made by `Configuration.telemetry`'s factory, the session edges in
 `SessionEdges.swift` — and the bounded `TelemetryDelivery` queue is `SuperPlayerTelemetry`'s, as on
-Android. `PlaybackDecision` is declared there ahead of #415, which owns what it means.
+Android. `PlaybackDecision` is declared there ahead of #415, which owns what it means. #402 put the
+platform's lifecycle on every player, in `LifecycleBinding.swift`: the audio session active while
+any player wants to play, an interruption pausing and resuming only on `.shouldResume`, headphones
+unplugged pausing, and the idle timer held while video plays — process-wide state counted across
+players in `SharedLifecycle`, the platform calls behind the one `package` protocol
+`LifecyclePlatform`, and its signals in the observed register.
 `SuperPlayerMoQ` is not declared yet — its binary target is
 i9's — and there is no `SuperPlayerCache`, since its content is the offline store's.
 

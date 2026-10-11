@@ -120,10 +120,20 @@ public final class SuperPlayer {
     /// Whether ``release()`` has run.
     private(set) var isReleased = false
 
-    public init(configuration: Configuration = Configuration()) {
+    /// The platform's lifecycle rules, on for every player (`LifecycleBinding.swift`).
+    private let lifecycle: LifecycleBinding
+
+    public convenience init(configuration: Configuration = Configuration()) {
+        self.init(configuration: configuration, lifecycle: .system)
+    }
+
+    /// A player whose lifecycle reaches `lifecycle`'s platform rather than the system's — the seam
+    /// a test drives an interruption through (ADR-0021 rule 5's #402 addendum).
+    package init(configuration: Configuration = Configuration(), lifecycle: SharedLifecycle) {
         self.configuration = configuration
         self.avPlayer = AVPlayer()
         self.knobs = StaticProfilePolicy.knobs(for: configuration.profile)
+        self.lifecycle = LifecycleBinding(player: avPlayer, shared: lifecycle)
         knobs.apply(to: avPlayer)
         self.collector = configuration.telemetry?()
         self.measurement = collector.map { _ in MeasurementSession() }
@@ -199,6 +209,7 @@ public final class SuperPlayer {
         collector?.detach()
         isReleased = true
         observations = []
+        lifecycle.release()
         avPlayer.replaceCurrentItem(with: nil)
     }
 
@@ -213,7 +224,7 @@ public final class SuperPlayer {
     /// counts (ADR-0020 rule 13). Internal, and reached by that test through `@testable`: no later
     /// product needs it, so it is not a `package` seam and stays off the tracked API surface.
     var liveObservations: [ObservedSignal: Int] {
-        observations.reduce(into: [:]) { counts, observation in
+        (observations + lifecycle.observations).reduce(into: [:]) { counts, observation in
             counts[observation.signal, default: 0] += 1
         }
     }

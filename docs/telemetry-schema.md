@@ -432,6 +432,18 @@ so short objects over a fast link produce samples with a null estimate. That is 
 working, not a gap. `superplayer-abr`'s meter samples every transfer and reports each one, so a player
 built with `AdaptivePolicy` fills the field from its first segment.
 
+**Version 2 stands — the iOS and tvOS derivation (`#409`).** The events table gained its *How
+derived on iOS* column, filled from `SuperPlayerTelemetry`'s `QoeCollector`. **`SCHEMA_VERSION` does
+not move**: every definition in this document binds the Swift collector as written, and the column
+says only which AVFoundation API each one is read from. Three readings are worth knowing before
+putting both platforms in one query, and none of them is a changed definition:
+
+| On iOS | What a pipeline sees | Why the version does not move |
+| --- | --- | --- |
+| `FirstFrameRendered` for audio-only content | An event, where Android reports none for content with no video track | The boundary is the same — presentation beginning — and the event is a population an Android pipeline never had rather than a different measurement of one it had; group by `contentId` or by platform to keep the two apart |
+| `PlaybackStateSampled.throughputEstimateBps` | AVFoundation's `observedBitrate` | The field was always "the engine's estimate, saying whose"; on iOS the engine is AVFoundation |
+| `SeekCompleted.seekLatencyMs` | Resolved to a 500 ms reading of the playhead | The boundary is the same — playback resuming at the target — read as often as iOS lets a collector read it |
+
 **A sink must tolerate a new event type.** `TelemetryEvent` is sealed, so a `when` over it can be
 exhaustive without an `else` — and such a `when` fails to compile when a later version adds an event.
 An `else` branch is the forward-compatible spelling; take the exhaustive one only if being told about
@@ -443,26 +455,27 @@ additions is what you want.
 
 | Event | Fired when | Carries | How derived on iOS |
 | --- | --- | --- | --- |
-| `SessionStarted` | A player takes content on | `profile`, `decision` |  |
-| `DecisionChanged` | The policy answered differently on a named trigger | `decision`, `trigger` |  |
-| `SessionEnded` | Released, recycled, or moved to other content | `droppedEventCount`, `securityLevel` |  |
-| `FirstFrameRendered` | The first video frame reaches the display | `timeToFirstFrameMs`, `startBoundary` |  |
-| `RebufferStarted` | Playback stalls for data after it started | `seekInduced` |  |
-| `RebufferEnded` | Playback resumes from that stall | `durationMs`, `seekInduced` |  |
-| `StartupFailed` | Playback fails before the first frame | `failure` |  |
-| `MidStreamFailed` | Playback fails after the first frame | `failure`, `positionMs` |  |
-| `TrackSwitched` | The video rendition changes | `fromBitrateBps`, `toBitrateBps`, `direction` |  |
-| `SeekRequested` | A seek is issued | `fromPositionMs`, `toPositionMs` |  |
-| `SeekCompleted` | Playback resumes at the target | `toPositionMs`, `seekLatencyMs` |  |
-| `LicenceAcquisitionEnded` | A DRM licence acquisition finishes | `durationMs`, `outcome`, `securityLevel` |  |
-| `LiveLatencySampled` | Every 10 s, live content only | `liveLatencyMs`, `targetLiveLatencyMs` |  |
-| `PlaybackStateSampled` | Every 10 s | `samplingIntervalMs`, `videoBitrateBps`, `bufferedDurationMs`, `playing`, `throughputEstimateBps` |  |
-| `VideoFramesDropped` | Every 10 s, while video renders | `droppedFrames`, `repeatedFrames`, `elapsedPlayingMs` |  |
+| `SessionStarted` | A player takes content on | `profile`, `decision` | Core's adoption edge (`setMediaRequest`, `restoreSnapshot`; `SessionEdges.swift`). `profile` is `Configuration.profile`; `decision` is the empty `PlaybackDecision` until the policy boundary (`#415`) |
+| `DecisionChanged` | The policy answered differently on a named trigger | `decision`, `trigger` | Not emitted: no iOS policy is consulted again until `#415` |
+| `SessionEnded` | Released, recycled, or moved to other content | `droppedEventCount`, `securityLevel` | Core's edges: a replacement, `setMediaURL`, `release()`. `droppedEventCount` is stamped by `TelemetryDelivery` as the event leaves the queue, as on Android; `securityLevel` is absent until FairPlay (`#422`) |
+| `FirstFrameRendered` | The first video frame reaches the display | `timeToFirstFrameMs`, `startBoundary` | The session's first `AVPlayer.timeControlStatus` of `.playing` (key-value observed): presentation beginning. Not `AVPlayerLayer.isReadyForDisplay`, which is the consumer's layer and invisible to a collector. For video that is the clock starting with its first frame due, which can be a display refresh before the frame is on screen, so it can read slightly lower than a layer's reading; **for audio-only content it is the first audio presented, where Android reports no event**. The boundary is `declarePlaybackIntent()` on `CLOCK_MONOTONIC`, else the session's start, as on Android |
+| `RebufferStarted` | Playback stalls for data after it started | `seekInduced` | After the first frame: `timeControlStatus` becoming `.waitingToPlayAtSpecifiedRate` with `reasonForWaitingToPlay` of `.toMinimizeStalls`, or `AVPlayerItemPlaybackStalled` on a player that does not wait to minimise stalls. **iOS 18 and later** also open one on `AVMetricPlayerItemStallEvent`; iOS 17 has the first two alone. `seekInduced` as on Android |
+| `RebufferEnded` | Playback resumes from that stall | `durationMs`, `seekInduced` | `timeControlStatus` becoming `.playing` (resumed) or `.paused` (stopped stalling); a failure or the session's end closes an open one |
+| `StartupFailed` | Playback fails before the first frame | `failure` | `AVPlayerItem.status` of `.failed` (key-value observed) or `AVPlayerItemFailedToPlayToEndTime`, before the first frame, once per session. `code` is the `NSError`'s `domain:code`; `category` comes from `NSURLErrorDomain`, the `AVError.Code`, or the error log's last HTTP status read at the failure; `classification` is absent until `#419` |
+| `MidStreamFailed` | Playback fails after the first frame | `failure`, `positionMs` | The same, after the first frame; `positionMs` is the item's `currentTime()` |
+| `TrackSwitched` | The video rendition changes | `fromBitrateBps`, `toBitrateBps`, `direction` | Items with an enabled video track only, as on Android: the access log's last `indicatedBitrate` (the variant's `BANDWIDTH`), read at `AVPlayerItemNewAccessLogEntry` and at `.readyToPlay`. **On iOS 18 and later** the initial rendition can arrive first, from the variant of `AVMetricPlayerItemInitialLikelyToKeepUpEvent` |
+| `SeekRequested` | A seek is issued | `fromPositionMs`, `toPositionMs` | `AVPlayerItemTimeJumped` after the first frame. `toPositionMs` is `currentTime()` at the notification; `fromPositionMs` is the collector's last periodic reading (every 500 ms) carried forward at its rate, because the notification carries neither position. It does not say who moved the time, so a jump AVFoundation makes itself, back inside a live window, is counted too |
+| `SeekCompleted` | Playback resumes at the target | `toPositionMs`, `seekLatencyMs` | The first periodic reading past the target while `timeControlStatus` is `.playing`, so the latency is resolved to that 500 ms reading; a seek made while paused completes on `isPlaybackLikelyToKeepUp`, at once if it landed in what is buffered |
+| `LicenceAcquisitionEnded` | A DRM licence acquisition finishes | `durationMs`, `outcome`, `securityLevel` | Not emitted until FairPlay's `AVContentKeySession` (`#422`) |
+| `LiveLatencySampled` | Every 10 s, live content only | `liveLatencyMs`, `targetLiveLatencyMs` | On the sampling timer, for an item whose `duration` is indefinite: the end of the last `seekableTimeRanges` entry less `currentTime()` — AVFoundation's own live edge, where Android reads the program clock. The target is `configuredTimeOffsetFromLive` where the profile set one, else `recommendedTimeOffsetFromLive` |
+| `PlaybackStateSampled` | Every 10 s | `samplingIntervalMs`, `videoBitrateBps`, `bufferedDurationMs`, `playing`, `throughputEstimateBps` | On the sampling timer. `bufferedDurationMs` from the `loadedTimeRanges` entry holding `currentTime()`; `playing` is `timeControlStatus` of `.playing`; `throughputEstimateBps` is the access log's last `observedBitrate` — **Apple's own figure**, smoothed over everything the item downloaded and not a sample, where Android's is Media3's meter |
+| `VideoFramesDropped` | Every 10 s, while video renders | `droppedFrames`, `repeatedFrames`, `elapsedPlayingMs` | On the sampling timer, video items only: the change since the last sample in the access log's summed `numberOfDroppedVideoFrames` and `durationWatched`. `repeatedFrames` is 0, unobservable as on Android |
 
-The *How derived on iOS* column is filled by the iOS collector ticket (`#409`), one row as each
-derivation lands; an empty cell is an event the iOS vocabulary already carries and no iOS collector
-emits yet. The first three columns bind both platforms, and a test on each holds its event types to
-them in both directions — `superplayer-core`'s types on Android and `TelemetrySchemaDocumentTests`
+The *How derived on iOS* column says which AVFoundation API each event comes from on iOS and
+tvOS (`SuperPlayerTelemetry`'s `QoeCollector`, `#409`), and where iOS 17 and 18 derive one
+differently. It describes a derivation and changes no meaning: the definitions below bind both
+platforms, which is why the schema version did not move when it was written. The first three
+columns bind both platforms, and a test on each holds its event types to them in both directions — `superplayer-core`'s types on Android and `TelemetrySchemaDocumentTests`
 in the Swift package — so an event or a field named here and missing from either, or carried by
 either and missing here, fails a build.
 
@@ -1022,6 +1035,27 @@ was built with, which is substitutable, while time to first frame is measured fr
 `declarePlaybackIntent`, which is not. Subtracting one from the other would make the headline metric
 a difference between two clocks: correct whenever they happen to agree, and silently wrong when they
 do not.
+
+### On iOS and tvOS
+
+The same rule, in AVFoundation's terms. Every metric comes from the SDK reporting what happened —
+key-value observation of `AVPlayer` and `AVPlayerItem`, their notifications, the access and error
+logs, and on iOS 18 and later the `AVMetrics` event streams — and the column above names each one.
+The three periodic events ride the same 10-second timer, and the one other clock is a periodic time
+observer every 500 ms of playback, which places a seek: `AVPlayerItemTimeJumped` says that the
+time moved and neither where from nor whether playback has resumed.
+
+**The access log's own aggregates are not used, for `PlaybackStatsListener`'s reason.**
+`AVPlayerItemAccessLogEvent` carries `numberOfStalls` and `startupTime` per entry, and iOS 18's
+`AVMetricPlayerItemPlaybackSummaryEvent` carries a stall count, time spent recovering and a
+time-weighted bitrate. Their boundaries are AVFoundation's — when a stall begins, what start-up is
+measured from — and not CTA-2066's, and renaming them would be the shortcut the Android collector
+declines. Two log fields are used as they are, because their definitions agree:
+`numberOfDroppedVideoFrames` over `durationWatched`, and `observedBitrate` as an estimate that says
+whose it is.
+
+**One clock**: `CLOCK_MONOTONIC`, which `declarePlaybackIntent()` and every reading the collector
+takes are on, never a `CMTime` from AVFoundation's own clock — for the reason above.
 
 [adr6]: adr/0006-own-the-platform-rules-and-hand-back-the-state.md
 [adr18]: adr/0018-push-encoded-frames-through-one-framesource-into-media3s-own-sample-queues.md

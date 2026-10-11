@@ -97,12 +97,14 @@ Func PlaybackProfile.hash(into:) : (), Swift.Hasher
 Func PlaybackSnapshot.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.PlaybackSnapshot, SuperPlayerCore.PlaybackSnapshot [static]
 Func PlaybackSnapshot.encode(to:) : (), any Swift.Encoder [throwing]
 Func PlaybackSnapshot.hash(into:) : (), Swift.Hasher
+Func SuperPlayer.declarePlaybackIntent() : ()
 Func SuperPlayer.release() : ()
 Func SuperPlayer.restoreSnapshot(_:) : (), SuperPlayerCore.PlaybackSnapshot
 Func SuperPlayer.saveSnapshot() : SuperPlayerCore.PlaybackSnapshot
 Func SuperPlayer.setMediaRequest(_:) : (), SuperPlayerCore.MediaRequest
 Func SuperPlayer.setMediaURL(_:) : (), Foundation.URL
 Func TelemetryCollector.attach(to:) : (), SuperPlayerCore.SuperPlayer where <Self where Self : SuperPlayerCore.TelemetryCollector>
+Func TelemetryCollector.declareIntent(monotonicTimeMs:) : (), Swift.Int64 where <Self where Self : SuperPlayerCore.TelemetryCollector>
 Func TelemetryCollector.detach() : () where <Self where Self : SuperPlayerCore.TelemetryCollector>
 Func TelemetryCollector.endSession() : () where <Self where Self : SuperPlayerCore.TelemetryCollector>
 Func TelemetryCollector.startSession(contentId:sessionId:) : (), Swift.String, Swift.String where <Self where Self : SuperPlayerCore.TelemetryCollector>

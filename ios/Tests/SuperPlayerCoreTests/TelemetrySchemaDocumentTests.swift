@@ -78,9 +78,15 @@ final class TelemetrySchemaDocumentTests: XCTestCase {
         XCTAssertEqual(Self.samples.first?.schemaVersion, TelemetryEvent.schemaVersion)
     }
 
-    /// The document gains the iOS derivation column here; the collector ticket fills its rows.
-    func testTheEventTableHasTheIosDerivationColumn() throws {
+    /// The iOS derivation column exists and no row of it is empty: every event says where it comes
+    /// from on iOS, or that nothing emits it yet and which ticket will (#409).
+    func testEveryEventSaysHowItIsDerivedOnIos() throws {
         XCTAssertTrue(try SchemaDocument.eventTableHeader().contains("How derived on iOS"))
+        let derivations = try SchemaDocument.iosDerivations()
+        XCTAssertEqual(Set(derivations.keys), Set(try SchemaDocument.events().keys))
+        for (event, cell) in derivations {
+            XCTAssertFalse(cell.isEmpty, "\(event) does not say how it is derived on iOS")
+        }
     }
 
     /// Each payload's own fields, by its type's name.
@@ -252,6 +258,20 @@ private enum SchemaDocument {
             events[event] = Set(backticked(cells[3]))
         }
         return events
+    }
+
+    /// Each row's event and its *How derived on iOS* cell, trimmed.
+    static func iosDerivations() throws -> [String: String] {
+        var derivations: [String: String] = [:]
+        for row in try eventTable().dropFirst(2) {
+            let cells = row.split(separator: "|", omittingEmptySubsequences: false)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+            guard cells.count >= 5, let event = backticked(cells[1]).first else {
+                throw SchemaDocumentError.missing("an iOS derivation in the row '\(row)'")
+            }
+            derivations[event] = cells[4]
+        }
+        return derivations
     }
 
     /// The number the *Versioning* section states: "The current version is **2**."

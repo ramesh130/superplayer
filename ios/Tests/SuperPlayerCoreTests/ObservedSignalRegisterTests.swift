@@ -124,7 +124,9 @@ final class ObservedSignalRegisterTests: XCTestCase {
     /// `Observation.register`, so an `addObserver` or a key-value `observe` written anywhere else in
     /// core would be invisible to it. Core's sources are read from the host through `#filePath`, as
     /// `SyntheticHlsFixturesTests` reads its fixtures, and every registration call must be in the
-    /// register's own file.
+    /// register's own file — or in the session's (`SessionSignals.swift`, #403), the one other register
+    /// core holds, since a `PlaybackSession` is an object of its own over a player and what it
+    /// observes is counted by `PlaybackSessionTests` rather than here.
     func testNoCoreSourceButTheRegisterRegistersAnObservation() throws {
         let sources = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -139,12 +141,13 @@ final class ObservedSignalRegisterTests: XCTestCase {
         let registrations = [
             "addObserver(", ".observe(", "addPeriodicTimeObserver(", "addBoundaryTimeObserver(",
         ]
-        for file in files where file.lastPathComponent != "ObservedSignals.swift" {
+        let registers: Set = ["ObservedSignals.swift", "SessionSignals.swift"]
+        for file in files where !registers.contains(file.lastPathComponent) {
             let text = try String(contentsOf: file, encoding: .utf8)
             for call in registrations {
                 XCTAssertFalse(
                     text.contains(call),
-                    "\(file.lastPathComponent) calls \(call) outside the observed register")
+                    "\(file.lastPathComponent) calls \(call) outside the observed registers")
             }
         }
     }

@@ -810,6 +810,24 @@ see a request.
   debugger is attached, so the format is asserted where it is made. None is `package`, since no later
   product reaches it. The seek test seeks through `player.avPlayer`, a consumer's transport control
   like `play()` and `pause()` and reached where a consumer reaches it (ADR-0021 rule 1's addendum).
+- **A session's platform is a protocol, and one test reads the real one** (#403). `PlaybackSession`
+  publishes to `MPNowPlayingInfoCenter.default()` and `MPRemoteCommandCenter.shared()` through the
+  one `package` protocol rule 5's #403 addendum allows the feature, `NowPlayingPlatform`, reached
+  through the `package` initialiser `PlaybackSession(player:resolver:centre:)`: the dictionary is
+  handed over in MediaPlayer's own keys, so a recording platform holds exactly what the system would
+  have, and fires a command at the targets it was given — which no test can do to the real centre,
+  since `MPRemoteCommand` has no public way to invoke a target. `PlaybackSessionTests` holds the
+  shape with nothing playing — the targets, the order `release()` keeps, a swap, the process's one
+  Now Playing between two sessions, the resolver declining — and reads the session's own observed
+  register, `SessionSignals.swift`, through `@testable`, the sixth core test to import core so, for
+  `ObservedSignalRegisterTests`' reason; that test admits the session's file as the one other place
+  in core a registration may be written. `PlaybackSessionPlaybackTests` plays: the dictionary's
+  title, subtitle, artwork (a `file:` PNG, since the origin serves streams), duration, elapsed time
+  and rate, a remote pause read off `player.avPlayer` under rule 1's #403 addendum, a swap that
+  carries commands to the incoming player, and an id resolved from outside resuming where it was
+  left. One test there sets and clears the **system's** dictionary for real, beside a player with no
+  session that leaves it nil. **That a button press reaches the target, and that the lock screen
+  draws what was published, are a device's** — the i1 demo's on an iPhone.
 - **A pool's device is stated, as on Android** (#404). `PlayerPool`'s bound is
   `DeviceCapacity.swift`'s reading of `os_proc_available_memory()`, which an `xctest` runner — not an
   app — reads as zero; so a test states the memory left through the pool's `package` initialiser,

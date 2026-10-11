@@ -60,6 +60,10 @@ final class StockTelemetryAgreementTests: XCTestCase {
     /// the bound again.
     private static var unplayable: String?
 
+    /// How far ahead the session's item buffers: two segments, so the slow stretch drains it in
+    /// seconds. A setting on the one item both collectors watch, so it is the same input to both.
+    private static let forwardBufferSeconds: TimeInterval = 4
+
     private let bound: Duration = .seconds(90)
 
     func testBothCollectorsDeriveTheSameEventsFromTheSameCallbacks() async throws {
@@ -160,6 +164,7 @@ final class StockTelemetryAgreementTests: XCTestCase {
             contentId: "agreement", sessionId: "stock-mirror", profile: .videoOnDemand,
             decision: player.playbackDecision)
         player.avPlayer.currentItem?.add(AVPlayerItemVideoOutput(pixelBufferAttributes: nil))
+        player.avPlayer.currentItem?.preferredForwardBufferDuration = Self.forwardBufferSeconds
         player.avPlayer.play()
 
         do {
@@ -204,20 +209,21 @@ final class StockTelemetryAgreementTests: XCTestCase {
 
 extension StockTelemetryAgreementTests {
 
-    /// A link that builds a few seconds of buffer and then falls below the bottom rung for longer
-    /// than that lasts: 600 kbit/s for six seconds — a little over the bottom rung, so the player
-    /// starts and gets ahead, but not by much — then 150 kbit/s for twenty, under half of what the
-    /// 365 kbit/s rung needs, so the buffer drains whatever the player chooses and it must wait,
-    /// then stable WiFi's twenty megabits for good, so playback resumes and stays up.
+    /// A link fast enough to start on, then too slow for any rung: 2 Mbit/s for ten seconds, so
+    /// the first frame comes however slow the host — then 150 kbit/s for thirty, under half of
+    /// what the 365 kbit/s rung needs, so the buffer drains whatever the player chose and it has to
+    /// wait — then stable WiFi's twenty megabits for good, so playback resumes and stays up.
     ///
-    /// Slow rather than gone: an earlier form cut the link to nothing for twelve seconds, which
-    /// stalled on a developer's simulator and on CI's never did — a request with no bytes at all is
-    /// one `AVPlayer` gives up and asks again on its own schedule, while a slow one is a drain no
-    /// buffer outlasts.
+    /// Two earlier forms are why it is this one. A link cut to nothing stalled on a developer's
+    /// simulator and never on CI's; a link slow from six seconds in was slow before CI's player had
+    /// started, and a player that has not started waits rather than stalls, which no collector
+    /// reports as a rebuffer. The session also caps the item's forward buffer
+    /// (``forwardBufferSeconds``), so the drain is seconds long rather than as long as the fast
+    /// stretch let the player buffer.
     static func outage() throws -> ThroughputTrace {
         try ThroughputTrace.Builder()
-            .add(durationMs: 6_000, bandwidthBps: 600_000, transport: .wifi)
-            .add(durationMs: 20_000, bandwidthBps: 150_000, transport: .wifi)
+            .add(durationMs: 10_000, bandwidthBps: 2_000_000, transport: .wifi)
+            .add(durationMs: 30_000, bandwidthBps: 150_000, transport: .wifi)
             .add(durationMs: 1_000, bandwidthBps: 20_000_000, transport: .wifi)
             .holdAtEnd()
             .build()

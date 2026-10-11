@@ -18,7 +18,7 @@ import SuperPlayerCore
 // The rungs of ADR-0011's ladder that exist on Apple platforms, decided here and performed by core
 // (`PlayerStateRungs.swift`): rung 4, rung 5, rung 6's typed error, and the credential repair that
 // is asked before any of them. Rungs 1 to 3 are AVFoundation's own and nothing configures them
-// (ADR-0020 rule 6), which is why `RetryPolicy.manifest` and `.segment` are ignored on this platform.
+// (ADR-0020 rule 6), which is why no player here spends `RetryPolicy.manifest` or `.segment`.
 
 extension FailureClass {
 

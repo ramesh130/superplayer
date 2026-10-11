@@ -88,7 +88,10 @@ let package = Package(
         .target(
             name: "SuperPlayerOffline",
             dependencies: ["SuperPlayerCore"],
-            path: "ios/Sources/SuperPlayerOffline"
+            path: "ios/Sources/SuperPlayerOffline",
+            // The store's index is SQLite, the system's, as SuperPlayerDRM's offline store is
+            // (`DownloadIndex.swift`). No package dependency.
+            linkerSettings: [.linkedLibrary("sqlite3")]
         ),
         .target(
             name: "SuperPlayerTV",
@@ -180,9 +183,16 @@ let package = Package(
             ],
             path: "ios/Tests/SuperPlayerDRMTests"
         ),
+        // Core, the harness and the classifier too: a download is counted at the loopback origin,
+        // played offline through a real player and named by the resilience a consumer configures —
+        // all phase 5 or below, as superplayer-offline's own tests drive the Kotlin harness with
+        // `setResilience`.
         .testTarget(
             name: "SuperPlayerOfflineTests",
-            dependencies: ["SuperPlayerOffline"],
+            dependencies: [
+                "SuperPlayerOffline", "SuperPlayerCore", "SuperPlayerTestkit",
+                "SuperPlayerResilience",
+            ],
             path: "ios/Tests/SuperPlayerOfflineTests"
         ),
         .testTarget(

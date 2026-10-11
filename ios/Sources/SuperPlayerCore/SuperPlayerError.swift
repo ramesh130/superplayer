@@ -153,3 +153,17 @@ package protocol FailureClassifying: PlaybackResilience {
     /// does through both chains' header-refresh slot (ADR-0012 rule 2).
     var headerProvider: (any HeaderProvider)? { get }
 }
+
+/// What a download store asks a ``PlaybackResilience`` — the Kotlin `DownloadResilienceExtension`'s
+/// `failureOf`: the class a failed download task ends on, named by the one classifier (ADR-0011
+/// rule 1) rather than by the download product, which keeps no taxonomy (ADR-0013 rule 9).
+///
+/// Separate from ``FailureClassifying`` because a download has no player, no ladder and no
+/// position: what it needs is the name alone, and whether asking again could help — which is
+/// ``SuperPlayerError/isRetryable``, read by the store before it spends a budget.
+package protocol DownloadFailureClassifying: PlaybackResilience {
+
+    /// The typed error `error` — a download task's own — ends a download on: no rung tried, no
+    /// position.
+    func downloadFailure(of error: NSError) -> SuperPlayerError
+}

@@ -1,1 +1,55 @@
 // SuperPlayerOffline: public API as ios/check reads it. Regenerate with ios/check --update-api.
+Class Downloads : OfflineAssets, OfflineContent, Sendable
+Constructor DownloadRefusal.init(rawValue:) : SuperPlayerOffline.DownloadRefusal?, Swift.String
+Constructor DownloadState.init(rawValue:) : SuperPlayerOffline.DownloadState?, Swift.String
+Constructor Downloads.Configuration.init(directory:sessionIdentifier:) : SuperPlayerOffline.Downloads.Configuration, Foundation.URL, Swift.String
+Constructor Downloads.init(configuration:) : SuperPlayerOffline.Downloads, SuperPlayerOffline.Downloads.Configuration [throwing]
+Enum DownloadRefusal : CaseIterable, Equatable, Hashable, RawRepresentable, Sendable
+Enum DownloadState : CaseIterable, Equatable, Hashable, RawRepresentable, Sendable
+Enum DownloadsError : Equatable, Error, Sendable
+EnumElement DownloadRefusal.liveContent : (SuperPlayerOffline.DownloadRefusal.Type) -> SuperPlayerOffline.DownloadRefusal
+EnumElement DownloadState.completed : (SuperPlayerOffline.DownloadState.Type) -> SuperPlayerOffline.DownloadState
+EnumElement DownloadState.downloading : (SuperPlayerOffline.DownloadState.Type) -> SuperPlayerOffline.DownloadState
+EnumElement DownloadState.failed : (SuperPlayerOffline.DownloadState.Type) -> SuperPlayerOffline.DownloadState
+EnumElement DownloadState.queued : (SuperPlayerOffline.DownloadState.Type) -> SuperPlayerOffline.DownloadState
+EnumElement DownloadState.removing : (SuperPlayerOffline.DownloadState.Type) -> SuperPlayerOffline.DownloadState
+EnumElement DownloadsError.database : (SuperPlayerOffline.DownloadsError.Type) -> (Swift.Int, Swift.String) -> SuperPlayerOffline.DownloadsError
+EnumElement DownloadsError.notADirectory : (SuperPlayerOffline.DownloadsError.Type) -> (Foundation.URL) -> SuperPlayerOffline.DownloadsError
+EnumElement DownloadsError.unavailableOnThisPlatform : (SuperPlayerOffline.DownloadsError.Type) -> SuperPlayerOffline.DownloadsError
+Func DownloadItem.==(_:_:) : Swift.Bool, SuperPlayerOffline.DownloadItem, SuperPlayerOffline.DownloadItem [static]
+Func Downloads.addListener(_:) : (), any SuperPlayerOffline.DownloadsListener
+Func Downloads.download(_:) : SuperPlayerOffline.DownloadItem?, Swift.String
+Func Downloads.downloads() : [SuperPlayerOffline.DownloadItem]
+Func Downloads.enqueue(_:audioLanguages:subtitleLanguages:) : (), SuperPlayerCore.MediaRequest, [Swift.String], [Swift.String]
+Func Downloads.handleEventsForBackgroundURLSession(_:completionHandler:) : Swift.Bool, Swift.String, () -> Swift.Void
+Func Downloads.release() : ()
+Func Downloads.remove(_:) : (), Swift.String
+Func Downloads.removeListener(_:) : (), any SuperPlayerOffline.DownloadsListener
+Func DownloadsError.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerOffline.DownloadsError, SuperPlayerOffline.DownloadsError [static]
+Func DownloadsListener.downloadChanged(_:) : (), SuperPlayerOffline.DownloadItem where <Self where Self : SuperPlayerOffline.DownloadsListener>
+Func DownloadsListener.downloadRemoved(_:) : (), Swift.String where <Self where Self : SuperPlayerOffline.DownloadsListener>
+Protocol DownloadsListener where <Self : AnyObject>
+Struct DownloadItem : CustomStringConvertible, Equatable, Sendable
+Struct Downloads.Configuration : Sendable
+TypeAlias DownloadRefusal.AllCases : [SuperPlayerOffline.DownloadRefusal]
+TypeAlias DownloadRefusal.RawValue : Swift.String
+TypeAlias DownloadState.AllCases : [SuperPlayerOffline.DownloadState]
+TypeAlias DownloadState.RawValue : Swift.String
+Var DownloadItem.bytesDownloaded : Swift.Int64 { get }
+Var DownloadItem.contentId : Swift.String { get }
+Var DownloadItem.description : Swift.String { get }
+Var DownloadItem.failure : SuperPlayerCore.SuperPlayerError? { get }
+Var DownloadItem.percentDownloaded : Swift.Double? { get }
+Var DownloadItem.refusal : SuperPlayerOffline.DownloadRefusal? { get }
+Var DownloadItem.state : SuperPlayerOffline.DownloadState { get }
+Var DownloadRefusal.allCases : [SuperPlayerOffline.DownloadRefusal] [static] { get }
+Var DownloadRefusal.rawValue : Swift.String { get }
+Var DownloadState.allCases : [SuperPlayerOffline.DownloadState] [static] { get }
+Var DownloadState.rawValue : Swift.String { get }
+Var Downloads.Configuration.directory : Foundation.URL { get set }
+Var Downloads.Configuration.meteredNetworksAllowed : Swift.Bool { get set }
+Var Downloads.Configuration.policy : (any SuperPlayerCore.PlaybackPolicy)? { get set }
+Var Downloads.Configuration.profile : SuperPlayerCore.PlaybackProfile { get set }
+Var Downloads.Configuration.resilience : (any SuperPlayerCore.PlaybackResilience)? { get set }
+Var Downloads.Configuration.sessionIdentifier : Swift.String { get set }
+Var Downloads.configuration : SuperPlayerOffline.Downloads.Configuration { get }

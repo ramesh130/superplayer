@@ -78,7 +78,10 @@ Func PlaybackHarness.until(_:timeout:_:) : (), Swift.String, Swift.Duration, () 
 Func PlaybackHarness.until(_:timeout:isolation:_:) : (), Swift.String, Swift.Duration, (any _Concurrency.Actor)?, () throws -> Swift.Bool [throwing]
 Func ResourceKind.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerTestkit.ResourceKind, SuperPlayerTestkit.ResourceKind [static]
 Func ResourceKind.hash(into:) : (), Swift.Hasher
+Func TestContent.choiceAudioDirectory(_:) : Swift.String, Swift.String [static]
+Func TestContent.choiceSubtitlesDirectory(_:) : Swift.String, Swift.String [static]
 Func TestContent.hls(segmentCount:variantCount:hosts:) : SuperPlayerTestkit.TestContent, Swift.Int, Swift.Int, Swift.Int [static]
+Func TestContent.hlsWithChoice(audioLanguages:subtitleLanguages:segmentCount:) : SuperPlayerTestkit.TestContent, [Swift.String], [Swift.String], Swift.Int [static]
 Func TestContent.hostile(_:) : SuperPlayerTestkit.TestContent, SuperPlayerTestMedia.HostileStream [static]
 Func TestContent.licence(for:) : [Swift.UInt8], [Swift.UInt8] [static]
 Func TestContent.licenceServer() : SuperPlayerTestkit.TestContent [static]
@@ -168,6 +171,9 @@ Var PassThroughFrameOutput.presentationTimes : [CoreMedia.CMTime] { get }
 Var PlaybackHarness.pollInterval : Swift.Duration [static] { get }
 Var ResourceKind.allCases : [SuperPlayerTestkit.ResourceKind] [static] { get }
 Var ResourceKind.hashValue : Swift.Int { get }
+Var TestContent.choiceDirectory : Swift.String [static] { get }
+Var TestContent.choiceHighDirectory : Swift.String [static] { get }
+Var TestContent.choiceLowDirectory : Swift.String [static] { get }
 Var TestContent.defaultSegmentCount : Swift.Int [static] { get }
 Var TestContent.hosts : Swift.Int { get }
 Var TestContent.isLive : Swift.Bool { get }

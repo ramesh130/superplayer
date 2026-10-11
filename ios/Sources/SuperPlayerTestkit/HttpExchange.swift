@@ -267,6 +267,8 @@ enum HttpExchange {
         if name.hasSuffix(".m3u8") { return "application/vnd.apple.mpegurl" }
         if name.hasSuffix(".aac") { return "audio/aac" }
         if name.hasSuffix(".ts") { return "video/mp2t" }
+        // spec: RFC 8216 §3.5 — a WebVTT segment; W3C WebVTT §8.1 registers `text/vtt`.
+        if name.hasSuffix(".vtt") { return "text/vtt" }
         if name.hasSuffix(".mp4") || name.hasSuffix(".m4s") { return "video/mp4" }
         return "application/octet-stream"
     }

@@ -12,12 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// `Backoff` is `package`, so this target reaches it without `@testable`: no public reading shows a
+// wait's spread, and a playback test that timed one would assert a duration (ADR-0021 rule 4).
 import SuperPlayerCore
 import XCTest
-
-// `@testable` for `Backoff`, internal as the Kotlin object is: no public reading shows a wait's
-// spread, and a playback test that timed one would assert a duration (ADR-0021 rule 4).
-@testable import SuperPlayerDRM
 
 /// ``Backoff`` as the Kotlin `RetryBackoffTest` holds its twin: the growth and the ceiling stated
 /// without a distribution, and the jitter asserted as a *spread* — every draw inside

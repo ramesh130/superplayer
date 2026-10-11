@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import Foundation
 import SuperPlayerCore
 
 /// `SuperPlayerResilience`'s entry point — the Kotlin `Resilience`, whose `standard(headers:)` is
@@ -54,5 +55,15 @@ struct StandardResilience: FailureClassifying {
     @MainActor
     func playerStateRungs() -> any PlayerStateRungs {
         PlayerStateLadder(provider: headers)
+    }
+}
+
+/// A download task's failure, named by ``ErrorClassifier`` with no ladder: a download has no rung to
+/// climb, so the class is the whole of the answer (ADR-0013 rule 14's #254 addendum, where rung 1 is
+/// the whole of a download's ladder and the store spends it).
+extension StandardResilience: DownloadFailureClassifying {
+    func downloadFailure(of error: NSError) -> SuperPlayerError {
+        TypedError.of(
+            ErrorClassifier.classify(error), error: error, positionMs: nil, rungsTried: [])
     }
 }

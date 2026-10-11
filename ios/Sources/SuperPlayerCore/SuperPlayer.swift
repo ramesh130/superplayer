@@ -167,6 +167,23 @@ public final class SuperPlayer {
         /// configuration.resilience = Resilience.standard()
         /// ```
         public var resilience: (any PlaybackResilience)?
+
+        /// Content on this device the player opens instead of the network, or nil — the default —
+        /// for a player that plays every request from its sources and asks nothing at adoption. The
+        /// Android player built over the `ContentCache` a download store writes into (ADR-0013 rule
+        /// 8), taking `SuperPlayerOffline`'s `Downloads`.
+        ///
+        /// ```swift
+        /// let downloads = try Downloads(configuration: .init(directory: dir, sessionIdentifier: id))
+        /// var configuration = SuperPlayer.Configuration()
+        /// configuration.offlineContent = downloads
+        /// ```
+        ///
+        /// A ``MediaRequest`` whose ``MediaRequest/contentId`` the store holds plays from the
+        /// downloaded package, with no request to its sources, and one being downloaded plays from
+        /// the download's own asset (``OfflineAssets``). Identity, measurement and remembered
+        /// positions are the request's as for any adoption; only the asset differs.
+        public var offlineContent: (any OfflineContent)?
     }
 
     /// The configuration this player was made with.
@@ -398,11 +415,21 @@ public final class SuperPlayer {
         }
     }
 
-    /// The item `request` plays from: the warm start a pool's attachment holds for it, if this is a
+    /// The item `request` plays from: the asset ``Configuration/offlineContent`` holds for it, if it
+    /// holds one; else the warm start a pool's attachment holds for it, if this is a
     /// pooled player and the attachment holds one, and a fresh item otherwise (ADR-0010 rule 7,
     /// `PoolAttachment.swift`). Asked after the outgoing position was remembered and the start
     /// resolved, so a warm start changes which item plays and nothing about what plays.
     private func adoptedItem(for request: MediaRequest) -> AVPlayerItem {
+        // Content on the device first: a downloaded package plays with no network at all, which a
+        // warm start of the same content could not improve on (``Configuration/offlineContent``).
+        // A player configured without it pays one failed cast per adoption and registers nothing,
+        // which is ADR-0013 rule 15 by construction rather than a count a test could add to.
+        if let offline = configuration.offlineContent as? any OfflineAssets,
+            let asset = offline.offlineAsset(for: request.contentId)
+        {
+            return Self.item(for: request, on: asset)
+        }
         switch poolAttachment?.warmStart(for: self, adopting: request) {
         case .item(let prefetched):
             return prefetched

@@ -1321,8 +1321,9 @@ relents within it and one that never does, counted at the server; one 401 repair
 nothing, and a provider that declines; a key request the device will not compose, which asks no
 server; a rotation and a renewal counted at the server and measured as nothing; a failed renewal that
 ends nothing; and a player without resilience, which refuses the request and names nothing.
-`BackoffTests` holds the jitter as a spread, importing the product `@testable` for the internal
-`Backoff`, since no public reading shows a wait's spread. `DrmPaysNothingTests`, in core's target, counts ADR-0012
+`BackoffTests` holds the jitter as a spread — in core's target since #424 moved `Backoff` to core as
+`package`, because the download store re-enqueues on it too — since no public reading shows a wait's
+spread. `DrmPaysNothingTests`, in core's target, counts ADR-0012
 rule 13 as the session a player holds — the **set**, never the answer, as `SuperPlayerDrmSeamTest`
 counts it — and `CollectorSignalRegisterTests` the output reading a protected player's session alone
 registers.
@@ -1373,6 +1374,48 @@ for it, so a licence still in flight when its content is replaced fails the cont
 And an asset `SuperPlayerPreload` prefetched for a pooled player is handed to the key session at
 adoption, not as it was prefetched, so a key its prefetch would have asked for waits for the adoption.
 No test covers either.
+
+### Downloads on iOS
+
+**The simulator test host cannot run an `AVAssetDownloadTask`**, which #424 forced rather than
+assumed, on the iOS 27.1 simulator under Xcode 27: an `AVAssetDownloadURLSession` refuses any
+configuration but a background one, and a task on a background session made inside `xctest`
+completes at once with `NSURLErrorDomain` -1, "unknown error", having sent the loopback origin no
+request at all — the background transfer daemon serves an app, and `xctest` is not one. So the
+transfer is stood in at the one `package` protocol `SuperPlayerOffline` defines, `AssetDownloading`,
+reached through the `package` overload `Downloads(configuration:downloader:)`, as `FairPlayKeySession`
+is for FairPlay. **No test here runs a real download task**; every one of `DownloadsTests` runs the
+stand-in, `StandInDownloads`.
+
+What runs as shipped is everything the store decides: the manifest read by a real `AVURLAsset` against
+the loopback origin, the live refusal off its indefinite duration, the variant chosen under
+`PlaybackDecision.download` and the languages off its media selection groups, the session's
+constraints, the SQLite index and what a reopened store does with it, the re-enqueue on
+`RetryPolicy.segment` with `Backoff`, the naming of a failure by `SuperPlayerResilience`, and what a
+player configured with the store opens. The stand-in does what a task configured with the store's plan
+is documented to do — fetches the one variant the plan names by `BANDWIDTH` and each rendition it names
+by language — so a count at the origin is a count of what the plan asked for, on
+`TestContent.hlsWithChoice(audioLanguages:)`, whose every rendition is a directory of its own. What it
+lands is the variant's segments concatenated into one ADTS file, which `AVPlayer` plays from a `file:`
+URL, so "a downloaded request plays with no request" is asserted on a real `SuperPlayer` with the
+origin counting. A failure it reports is the error AVFoundation is documented or was observed (#419) to
+report — a `CoreMediaErrorDomain` code per HTTP status, and `AVError.diskFull` — so the classification
+read is the shipped classifier's of that error.
+
+**What only a device shows**, and none of it is faked — the i6 device ticket's (#436):
+
+- that `SystemAssetDownloads`, the one implementation that touches `AVAssetDownloadURLSession`, runs
+  at all — no line of it runs under `check`: that a task downloads exactly the variant its
+  `AVAssetVariantQualifier` names and the renditions its media selections name, that its progress
+  arrives as the time ranges it reports, and that its finished `.movpkg`, moved into the consumer's
+  directory, plays offline;
+- that a download survives process death and a network lost and regained, re-attached by the
+  session's identifier when the store opens, and that the app's `handleEventsForBackgroundURLSession`
+  hand-off is called back;
+- which error a real task fails with on a refused segment and on a full disk, and so whether the
+  classification the stand-in's errors read is the one a device's reach;
+- what the session's constraints do: that a task waits on cellular and in Low Data Mode, and what
+  `isDiscretionary` holds it for — coarser than Android's battery-not-low, and reported to nobody.
 
 ## The layers above the fakes
 

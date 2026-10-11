@@ -175,9 +175,10 @@ fills `Configuration.drm` — core's public marker `PlaybackDrm` over the `packa
 which makes one `AVContentKeySession` per player with every asset the facade plays a recipient
 (`Protection.swift`). The exchange is the library's own, `LicenceExchange.swift`: the certificate once
 per player, the SPC `POST`ed raw to the configured server only — never an address the `skd://` URI
-names — every failure asked again on `RetryPolicy.licence` with `Backoff`'s equal jitter (ported here,
-its only caller), and one 401 or 403 per request offered to the `HeaderProvider`, which moved to core so
-that neither optional product depends on the other. A failure reaches core's ladder as a
+names — every failure asked again on `RetryPolicy.licence` with `Backoff`'s equal jitter (ported
+there, and core's `package` since #424 gave it a second caller), and one 401 or 403 per request
+offered to the `HeaderProvider`, which moved to core so that neither optional product depends on the
+other. A failure reaches core's ladder as a
 `LicenceExchangeError` the classifier maps (`Drm.LicenceAcquisition`, or `Drm.SystemError` for a key
 request the device will not compose); an acquisition reaches the collector through
 `TelemetryCollector.licenceAcquisitionEnded`, a rotation or renewal emitting nothing; and the collector
@@ -198,6 +199,22 @@ refusing an expired licence with core's `OfflineLicenceExpiredError`. **FairPlay
 duration to the client**, so the two are what the key server granted, stated by the app at `acquire`
 and `renew`; that is the one departure from the Kotlin store. **tvOS has no persistable keys** in its
 SDK, so there the verbs fail typed at once.
+#424 is `SuperPlayerOffline`: `Downloads(configuration:)` — a directory the consumer named and a
+background session identifier that is the store's — reads a request's manifest with an `AVURLAsset`,
+refuses live content (`DownloadRefusal.liveContent`, off an indefinite duration), chooses one variant
+under `PlaybackDecision.download` and the languages asked for that the content carries
+(`DownloadSelection.swift`), and hands a task the plan; its index is SQLite beside the packages
+(`DownloadIndex.swift`, #423's system `libsqlite3`), a finished `.movpkg` is moved into the directory
+and *is* the pin, and a failed task is started again on `RetryPolicy.segment` with `Backoff` — moved
+to core as `package` for it — and named by `SuperPlayerResilience` through core's `package`
+`DownloadFailureClassifying`. A player opens downloaded content through core's public marker
+`OfflineContent` (`Configuration.offlineContent`) over the `package` `OfflineAssets`, asked first at
+adoption. **The simulator test host cannot run an `AVAssetDownloadTask`** (a background session in
+`xctest` fails every task with `NSURLErrorDomain` -1 and sends nothing), so the transfer is stood in
+at the one `package` protocol `AssetDownloading`; `SystemAssetDownloads` is the shipped one and none
+of it runs under `check` (`docs/testing.md`, *Downloads on iOS*; #436 is its device run). The app
+wires one thing, `handleEventsForBackgroundURLSession`, passed to the store. tvOS's SDK has no
+`AVAssetDownloadURLSession`, so there the store refuses to open, typed.
 #416 is i3's adaptive half, `SuperPlayerABR`: `AdaptivePolicy.forProfile(profile)` composes
 `AdaptiveSelectionPolicy` and `AdaptiveBufferPolicy`, the Kotlin pure functions with their constants,
 and brings a `BandwidthOracle` per player through core's `package` seam `ThroughputSource.swift` —

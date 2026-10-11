@@ -31,6 +31,8 @@ import Network
 /// (ADR-0022 rule 9). `PolicyPaysNothingTests` counts the ``Scope/reapplicationPlayer`` and
 /// ``Scope/reapplicationItem`` signals: none on a player under its profile's static policy, each once
 /// on a player given a policy of its own (ADR-0009 rule 7, `DecisionReapplication.swift`).
+/// `ResiliencePaysNothingTests` counts the ``Scope/resilienceItem`` signals the
+/// same way: once each on a player configured with resilience, and on no other (ADR-0011 rule 14).
 ///
 /// The ``Scope/player`` signals are the lifecycle's (`LifecycleBinding.swift`, #402), registered on
 /// every player as it is made and for its whole life. ADR-0006 rule 1 makes the lifecycle
@@ -55,6 +57,19 @@ enum ObservedSignal: CaseIterable, Hashable, Sendable {
     /// ``itemTimeJumped``, because it is registered on every item such a player plays — a bare URL's
     /// included — and nowhere else, which is a different scope and a different count.
     case frameOutputItemTimeJumped
+
+    /// A key-value observation of the current item's `status`, on a player configured with
+    /// resilience: `.failed` is when an item that never played, or stopped, has an error for the
+    /// classifier to name and ``SuperPlayer/errors`` to deliver (#419, ADR-0011 rule 10). Nothing on
+    /// any other player, which is ADR-0011 rule 14's count: a player without resilience classifies
+    /// nothing and observes nothing to classify.
+    case resilienceItemStatus
+
+    /// The current item failed to play to its end, on a player configured with resilience: the
+    /// notification AVFoundation posts with the error for a failure after playback began, heard
+    /// beside ``resilienceItemStatus`` because AVFoundation promises the error here and not that the
+    /// status moves first. One typed error per item either way (`SuperPlayer.itemFailed`).
+    case resilienceItemFailedToPlayToEnd
 
     /// The audio session was interrupted, or the interruption ended — a phone call, an alarm,
     /// another app's session that does not mix. The Android audio focus's transient loss and its
@@ -111,12 +126,16 @@ enum ObservedSignal: CaseIterable, Hashable, Sendable {
         case reapplicationPlayer
         /// The current item, whatever it carries, on a player whose policy is consulted again.
         case reapplicationItem
+        /// The current item, whatever it carries, on a player configured with resilience — nothing
+        /// on any other player, which is ADR-0011 rule 14's count.
+        case resilienceItem
     }
 
     var scope: Scope {
         switch self {
         case .itemPlayedToEnd, .itemTimeJumped: .identifiedItem
         case .frameOutputItemTimeJumped: .frameOutputItem
+        case .resilienceItemStatus, .resilienceItemFailedToPlayToEnd: .resilienceItem
         case .audioSessionInterrupted, .audioRouteChanged, .playerRateChanged,
             .playerTimeControlStatus:
             .player
@@ -175,6 +194,8 @@ final class Observation {
                 }
             }
             return Observation(signal: signal, registration: .keyValue(observation))
+        case .resilienceItemStatus, .resilienceItemFailedToPlayToEnd:
+            preconditionFailure("\(signal) hands over an error; register it with registerFailure")
         case .audioSessionInterrupted, .audioRouteChanged, .playerRateChanged,
             .playerTimeControlStatus, .decisionNetworkPath, .decisionRateChanged,
             .decisionTimeControlStatus:
@@ -186,6 +207,50 @@ final class Observation {
             MainActor.assumeIsolated { handler() }
         }
         return Observation(signal: signal, registration: .notification(token))
+    }
+
+    /// Registers `handler` for a ``ObservedSignal/Scope/resilienceItem`` `signal` on `item`,
+    /// delivered on the main queue with the error the failure carries — the item's `error` for its
+    /// status, the notification's `AVPlayerItemFailedToPlayToEndTimeErrorKey` for the other — and
+    /// only when there is a failure: a status that moved anywhere but `.failed` hands over nothing.
+    ///
+    /// AVFoundation promises no thread for a `status` change, so that handler is queued onto the
+    /// main queue rather than assumed to be on it, as the player register's `timeControlStatus` is.
+    @MainActor
+    static func registerFailure(
+        _ signal: ObservedSignal, on item: AVPlayerItem,
+        _ handler: @escaping @MainActor @Sendable (NSError?) -> Void
+    ) -> Observation {
+        switch signal {
+        case .resilienceItemStatus:
+            // Captures nothing and reads nothing off the posting thread: the hop comes first, and
+            // the status and error are read on the main actor, from an item held weakly.
+            let observation = item.observe(\.status) { [weak item] _, _ in
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        guard let item, item.status == .failed else { return }
+                        handler(item.error as NSError?)
+                    }
+                }
+            }
+            return Observation(signal: signal, registration: .keyValue(observation))
+        case .resilienceItemFailedToPlayToEnd:
+            let token = NotificationCenter.default.addObserver(
+                forName: AVPlayerItem.failedToPlayToEndTimeNotification, object: item,
+                queue: .main
+            ) { notification in
+                let error =
+                    notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? NSError
+                MainActor.assumeIsolated { handler(error) }
+            }
+            return Observation(signal: signal, registration: .notification(token))
+        case .itemPlayedToEnd, .itemTimeJumped, .frameOutputItemTimeJumped,
+            .audioSessionInterrupted, .audioRouteChanged, .playerRateChanged,
+            .playerTimeControlStatus, .decisionNetworkPath, .decisionRateChanged,
+            .decisionTimeControlStatus, .decisionItemTimeJumped, .decisionItemDuration,
+            .decisionAccessLogEntry:
+            preconditionFailure("\(signal) is not a resilience item signal")
+        }
     }
 
     /// Registers `handler` for a ``ObservedSignal/Scope/player`` `signal`, delivered on the main
@@ -225,7 +290,8 @@ final class Observation {
         case .decisionNetworkPath:
             preconditionFailure("\(signal) is registered on the device, not on a player")
         case .itemPlayedToEnd, .itemTimeJumped, .frameOutputItemTimeJumped,
-            .decisionItemTimeJumped, .decisionItemDuration, .decisionAccessLogEntry:
+            .decisionItemTimeJumped, .decisionItemDuration, .decisionAccessLogEntry,
+            .resilienceItemStatus, .resilienceItemFailedToPlayToEnd:
             preconditionFailure("\(signal) is registered on an item, not on a player")
         }
         let token = NotificationCenter.default.addObserver(

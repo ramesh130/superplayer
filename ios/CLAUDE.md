@@ -120,6 +120,19 @@ row is an asset, and at a loaded depth the nearest rows are held on idle pooled 
 (`SuperPlayer.holdWarm`) and, at `decoderWarmed`, prerolled. The memory guard and the Low Data Mode
 rule are `PlatformRules.swift`, and what the coordinator observes is its own register,
 `PreloadSignals.swift`, counted process-wide.
+#419 is the first of i5: `SuperPlayerResilience` holds `FailureClass` — the Kotlin taxonomy as a
+nested enum, every leaf with its stable name, three answers, category and message key — and
+`ErrorClassifier`, the one `switch` that names a failure, over the `NSError` chain (cause first), the
+HTTP status AVFoundation reports as a `CoreMediaErrorDomain` code, and the error log's last entry,
+whose URI tells a refused segment from a refused playlist (no entry is the multivariant playlist; an
+entry with no URI is a segment AVFoundation retried — both observed, and pinned by
+`TypedErrorPlaybackTests`). `Configuration.resilience = Resilience.standard()` fills core's `package`
+`FailureClassifying`; core then observes each item's failure (two `resilienceItem` signals in the
+register, none without it — `ResiliencePaysNothingTests`) and delivers a `SuperPlayerError` on
+`player.errors`, the facade's Combine publisher, with `playerError` the last one and
+`player.classify(_:)` the answer `QoeCollector` reads `classification` from. The same publisher
+carries core's `UnplayableSourceSchemeError`, refusing on every player a source whose scheme
+`AVPlayer` cannot load and naming `RealtimePlayer` (ADR-0020 rule 11's #419 addendum).
 `SuperPlayerMoQ` is not declared yet — its binary target is
 i9's — and there is no `SuperPlayerCache`, since its content is the offline store's.
 

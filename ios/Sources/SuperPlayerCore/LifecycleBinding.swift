@@ -324,9 +324,10 @@ enum LifecycleEvent: Equatable, Sendable {
             self = .rateChanged(byInterruption: reason == .audioSessionInterrupted)
         case .playerTimeControlStatus:
             self = .timeControlStatusChanged
-        case .itemPlayedToEnd, .itemTimeJumped, .frameOutputItemTimeJumped,
-            .decisionNetworkPath, .decisionRateChanged, .decisionTimeControlStatus,
-            .decisionItemTimeJumped, .decisionItemDuration, .decisionAccessLogEntry:
+        case .itemPlayedToEnd, .itemTimeJumped, .frameOutputItemTimeJumped, .resilienceItemStatus,
+            .resilienceItemFailedToPlayToEnd, .decisionNetworkPath, .decisionRateChanged,
+            .decisionTimeControlStatus, .decisionItemTimeJumped, .decisionItemDuration,
+            .decisionAccessLogEntry:
             // An item's signals are never registered on a player, and the policy's are never
             // handed to the lifecycle (``Observation``).
             self = .unreadable

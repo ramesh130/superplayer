@@ -217,6 +217,7 @@ Func StallHistory.hash(into:) : (), Swift.Hasher
 Func StreamType.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerCore.StreamType, SuperPlayerCore.StreamType [static]
 Func StreamType.hash(into:) : (), Swift.Hasher
 Func SuperPlayer.Configuration.setCmcdMode(_:) : (), SuperPlayerCore.CmcdMode [throwing] [Mutating]
+Func SuperPlayer.classify(_:) : SuperPlayerCore.SuperPlayerError?, any Swift.Error
 Func SuperPlayer.declarePlaybackIntent() : ()
 Func SuperPlayer.release() : ()
 Func SuperPlayer.restoreSnapshot(_:) : (), SuperPlayerCore.PlaybackSnapshot
@@ -271,6 +272,8 @@ Func TrackSwitchDirection.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerC
 Func TrackSwitchDirection.hash(into:) : (), Swift.Hasher
 Func TtffStartBoundary.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerCore.TtffStartBoundary, SuperPlayerCore.TtffStartBoundary [static]
 Func TtffStartBoundary.hash(into:) : (), Swift.Hasher
+Func UnplayableSourceSchemeError.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.UnplayableSourceSchemeError, SuperPlayerCore.UnplayableSourceSchemeError [static]
+Func UnplayableSourceSchemeError.hash(into:) : (), Swift.Hasher
 Func UnsupportedRealtimeCodecError.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.UnsupportedRealtimeCodecError, SuperPlayerCore.UnsupportedRealtimeCodecError [static]
 Func UnsupportedRealtimeCodecError.hash(into:) : (), Swift.Hasher
 Protocol FrameOutput where <Self : Swift.Sendable> : Sendable
@@ -279,6 +282,7 @@ Protocol FrameSource where <Self : AnyObject, Self : Swift.Sendable> : Sendable
 Protocol FrameSourceFactory where <Self : Swift.Sendable> : Sendable
 Protocol MediaRequestResolver
 Protocol PlaybackPolicy where <Self : Swift.Sendable> : Sendable
+Protocol PlaybackResilience where <Self : Swift.Sendable> : Sendable
 Protocol TelemetryCollector
 Protocol TelemetrySink where <Self : Swift.Sendable> : Sendable
 Struct BufferPolicy : Equatable, Hashable, Sendable
@@ -306,6 +310,7 @@ Struct RetryPolicy : Equatable, Hashable, Sendable
 Struct SelectionPace : Equatable, Hashable, Sendable
 Struct StallHistory : Equatable, Hashable, Sendable
 Struct SuperPlayer.Configuration : Sendable
+Struct SuperPlayerError : CustomNSError, CustomStringConvertible, Error, Sendable
 Struct TelemetryEvent.DecisionChanged : Equatable, Hashable, Sendable
 Struct TelemetryEvent.FirstFrameRendered : Equatable, Hashable, Sendable
 Struct TelemetryEvent.LicenceAcquisitionEnded : Equatable, Hashable, Sendable
@@ -323,6 +328,7 @@ Struct TelemetryEvent.TrackSwitched : Equatable, Hashable, Sendable
 Struct TelemetryEvent.VideoFramesDropped : Equatable, Hashable, Sendable
 Struct ThroughputEstimate : Equatable, Hashable, Sendable
 Struct TrackSelectionPolicy : Equatable, Hashable, Sendable
+Struct UnplayableSourceSchemeError : CustomStringConvertible, Equatable, Error, Hashable, Sendable
 Struct UnsupportedRealtimeCodecError : CustomStringConvertible, Equatable, Error, Hashable, Sendable
 TypeAlias CmcdMode.AllCases : [SuperPlayerCore.CmcdMode]
 TypeAlias PlaybackProfile.AllCases : [SuperPlayerCore.PlaybackProfile]
@@ -459,14 +465,29 @@ Var SuperPlayer.Configuration.cmcdMode : SuperPlayerCore.CmcdMode? { get }
 Var SuperPlayer.Configuration.frameOutput : (any SuperPlayerCore.FrameOutput)? { get set }
 Var SuperPlayer.Configuration.policy : (any SuperPlayerCore.PlaybackPolicy)? { get set }
 Var SuperPlayer.Configuration.profile : SuperPlayerCore.PlaybackProfile { get set }
+Var SuperPlayer.Configuration.resilience : (any SuperPlayerCore.PlaybackResilience)? { get set }
 Var SuperPlayer.Configuration.telemetry : (() -> any SuperPlayerCore.TelemetryCollector)? { get set }
 Var SuperPlayer.avPlayer : AVFoundation.AVPlayer { get }
 Var SuperPlayer.configuration : SuperPlayerCore.SuperPlayer.Configuration { get }
 Var SuperPlayer.currentContentId : Swift.String? { get }
+Var SuperPlayer.errors : Combine.AnyPublisher<any Swift.Error, Swift.Never> { get }
 Var SuperPlayer.frameOutputOffReason : SuperPlayerCore.FrameOutputOffReason? { get }
 Var SuperPlayer.frameOutputPixelFormat : Darwin.OSType [static] { get }
 Var SuperPlayer.maxRememberedPositions : Swift.Int [static] { get }
 Var SuperPlayer.playbackDecision : SuperPlayerCore.PlaybackDecision { get }
+Var SuperPlayer.playerError : (any Swift.Error)? { get }
+Var SuperPlayerError.category : SuperPlayerCore.FailureCategory { get }
+Var SuperPlayerError.causeClass : Swift.String { get }
+Var SuperPlayerError.description : Swift.String { get }
+Var SuperPlayerError.errorCode : Swift.Int { get }
+Var SuperPlayerError.errorDomain : Swift.String [static] { get }
+Var SuperPlayerError.errorUserInfo : [Swift.String : Any] { get }
+Var SuperPlayerError.isRetryable : Swift.Bool { get }
+Var SuperPlayerError.lowerSecurityLevelMayHelp : Swift.Bool { get }
+Var SuperPlayerError.positionMs : Swift.Int64? { get }
+Var SuperPlayerError.rungsTried : [Swift.String] { get }
+Var SuperPlayerError.underlyingError : Foundation.NSError { get }
+Var SuperPlayerError.userMessageKey : Swift.String { get }
 Var TelemetryEvent.DecisionChanged.contentId : Swift.String { get }
 Var TelemetryEvent.DecisionChanged.decision : SuperPlayerCore.PlaybackDecision { get }
 Var TelemetryEvent.DecisionChanged.hashValue : Swift.Int { get }
@@ -597,6 +618,10 @@ Var TrackSelectionPolicy.maxVideoHeightPx : Swift.Int? { get set }
 Var TrackSelectionPolicy.pace : SuperPlayerCore.SelectionPace? { get set }
 Var TrackSwitchDirection.hashValue : Swift.Int { get }
 Var TtffStartBoundary.hashValue : Swift.Int { get }
+Var UnplayableSourceSchemeError.description : Swift.String { get }
+Var UnplayableSourceSchemeError.hashValue : Swift.Int { get }
+Var UnplayableSourceSchemeError.loadableSchemes : Swift.Set<Swift.String> [static] { get }
+Var UnplayableSourceSchemeError.scheme : Swift.String { get }
 Var UnsupportedRealtimeCodecError.codec : Swift.String { get }
 Var UnsupportedRealtimeCodecError.description : Swift.String { get }
 Var UnsupportedRealtimeCodecError.hashValue : Swift.Int { get }

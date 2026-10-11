@@ -54,10 +54,13 @@ final class DemoPlayback {
         subsystem: "com.superplayer.demo", category: "Playback")
 
     let player: SuperPlayer
+    /// The output the player was configured with, or nil; held so a screen can read its count.
+    let frameOutput: CountingPassThrough?
     private let session: PlaybackSession
     private var positionObserver: Any?
 
     init(stream: DemoStream, frameOutput: CountingPassThrough? = nil) {
+        self.frameOutput = frameOutput
         var configuration = SuperPlayer.Configuration()
         configuration.telemetry = { QoeCollector(sink: OSLogSink()) }
         configuration.frameOutput = frameOutput
@@ -69,8 +72,9 @@ final class DemoPlayback {
         player.avPlayer.play()
 
         let contentId = stream.contentId
-        // A timescale of 600 is the one AVFoundation's own examples use for video: a whole multiple
-        // of 24, 25 and 30, so no common frame rate's interval rounds.
+        // A timescale of 600 is a whole multiple of 24, 25 and 30, so the interval is exact at every
+        // common frame rate; the two-second interval would be exact at any timescale, but a reader
+        // should not have to check that.
         positionObserver = player.avPlayer.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: Self.positionLogIntervalSeconds, preferredTimescale: 600),
             queue: .main

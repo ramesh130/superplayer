@@ -32,7 +32,6 @@ struct FrameOutputScreen: View {
 
     let stream: DemoStream
 
-    @State private var output = CountingPassThrough()
     @State private var playback: DemoPlayback?
 
     var body: some View {
@@ -45,7 +44,7 @@ struct FrameOutputScreen: View {
             // Read once a second rather than per frame: the count is a reading for a person, and a
             // view invalidated thirty times a second would compete with the picture it describes.
             TimelineView(.periodic(from: .now, by: 1)) { _ in
-                Text("frames through the output: \(output.framesProcessed)")
+                Text("frames through the output: \(playback?.frameOutput?.framesProcessed ?? 0)")
                     .font(.footnote.monospacedDigit())
                     .padding(8)
                     .background(.black.opacity(0.6))
@@ -55,7 +54,13 @@ struct FrameOutputScreen: View {
         }
         .background(.black)
         .navigationTitle(DemoScreen.frameOutput.title)
-        .onAppear { playback = DemoPlayback(stream: stream, frameOutput: output) }
+        // A fresh output per player, so the count starts at zero with the playback it counts; and
+        // guarded as ``PlaybackScreen`` is, for the same reason.
+        .onAppear {
+            if playback == nil {
+                playback = DemoPlayback(stream: stream, frameOutput: CountingPassThrough())
+            }
+        }
         .onDisappear {
             playback?.release()
             playback = nil

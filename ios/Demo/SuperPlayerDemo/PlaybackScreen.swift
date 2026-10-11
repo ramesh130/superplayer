@@ -18,7 +18,7 @@ import SwiftUI
 /// Public HLS through a `SuperPlayer` on SwiftUI's stock `VideoPlayer` — **with no adapter**: the
 /// facade owns an `AVPlayer` and hands it out as `avPlayer`, so every surface that already takes one
 /// (`VideoPlayer`, `AVPlayerViewController`, an `AVPlayerLayer`) takes SuperPlayer's unchanged, as
-/// the Android demo hands its player to a stock `PlayerView` (ADR-0020 rule 3).
+/// the Android demo hands its player to a stock `PlayerView` (ADR-0020 rule 2).
 ///
 /// This is the screen for a player **without** a frame output. With one, `VideoPlayer` would show
 /// the unprocessed picture, which is why ``FrameOutputScreen`` uses the library's `PlayerView`
@@ -38,7 +38,9 @@ struct PlaybackScreen: View {
             }
         }
         .navigationTitle(DemoScreen.playback.title)
-        .onAppear { playback = DemoPlayback(stream: stream) }
+        // Guarded because `onAppear` can fire again without an `onDisappear` between (a tvOS focus
+        // change, a re-entered navigation), and a second player would orphan the first unreleased.
+        .onAppear { if playback == nil { playback = DemoPlayback(stream: stream) } }
         .onDisappear {
             playback?.release()
             playback = nil

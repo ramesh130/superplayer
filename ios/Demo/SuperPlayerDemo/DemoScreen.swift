@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import Foundation
 import SwiftUI
 
 /// The demo's screens, and the one place a new one is added: a case, its title and summary, and its

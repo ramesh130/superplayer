@@ -112,6 +112,39 @@ public struct TestContent: Sendable {
             publication: { _, ports in redundant(files, directory: "", ports: ports) })
     }
 
+    /// ``hls(segmentCount:variantCount:hosts:)`` declaring a FairPlay key per identifier in
+    /// `keyIdentifiers` in its multivariant playlist's `EXT-X-SESSION-KEY`s — the declaration a
+    /// download store reads to know content is protected and which keys to acquire (#425), the iOS
+    /// form of the Kotlin `TestContent.protectedHls` with its `EXT-X-SESSION-KEY`.
+    ///
+    /// **The media is not encrypted and the media playlists declare no `EXT-X-KEY`**, for
+    /// `docs/testing.md`'s *FairPlay on iOS* reason: the simulator has no FairPlay, so nothing here
+    /// can decrypt, and a player of it plays it clear. What it carries is the declaration.
+    ///
+    /// spec: RFC 8216 §4.3.4.5 — `EXT-X-SESSION-KEY`, with `EXT-X-KEY`'s attributes, in a
+    /// multivariant playlist.
+    public static func protectedHls(
+        keyIdentifiers: [String] = [defaultKeyIdentifier], segmentCount: Int = defaultSegmentCount
+    ) -> TestContent {
+        var files = SyntheticHlsStream.files(segmentCount: segmentCount, variantCount: 1)
+        let name = SyntheticHlsStream.multivariantPlaylistName
+        let declarations = keyIdentifiers.map { identifier in
+            "#EXT-X-SESSION-KEY:METHOD=SAMPLE-AES,URI=\"\(identifier)\","
+                + "KEYFORMAT=\"com.apple.streamingkeydelivery\",KEYFORMATVERSIONS=\"1\""
+        }
+        var lines = String(decoding: files[name] ?? [], as: UTF8.self)
+            .split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        // After `#EXTM3U`, which has to be the first line (RFC 8216 §4.3.1.1).
+        lines.insert(contentsOf: declarations, at: 1)
+        files[name] = Array(lines.joined(separator: "\n").utf8)
+        let served = files
+        return TestContent(
+            sourcePath: name, isLive: false, hosts: 1, publication: { _, _ in served })
+    }
+
+    /// The key ``protectedHls(keyIdentifiers:segmentCount:)`` declares unless told otherwise.
+    public static let defaultKeyIdentifier = "skd://keys.example/film-1"
+
     /// A live HLS stream whose origin keeps publishing: a new segment every
     /// `SyntheticHlsStream.segmentDurationMs` of real time from the moment the origin starts, listed
     /// in a sliding window of `SyntheticHlsStream.liveWindowSegmentCount`, so a player reloading its

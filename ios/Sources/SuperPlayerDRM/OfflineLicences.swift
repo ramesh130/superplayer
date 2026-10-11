@@ -69,7 +69,8 @@ public enum OfflineLicences {
 /// core alone, as the Kotlin `OfflineLicenceStore` extends core's `LicenceStore` (ADR-0013 rule 1).
 public final class OfflineLicenceStore: LicenceStore, StoredLicences {
 
-    private let index: OfflineLicenceIndex
+    /// Internal rather than private: a download store's exchanges write into it (#425).
+    let index: OfflineLicenceIndex
 
     init(index: OfflineLicenceIndex) {
         self.index = index
@@ -131,6 +132,14 @@ public final class OfflineLicenceStore: LicenceStore, StoredLicences {
                 licenceDurationRemainingMs: $0.licenceDurationRemainingMs, isExpired: $0.isExpired,
                 renewalDue: $0.renewalDue)
         }
+    }
+
+    package func awaitRelease(_ contentId: String) throws -> Bool {
+        try index.owe(contentId)
+    }
+
+    package func awaitingRelease() throws -> Set<String> {
+        try index.awaitingRelease()
     }
 }
 
@@ -301,17 +310,27 @@ public final class OfflineLicenceExchange {
     /// - Throws: ``OfflineLicenceStoreError/noLicenceHeld(contentId:)``, core's
     ///   ``LicenceExchangeError``, or ``OfflineLicenceStoreError/database(code:message:)``.
     public func release(_ contentId: String) async throws {
+        try await release(contentId, tellingServer: true)
+    }
+
+    /// ``release(_:)``, or its device half alone where `tellingServer` is false — what a download
+    /// store removing content with no network does (#425): every key deleted and its proof recorded
+    /// before any is sent, so the licence is unplayable from the device's side at once and owed only
+    /// to the server.
+    func release(_ contentId: String, tellingServer: Bool) async throws {
         let stored = try held(contentId, awaitingRelease: true)
+        var proofs: [Data] = []
         for identifier in stored.keys.keys.sorted() {
-            let proof: Data
             if let recorded = try index.proofOfDeletion(contentId, identifier) {
-                proof = recorded
+                proofs.append(recorded)
             } else if let key = stored.keys[identifier] {
-                proof = try await protection.invalidate(key: key)
+                let proof = try await protection.invalidate(key: key)
                 try index.recordProofOfDeletion(contentId, identifier, proof)
-            } else {
-                continue
+                proofs.append(proof)
             }
+        }
+        guard tellingServer else { return }
+        for proof in proofs {
             try await protection.tellServer(proofOfDeletion: proof)
         }
         try index.remove(contentId)
@@ -325,8 +344,9 @@ public final class OfflineLicenceExchange {
     }
 
     /// One persistable key per identifier, in order, then all of them written at once — so a
-    /// failure part-way stores nothing rather than half a licence.
-    private func persist(
+    /// failure part-way stores nothing rather than half a licence. Internal, because a download
+    /// store's acquisition is this with the identifiers its manifest read declared (#425).
+    func persist(
         _ contentId: String, _ identifiers: [String], licenceDuration: Duration,
         playbackDuration: Duration
     ) async throws -> OfflineLicence {

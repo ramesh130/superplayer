@@ -45,10 +45,15 @@ public struct DownloadItem: Sendable, Equatable, CustomStringConvertible {
     /// (ADR-0013 rule 8's #251 addendum).
     public let refusal: DownloadRefusal?
 
+    /// The offline licence a protected download holds, read from the licence store the store was
+    /// configured with (``Downloads/Configuration/protection``) — nil for content that declares no
+    /// FairPlay key, and on a store configured with no protection (ADR-0013 rule 13).
+    public let licence: DownloadLicence?
+
     package init(
         contentId: String, state: DownloadState, bytesDownloaded: Int64 = 0,
         percentDownloaded: Double? = nil, failure: SuperPlayerError? = nil,
-        refusal: DownloadRefusal? = nil
+        refusal: DownloadRefusal? = nil, licence: DownloadLicence? = nil
     ) {
         self.contentId = contentId
         self.state = state
@@ -56,6 +61,15 @@ public struct DownloadItem: Sendable, Equatable, CustomStringConvertible {
         self.percentDownloaded = percentDownloaded
         self.failure = failure
         self.refusal = refusal
+        self.licence = licence
+    }
+
+    /// This item with `licence` in place of its own.
+    func with(licence: DownloadLicence?) -> DownloadItem {
+        DownloadItem(
+            contentId: contentId, state: state, bytesDownloaded: bytesDownloaded,
+            percentDownloaded: percentDownloaded, failure: failure, refusal: refusal,
+            licence: licence)
     }
 
     /// Equal where every field is, the failure by its class: a `SuperPlayerError` carries the
@@ -65,12 +79,56 @@ public struct DownloadItem: Sendable, Equatable, CustomStringConvertible {
             && lhs.bytesDownloaded == rhs.bytesDownloaded
             && lhs.percentDownloaded == rhs.percentDownloaded
             && lhs.failure?.causeClass == rhs.failure?.causeClass && lhs.refusal == rhs.refusal
+            && lhs.licence == rhs.licence
     }
 
     public var description: String {
         let percent = percentDownloaded.map { "\(Int($0))%" } ?? "?%"
         let why = failure.map { " \($0.causeClass)" } ?? refusal.map { " \($0)" } ?? ""
-        return "\(contentId) \(state) \(percent) \(bytesDownloaded)B\(why)"
+        let licence = licence.map { ", licence \($0)" } ?? ""
+        return "\(contentId) \(state) \(percent) \(bytesDownloaded)B\(why)\(licence)"
+    }
+}
+
+/// What a protected download's licence allows, readable before any player is made — the Kotlin
+/// `DownloadLicence`, and the difference between `PRD.md` §3.2's "go online and refresh this
+/// download", which a viewer can act on, and "playback error", which they cannot (ADR-0012 rule 9).
+///
+/// How long each of the licence's two durations has left is the licence store's to answer
+/// (`OfflineLicenceStore.licence(for:)`); this carries what follows from them, which is what a list
+/// of downloads shows. Read from the store whenever the item is read, so a licence that ran out
+/// since the download completed says so.
+public struct DownloadLicence: Sendable, Equatable, CustomStringConvertible {
+
+    /// Whether either duration has run out, so a player of the download would fail rather than
+    /// play. A completed download with an expired licence is still completed: its bytes are there.
+    public let isExpired: Bool
+
+    /// Whether the licence should be renewed now, on the licence store's threshold. Reported and
+    /// never acted on: nothing renews a licence on its own, since when to run background work is the
+    /// consumer's (ADR-0012 rule 10), and renewing is the licence store's verb.
+    public let renewalDue: Bool
+
+    /// An expired licence as the typed error playing it would end with — `Drm.licenceExpired`, with
+    /// its own message key — so the words a viewer is shown can be chosen before they press play.
+    /// Nil for a licence that has not expired, and on a store configured with no resilience, which
+    /// has nobody to name it (ADR-0013 rule 14).
+    public let expiry: SuperPlayerError?
+
+    init(isExpired: Bool, renewalDue: Bool, expiry: SuperPlayerError?) {
+        self.isExpired = isExpired
+        self.renewalDue = renewalDue
+        self.expiry = expiry
+    }
+
+    /// Equal where every field is, the expiry by its class, for ``DownloadItem``'s reason.
+    public static func == (lhs: DownloadLicence, rhs: DownloadLicence) -> Bool {
+        lhs.isExpired == rhs.isExpired && lhs.renewalDue == rhs.renewalDue
+            && lhs.expiry?.causeClass == rhs.expiry?.causeClass
+    }
+
+    public var description: String {
+        isExpired ? "expired" : renewalDue ? "renewal due" : "valid"
     }
 }
 

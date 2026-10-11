@@ -1091,12 +1091,18 @@ classify an unfinished session are the ones ADR-0021 rule 4's #412 addendum admi
 because the iOS facade adds nothing between `AVPlayer` and the corpus yet, so there is no typed
 failure to record. Every entry plays at once, from an origin of its own, inside one forty-second
 budget, so the table costs one budget rather than nineteen; it read the same on consecutive runs
-before it was committed. The table is a Swift literal edited **by hand**, as the Kotlin record is: a
-moved row fails with the whole observation printed as that literal, and the change that moves it
-writes the reason beside the row. Two rows differ from Android's, and both are findings rather than
-gaps: `hls-dangling-audio-group`, which Media3 plays, fails in AVFoundation; and
-`hls-cached-live-playlist` stalls at the live edge with no error inside the budget, where core names
-the cache.
+before it was committed, and one row has since been shown to depend on the host's clock (#459): a
+live entry is judged against the wall clock, so `hls-cached-live-playlist` stalls at the live edge on
+a fast host, or rejoins the unchanged window later on the live timeline and replays it — a position
+past the media, read as degraded — if it waits long enough, and fails with -12889 or never starts on
+a host whose responses arrive a target duration late. That row accepts the four, listed in
+`timingDependent` with each mechanism traced, and any other outcome still fails. The table is a
+Swift literal edited **by hand**, as the Kotlin record is: a moved row fails with the whole
+observation printed as that literal, and the change that moves it writes the reason beside the row.
+Two rows differ from Android's, and both are findings rather than gaps: `hls-dangling-audio-group`,
+which Media3 plays, fails in AVFoundation; and `hls-cached-live-playlist` freezes with no error it
+fails with, where core names the cache — its error log carries -12888, the playlist unchanged, which
+nothing surfaces.
 
 ## The layers above the fakes
 

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import AVFoundation
+import SuperPlayerCore
 import SuperPlayerResilience
 import XCTest
 
@@ -135,6 +136,23 @@ final class ErrorClassifierTests: XCTestCase {
                 NSError(domain: AVFoundationErrorDomain, code: AVError.Code.unknown.rawValue),
                 logged(mediaPlaylist, -12888)),
             .transient(.cdnEdge))
+    }
+
+    /// Core's conclusion is read first and mapped by the likely cause core filled in (#421) — the
+    /// Kotlin `namedByCore` — whatever the evidence beside it would have said on its own.
+    func testAStaleLivePlaylistIsMappedByItsLikelyCause() {
+        func stale(_ cause: StaleLivePlaylistError.LikelyCause?) -> NSError {
+            StaleLivePlaylistError(
+                playlistURL: mediaPlaylist, targetDurationMs: cause == nil ? nil : 2_000,
+                unchangedForMs: cause == nil ? nil : 6_000, servedCacheControl: nil,
+                likelyCause: cause) as NSError
+        }
+        XCTAssertEqual(classify(stale(.intermediaryCache), nil), .transient(.cdnEdge))
+        XCTAssertEqual(classify(stale(.origin), nil), .content(.segmentGap))
+        // Below iOS 18 nobody could tell: the edge, as AVFoundation's own -12888 row reads.
+        XCTAssertEqual(classify(stale(nil), nil), .transient(.cdnEdge))
+        // A log entry naming a refused segment beside it does not outrank what core concluded.
+        XCTAssertEqual(classify(stale(.origin), logged(segment, -12938)), .content(.segmentGap))
     }
 
     func testEachAVFoundationRow() {

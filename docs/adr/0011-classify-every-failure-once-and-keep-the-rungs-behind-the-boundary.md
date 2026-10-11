@@ -11,6 +11,8 @@
   which #182 needed no widening of.
   Amended 2026-10-11 (#419) by an addendum at rule 1, recording the classifier's evidence on Apple
   platforms.
+  Amended 2026-10-12 (#421) by an addendum at rule 4, recording where core's stale-playlist
+  detection sits on Apple platforms.
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
 - **Refines:** [ADR-0005](0005-decide-playback-policy-behind-an-engine-agnostic-boundary.md)
@@ -243,6 +245,23 @@ Fourteen rules follow, and they are binding.
    still apply, because a playlist frozen at one edge may be live at another. Adding a detection to
    core is the same decision this rule records, taken again with the same test: is the consumer
    with only core the one who needs it?
+
+   *Addendum (2026-10-12, #421).* On Apple platforms core detects a frozen live playlist and raises
+   `StaleLivePlaylistError` with the Kotlin fields, and the classifier maps it by its likely cause
+   exactly as this rule says. Two things differ, and both follow from AVFoundation rather than from a
+   new decision. **Detected, never repaired**: no request can be reissued (ADR-0020 rule 6), so the
+   cache-bypassing reload does not exist, `cacheBypassingReloads` is zero, and the progress read is
+   the item's live edge rather than a parsed media sequence. **Only on a player configured with
+   resilience**, which is this rule's own test answered the other way. On Android the frozen
+   playlist ends the session with or without core's layer, which only names the ending; a consumer
+   with only core needs the name. `AVPlayer` never ends the session at all — it waits at the frozen
+   edge — so detection here *ends* a session, and ending a session with an error is rung 6's
+   delivery, which on this platform is the resilience product's. A consumer with only core keeps
+   AVFoundation's behaviour unchanged and pays nothing for it (rule 14). Below iOS 18 core counts
+   AVFoundation's own -12888 log entries ("playlist unchanged"): a code read to *detect*, never to
+   name — the class is still read off the typed error by the classifier, so rule 1's one `switch`
+   is not a second one. And because no item fails, core hands the ending to the collector itself
+   (`TelemetryCollector.sessionFailed`), so rule 10's telemetry half holds as rule 3 has it.
 
 5. **Core performs the two rungs that are player-state operations, and only when asked.** Moving
    to the next source in `MediaRequest.sources` (rung 4) is a re-adoption through core's own

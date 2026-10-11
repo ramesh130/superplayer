@@ -201,12 +201,23 @@ public protocol TelemetryCollector {
     /// collector already listens to — while here every item is observed by registration. A default
     /// that does nothing is provided, so a collector that observes no item is unchanged.
     func contentReopened(after failure: SuperPlayerError)
+
+    /// Core ended the open session on `failure` although its item never failed — a live playlist
+    /// that stopped advancing, which AVFoundation waits on rather than failing
+    /// (`StaleLivePlaylistDetection.swift`, #421). Reported as any failure is (ADR-0011 rules 3 and
+    /// 10): the item's own failure is what a collector otherwise hears, and here there is none to
+    /// hear. A default that does nothing is provided, so a collector that observes no item is
+    /// unchanged.
+    func sessionFailed(_ failure: SuperPlayerError)
 }
 
 extension TelemetryCollector {
 
     /// Does nothing: a collector that registers nothing on an item has nothing to move.
     public func contentReopened(after failure: SuperPlayerError) {}
+
+    /// Does nothing: a collector that hears no failure has nothing to report.
+    public func sessionFailed(_ failure: SuperPlayerError) {}
 }
 
 extension SuperPlayer {

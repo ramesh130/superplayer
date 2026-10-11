@@ -15,7 +15,7 @@
 import AVFoundation
 
 /// Rung 6 of ADR-0011's ladder: what a failure *was*, once every rung below it has been exhausted —
-/// the Kotlin `SuperPlayerError`, field for field but one.
+/// the Kotlin `SuperPlayerError`, field for field.
 ///
 /// A consumer is handed one on ``SuperPlayer/errors`` and reads the last one off
 /// ``SuperPlayer/playerError``: the facade's error publisher, which is where a failure of the facade
@@ -27,9 +27,9 @@ import AVFoundation
 /// `NSUnderlyingErrorKey`, so nothing AVFoundation said is lost.
 ///
 /// **The shape** is `PRD.md` §3.2's — a cause class, a user-facing string key, and whether it is
-/// retryable — with ADR-0011 rule 10's additions: the rungs tried and the position reached. The
-/// Kotlin `likelyCause` has no counterpart: it is read off core's `StaleLivePlaylistException`, which
-/// core's transfer chain raises, and the chain does not port (ADR-0020 rule 6).
+/// retryable — with ADR-0011 rule 10's additions: the rungs tried and the position reached — and
+/// ``likelyCause``, read off a ``StaleLivePlaylistError`` the session ended on (#421; until then it
+/// had no counterpart, because the Kotlin one is raised by a transfer chain that does not port).
 ///
 /// Every value is decided by `SuperPlayerResilience`'s classifier and its taxonomy, the one place a
 /// failure acquires a meaning (ADR-0011 rule 1). This type carries that conclusion across the product
@@ -72,15 +72,22 @@ public struct SuperPlayerError: Error, Sendable, CustomStringConvertible, Custom
     /// had no position to report — the Kotlin `C.TIME_UNSET`.
     public let positionMs: Int64?
 
+    /// Which party a frozen live playlist points at, where the session ended on a
+    /// ``StaleLivePlaylistError`` that could tell — the Kotlin `likelyCause`, read from the typed error
+    /// and never re-derived. Nil for every other failure, and for a stale playlist below iOS 18,
+    /// where no response is readable.
+    public let likelyCause: StaleLivePlaylistError.LikelyCause?
+
     /// AVFoundation's own error, kept underneath so nothing the engine said is lost: the item's
     /// `error`, whose own `NSUnderlyingErrorKey` is usually the `CoreMediaErrorDomain` code naming
-    /// the HTTP status.
+    /// the HTTP status — or, for a live playlist that stopped advancing, which AVFoundation never
+    /// fails, core's ``StaleLivePlaylistError``, to which it bridges back.
     public let underlyingError: NSError
 
     package init(
         causeClass: String, userMessageKey: String, isRetryable: Bool, category: FailureCategory,
         lowerSecurityLevelMayHelp: Bool, rungsTried: [String], positionMs: Int64?,
-        underlyingError: NSError
+        likelyCause: StaleLivePlaylistError.LikelyCause? = nil, underlyingError: NSError
     ) {
         self.causeClass = causeClass
         self.userMessageKey = userMessageKey
@@ -89,6 +96,7 @@ public struct SuperPlayerError: Error, Sendable, CustomStringConvertible, Custom
         self.lowerSecurityLevelMayHelp = lowerSecurityLevelMayHelp
         self.rungsTried = rungsTried
         self.positionMs = positionMs
+        self.likelyCause = likelyCause
         self.underlyingError = underlyingError
     }
 

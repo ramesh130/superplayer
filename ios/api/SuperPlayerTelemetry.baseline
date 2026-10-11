@@ -11,6 +11,7 @@ Func QoeCollector.decisionChanged(_:trigger:) : (), SuperPlayerCore.PlaybackDeci
 Func QoeCollector.declareIntent(monotonicTimeMs:) : (), Swift.Int64
 Func QoeCollector.detach() : ()
 Func QoeCollector.endSession() : ()
+Func QoeCollector.sessionFailed(_:) : (), SuperPlayerCore.SuperPlayerError
 Func QoeCollector.startSession(contentId:sessionId:) : (), Swift.String, Swift.String
 Func SessionTrace.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerTelemetry.SessionTrace, SuperPlayerTelemetry.SessionTrace [static]
 Func SessionTrace.format() : Swift.String

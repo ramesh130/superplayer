@@ -148,6 +148,18 @@ most `SuperPlayer.maxDecoderRecreations` (two) times at one position. A repaired
 consumer, and telemetry hears it through `TelemetryCollector.contentReopened(after:)`. A re-adoption
 resumes at the rate the viewer last asked for (`resilienceRateChanged`), because a failed item drops
 the rate to zero with no reason given. The new asset changes the CMCD `sid` and not the session.
+#421 is i5's exit, with one fault left open (below). A frozen live playlist fails nothing in AVFoundation, which waits at the edge, so on a
+player configured with resilience core watches for it (`StaleLivePlaylistDetection.swift`, ADR-0011
+rule 4's #421 addendum) and ends the session on `StaleLivePlaylistError`, the Kotlin exception's
+fields, with `SuperPlayerError.likelyCause` read off it and the ending told to telemetry through
+`TelemetryCollector.sessionFailed(_:)`. "Unchanged" is the item's live edge standing
+still past 2.5 target durations at a media-playlist answer from iOS 18's request events, with the
+target read from the longest segment. Below 18 it is AVFoundation's third -12888 log entry, and the
+fields the log cannot carry are nil. `FaultSweepTests` plays every `FaultScript.Kind`, a
+`CaseIterable` that an exhaustive `switch` holds the sweep to in place of the Kotlin reflection.
+`FallbackRungCoverageTests` names the forcing test per rung and says why rungs 1–3 have none. One
+fault still stalls: a segment that never answers inside AVFoundation's wait (`docs/testing.md`, *The
+fault sweep on iOS*).
 `SuperPlayerMoQ` is not declared yet — its binary target is
 i9's — and there is no `SuperPlayerCache`, since its content is the offline store's.
 

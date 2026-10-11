@@ -137,7 +137,8 @@ final class ObservedSignalRegisterTests: XCTestCase {
     /// `SyntheticHlsFixturesTests` reads its fixtures, and every registration call must be in the
     /// register's own file — or in the session's (`SessionSignals.swift`, #403), the one other register
     /// core holds, since a `PlaybackSession` is an object of its own over a player and what it
-    /// observes is counted by `PlaybackSessionTests` rather than here.
+    /// observes is counted by `PlaybackSessionTests` rather than here. An `AVMetricEventStream` is a
+    /// registration too (#421), and is held to the same file.
     func testNoCoreSourceButTheRegisterRegistersAnObservation() throws {
         let sources = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -151,7 +152,7 @@ final class ObservedSignalRegisterTests: XCTestCase {
 
         let registrations = [
             "addObserver(", ".observe(", "addPeriodicTimeObserver(", "addBoundaryTimeObserver(",
-            "NWPathMonitor(",
+            "NWPathMonitor(", "metrics(forType:",
         ]
         let registers: Set = ["ObservedSignals.swift", "SessionSignals.swift"]
         for file in files where !registers.contains(file.lastPathComponent) {

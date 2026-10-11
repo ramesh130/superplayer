@@ -213,11 +213,12 @@ final class PlayerPoolTests: XCTestCase {
 
         XCTAssertEqual(
             reused.liveObservations,
-            // Every signal but the frame output's, which this pool's players have none of (#405);
-            // `FrameOutputPaysNothingTests` counts a recycled player that has one.
+            // Every signal but the frame output's and resilience's, which this pool's players have
+            // none of (#405, #419); `FrameOutputPaysNothingTests` and `ResiliencePaysNothingTests`
+            // count a recycled player that has each.
             Dictionary(
                 uniqueKeysWithValues: ObservedSignal.allCases.filter {
-                    $0.scope != .frameOutputItem
+                    $0.scope != .frameOutputItem && $0.scope != .resilienceItem
                 }
                 .map { ($0, 1) }))
         pool.release()

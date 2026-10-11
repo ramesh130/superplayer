@@ -324,7 +324,8 @@ enum LifecycleEvent: Equatable, Sendable {
             self = .rateChanged(byInterruption: reason == .audioSessionInterrupted)
         case .playerTimeControlStatus:
             self = .timeControlStatusChanged
-        case .itemPlayedToEnd, .itemTimeJumped, .frameOutputItemTimeJumped:
+        case .itemPlayedToEnd, .itemTimeJumped, .frameOutputItemTimeJumped, .resilienceItemStatus,
+            .resilienceItemFailedToPlayToEnd:
             // An item's signals are never registered on a player (``Observation``).
             self = .unreadable
         }

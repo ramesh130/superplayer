@@ -136,9 +136,15 @@ let package = Package(
             dependencies: ["SuperPlayerPreload"],
             path: "ios/Tests/SuperPlayerPreloadTests"
         ),
+        // Core, the harness and the collector too, because the typed error's tests play and read
+        // telemetry's classification: both are phase 2, below this one, as superplayer-resilience's
+        // own TypedErrorPlaybackTest drives the Kotlin harness and QoeCollector.
         .testTarget(
             name: "SuperPlayerResilienceTests",
-            dependencies: ["SuperPlayerResilience"],
+            dependencies: [
+                "SuperPlayerResilience", "SuperPlayerCore", "SuperPlayerTestkit",
+                "SuperPlayerTelemetry",
+            ],
             path: "ios/Tests/SuperPlayerResilienceTests"
         ),
         .testTarget(

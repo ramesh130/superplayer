@@ -356,7 +356,11 @@ public final class QoeCollector: TelemetryCollector {
         guard let session = openSession, !session.failed else { return }
         session.failed = true
         let now = Self.now()
-        let failure = Self.playbackFailure(error, errorLog: session.item.errorLog())
+        // Asked of the player as a consumer would, for `classify`'s reason: this product is not
+        // resilience's, and the typed error a consumer was handed and this event are one answer.
+        let classified = error.flatMap { player?.classify($0) }
+        let failure = Self.playbackFailure(
+            error, errorLog: session.item.errorLog(), classified: classified)
         if session.firstFrameAtMs == nil {
             emit(
                 .startupFailed(
@@ -611,9 +615,14 @@ extension QoeCollector {
     }
 
     /// What failed, in SuperPlayer's vocabulary rather than AVFoundation's — the Kotlin
-    /// `toPlaybackFailure`, before Phase 5: a coarse bucket, the engine's code, its message, and no
-    /// classification, because the classifier is `SuperPlayerResilience`'s (#419) and a second
-    /// taxonomy here would give a data team two answers to one question.
+    /// `toPlaybackFailure`.
+    ///
+    /// `classified` is `SuperPlayerResilience`'s answer where the player had one to give (#419), and
+    /// it settles both fields a classification touches (ADR-0011 rule 3): `classification` is its
+    /// stable name and `category` *its* row of the classifier's one-to-one table, rather than this
+    /// function's reading of the same failure. Nothing here interprets it — no branch on the name,
+    /// no table of its own. With no classification — a player configured without resilience — both
+    /// fall back to exactly what this reported before #419: the coarse bucket below, and nil.
     ///
     /// `code` is the error's domain and code, `"<domain>:<code>"`: a string, as the Kotlin
     /// `errorCodeName` is, because it is a grouping key and must survive an SDK that adds codes.
@@ -622,18 +631,23 @@ extension QoeCollector {
     /// refused segment reports a generic AVFoundation error, while its error log's last entry
     /// names the HTTP status that caused it. The log is read at the failure rather than observed,
     /// because an entry that was recovered from is not a failure in this schema.
-    static func playbackFailure(_ error: NSError?, errorLog: AVPlayerItemErrorLog?)
-        -> PlaybackFailure
-    {
+    static func playbackFailure(
+        _ error: NSError?, errorLog: AVPlayerItemErrorLog?, classified: SuperPlayerError? = nil
+    ) -> PlaybackFailure {
         let logged = errorLog?.events.last
         return PlaybackFailure(
-            category: category(error, loggedStatus: logged?.errorStatusCode),
+            category: classified?.category
+                ?? category(error, loggedStatus: logged?.errorStatusCode),
             code: error.map { "\($0.domain):\($0.code)" },
-            message: error?.localizedDescription ?? logged?.errorComment)
+            message: error?.localizedDescription ?? logged?.errorComment,
+            classification: classified?.causeClass)
     }
 
     /// The bucket, from the error's domain and code where they say enough, else from the error
-    /// log's status.
+    /// log's status — the reading of a player with no classifier, and the analogue of the Kotlin
+    /// band bucketing. It names a bucket and never a class, so it is not a second taxonomy
+    /// (ADR-0011 rule 1), and where a classification exists it is not consulted at all; the
+    /// classifier's switch is the only one that assigns a meaning.
     ///
     /// ref: https://developer.apple.com/documentation/avfoundation/averror/code — the codes named
     /// below; every other AVFoundation code is `unknown` rather than guessed at, which is the band

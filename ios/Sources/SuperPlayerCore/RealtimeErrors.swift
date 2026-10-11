@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import Foundation
+
 /// A realtime stream was asked to start somewhere other than at its live edge, and the request was
 /// refused rather than coerced (ADR-0018 rule 5) — the Kotlin `RealtimeStreamNotSeekableException`,
 /// under Swift's `Error` suffix as ``CmcdModeUnsupportedError`` is.
@@ -121,5 +123,58 @@ public struct MalformedRealtimeBitstreamError: Error, Sendable, Hashable, Custom
 
     public var description: String {
         "Malformed realtime bitstream for codec \"\(codec)\": \(reason)."
+    }
+}
+
+/// A ``SuperPlayer`` was handed a source whose scheme `AVPlayer` cannot load, and refused it rather
+/// than letting it fail as an unplayable URL — ADR-0020 rule 11's refusal, naming `RealtimePlayer`,
+/// the player a realtime transport's scheme belongs to. The mirror of `RealtimePlayer`'s
+/// `UnansweredRealtimeSchemeError`, which names `SuperPlayer`: the split between the two player
+/// types is only honest if the wrong half says where the right one is.
+///
+/// Delivered on ``SuperPlayer/errors`` and left on ``SuperPlayer/playerError``, **before any of
+/// adoption's bookkeeping runs**, so a refused request leaves the player exactly as it was — playing
+/// whatever it was playing, its remembered positions and its measurement session untouched.
+///
+/// **What counts as realtime is a rule over schemes, not a registry** (ADR-0020 rule 11's #419
+/// addendum). `AVPlayer` loads `http`, `https` and `file` and nothing else — anything else fails as
+/// `NSURLErrorUnsupportedURL` — so a source naming any other scheme cannot be a `SuperPlayer`'s, and
+/// a transport's scheme is the one kind of URL a consumer of this library hands over that is not one
+/// of the three. A registry that `Realtime.transport(scheme:)` filled would make the refusal depend
+/// on whether the realtime sources happened to be built before the request reached the wrong player,
+/// in process-wide state; the rule depends on nothing. Its cost is a typo — `htps:` is refused
+/// naming `RealtimePlayer` too — and the description says which three schemes were expected, so the
+/// typo reads as one. A custom scheme served through `AVAssetResourceLoaderDelegate` is the one
+/// other kind of URL `AVPlayer` would take, and ADR-0020 rule 6 already forbids it.
+///
+/// It carries no failure class, for `HttpStackUnsupportedException`'s reason: a class answers which
+/// rung may be climbed, and this is a request a player of this type can never honour, refused before
+/// any playback exists — so it arrives on a player configured without resilience as well.
+public struct UnplayableSourceSchemeError: Error, Sendable, Hashable, CustomStringConvertible {
+
+    /// The scheme the refused source carried, as written; empty for a URL with none.
+    public let scheme: String
+
+    /// The schemes `AVPlayer` loads, and therefore the only ones a `SuperPlayer` source may carry.
+    ///
+    /// ref: https://developer.apple.com/documentation/avfoundation/avurlasset — an asset is a local
+    /// file or a remote resource over HTTP(S); and observed by #419 on the iOS 27.1 simulator: a
+    /// `moq:` URL handed to a stock `AVPlayer` fails its item with `NSURLErrorDomain` -1002.
+    public static let loadableSchemes: Set<String> = ["http", "https", "file"]
+
+    package init(scheme: String) {
+        self.scheme = scheme
+    }
+
+    /// Whether `url` names a scheme `AVPlayer` can load, compared without case (RFC 3986 §3.1).
+    package static func isLoadable(_ url: URL) -> Bool {
+        loadableSchemes.contains(url.scheme?.lowercased() ?? "")
+    }
+
+    public var description: String {
+        "A SuperPlayer plays what AVPlayer loads, which is http, https and file sources; "
+            + "\"\(scheme)\" is none of them. A realtime transport's scheme is a RealtimePlayer's to "
+            + "play (SuperPlayerRealtime's Realtime.transport(scheme:)), and the request was refused "
+            + "without touching what this player was playing."
     }
 }

@@ -46,12 +46,15 @@ final class ObservedSignalRegisterTests: XCTestCase {
     }
 
     /// Every signal a player configured with nothing but content registers, once: all of the
-    /// register but the frame output's, which `FrameOutputPaysNothingTests` counts on a player that
-    /// has one and on one that does not (ADR-0022 rule 9).
+    /// register but the frame output's and resilience's, which `FrameOutputPaysNothingTests` and
+    /// `ResiliencePaysNothingTests` count on a player that has the feature and on one that does not
+    /// (ADR-0022 rule 9, ADR-0011 rule 14).
     private var everySignalOnce: [ObservedSignal: Int] {
         Dictionary(
-            uniqueKeysWithValues: ObservedSignal.allCases.filter { $0.scope != .frameOutputItem }
-                .map { ($0, 1) })
+            uniqueKeysWithValues: ObservedSignal.allCases.filter {
+                $0.scope != .frameOutputItem && $0.scope != .resilienceItem
+            }
+            .map { ($0, 1) })
     }
 
     /// The lifecycle's signals, each once: what every player observes for its whole life (#402).

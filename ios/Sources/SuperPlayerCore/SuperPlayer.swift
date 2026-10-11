@@ -16,6 +16,9 @@ import AVFoundation
 // For `AVPlayerItem.externalMetadata` alone, which is an AVKit addition to the AVFoundation type;
 // `Package.swift` says why the framework is also linked by name.
 import AVKit
+// For ``SuperPlayer/errors``, the facade's error publisher: Apple's own, and what AVFoundation's
+// key-value observations are already consumed through.
+import Combine
 
 /// A production playback layer over `AVPlayer`: content identity and resume positions today, and
 /// policy, resilience, observability and lifecycle as the phases of `docs/ios-plan.md` arrive.
@@ -110,6 +113,18 @@ public final class SuperPlayer {
         /// (``PlaybackProtection``). A frame output on a player that has one is off
         /// (``SuperPlayer/frameOutputOffReason``).
         package var protection: (any PlaybackProtection)?
+
+        /// What names this player's failures, or nil — the default — for a player that classifies
+        /// nothing and pays nothing for it (ADR-0011 rule 14): no observation of an item's failure,
+        /// no ``SuperPlayerError``, ``SuperPlayer/classify(_:)`` answering nil, and telemetry's
+        /// `classification` nil. Its errors stay AVFoundation's, on the item. The Android
+        /// `setResilience`, taking `SuperPlayerResilience`'s `Resilience.standard()`.
+        ///
+        /// ```swift
+        /// var configuration = SuperPlayer.Configuration()
+        /// configuration.resilience = Resilience.standard()
+        /// ```
+        public var resilience: (any PlaybackResilience)?
     }
 
     /// The configuration this player was made with.
@@ -159,6 +174,40 @@ public final class SuperPlayer {
     /// The frame output's display path (`FramePath.swift`), or nil on a player without one running.
     let framePath: FramePath?
 
+    /// What ``Configuration/resilience`` answers a failure with, or nil on a player configured
+    /// without one, or with a value that conforms to ``PlaybackResilience`` alone.
+    private let classifier: (any FailureClassifying)?
+
+    /// The typed error the current item's failure was classified as, decided once per item so that
+    /// ``classify(_:)``, the publisher and the collector are one answer rather than three (the Kotlin
+    /// `failureTypedError` memo). Cleared at every replacement.
+    private var decidedFailure: SuperPlayerError?
+
+    /// Whether ``errors`` has been handed the current item's failure.
+    private var failureDelivered = false
+
+    /// What ``errors`` publishes from.
+    private let errorSubject = PassthroughSubject<any Error, Never>()
+
+    /// The last error ``errors`` delivered, or nil — the Kotlin `player.playerError` — cleared when
+    /// the facade replaces the content, so it is always about what is current.
+    ///
+    /// A ``SuperPlayerError`` for an item that failed on a player configured with
+    /// ``Configuration/resilience``, and an ``UnplayableSourceSchemeError`` for a source refused on
+    /// any player. Nil for an item that failed on a player without resilience, whose error is
+    /// AVFoundation's and stays on `avPlayer.currentItem?.error`, unchanged (ADR-0011 rule 14).
+    public private(set) var playerError: (any Error)?
+
+    /// **The facade's error publisher**: every failure this player has something to say about, once,
+    /// on the main actor, as it happens — the Kotlin `Player.Listener.onPlayerError` and rung 6's
+    /// delivery (ADR-0011 rule 10, `docs/ios-plan.md` §3.5).
+    ///
+    /// What arrives is what ``playerError`` describes. Combine's publisher rather than a callback of
+    /// SuperPlayer's own, because it is Apple's idiom for an event several parties hear (ADR-0020
+    /// rule 5) — a view, the app's error reporting — and rather than an `AsyncStream`, which has one
+    /// consumer. A subscriber hears what fails after it subscribed; ``playerError`` is the last one.
+    public var errors: AnyPublisher<any Error, Never> { errorSubject.eraseToAnyPublisher() }
+
     public convenience init(configuration: Configuration = Configuration()) {
         self.init(configuration: configuration, lifecycle: .system)
     }
@@ -174,6 +223,7 @@ public final class SuperPlayer {
         self.lifecycle = LifecycleBinding(player: avPlayer, shared: lifecycle)
         knobs.apply(to: avPlayer)
         self.framePath = FramePath.make(configuration: configuration, player: avPlayer)
+        self.classifier = configuration.resilience as? any FailureClassifying
         self.collector = configuration.telemetry?()
         self.measurement = collector.map { _ in MeasurementSession() }
         collector?.attach(to: self)
@@ -186,8 +236,12 @@ public final class SuperPlayer {
     /// current item and does not start playback. The outgoing content's position is remembered
     /// first, so a later ``MediaRequest/StartPosition/resumeFromLastKnown`` for it returns here; that
     /// order is also why a request resuming the content already playing resumes where it is.
+    ///
+    /// A request whose first source names a scheme `AVPlayer` cannot load — a realtime transport's —
+    /// is refused before anything else runs, with ``UnplayableSourceSchemeError`` on ``errors``,
+    /// leaving the player exactly as it was (ADR-0020 rule 11).
     public func setMediaRequest(_ request: MediaRequest) {
-        guard !isReleased else { return }
+        guard !isReleased, admits(request.sources[0]) else { return }
         rememberPositionOfCurrentContent()
         load(request, startingAtMs: resolvedStartPositionMs(of: request))
     }
@@ -235,8 +289,10 @@ public final class SuperPlayer {
     /// replacing a request forgets where the request was; here this method is the facade's, and
     /// remembering at every replacement it makes is the promise
     /// ``MediaRequest/StartPosition/resumeFromLastKnown`` states.
+    ///
+    /// A URL whose scheme `AVPlayer` cannot load is refused as ``setMediaRequest(_:)`` refuses one.
     public func setMediaURL(_ url: URL) {
-        guard !isReleased else { return }
+        guard !isReleased, admits(url) else { return }
         rememberPositionOfCurrentContent()
         endMeasurement()
         replaceCurrentItem(with: AVPlayerItem(url: url), identified: false)
@@ -253,6 +309,7 @@ public final class SuperPlayer {
         collector?.detach()
         isReleased = true
         observations = []
+        forgetFailure()
         lifecycle.release()
         framePath?.detach()
         avPlayer.replaceCurrentItem(with: nil)
@@ -302,6 +359,7 @@ public final class SuperPlayer {
         observations = []
         currentItemEnded = false
         currentRequest = nil
+        forgetFailure()
         avPlayer.replaceCurrentItem(with: nil)
 
         avPlayer.defaultRate = 1
@@ -351,9 +409,10 @@ public final class SuperPlayer {
         observations = []
         currentItemEnded = false
         currentRequest = nil
+        forgetFailure()
         knobs.apply(to: item)
         if identified {
-            observations = [
+            observations += [
                 Observation.register(.itemPlayedToEnd, on: item) { [weak self] in
                     self?.currentItemEnded = true
                 },
@@ -362,8 +421,85 @@ public final class SuperPlayer {
                 },
             ]
         }
+        if classifier != nil {
+            // On every item, a bare URL's included: a failure is classifiable whatever named it.
+            observations += [ObservedSignal.resilienceItemStatus, .resilienceItemFailedToPlayToEnd]
+                .map { signal in
+                    Observation.registerFailure(signal, on: item) { [weak self, weak item] error in
+                        guard let self, let item else { return }
+                        self.itemFailed(item, with: error)
+                    }
+                }
+        }
         framePath?.attach(to: item)
         avPlayer.replaceCurrentItem(with: item)
+    }
+
+    /// Names `item`'s failure and delivers it, once per item — the status and the notification can
+    /// both report one failure — and only while `item` is still the current one, so a late
+    /// notification for content already replaced is not mistaken for the new content's.
+    private func itemFailed(_ item: AVPlayerItem, with error: NSError?) {
+        guard item === avPlayer.currentItem, !failureDelivered,
+            let error = error ?? item.error as NSError?, let typed = classify(error)
+        else { return }
+        failureDelivered = true
+        deliver(typed)
+    }
+
+    /// What `error` was, in SuperPlayer's vocabulary: the ``SuperPlayerError`` it ended — or will
+    /// end — the current item on, or nil on a player configured without
+    /// ``Configuration/resilience``, which has nobody to ask (ADR-0011 rule 14). The Kotlin
+    /// `player.classify(error)`.
+    ///
+    /// Public for the Kotlin reason: `SuperPlayerTelemetry` is not core's, and reaches the answer as
+    /// a consumer does — asking the player is what makes telemetry's `classification` and the typed
+    /// error a consumer was handed one answer rather than two. An app with error reporting of its
+    /// own has the same question. Pass AVFoundation's error, the item's `error` or the one a
+    /// notification carried; a ``SuperPlayerError`` is answered with itself.
+    ///
+    /// The evidence is read off the *current* item — its error log's last entry, which is where
+    /// AVFoundation names the request that failed, and its asset's URL — so ask while the failed
+    /// item is current; the answer is decided once per item and the same thereafter.
+    public func classify(_ error: any Error) -> SuperPlayerError? {
+        guard let classifier else { return nil }
+        if let typed = error as? SuperPlayerError { return typed }
+        if let decidedFailure { return decidedFailure }
+        let item = avPlayer.currentItem
+        let typed = classifier.typedError(
+            for: error as NSError, loggedFailure: item?.errorLog()?.events.last,
+            playlistURL: (item?.asset as? AVURLAsset)?.url,
+            positionMs: item.flatMap { Self.positionMs(of: $0) })
+        if item?.status == .failed { decidedFailure = typed }
+        return typed
+    }
+
+    /// Hands `error` to ``errors`` and leaves it on ``playerError``.
+    private func deliver(_ error: any Error) {
+        playerError = error
+        errorSubject.send(error)
+    }
+
+    /// Refuses `source` when `AVPlayer` cannot load its scheme, delivering
+    /// ``UnplayableSourceSchemeError`` and answering false — before anything else a replacement does,
+    /// so a refused request leaves the player exactly as it was (ADR-0020 rule 11).
+    private func admits(_ source: URL) -> Bool {
+        guard !UnplayableSourceSchemeError.isLoadable(source) else { return true }
+        deliver(UnplayableSourceSchemeError(scheme: source.scheme ?? ""))
+        return false
+    }
+
+    /// Drops what is known about the outgoing content's failure, at every replacement.
+    private func forgetFailure() {
+        decidedFailure = nil
+        failureDelivered = false
+        playerError = nil
+    }
+
+    /// Where `item` had reached, or nil where it reports no numeric time — an item that failed
+    /// before it was ready, typically.
+    private static func positionMs(of item: AVPlayerItem) -> Int64? {
+        let time = item.currentTime()
+        return time.isNumeric ? milliseconds(time) : nil
     }
 
     /// Records where the current content has got to, if it is content this player can name. Content

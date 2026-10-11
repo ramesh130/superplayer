@@ -188,6 +188,25 @@ public protocol TelemetryCollector {
 
     /// The player is being released: unregister everything ``attach(to:)`` registered.
     func detach()
+
+    /// A rung repaired `failure` by re-adopting the open session's content on a new item — the next
+    /// source, the item rebuilt after a media services reset, or a refreshed credential
+    /// (`PlayerStateRungs.swift`, ADR-0011 rule 10). **The session continues**: no edge is
+    /// signalled, because one viewing rescued is one session, and the player's current item is now
+    /// the one to observe.
+    ///
+    /// `failure` is what was repaired, classified, so its class can be reported as any failure's is
+    /// (ADR-0011 rule 3) though the consumer was never handed it. A requirement of its own rather
+    /// than an edge, because Android needs none — its facade re-adopts on the one `ExoPlayer` the
+    /// collector already listens to — while here every item is observed by registration. A default
+    /// that does nothing is provided, so a collector that observes no item is unchanged.
+    func contentReopened(after failure: SuperPlayerError)
+}
+
+extension TelemetryCollector {
+
+    /// Does nothing: a collector that registers nothing on an item has nothing to move.
+    public func contentReopened(after failure: SuperPlayerError) {}
 }
 
 extension SuperPlayer {

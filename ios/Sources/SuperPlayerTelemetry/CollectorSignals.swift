@@ -165,15 +165,24 @@ final class CollectorObservation {
         if let name = signal.notification {
             // The memory warning is the application's, not the item's.
             let object: AnyObject? = signal == .memoryWarning ? nil : item
+            // A notification posted before the cancellation and queued onto the main queue still
+            // runs after it, and would be heard as the *next* item's: a rung re-adopts the content
+            // on a new item within one session (`contentReopened(after:)`), so a failure of the item
+            // it replaced arriving late would be counted against the one that replaced it.
+            let live = Liveness()
             let token = NotificationCenter.default.addObserver(
                 forName: name, object: object, queue: .main
             ) { notification in
                 let error =
                     notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? NSError
-                MainActor.assumeIsolated { handler(.notified(signal, error: error)) }
+                MainActor.assumeIsolated {
+                    guard live.isLive else { return }
+                    handler(.notified(signal, error: error))
+                }
             }
             let tokenBox = UncheckedSendable(token)
             return CollectorObservation(signal: signal) {
+                live.isLive = false
                 NotificationCenter.default.removeObserver(tokenBox.value)
             }
         }
@@ -291,6 +300,13 @@ enum CollectorEvent {
     case positionRead(CMTime)
     /// An `AVMetricEventStream` delivered an event.
     case metric(MetricSignal)
+}
+
+/// Whether a registration is still wanted, read by a delivery already queued when it was cancelled.
+/// Unchecked, and safe: it is written by a cancellation and read by a delivery, both on the main
+/// queue, so it is never touched from two threads at once.
+final class Liveness: @unchecked Sendable {
+    var isLive = true
 }
 
 /// A value the compiler cannot see is safe to send, asserted so where the reason is local: a

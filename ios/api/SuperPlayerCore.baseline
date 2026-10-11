@@ -225,6 +225,8 @@ Func SuperPlayer.saveSnapshot() : SuperPlayerCore.PlaybackSnapshot
 Func SuperPlayer.setMediaRequest(_:) : (), SuperPlayerCore.MediaRequest
 Func SuperPlayer.setMediaURL(_:) : (), Foundation.URL
 Func TelemetryCollector.attach(to:) : (), SuperPlayerCore.SuperPlayer where <Self where Self : SuperPlayerCore.TelemetryCollector>
+Func TelemetryCollector.contentReopened(after:) : (), SuperPlayerCore.SuperPlayerError where <Self where Self : SuperPlayerCore.TelemetryCollector>
+Func TelemetryCollector.contentReopened(after:) : (), SuperPlayerCore.SuperPlayerError where <Self where Self : SuperPlayerCore.TelemetryCollector>
 Func TelemetryCollector.decisionChanged(_:trigger:) : (), SuperPlayerCore.PlaybackDecision, SuperPlayerCore.DecisionTrigger where <Self where Self : SuperPlayerCore.TelemetryCollector>
 Func TelemetryCollector.declareIntent(monotonicTimeMs:) : (), Swift.Int64 where <Self where Self : SuperPlayerCore.TelemetryCollector>
 Func TelemetryCollector.detach() : () where <Self where Self : SuperPlayerCore.TelemetryCollector>

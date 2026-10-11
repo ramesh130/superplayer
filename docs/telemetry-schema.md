@@ -110,6 +110,11 @@ origin.
 - **Only content with an identity.** An item from `setMediaURL` opens no session, so it is built
   without CMCD: its `sid` would join to nothing. AVFoundation still sends it an
   `X-Playback-Session-Id` of its own.
+- **A rung changes the `sid` and not the session** (`#420`). A rung that re-adopts the content — the
+  next source, the item rebuilt after a media services reset, a refreshed credential — builds a new
+  asset, and a new asset has a new `httpSessionIdentifier`, which nothing can set. The telemetry
+  session goes on under the id it opened with, because one viewing rescued is one session, so a
+  CDN's requests after the rung join to no `session_id`. On Android the re-adoption keeps the `sid`.
 - **No `cid`.** A per-title question asked of the CDN's log alone needs the join on iOS.
 - **Below iOS 18 and tvOS 18 no CMCD is sent.** The same string still reaches the CDN on every
   request as the `X-Playback-Session-Id` header, which AVFoundation documents from iOS 16, so a CDN

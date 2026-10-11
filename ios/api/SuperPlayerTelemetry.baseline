@@ -9,6 +9,7 @@ Constructor SessionTraceRecorder.init() : SuperPlayerTelemetry.SessionTraceRecor
 Enum QoeScore
 Func OSLogSink.onEvent(_:) : (), SuperPlayerCore.TelemetryEvent
 Func QoeCollector.attach(to:) : (), SuperPlayerCore.SuperPlayer
+Func QoeCollector.contentReopened(after:) : (), SuperPlayerCore.SuperPlayerError
 Func QoeCollector.decisionChanged(_:trigger:) : (), SuperPlayerCore.PlaybackDecision, SuperPlayerCore.DecisionTrigger
 Func QoeCollector.declareIntent(monotonicTimeMs:) : (), Swift.Int64
 Func QoeCollector.detach() : ()

@@ -63,8 +63,9 @@ public struct SuperPlayerError: Error, Sendable, CustomStringConvertible, Custom
 
     /// The rungs the ladder climbed for this failure, in order, by the Kotlin `FallbackRung` names —
     /// `"NEXT_SOURCE"`, `"RECREATE_DECODER"`. Empty is a fact, not an absence: a class whose ceiling
-    /// is the typed error is offered no rung, and no rung is performed on Apple platforms until rungs
-    /// 4 and 5 are built.
+    /// is the typed error is offered no rung, and a request with one source and no decoder failure
+    /// climbs none. Only rungs 4 and 5 can appear on Apple platforms, where rungs 1 to 3 are
+    /// AVFoundation's own (ADR-0020 rule 6); a refreshed credential is not a rung and is not listed.
     public let rungsTried: [String]
 
     /// Where playback had reached when the failure surfaced, in milliseconds, or nil when the item
@@ -125,16 +126,16 @@ public struct SuperPlayerError: Error, Sendable, CustomStringConvertible, Custom
 /// no slot.
 public protocol PlaybackResilience: Sendable {}
 
-/// What core asks a ``PlaybackResilience`` when an item fails: the typed error for it — the Kotlin
-/// `EngineResilienceExtension`'s classification half, and the seam a Kotlin friend module reaches
-/// as `internal`, which on Apple platforms is `package` (`ios/CLAUDE.md`).
+/// What core asks a ``PlaybackResilience`` for, once per player: the ladder that player climbs — the
+/// Kotlin `EngineResilienceExtension` filling the `playerStateRungs` slot, and the seam a Kotlin
+/// friend module reaches as `internal`, which on Apple platforms is `package` (`ios/CLAUDE.md`).
 ///
-/// Core hands over the evidence AVFoundation leaves and decides nothing from it: the item's error,
-/// the error log's last entry — the one place AVFoundation names *which* request failed — the
-/// asset's own URL, the multivariant playlist, and where playback had reached.
+/// A ladder per player rather than one answer for every player, for the Kotlin `PlayerStateLadder`'s
+/// reason: which rungs have been climbed, and which credential a refresh last handed over, are one
+/// player's history, while ``SuperPlayer/Configuration`` is a value copied into every player a
+/// ``PlayerPool`` makes. `PlayerStateRungs.swift` is what core asks of it.
 package protocol FailureClassifying: PlaybackResilience {
-    func typedError(
-        for error: NSError, loggedFailure: AVPlayerItemErrorLogEvent?, playlistURL: URL?,
-        positionMs: Int64?
-    ) -> SuperPlayerError
+
+    /// A fresh ladder for one player, made as that player is made, on the main actor.
+    @MainActor func playerStateRungs() -> any PlayerStateRungs
 }

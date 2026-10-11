@@ -219,8 +219,11 @@ final class PlayerPoolTests: XCTestCase {
             // has them.
             Dictionary(
                 uniqueKeysWithValues: ObservedSignal.allCases.filter {
-                    ![.frameOutputItem, .reapplicationPlayer, .reapplicationItem, .resilienceItem]
-                        .contains($0.scope)
+                    ![
+                        .frameOutputItem, .reapplicationPlayer, .reapplicationItem,
+                        .resilienceItem, .resiliencePlayer,
+                    ]
+                    .contains($0.scope)
                 }
                 .map { ($0, 1) }))
         pool.release()

@@ -140,6 +140,14 @@ them under `Added` would be worse than stating them here:
   requirement, `decisionChanged(_:trigger:)`**, so a consumer's own collector no longer compiles
   until it adds one; `QoeCollector` emits `DecisionChanged` from it, and `SessionStarted.decision` is
   the decision in force. ADR-0009 rule 5 gains a #415 addendum. No Android behaviour moved.
+- **Preload on iOS (#417).** `SuperPlayerPreload` gains `PreloadCoordinator(pool:)` —
+  `setItems(_:)`, `setScrollPosition(index:velocity:)`, `release()` and `warmDecoderCount` —
+  attached to a `PlayerPool` before its first player. A row ahead is prefetched as an asset whose
+  playlists are loaded, and played from it through `setMediaRequest`; at a loaded depth the nearest
+  rows are held on the pool's idle players and, at `shortForm`'s, prerolled, and `acquire()` hands
+  the row the player holding it. A memory warning releases everything nobody is playing, the window
+  is admitted against a quarter of the memory left, and Low Data Mode prefetches nothing. A pool
+  without a coordinator pays nothing for it. No Android behaviour moved.
 - **The iOS failure taxonomy (#419).** `SuperPlayerResilience` gains `FailureClass` and
   `FallbackRung` — the Kotlin taxonomy leaf for leaf, with the same stable names, answers, categories
   and message keys — `ErrorClassifier` over the `NSError` chain and the error log's `LoggedFailure`,

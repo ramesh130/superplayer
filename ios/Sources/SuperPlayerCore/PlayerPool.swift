@@ -102,6 +102,11 @@ public final class PlayerPool {
 
     private var isReleased = false
 
+    /// The preload coordinator attached to this pool, or nil — the default, which consults nothing
+    /// at an acquire, a recycle or an adoption (ADR-0010 rule 13). Held strongly: the pool is what
+    /// a feed keeps, and the coordinator holds the pool weakly.
+    private var attachment: (any PoolAttachment)?
+
     /// The lifecycle every player this pool makes reaches (`LifecycleBinding.swift`): the system's,
     /// unless a test stated another.
     private let lifecycle: SharedLifecycle
@@ -146,6 +151,63 @@ public final class PlayerPool {
     /// How many players are out with callers and have not been handed back.
     public var inUseCount: Int { inUse.count }
 
+    /// Attaches `attachment`, so every player this pool makes adopts through it and every acquire
+    /// and recycle is told to it (ADR-0010 rule 8) — the Kotlin `attach`, whose caller is
+    /// `SuperPlayerPreload`'s `PreloadCoordinator`.
+    ///
+    /// Before the first player, as the Kotlin call is, and traps naming the rule where that throws:
+    /// a player already made adopts through nothing, so a pool half of whose players the
+    /// coordinator could not hand a warm item to would prefetch for rows that then load cold. One
+    /// attachment per pool.
+    package func attach(_ attachment: any PoolAttachment) {
+        precondition(!isReleased, "This PlayerPool has been released")
+        precondition(
+            self.attachment == nil,
+            "A PlayerPool takes one attachment; this one already has a PreloadCoordinator")
+        precondition(
+            size == 0,
+            "A PreloadCoordinator is attached before its pool makes a player (ADR-0010 rule 8); "
+                + "this pool has already made \(size)")
+        self.attachment = attachment
+    }
+
+    /// Detaches `attachment` if it is the one attached, so a released coordinator is consulted no
+    /// more and a new one may attach — though only to a pool that has still made no player, as
+    /// ``attach(_:)`` says.
+    package func detach(_ attachment: any PoolAttachment) {
+        guard self.attachment === attachment else { return }
+        self.attachment = nil
+        for player in Array(inUse.values) + idle where player.poolAttachment === attachment {
+            player.poolAttachment = nil
+        }
+    }
+
+    /// The players made and handed back, newest last: what an attachment may hold warm.
+    package var idlePlayers: [SuperPlayer] { idle }
+
+    /// The decision a pool's players are made under, as an attachment reads it: the newest player
+    /// out with a caller's ``SuperPlayer/playbackDecision``, which a re-consulted policy may have
+    /// changed, and otherwise what the players' policy decides with nothing observed — the
+    /// decision every player of this configuration starts from. Read rather than pushed, as the
+    /// Kotlin coordinator reads the pool's (its KDoc, *Rule 10's depth is read, not pushed*).
+    package var playbackDecision: PlaybackDecision {
+        if let newest = inUse.values.max(by: { $0.acquiredOrder < $1.acquiredOrder }) {
+            return newest.playbackDecision
+        }
+        return constructionDecision
+    }
+
+    /// What the players' policy decides with nothing observed, asked once: a policy is consulted
+    /// at construction and on ADR-0009 rule 4's triggers, and a coordinator's scroll is neither.
+    private lazy var constructionDecision: PlaybackDecision = {
+        let policy = configuration.player.policy ?? configuration.player.profile.policy
+        return policy.decide(PlaybackConditions())
+    }()
+
+    /// How many acquires this pool has made, stamped on each player as it is handed out so
+    /// ``playbackDecision`` can read the newest.
+    private var acquires = 0
+
     /// A player to show one item with, or nil if every player this device can afford is out.
     ///
     /// Reuses the newest idle player if there is one and makes one otherwise, up to ``maxSize``.
@@ -158,13 +220,22 @@ public final class PlayerPool {
     /// it.
     public func acquire() -> SuperPlayer? {
         guard !isReleased else { return nil }
-        if let reused = idle.popLast() {
-            inUse[ObjectIdentifier(reused)] = reused
-            return reused
+        let player: SuperPlayer
+        if !idle.isEmpty {
+            // The attachment's choice — the player warm on the row just made current — or the
+            // newest.
+            let preferred = attachment?.preferredIdle(idle)
+            let index = preferred.flatMap { chosen in idle.lastIndex { $0 === chosen } }
+            player = idle.remove(at: index ?? idle.count - 1)
+        } else {
+            guard inUse.count < maxSize else { return nil }
+            player = SuperPlayer(configuration: configuration.player, lifecycle: lifecycle)
+            player.poolAttachment = attachment
         }
-        guard inUse.count < maxSize else { return nil }
-        let player = SuperPlayer(configuration: configuration.player, lifecycle: lifecycle)
+        acquires += 1
+        player.acquiredOrder = acquires
         inUse[ObjectIdentifier(player)] = player
+        attachment?.acquired(player)
         return player
     }
 
@@ -193,6 +264,7 @@ public final class PlayerPool {
         guard !player.isReleased else { return }
         player.resetForReuse()
         idle.append(player)
+        attachment?.recycled(player)
     }
 
     /// Releases every player this pool made, in use or not, and refuses further use. Players in use
@@ -200,6 +272,9 @@ public final class PlayerPool {
     /// Calling it again does nothing.
     public func release() {
         guard !isReleased else { return }
+        // The attachment first, while its players are still alive to be let go of.
+        attachment?.poolReleasing()
+        attachment = nil
         isReleased = true
         // In use first, for the Kotlin order's reason: those are the ones a caller may still be
         // touching.

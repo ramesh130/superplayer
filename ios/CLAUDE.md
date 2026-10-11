@@ -113,6 +113,11 @@ epoch of its own, and ends the stream on core's `RealtimeTrackStalledError` past
 and three-second stalled bounds, **in media time against the leading track**. An AAC magic cookie is the
 `ES_Descriptor` around the AudioSpecificConfig, never the bare config, which an audio renderer takes and
 then silently fails to decode.
+#433 ported `FrameSourceConformance` into `SuperPlayerTestkit`, check for check: the Kotlin suite's
+eleven, a recording sink and no socket, a thrown `FrameSourceConformanceError` naming no test
+framework, and its checks a `CaseIterable` behind `verify(_:)` so the register needs no reflection.
+Obligation 8 is read off memory, since `Data` is a value: only a `bytesNoCopy` payload can share it
+(`docs/testing.md`, *The conformance suite on iOS*).
 #417 put preload over the pool: `SuperPlayerPreload`'s `PreloadCoordinator(pool:)`, attached through
 core's `package` `PoolAttachment` before the pool's first player, which a pooled player asks for a
 `WarmStart` at adoption. Two AVFoundation facts shape it, both counted at the origin: an asset asked

@@ -1195,6 +1195,46 @@ before any refusal, so it carries no refreshed credential. A refusal it then mee
 that already holds the credential, and a provider handed that credential as the one sent may
 decline. No test covers a feed whose token expires.
 
+### The fault sweep on iOS
+
+#421 is i5's exit criterion, and it ports the Kotlin pair beside a detector:
+
+- **`FaultSweepTests`** plays every `FaultScript.Kind` once, through a player configured with
+  `Resilience.standard()` and nothing else, and records how each ended in `swept`: recovered, or
+  ended on a named class. All eight cells play at once, one origin each, so the sweep costs one
+  ceiling of real time rather than eight. HLS is the only column, because `AVPlayer` plays no DASH.
+  There are eight kinds rather than the Kotlin ten, because the script holds only what a server can
+  produce. **Without reflection, a new kind is made visible by the type**: `Kind` is `CaseIterable`,
+  `script(for:)` is an exhaustive `switch` over it, so an added kind does not compile until it is
+  swept, and the table's keys are held to `allCases`.
+- **`FallbackRungCoverageTests`** names, per `FallbackRung`, the test that forces it and the test
+  that counts its absence, checked against the source tree through `#filePath`. Rungs 1 to 3 have a
+  row that says why they have no test here: they are AVFoundation's own (ADR-0020 rule 6).
+- **`StaleLivePlaylistPlaybackTests`** plays the corpus's frozen live playlist twice. Served with its
+  ten-minute cache rule, it ends on `Transient.CdnEdge` naming the intermediary. With the rule
+  withheld, it ends on `Content.SegmentGap` naming the origin. Either way telemetry hears the ending
+  through `TelemetryCollector.sessionFailed(_:)`, since no item failed. The controls are a live stream that
+  keeps publishing, which plays on, and a player without resilience, which waits as a stock one does.
+  `StalePlaylistJudgementTests` holds the bounds over values, at the millisecond, through
+  `@testable`.
+
+**One gap the sweep found, not filled.**
+
+- **A segment that never answers in time stalls an `AVPlayer` for good.** AVFoundation gives up on a
+  segment after about one target duration and logs a -12889. It then asks again. If every attempt is
+  held as long, it waits at that segment with no error and no end. This was observed for seventy
+  seconds of a two-second-target stream. So the latency row is half a target duration, which keeps
+  the Kotlin row's meaning ("a delay, not a failure"), and not the Kotlin twenty seconds. Nothing
+  detects the never-answering segment yet, so it is the one origin fault left that neither recovers
+  nor ends named.
+
+**What only another runtime or a device shows.** The coarser judgement below iOS 18 counts
+AVFoundation's -12888 entries. It is held over values and never played, because nothing here runs
+a runtime older than 18. The live edge is the item's, not one playlist's, so an audio rendition's
+playlist that froze while the video's advanced would not be judged stale; the request events name a
+playlist but carry no body to tell it was unchanged. A real CDN's cache, and a packager that publishes segments in bursts under
+a target far above their length, are also unobserved.
+
 ## The layers above the fakes
 
 Both harnesses put their fakes where the *transport* goes — the HTTP stack — and not in place of the

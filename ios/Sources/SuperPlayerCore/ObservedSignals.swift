@@ -32,7 +32,8 @@ import Network
 /// ``Scope/reapplicationItem`` signals: none on a player under its profile's static policy, each once
 /// on a player given a policy of its own (ADR-0009 rule 7, `DecisionReapplication.swift`).
 /// `ResiliencePaysNothingTests` counts the ``Scope/resilienceItem`` and ``Scope/resiliencePlayer``
-/// signals the same way: once each on a player configured with resilience, and on no other (ADR-0011
+/// signals the same way: once each on a player configured with resilience — of the two the
+/// stale-playlist watch chooses between by the runtime, the one it chose — and on no other (ADR-0011
 /// rule 14).
 ///
 /// The ``Scope/player`` signals are the lifecycle's (`LifecycleBinding.swift`, #402), registered on
@@ -71,6 +72,25 @@ enum ObservedSignal: CaseIterable, Hashable, Sendable {
     /// beside ``resilienceItemStatus`` because AVFoundation promises the error here and not that the
     /// status moves first. One typed error per item either way (`SuperPlayer.itemFailed`).
     case resilienceItemFailedToPlayToEnd
+
+    /// A key-value observation of the current item's `seekableTimeRanges`, on a player configured
+    /// with resilience: the live edge, whose standing still is what a stale live playlist is
+    /// (#421, `StaleLivePlaylistDetection.swift`). On every item, and judged only on a live one.
+    case resilienceItemLiveEdge
+
+    /// The current item's `AVMetricHLSPlaylistRequestEvent` and `AVMetricHLSMediaSegmentRequestEvent`
+    /// streams, on a player configured with resilience, on iOS and tvOS 18 and later: the answers a
+    /// stale live playlist is judged at, their headers, and the segment durations its target
+    /// duration is read from. An `AVMetricEventStream` iterated in a task, so not a notification or a
+    /// key path, and in the register for ``decisionNetworkPath``'s reason: it must be cancelled.
+    /// Registered only through ``Observation/registerRequestMetrics(on:_:)``, the one function that
+    /// hands over an event; the item `register` traps on it.
+    case resilienceItemRequestMetrics
+
+    /// The current item's error log gained an entry, on a player configured with resilience, below
+    /// iOS and tvOS 18 only: AVFoundation's own -12888, the coarser judge where no request event
+    /// exists. One of this and ``resilienceItemRequestMetrics`` is registered, never both.
+    case resilienceItemErrorLogEntry
 
     /// The system reset the media services beneath every player, on a player configured with
     /// resilience: the decoders and outputs it held are gone, and rung 5 is the remedy (#420,
@@ -152,7 +172,9 @@ enum ObservedSignal: CaseIterable, Hashable, Sendable {
         switch self {
         case .itemPlayedToEnd, .itemTimeJumped: .identifiedItem
         case .frameOutputItemTimeJumped: .frameOutputItem
-        case .resilienceItemStatus, .resilienceItemFailedToPlayToEnd: .resilienceItem
+        case .resilienceItemStatus, .resilienceItemFailedToPlayToEnd, .resilienceItemLiveEdge,
+            .resilienceItemRequestMetrics, .resilienceItemErrorLogEntry:
+            .resilienceItem
         case .resilienceMediaServicesReset, .resilienceRateChanged: .resiliencePlayer
         case .audioSessionInterrupted, .audioRouteChanged, .playerRateChanged,
             .playerTimeControlStatus:
@@ -182,6 +204,7 @@ final class Observation {
         case notification(any NSObjectProtocol)
         case keyValue(NSKeyValueObservation)
         case pathMonitor(NWPathMonitor)
+        case task(Task<Void, Never>)
     }
 
     private init(signal: ObservedSignal, registration: Registration) {
@@ -191,9 +214,10 @@ final class Observation {
 
     /// Registers `handler` for an ``ObservedSignal/Scope/identifiedItem``,
     /// ``ObservedSignal/Scope/frameOutputItem`` or ``ObservedSignal/Scope/reapplicationItem``
-    /// `signal` as posted by `item`, delivered on the main queue — the facade's actor, so the
-    /// handler runs in its isolation. The duration's key-value observation is queued onto the main
-    /// queue, as the player's `timeControlStatus` is below, since AVFoundation promises no thread.
+    /// `signal`, or for the stale-playlist watch's live edge and error log, as posted by `item`,
+    /// delivered on the main queue — the facade's actor, so the handler runs in its isolation. The
+    /// duration's and the live edge's key-value observations are queued onto the main queue, as the
+    /// player's `timeControlStatus` is below, since AVFoundation promises no thread.
     @MainActor
     static func register(
         _ signal: ObservedSignal, on item: AVPlayerItem,
@@ -205,6 +229,17 @@ final class Observation {
         case .itemTimeJumped, .frameOutputItemTimeJumped, .decisionItemTimeJumped:
             name = AVPlayerItem.timeJumpedNotification
         case .decisionAccessLogEntry: name = AVPlayerItem.newAccessLogEntryNotification
+        case .resilienceItemErrorLogEntry: name = AVPlayerItem.newErrorLogEntryNotification
+        case .resilienceItemLiveEdge:
+            let observation = item.observe(\.seekableTimeRanges) { _, _ in
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated { handler() }
+                }
+            }
+            return Observation(signal: signal, registration: .keyValue(observation))
+        case .resilienceItemRequestMetrics:
+            preconditionFailure(
+                "\(signal) hands over events; register it with registerRequestMetrics")
         case .decisionItemDuration:
             let observation = item.observe(\.duration) { _, _ in
                 DispatchQueue.main.async {
@@ -266,8 +301,9 @@ final class Observation {
             .audioSessionInterrupted, .audioRouteChanged, .playerRateChanged,
             .playerTimeControlStatus, .decisionNetworkPath, .decisionRateChanged,
             .decisionTimeControlStatus, .decisionItemTimeJumped, .decisionItemDuration,
-            .decisionAccessLogEntry, .resilienceMediaServicesReset, .resilienceRateChanged:
-            preconditionFailure("\(signal) is not a resilience item signal")
+            .decisionAccessLogEntry, .resilienceMediaServicesReset, .resilienceRateChanged,
+            .resilienceItemLiveEdge, .resilienceItemRequestMetrics, .resilienceItemErrorLogEntry:
+            preconditionFailure("\(signal) hands over no failure")
         }
     }
 
@@ -313,7 +349,8 @@ final class Observation {
             preconditionFailure("\(signal) is registered on the device, not on a player")
         case .itemPlayedToEnd, .itemTimeJumped, .frameOutputItemTimeJumped,
             .decisionItemTimeJumped, .decisionItemDuration, .decisionAccessLogEntry,
-            .resilienceItemStatus, .resilienceItemFailedToPlayToEnd:
+            .resilienceItemStatus, .resilienceItemFailedToPlayToEnd, .resilienceItemLiveEdge,
+            .resilienceItemRequestMetrics, .resilienceItemErrorLogEntry:
             preconditionFailure("\(signal) is registered on an item, not on a player")
         }
         let token = NotificationCenter.default.addObserver(
@@ -345,11 +382,36 @@ final class Observation {
         return Observation(signal: .decisionNetworkPath, registration: .pathMonitor(monitor))
     }
 
+    /// Registers `handler` for ``ObservedSignal/resilienceItemRequestMetrics``: `item`'s playlist and
+    /// segment request events, merged in the order they happened and handed over one at a time on
+    /// the main actor. Cancelling the iteration is the whole of unregistering, and a stream that
+    /// ends in an error ends these events and nothing else.
+    ///
+    /// ref: https://developer.apple.com/documentation/avfoundation/avmetriceventstream
+    @available(iOS 18, tvOS 18, *)
+    @MainActor
+    static func registerRequestMetrics(
+        on item: AVPlayerItem, _ handler: @escaping @MainActor (AVMetricEvent) -> Void
+    ) -> Observation {
+        let events = item.metrics(forType: AVMetricHLSPlaylistRequestEvent.self)
+            .chronologicalMerge(
+                with: item.metrics(forType: AVMetricHLSMediaSegmentRequestEvent.self))
+        let task = Task { @MainActor in
+            do {
+                for try await (event, _) in events { handler(event) }
+            } catch {
+                // Nothing to deliver: the judgement this feeds simply hears no more answers.
+            }
+        }
+        return Observation(signal: .resilienceItemRequestMetrics, registration: .task(task))
+    }
+
     deinit {
         switch registration {
         case .notification(let token): NotificationCenter.default.removeObserver(token)
         case .keyValue(let observation): observation.invalidate()
         case .pathMonitor(let monitor): monitor.cancel()
+        case .task(let task): task.cancel()
         }
     }
 }

@@ -62,11 +62,20 @@ final class ResiliencePaysNothingTests: XCTestCase {
         }
     }
 
-    /// The item's two failure signals and the player's two (#420), each once.
+    /// The item's two failure signals, its stale-playlist watch (#421) — the live edge, and the
+    /// request events on 18 or the error log below it, never both — and the player's two (#420),
+    /// each once.
     private var eachOnce: [ObservedSignal: Int] {
-        thePlayersOnce.merging([.resilienceItemStatus: 1, .resilienceItemFailedToPlayToEnd: 1]) {
-            $1
+        var item: [ObservedSignal: Int] = [
+            .resilienceItemStatus: 1, .resilienceItemFailedToPlayToEnd: 1,
+            .resilienceItemLiveEdge: 1,
+        ]
+        if #available(iOS 18, tvOS 18, *) {
+            item[.resilienceItemRequestMetrics] = 1
+        } else {
+            item[.resilienceItemErrorLogEntry] = 1
         }
+        return thePlayersOnce.merging(item) { $1 }
     }
 
     /// The media services reset and the requested rate: the player's for its whole life.

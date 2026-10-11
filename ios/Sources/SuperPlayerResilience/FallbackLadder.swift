@@ -64,8 +64,8 @@ enum RecreateDecoder {
 }
 
 /// Rung 6: the typed, actionable error a session ends on when nothing below it worked — every field
-/// read from the one classification (ADR-0011 rule 1), the position core's and the rungs the
-/// player's climb record.
+/// read from the one classification (ADR-0011 rule 1), the position core's, the rungs the player's
+/// climb record, and the likely cause the stale playlist core raised, where it raised one.
 enum TypedError {
     static func of(
         _ failure: FailureClass, error: NSError, positionMs: Int64?, rungsTried: [String]
@@ -74,7 +74,8 @@ enum TypedError {
             causeClass: failure.stableName, userMessageKey: failure.userMessageKey,
             isRetryable: failure.isRetryable, category: failure.category,
             lowerSecurityLevelMayHelp: failure.lowerSecurityLevelMayHelp,
-            rungsTried: rungsTried, positionMs: positionMs, underlyingError: error)
+            rungsTried: rungsTried, positionMs: positionMs,
+            likelyCause: ErrorClassifier.likelyCause(in: error), underlyingError: error)
     }
 }
 

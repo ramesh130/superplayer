@@ -145,7 +145,7 @@ let package = Package(
             name: "SuperPlayerResilienceTests",
             dependencies: [
                 "SuperPlayerResilience", "SuperPlayerCore", "SuperPlayerTestkit",
-                "SuperPlayerTelemetry",
+                "SuperPlayerTelemetry", "SuperPlayerTestMedia",
             ],
             path: "ios/Tests/SuperPlayerResilienceTests"
         ),

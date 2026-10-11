@@ -159,6 +159,10 @@ public object LogcatSink : TelemetrySink {
                     "outcome=${event.outcome} securityLevel=${event.securityLevel}",
             )
 
+            is TelemetryEvent.OutputObscuredChanged -> info(
+                "evt=output_obscured $common obscured=${event.obscured}",
+            )
+
             is TelemetryEvent.VideoFramesDropped -> info(
                 "evt=video_frames $common dropped=${event.droppedFrames} " +
                     "repeated=${event.repeatedFrames} elapsedPlayingMs=${event.elapsedPlayingMs}",

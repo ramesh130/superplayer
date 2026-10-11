@@ -326,6 +326,7 @@ extension TelemetryEvent {
         case .liveLatencySampled: "liveLatencySampled"
         case .playbackStateSampled: "playbackStateSampled"
         case .videoFramesDropped: "videoFramesDropped"
+        case .outputObscuredChanged: "outputObscuredChanged"
         }
     }
 

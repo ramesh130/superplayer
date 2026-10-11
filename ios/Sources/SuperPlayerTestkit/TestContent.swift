@@ -84,6 +84,12 @@ public struct TestContent: Sendable {
         self.file = { path, elapsedMs, _ in file(path, elapsedMs) }
     }
 
+    /// What the origin answers a `POST` at a path with, given the body it carried, or nil where it
+    /// answers none there — set only by ``licenceServer()``, the one content a client sends a body
+    /// to. Content that computes an answer is a server rather than a store of files, so this is a
+    /// function of the request where ``file`` is a function of the path and the time.
+    var answering: (@Sendable (_ path: String, _ body: [UInt8]) -> [UInt8]?)? = nil
+
     /// A real HLS stream: `SyntheticHlsStream`'s multivariant playlist, `variantCount` media
     /// playlists and `segmentCount` packed-audio segments, served at the origin's root — the port of
     /// the Kotlin `TestContent.hls`, and the bytes ADR-0021 rule 6 holds both platforms to.
@@ -198,6 +204,46 @@ public struct TestContent: Sendable {
 
     /// Where ``videoHls(segmentCount:)`` is served.
     static let videoDirectory = "video/"
+
+    /// A FairPlay key server: the application certificate at ``licenceCertificatePath``, answered to
+    /// a `GET`, and a licence at ``licencePath``, answered to a `POST` of a key request with
+    /// ``licence(for:)`` of its body — the Kotlin `FakeLicenceServer`, an origin of its own so that a
+    /// licence is a *transfer*: addressed by ``ResourceKind/licence``, refusable and relenting
+    /// through a ``FaultScript``, and counted by ``LoopbackOrigin/networkRequests()``.
+    ///
+    /// Serve it beside the content, from a second ``PlaybackHarness/serve(_:faults:network:)``; its
+    /// ``LoopbackOrigin/sourceURL`` is the licence URL. **Nothing here is FairPlay**: the simulator has
+    /// no FairPlay (ADR-0021 rule 5), so no player ever composes a real key request, and the bytes
+    /// are a stand-in's on both sides. What it holds is the exchange's shape — which request, with
+    /// which headers and body, how often, and in what order.
+    public static func licenceServer() -> TestContent {
+        let certificate = licenceCertificate
+        var content = TestContent(
+            sourcePath: licencePath, isLive: false, hosts: 1,
+            publication: { _, _ in [licenceCertificatePath: certificate] })
+        content.answering = { path, body in path == licencePath ? licence(for: body) : nil }
+        return content
+    }
+
+    /// Where ``licenceServer()`` answers, a directory of its own as ``liveDirectory`` is — and what
+    /// makes a request there ``ResourceKind/licence``.
+    static let licenceDirectory = "fairplay/"
+
+    /// Where ``licenceServer()`` publishes its application certificate.
+    public static let licenceCertificatePath = licenceDirectory + "certificate"
+
+    /// Where ``licenceServer()`` answers a key request.
+    public static let licencePath = licenceDirectory + "licence"
+
+    /// The certificate ``licenceServer()`` publishes: fixed bytes, opaque to everything but a
+    /// test comparing them, since nothing here composes a real key request from it.
+    public static let licenceCertificate: [UInt8] = Array("superplayer-test-certificate".utf8)
+
+    /// The licence ``licenceServer()`` issues for a key request of `spc`: the request's bytes
+    /// behind a fixed prefix, so a test can tell which request a licence answered.
+    public static func licence(for spc: [UInt8]) -> [UInt8] {
+        Array("ckc:".utf8) + spc
+    }
 
     /// Where ``liveHls(hosts:)`` is served: a directory of its own, as the Kotlin `LIVE_BASE_URI` is.
     static let liveDirectory = "live/"

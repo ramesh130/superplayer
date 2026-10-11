@@ -32,9 +32,10 @@ import SuperPlayerCore
 ///
 /// ## What it emits, and from what
 ///
-/// The whole of `docs/telemetry-schema.md` but the one event no iOS source raises yet:
-/// `LicenceAcquisitionEnded`, whose source is FairPlay's `AVContentKeySession` (#422).
-/// `DecisionChanged` is core's to signal (``decisionChanged(_:trigger:)``), on a player whose policy
+/// The whole of `docs/telemetry-schema.md`. Two events are core's to signal rather than this
+/// collector's to observe: `LicenceAcquisitionEnded`, because the FairPlay exchange is
+/// `SuperPlayerDRM`'s own and no AVFoundation interface reports it
+/// (``licenceAcquisitionEnded(durationMs:outcome:)``), and `DecisionChanged`, core's to signal (``decisionChanged(_:trigger:)``), on a player whose policy
 /// is consulted again. **What each number means is that document, not this
 /// file**; its *How derived on iOS* column says which API each comes from, and where iOS 17 and 18
 /// derive one differently. The comments below say why a value comes from where it does.
@@ -161,12 +162,15 @@ public final class QoeCollector: TelemetryCollector {
                     profile: player.configuration.profile,
                     decision: player.playbackDecision)))
         observations = CollectorObservation.registerAll(
-            on: player.avPlayer, item: item, positionIntervalMs: Self.positionReadingIntervalMs
+            on: player.avPlayer, item: item, positionIntervalMs: Self.positionReadingIntervalMs,
+            protected: player.configuration.drm != nil
         ) { [weak self] event in self?.handle(event) }
         scheduleSampling()
         // The player may already be playing — content replaced under a running player — so the
-        // state is read once now rather than waited for.
+        // state is read once now rather than waited for. The output likewise: a display already
+        // obscuring the picture is reported under the session it obscures.
         timeControlStatusChanged()
+        if player.configuration.drm != nil { outputObscuredChanged() }
     }
 
     public func decisionChanged(_ decision: PlaybackDecision, trigger: DecisionTrigger) {
@@ -196,7 +200,8 @@ public final class QoeCollector: TelemetryCollector {
                     timestampMs: Self.wallClock(), monotonicTimeMs: Self.now(),
                     // A placeholder the delivery path replaces as the event leaves the queue.
                     droppedEventCount: 0,
-                    // Nothing negotiates protection on iOS until #422.
+                    // FairPlay has no security levels to negotiate (`docs/ios-plan.md` §3.6), so
+                    // this is nil on every iOS session, protected or not, and the schema says so.
                     securityLevel: nil)))
     }
 
@@ -219,10 +224,26 @@ public final class QoeCollector: TelemetryCollector {
         session.item = item
         session.failed = false
         observations = CollectorObservation.registerAll(
-            on: player.avPlayer, item: item, positionIntervalMs: Self.positionReadingIntervalMs
+            on: player.avPlayer, item: item, positionIntervalMs: Self.positionReadingIntervalMs,
+            protected: player.configuration.drm != nil
         ) { [weak self] event in self?.handle(event) }
         scheduleSampling()
         timeControlStatusChanged()
+        if player.configuration.drm != nil { outputObscuredChanged() }
+    }
+
+    public func licenceAcquisitionEnded(durationMs: Int64, outcome: LicenceOutcome) {
+        // No session, no event: an acquisition is measured against the viewing that waited for it,
+        // and one that ended with nothing open had no viewer to wait.
+        guard let session = openSession else { return }
+        emit(
+            .licenceAcquisitionEnded(
+                .init(
+                    sessionId: session.id, contentId: session.contentId,
+                    timestampMs: Self.wallClock(), monotonicTimeMs: Self.now(),
+                    durationMs: durationMs, outcome: outcome,
+                    // FairPlay has no levels; the schema's *Licence acquisition* says so.
+                    securityLevel: nil)))
     }
 
     public func sessionFailed(_ failure: SuperPlayerError) {
@@ -248,6 +269,7 @@ public final class QoeCollector: TelemetryCollector {
         case .notified(.newAccessLogEntry, _): reconcileVideoBitrate()
         case .notified(.failedToPlayToEnd, let error): failed(with: error)
         case .notified(.memoryWarning, _): delivery.onMemoryPressure()
+        case .notified(.outputObscured, _): outputObscuredChanged()
         case .notified(.periodicTime, _), .notified(.metricEvents, _): break
         case .positionRead(let time): positionRead(time)
         case .metric(.stalled): stalled(byMetric: true)
@@ -294,6 +316,22 @@ public final class QoeCollector: TelemetryCollector {
                     timestampMs: Self.wallClock(), monotonicTimeMs: now,
                     timeToFirstFrameMs: now - session.ttffStartMonotonicMs,
                     startBoundary: session.ttffStartBoundary)))
+    }
+
+    /// The output's protection reading may have moved: report it where it differs from the last one
+    /// this session reported, so a change heard twice is one event — `OutputObscuredChanged`,
+    /// reported and never acted on (ADR-0012 rule 11, `docs/ios-plan.md` §3.6).
+    private func outputObscuredChanged() {
+        guard let session = openSession, let player else { return }
+        let obscured = player.avPlayer.isOutputObscuredDueToInsufficientExternalProtection
+        guard obscured != session.outputObscured else { return }
+        session.outputObscured = obscured
+        emit(
+            .outputObscuredChanged(
+                .init(
+                    sessionId: session.id, contentId: session.contentId,
+                    timestampMs: Self.wallClock(), monotonicTimeMs: Self.now(), obscured: obscured)
+            ))
     }
 
     /// The SDK said it stalled — a player that does not wait to minimise stalling, through the
@@ -765,6 +803,9 @@ private final class OpenSession {
     /// The access log's totals already reported on a `VideoFramesDropped`.
     var droppedFramesReported = 0
     var watchedMsReported: Int64 = 0
+    /// The output's protection reading last reported: unobscured until a change says otherwise, so
+    /// a session whose display never obscures it reports nothing.
+    var outputObscured = false
 
     func abandonSeek() {
         seekRequestedAtMs = nil

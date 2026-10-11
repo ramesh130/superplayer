@@ -220,7 +220,9 @@ enforce it.
    3's escape hatch. Rule 6's reason is `SuperPlayer.frameOutputOffReason`, a property rather than
    the publisher #405's issue named, because a value fixed before the first item has nothing to
    publish. Until #422 adds `Configuration.drm`, protection is a `package`-scoped stub,
-   `Configuration.protection`, of a marker protocol `SuperPlayerDRM` will conform to, and
+   `Configuration.protection`, of a marker protocol `SuperPlayerDRM` will conform to — which #422
+   replaced with the public `Configuration.drm` and its marker `PlaybackDrm`, set at all being
+   protection declared, without moving the decision — and
    `FrameOutputOffReason.realtime` is reported by no player until `RealtimePlayer` exists — which
    since #431 reports it always, as `RealtimePlayer.frameOutputOffReason`.
 

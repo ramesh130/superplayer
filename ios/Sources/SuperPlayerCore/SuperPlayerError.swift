@@ -146,4 +146,10 @@ package protocol FailureClassifying: PlaybackResilience {
 
     /// A fresh ladder for one player, made as that player is made, on the main actor.
     @MainActor func playerStateRungs() -> any PlayerStateRungs
+
+    /// The app's credential, or nil where it gave none — what `SuperPlayerDRM`'s licence exchange
+    /// asks on a refused licence (``ProtectionHost/headerProvider``), so one provider handed to
+    /// `Resilience.standard(headers:)` repairs the content and its licence alike, as the Kotlin one
+    /// does through both chains' header-refresh slot (ADR-0012 rule 2).
+    var headerProvider: (any HeaderProvider)? { get }
 }

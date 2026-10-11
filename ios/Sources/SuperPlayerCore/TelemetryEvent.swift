@@ -63,6 +63,7 @@ public enum TelemetryEvent: Sendable, Hashable {
     case liveLatencySampled(LiveLatencySampled)
     case playbackStateSampled(PlaybackStateSampled)
     case videoFramesDropped(VideoFramesDropped)
+    case outputObscuredChanged(OutputObscuredChanged)
 
     /// The session this event belongs to; the same value on every event between its start and end.
     public var sessionId: String { header.sessionId }
@@ -99,6 +100,7 @@ public enum TelemetryEvent: Sendable, Hashable {
         case .liveLatencySampled(let event): event.header
         case .playbackStateSampled(let event): event.header
         case .videoFramesDropped(let event): event.header
+        case .outputObscuredChanged(let event): event.header
         }
     }
 
@@ -491,6 +493,33 @@ public enum TelemetryEvent: Sendable, Hashable {
             self.elapsedPlayingMs = elapsedPlayingMs
         }
     }
+
+    /// The picture began, or stopped, being obscured because an external display lacks the output
+    /// protection the content requires — HDCP on a cable or an AirPlay receiver. **Reported and never
+    /// acted on**: whether protected content may be shown on an output is the licence's policy, which
+    /// the platform enforces, so the client's part is to say so (ADR-0012 rule 11). Emitted on a player
+    /// configured with ``SuperPlayer/Configuration/drm`` alone, from
+    /// `AVPlayer.isOutputObscuredDueToInsufficientExternalProtection`; the Kotlin twin is declared and
+    /// never emitted, since Android has no such reading.
+    public struct OutputObscuredChanged: Sendable, Hashable {
+        public let sessionId: String
+        public let contentId: String
+        public let timestampMs: Int64
+        public let monotonicTimeMs: Int64
+        /// Whether the output is obscured from this moment on.
+        public let obscured: Bool
+
+        public init(
+            sessionId: String, contentId: String, timestampMs: Int64, monotonicTimeMs: Int64,
+            obscured: Bool
+        ) {
+            self.sessionId = sessionId
+            self.contentId = contentId
+            self.timestampMs = timestampMs
+            self.monotonicTimeMs = monotonicTimeMs
+            self.obscured = obscured
+        }
+    }
 }
 
 /// The four fields every payload carries, gathered for ``TelemetryEvent``'s accessors.
@@ -532,6 +561,7 @@ extension TelemetryEvent.LicenceAcquisitionEnded: HasEventHeader {}
 extension TelemetryEvent.LiveLatencySampled: HasEventHeader {}
 extension TelemetryEvent.PlaybackStateSampled: HasEventHeader {}
 extension TelemetryEvent.VideoFramesDropped: HasEventHeader {}
+extension TelemetryEvent.OutputObscuredChanged: HasEventHeader {}
 
 /// Where ``TelemetryEvent/FirstFrameRendered`` started counting from — the Kotlin
 /// `TtffStartBoundary`. The boundary is the whole argument of the metric, and the document's *Time

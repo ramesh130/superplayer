@@ -1,10 +1,12 @@
 // SuperPlayerTestkit: public API as ios/check reads it. Regenerate with ios/check --update-api.
 Class LoopbackOrigin : Sendable
+Class PassThroughFrameOutput : FrameOutput, Sendable
 Class PlaybackHarness : Sendable
 Constructor FaultScript.Builder.init() : SuperPlayerTestkit.FaultScript.Builder
 Constructor FaultScript.Kind.init(rawValue:) : SuperPlayerTestkit.FaultScript.Kind?, Swift.String
 Constructor NetworkProfile.init(rawValue:) : SuperPlayerTestkit.NetworkProfile?, Swift.String
 Constructor NetworkTransport.init(rawValue:) : SuperPlayerTestkit.NetworkTransport?, Swift.String
+Constructor PassThroughFrameOutput.init() : SuperPlayerTestkit.PassThroughFrameOutput
 Constructor PlaybackHarness.init() : SuperPlayerTestkit.PlaybackHarness
 Constructor ThroughputTrace.Builder.init() : SuperPlayerTestkit.ThroughputTrace.Builder
 Enum FaultScript.Kind : CaseIterable, Equatable, Hashable, RawRepresentable, Sendable
@@ -52,6 +54,7 @@ Func NetworkRequest.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerTestk
 Func NetworkRequest.hash(into:) : (), Swift.Hasher
 Func OriginResponse.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerTestkit.OriginResponse, SuperPlayerTestkit.OriginResponse [static]
 Func OriginResponse.hash(into:) : (), Swift.Hasher
+Func PassThroughFrameOutput.process(_:presentationTime:) : CoreVideo.CVPixelBuffer, CoreVideo.CVPixelBuffer, CoreMedia.CMTime
 Func PlaybackHarness.serve(_:faults:network:) : SuperPlayerTestkit.LoopbackOrigin, SuperPlayerTestkit.TestContent, SuperPlayerTestkit.FaultScript, SuperPlayerTestkit.ThroughputTrace? [throwing]
 Func PlaybackHarness.stop() : ()
 Func PlaybackHarness.until(_:timeout:_:) : (), Swift.String, Swift.Duration, () async throws -> Swift.Bool [throwing]
@@ -61,6 +64,7 @@ Func ResourceKind.hash(into:) : (), Swift.Hasher
 Func TestContent.hls(segmentCount:variantCount:hosts:) : SuperPlayerTestkit.TestContent, Swift.Int, Swift.Int, Swift.Int [static]
 Func TestContent.hostile(_:) : SuperPlayerTestkit.TestContent, SuperPlayerTestMedia.HostileStream [static]
 Func TestContent.liveHls(hosts:) : SuperPlayerTestkit.TestContent, Swift.Int [static]
+Func TestContent.videoHls(segmentCount:) : SuperPlayerTestkit.TestContent, Swift.Int [static]
 Func ThroughputTrace.Builder.add(durationMs:bandwidthBps:transport:rttMs:) : SuperPlayerTestkit.ThroughputTrace.Builder, Swift.Int64, Swift.Int64, SuperPlayerTestkit.NetworkTransport, Swift.Int64
 Func ThroughputTrace.Builder.build() : SuperPlayerTestkit.ThroughputTrace [throwing]
 Func ThroughputTrace.Builder.holdAtEnd() : SuperPlayerTestkit.ThroughputTrace.Builder
@@ -127,6 +131,8 @@ Var OriginResponse.request : SuperPlayerTestkit.NetworkRequest { get }
 Var OriginResponse.servedFromCache : Swift.Bool { get }
 Var OriginResponse.status : Swift.Int? { get }
 Var OriginResponse.transport : SuperPlayerTestkit.NetworkTransport? { get }
+Var PassThroughFrameOutput.framesOnMainThread : Swift.Int { get }
+Var PassThroughFrameOutput.presentationTimes : [CoreMedia.CMTime] { get }
 Var PlaybackHarness.pollInterval : Swift.Duration [static] { get }
 Var ResourceKind.allCases : [SuperPlayerTestkit.ResourceKind] [static] { get }
 Var ResourceKind.hashValue : Swift.Int { get }

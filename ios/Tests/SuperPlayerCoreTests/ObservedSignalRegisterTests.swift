@@ -45,8 +45,13 @@ final class ObservedSignalRegisterTests: XCTestCase {
         MediaRequest(contentId: contentId, sources: [nowhere])
     }
 
+    /// Every signal a player configured with nothing but content registers, once: all of the
+    /// register but the frame output's, which `FrameOutputPaysNothingTests` counts on a player that
+    /// has one and on one that does not (ADR-0022 rule 9).
     private var everySignalOnce: [ObservedSignal: Int] {
-        Dictionary(uniqueKeysWithValues: ObservedSignal.allCases.map { ($0, 1) })
+        Dictionary(
+            uniqueKeysWithValues: ObservedSignal.allCases.filter { $0.scope != .frameOutputItem }
+                .map { ($0, 1) })
     }
 
     /// The lifecycle's signals, each once: what every player observes for its whole life (#402).
@@ -124,7 +129,9 @@ final class ObservedSignalRegisterTests: XCTestCase {
     /// `Observation.register`, so an `addObserver` or a key-value `observe` written anywhere else in
     /// core would be invisible to it. Core's sources are read from the host through `#filePath`, as
     /// `SyntheticHlsFixturesTests` reads its fixtures, and every registration call must be in the
-    /// register's own file.
+    /// register's own file — or in the session's (`SessionSignals.swift`, #403), the one other register
+    /// core holds, since a `PlaybackSession` is an object of its own over a player and what it
+    /// observes is counted by `PlaybackSessionTests` rather than here.
     func testNoCoreSourceButTheRegisterRegistersAnObservation() throws {
         let sources = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -139,12 +146,13 @@ final class ObservedSignalRegisterTests: XCTestCase {
         let registrations = [
             "addObserver(", ".observe(", "addPeriodicTimeObserver(", "addBoundaryTimeObserver(",
         ]
-        for file in files where file.lastPathComponent != "ObservedSignals.swift" {
+        let registers: Set = ["ObservedSignals.swift", "SessionSignals.swift"]
+        for file in files where !registers.contains(file.lastPathComponent) {
             let text = try String(contentsOf: file, encoding: .utf8)
             for call in registrations {
                 XCTAssertFalse(
                     text.contains(call),
-                    "\(file.lastPathComponent) calls \(call) outside the observed register")
+                    "\(file.lastPathComponent) calls \(call) outside the observed registers")
             }
         }
     }

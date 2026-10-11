@@ -97,12 +97,12 @@ public enum SyntheticHlsStream {
 
     // spec: ISO/IEC 13818-7 §6.2 — sampling_frequency_index 4 is 44100 Hz, channel_configuration 2
     // is stereo. They are encoded into every ADTS frame header below.
-    private static let samplingFrequencyHz = 44_100
+    static let samplingFrequencyHz = 44_100
     private static let samplingFrequencyIndex = 4
-    private static let channelConfiguration = 2
+    static let channelConfiguration = 2
 
     /// spec: ISO/IEC 14496-3 — an AAC-LC frame carries 1024 samples.
-    private static let samplesPerFrame = 1024
+    static let samplesPerFrame = 1024
 
     /// spec: ISO/IEC 13818-7 §6.2 — 7 bytes when protection_absent is 1 (no CRC).
     private static let adtsHeaderBytes = 7
@@ -122,7 +122,7 @@ public enum SyntheticHlsStream {
     /// spec: ISO/IEC 14496-3 §4.4.2 — `ID_CPE`, `common_window` 1, `max_sfb` 0 (no spectral data),
     /// `ms_mask_present` 0, each channel's `global_gain` 0 with no pulse, TNS or gain control data,
     /// then `ID_END` and byte alignment.
-    private static let silentRawDataBlock: [UInt8] = [0x21, 0x00, 0x00, 0x00, 0x00, 0x1C]
+    static let silentRawDataBlock: [UInt8] = [0x21, 0x00, 0x00, 0x00, 0x00, 0x1C]
 
     /// spec: ISO/IEC 13818-1 — the MPEG-2 system clock PTS runs at 90 kHz.
     private static let mpeg2TimestampHz: Int64 = 90_000

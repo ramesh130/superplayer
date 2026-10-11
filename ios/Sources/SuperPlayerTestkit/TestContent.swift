@@ -19,7 +19,8 @@ import SuperPlayerTestMedia
 /// given moment.
 ///
 /// The port of `superplayer-testkit`'s `TestContent`, for the two kinds this harness can serve:
-/// ``hls(segmentCount:variantCount:hosts:)`` and ``liveHls(hosts:)``. Android's *described* content,
+/// ``hls(segmentCount:variantCount:hosts:)`` and ``liveHls(hosts:)`` — and one it has that Android
+/// does not need, ``videoHls(segmentCount:)``, the decodable video a frame output is tested on. Android's *described* content,
 /// which Media3's fakes synthesize without fetching anything, has no iOS form, because `AVPlayer`
 /// plays only what it fetches (ADR-0021, *Context*); and DASH is not ported at all (ADR-0020).
 ///
@@ -107,6 +108,27 @@ public struct TestContent: Sendable {
                 return redundant(files, directory: liveDirectory, ports: ports)
             })
     }
+
+    /// A real HLS stream of decodable H.264 video: `SyntheticVideoHlsStream`'s playlists, its
+    /// fragmented-MP4 initialization segment and `segmentCount` two-second segments of thirty frames a
+    /// second, served under `video/` on one host.
+    ///
+    /// The content a frame output is tested on (#405), since every other stream here is audio and an
+    /// effect is handed decoded *pictures*. It has no Kotlin twin — Android's frame-output test plays
+    /// described video, which Media3's fakes synthesize without a byte (`SyntheticVideoHlsStream`'s
+    /// doc comment) — so its path is its own rather than an Android one with the host taken off.
+    public static func videoHls(segmentCount: Int = defaultSegmentCount) -> TestContent {
+        let files = SyntheticVideoHlsStream.files(segmentCount: segmentCount)
+            .reduce(into: [String: [UInt8]]()) { paths, file in
+                paths[videoDirectory + file.key] = file.value
+            }
+        return TestContent(
+            sourcePath: videoDirectory + SyntheticVideoHlsStream.multivariantPlaylistName,
+            isLive: false, hosts: 1, publication: { _, _ in files })
+    }
+
+    /// Where ``videoHls(segmentCount:)`` is served.
+    static let videoDirectory = "video/"
 
     /// Where ``liveHls(hosts:)`` is served: a directory of its own, as the Kotlin `LIVE_BASE_URI` is.
     static let liveDirectory = "live/"

@@ -54,6 +54,23 @@ internal `resetForReuse`, which ends the session edge `SessionEdges.swift` names
 `DeviceCapacity.swift`, the one place the device is read: no decoder limit is reported on Apple's
 platforms, so the bound is a per-player budget against `os_proc_available_memory()` under an argued
 ceiling of four, never below one, both numbers i10's (#439) to measure.
+#403 added
+`PlaybackSession(player:resolver:)` — a choice and not a default, publishing one player to the
+process's Now Playing dictionary and remote command centre behind the one `package` protocol
+`NowPlayingPlatform`, the most recent session holding them; `release()` ends the session and then
+the player, `setPlayer(_:)` swaps the player behind it — and `MediaRequestResolver`, through which
+`setMediaRequest(forContentId:)` adopts content named from outside the app. What it observes is its
+own register, `SessionSignals.swift`. There is no service, and CarPlay's entitlement and templates
+are the app's.
+#405 built ADR-0022's frame output: `Configuration.frameOutput` takes a `FrameOutput` — a
+`CVPixelBuffer` and its `CMTime` in, the buffer to show out, called on a queue of the player's —
+and `FramePath.swift` is the whole display path, made only on a player configured with one: an
+`AVPlayerItemVideoOutput` per item, a `CADisplayLink`, and an `AVSampleBufferDisplayLayer` whose
+control timebase is the item's own. `PlayerLayerView` (UIKit) and `PlayerView` (SwiftUI) host that
+layer, or an `AVPlayerLayer` they make for a player without one, and make a Picture in Picture
+content source from either. A player configured for protection has the output off for its lifetime
+and says so in `frameOutputOffReason`; protection is a `package` stub, `Configuration.protection`,
+until #422's `drm` replaces it.
 `SuperPlayerMoQ` is not declared yet — its binary target is
 i9's — and there is no `SuperPlayerCache`, since its content is the offline store's.
 
@@ -106,6 +123,11 @@ origin.responses()                         // how each was answered: status, fau
   `FaultScript.Builder().addDeclaredResponseHeaders(of: entry)`; its fixtures are under
   `ios/Tests/Fixtures/hostile/`, and `HostileManifestCorpusTests` records what a stock `AVPlayer`
   does with each entry (`docs/testing.md`, *The hostile corpus on iOS*).
+- **`.videoHls()` is the one stream with pictures** (#405): `SyntheticVideoHlsStream`'s hand-written
+  H.264 in fragmented MP4, thirty frames a second, with silent AAC beside it so a player with no
+  video output still has a clock (a video-only item never advances in `xctest`). It has no Kotlin
+  twin, and a test playing it on a `SuperPlayer` passes a lifecycle platform that does nothing,
+  because a video item holds the idle timer and `xctest` has no `UIApplication`.
 - **One place a test measures time**: `NetworkShapingTests` holds a shaped transfer to the trace's
   rate as a bound — never faster, exactly, and within a stated slack slower — because #410's
   acceptance asks for a rate; ADR-0021 rule 4's #410 addendum records it. The hostile corpus's

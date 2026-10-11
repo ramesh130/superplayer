@@ -131,6 +131,15 @@ them under `Added` would be worse than stating them here:
   `SuperPlayer.Configuration.setCmcdMode(_:)` takes `CmcdMode.requestHeaders` (every profile's
   default) or `.disabled`, and refuses `.queryParameter` with `CmcdModeUnsupportedError`, since the
   SDK has no query mode. Content from `setMediaURL` is sent none. No Android behaviour moved.
+- **The iOS policy boundary (#415).** `SuperPlayerCore` gains `PlaybackPolicy`,
+  `PlaybackConditions` (the six observations and their types) and every half of `PlaybackDecision` —
+  the selection pace, the manifest and segment retry budgets and tunneling present and ignored on
+  iOS — with `Configuration.policy`, `PlaybackProfile.policy` (the static lookup, still the default)
+  and `SuperPlayer.playbackDecision`. Any policy but a profile's static one is re-consulted on the
+  five triggers and its decision laid on the playing item in place. **`TelemetryCollector` gains a
+  requirement, `decisionChanged(_:trigger:)`**, so a consumer's own collector no longer compiles
+  until it adds one; `QoeCollector` emits `DecisionChanged` from it, and `SessionStarted.decision` is
+  the decision in force. ADR-0009 rule 5 gains a #415 addendum. No Android behaviour moved.
 - **The iOS failure taxonomy (#419).** `SuperPlayerResilience` gains `FailureClass` and
   `FallbackRung` — the Kotlin taxonomy leaf for leaf, with the same stable names, answers, categories
   and message keys — `ErrorClassifier` over the `NSError` chain and the error log's `LoggedFailure`,

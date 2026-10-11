@@ -470,8 +470,8 @@ additions is what you want.
 
 | Event | Fired when | Carries | How derived on iOS |
 | --- | --- | --- | --- |
-| `SessionStarted` | A player takes content on | `profile`, `decision` | Core's adoption edge (`setMediaRequest`, `restoreSnapshot`; `SessionEdges.swift`). `profile` is `Configuration.profile`; `decision` is the empty `PlaybackDecision` until the policy boundary (`#415`) |
-| `DecisionChanged` | The policy answered differently on a named trigger | `decision`, `trigger` | Not emitted: no iOS policy is consulted again until `#415` |
+| `SessionStarted` | A player takes content on | `profile`, `decision` | Core's adoption edge (`setMediaRequest`, `restoreSnapshot`; `SessionEdges.swift`). `profile` is `Configuration.profile`; `decision` is `player.playbackDecision` as the session opens. An iOS decision carries the halves an iOS player has knobs for — `buffer.maxBufferMs` is `preferredForwardBufferDuration`, its live half an offset rather than a speed range (`PlaybackDecision.swift`) — so it is the same decision in Android's vocabulary and not field for field |
+| `DecisionChanged` | The policy answered differently on a named trigger | `decision`, `trigger` | Core's `DecisionReapplication.swift`, on the same five triggers from `ConditionsBinding.swift`'s readings: `NWPathMonitor`'s path, the item's `duration` and access log, `timeControlStatus`, and `AVPlayer.rate`. **Every player whose `Configuration.policy` is not its profile's static one emits it**, a consumer's own policy included, because every knob a decision reaches is live-settable on the item (ADR-0009 rule 5 met by the platform); on Android only `superplayer-abr`'s policy is re-consulted. A static player emits none |
 | `SessionEnded` | Released, recycled, or moved to other content | `droppedEventCount`, `securityLevel` | Core's edges: a replacement, `setMediaURL`, `release()`. `droppedEventCount` is stamped by `TelemetryDelivery` as the event leaves the queue, as on Android; `securityLevel` is absent until FairPlay (`#422`) |
 | `FirstFrameRendered` | The first video frame reaches the display | `timeToFirstFrameMs`, `startBoundary` | The session's first `AVPlayer.timeControlStatus` of `.playing` (key-value observed): presentation beginning. Not `AVPlayerLayer.isReadyForDisplay`, which is the consumer's layer and invisible to a collector. For video that is the clock starting with its first frame due, which can be a display refresh before the frame is on screen, so it can read slightly lower than a layer's reading; **for audio-only content it is the first audio presented, where Android reports no event**. The boundary is `declarePlaybackIntent()` on `CLOCK_MONOTONIC`, else the session's start, as on Android |
 | `RebufferStarted` | Playback stalls for data after it started | `seekInduced` | After the first frame: `timeControlStatus` becoming `.waitingToPlayAtSpecifiedRate` with `reasonForWaitingToPlay` of `.toMinimizeStalls`, or `AVPlayerItemPlaybackStalled` on a player that does not wait to minimise stalls. **iOS 18 and later** also open one on `AVMetricPlayerItemStallEvent`; iOS 17 has the first two alone. `seekInduced` as on Android |
@@ -533,7 +533,11 @@ Which players emit it is a property of how they were built, and it is stated rat
 discovered: a player whose engine can honour a changed decision whole — one built with
 `superplayer-abr`'s policy — is consulted again on the triggers; every other player, whatever policy
 it was given, is consulted once at construction and emits no `DecisionChanged` at all
-(ADR-0009 rule 5). A session with none is therefore not evidence that conditions were stable.
+(ADR-0009 rule 5). A session with none is therefore not evidence that conditions were stable. On
+iOS and tvOS the line falls elsewhere, for the platform's reason rather than a different rule: every
+knob a decision reaches is live-settable on the playing item, so every player except one under its
+profile's static policy is consulted again, a consumer's own policy included (`DecisionChanged`'s
+*How derived on iOS* cell).
 
 **A display change is not a decision change.** On a player built with `superplayer-tv`, an HDMI hotplug
 re-selects renditions under the new display without consulting the policy, so it appears as

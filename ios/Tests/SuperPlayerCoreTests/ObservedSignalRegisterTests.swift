@@ -46,15 +46,17 @@ final class ObservedSignalRegisterTests: XCTestCase {
     }
 
     /// Every signal a player configured with nothing but content registers, once: all of the
-    /// register but the frame output's and resilience's, which `FrameOutputPaysNothingTests` and
-    /// `ResiliencePaysNothingTests` count on a player that has the feature and on one that does not
-    /// (ADR-0022 rule 9, ADR-0011 rule 14).
+    /// register but the frame output's, which `FrameOutputPaysNothingTests` counts on a player that
+    /// has one and on one that does not (ADR-0022 rule 9), the policy's, which
+    /// `PolicyPaysNothingTests` counts the same way (ADR-0009 rule 7), and resilience's, which
+    /// `ResiliencePaysNothingTests` counts the same way (ADR-0011 rule 14).
     private var everySignalOnce: [ObservedSignal: Int] {
-        Dictionary(
-            uniqueKeysWithValues: ObservedSignal.allCases.filter {
-                $0.scope != .frameOutputItem && $0.scope != .resilienceItem
-            }
-            .map { ($0, 1) })
+        let elsewhere: Set<ObservedSignal.Scope> = [
+            .frameOutputItem, .reapplicationPlayer, .reapplicationItem, .resilienceItem,
+        ]
+        return Dictionary(
+            uniqueKeysWithValues: ObservedSignal.allCases.filter { !elsewhere.contains($0.scope) }
+                .map { ($0, 1) })
     }
 
     /// The lifecycle's signals, each once: what every player observes for its whole life (#402).
@@ -148,6 +150,7 @@ final class ObservedSignalRegisterTests: XCTestCase {
 
         let registrations = [
             "addObserver(", ".observe(", "addPeriodicTimeObserver(", "addBoundaryTimeObserver(",
+            "NWPathMonitor(",
         ]
         let registers: Set = ["ObservedSignals.swift", "SessionSignals.swift"]
         for file in files where !registers.contains(file.lastPathComponent) {

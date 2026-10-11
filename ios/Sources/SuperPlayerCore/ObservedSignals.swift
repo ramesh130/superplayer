@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import AVFoundation
+import Network
 
 /// **The observed register**: every key path and notification ``SuperPlayer`` observes, in this one
 /// file, and nowhere else (ADR-0020 rule 13, `docs/ios-plan.md` §3.1's last row).
@@ -27,7 +28,10 @@ import AVFoundation
 /// while a request is playing, still once after a replacement; only the ``Scope/player`` signals
 /// while an item from a bare URL is. `FrameOutputPaysNothingTests` counts the
 /// ``Scope/frameOutputItem`` signal: once on a player whose frame output runs, and on no other
-/// (ADR-0022 rule 9). `ResiliencePaysNothingTests` counts the ``Scope/resilienceItem`` signals the
+/// (ADR-0022 rule 9). `PolicyPaysNothingTests` counts the ``Scope/reapplicationPlayer`` and
+/// ``Scope/reapplicationItem`` signals: none on a player under its profile's static policy, each once
+/// on a player given a policy of its own (ADR-0009 rule 7, `DecisionReapplication.swift`).
+/// `ResiliencePaysNothingTests` counts the ``Scope/resilienceItem`` signals the
 /// same way: once each on a player configured with resilience, and on no other (ADR-0011 rule 14).
 ///
 /// The ``Scope/player`` signals are the lifecycle's (`LifecycleBinding.swift`, #402), registered on
@@ -84,6 +88,30 @@ enum ObservedSignal: CaseIterable, Hashable, Sendable {
     /// when an item knows whether it carries video (`LifecycleBinding.swift`, the idle timer).
     case playerTimeControlStatus
 
+    /// The device's network path changed — an `NWPathMonitor`, the transport's reading
+    /// (`ConditionsBinding.swift`). Not a notification or a key path, and in the register all the
+    /// same: it is a registration that must be cancelled, and the count is what proves it is.
+    case decisionNetworkPath
+
+    /// The rate the player was asked for changed: the playback speed's reading. A registration of
+    /// its own beside ``playerRateChanged`` rather than a second reader of the lifecycle's, because
+    /// it exists only on a player whose policy is consulted again — a different scope and count.
+    case decisionRateChanged
+
+    /// A key-value observation of `AVPlayer.timeControlStatus`: the stall history's reading, beside
+    /// the lifecycle's ``playerTimeControlStatus`` for ``decisionRateChanged``'s reason.
+    case decisionTimeControlStatus
+
+    /// The current item's time jumped: a seek, which makes the stall that follows it not a rebuffer.
+    case decisionItemTimeJumped
+
+    /// A key-value observation of `AVPlayerItem.duration`: the stream type's reading, indefinite
+    /// for live content and a number once a live playlist has ended.
+    case decisionItemDuration
+
+    /// The current item's access log gained an entry: the throughput's reading.
+    case decisionAccessLogEntry
+
     /// What a signal is registered on, and so for how long.
     enum Scope: Sendable {
         /// The current item, while it carries an identity (``SuperPlayer/setMediaRequest(_:)``).
@@ -93,6 +121,11 @@ enum ObservedSignal: CaseIterable, Hashable, Sendable {
         /// The current item, whatever it carries, on a player whose frame output runs — nothing on
         /// any other player, which is ADR-0022 rule 9's count.
         case frameOutputItem
+        /// The player and the device, for the player's whole life, on a player whose policy is
+        /// consulted again — nothing on any other player, which is ADR-0009 rule 7's count.
+        case reapplicationPlayer
+        /// The current item, whatever it carries, on a player whose policy is consulted again.
+        case reapplicationItem
         /// The current item, whatever it carries, on a player configured with resilience — nothing
         /// on any other player, which is ADR-0011 rule 14's count.
         case resilienceItem
@@ -106,6 +139,10 @@ enum ObservedSignal: CaseIterable, Hashable, Sendable {
         case .audioSessionInterrupted, .audioRouteChanged, .playerRateChanged,
             .playerTimeControlStatus:
             .player
+        case .decisionNetworkPath, .decisionRateChanged, .decisionTimeControlStatus:
+            .reapplicationPlayer
+        case .decisionItemTimeJumped, .decisionItemDuration, .decisionAccessLogEntry:
+            .reapplicationItem
         }
     }
 }
@@ -126,6 +163,7 @@ final class Observation {
     private enum Registration {
         case notification(any NSObjectProtocol)
         case keyValue(NSKeyValueObservation)
+        case pathMonitor(NWPathMonitor)
     }
 
     private init(signal: ObservedSignal, registration: Registration) {
@@ -133,9 +171,11 @@ final class Observation {
         self.registration = registration
     }
 
-    /// Registers `handler` for an ``ObservedSignal/Scope/identifiedItem`` or
-    /// ``ObservedSignal/Scope/frameOutputItem`` `signal` as posted by `item`, delivered on the main queue — the facade's actor, so the handler runs in its
-    /// isolation.
+    /// Registers `handler` for an ``ObservedSignal/Scope/identifiedItem``,
+    /// ``ObservedSignal/Scope/frameOutputItem`` or ``ObservedSignal/Scope/reapplicationItem``
+    /// `signal` as posted by `item`, delivered on the main queue — the facade's actor, so the
+    /// handler runs in its isolation. The duration's key-value observation is queued onto the main
+    /// queue, as the player's `timeControlStatus` is below, since AVFoundation promises no thread.
     @MainActor
     static func register(
         _ signal: ObservedSignal, on item: AVPlayerItem,
@@ -144,11 +184,21 @@ final class Observation {
         let name: Notification.Name
         switch signal {
         case .itemPlayedToEnd: name = AVPlayerItem.didPlayToEndTimeNotification
-        case .itemTimeJumped, .frameOutputItemTimeJumped: name = AVPlayerItem.timeJumpedNotification
+        case .itemTimeJumped, .frameOutputItemTimeJumped, .decisionItemTimeJumped:
+            name = AVPlayerItem.timeJumpedNotification
+        case .decisionAccessLogEntry: name = AVPlayerItem.newAccessLogEntryNotification
+        case .decisionItemDuration:
+            let observation = item.observe(\.duration) { _, _ in
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated { handler() }
+                }
+            }
+            return Observation(signal: signal, registration: .keyValue(observation))
         case .resilienceItemStatus, .resilienceItemFailedToPlayToEnd:
             preconditionFailure("\(signal) hands over an error; register it with registerFailure")
         case .audioSessionInterrupted, .audioRouteChanged, .playerRateChanged,
-            .playerTimeControlStatus:
+            .playerTimeControlStatus, .decisionNetworkPath, .decisionRateChanged,
+            .decisionTimeControlStatus:
             preconditionFailure("\(signal) is registered on a player, not on an item")
         }
         let token = NotificationCenter.default.addObserver(
@@ -196,7 +246,9 @@ final class Observation {
             return Observation(signal: signal, registration: .notification(token))
         case .itemPlayedToEnd, .itemTimeJumped, .frameOutputItemTimeJumped,
             .audioSessionInterrupted, .audioRouteChanged, .playerRateChanged,
-            .playerTimeControlStatus:
+            .playerTimeControlStatus, .decisionNetworkPath, .decisionRateChanged,
+            .decisionTimeControlStatus, .decisionItemTimeJumped, .decisionItemDuration,
+            .decisionAccessLogEntry:
             preconditionFailure("\(signal) is not a resilience item signal")
         }
     }
@@ -226,17 +278,20 @@ final class Observation {
             (name, object) = (
                 AVAudioSession.routeChangeNotification, AVAudioSession.sharedInstance()
             )
-        case .playerRateChanged:
+        case .playerRateChanged, .decisionRateChanged:
             (name, object) = (AVPlayer.rateDidChangeNotification, player)
-        case .playerTimeControlStatus:
+        case .playerTimeControlStatus, .decisionTimeControlStatus:
             let observation = player.observe(\.timeControlStatus) { _, _ in
                 DispatchQueue.main.async {
                     MainActor.assumeIsolated { handler(nil) }
                 }
             }
             return Observation(signal: signal, registration: .keyValue(observation))
-        case .itemPlayedToEnd, .itemTimeJumped, .frameOutputItemTimeJumped, .resilienceItemStatus,
-            .resilienceItemFailedToPlayToEnd:
+        case .decisionNetworkPath:
+            preconditionFailure("\(signal) is registered on the device, not on a player")
+        case .itemPlayedToEnd, .itemTimeJumped, .frameOutputItemTimeJumped,
+            .decisionItemTimeJumped, .decisionItemDuration, .decisionAccessLogEntry,
+            .resilienceItemStatus, .resilienceItemFailedToPlayToEnd:
             preconditionFailure("\(signal) is registered on an item, not on a player")
         }
         let token = NotificationCenter.default.addObserver(
@@ -251,10 +306,28 @@ final class Observation {
         return Observation(signal: signal, registration: .notification(token))
     }
 
+    /// Registers `handler` for ``ObservedSignal/decisionNetworkPath``: an `NWPathMonitor` started
+    /// on the main queue, so each path — the first one, delivered as the monitor starts, included —
+    /// arrives in the facade's isolation. Cancelling it is the whole of unregistering.
+    ///
+    /// ref: https://developer.apple.com/documentation/network/nwpathmonitor
+    @MainActor
+    static func registerNetworkPath(
+        _ handler: @escaping @MainActor @Sendable (NWPath) -> Void
+    ) -> Observation {
+        let monitor = NWPathMonitor()
+        monitor.pathUpdateHandler = { path in
+            MainActor.assumeIsolated { handler(path) }
+        }
+        monitor.start(queue: .main)
+        return Observation(signal: .decisionNetworkPath, registration: .pathMonitor(monitor))
+    }
+
     deinit {
         switch registration {
         case .notification(let token): NotificationCenter.default.removeObserver(token)
         case .keyValue(let observation): observation.invalidate()
+        case .pathMonitor(let monitor): monitor.cancel()
         }
     }
 }

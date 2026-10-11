@@ -213,12 +213,14 @@ final class PlayerPoolTests: XCTestCase {
 
         XCTAssertEqual(
             reused.liveObservations,
-            // Every signal but the frame output's and resilience's, which this pool's players have
-            // none of (#405, #419); `FrameOutputPaysNothingTests` and `ResiliencePaysNothingTests`
-            // count a recycled player that has each.
+            // Every signal but the frame output's, the policy's and resilience's, which this pool's
+            // players have none of (#405, #415, #419); `FrameOutputPaysNothingTests`,
+            // `PolicyPaysNothingTests` and `ResiliencePaysNothingTests` count a recycled player that
+            // has them.
             Dictionary(
                 uniqueKeysWithValues: ObservedSignal.allCases.filter {
-                    $0.scope != .frameOutputItem && $0.scope != .resilienceItem
+                    ![.frameOutputItem, .reapplicationPlayer, .reapplicationItem, .resilienceItem]
+                        .contains($0.scope)
                 }
                 .map { ($0, 1) }))
         pool.release()
@@ -323,6 +325,7 @@ private final class ResetEdgeRecorder: TelemetryCollector {
     }
 
     func declareIntent(monotonicTimeMs: Int64) {}
+    func decisionChanged(_ decision: PlaybackDecision, trigger: DecisionTrigger) {}
 
     func detach() {
         edges.append("detach")

@@ -92,5 +92,6 @@ private final class StandInCollector: TelemetryCollector {
     func startSession(contentId: String, sessionId: String) {}
     func endSession() {}
     func declareIntent(monotonicTimeMs: Int64) {}
+    func decisionChanged(_ decision: PlaybackDecision, trigger: DecisionTrigger) {}
     func detach() {}
 }

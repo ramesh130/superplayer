@@ -325,8 +325,11 @@ enum LifecycleEvent: Equatable, Sendable {
         case .playerTimeControlStatus:
             self = .timeControlStatusChanged
         case .itemPlayedToEnd, .itemTimeJumped, .frameOutputItemTimeJumped, .resilienceItemStatus,
-            .resilienceItemFailedToPlayToEnd:
-            // An item's signals are never registered on a player (``Observation``).
+            .resilienceItemFailedToPlayToEnd, .decisionNetworkPath, .decisionRateChanged,
+            .decisionTimeControlStatus, .decisionItemTimeJumped, .decisionItemDuration,
+            .decisionAccessLogEntry:
+            // An item's signals are never registered on a player, and the policy's are never
+            // handed to the lifecycle (``Observation``).
             self = .unreadable
         }
     }

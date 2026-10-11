@@ -14,37 +14,62 @@
 
 import AVFoundation
 
-/// **The one place a profile's numbers become AVFoundation configuration** — the analog of the
-/// Kotlin `EngineBinding.kt`, and the file the policy boundary (`docs/ios-plan.md` §3.3) grows when
-/// a decision can change during playback. ``ProfileKnobs`` names no AVFoundation type; this file is
-/// where it meets one, so a knob set anywhere else is a bug against ADR-0005 whatever it is worth.
+/// **The one place a decision becomes AVFoundation configuration** — the analog of the Kotlin
+/// `EngineBinding.kt` (`docs/ios-plan.md` §3.3's second row). ``PlaybackDecision`` names no
+/// AVFoundation type; this file is where it meets one, so a knob set anywhere else is a bug against
+/// ADR-0005 whatever it is worth.
 ///
-/// Two halves, because the knobs live on two objects: ``apply(to:)-(AVPlayer)`` once, as the
-/// player is made, and ``apply(to:)-(AVPlayerItem)`` on every item the facade makes, before the
-/// item is the player's — so the first variant chosen and the first second buffered are already
-/// the profile's.
-extension ProfileKnobs {
+/// Two halves, because the knobs live on two objects: ``apply(to:)-(AVPlayer)`` as the player is
+/// made, and ``apply(to:)-(AVPlayerItem)`` on every item the facade makes, before the item is the
+/// player's — so the first variant chosen and the first second buffered are already the decision's.
+///
+/// **Every knob here is live-settable, and that is ADR-0009 rule 5's condition met by the platform.**
+/// The rule says a re-applied decision is honoured whole or the policy is not re-consulted; on
+/// Android that needs `superplayer-abr`'s retargetable load control and selection, because
+/// `DefaultLoadControl` fixes its durations at construction. `preferredForwardBufferDuration`, both
+/// ceilings and their expensive-network pair, the live offset and its preservation are all
+/// documented as read by the item as it plays, and `automaticallyWaitsToMinimizeStalling` by the
+/// player — so the facade (`SuperPlayer.decisionChanged(to:on:)`) lays a decision
+/// `DecisionReapplication.swift` changed on the *current* item and the player in place, through
+/// these same two functions, and nothing is left half in force. There is no second target as the
+/// Kotlin file grew one. The cost, recorded at ADR-0009 rule 5's #415 addendum: a knob a consumer
+/// set on the playing item through `player.avPlayer` is rewritten by the next change.
+///
+/// What is not laid, because nothing on this platform reads it: ``TrackSelectionPolicy/pace``, the
+/// ``RetryPolicy/manifest`` and ``RetryPolicy/segment`` budgets, and ``PlaybackDecision/output``
+/// (`PlaybackDecision.swift` says why each). ``PlaybackDecision/preload``,
+/// ``PlaybackDecision/download`` and ``RetryPolicy/licence`` are read by the products that act on
+/// them, from ``SuperPlayer/playbackDecision``, and not laid on an engine object at all.
+///
+/// ref: https://developer.apple.com/documentation/avfoundation/avplayeritem/preferredforwardbufferduration
+/// ref: https://developer.apple.com/documentation/avfoundation/avplayeritem/preferredpeakbitrate
+/// ref: https://developer.apple.com/documentation/avfoundation/avplayeritem/configuredtimeoffsetfromlive
+extension PlaybackDecision {
 
     /// The player's half: whether it waits to minimise stalling.
     @MainActor
     func apply(to player: AVPlayer) {
-        player.automaticallyWaitsToMinimizeStalling = waitsToMinimizeStalling
+        player.automaticallyWaitsToMinimizeStalling = buffer.waitsToMinimizeStalling
     }
 
     /// The item's half. A field that is nil is written as Apple's own default rather than skipped,
-    /// so an item's knobs are the row's whole and never a remainder of whoever set them before.
+    /// so an item's knobs are the decision's whole and never a remainder of an earlier decision —
+    /// which is what makes laying a changed decision on a playing item honour it whole.
     @MainActor
     func apply(to item: AVPlayerItem) {
-        item.preferredForwardBufferDuration = forwardBufferSeconds ?? 0
-        item.preferredPeakBitRate = Double(maxVideoBitrateBps ?? 0)
-        item.preferredMaximumResolution = Self.resolution(maxHeightPx: maxVideoHeightPx)
+        item.preferredForwardBufferDuration = buffer.maxBufferMs.map(Self.seconds) ?? 0
+        item.preferredPeakBitRate = Double(trackSelection.maxVideoBitrateBps ?? 0)
+        item.preferredMaximumResolution = Self.resolution(
+            maxHeightPx: trackSelection.maxVideoHeightPx)
         item.preferredPeakBitRateForExpensiveNetworks = Double(
-            expensiveNetworkMaxVideoBitrateBps ?? 0)
+            trackSelection.expensiveNetworkMaxVideoBitrateBps ?? 0)
         item.preferredMaximumResolutionForExpensiveNetworks = Self.resolution(
-            maxHeightPx: expensiveNetworkMaxVideoHeightPx)
+            maxHeightPx: trackSelection.expensiveNetworkMaxVideoHeightPx)
         item.configuredTimeOffsetFromLive =
-            liveOffsetSeconds.map { CMTime(seconds: $0, preferredTimescale: 1_000) } ?? .invalid
-        item.automaticallyPreservesTimeOffsetFromLive = preservesLiveOffset
+            liveLatency?.targetOffsetMs.map {
+                CMTime(value: CMTimeValue($0), timescale: Self.millisecondsPerSecond)
+            } ?? .invalid
+        item.automaticallyPreservesTimeOffsetFromLive = liveLatency?.preservesOffset ?? false
     }
 
     /// A height ceiling as the size `preferredMaximumResolution` takes, or `.zero` — Apple's "no
@@ -65,4 +90,12 @@ extension ProfileKnobs {
     /// `TrackSelectionPolicy.UNLIMITED` (`Int.MAX_VALUE`) the same axis is left at there, and far
     /// past any encoded width.
     static let unboundedWidthPx = Int(Int32.max)
+
+    /// A decision's milliseconds as the seconds AVFoundation's durations take.
+    private static func seconds(_ milliseconds: Int) -> TimeInterval {
+        TimeInterval(milliseconds) / TimeInterval(millisecondsPerSecond)
+    }
+
+    /// The timescale a decision's milliseconds are written in, exactly.
+    private static let millisecondsPerSecond: CMTimeScale = 1_000
 }

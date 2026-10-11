@@ -125,7 +125,8 @@ import os
 /// across kinds and is untouched by it.
 ///
 /// Two smaller departures, both masked structurally: `SessionStarted` prints its profile and none of
-/// the Kotlin decision's buffer and bitrate fields, which arrive with the decision's halves (#415);
+/// the Kotlin decision's buffer and bitrate fields — the halves exist since #415, and printing them
+/// is a change of the trace's lines and its goldens that ticket left to its own change;
 /// and a bandwidth sample divides by the transfer's `Date`s in seconds rather than by Media3's
 /// whole milliseconds, so the two platforms can differ in the last digits for one transfer.
 public final class SessionTraceRecorder: TelemetrySink, Sendable {
@@ -265,8 +266,8 @@ extension SessionTraceRecorder {
     static func describe(_ event: TelemetryEvent) -> String {
         switch event {
         case .sessionStarted(let e):
-            // The decision's buffer and bitrate fields arrive with its halves (#415), as the
-            // OSLogSink line's do; until then there is nothing to print after the profile.
+            // The decision's buffer and bitrate fields are not printed yet: the halves exist since
+            // #415, and adding them is a change of the trace's lines and goldens of its own.
             return "profile=\(e.profile.kotlinName)"
         case .decisionChanged(let e):
             return "trigger=\(e.trigger.kotlinName)"

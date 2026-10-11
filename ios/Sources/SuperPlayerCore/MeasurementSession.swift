@@ -22,16 +22,16 @@ import Foundation
 /// log and an app's warehouse is an equality on this string, so one place decides it (ADR-0008 rule
 /// 6), and it is core, because only core knows which item change carried a ``MediaRequest``.
 ///
-/// **Where the id comes from is the caller's argument**, not this type's. Today the facade passes
-/// ``newSessionId()``. On iOS 18 the SDK fills CMCD's `sid` itself, from the asset's
-/// `httpSessionIdentifier`, and cannot be told what to put there (`docs/ios-cmcd-finding.md`), so
-/// #446 passes that identifier instead — one argument changed at the one call site where the asset
-/// exists, and nothing here or in any collector moves. An id minted by this type would have been
-/// the one thing #446 had to unpick.
+/// **Where the id comes from is the caller's argument**, not this type's, and on iOS it is *read*
+/// rather than minted: the facade passes the `httpSessionIdentifier` of the `AVURLAsset` it built
+/// for the adoption (#446, `CmcdBinding.swift`). On iOS 18 the SDK fills CMCD's `sid` from that
+/// identifier and cannot be told what to put there (`docs/ios-cmcd-finding.md`), and on every
+/// version it sends it as `X-Playback-Session-Id`, so the telemetry id follows the wire's — one
+/// string from one place, as on Android, with the direction reversed. The Kotlin `idFor(contentId)`
+/// has no counterpart: CMCD here asks the asset, never this type.
 ///
 /// Held only by a player with a reader for an id — today, one configured with a collector — so a
-/// player without one mints nothing (ADR-0008 rule 2). The Kotlin `idFor(contentId)`, what CMCD
-/// asks, arrives with #446, its first reader.
+/// player without one reads nothing (ADR-0008 rule 2).
 struct MeasurementSession {
 
     /// The open session: its content and its id.
@@ -54,15 +54,5 @@ struct MeasurementSession {
     mutating func close() -> Open? {
         defer { current = nil }
         return current
-    }
-
-    /// A new session id.
-    ///
-    /// spec: CTA-5004 §3.1 caps `sid` at 64 characters and asks for a GUID; a UUID's canonical
-    /// 36-character form satisfies both. Foundation's `uuidString` is uppercase, which is also the
-    /// form the asset's `httpSessionIdentifier` takes (`docs/telemetry-schema.md`, *On iOS and
-    /// tvOS*), so the source #446 swaps in changes no id's shape.
-    static func newSessionId() -> String {
-        UUID().uuidString
     }
 }

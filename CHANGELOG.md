@@ -123,6 +123,14 @@ them under `Added` would be worse than stating them here:
   `SuperPlayer.Configuration` is no longer `Hashable`, because it now carries a function.
   `SuperPlayerTelemetry` gains the bounded delivery queue: 256 events per player, the newest refused,
   every refusal stamped on `SessionEnded`. No Android behaviour moved.
+- **CMCD on iOS (#446).** Every `SuperPlayer` sends CMCD (CTA-5004) v1 as request headers from iOS
+  18 and tvOS 18, through AVFoundation's own `sendsCommonMediaClientDataAsHTTPHeaders`, set on a
+  fresh `AVURLAsset` per adoption; below 18 nothing is sent and nothing is refused. The telemetry
+  `sessionId` is now *read* from that asset's `httpSessionIdentifier` rather than minted, so it is
+  the `sid` on every request and the `X-Playback-Session-Id` on every request at any version.
+  `SuperPlayer.Configuration.setCmcdMode(_:)` takes `CmcdMode.requestHeaders` (every profile's
+  default) or `.disabled`, and refuses `.queryParameter` with `CmcdModeUnsupportedError`, since the
+  SDK has no query mode. Content from `setMediaURL` is sent none. No Android behaviour moved.
 - **Phase 9 — Diagnostics and docs.** `MediaSourceDoctor`, which names twenty pathologies over the
   chain a player would load through; the postmortem reading; `SessionBundle`; the debug HUD; and
   the documents in `docs/`.

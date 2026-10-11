@@ -32,7 +32,9 @@ Func SyntheticHlsStream.durationMs(segmentCount:) : Swift.Int64, Swift.Int [stat
 Func SyntheticHlsStream.files(segmentCount:variantCount:) : [Swift.String : [Swift.UInt8]], Swift.Int, Swift.Int [static]
 Func SyntheticHlsStream.liveFiles(publishedSegmentCount:) : [Swift.String : [Swift.UInt8]], Swift.Int [static]
 Func SyntheticHlsStream.segmentName(_:) : Swift.String, Swift.Int [static]
+Func SyntheticVideoHlsStream.avcDecoderConfigurationRecord() : [Swift.UInt8] [static]
 Func SyntheticVideoHlsStream.durationMs(segmentCount:) : Swift.Int64, Swift.Int [static]
+Func SyntheticVideoHlsStream.elementaryFrame(_:) : (sample: [Swift.UInt8], isKeyFrame: Swift.Bool), Swift.Int [static]
 Func SyntheticVideoHlsStream.files(segmentCount:) : [Swift.String : [Swift.UInt8]], Swift.Int [static]
 Func SyntheticVideoHlsStream.segmentName(_:) : Swift.String, Swift.Int [static]
 Struct HostileStream : CustomStringConvertible, Equatable, Hashable, Sendable

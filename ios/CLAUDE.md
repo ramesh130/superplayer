@@ -71,6 +71,20 @@ layer, or an `AVPlayerLayer` they make for a player without one, and make a Pict
 content source from either. A player configured for protection has the output off for its lifetime
 and says so in `frameOutputOffReason`; protection is a `package` stub, `Configuration.protection`,
 until #422's `drm` replaces it.
+#431 is the realtime tracer. The seam is core's (`FrameSource.swift`: `FrameSource`, `FrameSink`,
+`RealtimeTrack`, `EncodedFrame`, `FrameSourceFactory` and the obligations, plus three typed errors),
+and `SuperPlayerRealtime` holds `RealtimePlayer` — the second public player type, because an
+`AVPlayer` cannot take pushed frames (ADR-0020 rule 11) — over `RealtimeEngine.swift`: an
+`AVSampleBufferRenderSynchronizer` with the sample-buffer display layer and an audio renderer, every
+frame wrapped in a `CMSampleBuffer` and decoded by them, the first frame's timestamp subtracted, the
+clock never sought. `Realtime.transport(scheme:)` makes its `RealtimeSources`; a request is dispatched
+on its first source's scheme, and `.at`/`.resumeFromLastKnown` are refused typed before any
+bookkeeping. `RealtimeFormats.swift` is the codec table, both spellings, answering a
+`CMFormatDescription` with a record passed through as its atom. What the two player types share is
+core's `package` protocol `PlaybackEngine` — the view hosts either, and `SharedLifecycle` counts both
+— and what they do not yet (telemetry, sessions, interruptions) is listed in `docs/testing.md`'s *A
+realtime transport on iOS*. #340's observed bytes are `ios/Tests/Fixtures/realtime/observed-bytes.tsv`,
+read by both platforms' tests.
 `SuperPlayerMoQ` is not declared yet — its binary target is
 i9's — and there is no `SuperPlayerCache`, since its content is the offline store's.
 

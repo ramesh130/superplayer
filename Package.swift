@@ -161,9 +161,14 @@ let package = Package(
             dependencies: ["SuperPlayerDiagnostics"],
             path: "ios/Tests/SuperPlayerDiagnosticsTests"
         ),
+        // Core for the seam the fake implements, testmedia for the H.264 it delivers, and testkit
+        // for the bounded wait every playback test uses (ADR-0021 rule 4); no origin is served.
         .testTarget(
             name: "SuperPlayerRealtimeTests",
-            dependencies: ["SuperPlayerRealtime"],
+            dependencies: [
+                "SuperPlayerRealtime", "SuperPlayerCore", "SuperPlayerTestMedia",
+                "SuperPlayerTestkit",
+            ],
             path: "ios/Tests/SuperPlayerRealtimeTests"
         ),
         // Core too, because core's playback tests live here: they need the phase 2 harness, and

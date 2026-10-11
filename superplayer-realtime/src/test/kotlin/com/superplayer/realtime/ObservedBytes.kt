@@ -16,6 +16,8 @@
 
 package com.superplayer.realtime
 
+import java.io.File
+
 /**
  * The bytes #340 observed, in one place, so that the conversion's unit test and the player's test
  * cannot drift into disagreeing about what was seen.
@@ -40,21 +42,19 @@ internal object ObservedBytes {
      * `lengthSizeMinusOne = 3` so a four-byte NAL length field, `e1` one SPS, `00 18` a 24-byte SPS,
      * then the first 16 bytes of it.
      */
-    val AVCC_DUMP = bytes("01 42 c0 1e ff e1 00 18 67 42 c0 1e d9 01 41 fb 01 10 00 00 03 00 10 00")
+    val AVCC_DUMP = committed("AVCC_DUMP")
 
     /**
      * #340's `avc3` keyframe payload, **verbatim**: a start code, the encoder's 24-byte SPS, and the
      * start code of the unit that followed it. In-band parameter sets, confirmed by observation.
      */
-    val AVC3_KEYFRAME =
-        bytes("00 00 00 01 67 42 c0 1e d9 01 41 fb 01 10 00 00 03 00 10 00 00 03 03 c0 f1 62 e4 80 00 00 00 01")
+    val AVC3_KEYFRAME = committed("AVC3_KEYFRAME")
 
     /**
      * #340's `avc1` keyframe payload, **verbatim**: `00 00 02 6f` is a 623-byte length prefix, then
      * NAL `0x06`, an SEI. No start code anywhere in it.
      */
-    val AVC1_KEYFRAME_DUMP =
-        bytes("00 00 02 6f 06 05 ff ff 6b dc 45 e9 bd e6 d9 48 b7 96 2c d8 20 d9 23 ee ef 78 32 36 34 20 2d 20")
+    val AVC1_KEYFRAME_DUMP = committed("AVC1_KEYFRAME_DUMP")
 
     /** The SPS, read off [AVC3_KEYFRAME]: the 24 bytes between its two start codes, the length [AVCC_DUMP] declares. */
     val SPS = AVC3_KEYFRAME.copyOfRange(4, 28)
@@ -64,7 +64,7 @@ internal object ObservedBytes {
      * four-byte baseline one written here. It is the only part of [AVCC] that was not seen, which is
      * why it is named apart — and why that record is 39 bytes where the observed one was 40.
      */
-    val SYNTHESIZED_PPS = bytes("68 ce 3c 80")
+    val SYNTHESIZED_PPS = committed("SYNTHESIZED_PPS")
 
     /**
      * The whole record: [AVCC_DUMP]'s header, the SPS's full 24 bytes, then [SYNTHESIZED_PPS].
@@ -79,4 +79,26 @@ internal object ObservedBytes {
     /** A hex dump as bytes, so a fixture can be pasted out of a bug report and read back in it. */
     fun bytes(hex: String): ByteArray =
         hex.split(" ").filter { it.isNotEmpty() }.map { it.toInt(16).toByte() }.toByteArray()
+
+    /**
+     * The row [name] of `ios/Tests/Fixtures/realtime/observed-bytes.tsv`, where the dumps live so the
+     * Swift port's tests read the same bytes as these (#431, `docs/testing.md`'s *A realtime transport
+     * on iOS*). One copy rather than two that agree today: an observation edited on one side
+     * would otherwise be an observation only that side made. The directory reaches the test JVM as a
+     * system property, relative to the module, as `superplayer-testmedia`'s fixtures do.
+     */
+    private fun committed(name: String): ByteArray {
+        val directory = checkNotNull(System.getProperty(FIXTURES_PROPERTY)) {
+            "$FIXTURES_PROPERTY is not set; superplayer-realtime/build.gradle.kts sets it for every test task"
+        }
+        val row = File(directory, "observed-bytes.tsv").readLines()
+            .filterNot { it.startsWith("#") || it.isBlank() }
+            .map { it.split('\t') }
+            .singleOrNull { it.first() == name }
+            ?: error("observed-bytes.tsv has no single row named $name")
+        check(row.size == 3) { "observed-bytes.tsv: the row $name is not name, provenance and hex" }
+        return bytes(row[2])
+    }
+
+    private const val FIXTURES_PROPERTY = "superplayer.realtimeFixtures.dir"
 }

@@ -1,0 +1,8 @@
+# #340's bytes, read by both platforms' realtime tests: superplayer-realtime's ObservedBytes and
+# SuperPlayerRealtimeTests' ObservedBytes (docs/testing.md, *A realtime transport on iOS*).
+# Edited by hand and by nothing else: these are observations, not a generator's output.
+# name	provenance	hex
+AVCC_DUMP	observed	01 42 c0 1e ff e1 00 18 67 42 c0 1e d9 01 41 fb 01 10 00 00 03 00 10 00
+AVC3_KEYFRAME	observed	00 00 00 01 67 42 c0 1e d9 01 41 fb 01 10 00 00 03 00 10 00 00 03 03 c0 f1 62 e4 80 00 00 00 01
+AVC1_KEYFRAME_DUMP	observed	00 00 02 6f 06 05 ff ff 6b dc 45 e9 bd e6 d9 48 b7 96 2c d8 20 d9 23 ee ef 78 32 36 34 20 2d 20
+SYNTHESIZED_PPS	synthesized	68 ce 3c 80

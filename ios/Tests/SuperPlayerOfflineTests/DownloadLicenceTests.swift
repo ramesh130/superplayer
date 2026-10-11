@@ -101,9 +101,8 @@ final class DownloadLicenceTests: XCTestCase {
         XCTAssertEqual(try fixture.licences.contentIds(), ["film"])
     }
 
-    /// Content keyed apart declares two session keys, and both are in the one licence; a declaration
-    /// in another DRM's `KEYFORMAT` is not this store's to acquire.
-    func testEveryFairPlaySessionKeyIsAcquiredAndNoOtherFormat() async throws {
+    /// Content keyed apart declares two session keys, and both are in the one licence.
+    func testEverySessionKeyTheContentDeclaresIsAcquired() async throws {
         let second = "skd://keys.example/film-2"
         let fixture = try await open(content: .protectedHls(keyIdentifiers: [key, second]))
         fixture.store.enqueue(request("film", fixture.content))

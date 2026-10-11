@@ -215,6 +215,18 @@ at the one `package` protocol `AssetDownloading`; `SystemAssetDownloads` is the 
 of it runs under `check` (`docs/testing.md`, *Downloads on iOS*; #436 is its device run). The app
 wires one thing, `handleEventsForBackgroundURLSession`, passed to the store. tvOS's SDK has no
 `AVAssetDownloadURLSession`, so there the store refuses to open, typed.
+#425 binds a protected download's licence to it: `Configuration.protection` is a `DownloadProtection`
+— core's `PlaybackDrm` and `LicenceStore` plus the two durations FairPlay does not report — and core's
+`package` `DownloadProtecting`, which `SuperPlayerDRM`'s value fills, makes the store's
+`DownloadLicensing`: a key session of the store's own, nothing ever its recipient, asked for
+persistable keys by identifier. Protection is what the multivariant playlist's FairPlay
+`EXT-X-SESSION-KEY`s declare (`SessionKeys`), read as text once more because an `AVURLAsset` does not
+say; a media playlist's `EXT-X-KEY` alone downloads with no licence, the Kotlin trap kept. The key is
+acquired after the manifest and before the plan reaches the index or the downloader, on one serial
+licence queue; a refusal fails the item named with nothing written; `DownloadItem.licence` reads the
+store whenever an item is read. `remove` owes the release at once (the licence store's
+`offline_licence_owed` table, so no player is given it), deletes the key on the device, and tells the
+server when `NetworkWatching` — `NWPathMonitor`, a second `package` seam — reports the store's network.
 `SuperPlayerMoQ` is not declared yet — its binary target is
 i9's — and there is no `SuperPlayerCache`, since its content is the offline store's.
 

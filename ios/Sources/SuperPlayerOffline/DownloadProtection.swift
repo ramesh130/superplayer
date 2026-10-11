@@ -82,7 +82,7 @@ public struct DownloadProtection: Sendable {
 /// ref: Apple, "HLS Authoring Specification for Apple Devices" and "FairPlay Streaming" — a FairPlay
 /// key's `KEYFORMAT` is `com.apple.streamingkeydelivery`, and its `URI` (an `skd://` URI) is the
 /// identifier a key request names.
-enum SessionKeys {
+package enum SessionKeys {
 
     /// FairPlay Streaming's `KEYFORMAT`: a session key in any other format — another DRM's, in a
     /// multi-DRM playlist — is not this store's to acquire.
@@ -90,7 +90,7 @@ enum SessionKeys {
 
     /// The `URI` of every FairPlay `EXT-X-SESSION-KEY` in `playlist`, in the order declared, each
     /// once.
-    static func declared(in playlist: String) -> [String] {
+    package static func declared(in playlist: String) -> [String] {
         var identifiers: [String] = []
         for line in playlist.split(whereSeparator: \.isNewline) {
             let prefix = "#EXT-X-SESSION-KEY:"

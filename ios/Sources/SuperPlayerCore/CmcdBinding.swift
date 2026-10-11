@@ -40,24 +40,28 @@ import AVFoundation
 /// ref: `docs/ios-cmcd-finding.md`, the evidence for both directions, pinned by `CmcdFindingTests`
 enum CmcdBinding {
 
-    /// Sets the asset's switch where `mode` asks for headers and `platformSendsCmcd` says the SDK
-    /// has the switch — before the asset is any item's, since the switch is read as the first
+    /// Sets the asset's switch where `mode` asks for headers and `sdkHasSwitch` says the SDK has
+    /// it — before the asset is any item's, since the switch is read as the first
     /// request is issued.
     ///
-    /// `platformSendsCmcd` is the gate on iOS 18 and tvOS 18, passed rather than read here so the
+    /// `sdkHasSwitch` is the gate on iOS 18 and tvOS 18, passed rather than read here so the
     /// below-18 branch — which no simulator on a supported Xcode can run — is reachable by a test
     /// on a later runtime. Below 18 the switch is simply not set: nothing is refused, because CMCD
     /// is not a call a consumer makes (ADR-0020 rule 9's measurement shape, the finding's *What
     /// that means for the join*).
     ///
     /// ``CmcdMode/queryParameter`` cannot arrive: ``SuperPlayer/Configuration/setCmcdMode(_:)``
-    /// refuses it, and the profile table never answers it. It is treated as no CMCD rather than
-    /// trapped, so a mode added to that table by mistake costs the CDN's half and not playback.
+    /// refuses it, and the profile table never answers it. A debug build asserts, so a mode added
+    /// to that table by mistake is seen; a release build sends no CMCD rather than trapping, so the
+    /// mistake costs the CDN's half and not playback.
+    ///
+    /// On the main actor because the facade, its only caller, builds every asset there.
     @MainActor
     static func apply(
-        _ mode: CmcdMode, to asset: AVURLAsset, platformSendsCmcd: Bool = platformSendsCmcd
+        _ mode: CmcdMode, to asset: AVURLAsset, sdkHasSwitch: Bool = platformSendsCmcd
     ) {
-        guard mode == .requestHeaders, platformSendsCmcd else { return }
+        assert(mode != .queryParameter, "CmcdMode.queryParameter is refused at configuration")
+        guard mode == .requestHeaders, sdkHasSwitch else { return }
         if #available(iOS 18, tvOS 18, *) {
             asset.resourceLoader.sendsCommonMediaClientDataAsHTTPHeaders = true
         }

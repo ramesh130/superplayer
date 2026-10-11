@@ -15,9 +15,11 @@
 import AVFoundation
 import XCTest
 
-// `@testable` for `StaticCmcdPolicy` and `CmcdBinding`, both internal: the table and the gate are
-// read directly because what they decide on a runtime below 18 cannot be played on any simulator a
-// supported Xcode ships, so the below-18 branch is reached here by argument rather than by runtime.
+// `@testable` for `StaticCmcdPolicy` and `CmcdBinding`, both internal. The gate is read directly
+// because what it decides on a runtime below 18 cannot be played on any simulator a supported Xcode
+// ships, so the below-18 branch is reached here by argument rather than by runtime. The table is read
+// directly because the wire shows one profile's default per playback, and five playbacks to read
+// five equal rows would be the slow way to say what the table says.
 @testable import SuperPlayerCore
 
 /// What a configuration accepts and refuses for CMCD (#446), and what the binding does with each
@@ -66,26 +68,25 @@ final class CmcdConfigurationTests: XCTestCase {
             throw XCTSkip("sendsCommonMediaClientDataAsHTTPHeaders is read from iOS 18 and tvOS 18")
         }
         let url = try XCTUnwrap(URL(string: "http://127.0.0.1:9/master.m3u8"))
-        func switchAfter(_ mode: CmcdMode, platformSendsCmcd: Bool) -> Bool {
+        func switchAfter(_ mode: CmcdMode, sdkHasSwitch: Bool) -> Bool {
             let asset = AVURLAsset(url: url)
-            CmcdBinding.apply(mode, to: asset, platformSendsCmcd: platformSendsCmcd)
+            CmcdBinding.apply(mode, to: asset, sdkHasSwitch: sdkHasSwitch)
             return asset.resourceLoader.sendsCommonMediaClientDataAsHTTPHeaders
         }
 
-        XCTAssertTrue(switchAfter(.requestHeaders, platformSendsCmcd: true))
-        XCTAssertFalse(switchAfter(.disabled, platformSendsCmcd: true))
-        XCTAssertFalse(switchAfter(.requestHeaders, platformSendsCmcd: false), "below 18")
+        XCTAssertTrue(switchAfter(.requestHeaders, sdkHasSwitch: true))
+        XCTAssertFalse(switchAfter(.disabled, sdkHasSwitch: true))
+        XCTAssertFalse(switchAfter(.requestHeaders, sdkHasSwitch: false), "below 18")
         XCTAssertTrue(CmcdBinding.platformSendsCmcd, "this runtime is 18 or later")
     }
 
-    /// The session id is the asset's own identifier, and two assets of one URL have two — the fact
-    /// a fresh asset per adoption rests on.
-    func testTheSessionIdIsTheAssetsAndEachAssetHasItsOwn() throws {
+    /// Two assets of one URL have two session ids — the platform fact a fresh asset per adoption
+    /// rests on. That the id is the one on the wire is `CmcdPlaybackTests`'.
+    func testEachAssetHasItsOwnSessionId() throws {
         let url = try XCTUnwrap(URL(string: "http://127.0.0.1:9/master.m3u8"))
         let first = AVURLAsset(url: url)
         let second = AVURLAsset(url: url)
 
-        XCTAssertEqual(CmcdBinding.sessionId(of: first), first.httpSessionIdentifier.uuidString)
         XCTAssertNotEqual(CmcdBinding.sessionId(of: first), CmcdBinding.sessionId(of: second))
     }
 }

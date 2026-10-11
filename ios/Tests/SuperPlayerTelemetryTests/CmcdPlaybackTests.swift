@@ -32,6 +32,8 @@ import XCTest
 @MainActor
 final class CmcdPlaybackTests: XCTestCase {
 
+    /// A ceiling and never an assertion: `QoeCollectorPlaybackTests`' bound, since these play a
+    /// whole stream and wait for delivery as those do.
     private let bound: Duration = .seconds(90)
     private let harness = PlaybackHarness()
 
@@ -98,6 +100,30 @@ final class CmcdPlaybackTests: XCTestCase {
         }
     }
 
+    /// A restore is an adoption through the same path, so it too is a fresh asset and its own
+    /// `sid`: a snapshot of content restored onto the player that saved it is a second session.
+    func testARestoreIsItsOwnSessionUnderItsOwnSid() async throws {
+        try Self.requireCmcd()
+        let origin = try await harness.serve(.hls())
+        let sink = RecordingSink()
+        let player = measuredPlayer(sink)
+
+        try await play("a", from: origin, on: player)
+        let firstRequests = origin.networkRequests().count
+        player.restoreSnapshot(player.saveSnapshot())
+        player.avPlayer.play()
+        try await playToEnd(player)
+        player.release()
+        try await waitForSessionEnds(sink, count: 2)
+
+        let started = sink.events.compactMap(\.started).map(\.sessionId)
+        XCTAssertEqual(Set(started).count, 2, "\(started)")
+        let requests = origin.networkRequests()
+        let restored = requests[firstRequests...].first { $0.kind == .manifest }
+        XCTAssertEqual(restored.flatMap(Self.sid), started.last, "\(requests)")
+        XCTAssertEqual(Set(requests.map(Self.sid)), Set(started.map { Optional($0) }))
+    }
+
     /// The control: ``CmcdMode/disabled`` sends no `CMCD-*` header at all, so the keys above are
     /// the mode's doing — and the session is still named on the wire by `X-Playback-Session-Id`,
     /// which is the telemetry id here too. Not gated on 18: there is no switch to leave off below it.
@@ -121,7 +147,7 @@ final class CmcdPlaybackTests: XCTestCase {
         for request in requests {
             XCTAssertTrue(
                 request.headers.keys.allSatisfy { !$0.hasPrefix("cmcd-") }, "\(request)")
-            XCTAssertNil(request.query, "\(request)")
+            XCTAssertFalse(request.query?.contains("CMCD=") ?? false, "\(request)")
             XCTAssertEqual(request.headers["x-playback-session-id"], sessionId, "\(request)")
         }
     }

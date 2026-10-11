@@ -180,6 +180,20 @@ rule names the ticket that brings its enforcement, and *What nothing enforces* s
    thirty seconds. The table read the same on consecutive runs before it was committed. These two
    bounds are admitted here by name, and a further one needs an addendum of its own.
 
+   *Addendum (2026-10-11, #411).* What "kinds and order with every time masked" means in practice,
+   decided where the first golden was written. Three readings, each forced by real time rather than
+   chosen. **Masked** is every field whose name ends in `Ms` and the two rates measured on the host's
+   clock, the field names kept. **Dropped** are the periodic samples, because their *count* is the
+   session's length over the cadence — the first golden, written on a simulator that had just booted,
+   carried a sample the next run did not. **Order is kept within each kind**, and the kinds are
+   printed in their rank: AVFoundation reports a trace's facts through independent paths, and which of
+   two delivers first within a few milliseconds is the host's scheduling, while within a kind the
+   order is causal. So a structural diff cannot show a fact that moved relative to one of another
+   kind, which is a further thing it cannot show beside a slower start-up, and `docs/testing.md`'s
+   *Golden traces on iOS* lists both. These are `SessionTrace.structural()`'s, a reading of the
+   grammar, so `FORMAT_VERSION` is unmoved; a golden's mode reaches the test process from
+   `ios/check --update-golden` alone, its only writer.
+
 5. **What needs a device is listed and not faked, and `check` covers the logic around it at one
    package-scoped protocol per feature.** The list: FairPlay key exchange and playback; background
    download resumption across process death; tvOS display criteria switching the display mode; HDCP

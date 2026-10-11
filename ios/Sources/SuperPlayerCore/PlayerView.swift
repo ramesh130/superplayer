@@ -38,11 +38,18 @@ import UIKit
 @MainActor
 public final class PlayerLayerView: UIView {
 
-    /// The player shown, or nil for an empty view.
+    /// The player shown, or nil for an empty view — or for a view showing a `RealtimePlayer`, which
+    /// `SuperPlayerRealtime` hands over through its own initializer and property.
     public var player: SuperPlayer? {
+        get { engine as? SuperPlayer }
+        set { engine = newValue }
+    }
+
+    /// The engine shown, of either player type (``PlaybackEngine``, ADR-0020 rule 11).
+    package var engine: (any PlaybackEngine)? {
         didSet {
-            guard player !== oldValue else { return }
-            host(player)
+            guard engine !== oldValue else { return }
+            host(engine)
         }
     }
 
@@ -60,8 +67,16 @@ public final class PlayerLayerView: UIView {
 
     public init(player: SuperPlayer? = nil) {
         super.init(frame: .zero)
-        self.player = player
+        self.engine = player
         host(player)
+    }
+
+    /// A view showing `engine`, of either player type — what `SuperPlayerRealtime`'s public
+    /// initializer for a `RealtimePlayer` calls.
+    package init(engine: any PlaybackEngine) {
+        super.init(frame: .zero)
+        self.engine = engine
+        host(engine)
     }
 
     @available(*, unavailable)
@@ -78,16 +93,8 @@ public final class PlayerLayerView: UIView {
     /// and starts Picture in Picture itself, as it would for any player. That Picture in Picture then
     /// runs is a device's to show (#435).
     public func makePictureInPictureContentSource() -> AVPictureInPictureController.ContentSource? {
-        switch hosted {
-        case let layer as AVPlayerLayer:
-            return AVPictureInPictureController.ContentSource(playerLayer: layer)
-        case let layer as AVSampleBufferDisplayLayer:
-            guard let playback = player?.framePath?.pictureInPicturePlayback else { return nil }
-            return AVPictureInPictureController.ContentSource(
-                sampleBufferDisplayLayer: layer, playbackDelegate: playback)
-        default:
-            return nil
-        }
+        guard let hosted, let engine else { return nil }
+        return engine.pictureInPictureContentSource(for: hosted)
     }
 
     override public func layoutSubviews() {
@@ -101,11 +108,11 @@ public final class PlayerLayerView: UIView {
         hosted?.superlayer === layer ? hosted : nil
     }
 
-    private func host(_ player: SuperPlayer?) {
+    private func host(_ engine: (any PlaybackEngine)?) {
         ownHosted?.removeFromSuperlayer()
         hosted = nil
-        guard let player else { return }
-        let layer: CALayer = player.framePath?.layer ?? AVPlayerLayer(player: player.avPlayer)
+        guard let engine else { return }
+        let layer = engine.makeHostedLayer()
         layer.frame = bounds
         self.layer.addSublayer(layer)
         hosted = layer
@@ -131,22 +138,28 @@ public final class PlayerLayerView: UIView {
 /// ```
 public struct PlayerView: UIViewRepresentable {
 
-    private let player: SuperPlayer
+    private let engine: any PlaybackEngine
     private let videoGravity: AVLayerVideoGravity
 
     public init(player: SuperPlayer, videoGravity: AVLayerVideoGravity = .resizeAspect) {
-        self.player = player
+        self.init(engine: player, videoGravity: videoGravity)
+    }
+
+    /// A view of `engine`, of either player type — what `SuperPlayerRealtime`'s public initializer
+    /// for a `RealtimePlayer` calls, so the one view renders either (ADR-0020 rule 11).
+    package init(engine: any PlaybackEngine, videoGravity: AVLayerVideoGravity = .resizeAspect) {
+        self.engine = engine
         self.videoGravity = videoGravity
     }
 
     public func makeUIView(context: Context) -> PlayerLayerView {
-        let view = PlayerLayerView(player: player)
+        let view = PlayerLayerView(engine: engine)
         view.videoGravity = videoGravity
         return view
     }
 
     public func updateUIView(_ view: PlayerLayerView, context: Context) {
-        view.player = player
+        view.engine = engine
         view.videoGravity = videoGravity
     }
 }

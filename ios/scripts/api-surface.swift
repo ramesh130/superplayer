@@ -52,7 +52,10 @@ func declarationLines(_ node: [String: Any], path: [String]) -> [String] {
     if kind == "Root" {
         return children.flatMap { declarationLines($0, path: path) }
     }
-    if kind == "Import" || typeKinds.contains(kind) {
+    // `isInternal` is how the digester marks a `package` declaration it dumps beside the public
+    // ones: a seam another product of this package reaches, which no adopter can name, so it is
+    // not API (docs/api-surface.md).
+    if kind == "Import" || typeKinds.contains(kind) || node["isInternal"] as? Bool == true {
         return []
     }
     let printedName = node["printedName"] as? String ?? node["name"] as? String ?? "?"

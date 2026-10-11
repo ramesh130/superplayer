@@ -176,6 +176,9 @@ private final class EdgeRecorder: TelemetryCollector {
         edges.append(.end(playing: player?.currentContentId))
     }
 
+    /// Not an edge: a declaration is the collector's to hold (`QoeCollector`'s tests assert it).
+    func declareIntent(monotonicTimeMs: Int64) {}
+
     func detach() {
         edges.append(.detach)
     }

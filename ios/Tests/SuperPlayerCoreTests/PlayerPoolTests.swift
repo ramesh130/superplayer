@@ -184,15 +184,17 @@ final class PlayerPoolTests: XCTestCase {
         // The control: before the recycle the player does carry all of it, so what is asserted
         // after is the reset's doing and not a reading that sees nothing.
         XCTAssertEqual(player.currentContentId, "b")
-        XCTAssertFalse(player.liveObservations.isEmpty)
         let fresh = SuperPlayer()
+        XCTAssertNotEqual(player.liveObservations, fresh.liveObservations)
         XCTAssertNotEqual(player.saveSnapshot(), fresh.saveSnapshot())
 
         pool.recycle(player)
 
         XCTAssertNil(player.avPlayer.currentItem)
         XCTAssertNil(player.currentContentId)
-        XCTAssertEqual(player.liveObservations, [:])
+        // A fresh player's own: the lifecycle's player signals, which are the player's for its
+        // whole life, and nothing of an item.
+        XCTAssertEqual(player.liveObservations, fresh.liveObservations)
         XCTAssertEqual(player.saveSnapshot(), fresh.saveSnapshot())
         fresh.release()
         pool.release()
@@ -248,6 +250,31 @@ final class PlayerPoolTests: XCTestCase {
         pool.release()
     }
 
+    /// A recycled player is left needing neither the audio session nor the idle timer: the last
+    /// user's want to play does not outlive the row. Read off a recording platform, the lifecycle's
+    /// `package` seam; the control is the activation the want made before the recycle.
+    func testARecycleLeavesTheLifecycleIdle() async throws {
+        let platform = RecordingLifecyclePlatform()
+        var configuration = PlayerPool.Configuration()
+        configuration.maxSize = 1
+        let pool = PlayerPool(
+            configuration: configuration, availableMemory: { 0 },
+            lifecycle: SharedLifecycle(platform: platform))
+        let player = try XCTUnwrap(pool.acquire())
+        player.setMediaRequest(request("a"))
+
+        player.avPlayer.play()
+        for _ in 0..<200 where !platform.calls.contains(.activate) {
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        XCTAssertEqual(platform.calls, [.activate], "the control: wanting to play activates")
+
+        pool.recycle(player)
+
+        XCTAssertEqual(platform.calls, [.activate, .deactivate])
+        pool.release()
+    }
+
     /// Reset for reuse is the fourth session edge (`SessionEdges.swift`): the session ends while the
     /// outgoing content is still the player's, none begins, and the collector stays attached for
     /// the next user's session. A collector per player, made by the configuration's factory.
@@ -287,6 +314,8 @@ private final class ResetEdgeRecorder: TelemetryCollector {
     func endSession() {
         edges.append("end (playing \(player?.currentContentId ?? "-"))")
     }
+
+    func declareIntent(monotonicTimeMs: Int64) {}
 
     func detach() {
         edges.append("detach")

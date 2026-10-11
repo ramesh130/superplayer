@@ -9,7 +9,6 @@ Constructor PlaybackFailure.init(category:code:message:classification:) : SuperP
 Constructor PlaybackSnapshot.init(from:) : SuperPlayerCore.PlaybackSnapshot, any Swift.Decoder [throwing]
 Constructor PlayerPool.Configuration.init() : SuperPlayerCore.PlayerPool.Configuration
 Constructor PlayerPool.init(configuration:) : SuperPlayerCore.PlayerPool, SuperPlayerCore.PlayerPool.Configuration
-Constructor PlayerPool.init(configuration:availableMemory:) : SuperPlayerCore.PlayerPool, SuperPlayerCore.PlayerPool.Configuration, () -> Swift.UInt64
 Constructor SuperPlayer.Configuration.init() : SuperPlayerCore.SuperPlayer.Configuration
 Constructor SuperPlayer.Configuration.init(profile:) : SuperPlayerCore.SuperPlayer.Configuration, SuperPlayerCore.PlaybackProfile
 Constructor SuperPlayer.init(configuration:) : SuperPlayerCore.SuperPlayer, SuperPlayerCore.SuperPlayer.Configuration
@@ -29,7 +28,6 @@ Constructor TelemetryEvent.StartupFailed.init(sessionId:contentId:timestampMs:mo
 Constructor TelemetryEvent.TrackSwitched.init(sessionId:contentId:timestampMs:monotonicTimeMs:fromBitrateBps:toBitrateBps:direction:) : SuperPlayerCore.TelemetryEvent.TrackSwitched, Swift.String, Swift.String, Swift.Int64, Swift.Int64, Swift.Int?, Swift.Int, SuperPlayerCore.TrackSwitchDirection
 Constructor TelemetryEvent.VideoFramesDropped.init(sessionId:contentId:timestampMs:monotonicTimeMs:droppedFrames:repeatedFrames:elapsedPlayingMs:) : SuperPlayerCore.TelemetryEvent.VideoFramesDropped, Swift.String, Swift.String, Swift.Int64, Swift.Int64, Swift.Int, Swift.Int, Swift.Int64
 Enum DecisionTrigger : Equatable, Hashable, Sendable
-Enum DeviceCapacity : Sendable
 Enum FailureCategory : Equatable, Hashable, Sendable
 Enum LicenceOutcome : Equatable, Hashable, Sendable
 Enum MediaRequest.StartPosition : Decodable, Encodable, Equatable, Hashable, Sendable
@@ -83,7 +81,6 @@ EnumElement TtffStartBoundary.userIntent : (SuperPlayerCore.TtffStartBoundary.Ty
 Func CompositeTelemetrySink.onEvent(_:) : (), SuperPlayerCore.TelemetryEvent
 Func DecisionTrigger.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerCore.DecisionTrigger, SuperPlayerCore.DecisionTrigger [static]
 Func DecisionTrigger.hash(into:) : (), Swift.Hasher
-Func DeviceCapacity.concurrentPlayers(availableMemoryBytes:) : Swift.Int, Swift.UInt64 [static]
 Func FailureCategory.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerCore.FailureCategory, SuperPlayerCore.FailureCategory [static]
 Func FailureCategory.hash(into:) : (), Swift.Hasher
 Func LicenceOutcome.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerCore.LicenceOutcome, SuperPlayerCore.LicenceOutcome [static]
@@ -106,12 +103,14 @@ Func PlaybackSnapshot.hash(into:) : (), Swift.Hasher
 Func PlayerPool.acquire() : SuperPlayerCore.SuperPlayer?
 Func PlayerPool.recycle(_:) : (), SuperPlayerCore.SuperPlayer
 Func PlayerPool.release() : ()
+Func SuperPlayer.declarePlaybackIntent() : ()
 Func SuperPlayer.release() : ()
 Func SuperPlayer.restoreSnapshot(_:) : (), SuperPlayerCore.PlaybackSnapshot
 Func SuperPlayer.saveSnapshot() : SuperPlayerCore.PlaybackSnapshot
 Func SuperPlayer.setMediaRequest(_:) : (), SuperPlayerCore.MediaRequest
 Func SuperPlayer.setMediaURL(_:) : (), Foundation.URL
 Func TelemetryCollector.attach(to:) : (), SuperPlayerCore.SuperPlayer where <Self where Self : SuperPlayerCore.TelemetryCollector>
+Func TelemetryCollector.declareIntent(monotonicTimeMs:) : (), Swift.Int64 where <Self where Self : SuperPlayerCore.TelemetryCollector>
 Func TelemetryCollector.detach() : () where <Self where Self : SuperPlayerCore.TelemetryCollector>
 Func TelemetryCollector.endSession() : () where <Self where Self : SuperPlayerCore.TelemetryCollector>
 Func TelemetryCollector.startSession(contentId:sessionId:) : (), Swift.String, Swift.String where <Self where Self : SuperPlayerCore.TelemetryCollector>
@@ -179,10 +178,6 @@ Struct TelemetryEvent.TrackSwitched : Equatable, Hashable, Sendable
 Struct TelemetryEvent.VideoFramesDropped : Equatable, Hashable, Sendable
 TypeAlias PlaybackProfile.AllCases : [SuperPlayerCore.PlaybackProfile]
 Var DecisionTrigger.hashValue : Swift.Int { get }
-Var DeviceCapacity.bytesPerPlayer : Swift.UInt64 [static] { get }
-Var DeviceCapacity.ceiling : Swift.Int [static] { get }
-Var DeviceCapacity.minimum : Swift.Int [static] { get }
-Var DeviceCapacity.processAvailableMemory : () -> Swift.UInt64 [static] { get }
 Var FailureCategory.hashValue : Swift.Int { get }
 Var LicenceOutcome.hashValue : Swift.Int { get }
 Var MediaRequest.StartPosition.hashValue : Swift.Int { get }

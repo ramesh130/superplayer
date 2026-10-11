@@ -91,5 +91,6 @@ private final class StandInCollector: TelemetryCollector {
     func attach(to player: SuperPlayer) { attached += 1 }
     func startSession(contentId: String, sessionId: String) {}
     func endSession() {}
+    func declareIntent(monotonicTimeMs: Int64) {}
     func detach() {}
 }

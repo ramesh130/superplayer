@@ -102,6 +102,10 @@ public final class PlayerPool {
 
     private var isReleased = false
 
+    /// The lifecycle every player this pool makes reaches (`LifecycleBinding.swift`): the system's,
+    /// unless a test stated another.
+    private let lifecycle: SharedLifecycle
+
     /// A pool bounded by what this device reports.
     public convenience init(configuration: Configuration = Configuration()) {
         self.init(
@@ -111,12 +115,25 @@ public final class PlayerPool {
     /// A pool bounded by what `availableMemory` reports — the seam a test states a device through,
     /// as the Kotlin `PlayerPoolCapacityTest` does with its device statements. `package` because a
     /// consumer has no device to state but the one it runs on.
-    package init(configuration: Configuration, availableMemory: @Sendable () -> UInt64) {
+    package convenience init(configuration: Configuration, availableMemory: @Sendable () -> UInt64)
+    {
+        self.init(
+            configuration: configuration, availableMemory: availableMemory, lifecycle: .system)
+    }
+
+    /// The same, with its players' lifecycle reaching `lifecycle`'s platform rather than the
+    /// system's — `SuperPlayer(configuration:lifecycle:)`'s seam, so a test can read that a recycle
+    /// leaves the lifecycle idle.
+    package init(
+        configuration: Configuration, availableMemory: @Sendable () -> UInt64,
+        lifecycle: SharedLifecycle
+    ) {
         if let requested = configuration.maxSize {
             precondition(
                 requested >= 1, "A pool needs room for at least one player, not \(requested)")
         }
         self.configuration = configuration
+        self.lifecycle = lifecycle
         let deviceBound = DeviceCapacity.concurrentPlayers(availableMemoryBytes: availableMemory())
         self.maxSize = min(deviceBound, configuration.maxSize ?? deviceBound)
     }
@@ -146,7 +163,7 @@ public final class PlayerPool {
             return reused
         }
         guard inUse.count < maxSize else { return nil }
-        let player = SuperPlayer(configuration: configuration.player)
+        let player = SuperPlayer(configuration: configuration.player, lifecycle: lifecycle)
         inUse[ObjectIdentifier(player)] = player
         return player
     }

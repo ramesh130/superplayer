@@ -31,7 +31,19 @@ pinned by `PlaybackSnapshotTests`. The telemetry vocabulary (#408) is core's too
 held to `docs/telemetry-schema.md` by `TelemetrySchemaDocumentTests`, `TelemetrySink`,
 `TelemetryCollector` made by `Configuration.telemetry`'s factory, the session edges in
 `SessionEdges.swift` — and the bounded `TelemetryDelivery` queue is `SuperPlayerTelemetry`'s, as on
-Android. `PlaybackDecision` is declared there ahead of #415, which owns what it means. #404 added
+Android. `PlaybackDecision` is declared there ahead of #415, which owns what it means. #402 put the
+platform's lifecycle on every player, in `LifecycleBinding.swift`: the audio session active while
+any player wants to play, an interruption pausing and resuming only on `.shouldResume`, headphones
+unplugged pausing, and the idle timer held while video plays — process-wide state counted across
+players in `SharedLifecycle`, the platform calls behind the one `package` protocol
+`LifecyclePlatform`, and its signals in the observed register.
+#409 added
+`QoeCollector(sink:)` and `OSLogSink` there, the collector deriving the vocabulary from key-value
+observation, notifications, the access and error logs and, on 18, `AVMetrics` — every registration
+in its own register, `CollectorSignals.swift`, held as core's is — and
+`player.declarePlaybackIntent()` on core; each event's derivation is the *How derived on iOS*
+column of `docs/telemetry-schema.md`.
+#404 added
 `PlayerPool(configuration:)` — `acquire()` nil past the bound, `recycle(_:)` through the facade's
 internal `resetForReuse`, which ends the session edge `SessionEdges.swift` names — bounded by
 `DeviceCapacity.swift`, the one place the device is read: no decoder limit is reported on Apple's

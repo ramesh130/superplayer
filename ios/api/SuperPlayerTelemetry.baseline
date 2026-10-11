@@ -1,1 +1,11 @@
 // SuperPlayerTelemetry: public API as ios/check reads it. Regenerate with ios/check --update-api.
+Class QoeCollector : Sendable, TelemetryCollector
+Constructor OSLogSink.init() : SuperPlayerTelemetry.OSLogSink
+Constructor QoeCollector.init(sink:) : SuperPlayerTelemetry.QoeCollector, any SuperPlayerCore.TelemetrySink
+Func OSLogSink.onEvent(_:) : (), SuperPlayerCore.TelemetryEvent
+Func QoeCollector.attach(to:) : (), SuperPlayerCore.SuperPlayer
+Func QoeCollector.declareIntent(monotonicTimeMs:) : (), Swift.Int64
+Func QoeCollector.detach() : ()
+Func QoeCollector.endSession() : ()
+Func QoeCollector.startSession(contentId:sessionId:) : (), Swift.String, Swift.String
+Struct OSLogSink : Sendable, TelemetrySink

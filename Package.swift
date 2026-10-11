@@ -119,9 +119,11 @@ let package = Package(
             dependencies: ["SuperPlayerCore"],
             path: "ios/Tests/SuperPlayerCoreTests"
         ),
+        // The harness too, because the collector's tests play: testkit is phase 2 as telemetry is,
+        // and superplayer-telemetry's own tests drive the Kotlin harness the same way.
         .testTarget(
             name: "SuperPlayerTelemetryTests",
-            dependencies: ["SuperPlayerTelemetry"],
+            dependencies: ["SuperPlayerTelemetry", "SuperPlayerTestkit", "SuperPlayerCore"],
             path: "ios/Tests/SuperPlayerTelemetryTests"
         ),
         .testTarget(

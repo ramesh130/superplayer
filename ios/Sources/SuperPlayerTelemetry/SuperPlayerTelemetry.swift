@@ -13,5 +13,6 @@
 // limitations under the License.
 
 // SuperPlayerTelemetry is `superplayer-telemetry`'s port: the QoE collector over `AVPlayer`'s
-// access and error logs, its sinks, and the session trace recorder. It is empty until i2 (docs/ios-
-// plan.md §7), and its public API is held to ios/api/SuperPlayerTelemetry.baseline.
+// access and error logs, its sinks, and the session trace recorder: the delivery queue since
+// #408, `QoeCollector` and `OSLogSink` since #409, the recorder with #411. Its public API is held to
+// ios/api/SuperPlayerTelemetry.baseline.

@@ -765,7 +765,7 @@ see a request.
   driven through `player.avPlayer`, since that is where a consumer's transport controls are too, and
   ADR-0021 rule 1's addendum bounds what a test may do there; a start is asserted as the position at
   the first poll that finds the player playing, inside a window argued at
-  `SuperPlayerPlaybackTests.startTolerance` — a position, never a duration. Four core tests import
+  `SuperPlayerPlaybackTests.startTolerance` — a position, never a duration. Five core tests import
   core `@testable`, each arguing it in its own comment: `RememberedPositionsTests`, for the order
   rule a read-is-a-use that no playback can isolate, and `ObservedSignalRegisterTests`, for the
   register's live count, which no public reading can see until the notification it waits for
@@ -773,16 +773,50 @@ see a request.
   initializer — so the stored JSON is pinned for a value with every field set, which no public
   call produces without playing — and for its internal remembered-position list, whose order is
   what a restored memory evicts by and which `.resumeFromLastKnown` can show only one id at a time.
-  None of those seams is `package`, because no later product reaches it.
+  None of those three seams is `package`, because no later product reaches it. A fourth,
+  `LifecycleRulesTests` (#402), for the lifecycle's reading of each notification and its
+  process-wide count of who needs the session and the idle timer, which playback shows one player
+  at a time and on audio alone; the count's constructor and its platform protocol are `package`,
+  because `LifecyclePlaybackTests` in testkit's target reaches them too.
   `ProfileTableTests` reads each profile's knobs off `player.avPlayer`, and `SnapshotPlaybackTests`
   an item's readiness, under rule 1's #401 addendum.
+- **The lifecycle is driven by the platform's own notifications** (#402). `LifecyclePlaybackTests`
+  posts `AVAudioSession.interruptionNotification` and `routeChangeNotification` from
+  `AVAudioSession.sharedInstance()` with the `userInfo` keys `AVAudioSession.h` declares, as the
+  system posts them, and reads play and pause off `player.avPlayer` under rule 1's #402 addendum;
+  the control is a route change for another reason, which goes on playing. What the binding asks of
+  the platform — activating and deactivating the session, holding the idle timer — goes to a
+  recording `LifecyclePlatform`, the one `package` protocol rule 5's #402 addendum allows the
+  feature, through the `package` initializer `SuperPlayer(configuration:lifecycle:)`. Three things only a device shows,
+  and none is faked: that the system honours an activation and interrupts the session for a real
+  call; that headphones pulled out post the route change; and the idle timer's video half, because
+  every synthetic stream is audio — `LifecycleRulesTests` holds the rule over a presentation size,
+  and that a video item's is non-zero by the time it plays is AVFoundation's documented behaviour
+  that only a video stream on a device can confirm.
+- **The collector's playback tests are in its own target** (#409). `SuperPlayerTelemetryTests`
+  depends on the harness, which telemetry may, both being phase 2, as `superplayer-telemetry`'s tests
+  drive the Kotlin harness. `QoeCollectorPlaybackTests` asserts the first frame and both of its start
+  boundaries, a rebuffer the origin causes by holding a segment back, a seek and the session's end,
+  as counts, flags and an order of readings on the monotonic clock — never a duration. The synthetic
+  streams are audio, so **nothing here can show a video track switch, dropped frames, or a first
+  frame that is a video frame**; those derivations rest on the schema document's citations until a
+  video fixture or a device run shows them. `CollectorSignalRegisterTests` is the collector's own
+  observed register, held as core's is: it reads `liveObservations` and `isSampling` through
+  `@testable`, the same seam argued the same way. Two more telemetry tests import the product
+  `@testable`, each arguing it in its own comment: `QoeCollectorPlaybackTests`, for
+  `QoeCollector.now()`, the monotonic reading taken before declaring intent so the boundary's place
+  is asserted as an order on the clock the collector measures with; and `OSLogSinkTests`, for
+  `OSLogSink.line(for:)`, because what the unified log keeps of a private value depends on whether a
+  debugger is attached, so the format is asserted where it is made. None is `package`, since no later
+  product reaches it. The seek test seeks through `player.avPlayer`, a consumer's transport control
+  like `play()` and `pause()` and reached where a consumer reaches it (ADR-0021 rule 1's addendum).
 - **A pool's device is stated, as on Android** (#404). `PlayerPool`'s bound is
   `DeviceCapacity.swift`'s reading of `os_proc_available_memory()`, which an `xctest` runner — not an
   app — reads as zero; so a test states the memory left through the pool's `package` initialiser,
   `PlayerPool(configuration:availableMemory:)` — the memory half of what `TestDevice` states — and `PlayerPoolTests` holds the
   bound to stated figures through `DeviceCapacity.concurrentPlayers(availableMemoryBytes:)`. Being
-  `package`, it needs no `@testable`; `PlayerPoolTests` imports core `@testable` for the register's
-  count alone, `ObservedSignalRegisterTests`' seam. What a recycled player no longer carries after
+  `package`, it needs no `@testable`; `PlayerPoolTests`, the fifth core test to import core `@testable`, does so for the
+  register's count alone, `ObservedSignalRegisterTests`' seam. What a recycled player no longer carries after
   its content really played is `PlayerPoolPlaybackTests`', read through `.resumeFromLastKnown`.
   **What a pooled player costs and how many decoders a device sustains are a device's** — the
   per-player budget and the ceiling are argued, not measured, and i10 (#439) measures both on the

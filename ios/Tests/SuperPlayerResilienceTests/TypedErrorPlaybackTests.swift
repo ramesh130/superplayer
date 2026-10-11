@@ -248,4 +248,34 @@ final class RecordingSink: TelemetrySink {
             }
         }
     }
+
+    /// The failures of every startup- and mid-stream-failure event, in order (#420).
+    var failures: [PlaybackFailure] {
+        recorded.withLock { events in
+            events.compactMap { event in
+                switch event {
+                case .startupFailed(let failed): failed.failure
+                case .midStreamFailed(let failed): failed.failure
+                default: nil
+                }
+            }
+        }
+    }
+
+    /// The id of every session started, in order (#420).
+    var sessionsStarted: [String] {
+        recorded.withLock { events in
+            events.compactMap { event in
+                if case .sessionStarted(let started) = event { return started.sessionId }
+                return nil
+            }
+        }
+    }
+
+    /// How many sessions ended (#420).
+    var sessionsEnded: Int {
+        recorded.withLock { events in
+            events.filter { if case .sessionEnded = $0 { true } else { false } }.count
+        }
+    }
 }

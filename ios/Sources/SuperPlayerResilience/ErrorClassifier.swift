@@ -116,12 +116,34 @@ public enum ErrorClassifier {
     public static func classify(
         _ error: any Error, loggedFailure: LoggedFailure? = nil, playlistURL: URL? = nil
     ) -> FailureClass {
+        let evidence = evidence(error, loggedFailure)
+        return namedByTheFailedLoad(evidence, loggedFailure, playlistURL) ?? fromCodes(evidence)
+    }
+
+    /// The statuses a CDN answers a credential it will not accept with, and the only two a
+    /// ``HeaderProvider`` is asked about — the Kotlin `TokenRefreshLayer`'s pair.
+    ///
+    /// ref: RFC 9110 §15.5.2 (401) and §15.5.4 (403)
+    static let credentialRefusals: Set<Int> = [401, 403]
+
+    /// The status of a refused credential in `error`'s evidence — 401 or 403, on any request, a
+    /// playlist's or a segment's — or nil where the failure was anything else. Read here, beside
+    /// ``classify(_:loggedFailure:playlistURL:)``, because it is a reading of AVFoundation's codes
+    /// and this is the one place they are read (ADR-0011 rule 1).
+    static func refusedCredentialStatus(_ error: any Error, loggedFailure: LoggedFailure?) -> Int? {
+        evidence(error, loggedFailure).lazy.compactMap(httpStatus).first {
+            credentialRefusals.contains($0)
+        }
+    }
+
+    /// `error`'s cause chain, with the error log's entry after it as the last word.
+    private static func evidence(_ error: any Error, _ loggedFailure: LoggedFailure?) -> [NSError] {
         var evidence = causeChain(error as NSError)
         if let loggedFailure {
             evidence.append(
                 NSError(domain: loggedFailure.errorDomain, code: loggedFailure.errorStatusCode))
         }
-        return namedByTheFailedLoad(evidence, loggedFailure, playlistURL) ?? fromCodes(evidence)
+        return evidence
     }
 
     /// `error` and its underlying errors, outermost first, bounded and cycle-safe.

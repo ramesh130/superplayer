@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import AVFoundation
 import SuperPlayerCore
 
 /// `SuperPlayerResilience`'s entry point — the Kotlin `Resilience`, whose `standard(headers:)` is
@@ -20,37 +19,38 @@ import SuperPlayerCore
 ///
 /// ```swift
 /// var configuration = SuperPlayer.Configuration()
-/// configuration.resilience = Resilience.standard()
+/// configuration.resilience = Resilience.standard(headers: Tokens())
 /// let player = SuperPlayer(configuration: configuration)
 /// player.errors.sink { error in … }   // a SuperPlayerError naming its FailureClass
 /// ```
 public enum Resilience {
 
-    /// The resilience every profile shares: today, failures named by ``ErrorClassifier`` and ended
-    /// on a ``SuperPlayerError`` at rung 6 (#419). The Kotlin `standard` takes a `HeaderProvider`;
-    /// that argument arrives with #420, which repairs a refused credential by re-adoption, and the
-    /// rungs below the typed error with the tickets that build them.
-    public static func standard() -> any PlaybackResilience {
-        StandardResilience()
+    /// The resilience every profile shares (ADR-0011 rule 12): a refused credential repaired from
+    /// `headers` where one is given (``HeaderProvider``), the next of a request's sources opened at
+    /// the position reached (rung 4), the item rebuilt there after the media services reset (rung 5,
+    /// at most ``SuperPlayer``'s two times at one position), and every failure nothing repaired
+    /// ended on a ``SuperPlayerError`` naming its ``FailureClass`` (rung 6). A failure a rung
+    /// repaired reaches no consumer (rule 10).
+    ///
+    /// Rungs 1 to 3 are AVFoundation's own, and nothing configures them (ADR-0020 rule 6), so
+    /// `RetryPolicy.manifest` and `.segment` are ignored here: the engine retries a refused request
+    /// on its own schedule before the item fails, and the ladder above begins where it gives up.
+    ///
+    /// - Parameter headers: the app's credential, asked only on a 401 or a 403; nil — the default —
+    ///   for a player that sends no credential of its own and meets such a refusal as any other.
+    public static func standard(headers: (any HeaderProvider)? = nil) -> any PlaybackResilience {
+        StandardResilience(headers: headers)
     }
 }
 
-/// What ``Resilience/standard()`` makes: core's `package` ``FailureClassifying`` filled with this
-/// product's classifier, the Kotlin internal `StandardResilience`.
+/// What ``Resilience/standard(headers:)`` makes: core's `package` ``FailureClassifying`` filled with
+/// this product's ladder, one per player — the Kotlin internal `StandardResilience`.
 struct StandardResilience: FailureClassifying {
 
-    func typedError(
-        for error: NSError, loggedFailure: AVPlayerItemErrorLogEvent?, playlistURL: URL?,
-        positionMs: Int64?
-    ) -> SuperPlayerError {
-        let failure = ErrorClassifier.classify(
-            error, loggedFailure: loggedFailure.map(LoggedFailure.init), playlistURL: playlistURL)
-        return SuperPlayerError(
-            causeClass: failure.stableName, userMessageKey: failure.userMessageKey,
-            isRetryable: failure.isRetryable, category: failure.category,
-            lowerSecurityLevelMayHelp: failure.lowerSecurityLevelMayHelp,
-            // No rung below the typed error is performed yet, so none was tried: the class's
-            // ceiling bounds a climb nothing on this platform makes until rungs 4 and 5 are built.
-            rungsTried: [], positionMs: positionMs, underlyingError: error)
+    let headers: (any HeaderProvider)?
+
+    @MainActor
+    func playerStateRungs() -> any PlayerStateRungs {
+        PlayerStateLadder(provider: headers)
     }
 }

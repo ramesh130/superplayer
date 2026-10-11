@@ -10,7 +10,8 @@
   Amended again (#411) at rule 13, admitting the session trace recorder's register as telemetry's
   second.
   Amended again (#419) at rule 11, recording that `SuperPlayer`'s refusal is built and why it is a
-  rule over schemes rather than a registry.
+  rule over schemes rather than a registry. Amended again (#420) at rule 6, recording the option the
+  credential repair puts its headers on and why.
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
 - **Refines:** [ADR-0001](0001-compose-dont-fork.md), restated for Apple platforms rather than
@@ -191,6 +192,26 @@ that, and *What nothing enforces* sums them.
    door, and it takes the system's HLS loading — and with it AirPlay's and the download API's view of
    the same URL — off the path. *Enforced by nothing mechanical; a resource-loader delegate on a
    content asset is visible in review, and `docs/ios-plan.md` §3 is the long form of this list.*
+
+   **#420 addendum: the credential repair's headers ride an option the SDK does not declare.** The
+   repair re-adopts the content on a new `AVURLAsset`, and that asset must carry what
+   `HeaderProvider` returned. The SDK documents no asset option that carries a request header:
+   `AVAsset.h` declares a user agent, cookies, an attribution and session identifiers. The
+   alternatives are both rejected above. A resource-loader delegate is this rule's proxy in-process,
+   and a refresh inside the transfer has no transfer to sit inside. So core passes
+   `AVURLAssetHTTPHeaderFieldsKey`, a string AVFoundation reads that no header declares. Three
+   things bound what that costs:
+   - It is passed only once a provider has returned headers, so an app that names no provider
+     ships no request built with it.
+   - `CredentialRepairPlaybackTests` asserts the header reaching the loopback origin. A runtime
+     that stops honouring the option fails `ios/check` rather than a viewer's session.
+   - A signed URL needs no provider and no option, and `HeaderProvider`'s public documentation
+     names it as the alternative.
+
+   The risks are that a later runtime drops the option, and that an app review objects to the
+   string. The second is the adopter's to weigh, and the public documentation says so. Another
+   undeclared option needs an addendum of its own here. *Enforced by the test for the runtime
+   half, and by nothing for the rest.*
 
 7. **CMCD on Apple platforms is decided by #413's finding, and a negative finding closes it.** Whether
    the SDK emits CTA-5004 itself, and whether `AVURLAssetPrimarySessionIdentifierKey` can carry the

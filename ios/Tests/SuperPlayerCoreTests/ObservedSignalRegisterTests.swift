@@ -53,6 +53,7 @@ final class ObservedSignalRegisterTests: XCTestCase {
     private var everySignalOnce: [ObservedSignal: Int] {
         let elsewhere: Set<ObservedSignal.Scope> = [
             .frameOutputItem, .reapplicationPlayer, .reapplicationItem, .resilienceItem,
+            .resiliencePlayer,
         ]
         return Dictionary(
             uniqueKeysWithValues: ObservedSignal.allCases.filter { !elsewhere.contains($0.scope) }

@@ -857,6 +857,14 @@ see a request.
   debugger is attached, so the format is asserted where it is made. None is `package`, since no later
   product reaches it. The seek test seeks through `player.avPlayer`, a consumer's transport control
   like `play()` and `pause()` and reached where a consumer reaches it (ADR-0021 rule 1's addendum).
+- **The session trace recorder's goldens are structural** (#411), and *Golden traces on iOS* below
+  says what that reading can and cannot show. Its register, `RecorderSignals.swift`, is held by
+  `RecorderSignalRegisterTests` through `@testable` for the collector's reason, and the product's
+  "nowhere else" scan admits it beside `CollectorSignals.swift`. `SessionTraceTests` imports the
+  product `@testable` too, for the grammar's kinds in their rank and the content-id rule, which a
+  played session shows only one id of. The `load` and `bandwidth` kinds come from iOS 18's request
+  events and no runtime here is below 18, so their absence below it is asserted only by the
+  register's test, as CMCD's is.
 - **A session's platform is a protocol, and one test reads the real one** (#403). `PlaybackSession`
   publishes to `MPNowPlayingInfoCenter.default()` and `MPRemoteCommandCenter.shared()` through the
   one `package` protocol rule 5's #403 addendum allows the feature, `NowPlayingPlatform`, reached
@@ -2263,6 +2271,50 @@ this machine differed by a factor of three hundred. The `bandwidth` lines a trac
 therefore the *samples* rather than the estimate: each finished transfer's own bytes over its own
 duration, both on the engine's clock. A device trace loses nothing by it, and a bundle gains the
 dropout the average would have hidden.
+
+### Golden traces on iOS
+
+The iOS recorder (#411) writes the same grammar at the same `FORMAT_VERSION`, and its goldens are
+under the same contract — but **not byte-identical**, because nothing here can drive `AVPlayer`'s
+clock (ADR-0021 rule 4). A golden is compared in its *structural* reading, `SessionTrace.structural()`:
+
+- **Every reading of time is masked** — the `+<ms>` column, the value of every field whose name ends
+  in `Ms`, and the two rates measured on the host's clock (`bitrateBps` on a `bandwidth` line,
+  `throughputEstimateBps`). The field names stay, so a field that appeared or vanished is a diff.
+- **The periodic samples are dropped** — `PlaybackStateSampled`, `LiveLatencySampled`,
+  `VideoFramesDropped`. How many a session has is its length over the cadence, so a start-up a second
+  slower is one more sample; the first golden written, on a just-booted simulator, carried one that
+  the next run did not.
+- **Order is kept within each kind, and the kinds are printed in rank order.** AVFoundation reports
+  through independent paths — key-value observation, notifications, the metric stream, the telemetry
+  queue — and which of two delivers first within a few milliseconds is the host's scheduling. Within
+  a kind the order is causal: a load completes after it starts, `ENDED` follows `READY`.
+
+So **a structural diff shows** a kind that appeared or vanished, a line that appeared, vanished or
+moved within its kind, and a field that was added or whose non-time value changed. **It cannot show**
+a startup that got slower, a stall that got longer, a load that now happens later relative to a fact
+of another kind, or a sample more or fewer — that class of regression is the benchmark's to find or
+nobody's (ADR-0021's *Consequences*).
+
+The goldens are `ios/Tests/Fixtures/golden/*.trace`, compared by the test target's `GoldenFile`, and
+**`ios/check --update-golden` is the only writer**: it hands the test process `SP_UPDATE_GOLDEN=1`
+through `xcodebuild`'s `TEST_RUNNER_` prefix and sets it to `0` otherwise, so a value left in a shell
+cannot rewrite a golden behind a plain check. The first is `hls-vod.trace`, an on-demand session from
+adoption to release (`SessionTraceRecorderPlaybackTests`); it is the iOS 18 reading, since the `load`
+and `bandwidth` kinds come from `AVMetrics` request events, and on an older runtime the test compares
+everything else. Two segments, so the session ends inside the ten-second sampling cadence anyway.
+The trace is taken only once `SessionEnded` and a finished load for every resource the origin
+served have reached it — the metric stream delivers after a request ends, and a challenge answered
+inside one load is one event — and it read the same on consecutive runs on iOS 27.1 before it was
+committed.
+
+The grammar is one: `SessionTraceTests` parses every Kotlin golden in
+`superplayer-telemetry/src/test/golden/` with the Swift reader and writes each back byte for byte,
+and reads `hls-vod.trace` structurally. The redaction test drives a session that really carried a
+signed URL, a URL-shaped content id and an `Authorization` header — the credential travels in the
+source URL's user information and the origin answers the first playlist request with a `Basic`
+challenge, since core has no header seam on iOS yet and a cookie in the shared storage was not sent
+by the test host's player — and asserts each present at the origin before absent from the trace.
 
 ### The QoE regression gate
 

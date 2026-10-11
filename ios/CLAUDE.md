@@ -72,6 +72,12 @@ the player, `setPlayer(_:)` swaps the player behind it — and `MediaRequestReso
 `setMediaRequest(forContentId:)` adopts content named from outside the app. What it observes is its
 own register, `SessionSignals.swift`. There is no service, and CarPlay's entitlement and templates
 are the app's.
+#411 added `SessionTraceRecorder` and `SessionTrace` to `SuperPlayerTelemetry`: the Kotlin grammar,
+`formatVersion` and seven redaction rules, a sink that also observes the player through a register
+of its own, `RecorderSignals.swift`, its `load` and `bandwidth` kinds from iOS 18's request
+events. Its goldens are **structural** — `SessionTrace.structural()` masks every reading of time,
+drops the periodic samples and keeps order within each kind — under `ios/Tests/Fixtures/golden/`,
+and `ios/check --update-golden` is their only writer (`docs/testing.md`, *Golden traces on iOS*).
 #405 built ADR-0022's frame output: `Configuration.frameOutput` takes a `FrameOutput` — a
 `CVPixelBuffer` and its `CMTime` in, the buffer to show out, called on a queue of the player's —
 and `FramePath.swift` is the whole display path, made only on a player configured with one: an
@@ -162,6 +168,7 @@ origin.responses()                         // how each was answered: status, fau
 ```bash
 ios/check                     # swift-format lint, simulator tests, tvOS build, API diff
 ios/check --update-api        # the same, rewriting ios/api/*.baseline; commit the diff
+ios/check --update-golden     # the same, rewriting ios/Tests/Fixtures/golden/*.trace; review and commit the diff
 SP_SIMULATOR=mine ios/check   # test on a simulator of that name instead (created if absent)
 xcrun swift-format format --in-place --recursive --configuration ios/.swift-format ios Package.swift
 ```

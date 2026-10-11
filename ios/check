@@ -4,7 +4,7 @@
 #
 # ios/check: the whole definition of passing for the iOS half, as `./gradlew check` is for Android.
 #
-#   ios/check                 format, simulator tests, tvOS build, API baselines
+#   ios/check                 format, simulator tests, tvOS build, demo build, API baselines
 #   ios/check --update-api    the same, rewriting ios/api/<Product>.baseline instead of diffing it
 #   ios/check --update-golden the same, rewriting ios/Tests/Fixtures/golden/*.trace instead of
 #                             comparing them; the only writer of the iOS golden traces
@@ -145,6 +145,20 @@ xcodebuild build -quiet \
     -scheme "$scheme" \
     -destination 'generic/platform=tvOS Simulator' \
     -derivedDataPath "$derived_data"
+
+# The demo resolves the package by path, as an adopter's app does, so this is the build that fails
+# when a product's public API stops being enough for an app. Built and not run, for both platforms
+# its one target supports; whether it plays a real stream needs a network, which no check has
+# (ios/Demo/README.md). Its DerivedData is its own: the demo is a second workspace, and one writing
+# its products into the same DerivedData would overwrite the package modules the digester reads.
+step "Build: the demo, iOS and tvOS simulators"
+for platform in 'iOS Simulator' 'tvOS Simulator'; do
+    xcodebuild build -quiet \
+        -project ios/Demo/SuperPlayerDemo.xcodeproj \
+        -scheme SuperPlayerDemo \
+        -destination "generic/platform=$platform" \
+        -derivedDataPath "$derived_data-demo"
+done
 
 # The digester reads the modules the simulator test build produced, against the iOS simulator SDK
 # and an iOS target at the floor, so the API recorded is the one an iOS adopter compiles against

@@ -15,6 +15,7 @@ orientation — this file adds only what is different under `ios/`.
 | `ios/api/<Product>.baseline` | the tracked public API, the `<module>/api/<module>.api` analog (`docs/api-surface.md`, *The iOS products*) |
 | `ios/scripts/api-surface.swift` | reduces the digester's JSON to that baseline |
 | `ios/check` | the whole definition of passing |
+| `ios/Demo/` | the demo (#407): a hand-written Xcode project resolving the package **by path**, one target for iOS and tvOS, built by `ios/check` and run by hand — `ios/Demo/README.md` |
 | `ios/.swift-format` | the format's configuration: four-space indent and 100 columns, as the Kotlin half |
 
 **Every product is empty until its phase.** i0 (#397) was the scaffold alone: twelve products, a
@@ -211,7 +212,7 @@ origin.responses()                         // how each was answered: status, fau
 ## Commands
 
 ```bash
-ios/check                     # swift-format lint, simulator tests, tvOS build, API diff
+ios/check                     # swift-format lint, simulator tests, tvOS build, demo build, API diff
 ios/check --update-api        # the same, rewriting ios/api/*.baseline; commit the diff
 ios/check --update-golden     # the same, rewriting ios/Tests/Fixtures/golden/*.trace; review and commit the diff
 SP_SIMULATOR=mine ios/check   # test on a simulator of that name instead (created if absent)

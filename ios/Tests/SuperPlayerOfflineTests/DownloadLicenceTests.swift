@@ -38,6 +38,8 @@ import os
 @MainActor
 final class DownloadLicenceTests: XCTestCase {
 
+    /// A ceiling on every wait, never an assertion: what a cold simulator needs to read a manifest
+    /// and fetch four segments, with room, as `DownloadsTests` allows.
     private let bound: Duration = .seconds(30)
     private let month: Duration = .seconds(30 * 24 * 3_600)
     private let twoDays: Duration = .seconds(2 * 24 * 3_600)
@@ -161,6 +163,21 @@ final class DownloadLicenceTests: XCTestCase {
         XCTAssertEqual(fixture.store.download("film")?.state, .completed)
     }
 
+    /// A licence inside the licence store's renewal threshold is reported due and still valid — and
+    /// nothing renews it: one licence request, the acquisition (ADR-0012 rule 10).
+    func testALicenceInsideTheRenewalThresholdIsReportedDueAndNothingRenewsIt() async throws {
+        // An hour, well inside the licence store's day.
+        let fixture = try await open(licenceDuration: .seconds(3_600))
+        fixture.store.enqueue(request("film", fixture.content))
+        try await completion(of: "film", in: fixture.store)
+
+        let licence = try XCTUnwrap(fixture.store.download("film")?.licence)
+        XCTAssertTrue(licence.renewalDue)
+        XCTAssertFalse(licence.isExpired)
+        XCTAssertNil(licence.expiry)
+        XCTAssertEqual(posts(fixture.server), 1)
+    }
+
     // MARK: Removal
 
     /// With the network there, a removal deletes the package and then releases the key: deleted
@@ -250,7 +267,9 @@ final class DownloadLicenceTests: XCTestCase {
 
     /// A store that never meets protected content and owes nothing makes no key session and
     /// watches no network (ADR-0013 rule 15), though it was configured with protection.
-    func testAStoreWithProtectionThatDownloadsClearContentPaysForNone() async throws {
+    func testAStoreWithProtectionThatDownloadsClearContentMakesNoKeySessionAndWatchesNothing()
+        async throws
+    {
         let clear = try await harness.serve(.hls())
         let fixture = try await open()
         fixture.store.enqueue(request("clip", clear))

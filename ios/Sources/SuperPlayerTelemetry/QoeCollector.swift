@@ -246,6 +246,25 @@ public final class QoeCollector: TelemetryCollector {
                     securityLevel: nil)))
     }
 
+    public func displayModeChanged(switchInProgress: Bool, criteriaMatchingEnabled: Bool) {
+        // No session, no event: the reading is about what a viewer saw, and the binding reports it
+        // again as the next session's content is asked for.
+        guard let session = openSession else { return }
+        if let last = session.displayMode, last.switchInProgress == switchInProgress,
+            last.criteriaMatchingEnabled == criteriaMatchingEnabled
+        {
+            return
+        }
+        session.displayMode = (switchInProgress, criteriaMatchingEnabled)
+        emit(
+            .displayModeChanged(
+                .init(
+                    sessionId: session.id, contentId: session.contentId,
+                    timestampMs: Self.wallClock(), monotonicTimeMs: Self.now(),
+                    switchInProgress: switchInProgress,
+                    criteriaMatchingEnabled: criteriaMatchingEnabled)))
+    }
+
     public func sessionFailed(_ failure: SuperPlayerError) {
         failed(with: failure.underlyingError, classified: failure)
     }
@@ -806,6 +825,9 @@ private final class OpenSession {
     /// The output's protection reading last reported: unobscured until a change says otherwise, so
     /// a session whose display never obscures it reports nothing.
     var outputObscured = false
+    /// The display's mode reading last reported, or nil before the first: so the first reading of a
+    /// session is always reported, and a reading heard again unchanged is not.
+    var displayMode: (switchInProgress: Bool, criteriaMatchingEnabled: Bool)?
 
     func abandonSeek() {
         seekRequestedAtMs = nil

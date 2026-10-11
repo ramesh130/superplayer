@@ -215,6 +215,16 @@ them under `Added` would be worse than stating them here:
   `LicenceStore` marker and `OfflineLicenceExpiredError`, which `ErrorClassifier` names
   `Drm.LicenceExpired`. Unlike Android's, the two durations are stated by the app, because FairPlay
   reports neither to the client. Additive; `schemaVersion` stays 2.
+- **Display criteria on tvOS (#426).** `SuperPlayerTV` gains `TvOutput.standard()`, which
+  `SuperPlayerCore`'s new `Configuration.output` takes (a `PlaybackOutput`, the Kotlin `setOutput`):
+  each item a player makes current asks the key window's `AVDisplayManager` for the asset's
+  `preferredDisplayCriteria`, withdrawn at the item's end, on a pool's recycle and on release, and
+  only by the player whose request is in force; on iOS it makes nothing. The display's mode is
+  reported and never acted on: `TelemetryCollector` gains `displayModeChanged`, with a default, and
+  both platforms' vocabulary gains **`TelemetryEvent.DisplayModeChanged`** — new public API in
+  `superplayer-core` on Android, emitted by nothing there — so an exhaustive `when` or `switch` over
+  `TelemetryEvent` needs a branch for it; `schemaVersion` stays 2. The demo opens a tvOS screen on
+  `AVPlayerViewController`'s system controls. No Android behaviour moved.
 - **Phase 9 — Diagnostics and docs.** `MediaSourceDoctor`, which names twenty pathologies over the
   chain a player would load through; the postmortem reading; `SessionBundle`; the debug HUD; and
   the documents in `docs/`.

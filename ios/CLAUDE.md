@@ -215,6 +215,18 @@ at the one `package` protocol `AssetDownloading`; `SystemAssetDownloads` is the 
 of it runs under `check` (`docs/testing.md`, *Downloads on iOS*; #436 is its device run). The app
 wires one thing, `handleEventsForBackgroundURLSession`, passed to the store. tvOS's SDK has no
 `AVAssetDownloadURLSession`, so there the store refuses to open, typed.
+#426 is i7: `SuperPlayerTV`'s `TvOutput.standard()` fills core's `Configuration.output` — the
+public marker `PlaybackOutput` over the `package` `VideoOutputting`, beside `frameOutput` — with one
+`DisplayCriteriaMatching` per player, which core tells each item it makes current (`nil` on a
+recycle) and releases with the player. It asks the key window's `AVDisplayManager` for the asset's
+`preferredDisplayCriteria`, withdraws at the item's end (asking again if it is played again), on a
+recycle and on release, never between two items, and only where its request is the one in force
+(the display is one per process); a late answer is dropped. The display's mode — a switch beginning
+and ending, the viewer's *Match Content* setting — reaches `TelemetryCollector.displayModeChanged` and
+the event `DisplayModeChanged`, reported and never acted on. The platform is the one `package`
+protocol `DisplayManaging`; the system's, `SystemDisplayManager`, is tvOS-only and runs under no test
+(`docs/testing.md`, *A television on tvOS*). On iOS `standard()` makes nothing. The demo's `TvScreen`
+is the recipe on `AVPlayerViewController`'s system controls, and the app opens on it on tvOS.
 `SuperPlayerMoQ` is not declared yet — its binary target is
 i9's — and there is no `SuperPlayerCache`, since its content is the offline store's.
 
@@ -313,8 +325,9 @@ Things worth knowing before the first run:
 - **A quiet `xcodebuild` exit is not evidence.** The script reads the result bundle with
   `xcrun xcresulttool get test-results summary` and fails unless it says `Passed` with at least one
   test per product; `.build/ios-check/test.xcresult` is the bundle to open when it does not.
-- **tvOS is built, not tested**: a tvOS simulator runtime is not on every host, and no product holds
-  tvOS-only code until i7, which is when a tvOS test run earns its place.
+- **tvOS is built whole, and `SuperPlayerTVTests` runs on a tvOS simulator too** (#426), as
+  `<SP_SIMULATOR>-tv` (`SP_TV_SIMULATOR`), made on the newest tvOS runtime. A host without one skips
+  that run and says so; CI sets `SP_REQUIRE_TVOS=1`, so there an absence fails.
 - **Every `.swift` file opens with `config/license-header.txt` as `//` lines** (in `Package.swift`,
   after the tools-version line). `./gradlew verifyLicenseHeader` derives the expected text from
   that file rather than keeping a copy, and checks it on Linux, since swift-format has no header

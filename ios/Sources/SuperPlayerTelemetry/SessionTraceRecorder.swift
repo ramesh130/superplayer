@@ -258,6 +258,7 @@ extension SessionTraceRecorder {
         case .playbackStateSampled: "PlaybackStateSampled"
         case .videoFramesDropped: "VideoFramesDropped"
         case .outputObscuredChanged: "OutputObscuredChanged"
+        case .displayModeChanged: "DisplayModeChanged"
         }
     }
 
@@ -310,6 +311,9 @@ extension SessionTraceRecorder {
                 + "elapsedPlayingMs=\(e.elapsedPlayingMs)"
         case .outputObscuredChanged(let e):
             return "obscured=\(e.obscured)"
+        case .displayModeChanged(let e):
+            return "switchInProgress=\(e.switchInProgress) "
+                + "criteriaMatchingEnabled=\(e.criteriaMatchingEnabled)"
         }
     }
 

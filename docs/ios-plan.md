@@ -186,7 +186,7 @@ FairPlay replaces Widevine, and the platform's shape is closer to ADR-0012 than 
 
 | Android | iOS | Verdict |
 | --- | --- | --- |
-| `TvOutput.standard`, frame-rate matching through `Surface.setFrameRate` | tvOS `AVDisplayManager.preferredDisplayCriteria = asset.preferredDisplayCriteria`, which honours the viewer's *Match Content* setting and is the cleaner mechanism; `isDisplayModeSwitchInProgress` is the withdraw | Ports, smaller |
+| `TvOutput.standard`, frame-rate matching through `Surface.setFrameRate` | tvOS `AVDisplayManager.preferredDisplayCriteria = asset.preferredDisplayCriteria`, which honours the viewer's *Match Content* setting and is the cleaner mechanism; `isDisplayModeSwitchInProgress` is the withdraw | Ports, smaller; **built (#426)**: asked per item, withdrawn at its end, on a recycle and on release and never between two items; `isDisplayModeSwitchInProgress` turned out to be a reading rather than a withdrawal — the switch it brackets is the request being honoured — so it is observed and reported, with the setting, as `DisplayModeChanged` |
 | `DisplayWatch`, re-selection on display change | Apple re-selects; the facade observes `isDisplayCriteriaMatchingEnabled` and the display change for telemetry only | Not needed |
 | Audio-capability change re-selection | `AVAudioSession.routeChangeNotification`; Apple re-selects | Not needed |
 | Tunneling, `OutputPolicy` | Always tunneled on Apple TV; the half stays in `PlaybackDecision`, documented as ignored | Not needed |

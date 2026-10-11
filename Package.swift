@@ -192,9 +192,15 @@ let package = Package(
             ],
             path: "ios/Tests/SuperPlayerOfflineTests"
         ),
+        // Core, the harness and the collector too: criteria are asked per item a real player makes
+        // current, withdrawn at an end it plays to over the loopback origin, and the display's mode
+        // is read where a consumer reads it — all phase 2 or below, as superplayer-tv's own tests
+        // drive the Kotlin harness.
         .testTarget(
             name: "SuperPlayerTVTests",
-            dependencies: ["SuperPlayerTV"],
+            dependencies: [
+                "SuperPlayerTV", "SuperPlayerCore", "SuperPlayerTestkit", "SuperPlayerTelemetry",
+            ],
             path: "ios/Tests/SuperPlayerTVTests"
         ),
         .testTarget(

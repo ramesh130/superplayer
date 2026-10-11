@@ -163,6 +163,11 @@ public object LogcatSink : TelemetrySink {
                 "evt=output_obscured $common obscured=${event.obscured}",
             )
 
+            is TelemetryEvent.DisplayModeChanged -> info(
+                "evt=display_mode $common switchInProgress=${event.switchInProgress} " +
+                    "criteriaMatchingEnabled=${event.criteriaMatchingEnabled}",
+            )
+
             is TelemetryEvent.VideoFramesDropped -> info(
                 "evt=video_frames $common dropped=${event.droppedFrames} " +
                     "repeated=${event.repeatedFrames} elapsedPlayingMs=${event.elapsedPlayingMs}",

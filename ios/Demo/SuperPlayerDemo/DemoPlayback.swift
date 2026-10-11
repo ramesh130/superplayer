@@ -20,9 +20,10 @@ import os
 /// One screen's player and everything its life is tied to — **the lifecycle a consumer copies**.
 ///
 /// 1. **Configure, then build.** A `SuperPlayer.Configuration` is a value fixed for the player's
-///    lifetime (ADR-0020 rule 5): the profile (here the default, `videoOnDemand`), the telemetry
-///    collector — `QoeCollector` over `OSLogSink`, one line per event under the category
-///    `SuperPlayerQoE` — and, on the frame-output screen, the `FrameOutput`.
+///    lifetime (ADR-0020 rule 5): the profile (the default, `videoOnDemand`, or `tvLeanback` on the
+///    TV screen), the telemetry collector — `QoeCollector` over `OSLogSink`, one line per event under
+///    the category `SuperPlayerQoE` — and, on the frame-output screen, the `FrameOutput`, or on the
+///    TV screen the display's `TvOutput`.
 /// 2. **Publish it, if it is the one worth publishing.** A `PlaybackSession` puts the player on the
 ///    lock screen, Control Centre and a headset's buttons, and resolves content named from outside
 ///    the app through ``DemoCatalog``. It is a choice rather than a default (ADR-0007 rule 1): a
@@ -59,11 +60,16 @@ final class DemoPlayback {
     private let session: PlaybackSession
     private var positionObserver: Any?
 
-    init(stream: DemoStream, frameOutput: CountingPassThrough? = nil) {
+    init(
+        stream: DemoStream, profile: PlaybackProfile = .videoOnDemand,
+        frameOutput: CountingPassThrough? = nil, output: (any PlaybackOutput)? = nil
+    ) {
         self.frameOutput = frameOutput
         var configuration = SuperPlayer.Configuration()
+        configuration.profile = profile
         configuration.telemetry = { QoeCollector(sink: OSLogSink()) }
         configuration.frameOutput = frameOutput
+        configuration.output = output
         player = SuperPlayer(configuration: configuration)
         session = PlaybackSession(player: player, resolver: DemoCatalog())
 

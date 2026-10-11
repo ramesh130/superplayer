@@ -47,7 +47,28 @@ final class OSLogSinkTests: XCTestCase {
                     sessionId: "S", contentId: "urn:content:1", timestampMs: 1, monotonicTimeMs: 2,
                     profile: .liveLinear, decision: PlaybackDecision())))
 
-        XCTAssertEqual(line.text, "evt=session_started \(common) profile=LIVE_LINEAR")
+        XCTAssertEqual(
+            line.text,
+            "evt=session_started \(common) profile=LIVE_LINEAR maxBufferMs=null maxBitrateBps=null")
+    }
+
+    /// A decision change prints the trigger and the decision now in force, the live half only where
+    /// one was decided.
+    func testADecisionChangeNamesItsTriggerAndTheDecision() {
+        let line = OSLogSink.line(
+            for: .decisionChanged(
+                .init(
+                    sessionId: "S", contentId: "urn:content:1", timestampMs: 1, monotonicTimeMs: 2,
+                    decision: PlaybackDecision(
+                        buffer: BufferPolicy(maxBufferMs: 15_000),
+                        trackSelection: TrackSelectionPolicy(maxVideoBitrateBps: 800_000),
+                        liveLatency: LiveLatencyPolicy(preservesOffset: true)),
+                    trigger: .rebufferEnded)))
+
+        XCTAssertEqual(
+            line.text,
+            "evt=decision_changed \(common) trigger=REBUFFER_ENDED maxBufferMs=15000 "
+                + "maxBitrateBps=800000 liveOffsetMs=null livePreservesOffset=true")
     }
 
     func testAnAbsentValuePrintsAsNull() {

@@ -93,11 +93,13 @@ public struct OSLogSink: TelemetrySink {
             + "t=\(event.timestampMs) mono=\(event.monotonicTimeMs)"
         switch event {
         case .sessionStarted(let e):
-            // The decision's fields arrive with its halves (#415); the Kotlin line's buffer and
-            // bitrate fields have nothing to print until then.
-            return info("evt=session_started \(common) profile=\(e.profile.kotlinName)")
+            return info(
+                "evt=session_started \(common) profile=\(e.profile.kotlinName)"
+                    + decisionFields(e.decision))
         case .decisionChanged(let e):
-            return info("evt=decision_changed \(common) trigger=\(e.trigger.kotlinName)")
+            return info(
+                "evt=decision_changed \(common) trigger=\(e.trigger.kotlinName)"
+                    + decisionFields(e.decision))
         case .sessionEnded(let e):
             return info("evt=session_ended \(common) dropped=\(e.droppedEventCount)")
         case .firstFrameRendered(let e):
@@ -172,6 +174,23 @@ public struct OSLogSink: TelemetrySink {
             .replacingOccurrences(of: "\n", with: "\\n")
             .replacingOccurrences(of: "\r", with: "\\r")
         return "\"\(escaped)\""
+    }
+
+    /// The decision's fields, as the Kotlin line's `maxBufferMs`, `maxBitrateBps` and live-latency
+    /// fields print it, less `minBufferMs`, which an iOS decision has no field for
+    /// (``BufferPolicy``). A nil is `null` — Apple's own default, where the Kotlin line prints
+    /// `Int.MAX_VALUE` for no ceiling — and the live fields are iOS's own, since its live half is an
+    /// offset where Android's is a speed range (``LiveLatencyPolicy``).
+    private static func decisionFields(_ decision: PlaybackDecision) -> String {
+        var fields =
+            " maxBufferMs=\(orNull(decision.buffer.maxBufferMs))"
+            + " maxBitrateBps=\(orNull(decision.trackSelection.maxVideoBitrateBps))"
+        if let live = decision.liveLatency {
+            fields +=
+                " liveOffsetMs=\(orNull(live.targetOffsetMs))"
+                + " livePreservesOffset=\(live.preservesOffset)"
+        }
+        return fields
     }
 
     /// An optional as the Kotlin line prints one: the value, or `null`.

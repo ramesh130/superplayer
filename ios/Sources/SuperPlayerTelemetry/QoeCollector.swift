@@ -32,9 +32,10 @@ import SuperPlayerCore
 ///
 /// ## What it emits, and from what
 ///
-/// The whole of `docs/telemetry-schema.md` but the two events no iOS source raises yet:
-/// `DecisionChanged`, whose trigger is #415's policy, and `LicenceAcquisitionEnded`, whose source is
-/// FairPlay's `AVContentKeySession` (#422). **What each number means is that document, not this
+/// The whole of `docs/telemetry-schema.md` but the one event no iOS source raises yet:
+/// `LicenceAcquisitionEnded`, whose source is FairPlay's `AVContentKeySession` (#422).
+/// `DecisionChanged` is core's to signal (``decisionChanged(_:trigger:)``), on a player whose policy
+/// is consulted again. **What each number means is that document, not this
 /// file**; its *How derived on iOS* column says which API each comes from, and where iOS 17 and 18
 /// derive one differently. The comments below say why a value comes from where it does.
 ///
@@ -158,8 +159,7 @@ public final class QoeCollector: TelemetryCollector {
                     sessionId: session.id, contentId: session.contentId,
                     timestampMs: Self.wallClock(), monotonicTimeMs: startedAt,
                     profile: player.configuration.profile,
-                    // The policy boundary is #415's; until then every decision is the empty one.
-                    decision: PlaybackDecision())))
+                    decision: player.playbackDecision)))
         observations = CollectorObservation.registerAll(
             on: player.avPlayer, item: item, positionIntervalMs: Self.positionReadingIntervalMs
         ) { [weak self] event in self?.handle(event) }
@@ -167,6 +167,18 @@ public final class QoeCollector: TelemetryCollector {
         // The player may already be playing — content replaced under a running player — so the
         // state is read once now rather than waited for.
         timeControlStatusChanged()
+    }
+
+    public func decisionChanged(_ decision: PlaybackDecision, trigger: DecisionTrigger) {
+        // No session, no event: the next `SessionStarted` carries the decision then in force, which
+        // is the same information under the id it belongs to.
+        guard let session = openSession else { return }
+        emit(
+            .decisionChanged(
+                .init(
+                    sessionId: session.id, contentId: session.contentId,
+                    timestampMs: Self.wallClock(), monotonicTimeMs: Self.now(),
+                    decision: decision, trigger: trigger)))
     }
 
     public func endSession() {

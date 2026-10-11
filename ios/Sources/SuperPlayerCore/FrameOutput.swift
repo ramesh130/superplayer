@@ -90,22 +90,11 @@ public enum FrameOutputOffReason: Sendable, Hashable {
 /// Why a player configured with `output` is not running it, or nil where it is or where there is
 /// none to run: protection first, the stronger of the two statements — the Kotlin
 /// `frameOutputOffFor`, with the realtime half absent until a realtime player exists to ask.
-func frameOutputOff(output: (any FrameOutput)?, protection: (any PlaybackProtection)?)
-    -> FrameOutputOffReason?
-{
-    guard output != nil else { return nil }
-    return protection != nil ? .protectedContent : nil
-}
-
-/// What a player configured for protected content carries — **a stub**, standing where i6's FairPlay
-/// configuration will (#422).
 ///
-/// ADR-0022 rule 6 decides the frame output's answer at the moment protection is declared, and on iOS
-/// that is ADR-0012 rule 1's: once per player, as `Configuration.drm`. That property is #422's to
-/// add, with the public type behind it; what the frame output needs of it today is only *whether*
-/// one is set, so the seam is this marker and ``SuperPlayer/Configuration/protection``, both
-/// `package`-scoped so that `SuperPlayerDRM` can fill them and no adopter can reach them. #422
-/// replaces the stored property with its public `drm` and makes its configuration conform, and the
-/// frame output's decision does not move. A test fills it with a stand-in, which is how
-/// `FrameOutputPlaybackTests` shows a protected player playing with its output off.
-package protocol PlaybackProtection: Sendable {}
+/// Protection is ``SuperPlayer/Configuration/drm`` being *set*, whatever it is: a value that conforms
+/// to ``PlaybackDrm`` and acquires nothing is still a declaration that the content is protected, as a
+/// Kotlin provider that answers `DRM_UNSUPPORTED` is not nothing (ADR-0012 rule 13).
+func frameOutputOff(output: (any FrameOutput)?, drm: (any PlaybackDrm)?) -> FrameOutputOffReason? {
+    guard output != nil else { return nil }
+    return drm != nil ? .protectedContent : nil
+}

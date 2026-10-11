@@ -49,6 +49,8 @@ struct StandardResilience: FailureClassifying {
 
     let headers: (any HeaderProvider)?
 
+    var headerProvider: (any HeaderProvider)? { headers }
+
     @MainActor
     func playerStateRungs() -> any PlayerStateRungs {
         PlayerStateLadder(provider: headers)

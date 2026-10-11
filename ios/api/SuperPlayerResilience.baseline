@@ -54,12 +54,9 @@ Func FailureClass.Transient.hash(into:) : (), Swift.Hasher
 Func FailureClass.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerResilience.FailureClass, SuperPlayerResilience.FailureClass [static]
 Func FailureClass.hash(into:) : (), Swift.Hasher
 Func FallbackRung.<(_:_:) : Swift.Bool, SuperPlayerResilience.FallbackRung, SuperPlayerResilience.FallbackRung [static]
-Func HeaderProvider.refreshedHeaders(for:) : [Swift.String : Swift.String], SuperPlayerResilience.CredentialRefusal where <Self where Self : SuperPlayerResilience.HeaderProvider> [throwing]
 Func LoggedFailure.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerResilience.LoggedFailure, SuperPlayerResilience.LoggedFailure [static]
 Func LoggedFailure.hash(into:) : (), Swift.Hasher
-Func Resilience.standard(headers:) : any SuperPlayerCore.PlaybackResilience, (any SuperPlayerResilience.HeaderProvider)? [static]
-Protocol HeaderProvider where <Self : Swift.Sendable> : Sendable
-Struct CredentialRefusal : CustomStringConvertible, Sendable
+Func Resilience.standard(headers:) : any SuperPlayerCore.PlaybackResilience, (any SuperPlayerCore.HeaderProvider)? [static]
 Struct LoggedFailure : Equatable, Hashable, Sendable
 TypeAlias FailureClass.Content.AllCases : [SuperPlayerResilience.FailureClass.Content]
 TypeAlias FailureClass.Device.AllCases : [SuperPlayerResilience.FailureClass.Device]
@@ -69,10 +66,6 @@ TypeAlias FailureClass.Storage.AllCases : [SuperPlayerResilience.FailureClass.St
 TypeAlias FailureClass.Transient.AllCases : [SuperPlayerResilience.FailureClass.Transient]
 TypeAlias FallbackRung.AllCases : [SuperPlayerResilience.FallbackRung]
 TypeAlias FallbackRung.RawValue : Swift.Int
-Var CredentialRefusal.description : Swift.String { get }
-Var CredentialRefusal.sentHeaders : [Swift.String : Swift.String] { get }
-Var CredentialRefusal.status : Swift.Int { get }
-Var CredentialRefusal.uri : Foundation.URL { get }
 Var FailureClass.Content.allCases : [SuperPlayerResilience.FailureClass.Content] [static] { get }
 Var FailureClass.Content.hashValue : Swift.Int { get }
 Var FailureClass.Device.allCases : [SuperPlayerResilience.FailureClass.Device] [static] { get }

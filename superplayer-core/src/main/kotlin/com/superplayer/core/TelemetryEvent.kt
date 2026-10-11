@@ -434,6 +434,31 @@ public sealed class TelemetryEvent {
         public val elapsedPlayingMs: Long,
     ) : TelemetryEvent()
 
+    /**
+     * The picture began, or stopped, being obscured because an external display lacks the output
+     * protection the content requires — HDCP on a cable or an AirPlay receiver.
+     *
+     * **Reported, never acted on**: whether protected content may be shown on an output is the
+     * licence's policy and the platform enforces it, so the client's part is to say it happened —
+     * ADR-0012 rule 11's "policy is the server's" kept. A viewer looking at a black screen with the
+     * audio playing is a support ticket this event answers.
+     *
+     * **Reached on iOS and tvOS only**, from `AVPlayer.isOutputObscuredDueToInsufficientExternalProtection`
+     * on a player configured for FairPlay (`docs/ios-plan.md` §3.6). Android has no reading of it to
+     * report — an output that cannot be secured fails as `FailureClass.Device.SecureDecoderInit` —
+     * so nothing here emits it, and it is declared so that the one vocabulary both platforms share
+     * stays one, as [LicenceOutcome.SERVED_FROM_OFFLINE_STORE] was declared before #210 reached it.
+     * A new event is shape and not meaning, so [SCHEMA_VERSION] did not move.
+     */
+    public data class OutputObscuredChanged(
+        override val sessionId: String,
+        override val contentId: String,
+        override val timestampMs: Long,
+        override val monotonicTimeMs: Long,
+        /** Whether the output is obscured from this moment on. */
+        public val obscured: Boolean,
+    ) : TelemetryEvent()
+
     public companion object {
         /**
          * The current meaning-version of this vocabulary. See the class KDoc for what moves it, and

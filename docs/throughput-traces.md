@@ -122,7 +122,11 @@ trip and then sends its body chunk by chunk, each chunk when `arrivalMs` — por
 says its last byte is due. Three things differ, and each follows from `AVPlayer` running on real
 time. **Time is the host's**, so a test asserts what was fetched and in what order, and the one test
 that measures a rate holds it to a bound (never faster, exactly; a stated slack slower) rather than
-to a millisecond. **Time zero is the origin's start**, since no harness sees an `AVPlayer` built.
+to a millisecond. **Time zero is the first media segment asked for** (#474), since no harness sees an
+`AVPlayer` built and the origin's own start would count the host's start-up as link time: a freshly
+booted simulator was seen to spend nine seconds between the two playlists, which was a scripted fast
+stretch spent before the session had fetched any media. Playlists asked for before it are paced as at
+the trace's start.
 **The transport is reported, not replayed**: nothing in the simulator can move the host's interface,
 so each response records the transport its request arrived on and no player observes a handover.
 Each connection still sees the whole link. `ios/Tests/Fixtures/throughput-traces/` holds every

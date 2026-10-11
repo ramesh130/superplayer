@@ -72,7 +72,7 @@ extension SuperPlayer {
     /// player plays every item, its clear ones included, exactly as it would without the output, on
     /// an `AVPlayerLayer`.
     public var frameOutputOffReason: FrameOutputOffReason? {
-        frameOutputOff(output: configuration.frameOutput, protection: configuration.protection)
+        frameOutputOff(output: configuration.frameOutput, drm: configuration.drm)
     }
 }
 
@@ -103,10 +103,10 @@ final class FramePath {
 
     /// The path for a player made with `configuration`, or nil where none is to run — no output
     /// configured, or one that is off (ADR-0022 rules 6 and 9). Nil makes nothing at all. The off
-    /// decision is ``frameOutputOff(output:protection:)``'s, the one place it is made.
+    /// decision is ``frameOutputOff(output:drm:)``'s, the one place it is made.
     static func make(configuration: SuperPlayer.Configuration, player: AVPlayer) -> FramePath? {
         guard let output = configuration.frameOutput,
-            frameOutputOff(output: output, protection: configuration.protection) == nil
+            frameOutputOff(output: output, drm: configuration.drm) == nil
         else { return nil }
         return FramePath(output: output, player: player)
     }

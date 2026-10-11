@@ -87,8 +87,7 @@ and `FramePath.swift` is the whole display path, made only on a player configure
 control timebase is the item's own. `PlayerLayerView` (UIKit) and `PlayerView` (SwiftUI) host that
 layer, or an `AVPlayerLayer` they make for a player without one, and make a Picture in Picture
 content source from either. A player configured for protection has the output off for its lifetime
-and says so in `frameOutputOffReason`; protection is a `package` stub, `Configuration.protection`,
-until #422's `drm` replaces it.
+and says so in `frameOutputOffReason`; protection is `Configuration.drm` set at all (#422).
 #431 is the realtime tracer. The seam is core's (`FrameSource.swift`: `FrameSource`, `FrameSink`,
 `RealtimeTrack`, `EncodedFrame`, `FrameSourceFactory` and the obligations, plus three typed errors),
 and `SuperPlayerRealtime` holds `RealtimePlayer` — the second public player type, because an
@@ -171,6 +170,34 @@ fields the log cannot carry are nil. `FaultSweepTests` plays every `FaultScript.
 `FallbackRungCoverageTests` names the forcing test per rung and says why rungs 1–3 have none. One
 fault still stalls: a segment that never answers inside AVFoundation's wait (`docs/testing.md`, *The
 fault sweep on iOS*).
+#422 is the first of i6: `SuperPlayerDRM`'s `Drm.fairPlay(FairPlayConfig(certificateURL:licenceURL:))`
+fills `Configuration.drm` — core's public marker `PlaybackDrm` over the `package` `ContentProtecting`,
+which makes one `AVContentKeySession` per player with every asset the facade plays a recipient
+(`Protection.swift`). The exchange is the library's own, `LicenceExchange.swift`: the certificate once
+per player, the SPC `POST`ed raw to the configured server only — never an address the `skd://` URI
+names — every failure asked again on `RetryPolicy.licence` with `Backoff`'s equal jitter (ported here,
+its only caller), and one 401 or 403 per request offered to the `HeaderProvider`, which moved to core so
+that neither optional product depends on the other. A failure reaches core's ladder as a
+`LicenceExchangeError` the classifier maps (`Drm.LicenceAcquisition`, or `Drm.SystemError` for a key
+request the device will not compose); an acquisition reaches the collector through
+`TelemetryCollector.licenceAcquisitionEnded`, a rotation or renewal emitting nothing; and the collector
+reports `OutputObscuredChanged` from `isOutputObscuredDueToInsufficientExternalProtection` on a
+protected player alone. **The simulator has no FairPlay**: the key session is stood in at the one
+`package` protocol `FairPlayKeySession`, and the licence server is testkit's `.licenceServer()`
+(`docs/testing.md`, *FairPlay on iOS*).
+#423 added the offline store to `SuperPlayerDRM`: `OfflineLicences.store(directory:)` opens an
+`OfflineLicenceStore` — core's public marker `LicenceStore` over the `package` `StoredLicences`, so the
+download products (#424, #425) take it depending on core alone — whose one file is SQLite through the
+system `libsqlite3` (`OfflineLicenceIndex.swift`, `temp_store = MEMORY` so nothing lands outside the
+directory), holding per `contentId` the persistable keys by key identifier and two deadlines;
+`licence(for:)` reads them with no player and no network. `store.over(player)` acquires, renews and
+releases through the player's key session and exchange — a persistable request asked for by
+identifier, told apart from the content's own by the verb waiting on it, and a release the key's proof
+of deletion `POST`ed — and `Drm.fairPlay(_:licence:)` plays from the stored keys asking nobody,
+refusing an expired licence with core's `OfflineLicenceExpiredError`. **FairPlay reports neither
+duration to the client**, so the two are what the key server granted, stated by the app at `acquire`
+and `renew`; that is the one departure from the Kotlin store. **tvOS has no persistable keys** in its
+SDK, so there the verbs fail typed at once.
 #416 is i3's adaptive half, `SuperPlayerABR`: `AdaptivePolicy.forProfile(profile)` composes
 `AdaptiveSelectionPolicy` and `AdaptiveBufferPolicy`, the Kotlin pure functions with their constants,
 and brings a `BandwidthOracle` per player through core's `package` seam `ThroughputSource.swift` —
@@ -208,7 +235,8 @@ origin.responses()                         // how each was answered: status, fau
 ```
 
 - **An origin is `NWListener` on `127.0.0.1` at an ephemeral port**, one per `serve`, so two tests
-  never share a port or a count. It speaks `GET` and `HEAD` over persistent HTTP/1.1 connections,
+  never share a port or a count. It speaks `GET` and `HEAD` (and a `POST`, to `.licenceServer()`
+  alone) over persistent HTTP/1.1 connections,
   single byte ranges, and RFC 8216's content types; `HttpExchange.swift` is the protocol as pure
   functions and `LoopbackOrigin`'s doc comment argues Network.framework over BSD sockets.
 - **Time is real.** Wait with `harness.until`, whose bound is a ceiling and never an assertion; the
@@ -228,6 +256,13 @@ origin.responses()                         // how each was answered: status, fau
   the script's cache — and is what a test shows a fault happened with. What a server cannot produce
   (a DNS or TLS failure, the client's own timeout) is not in the script, and a trace's transport is
   reported on each response rather than switched.
+- **A trace's clock starts at the first media segment asked for** (#474), not at the origin's
+  start, because a freshly booted simulator spends seconds between the playlists. And **a link
+  slower than a stream never delivers it**: AVFoundation abandons a segment not whole within about a
+  target duration and asks again from byte zero, so a session that has not started on such a link
+  never does, and on 27.1 one stalled there stays stalled,
+  on a stock player as on a `SuperPlayer` (`SlowLinkPlaybackTests`, `docs/testing.md`'s *The fault
+  sweep on iOS*). Assert that a stall began, never that it ended.
 - **Two hosts are one origin with two listeners**: `.hls(hosts: 2)` or `.liveHls(hosts: 2)`, on one
   publication clock, the multivariant playlist listing each variant again on the second host as a
   redundant stream; `origin.url(path:host:)` addresses one, and a fault's `host:` narrows to it.

@@ -79,7 +79,11 @@ let package = Package(
         .target(
             name: "SuperPlayerDRM",
             dependencies: ["SuperPlayerCore"],
-            path: "ios/Sources/SuperPlayerDRM"
+            path: "ios/Sources/SuperPlayerDRM",
+            // The offline store's index is SQLite, the system's: the SDK's `SQLite3` module links
+            // it by itself, and naming it here is where a reader of the manifest finds the link
+            // (`OfflineLicenceIndex.swift`). No package dependency.
+            linkerSettings: [.linkedLibrary("sqlite3")]
         ),
         .target(
             name: "SuperPlayerOffline",
@@ -164,9 +168,16 @@ let package = Package(
             ],
             path: "ios/Tests/SuperPlayerResilienceTests"
         ),
+        // Core, the harness, the classifier and the collector too: the exchange is driven through a
+        // real player against the harness's licence server, and what it fails on and measures is
+        // read where a consumer reads it — all phase 5 or below, as superplayer-drm's own tests
+        // drive the Kotlin harness with `setResilience` and `QoeCollector`.
         .testTarget(
             name: "SuperPlayerDRMTests",
-            dependencies: ["SuperPlayerDRM"],
+            dependencies: [
+                "SuperPlayerDRM", "SuperPlayerCore", "SuperPlayerTestkit",
+                "SuperPlayerResilience", "SuperPlayerTelemetry",
+            ],
             path: "ios/Tests/SuperPlayerDRMTests"
         ),
         .testTarget(

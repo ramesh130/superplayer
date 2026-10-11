@@ -138,10 +138,23 @@ public final class SuperPlayer {
         /// may serve many players, as the Kotlin handle may.
         public var frameOutput: (any FrameOutput)?
 
-        /// The protection this player plays under, or nil: the stub #422's public `drm` replaces
-        /// (``PlaybackProtection``). A frame output on a player that has one is off
-        /// (``SuperPlayer/frameOutputOffReason``).
-        package var protection: (any PlaybackProtection)?
+        /// The protection this player plays under, or nil — the default — for a player that makes
+        /// no key session and pays nothing for one (ADR-0012 rule 13). The Android `setDrm`, taking
+        /// `SuperPlayerDRM`'s `Drm.fairPlay(_:)`, and fixed for the player's lifetime as every
+        /// configuration is (ADR-0012 rule 1): every item the player plays is a recipient of its one
+        /// key session, clear items included.
+        ///
+        /// ```swift
+        /// var configuration = SuperPlayer.Configuration()
+        /// configuration.drm = Drm.fairPlay(FairPlayConfig(certificateURL: cert, licenceURL: ksm))
+        /// configuration.resilience = Resilience.standard(headers: Tokens())
+        /// ```
+        ///
+        /// A frame output on a player that has one is off (``SuperPlayer/frameOutputOffReason``).
+        /// The licence's credential is the one `Resilience.standard(headers:)` was given, and its
+        /// failure is named only on a player configured with that resilience, as on Android, where
+        /// both halves need `setResilience` beside `setDrm`.
+        public var drm: (any PlaybackDrm)?
 
         /// What names this player's failures, or nil — the default — for a player that classifies
         /// nothing and pays nothing for it (ADR-0011 rule 14): no observation of an item's failure,
@@ -209,6 +222,11 @@ public final class SuperPlayer {
 
     /// The frame output's display path (`FramePath.swift`), or nil on a player without one running.
     let framePath: FramePath?
+
+    /// The key session ``Configuration/drm`` made for this player (`Protection.swift`), or nil on a
+    /// player configured without one — what the pays-nothing count reads, and what
+    /// `SuperPlayerDRM`'s offline store performs its verbs over (`store.over(player)`, #423).
+    package private(set) var protection: (any ProtectionSession)?
 
     /// The pool attachment this player adopts through, set by the ``PlayerPool`` that made it while
     /// one is attached; nil on every other player, which asks nothing at adoption (ADR-0010 rule
@@ -310,6 +328,8 @@ public final class SuperPlayer {
             self?.decisionChanged(to: decision, on: trigger)
         }
         reapplication?.start(on: avPlayer)
+        // After every stored property, because the session holds the player as its host.
+        protection = (configuration.drm as? any ContentProtecting)?.protectionSession(host: self)
         if rungs != nil {
             resilienceObservations = [
                 Observation.register(.resilienceMediaServicesReset, on: avPlayer) {
@@ -526,6 +546,7 @@ public final class SuperPlayer {
         reapplication?.stop()
         lifecycle.release()
         framePath?.detach()
+        protection?.release()
         avPlayer.replaceCurrentItem(with: nil)
     }
 
@@ -661,6 +682,10 @@ public final class SuperPlayer {
             }
         }
         framePath?.attach(to: item)
+        // Before the item is current, so no key request can precede the session's answer for it. A
+        // prefetched asset is handed over here, at adoption, and not as it was prefetched — a gap
+        // `docs/testing.md`'s *FairPlay on iOS* records.
+        if let asset = item.asset as? AVURLAsset { protection?.addRecipient(asset) }
         // A warm item adopted is already current, and is kept rather than replaced with itself.
         let keepsWarmItem = item === heldWarm && avPlayer.currentItem === item
         heldWarm = nil

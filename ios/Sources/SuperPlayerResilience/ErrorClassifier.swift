@@ -84,10 +84,14 @@ public struct LoggedFailure: Sendable, Hashable {
 /// Both ``FailureClass/Transient`` leaves, both ``FailureClass/Content`` leaves,
 /// ``FailureClass/Device/decoderInit`` and ``FailureClass/Device/decoderTransient``,
 /// ``FailureClass/Drm/unsupported``, ``FailureClass/Storage/full`` and
-/// ``FailureClass/Fatal/unsupported``. The other `Drm` leaves are FairPlay's to reach once #422
-/// brings a licence exchange of ours to fail; ``FailureClass/Drm/provisioning`` and
-/// ``FailureClass/Device/secureDecoderInit`` have no evidence on this platform at all, and the
-/// taxonomy's doc comment says why they are declared anyway.
+/// ``FailureClass/Fatal/unsupported``, and two `Drm` leaves from core's ``LicenceExchangeError`` —
+/// the FairPlay exchange `SuperPlayerDRM` makes (#422): ``FailureClass/Drm/licenceAcquisition`` for a
+/// certificate or licence the server did not give, ``FailureClass/Drm/systemError`` for a key request
+/// the device would not compose — and ``FailureClass/Drm/licenceExpired`` from core's
+/// ``OfflineLicenceExpiredError``, a stored licence refused before playback (#423).
+/// ``FailureClass/Drm/downgradeRefused`` has no evidence, FairPlay having no levels to refuse;
+/// ``FailureClass/Drm/provisioning`` and ``FailureClass/Device/secureDecoderInit`` have none on this
+/// platform at all, and the taxonomy's doc comment says why they are declared anyway.
 public enum ErrorClassifier {
 
     /// Far past any chain AVFoundation builds — an item's error is two deep, the CoreMedia code
@@ -317,6 +321,25 @@ public enum ErrorClassifier {
         case NSPOSIXErrorDomain:
             // ref: POSIX.1-2017 `<errno.h>`, ENOSPC — no space left on the device.
             return error.code == Int(ENOSPC) ? .storage(.full) : nil
+        case LicenceExchangeError.errorDomain:
+            // The exchange is ours, so its evidence is core's error rather than an engine code
+            // (ADR-0012 rule 5: `SuperPlayerDRM` raises it and classifies nothing). Read cause first
+            // like everything else, so a protection stack's own AVFoundation code under a refused
+            // key request — `.contentIsNotAuthorized`, say — is the more informed answer and wins.
+            switch LicenceExchangeError.Stage(rawValue: error.code) {
+            // The device would not compose the key request: its protection stack, with no
+            // entitlement asked about — the Kotlin `SystemError` leaf's reason.
+            case .keyRequest: return .drm(.systemError)
+            // The round trip did not produce a certificate or a licence: retrying the same bytes
+            // later commonly succeeds, which is the leaf's `isRetryable`.
+            case .certificate, .licence: return .drm(.licenceAcquisition)
+            case nil: return nil
+            }
+        case OfflineLicenceExpiredError.errorDomain:
+            // A stored licence that ran out, refused before any server was asked (#423): the domain
+            // says exactly what happened, as the Kotlin `ERROR_CODE_DRM_LICENSE_EXPIRED` does, so the
+            // fields are not read.
+            return .drm(.licenceExpired)
         case coreMediaErrorDomain:
             switch error.code {
             // A playlist AVFoundation would not parse: the corpus's dangling audio group fails with

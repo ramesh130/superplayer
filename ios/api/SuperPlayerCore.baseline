@@ -2,10 +2,11 @@
 Class PlaybackSession : Sendable
 Class PlayerLayerView : superclass UIKit.UIView
 Class PlayerPool : Sendable
-Class SuperPlayer : PlaybackEngine, Sendable
+Class SuperPlayer : PlaybackEngine, ProtectionHost, Sendable
 Constructor BufferPolicy.init(maxBufferMs:waitsToMinimizeStalling:) : SuperPlayerCore.BufferPolicy, Swift.Int?, Swift.Bool
 Constructor DownloadSelectionPolicy.init(maxVideoBitrateBps:maxVideoHeightPx:) : SuperPlayerCore.DownloadSelectionPolicy, Swift.Int?, Swift.Int?
 Constructor EncodedFrame.init(timestampUs:payload:keyFrame:trackIndex:) : SuperPlayerCore.EncodedFrame, Swift.Int64, Foundation.Data, Swift.Bool, Swift.Int
+Constructor LicenceExchangeError.Stage.init(rawValue:) : SuperPlayerCore.LicenceExchangeError.Stage?, Swift.Int
 Constructor LiveLatencyPolicy.init(targetOffsetMs:preservesOffset:) : SuperPlayerCore.LiveLatencyPolicy, Swift.Int?, Swift.Bool
 Constructor MediaRequest.StartPosition.init(from:) : SuperPlayerCore.MediaRequest.StartPosition, any Swift.Decoder [throwing]
 Constructor MediaRequest.init(contentId:sources:startPosition:title:subtitle:artworkURL:) : SuperPlayerCore.MediaRequest, Swift.String, [Foundation.URL], SuperPlayerCore.MediaRequest.StartPosition, Swift.String?, Swift.String?, Foundation.URL?
@@ -37,6 +38,7 @@ Constructor TelemetryEvent.FirstFrameRendered.init(sessionId:contentId:timestamp
 Constructor TelemetryEvent.LicenceAcquisitionEnded.init(sessionId:contentId:timestampMs:monotonicTimeMs:durationMs:outcome:securityLevel:) : SuperPlayerCore.TelemetryEvent.LicenceAcquisitionEnded, Swift.String, Swift.String, Swift.Int64, Swift.Int64, Swift.Int64, SuperPlayerCore.LicenceOutcome, Swift.String?
 Constructor TelemetryEvent.LiveLatencySampled.init(sessionId:contentId:timestampMs:monotonicTimeMs:liveLatencyMs:targetLiveLatencyMs:) : SuperPlayerCore.TelemetryEvent.LiveLatencySampled, Swift.String, Swift.String, Swift.Int64, Swift.Int64, Swift.Int64, Swift.Int64?
 Constructor TelemetryEvent.MidStreamFailed.init(sessionId:contentId:timestampMs:monotonicTimeMs:failure:positionMs:) : SuperPlayerCore.TelemetryEvent.MidStreamFailed, Swift.String, Swift.String, Swift.Int64, Swift.Int64, SuperPlayerCore.PlaybackFailure, Swift.Int64
+Constructor TelemetryEvent.OutputObscuredChanged.init(sessionId:contentId:timestampMs:monotonicTimeMs:obscured:) : SuperPlayerCore.TelemetryEvent.OutputObscuredChanged, Swift.String, Swift.String, Swift.Int64, Swift.Int64, Swift.Bool
 Constructor TelemetryEvent.PlaybackStateSampled.init(sessionId:contentId:timestampMs:monotonicTimeMs:samplingIntervalMs:videoBitrateBps:bufferedDurationMs:playing:throughputEstimateBps:) : SuperPlayerCore.TelemetryEvent.PlaybackStateSampled, Swift.String, Swift.String, Swift.Int64, Swift.Int64, Swift.Int64, Swift.Int?, Swift.Int64, Swift.Bool, Swift.Int?
 Constructor TelemetryEvent.RebufferEnded.init(sessionId:contentId:timestampMs:monotonicTimeMs:durationMs:seekInduced:) : SuperPlayerCore.TelemetryEvent.RebufferEnded, Swift.String, Swift.String, Swift.Int64, Swift.Int64, Swift.Int64, Swift.Bool
 Constructor TelemetryEvent.RebufferStarted.init(sessionId:contentId:timestampMs:monotonicTimeMs:seekInduced:) : SuperPlayerCore.TelemetryEvent.RebufferStarted, Swift.String, Swift.String, Swift.Int64, Swift.Int64, Swift.Bool
@@ -54,6 +56,7 @@ Enum CmcdMode : CaseIterable, Equatable, Hashable, Sendable
 Enum DecisionTrigger : Equatable, Hashable, Sendable
 Enum FailureCategory : Equatable, Hashable, Sendable
 Enum FrameOutputOffReason : Equatable, Hashable, Sendable
+Enum LicenceExchangeError.Stage : Equatable, Hashable, RawRepresentable, Sendable
 Enum LicenceOutcome : Equatable, Hashable, Sendable
 Enum MediaRequest.StartPosition : Decodable, Encodable, Equatable, Hashable, Sendable
 Enum NetworkTransport : Equatable, Hashable, Sendable
@@ -85,6 +88,9 @@ EnumElement FailureCategory.storage : (SuperPlayerCore.FailureCategory.Type) -> 
 EnumElement FailureCategory.unknown : (SuperPlayerCore.FailureCategory.Type) -> SuperPlayerCore.FailureCategory
 EnumElement FrameOutputOffReason.protectedContent : (SuperPlayerCore.FrameOutputOffReason.Type) -> SuperPlayerCore.FrameOutputOffReason
 EnumElement FrameOutputOffReason.realtime : (SuperPlayerCore.FrameOutputOffReason.Type) -> SuperPlayerCore.FrameOutputOffReason
+EnumElement LicenceExchangeError.Stage.certificate : (SuperPlayerCore.LicenceExchangeError.Stage.Type) -> SuperPlayerCore.LicenceExchangeError.Stage
+EnumElement LicenceExchangeError.Stage.keyRequest : (SuperPlayerCore.LicenceExchangeError.Stage.Type) -> SuperPlayerCore.LicenceExchangeError.Stage
+EnumElement LicenceExchangeError.Stage.licence : (SuperPlayerCore.LicenceExchangeError.Stage.Type) -> SuperPlayerCore.LicenceExchangeError.Stage
 EnumElement LicenceOutcome.acquiredFromServer : (SuperPlayerCore.LicenceOutcome.Type) -> SuperPlayerCore.LicenceOutcome
 EnumElement LicenceOutcome.refused : (SuperPlayerCore.LicenceOutcome.Type) -> SuperPlayerCore.LicenceOutcome
 EnumElement LicenceOutcome.servedFromOfflineStore : (SuperPlayerCore.LicenceOutcome.Type) -> SuperPlayerCore.LicenceOutcome
@@ -115,6 +121,7 @@ EnumElement TelemetryEvent.firstFrameRendered : (SuperPlayerCore.TelemetryEvent.
 EnumElement TelemetryEvent.licenceAcquisitionEnded : (SuperPlayerCore.TelemetryEvent.Type) -> (SuperPlayerCore.TelemetryEvent.LicenceAcquisitionEnded) -> SuperPlayerCore.TelemetryEvent
 EnumElement TelemetryEvent.liveLatencySampled : (SuperPlayerCore.TelemetryEvent.Type) -> (SuperPlayerCore.TelemetryEvent.LiveLatencySampled) -> SuperPlayerCore.TelemetryEvent
 EnumElement TelemetryEvent.midStreamFailed : (SuperPlayerCore.TelemetryEvent.Type) -> (SuperPlayerCore.TelemetryEvent.MidStreamFailed) -> SuperPlayerCore.TelemetryEvent
+EnumElement TelemetryEvent.outputObscuredChanged : (SuperPlayerCore.TelemetryEvent.Type) -> (SuperPlayerCore.TelemetryEvent.OutputObscuredChanged) -> SuperPlayerCore.TelemetryEvent
 EnumElement TelemetryEvent.playbackStateSampled : (SuperPlayerCore.TelemetryEvent.Type) -> (SuperPlayerCore.TelemetryEvent.PlaybackStateSampled) -> SuperPlayerCore.TelemetryEvent
 EnumElement TelemetryEvent.rebufferEnded : (SuperPlayerCore.TelemetryEvent.Type) -> (SuperPlayerCore.TelemetryEvent.RebufferEnded) -> SuperPlayerCore.TelemetryEvent
 EnumElement TelemetryEvent.rebufferStarted : (SuperPlayerCore.TelemetryEvent.Type) -> (SuperPlayerCore.TelemetryEvent.RebufferStarted) -> SuperPlayerCore.TelemetryEvent
@@ -157,6 +164,7 @@ Func FrameSink.onTracks(_:) : (), [SuperPlayerCore.RealtimeTrack] where <Self wh
 Func FrameSource.cancel() : () where <Self where Self : SuperPlayerCore.FrameSource>
 Func FrameSource.subscribe(_:) : (), any SuperPlayerCore.FrameSink where <Self where Self : SuperPlayerCore.FrameSource>
 Func FrameSourceFactory.open(_:) : any SuperPlayerCore.FrameSource, Foundation.URL where <Self where Self : SuperPlayerCore.FrameSourceFactory>
+Func HeaderProvider.refreshedHeaders(for:) : [Swift.String : Swift.String], SuperPlayerCore.CredentialRefusal where <Self where Self : SuperPlayerCore.HeaderProvider> [throwing]
 Func LicenceOutcome.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerCore.LicenceOutcome, SuperPlayerCore.LicenceOutcome [static]
 Func LicenceOutcome.hash(into:) : (), Swift.Hasher
 Func LiveLatencyPolicy.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.LiveLatencyPolicy, SuperPlayerCore.LiveLatencyPolicy [static]
@@ -237,6 +245,8 @@ Func TelemetryCollector.decisionChanged(_:trigger:) : (), SuperPlayerCore.Playba
 Func TelemetryCollector.declareIntent(monotonicTimeMs:) : (), Swift.Int64 where <Self where Self : SuperPlayerCore.TelemetryCollector>
 Func TelemetryCollector.detach() : () where <Self where Self : SuperPlayerCore.TelemetryCollector>
 Func TelemetryCollector.endSession() : () where <Self where Self : SuperPlayerCore.TelemetryCollector>
+Func TelemetryCollector.licenceAcquisitionEnded(durationMs:outcome:) : (), Swift.Int64, SuperPlayerCore.LicenceOutcome where <Self where Self : SuperPlayerCore.TelemetryCollector>
+Func TelemetryCollector.licenceAcquisitionEnded(durationMs:outcome:) : (), Swift.Int64, SuperPlayerCore.LicenceOutcome where <Self where Self : SuperPlayerCore.TelemetryCollector>
 Func TelemetryCollector.sessionFailed(_:) : (), SuperPlayerCore.SuperPlayerError where <Self where Self : SuperPlayerCore.TelemetryCollector>
 Func TelemetryCollector.sessionFailed(_:) : (), SuperPlayerCore.SuperPlayerError where <Self where Self : SuperPlayerCore.TelemetryCollector>
 Func TelemetryCollector.startSession(contentId:sessionId:) : (), Swift.String, Swift.String where <Self where Self : SuperPlayerCore.TelemetryCollector>
@@ -250,6 +260,8 @@ Func TelemetryEvent.LiveLatencySampled.__derived_struct_equals(_:_:) : Swift.Boo
 Func TelemetryEvent.LiveLatencySampled.hash(into:) : (), Swift.Hasher
 Func TelemetryEvent.MidStreamFailed.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.TelemetryEvent.MidStreamFailed, SuperPlayerCore.TelemetryEvent.MidStreamFailed [static]
 Func TelemetryEvent.MidStreamFailed.hash(into:) : (), Swift.Hasher
+Func TelemetryEvent.OutputObscuredChanged.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.TelemetryEvent.OutputObscuredChanged, SuperPlayerCore.TelemetryEvent.OutputObscuredChanged [static]
+Func TelemetryEvent.OutputObscuredChanged.hash(into:) : (), Swift.Hasher
 Func TelemetryEvent.PlaybackStateSampled.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.TelemetryEvent.PlaybackStateSampled, SuperPlayerCore.TelemetryEvent.PlaybackStateSampled [static]
 Func TelemetryEvent.PlaybackStateSampled.hash(into:) : (), Swift.Hasher
 Func TelemetryEvent.RebufferEnded.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.TelemetryEvent.RebufferEnded, SuperPlayerCore.TelemetryEvent.RebufferEnded [static]
@@ -290,7 +302,10 @@ Protocol FrameOutput where <Self : Swift.Sendable> : Sendable
 Protocol FrameSink where <Self : Swift.Sendable> : Sendable
 Protocol FrameSource where <Self : AnyObject, Self : Swift.Sendable> : Sendable
 Protocol FrameSourceFactory where <Self : Swift.Sendable> : Sendable
+Protocol HeaderProvider where <Self : Swift.Sendable> : Sendable
+Protocol LicenceStore where <Self : AnyObject, Self : Swift.Sendable> : Sendable
 Protocol MediaRequestResolver
+Protocol PlaybackDrm where <Self : Swift.Sendable> : Sendable
 Protocol PlaybackPolicy where <Self : Swift.Sendable> : Sendable
 Protocol PlaybackResilience where <Self : Swift.Sendable> : Sendable
 Protocol TelemetryCollector
@@ -298,11 +313,14 @@ Protocol TelemetrySink where <Self : Swift.Sendable> : Sendable
 Struct BufferPolicy : Equatable, Hashable, Sendable
 Struct CmcdModeUnsupportedError : CustomStringConvertible, Equatable, Error, Hashable, Sendable
 Struct CompositeTelemetrySink : Sendable, TelemetrySink
+Struct CredentialRefusal : CustomStringConvertible, Sendable
 Struct DownloadSelectionPolicy : Equatable, Hashable, Sendable
 Struct EncodedFrame : Equatable, Hashable, Sendable
+Struct LicenceExchangeError : CustomNSError, CustomStringConvertible, Error, Sendable
 Struct LiveLatencyPolicy : Equatable, Hashable, Sendable
 Struct MalformedRealtimeBitstreamError : CustomStringConvertible, Equatable, Error, Hashable, Sendable
 Struct MediaRequest : Decodable, Encodable, Equatable, Hashable, Sendable
+Struct OfflineLicenceExpiredError : CustomNSError, CustomStringConvertible, Error, Sendable
 Struct OutputPolicy : Equatable, Hashable, Sendable
 Struct PlaybackConditions : Equatable, Hashable, Sendable
 Struct PlaybackDecision : Equatable, Hashable, Sendable
@@ -327,6 +345,7 @@ Struct TelemetryEvent.FirstFrameRendered : Equatable, Hashable, Sendable
 Struct TelemetryEvent.LicenceAcquisitionEnded : Equatable, Hashable, Sendable
 Struct TelemetryEvent.LiveLatencySampled : Equatable, Hashable, Sendable
 Struct TelemetryEvent.MidStreamFailed : Equatable, Hashable, Sendable
+Struct TelemetryEvent.OutputObscuredChanged : Equatable, Hashable, Sendable
 Struct TelemetryEvent.PlaybackStateSampled : Equatable, Hashable, Sendable
 Struct TelemetryEvent.RebufferEnded : Equatable, Hashable, Sendable
 Struct TelemetryEvent.RebufferStarted : Equatable, Hashable, Sendable
@@ -342,6 +361,7 @@ Struct TrackSelectionPolicy : Equatable, Hashable, Sendable
 Struct UnplayableSourceSchemeError : CustomStringConvertible, Equatable, Error, Hashable, Sendable
 Struct UnsupportedRealtimeCodecError : CustomStringConvertible, Equatable, Error, Hashable, Sendable
 TypeAlias CmcdMode.AllCases : [SuperPlayerCore.CmcdMode]
+TypeAlias LicenceExchangeError.Stage.RawValue : Swift.Int
 TypeAlias PlaybackProfile.AllCases : [SuperPlayerCore.PlaybackProfile]
 TypeAlias PlayerView.Body : Swift.Never
 TypeAlias PlayerView.Coordinator : Swift.Void
@@ -357,6 +377,10 @@ Var CmcdMode.hashValue : Swift.Int { get }
 Var CmcdModeUnsupportedError.description : Swift.String { get }
 Var CmcdModeUnsupportedError.hashValue : Swift.Int { get }
 Var CmcdModeUnsupportedError.mode : SuperPlayerCore.CmcdMode { get }
+Var CredentialRefusal.description : Swift.String { get }
+Var CredentialRefusal.sentHeaders : [Swift.String : Swift.String] { get }
+Var CredentialRefusal.status : Swift.Int { get }
+Var CredentialRefusal.uri : Foundation.URL { get }
 Var DecisionTrigger.hashValue : Swift.Int { get }
 Var DownloadSelectionPolicy.hashValue : Swift.Int { get }
 Var DownloadSelectionPolicy.maxVideoBitrateBps : Swift.Int? { get set }
@@ -369,6 +393,15 @@ Var EncodedFrame.timestampUs : Swift.Int64 { get }
 Var EncodedFrame.trackIndex : Swift.Int { get }
 Var FailureCategory.hashValue : Swift.Int { get }
 Var FrameOutputOffReason.hashValue : Swift.Int { get }
+Var LicenceExchangeError.Stage.rawValue : Swift.Int { get }
+Var LicenceExchangeError.attempts : Swift.Int { get }
+Var LicenceExchangeError.description : Swift.String { get }
+Var LicenceExchangeError.errorCode : Swift.Int { get }
+Var LicenceExchangeError.errorDomain : Swift.String [static] { get }
+Var LicenceExchangeError.errorUserInfo : [Swift.String : Any] { get }
+Var LicenceExchangeError.stage : SuperPlayerCore.LicenceExchangeError.Stage { get }
+Var LicenceExchangeError.status : Swift.Int? { get }
+Var LicenceExchangeError.underlyingError : Foundation.NSError? { get }
 Var LicenceOutcome.hashValue : Swift.Int { get }
 Var LiveLatencyPolicy.hashValue : Swift.Int { get }
 Var LiveLatencyPolicy.preservesOffset : Swift.Bool { get set }
@@ -386,6 +419,13 @@ Var MediaRequest.startPosition : SuperPlayerCore.MediaRequest.StartPosition { ge
 Var MediaRequest.subtitle : Swift.String? { get }
 Var MediaRequest.title : Swift.String? { get }
 Var NetworkTransport.hashValue : Swift.Int { get }
+Var OfflineLicenceExpiredError.contentId : Swift.String { get }
+Var OfflineLicenceExpiredError.description : Swift.String { get }
+Var OfflineLicenceExpiredError.errorCode : Swift.Int { get }
+Var OfflineLicenceExpiredError.errorDomain : Swift.String [static] { get }
+Var OfflineLicenceExpiredError.errorUserInfo : [Swift.String : Any] { get }
+Var OfflineLicenceExpiredError.licenceDurationRemainingMs : Swift.Int64 { get }
+Var OfflineLicenceExpiredError.playbackDurationRemainingMs : Swift.Int64 { get }
 Var OutputPolicy.hashValue : Swift.Int { get }
 Var OutputPolicy.none : SuperPlayerCore.OutputPolicy [static] { get }
 Var OutputPolicy.tunneling : Swift.Bool { get set }
@@ -485,6 +525,7 @@ Var StallHistory.none : SuperPlayerCore.StallHistory [static] { get }
 Var StallHistory.rebufferCount : Swift.Int { get set }
 Var StreamType.hashValue : Swift.Int { get }
 Var SuperPlayer.Configuration.cmcdMode : SuperPlayerCore.CmcdMode? { get }
+Var SuperPlayer.Configuration.drm : (any SuperPlayerCore.PlaybackDrm)? { get set }
 Var SuperPlayer.Configuration.frameOutput : (any SuperPlayerCore.FrameOutput)? { get set }
 Var SuperPlayer.Configuration.policy : (any SuperPlayerCore.PlaybackPolicy)? { get set }
 Var SuperPlayer.Configuration.profile : SuperPlayerCore.PlaybackProfile { get set }
@@ -548,6 +589,12 @@ Var TelemetryEvent.MidStreamFailed.monotonicTimeMs : Swift.Int64 { get }
 Var TelemetryEvent.MidStreamFailed.positionMs : Swift.Int64 { get }
 Var TelemetryEvent.MidStreamFailed.sessionId : Swift.String { get }
 Var TelemetryEvent.MidStreamFailed.timestampMs : Swift.Int64 { get }
+Var TelemetryEvent.OutputObscuredChanged.contentId : Swift.String { get }
+Var TelemetryEvent.OutputObscuredChanged.hashValue : Swift.Int { get }
+Var TelemetryEvent.OutputObscuredChanged.monotonicTimeMs : Swift.Int64 { get }
+Var TelemetryEvent.OutputObscuredChanged.obscured : Swift.Bool { get }
+Var TelemetryEvent.OutputObscuredChanged.sessionId : Swift.String { get }
+Var TelemetryEvent.OutputObscuredChanged.timestampMs : Swift.Int64 { get }
 Var TelemetryEvent.PlaybackStateSampled.bufferedDurationMs : Swift.Int64 { get }
 Var TelemetryEvent.PlaybackStateSampled.contentId : Swift.String { get }
 Var TelemetryEvent.PlaybackStateSampled.hashValue : Swift.Int { get }

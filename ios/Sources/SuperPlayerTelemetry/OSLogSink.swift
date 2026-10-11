@@ -146,6 +146,9 @@ public struct OSLogSink: TelemetrySink {
             return info(
                 "evt=video_frames \(common) dropped=\(e.droppedFrames) "
                     + "repeated=\(e.repeatedFrames) elapsedPlayingMs=\(e.elapsedPlayingMs)")
+        case .outputObscuredChanged(let e):
+            // Not an error either: nothing failed, the platform enforced the licence's policy.
+            return info("evt=output_obscured \(common) obscured=\(e.obscured)")
         }
     }
 

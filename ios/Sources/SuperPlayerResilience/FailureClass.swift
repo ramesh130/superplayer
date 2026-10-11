@@ -107,7 +107,8 @@ public enum FailureClass: Sendable, Hashable, CustomStringConvertible {
     /// This device could not play it, which is a different question from whether the content is.
     case device(Device)
 
-    /// Protection, not delivery. FairPlay's on Apple platforms, and #422's to reach.
+    /// Protection, not delivery. FairPlay's on Apple platforms: `LicenceAcquisition` and
+    /// `SystemError` are reached from #422's exchange, and `ErrorClassifier` says which wait.
     case drm(Drm)
 
     /// The device's storage, not the content, the network or the decoder.

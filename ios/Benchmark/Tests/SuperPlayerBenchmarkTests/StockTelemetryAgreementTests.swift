@@ -37,13 +37,19 @@ import XCTest
 /// ## Why the stream is `.videoHls()` and not the matrix's ladder
 ///
 /// The comparison needs video — a bitrate, a rendition choice and a sample are video's in this
-/// schema — and a stall, and nothing else: no particular rung, and no switch. On CI's iOS 26.5
-/// simulator a `SuperPlayer` playing the ladder the matrix plays (`TestContent.videoLadder`) stopped
-/// fetching partway through in every run — after a switch, mid-stall, and before the item was ever
-/// ready — while it plays on 27.1 and a stock `AVPlayer` plays the same ladder on 26.5. That is
-/// #474, an engine finding for the matrix rather than a disagreement between collectors, and this
-/// test does not wait on it: it plays the one video stream every `SuperPlayer` playback test
-/// already plays on CI, one variant, and gets its stall from the link.
+/// schema — and a stall, and nothing else: no particular rung, and no switch. So it plays the one
+/// video stream every `SuperPlayer` playback test plays, one variant, and gets its stall from the
+/// link.
+///
+/// That the stall is the link's and never ends is AVFoundation's, and was #474: a segment that
+/// cannot arrive within about a target duration is abandoned and asked for again from its first
+/// byte, so on a link slower than the stream no segment arrives again, on a stock player as on a
+/// `SuperPlayer` (`SlowLinkPlaybackTests`). The stuck points #474 recorded on CI's slower simulator
+/// are consistent with each run meeting the slow stretch at a different place — earlier the slower
+/// the host, while the link's clock started at the origin's — and a freshly booted 27.1 simulator
+/// was seen to spend the whole fast stretch before asking for a segment. The link's clock now starts
+/// at the first segment (`LoopbackOrigin`), so the session meets its fast stretch however cold the
+/// host, and this session no longer plays itself again when it does not start.
 ///
 /// ## What is compared on real time
 ///
@@ -77,11 +83,6 @@ final class StockTelemetryAgreementTests: XCTestCase {
     private static let forwardBufferSeconds: TimeInterval = 4
 
     private let bound: Duration = .seconds(90)
-
-    /// How long a first attempt may take to start before ``session()`` plays it again: well past
-    /// the second or so a start takes here on the fast stretch of the link, and inside it, so the
-    /// second attempt starts while its own link is still fast.
-    private let startBound: Duration = .seconds(8)
 
     func testBothCollectorsDeriveTheSameEventsFromTheSameCallbacks() async throws {
         let (qoe, stock) = try await session()
@@ -154,29 +155,9 @@ final class StockTelemetryAgreementTests: XCTestCase {
     // MARK: - One session, watched twice
 
     /// Plays the scripted session once for the whole class: a stall, a seek, a sample.
-    ///
-    /// **Once more, from nothing, if the first attempt never reaches a first frame** — and only
-    /// then. A `SuperPlayer` on a freshly booted simulator was seen, once on 27.1 and on CI's 26.5,
-    /// to fail its item (`CoreMediaErrorDomain` -12889) or stop fetching before it started: #474,
-    /// an engine question and not this test's. A session that never starts has nothing for two
-    /// collectors to disagree about, so a second session on a new origin and player is the same
-    /// comparison rather than a weaker one; one that started and then went wrong is not retried.
     private func session() async throws -> (qoe: [TelemetryEvent], stock: [TelemetryEvent]) {
         if let played = Self.played { return played }
         if let unplayable = Self.unplayable { throw XCTSkip("Not played: \(unplayable)") }
-        do {
-            return try await attempt(retryingAStartThatNeverCame: true)
-        } catch is NeverStarted {
-            return try await attempt(retryingAStartThatNeverCame: false)
-        }
-    }
-
-    /// A first attempt's start that never came, which ``session()`` plays again.
-    private struct NeverStarted: Error {}
-
-    private func attempt(retryingAStartThatNeverCame retrying: Bool) async throws -> (
-        qoe: [TelemetryEvent], stock: [TelemetryEvent]
-    ) {
         let harness = PlaybackHarness()
         defer { harness.stop() }
         let origin = try await harness.serve(
@@ -227,16 +208,6 @@ final class StockTelemetryAgreementTests: XCTestCase {
             }
         }
 
-        if retrying {
-            do {
-                try await harness.until("the first frame", timeout: startBound) {
-                    stock.events.contains { $0.kind == "firstFrameRendered" }
-                }
-            } catch is ConditionTimeout {
-                player.release()
-                throw NeverStarted()
-            }
-        }
         try await until("the first frame") {
             stock.events.contains { $0.kind == "firstFrameRendered" }
         }
@@ -275,9 +246,10 @@ final class StockTelemetryAgreementTests: XCTestCase {
 
 extension StockTelemetryAgreementTests {
 
-    /// A link fast enough to start on, then too slow for the stream: 2 Mbit/s for ten seconds, so
-    /// the first frame and the seek come however slow the host, then a quarter of the stream's own
-    /// bitrate for good, so the buffer drains and the player has to wait.
+    /// A link fast enough to start on, then too slow for the stream: 2 Mbit/s for ten seconds from
+    /// the first segment, so the first frame and the seek come however slow the host, then a quarter
+    /// of the stream's own bitrate for good, so the buffer drains and the player has to wait — for
+    /// good, since no segment arrives inside AVFoundation's wait on it (`SlowLinkPlaybackTests`).
     ///
     /// The earlier forms are why it is this one. A link cut to nothing stalled on a developer's
     /// simulator and never on CI's; a link slow from six seconds in was slow before CI's player had
@@ -326,6 +298,7 @@ extension TelemetryEvent {
         case .liveLatencySampled: "liveLatencySampled"
         case .playbackStateSampled: "playbackStateSampled"
         case .videoFramesDropped: "videoFramesDropped"
+        case .outputObscuredChanged: "outputObscuredChanged"
         }
     }
 

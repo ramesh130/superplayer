@@ -198,6 +198,43 @@ final class ErrorClassifierTests: XCTestCase {
 
     /// The cause is the informed error: a decoder failure wrapped in a generic Foundation error
     /// is still the decoder's.
+    /// The FairPlay exchange's evidence (#422): core's error, bridged as a consumer meets it, names
+    /// the licence the round trip did not produce, or the device that would not compose the request
+    /// — and a protection stack's own AVFoundation code beneath that request is the more informed
+    /// answer, cause first as everywhere else.
+    func testTheLicenceExchangeRows() {
+        func exchange(_ stage: LicenceExchangeError.Stage, under cause: NSError? = nil) -> NSError {
+            LicenceExchangeError(stage: stage, status: nil, attempts: 1, underlyingError: cause)
+                as NSError
+        }
+        XCTAssertEqual(classify(exchange(.licence), nil), .drm(.licenceAcquisition))
+        XCTAssertEqual(classify(exchange(.certificate), nil), .drm(.licenceAcquisition))
+        XCTAssertEqual(classify(exchange(.keyRequest), nil), .drm(.systemError))
+        let transport = NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut)
+        XCTAssertEqual(
+            classify(exchange(.licence, under: transport), nil), .drm(.licenceAcquisition))
+        let refused = NSError(
+            domain: AVFoundationErrorDomain, code: AVError.Code.contentIsNotAuthorized.rawValue)
+        XCTAssertEqual(classify(exchange(.keyRequest, under: refused), nil), .drm(.unsupported))
+    }
+
+    /// A stored licence refused before playback is the expiry leaf with its own message key — never
+    /// the licence that failed to arrive (#423) — whatever the fields say.
+    func testAnExpiredOfflineLicenceIsLicenceExpired() {
+        let expired = OfflineLicenceExpiredError(
+            contentId: "film", playbackDurationRemainingMs: 0, licenceDurationRemainingMs: 5)
+        XCTAssertEqual(classify(expired as NSError, nil), .drm(.licenceExpired))
+        XCTAssertEqual(
+            FailureClass.drm(.licenceExpired).userMessageKey,
+            FailureClass.licenceExpiredMessageKey)
+        XCTAssertNotEqual(classify(expired as NSError, nil), classify(exchangeRefusal(), nil))
+    }
+
+    private func exchangeRefusal() -> NSError {
+        LicenceExchangeError(stage: .licence, status: 500, attempts: 1, underlyingError: nil)
+            as NSError
+    }
+
     func testTheCauseDecidesOverItsWrapper() {
         let cause = NSError(
             domain: AVFoundationErrorDomain, code: AVError.Code.decoderNotFound.rawValue)

@@ -257,6 +257,7 @@ extension SessionTraceRecorder {
         case .liveLatencySampled: "LiveLatencySampled"
         case .playbackStateSampled: "PlaybackStateSampled"
         case .videoFramesDropped: "VideoFramesDropped"
+        case .outputObscuredChanged: "OutputObscuredChanged"
         }
     }
 
@@ -307,6 +308,8 @@ extension SessionTraceRecorder {
         case .videoFramesDropped(let e):
             return "droppedFrames=\(e.droppedFrames) repeatedFrames=\(e.repeatedFrames) "
                 + "elapsedPlayingMs=\(e.elapsedPlayingMs)"
+        case .outputObscuredChanged(let e):
+            return "obscured=\(e.obscured)"
         }
     }
 

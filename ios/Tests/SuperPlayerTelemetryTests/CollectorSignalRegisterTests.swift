@@ -41,10 +41,11 @@ final class CollectorSignalRegisterTests: XCTestCase {
         Dictionary(uniqueKeysWithValues: CollectorSignal.registered.map { ($0, 1) })
     }
 
-    private func measured() -> (SuperPlayer, QoeCollector) {
+    private func measured(drm: (any PlaybackDrm)? = nil) -> (SuperPlayer, QoeCollector) {
         let collector = QoeCollector(sink: RecordingSink())
         var configuration = SuperPlayer.Configuration()
         configuration.telemetry = { collector }
+        configuration.drm = drm
         return (SuperPlayer(configuration: configuration), collector)
     }
 
@@ -97,11 +98,26 @@ final class CollectorSignalRegisterTests: XCTestCase {
         XCTAssertFalse(collector.isSampling, "a session's end stops its timer")
     }
 
+    /// The output's protection reading is observed on a protected player alone (#422): a clear
+    /// player's session — every test above — registers none, and a protected one's one of each.
+    func testTheOutputIsObservedOnAProtectedPlayerAlone() {
+        let (player, collector) = measured(drm: Protected())
+
+        player.setMediaRequest(MediaRequest(contentId: "a", sources: [nowhere]))
+
+        XCTAssertEqual(
+            collector.liveObservations, everySignalOnce.merging([.outputObscured: 1]) { $1 })
+        XCTAssertNil(everySignalOnce[.outputObscured])
+        player.release()
+        XCTAssertEqual(collector.liveObservations, [:])
+    }
+
     /// The metric stream is iOS 18's, so below it the register expects one fewer — and on this
-    /// runtime, which is newer, it expects all of them.
+    /// runtime, which is newer, it expects all of them but the protected player's own.
     func testTheMetricStreamIsRegisteredWhereItExists() {
         if #available(iOS 18, tvOS 18, *) {
-            XCTAssertEqual(CollectorSignal.registered, CollectorSignal.allCases)
+            XCTAssertEqual(
+                CollectorSignal.registered(protected: true), CollectorSignal.allCases)
         } else {
             XCTAssertFalse(CollectorSignal.registered.contains(.metricEvents))
         }
@@ -139,3 +155,6 @@ final class CollectorSignalRegisterTests: XCTestCase {
         }
     }
 }
+
+/// A player's declared protection, as far as the collector can tell: set, and nothing more.
+private struct Protected: PlaybackDrm {}

@@ -191,6 +191,30 @@ them under `Added` would be worse than stating them here:
   player without resilience is
   unchanged. `FaultSweepTests` and `FallbackRungCoverageTests` are i5's exit. No Android behaviour
   moved.
+- **FairPlay on iOS (#422).** `SuperPlayerDRM` gains `Drm.fairPlay(_:)` and `FairPlayConfig`, which
+  `SuperPlayerCore`'s new `Configuration.drm` takes: one `AVContentKeySession` per player, every
+  asset a recipient, and the licence exchange the library's own — the certificate once, the key
+  request `POST`ed to the configured server only, asked again on `RetryPolicy.licence` with
+  equal-jitter backoff, one 401 or 403 repaired by the `HeaderProvider`. A failure is core's new
+  `LicenceExchangeError`, which `ErrorClassifier` names `Drm.LicenceAcquisition` or `Drm.SystemError`.
+  **Breaking for the iOS Resilience product**: `HeaderProvider` and `CredentialRefusal` moved from
+  `SuperPlayerResilience` to `SuperPlayerCore`, as the Kotlin type lives in core (ADR-0012 rule 2),
+  so an app that names them imports core. `TelemetryCollector` gains `licenceAcquisitionEnded`, with a
+  default. Both platforms' vocabulary gains **`TelemetryEvent.OutputObscuredChanged`** — the
+  `superplayer-core` declaration is new public API on Android — emitted on iOS and tvOS from
+  `isOutputObscuredDueToInsufficientExternalProtection` on a protected player, and by nothing on
+  Android, which has no such reading; `schemaVersion` stays 2, a new event being shape. An exhaustive
+  `when` over `TelemetryEvent` needs a branch for it. No Android behaviour moved.
+- **Offline FairPlay licences on iOS (#423).** `SuperPlayerDRM` gains `OfflineLicences.store(directory:)`
+  and `OfflineLicenceStore` — one SQLite file through the system `libsqlite3`, inside the directory
+  the consumer named and nowhere else — with `licence(for:)` answering an `OfflineLicence`'s two
+  durations, `isExpired` and `renewalDue` (a day) with no player and no network; `store.over(player)`'s
+  `OfflineLicenceExchange` acquiring, renewing and releasing persistable keys over the player's
+  exchange, a refused release kept in `contentIdsAwaitingRelease()` with its proof of deletion; `Drm.fairPlay(_:licence:)`, which plays from the stored keys with no licence request and
+  reports `SERVED_FROM_OFFLINE_STORE`; and `OfflineLicenceStoreError`. `SuperPlayerCore` gains the
+  `LicenceStore` marker and `OfflineLicenceExpiredError`, which `ErrorClassifier` names
+  `Drm.LicenceExpired`. Unlike Android's, the two durations are stated by the app, because FairPlay
+  reports neither to the client. Additive; `schemaVersion` stays 2.
 - **Phase 9 — Diagnostics and docs.** `MediaSourceDoctor`, which names twenty pathologies over the
   chain a player would load through; the postmortem reading; `SessionBundle`; the debug HUD; and
   the documents in `docs/`.

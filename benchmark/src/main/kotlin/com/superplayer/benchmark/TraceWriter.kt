@@ -132,6 +132,7 @@ internal object TraceWriter {
         is TelemetryEvent.PlaybackStateSampled -> "state_sample"
         is TelemetryEvent.LicenceAcquisitionEnded -> "licence_acquisition"
         is TelemetryEvent.VideoFramesDropped -> "video_frames"
+        is TelemetryEvent.OutputObscuredChanged -> "output_obscured"
     }
 
     /** Each event's own fields, in `LogcatSink`'s names. Exhaustive for [discriminator]'s reason. */
@@ -197,6 +198,8 @@ internal object TraceWriter {
             "\"durationMs\":${event.durationMs}," +
                 "\"outcome\":${string(event.outcome.name)}," +
                 "\"securityLevel\":${event.securityLevel?.let { string(it) } ?: "null"}"
+
+        is TelemetryEvent.OutputObscuredChanged -> "\"obscured\":${event.obscured}"
 
         is TelemetryEvent.VideoFramesDropped ->
             "\"dropped\":${event.droppedFrames}," +

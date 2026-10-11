@@ -1023,6 +1023,25 @@ public final class com/superplayer/core/TelemetryEvent$MidStreamFailed : com/sup
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class com/superplayer/core/TelemetryEvent$OutputObscuredChanged : com/superplayer/core/TelemetryEvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JJZ)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()J
+	public final fun component5 ()Z
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JJZ)Lcom/superplayer/core/TelemetryEvent$OutputObscuredChanged;
+	public static synthetic fun copy$default (Lcom/superplayer/core/TelemetryEvent$OutputObscuredChanged;Ljava/lang/String;Ljava/lang/String;JJZILjava/lang/Object;)Lcom/superplayer/core/TelemetryEvent$OutputObscuredChanged;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getContentId ()Ljava/lang/String;
+	public fun getMonotonicTimeMs ()J
+	public final fun getObscured ()Z
+	public fun getSessionId ()Ljava/lang/String;
+	public fun getTimestampMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/superplayer/core/TelemetryEvent$PlaybackStateSampled : com/superplayer/core/TelemetryEvent {
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JJJLjava/lang/Integer;JZLjava/lang/Integer;)V
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JJJLjava/lang/Integer;JZLjava/lang/Integer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V

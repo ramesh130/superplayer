@@ -144,8 +144,9 @@ final class StockTelemetry {
     // MARK: - The register, mirroring CollectorSignals.swift
 
     /// Every registration `CollectorObservation.registerAll` makes, less the memory warning (the
-    /// type's third difference), each handler told only *that* something changed and reading the
-    /// state it needs when it runs.
+    /// type's third difference) and the output's protection reading, which only a player configured
+    /// with `drm` registers and no stock arm is, each handler told only *that* something changed and
+    /// reading the state it needs when it runs.
     private func register(on player: AVPlayer, item: AVPlayerItem) {
         // In `CollectorSignal.allCases`' order, so two callbacks AVFoundation delivers at one
         // instant reach the two collectors in one order.

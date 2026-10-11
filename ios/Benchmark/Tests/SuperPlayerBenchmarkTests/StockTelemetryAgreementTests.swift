@@ -46,14 +46,19 @@ import XCTest
 /// Not compared, as on Android: what each is merely *given* — the session id (core's for one, the
 /// test's for the other) and `SessionStarted`'s profile and decision.
 ///
-/// The control is that the session is not quiet: the link goes away for longer than the buffer
-/// lasts, so there is a stall, the script seeks, and it plays a ladder, so there is a rendition
+/// The control is that the session is not quiet: the link falls below the bottom rung for longer
+/// than the buffer lasts, so there is a stall, the script seeks, and it plays a ladder, so there is a rendition
 /// choice; each is asserted to have
 /// happened before the two streams are held equal, so the agreement is not two empty lists.
 @MainActor
 final class StockTelemetryAgreementTests: XCTestCase {
 
     private static var played: (qoe: [TelemetryEvent], stock: [TelemetryEvent])?
+
+    /// Why the session could not be played, once it could not: every test of the class reads one
+    /// session, so the second test fails at once on the first one's reason rather than waiting out
+    /// the bound again.
+    private static var unplayable: String?
 
     private let bound: Duration = .seconds(90)
 
@@ -77,7 +82,7 @@ final class StockTelemetryAgreementTests: XCTestCase {
     func testBothCollectorsAttributeEveryStallTheSameWay() async throws {
         let (qoe, stock) = try await session()
         let fromQoe = qoe.compactMap(\.rebufferEnded)
-        XCTAssertFalse(fromQoe.isEmpty, "the outage produced no stall to compare")
+        XCTAssertFalse(fromQoe.isEmpty, "the slow link produced no stall to compare")
         // The attribution is what would silently move a number: a stall one collector calls the
         // seek's and the other does not is seconds one arm's ratio counts and the other's excludes.
         XCTAssertEqual(
@@ -130,6 +135,7 @@ final class StockTelemetryAgreementTests: XCTestCase {
     /// Plays the scripted session once for the whole class: a stall, a seek, a sample.
     private func session() async throws -> (qoe: [TelemetryEvent], stock: [TelemetryEvent]) {
         if let played = Self.played { return played }
+        if let unplayable = Self.unplayable { throw XCTSkip("Not played: \(unplayable)") }
         let harness = PlaybackHarness()
         defer { harness.stop() }
         let origin = try await harness.serve(
@@ -156,8 +162,21 @@ final class StockTelemetryAgreementTests: XCTestCase {
         player.avPlayer.currentItem?.add(AVPlayerItemVideoOutput(pixelBufferAttributes: nil))
         player.avPlayer.play()
 
-        try await harness.until("the outage stalls playback and it resumes", timeout: bound) {
-            stock.events.contains { $0.kind == "rebufferEnded" }
+        do {
+            try await harness.until("the slow link stalls playback and it resumes", timeout: bound)
+            {
+                stock.events.contains { $0.kind == "rebufferEnded" }
+            }
+        } catch {
+            // What a failure needs to be diagnosed from a CI log: what each collector derived and
+            // what the origin was asked for.
+            Self.unplayable =
+                "\(error); stock derived \(stock.events.map(\.kind)), the collector "
+                + "\(qoe.events.map(\.kind)); requested "
+                + "\(origin.networkRequests().map(\.path))"
+            player.release()
+            XCTFail(Self.unplayable!)
+            throw error
         }
         // A seek back into what has played: requested and completed, with the exclusion window
         // after it.
@@ -185,15 +204,20 @@ final class StockTelemetryAgreementTests: XCTestCase {
 
 extension StockTelemetryAgreementTests {
 
-    /// A link that builds a few seconds of buffer and then goes away for longer than that: 600
-    /// kbit/s for eight seconds — a little over the bottom rung, so the player starts and gets
-    /// ahead, but not by much — then nothing for twelve, which outlasts what was buffered, then
-    /// stable WiFi's twenty megabits for good, so playback resumes and stays up. The stall happens
-    /// at a moment the trace chose rather than one the player happened to produce.
+    /// A link that builds a few seconds of buffer and then falls below the bottom rung for longer
+    /// than that lasts: 600 kbit/s for six seconds — a little over the bottom rung, so the player
+    /// starts and gets ahead, but not by much — then 150 kbit/s for twenty, under half of what the
+    /// 365 kbit/s rung needs, so the buffer drains whatever the player chooses and it must wait,
+    /// then stable WiFi's twenty megabits for good, so playback resumes and stays up.
+    ///
+    /// Slow rather than gone: an earlier form cut the link to nothing for twelve seconds, which
+    /// stalled on a developer's simulator and on CI's never did — a request with no bytes at all is
+    /// one `AVPlayer` gives up and asks again on its own schedule, while a slow one is a drain no
+    /// buffer outlasts.
     static func outage() throws -> ThroughputTrace {
         try ThroughputTrace.Builder()
-            .add(durationMs: 8_000, bandwidthBps: 600_000, transport: .wifi)
-            .add(durationMs: 12_000, bandwidthBps: 0, transport: .wifi)
+            .add(durationMs: 6_000, bandwidthBps: 600_000, transport: .wifi)
+            .add(durationMs: 20_000, bandwidthBps: 150_000, transport: .wifi)
             .add(durationMs: 1_000, bandwidthBps: 20_000_000, transport: .wifi)
             .holdAtEnd()
             .build()

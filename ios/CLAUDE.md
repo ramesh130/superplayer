@@ -185,6 +185,19 @@ reports `OutputObscuredChanged` from `isOutputObscuredDueToInsufficientExternalP
 protected player alone. **The simulator has no FairPlay**: the key session is stood in at the one
 `package` protocol `FairPlayKeySession`, and the licence server is testkit's `.licenceServer()`
 (`docs/testing.md`, *FairPlay on iOS*).
+#423 added the offline store to `SuperPlayerDRM`: `OfflineLicences.store(directory:)` opens an
+`OfflineLicenceStore` — core's public marker `LicenceStore` over the `package` `StoredLicences`, so the
+download products (#424, #425) take it depending on core alone — whose one file is SQLite through the
+system `libsqlite3` (`OfflineLicenceIndex.swift`, `temp_store = MEMORY` so nothing lands outside the
+directory), holding per `contentId` the persistable keys by key identifier and two deadlines;
+`licence(for:)` reads them with no player and no network. `store.over(player)` acquires, renews and
+releases through the player's key session and exchange — a persistable request asked for by
+identifier, told apart from the content's own by the verb waiting on it, and a release the key's proof
+of deletion `POST`ed — and `Drm.fairPlay(_:licence:)` plays from the stored keys asking nobody,
+refusing an expired licence with core's `OfflineLicenceExpiredError`. **FairPlay reports neither
+duration to the client**, so the two are what the key server granted, stated by the app at `acquire`
+and `renew`; that is the one departure from the Kotlin store. **tvOS has no persistable keys** in its
+SDK, so there the verbs fail typed at once.
 `SuperPlayerMoQ` is not declared yet — its binary target is
 i9's — and there is no `SuperPlayerCache`, since its content is the offline store's.
 

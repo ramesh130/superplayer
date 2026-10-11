@@ -303,6 +303,7 @@ Protocol FrameSink where <Self : Swift.Sendable> : Sendable
 Protocol FrameSource where <Self : AnyObject, Self : Swift.Sendable> : Sendable
 Protocol FrameSourceFactory where <Self : Swift.Sendable> : Sendable
 Protocol HeaderProvider where <Self : Swift.Sendable> : Sendable
+Protocol LicenceStore where <Self : AnyObject, Self : Swift.Sendable> : Sendable
 Protocol MediaRequestResolver
 Protocol PlaybackDrm where <Self : Swift.Sendable> : Sendable
 Protocol PlaybackPolicy where <Self : Swift.Sendable> : Sendable
@@ -319,6 +320,7 @@ Struct LicenceExchangeError : CustomNSError, CustomStringConvertible, Error, Sen
 Struct LiveLatencyPolicy : Equatable, Hashable, Sendable
 Struct MalformedRealtimeBitstreamError : CustomStringConvertible, Equatable, Error, Hashable, Sendable
 Struct MediaRequest : Decodable, Encodable, Equatable, Hashable, Sendable
+Struct OfflineLicenceExpiredError : CustomNSError, CustomStringConvertible, Error, Sendable
 Struct OutputPolicy : Equatable, Hashable, Sendable
 Struct PlaybackConditions : Equatable, Hashable, Sendable
 Struct PlaybackDecision : Equatable, Hashable, Sendable
@@ -417,6 +419,13 @@ Var MediaRequest.startPosition : SuperPlayerCore.MediaRequest.StartPosition { ge
 Var MediaRequest.subtitle : Swift.String? { get }
 Var MediaRequest.title : Swift.String? { get }
 Var NetworkTransport.hashValue : Swift.Int { get }
+Var OfflineLicenceExpiredError.contentId : Swift.String { get }
+Var OfflineLicenceExpiredError.description : Swift.String { get }
+Var OfflineLicenceExpiredError.errorCode : Swift.Int { get }
+Var OfflineLicenceExpiredError.errorDomain : Swift.String [static] { get }
+Var OfflineLicenceExpiredError.errorUserInfo : [Swift.String : Any] { get }
+Var OfflineLicenceExpiredError.licenceDurationRemainingMs : Swift.Int64 { get }
+Var OfflineLicenceExpiredError.playbackDurationRemainingMs : Swift.Int64 { get }
 Var OutputPolicy.hashValue : Swift.Int { get }
 Var OutputPolicy.none : SuperPlayerCore.OutputPolicy [static] { get }
 Var OutputPolicy.tunneling : Swift.Bool { get set }

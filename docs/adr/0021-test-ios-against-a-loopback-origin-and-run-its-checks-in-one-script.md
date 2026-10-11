@@ -9,7 +9,8 @@
   at rule 1, admitting a pause or resume the lifecycle made, and at rule 5, adding the lifecycle to
   the device list with its one protocol. Amended again (#403) at rule 1, admitting a pause a remote
   command made, and at rule 5, adding the Now Playing session to the device list with its one
-  protocol.
+  protocol. Amended again (#459) at rule 4, recording the one corpus row the host's clock decides
+  and two collector readings held as orders rather than equalities.
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
 - **Refines:** [`docs/testing.md`](../testing.md)'s rule — *no device and no network, through the

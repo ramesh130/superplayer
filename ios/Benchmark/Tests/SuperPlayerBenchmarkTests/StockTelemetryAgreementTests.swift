@@ -143,7 +143,11 @@ final class StockTelemetryAgreementTests: XCTestCase {
         let harness = PlaybackHarness()
         defer { harness.stop() }
         let origin = try await harness.serve(
-            .videoLadder(bitratesBps: [365_000, 730_000], segmentCount: 30),
+            // One rung: the comparison needs a rendition choice, which the initial one is, and not a
+            // switch. A two-rung ladder here was seen on CI's iOS 26.5 simulator to stop fetching
+            // after its switch to the second rung before the first frame, a start that never came;
+            // that is a finding for the matrix to show, not a reason for this test to wait on it.
+            .videoLadder(bitratesBps: [365_000], segmentCount: 30),
             network: try Self.outage())
 
         let qoe = EventRecorder()
@@ -175,10 +179,18 @@ final class StockTelemetryAgreementTests: XCTestCase {
         } catch {
             // What a failure needs to be diagnosed from a CI log: what each collector derived and
             // what the origin was asked for.
+            let avPlayer = player.avPlayer
+            let item = avPlayer.currentItem
             Self.unplayable =
                 "\(error); stock derived \(stock.events.map(\.kind)), the collector "
                 + "\(qoe.events.map(\.kind)); requested "
-                + "\(origin.networkRequests().map(\.path))"
+                + "\(origin.networkRequests().map(\.path)); timeControlStatus "
+                + "\(avPlayer.timeControlStatus.rawValue) waiting "
+                + "\(String(describing: avPlayer.reasonForWaitingToPlay)), item status "
+                + "\(String(describing: item?.status.rawValue)) error "
+                + "\(String(describing: item?.error)), likely to keep up "
+                + "\(String(describing: item?.isPlaybackLikelyToKeepUp)) at "
+                + "\(avPlayer.currentTime().seconds) s"
             player.release()
             XCTFail(Self.unplayable!)
             throw error

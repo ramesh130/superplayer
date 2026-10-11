@@ -30,3 +30,6 @@ local.properties
 /.build/
 /.swiftpm/
 DerivedData/
+
+# The iOS demo's per-user Xcode state; its project, workspace and shared scheme are tracked.
+xcuserdata/

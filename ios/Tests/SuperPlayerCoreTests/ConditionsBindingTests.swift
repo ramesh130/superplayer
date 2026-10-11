@@ -179,7 +179,7 @@ final class ConditionsBindingTests: XCTestCase {
         throughput.read(observedBitratesBps: [-1, .nan], atMs: 0)
         XCTAssertNil(throughput.estimate(atMs: 0))
 
-        throughput.observe(
+        throughput.read(
             observedBitratesBps: [100_000_000] + Array(repeating: 1_000_000, count: 8), atMs: 0)
 
         XCTAssertEqual(try XCTUnwrap(throughput.estimate(atMs: 0)).meanBps, 1_000_000)

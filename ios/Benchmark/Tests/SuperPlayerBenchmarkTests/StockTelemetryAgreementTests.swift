@@ -46,10 +46,10 @@ import XCTest
 /// Not compared, as on Android: what each is merely *given* — the session id (core's for one, the
 /// test's for the other) and `SessionStarted`'s profile and decision.
 ///
-/// The control is that the session is not quiet: the link falls below the bottom rung for longer
-/// than the buffer lasts, so there is a stall, the script seeks, and it plays a ladder, so there is a rendition
-/// choice; each is asserted to have
-/// happened before the two streams are held equal, so the agreement is not two empty lists.
+/// The control is that the session is not quiet: the script seeks, the link then falls below the
+/// rung for longer than the buffer lasts, so there is a stall, and the rung played is a rendition
+/// choice; each is asserted to have happened before the two streams are held equal, so the
+/// agreement is not two empty lists.
 @MainActor
 final class StockTelemetryAgreementTests: XCTestCase {
 
@@ -171,41 +171,52 @@ final class StockTelemetryAgreementTests: XCTestCase {
         player.avPlayer.currentItem?.preferredForwardBufferDuration = Self.forwardBufferSeconds
         player.avPlayer.play()
 
-        do {
-            try await harness.until("the slow link stalls playback and it resumes", timeout: bound)
-            {
-                stock.events.contains { $0.kind == "rebufferEnded" }
+        // Whatever the script waits on, a wait that runs out says what the player was doing.
+        func until(_ description: String, _ condition: () -> Bool) async throws {
+            do {
+                try await harness.until(description, timeout: bound, condition)
+            } catch {
+                let avPlayer = player.avPlayer
+                let item = avPlayer.currentItem
+                Self.unplayable =
+                    "\(error); stock derived \(stock.events.map(\.kind)), the collector "
+                    + "\(qoe.events.map(\.kind)); requested "
+                    + "\(origin.networkRequests().map(\.path)); timeControlStatus "
+                    + "\(avPlayer.timeControlStatus.rawValue) waiting "
+                    + "\(String(describing: avPlayer.reasonForWaitingToPlay)), item status "
+                    + "\(String(describing: item?.status.rawValue)) error "
+                    + "\(String(describing: item?.error)), likely to keep up "
+                    + "\(String(describing: item?.isPlaybackLikelyToKeepUp)) at "
+                    + "\(avPlayer.currentTime().seconds) s"
+                player.release()
+                XCTFail(Self.unplayable!)
+                throw error
             }
-        } catch {
-            // What a failure needs to be diagnosed from a CI log: what each collector derived and
-            // what the origin was asked for.
-            let avPlayer = player.avPlayer
-            let item = avPlayer.currentItem
-            Self.unplayable =
-                "\(error); stock derived \(stock.events.map(\.kind)), the collector "
-                + "\(qoe.events.map(\.kind)); requested "
-                + "\(origin.networkRequests().map(\.path)); timeControlStatus "
-                + "\(avPlayer.timeControlStatus.rawValue) waiting "
-                + "\(String(describing: avPlayer.reasonForWaitingToPlay)), item status "
-                + "\(String(describing: item?.status.rawValue)) error "
-                + "\(String(describing: item?.error)), likely to keep up "
-                + "\(String(describing: item?.isPlaybackLikelyToKeepUp)) at "
-                + "\(avPlayer.currentTime().seconds) s"
-            player.release()
-            XCTFail(Self.unplayable!)
-            throw error
         }
-        // A seek back into what has played: requested and completed, with the exclusion window
-        // after it.
-        await player.avPlayer.seek(to: CMTime(value: 1, timescale: 1))
-        try await harness.until("the seek completes", timeout: bound) {
+
+        try await until("the first frame") {
+            stock.events.contains { $0.kind == "firstFrameRendered" }
+        }
+        // A seek back into what has played, while the link is still fast: requested and
+        // completed, with the exclusion window after it, well before the drain below.
+        await player.avPlayer.seek(to: CMTime(value: 1, timescale: 2))
+        try await until("the seek completes") {
             stock.events.contains { $0.kind == "seekCompleted" }
+        }
+        // The slow link drains the buffer: a stall nobody's seek caused. It is not waited out —
+        // the session's end closes it on both collectors — because whether and when a player
+        // resumes on a link this slow was seen to differ between simulators, and the comparison
+        // is of how the two collectors report it, not of whether it ends.
+        try await until("the slow link stalls playback") {
+            stock.events.contains { $0.kind == "rebufferStarted" }
         }
         // End just after a sample, so the next is a whole interval away from the end and both
         // collectors' timers, started microseconds apart, have fired the same number of times.
-        try await harness.until("a state sample from each", timeout: bound) {
-            qoe.events.contains { $0.kind == "playbackStateSampled" }
-                && stock.events.contains { $0.kind == "playbackStateSampled" }
+        let sampled = stock.events.filter { $0.kind == "playbackStateSampled" }.count
+        try await until("a state sample from each after the stall") {
+            let fromStock = stock.events.filter { $0.kind == "playbackStateSampled" }.count
+            let fromQoe = qoe.events.filter { $0.kind == "playbackStateSampled" }.count
+            return fromStock > sampled && fromQoe == fromStock
         }
         mirror.endSession()
         mirror.detach()
@@ -222,9 +233,9 @@ final class StockTelemetryAgreementTests: XCTestCase {
 extension StockTelemetryAgreementTests {
 
     /// A link fast enough to start on, then too slow for any rung: 2 Mbit/s for ten seconds, so
-    /// the first frame comes however slow the host — then 150 kbit/s for thirty, under half of
-    /// what the 365 kbit/s rung needs, so the buffer drains whatever the player chose and it has to
-    /// wait — then stable WiFi's twenty megabits for good, so playback resumes and stays up.
+    /// the first frame and the seek come however slow the host, then 150 kbit/s for good — under
+    /// half of what the 365 kbit/s rung needs, so the buffer drains whatever the player chose and it
+    /// has to wait.
     ///
     /// Two earlier forms are why it is this one. A link cut to nothing stalled on a developer's
     /// simulator and never on CI's; a link slow from six seconds in was slow before CI's player had
@@ -235,8 +246,7 @@ extension StockTelemetryAgreementTests {
     static func outage() throws -> ThroughputTrace {
         try ThroughputTrace.Builder()
             .add(durationMs: 10_000, bandwidthBps: 2_000_000, transport: .wifi)
-            .add(durationMs: 30_000, bandwidthBps: 150_000, transport: .wifi)
-            .add(durationMs: 1_000, bandwidthBps: 20_000_000, transport: .wifi)
+            .add(durationMs: 1_000, bandwidthBps: 150_000, transport: .wifi)
             .holdAtEnd()
             .build()
     }

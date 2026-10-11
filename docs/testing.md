@@ -765,7 +765,7 @@ see a request.
   driven through `player.avPlayer`, since that is where a consumer's transport controls are too, and
   ADR-0021 rule 1's addendum bounds what a test may do there; a start is asserted as the position at
   the first poll that finds the player playing, inside a window argued at
-  `SuperPlayerPlaybackTests.startTolerance` — a position, never a duration. Four core tests import
+  `SuperPlayerPlaybackTests.startTolerance` — a position, never a duration. Five core tests import
   core `@testable`, each arguing it in its own comment: `RememberedPositionsTests`, for the order
   rule a read-is-a-use that no playback can isolate, and `ObservedSignalRegisterTests`, for the
   register's live count, which no public reading can see until the notification it waits for
@@ -819,6 +819,17 @@ see a request.
   binding takes for exactly that, on a later runtime: what it covers is the absence of a call, and
   that an iOS 17 device sends no CMCD and still sends the header is the header's documentation,
   confirmed by no run. Nor can it show `br`, which needs a video ladder the harness does not serve.
+- **A pool's device is stated, as on Android** (#404). `PlayerPool`'s bound is
+  `DeviceCapacity.swift`'s reading of `os_proc_available_memory()`, which an `xctest` runner — not an
+  app — reads as zero; so a test states the memory left through the pool's `package` initialiser,
+  `PlayerPool(configuration:availableMemory:)` — the memory half of what `TestDevice` states — and `PlayerPoolTests` holds the
+  bound to stated figures through `DeviceCapacity.concurrentPlayers(availableMemoryBytes:)`. Being
+  `package`, it needs no `@testable`; `PlayerPoolTests` imports core `@testable` for the
+  register's count alone, `ObservedSignalRegisterTests`' seam. What a recycled player no longer carries after
+  its content really played is `PlayerPoolPlaybackTests`', read through `.resumeFromLastKnown`.
+  **What a pooled player costs and how many decoders a device sustains are a device's** — the
+  per-player budget and the ceiling are argued, not measured, and i10 (#439) measures both on the
+  device matrix.
 
 What it cannot show is what real time cannot: a test here is evidence that something happened and in
 what order, never that it happened sooner, and a device is still the only place a FairPlay key, a

@@ -1,4 +1,5 @@
 // SuperPlayerCore: public API as ios/check reads it. Regenerate with ios/check --update-api.
+Class PlayerPool : Sendable
 Class SuperPlayer : Sendable
 Constructor MediaRequest.StartPosition.init(from:) : SuperPlayerCore.MediaRequest.StartPosition, any Swift.Decoder [throwing]
 Constructor MediaRequest.init(contentId:sources:startPosition:title:subtitle:artworkURL:) : SuperPlayerCore.MediaRequest, Swift.String, [Foundation.URL], SuperPlayerCore.MediaRequest.StartPosition, Swift.String?, Swift.String?, Foundation.URL?
@@ -6,6 +7,8 @@ Constructor MediaRequest.init(from:) : SuperPlayerCore.MediaRequest, any Swift.D
 Constructor PlaybackDecision.init() : SuperPlayerCore.PlaybackDecision
 Constructor PlaybackFailure.init(category:code:message:classification:) : SuperPlayerCore.PlaybackFailure, SuperPlayerCore.FailureCategory, Swift.String?, Swift.String?, Swift.String?
 Constructor PlaybackSnapshot.init(from:) : SuperPlayerCore.PlaybackSnapshot, any Swift.Decoder [throwing]
+Constructor PlayerPool.Configuration.init() : SuperPlayerCore.PlayerPool.Configuration
+Constructor PlayerPool.init(configuration:) : SuperPlayerCore.PlayerPool, SuperPlayerCore.PlayerPool.Configuration
 Constructor SuperPlayer.Configuration.init() : SuperPlayerCore.SuperPlayer.Configuration
 Constructor SuperPlayer.Configuration.init(profile:) : SuperPlayerCore.SuperPlayer.Configuration, SuperPlayerCore.PlaybackProfile
 Constructor SuperPlayer.init(configuration:) : SuperPlayerCore.SuperPlayer, SuperPlayerCore.SuperPlayer.Configuration
@@ -105,6 +108,9 @@ Func PlaybackProfile.hash(into:) : (), Swift.Hasher
 Func PlaybackSnapshot.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.PlaybackSnapshot, SuperPlayerCore.PlaybackSnapshot [static]
 Func PlaybackSnapshot.encode(to:) : (), any Swift.Encoder [throwing]
 Func PlaybackSnapshot.hash(into:) : (), Swift.Hasher
+Func PlayerPool.acquire() : SuperPlayerCore.SuperPlayer?
+Func PlayerPool.recycle(_:) : (), SuperPlayerCore.SuperPlayer
+Func PlayerPool.release() : ()
 Func SuperPlayer.Configuration.setCmcdMode(_:) : (), SuperPlayerCore.CmcdMode [throwing] [Mutating]
 Func SuperPlayer.declarePlaybackIntent() : ()
 Func SuperPlayer.release() : ()
@@ -163,6 +169,7 @@ Struct MediaRequest : Decodable, Encodable, Equatable, Hashable, Sendable
 Struct PlaybackDecision : Equatable, Hashable, Sendable
 Struct PlaybackFailure : Equatable, Hashable, Sendable
 Struct PlaybackSnapshot : Decodable, Encodable, Equatable, Hashable, Sendable
+Struct PlayerPool.Configuration : Sendable
 Struct SuperPlayer.Configuration : Sendable
 Struct TelemetryEvent.DecisionChanged : Equatable, Hashable, Sendable
 Struct TelemetryEvent.FirstFrameRendered : Equatable, Hashable, Sendable
@@ -209,6 +216,12 @@ Var PlaybackSnapshot.hashValue : Swift.Int { get }
 Var PlaybackSnapshot.playWhenReady : Swift.Bool { get }
 Var PlaybackSnapshot.positionMs : Swift.Int64? { get }
 Var PlaybackSnapshot.request : SuperPlayerCore.MediaRequest? { get }
+Var PlayerPool.Configuration.maxSize : Swift.Int? { get set }
+Var PlayerPool.Configuration.player : SuperPlayerCore.SuperPlayer.Configuration { get set }
+Var PlayerPool.configuration : SuperPlayerCore.PlayerPool.Configuration { get }
+Var PlayerPool.inUseCount : Swift.Int { get }
+Var PlayerPool.maxSize : Swift.Int { get }
+Var PlayerPool.size : Swift.Int { get }
 Var SuperPlayer.Configuration.cmcdMode : SuperPlayerCore.CmcdMode? { get }
 Var SuperPlayer.Configuration.profile : SuperPlayerCore.PlaybackProfile { get set }
 Var SuperPlayer.Configuration.telemetry : (() -> any SuperPlayerCore.TelemetryCollector)? { get set }

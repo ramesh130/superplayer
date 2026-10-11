@@ -5,8 +5,10 @@
 - **Amended:** 2026-10-11 (#402), by an addendum at rule 13 placing the lifecycle's signals in the
   observed register with a player scope, since ADR-0006 rule 1 puts them on every player.
   Amended 2026-10-11 (#446), by an addendum at rule 7 recording that CMCD is built. Amended again
-  (#403) at rule 13, admitting the session's register as core's second. Amended again (#411) at
-  rule 13, admitting the session trace recorder's register as telemetry's second.
+  (#403) at rule 13, admitting the session's register as core's second. Amended again (#431) at rule
+  11, recording what of the realtime split is built and moving `SuperPlayer`'s refusal to #419.
+  Amended again (#411) at rule 13, admitting the session trace recorder's register as telemetry's
+  second.
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
 - **Refines:** [ADR-0001](0001-compose-dont-fork.md), restated for Apple platforms rather than
@@ -274,6 +276,23 @@ that, and *What nothing enforces* sums them.
     `RealtimePlayer`, rather than reaching `AVPlayer` and failing as an unplayable URL; the split is
     only honest if the wrong half says where the right one is. *Enforced by a test in #431 once the
     type exists; the split itself by the digester, where a second player type is a declaration.*
+
+    *Addendum (2026-10-11, #431).* Built, in three places. The seam is core's, in `FrameSource.swift`,
+    with the Kotlin KDoc's obligations — ten since the Kotlin #353 added the coded size — each costed
+    in this platform's terms. `RealtimePlayer` is `SuperPlayerRealtime`'s, and the one internal engine
+    protocol is core's `package` `PlaybackEngine`: the library's view hosts whichever layer an engine
+    shows, and `SuperPlayerRealtime` adds the public initializers taking its player, since core cannot
+    name a phase 13 type. What it shares today is that view and the process's audio session and idle
+    timer count; a telemetry collector and a `PlaybackSession` take a `SuperPlayer`, and widening them
+    to an engine is a change of their public signatures that a realtime derivation of telemetry would
+    have to justify first, so neither is reached yet; #461 owns both, with the lifecycle's interruption
+    rules and Picture in Picture, and `docs/testing.md` says so. **The mirror of
+    this rule's refusal is built and this rule's own half is not**: a `RealtimePlayer` handed a source
+    no transport of its answers refuses it typed, naming `SuperPlayer`
+    (`UnansweredRealtimeSchemeError`, enforced by `RealtimePlayerTests`), but a `SuperPlayer` has no
+    error surface to refuse a realtime source through — `setMediaRequest` returns nothing, and making
+    it throw for this one case would change every call site the facade has. #419's error publisher is
+    the surface a failure of the facade arrives on, and the refusal is enforced by a test there.
 
 12. **The Swift products ride the Android modules' version line, and the API digester is their
     arbiter.** One `MAJOR.MINOR.PATCH`, cut by the one `release` command, tagged once with the

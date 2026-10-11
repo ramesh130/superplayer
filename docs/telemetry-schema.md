@@ -439,6 +439,14 @@ so short objects over a fast link produce samples with a null estimate. That is 
 working, not a gap. `superplayer-abr`'s meter samples every transfer and reports each one, so a player
 built with `AdaptivePolicy` fills the field from its first segment.
 
+**Version 2 stands — `classification` on iOS and tvOS (`#419`).** A player configured with
+`SuperPlayerResilience` now reports `classification`, and `category` is derived from it there as it is
+on Android. **`SCHEMA_VERSION` does not move**: the taxonomy, its stable names and its one-to-one
+category table are the Kotlin ones string for string, so a class means the same thing on both
+platforms and the version-2 note above already says what deriving `category` from it changes. What
+differs is only the evidence the class is read from, which *Video start failure and mid-stream
+failure* states.
+
 **Version 2 stands — the iOS and tvOS derivation (`#409`).** The events table gained its *How
 derived on iOS* column, filled from `SuperPlayerTelemetry`'s `QoeCollector`. **`SCHEMA_VERSION` does
 not move**: every definition in this document binds the Swift collector as written, and the column
@@ -468,7 +476,7 @@ additions is what you want.
 | `FirstFrameRendered` | The first video frame reaches the display | `timeToFirstFrameMs`, `startBoundary` | The session's first `AVPlayer.timeControlStatus` of `.playing` (key-value observed): presentation beginning. Not `AVPlayerLayer.isReadyForDisplay`, which is the consumer's layer and invisible to a collector. For video that is the clock starting with its first frame due, which can be a display refresh before the frame is on screen, so it can read slightly lower than a layer's reading; **for audio-only content it is the first audio presented, where Android reports no event**. The boundary is `declarePlaybackIntent()` on `CLOCK_MONOTONIC`, else the session's start, as on Android |
 | `RebufferStarted` | Playback stalls for data after it started | `seekInduced` | After the first frame: `timeControlStatus` becoming `.waitingToPlayAtSpecifiedRate` with `reasonForWaitingToPlay` of `.toMinimizeStalls`, or `AVPlayerItemPlaybackStalled` on a player that does not wait to minimise stalls. **iOS 18 and later** also open one on `AVMetricPlayerItemStallEvent`; iOS 17 has the first two alone. `seekInduced` as on Android |
 | `RebufferEnded` | Playback resumes from that stall | `durationMs`, `seekInduced` | `timeControlStatus` becoming `.playing` (resumed) or `.paused` (stopped stalling); a failure or the session's end closes an open one |
-| `StartupFailed` | Playback fails before the first frame | `failure` | `AVPlayerItem.status` of `.failed` (key-value observed) or `AVPlayerItemFailedToPlayToEndTime`, before the first frame, once per session. `code` is the `NSError`'s `domain:code`; `category` comes from `NSURLErrorDomain`, the `AVError.Code`, or the error log's last HTTP status read at the failure; `classification` is absent until `#419` |
+| `StartupFailed` | Playback fails before the first frame | `failure` | `AVPlayerItem.status` of `.failed` (key-value observed) or `AVPlayerItemFailedToPlayToEndTime`, before the first frame, once per session. `code` is the `NSError`'s `domain:code`; `category` comes from `NSURLErrorDomain`, the `AVError.Code`, or the error log's last HTTP status read at the failure — unless the player is configured with `SuperPlayerResilience`, when `classification` is the name `player.classify(_:)` answers and `category` its row (*Video start failure and mid-stream failure*) |
 | `MidStreamFailed` | Playback fails after the first frame | `failure`, `positionMs` | The same, after the first frame; `positionMs` is the item's `currentTime()` |
 | `TrackSwitched` | The video rendition changes | `fromBitrateBps`, `toBitrateBps`, `direction` | Items with an enabled video track only, as on Android: the access log's last `indicatedBitrate` (the variant's `BANDWIDTH`), read at `AVPlayerItemNewAccessLogEntry` and at `.readyToPlay`. **On iOS 18 and later** the initial rendition can arrive first, from the variant of `AVMetricPlayerItemInitialLikelyToKeepUpEvent` |
 | `SeekRequested` | A seek is issued | `fromPositionMs`, `toPositionMs` | `AVPlayerItemTimeJumped` after the first frame. `toPositionMs` is `currentTime()` at the notification, which AVFoundation posts on the main thread with no position, so a main thread busy as the time jumped reads the target plus what played meanwhile (#459); `fromPositionMs` is the collector's last periodic reading (every 500 ms) carried forward at its rate, because the notification carries neither position. It does not say who moved the time, so a jump AVFoundation makes itself, back inside a live window, is counted too |
@@ -653,6 +661,18 @@ full disk under a bucket whose definition it contradicts; a new leaf that fits a
 takes it, as every leaf since version 2 has. Where a classification is present the bucket is derived from it rather than from the
 error-code band, which is the change of meaning behind schema version 2 — see *Release notes* above
 for the failures where the two disagree.
+
+**On iOS and tvOS the classification is read from AVFoundation's evidence (`#419`).** The collector
+asks `player.classify(_:)` with the item's error, as the Kotlin collector asks `player.classify(error)`,
+and keeps no table of its own. The classifier (`SuperPlayerResilience`'s `ErrorClassifier`) reads three
+things: the error's own chain — the `NSURLErrorDomain`, `AVFoundationErrorDomain`, `CoreMediaErrorDomain`
+and POSIX codes, cause first; the HTTP status, which AVFoundation reports as a `CoreMediaErrorDomain`
+code per status (`-12938` for a 404); and the error log's last entry, which is the only place
+AVFoundation says *which* request failed, and so what tells a refused segment
+(`Transient.CdnEdge`) from a refused playlist (`Transient.Network`) where Android reads a `LoadKind`
+stamp. A player configured without resilience reports `classification` null and buckets `category` from
+the error's domain and code and the log's status, exactly as before `#419`. `code` is the `NSError`'s
+`domain:code` either way — the engine's word, kept apart from the class as on Android.
 
 The rates are computed by the pipeline, per the standard's shape: start failures over sessions that
 attempted playback; mid-stream failures over sessions that started playing.

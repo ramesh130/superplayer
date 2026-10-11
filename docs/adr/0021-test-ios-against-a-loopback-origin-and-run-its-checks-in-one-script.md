@@ -13,6 +13,7 @@
   and two collector readings held as orders rather than equalities. Amended again (#411) at rule 4,
   defining the structural reading a golden is compared in — times masked, periodic samples dropped,
   order kept within each kind.
+  Amended again (#419) at rule 1, admitting a failed item's error and its error log's last entry.
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
 - **Refines:** [`docs/testing.md`](../testing.md)'s rule — *no device and no network, through the
@@ -123,6 +124,16 @@ rule names the ticket that brings its enforcement, and *What nothing enforces* s
    lock-screen button, and a consumer sees that exactly there. What the session *publishes* is not
    read off the player: it is read where it is published, the Now Playing dictionary. It lapses with
    the others as the facade publishes a playback state.
+
+   *Addendum (2026-10-11, #419).* Two readings more, both of the failed item. **Its `error`**, which
+   is what `player.classify(_:)` documents a consumer passes it, so a test reading it does what a
+   consumer does and holds the typed error's `underlyingError` to it. **Its error log's last entry**,
+   read by `TypedErrorPlaybackTests` to pin the platform fact the classifier rests on — a segment
+   retried is logged with no URI, a media playlist naming itself, the multivariant playlist not at
+   all — which no reading through the facade can show, since the facade's whole contribution is the
+   class it draws from that entry; pinning the entry is what turns a runtime that changes it into a
+   failing test rather than a silently wrong classification. Neither lapses with a playback state:
+   both are AVFoundation's evidence, which the facade by design does not republish.
 
 2. **The harness is a loopback HTTP origin, started per test, and the carve-out is widened to every
    iOS test.** `SuperPlayerTestkit` starts an HTTP/1.1 server on `127.0.0.1` at an ephemeral port

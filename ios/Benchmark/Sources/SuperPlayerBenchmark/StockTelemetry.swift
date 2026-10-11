@@ -538,7 +538,9 @@ extension StockTelemetry {
         return nil
     }
 
-    /// `QoeCollector.playbackFailure(_:errorLog:)` and its `category(_:loggedStatus:)`. The one
+    /// `QoeCollector.playbackFailure(_:errorLog:classified:)` with nothing classified, and its
+    /// `category(_:loggedStatus:)`: a stock player has no classifier (#419), as arm (c), configured
+    /// without `Resilience.standard()`, has none either. The one
     /// derivation the agreement test's session cannot reach, since nothing in it fails, so
     /// `StockTelemetryFailureTableTests` holds the two tables to each other code by code.
     static func playbackFailure(_ error: NSError?, errorLog: AVPlayerItemErrorLog?)

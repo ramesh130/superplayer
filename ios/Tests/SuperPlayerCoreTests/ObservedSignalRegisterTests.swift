@@ -47,11 +47,12 @@ final class ObservedSignalRegisterTests: XCTestCase {
 
     /// Every signal a player configured with nothing but content registers, once: all of the
     /// register but the frame output's, which `FrameOutputPaysNothingTests` counts on a player that
-    /// has one and on one that does not (ADR-0022 rule 9), and the policy's, which
-    /// `PolicyPaysNothingTests` counts the same way (ADR-0009 rule 7).
+    /// has one and on one that does not (ADR-0022 rule 9), the policy's, which
+    /// `PolicyPaysNothingTests` counts the same way (ADR-0009 rule 7), and resilience's, which
+    /// `ResiliencePaysNothingTests` counts the same way (ADR-0011 rule 14).
     private var everySignalOnce: [ObservedSignal: Int] {
         let elsewhere: Set<ObservedSignal.Scope> = [
-            .frameOutputItem, .reapplicationPlayer, .reapplicationItem,
+            .frameOutputItem, .reapplicationPlayer, .reapplicationItem, .resilienceItem,
         ]
         return Dictionary(
             uniqueKeysWithValues: ObservedSignal.allCases.filter { !elsewhere.contains($0.scope) }

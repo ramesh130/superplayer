@@ -97,12 +97,30 @@ public enum SyntheticHlsStream {
 
     // spec: ISO/IEC 13818-7 §6.2 — sampling_frequency_index 4 is 44100 Hz, channel_configuration 2
     // is stereo. They are encoded into every ADTS frame header below.
-    static let samplingFrequencyHz = 44_100
+    public static let samplingFrequencyHz = 44_100
     private static let samplingFrequencyIndex = 4
     static let channelConfiguration = 2
 
     /// spec: ISO/IEC 14496-3 — an AAC-LC frame carries 1024 samples.
-    static let samplesPerFrame = 1024
+    public static let samplesPerFrame = 1024
+
+    /// One AAC-LC frame of the stream with no ADTS header — the raw `raw_data_block` a realtime
+    /// transport hands over for an AAC track (#432), as ``SyntheticVideoHlsStream/elementaryFrame(_:)``
+    /// is the video's: codec bitstream and nothing else (ADR-0018 rule 3). Every frame is the same
+    /// silence, so it takes no index.
+    public static func elementaryAudioFrame() -> [UInt8] { silentRawDataBlock }
+
+    /// The stream's `AudioSpecificConfig`: AAC-LC at 44.1 kHz in stereo, what an AAC track hands
+    /// over as its record and what the video stream's `esds` carries.
+    ///
+    /// spec: ISO/IEC 14496-3 §1.6.2.1 — `audioObjectType` 2 in five bits, `samplingFrequencyIndex`
+    /// 4 in four, `channelConfiguration` 2 in four, then three zero bits of `GASpecificConfig`.
+    public static func audioSpecificConfig() -> [UInt8] {
+        let objectTypeAacLc = 2
+        let bits =
+            (objectTypeAacLc << 11) | (samplingFrequencyIndex << 7) | (channelConfiguration << 3)
+        return [UInt8(bits >> 8), UInt8(bits & 0xFF)]
+    }
 
     /// spec: ISO/IEC 13818-7 §6.2 — 7 bytes when protection_absent is 1 (no CRC).
     private static let adtsHeaderBytes = 7

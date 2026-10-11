@@ -150,6 +150,24 @@ them under `Added` would be worse than stating them here:
   the static profile, the adaptive arm an empty slot until i3 — with `StockTelemetryAgreementTests`
   in `ios/check`, and the baseline is committed under `benchmark/ios-baseline/`. No Android
   behaviour moved.
+- **Preload on iOS (#417).** `SuperPlayerPreload` gains `PreloadCoordinator(pool:)` —
+  `setItems(_:)`, `setScrollPosition(index:velocity:)`, `release()` and `warmDecoderCount` —
+  attached to a `PlayerPool` before its first player. A row ahead is prefetched as an asset whose
+  playlists are loaded, and played from it through `setMediaRequest`; at a loaded depth the nearest
+  rows are held on the pool's idle players and, at `shortForm`'s, prerolled, and `acquire()` hands
+  the row the player holding it. A memory warning releases everything nobody is playing, the window
+  is admitted against a quarter of the memory left, and Low Data Mode prefetches nothing. A pool
+  without a coordinator pays nothing for it. No Android behaviour moved.
+- **The iOS failure taxonomy (#419).** `SuperPlayerResilience` gains `FailureClass` and
+  `FallbackRung` — the Kotlin taxonomy leaf for leaf, with the same stable names, answers, categories
+  and message keys — `ErrorClassifier` over the `NSError` chain and the error log's `LoggedFailure`,
+  and `Resilience.standard()`, which `SuperPlayer.Configuration.resilience` takes. `SuperPlayerCore`
+  gains `SuperPlayerError`, `PlaybackResilience`, `SuperPlayer.errors` (a Combine publisher),
+  `playerError` and `classify(_:)`; a player configured with resilience delivers a `SuperPlayerError`
+  when an item fails and telemetry reports its `classification`, `schemaVersion` still 2. **Every**
+  `SuperPlayer` now refuses a source whose scheme is not `http`, `https` or `file` with
+  `UnplayableSourceSchemeError` on `errors`, leaving the player as it was, where it used to fail the
+  item as an unplayable URL. No Android behaviour moved.
 - **Phase 9 — Diagnostics and docs.** `MediaSourceDoctor`, which names twenty pathologies over the
   chain a player would load through; the postmortem reading; `SessionBundle`; the debug HUD; and
   the documents in `docs/`.

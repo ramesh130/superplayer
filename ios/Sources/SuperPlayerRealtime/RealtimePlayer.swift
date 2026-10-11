@@ -76,8 +76,9 @@ public final class RealtimePlayer {
 
     /// Why the stream stopped, if it failed: a transport's own error from ``FrameSink/onError(_:)``,
     /// or the refusal of what it delivered — ``UnsupportedRealtimeCodecError``,
-    /// ``MalformedRealtimeBitstreamError``, or a broken obligation named in plain words. Nil while
-    /// the stream plays, and cleared by the next ``setMediaRequest(_:)``.
+    /// ``MalformedRealtimeBitstreamError``, ``RealtimeTrackStalledError`` for one track of several
+    /// fallen behind the others, or a broken obligation named in plain words. Nil while the stream
+    /// plays, and cleared by the next ``setMediaRequest(_:)``.
     public private(set) var failure: (any Error)?
 
     /// Whether the transport said the stream ended of its own accord (``FrameSink/onEnded()``). A

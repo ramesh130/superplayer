@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import Foundation
+
 /// A realtime stream was asked to start somewhere other than at its live edge, and the request was
 /// refused rather than coerced (ADR-0018 rule 5) — the Kotlin `RealtimeStreamNotSeekableException`,
 /// under Swift's `Error` suffix as ``CmcdModeUnsupportedError`` is.
@@ -100,12 +102,15 @@ public struct UnsupportedRealtimeCodecError: Error, Sendable, Hashable, CustomSt
 /// which case it was, because that tells a transport author whether the bug is in the publisher or
 /// in the adapter.
 ///
-/// The tracer (#431) raises it for the audio cases a format description cannot be made from: an AAC
-/// track with no AudioSpecificConfig — CoreMedia describes audio by its sampling rate and channels
-/// before the first packet, AAC states them only there, and a guessed rate plays at the wrong speed
-/// — and a configuration record that ends before the fields it must carry. The video cases the
-/// Kotlin type covers — a record that does not parse, a record on a self-describing fourcc, a length
-/// field running past a frame — arrive with #432's conversion, mirrored.
+/// Raised for the audio cases a format description cannot be made from (#431): an AAC track with no
+/// AudioSpecificConfig — CoreMedia describes audio by its sampling rate and channels before the
+/// first packet, AAC states them only there, and a guessed rate plays at the wrong speed — and a
+/// configuration record that ends before the fields it must carry. And for the video cases the
+/// Kotlin type covers, in the mirrored direction #432 converts in: an `avcC` or `hvcC` that does not
+/// parse or declares a NAL length width the grammar forbids, a record on a self-describing fourcc
+/// and none on one that carries it, a sample whose length field runs past the frame, and an in-band
+/// sample with no Annex-B start code or a first keyframe without the parameter sets a description
+/// is made from.
 public struct MalformedRealtimeBitstreamError: Error, Sendable, Hashable, CustomStringConvertible {
 
     /// The codec string the track was declared as, verbatim.
@@ -121,5 +126,106 @@ public struct MalformedRealtimeBitstreamError: Error, Sendable, Hashable, Custom
 
     public var description: String {
         "Malformed realtime bitstream for codec \"\(codec)\": \(reason)."
+    }
+}
+
+/// A ``SuperPlayer`` was handed a source whose scheme `AVPlayer` cannot load, and refused it rather
+/// than letting it fail as an unplayable URL — ADR-0020 rule 11's refusal, naming `RealtimePlayer`,
+/// the player a realtime transport's scheme belongs to. The mirror of `RealtimePlayer`'s
+/// `UnansweredRealtimeSchemeError`, which names `SuperPlayer`: the split between the two player
+/// types is only honest if the wrong half says where the right one is.
+///
+/// Delivered on ``SuperPlayer/errors`` and left on ``SuperPlayer/playerError``, **before any of
+/// adoption's bookkeeping runs**, so a refused request leaves the player exactly as it was — playing
+/// whatever it was playing, its remembered positions and its measurement session untouched.
+///
+/// **What counts as realtime is a rule over schemes, not a registry** (ADR-0020 rule 11's #419
+/// addendum). `AVPlayer` loads `http`, `https` and `file` and nothing else — anything else fails as
+/// `NSURLErrorUnsupportedURL` — so a source naming any other scheme cannot be a `SuperPlayer`'s, and
+/// a transport's scheme is the one kind of URL a consumer of this library hands over that is not one
+/// of the three. A registry that `Realtime.transport(scheme:)` filled would make the refusal depend
+/// on whether the realtime sources happened to be built before the request reached the wrong player,
+/// in process-wide state; the rule depends on nothing. Its cost is a typo — `htps:` is refused
+/// naming `RealtimePlayer` too — and the description says which three schemes were expected, so the
+/// typo reads as one. A custom scheme served through `AVAssetResourceLoaderDelegate` is the one
+/// other kind of URL `AVPlayer` would take, and ADR-0020 rule 6 already forbids it.
+///
+/// It carries no failure class, for `HttpStackUnsupportedException`'s reason: a class answers which
+/// rung may be climbed, and this is a request a player of this type can never honour, refused before
+/// any playback exists — so it arrives on a player configured without resilience as well.
+public struct UnplayableSourceSchemeError: Error, Sendable, Hashable, CustomStringConvertible {
+
+    /// The scheme the refused source carried, as written; empty for a URL with none.
+    public let scheme: String
+
+    /// The schemes `AVPlayer` loads, and therefore the only ones a `SuperPlayer` source may carry.
+    ///
+    /// ref: https://developer.apple.com/documentation/avfoundation/avurlasset — an asset is a local
+    /// file or a remote resource over HTTP(S); and observed by #419 on the iOS 27.1 simulator: a
+    /// `moq:` URL handed to a stock `AVPlayer` fails its item with `NSURLErrorDomain` -1002.
+    public static let loadableSchemes: Set<String> = ["http", "https", "file"]
+
+    package init(scheme: String) {
+        self.scheme = scheme
+    }
+
+    /// Whether `url` names a scheme `AVPlayer` can load, compared without case (RFC 3986 §3.1).
+    package static func isLoadable(_ url: URL) -> Bool {
+        loadableSchemes.contains(url.scheme?.lowercased() ?? "")
+    }
+
+    public var description: String {
+        "A SuperPlayer plays what AVPlayer loads, which is http, https and file sources; "
+            + "\"\(scheme)\" is none of them. A realtime transport's scheme is a RealtimePlayer's to "
+            + "play (SuperPlayerRealtime's Realtime.transport(scheme:)), and the request was refused "
+            + "without touching what this player was playing."
+    }
+}
+
+/// One track of a realtime subscription fell so far behind the others that playback could not go on
+/// — the Kotlin `RealtimeTrackStalledException`.
+///
+/// Raised where a subscription carries more than one track and one of them stops keeping up: either
+/// it was declared in ``FrameSink/onTracks(_:)`` and never delivered a frame, or it delivered frames
+/// and then went quiet while the others kept arriving. Two renderers under one synchronizer play
+/// against one clock, so a track that stops is a picture frozen over sound that carries on, or
+/// sound gone under a picture that does not — with nothing anywhere saying why.
+///
+/// **The bound is relative to the other tracks and never to a clock**, which is the decision worth
+/// knowing, and the Kotlin one: all of a publisher's tracks going quiet together is a live stream
+/// that went quiet — an ordinary edge to sit at, not a failure. What is a failure is one track
+/// advancing while another does not, and that is what ``behindByMs`` measures, in **media time**
+/// against the furthest-ahead track. A track that has never delivered is still connecting and is
+/// allowed five seconds of the others' media; one that delivered and stopped is allowed three.
+///
+/// It carries no failure class, for ``UnsupportedRealtimeCodecError``'s reason, and reaches the
+/// consumer as `RealtimePlayer`'s failure, a delivery that went wrong.
+///
+/// **What to do instead:** deliver every declared track, or declare only the tracks you will
+/// deliver. A publisher that may add a track later subscribes again rather than declaring one it has
+/// nothing for yet, since obligation 2 makes the declaration final.
+public struct RealtimeTrackStalledError: Error, Sendable, Hashable, CustomStringConvertible {
+
+    /// The codec string of the track that fell behind, verbatim, so a bug report names which one.
+    public let codec: String
+
+    /// How far behind the furthest-ahead track it had fallen when the bound was crossed, in
+    /// milliseconds of media time.
+    public let behindByMs: Int64
+
+    /// The bound that was crossed, so the message says what was expected and not only what happened.
+    public let boundMs: Int64
+
+    package init(codec: String, behindByMs: Int64, boundMs: Int64) {
+        self.codec = codec
+        self.behindByMs = behindByMs
+        self.boundMs = boundMs
+    }
+
+    public var description: String {
+        "The realtime track \"\(codec)\" fell \(behindByMs)ms behind the other tracks of its "
+            + "subscription, past the \(boundMs)ms this bound allows. Every declared track must keep "
+            + "delivering: the tracks play against one clock, so a track that stops is playback that "
+            + "stops."
     }
 }

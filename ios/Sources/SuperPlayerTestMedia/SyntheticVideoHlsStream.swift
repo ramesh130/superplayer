@@ -517,7 +517,7 @@ public enum SyntheticVideoHlsStream {
         decoderConfig.zeros(3)  // bufferSizeDB
         decoderConfig.u32(UInt32(SyntheticHlsStream.declaredBitrateBps))  // maxBitrate
         decoderConfig.u32(UInt32(SyntheticHlsStream.declaredBitrateBps))  // avgBitrate
-        decoderConfig.append(descriptor(0x05, [0x12, 0x10]))  // AudioSpecificConfig
+        decoderConfig.append(descriptor(0x05, SyntheticHlsStream.audioSpecificConfig()))
         var elementaryStream = ByteWriter()
         elementaryStream.u16(UInt16(audioTrackId))  // ES_ID
         elementaryStream.u8(0)  // no dependency, URL or OCR; priority 0

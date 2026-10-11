@@ -143,14 +143,22 @@ let package = Package(
             dependencies: ["SuperPlayerABR"],
             path: "ios/Tests/SuperPlayerABRTests"
         ),
+        // The harness and core too, because a prefetch is a count of what reached an origin:
+        // testkit is phase 2, and superplayer-preload's own tests drive the Kotlin harness.
         .testTarget(
             name: "SuperPlayerPreloadTests",
-            dependencies: ["SuperPlayerPreload"],
+            dependencies: ["SuperPlayerPreload", "SuperPlayerTestkit", "SuperPlayerCore"],
             path: "ios/Tests/SuperPlayerPreloadTests"
         ),
+        // Core, the harness and the collector too, because the typed error's tests play and read
+        // telemetry's classification: both are phase 2, below this one, as superplayer-resilience's
+        // own TypedErrorPlaybackTest drives the Kotlin harness and QoeCollector.
         .testTarget(
             name: "SuperPlayerResilienceTests",
-            dependencies: ["SuperPlayerResilience"],
+            dependencies: [
+                "SuperPlayerResilience", "SuperPlayerCore", "SuperPlayerTestkit",
+                "SuperPlayerTelemetry",
+            ],
             path: "ios/Tests/SuperPlayerResilienceTests"
         ),
         .testTarget(

@@ -398,15 +398,38 @@ advances in an `xctest` host**, where #405 found a video-only `AVPlayerItem` nev
 Nothing generates them, so unlike the synthetic corpus above there is no update task: the file is edited
 by hand, each row says whether it was observed or synthesized, and the Kotlin build declares it an input
 of every test task so an edit re-runs what reads it. On iOS they are the format table's fixtures — an
-observed `avcC` passes into a format description's atom byte for byte — while #432's in-band conversion
-is where they are read as parameter sets.
+observed `avcC` passes into a format description's atom byte for byte — and the mirrored codec
+configuration's (#432, `CodecConfigurationRecordsTests`): the `avcC` dump as the truncation case, the
+`avc3` keyframe as in-band parameter sets that stop before their PPS, the `avc1` keyframe dump as a
+length field running past its frame. Where CoreMedia holds the answer — the parameter sets and NAL
+length width a description carries — it is read back from CoreMedia, so "the record passes through"
+and "in band makes the description the record would" are CoreMedia's readings and not only ours. The
+`hvcC` is synthesized and labelled so, and there is **no in-band HEVC description** anywhere here:
+CoreMedia parses an SPS to make one and no real HEVC SPS exists in this repository.
 
-What is **not** covered yet, and whose it is: in-band parameter sets converted and the record's NAL
-length size read (#432), more than one track and the bounds on a late or stalled one (#432), the
-conformance suite (#433), Picture in Picture from the realtime layer — which ADR-0022 rule 5 says
-the layer makes possible and for which no playback delegate answers a live, unseekable timeline yet —
-and audio actually played through an `AVSampleBufferAudioRenderer` — the
-tracer describes AAC and Opus tracks and no test enqueues one. A `RealtimePlayer` is measured by no
+**More than one track** (#432) plays from the same fake, which now scripts tracks — the video in each
+of ADR-0018 rule 4's shapes, `SyntheticHlsStream`'s silent AAC beside it, each track on the shared
+epoch or one of its own — interleaved as one publisher would send them. `RealtimeTracksTests` asserts
+A/V sync over **the presentation times each renderer was handed**, read in the engine: both render
+against one synchronizer clock, so a stamp is when a sample renders, and the simulator gives no
+per-sample reading of a render (the video composites nothing offscreen, an audio renderer reports no
+sample at all). A publisher's 40 ms skew arrives as exactly 40 ms; tracks an hour apart in either
+direction are placed within a frame of each other. The late and stalled bounds are media time against
+the leading track, so those tests deliver **unpaced** and wait for the engine to have taken every frame,
+never for a clock; each has a control — inside the late bound, and every track going quiet together.
+
+**An audio renderer goes quiet rather than failing**, which #432 found by enqueuing the first audio:
+with the AudioSpecificConfig as a bare magic cookie — what #431 described AAC with —
+`AVSampleBufferAudioRenderer` reports `rendering` with no error while its decoder logs
+"AudioCodecInitialize failed", #398's silent decoder through a different door. The cookie is now the
+`ES_Descriptor` an `esds` carries, and `RealtimeAudioDecodingTests` holds it with an AudioToolbox
+converter given the description's cookie as the renderer's decoder is, the bare cookie as the control.
+`AVAudioConverter` is not the instrument: it decodes both.
+
+What is **not** covered yet, and whose it is: the conformance suite (#433), Picture in Picture from the
+realtime layer — which ADR-0022 rule 5 says the layer makes possible and for which no playback delegate
+answers a live, unseekable timeline yet — and **Opus**, whose description is made and whose cookie, an
+OpusHead, no test decodes. A `RealtimePlayer` is measured by no
 telemetry collector and published by no `PlaybackSession`, both of which take a `SuperPlayer` today,
 and its lifecycle is the shared audio session and idle timer count without `LifecycleBinding`'s
 interruption and route-change rules, which are an `AVPlayer`'s; the synchronizer stops itself for an
@@ -821,7 +844,11 @@ see a request.
   `TelemetryPaysNothingTests` (#408), for the collector and measurement session a player holds,
   which nothing reports on a player without a collector. A sixth, `FrameOutputPaysNothingTests`
   (#405), for whether a player holds a display link, which is visible to nothing but the link's
-  target (*A frame output*).
+  target (*A frame output*). A seventh, `ResiliencePaysNothingTests` (#419), for the item-failure
+  observations a player registers, which no public reading can see until an item fails; the
+  classifying seam it fills with a stand-in, `FailureClassifying`, is `package`, because
+  `SuperPlayerResilience` fills it. `TypedErrorPlaybackTests` reads a failed item's `error` and its
+  error log's last entry off `player.avPlayer`, under rule 1's #419 addendum.
   `ProfileTableTests` reads each profile's knobs off `player.avPlayer`, and `SnapshotPlaybackTests`
   an item's readiness, under rule 1's #401 addendum.
 - **The lifecycle is driven by the platform's own notifications** (#402). `LifecyclePlaybackTests`
@@ -903,14 +930,32 @@ see a request.
   **What a pooled player costs and how many decoders a device sustains are a device's** — the
   per-player budget and the ceiling are argued, not measured, and i10 (#439) measures both on the
   device matrix.
+- **A feed's prefetch is counted per row** (#417). `PreloadCoordinatorPlaybackTests` serves every
+  row of a feed from an origin of its own, so what was fetched for a row is that origin's count: a
+  row prefetched ahead fetched its playlists once and not again when it played, a pool with no
+  coordinator fetched nothing ahead, the row the feed moved to was handed the player holding it —
+  the very item kept by `setMediaRequest` — a memory warning made the row fetch again, and a
+  constrained path fetched nothing until it changed. The device is stated through the
+  coordinator's `package` initialiser — the memory left, and no real path watched — with
+  `pathChanged(isConstrained:)` the reading a test states Low Data Mode with, since no simulator
+  setting turns it on; the memory warning is the real notification, posted. `PreloadSignalRegisterTests`
+  counts ADR-0010 rule 13 as live registrations of the coordinator's own register, process-wide,
+  because a pool with no coordinator has nothing to ask. **That a prerolled player reaches its first
+  frame sooner, and that memory stays flat over a long scroll, are a device's** — real time cannot
+  show "sooner" (ADR-0021 rule 4), and the feed demo under `xctrace` is i4's exit (`docs/ios-plan.md`
+  §7).
 - **A realtime player's engine is read where no public reading exists** (#431).
   `SuperPlayerRealtimeTests` imports the realtime product `@testable`, each file arguing it:
   `RealtimeFormatsTests`, because the codec table answers CoreMedia vocabulary and is internal, as
   the Kotlin table is; and `RealtimePlayerTests`, for the display layer's renderer — its decode-failure
   notification and its error, the only reading of a decode the simulator gives — and for the
   presentation time the first frame was stamped with, which is what shows the first timestamp was
-  subtracted. Everything else there is the public `RealtimePlayer`: its clock, `isRendering`,
-  `failure` and the typed refusals. *A realtime transport on iOS* above says what the fake is.
+  subtracted. #432 added three: `CodecConfigurationRecordsTests` and `RealtimeAudioDecodingTests`,
+  because the framing and the description are internal as the Kotlin object is; and
+  `RealtimeTracksTests`, for each track's enqueued presentation times and its renderer — the only
+  reading of A/V sync and of a played audio track the simulator gives. Everything else there is the
+  public `RealtimePlayer`: its clock, `isRendering`, `failure` and the typed refusals. *A realtime
+  transport on iOS* above says what the fake is.
 
 What it cannot show is what real time cannot: a test here is evidence that something happened and in
 what order, never that it happened sooner, and a device is still the only place a FairPlay key, a

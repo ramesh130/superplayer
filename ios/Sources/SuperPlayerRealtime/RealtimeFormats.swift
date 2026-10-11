@@ -111,8 +111,10 @@ enum RealtimeFormats {
     /// (`docs/ios-plan.md` §3.10): CoreMedia's native shape *is* the record, so an `avcC`, `hvcC`,
     /// `vpcC` or `av1C` is handed to the description as its sample description extension atom,
     /// exactly as received, and the samples stay length-prefixed. **In-band parameter sets are not
-    /// converted here**: a description made for an `avc3` or `hev1` track carries no atom, and #432
-    /// converts the parameter sets and re-frames the samples, with the refusals that go with it.
+    /// described here**: an `avc3` or `hev1` track has no description until its first keyframe, and
+    /// `TrackFraming` (`CodecConfigurationRecords.swift`) makes it from the parameter sets that
+    /// keyframe carries, re-frames the samples, and parses an `avcC` or `hvcC` before it reaches this
+    /// call, with the refusals that go with each.
     static func formatDescription(for track: RealtimeTrack) throws -> CMFormatDescription {
         let format = try format(for: track.codec)
         switch format.kind {
@@ -361,7 +363,7 @@ enum RealtimeFormats {
             // apart. spec: ISO/IEC 14496-3 §1.5.1.1, Table 1.1 (audio object types).
             if config.objectType == 5 { basic.mFormatID = kAudioFormatMPEG4AAC_HE }
             if config.objectType == 29 { basic.mFormatID = kAudioFormatMPEG4AAC_HE_V2 }
-            cookie = bytes
+            cookie = elementaryStreamDescriptor(wrapping: bytes)
         }
         var description: CMAudioFormatDescription?
         let status = cookie.withUnsafeOptionalBytes { cookieBytes in
@@ -375,6 +377,66 @@ enum RealtimeFormats {
         }
         return description
     }
+
+    /// An AudioSpecificConfig as the magic cookie CoreAudio's AAC decoder reads: wrapped in the
+    /// MPEG-4 `ES_Descriptor` an `esds` box carries, not handed over bare.
+    ///
+    /// **Found on the simulator by #432**, the first test to enqueue audio: with the bare
+    /// AudioSpecificConfig as its cookie, `AVSampleBufferAudioRenderer` logs "AudioCodecInitialize
+    /// failed" and still reports `rendering` with no error — the renderer's version of #398's
+    /// silent decoder — while the same bytes inside this descriptor decode
+    /// (`RealtimeAudioDecodingTests` holds both). The record a transport hands over stays the bare
+    /// AudioSpecificConfig, which is what ISO BMFF and RFC 3640's `config` carry; this wrapping is
+    /// CoreAudio's vocabulary and is done here.
+    ///
+    /// spec: ISO/IEC 14496-1 §7.2.6.5 (`ES_Descriptor`, tag 3: an `ES_ID`, a flags byte, then a
+    ///   `DecoderConfigDescriptor`, tag 4: `objectTypeIndication` 0x40 for ISO/IEC 14496-3 audio,
+    ///   the stream type 5 with its reserved bit, a 24-bit buffer size and two 32-bit bitrates left
+    ///   at zero as unknown, and a `DecoderSpecificInfo`, tag 5, holding the AudioSpecificConfig),
+    ///   then §7.2.6.8's `SLConfigDescriptor`, tag 6, predefined as 2 for MP4; §8.3.3 the size
+    ///   encoding, seven bits a byte with the high bit set on every byte but the last.
+    static func elementaryStreamDescriptor(wrapping audioSpecificConfig: Data) -> Data {
+        func descriptor(_ tag: UInt8, _ body: Data) -> Data {
+            var size: [UInt8] = [UInt8(body.count & 0x7F)]
+            var rest = body.count >> 7
+            while rest > 0 {
+                size.insert(UInt8(rest & 0x7F) | 0x80, at: 0)
+                rest >>= 7
+            }
+            return Data([tag] + size) + body
+        }
+        let decoderConfig =
+            Data([objectTypeMpeg4AudioIndication, audioStreamTypeAndReservedBit])
+            + Data(count: unknownBufferSizeAndBitrateBytes)
+            + descriptor(decoderSpecificInfoTag, audioSpecificConfig)
+        let elementaryStream =
+            Data(count: esIdAndFlagsBytes) + descriptor(decoderConfigTag, decoderConfig)
+            + descriptor(slConfigTag, Data([slConfigPredefinedMp4]))
+        return descriptor(esDescriptorTag, elementaryStream)
+    }
+
+    // The descriptor tags of ISO/IEC 14496-1 §7.2.2.1, Table 1.
+    private static let esDescriptorTag: UInt8 = 0x03
+    private static let decoderConfigTag: UInt8 = 0x04
+    private static let decoderSpecificInfoTag: UInt8 = 0x05
+    private static let slConfigTag: UInt8 = 0x06
+
+    /// `objectTypeIndication` 0x40, ISO/IEC 14496-3 audio — the syntax an AudioSpecificConfig is
+    /// written in, whichever of AAC's two object types the codec string named.
+    private static let objectTypeMpeg4AudioIndication = UInt8(objectTypeMpeg4Audio)
+
+    /// `streamType` 5 (audio) in six bits, `upStream` 0, and the reserved bit, which is 1.
+    private static let audioStreamTypeAndReservedBit: UInt8 = (0x05 << 2) | 0x01
+
+    /// `bufferSizeDB` (24 bits), `maxBitrate` and `avgBitrate` (32 each): zero, as unknown, because a
+    /// realtime track states none of them and the decoder reads none of them.
+    private static let unknownBufferSizeAndBitrateBytes = 3 + 4 + 4
+
+    /// `ES_ID` (16 bits, zero for a stream outside a scene) and the flags byte, every flag clear.
+    private static let esIdAndFlagsBytes = 3
+
+    /// `SLConfigDescriptor.predefined` 2, "reserved for use in MP4 files" (§7.3.2.3.2).
+    private static let slConfigPredefinedMp4: UInt8 = 0x02
 
     /// The object type, sampling rate and channel count an AudioSpecificConfig opens with.
     ///

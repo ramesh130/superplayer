@@ -306,7 +306,7 @@ public final class LoopbackOrigin: Sendable {
             host: arrival.host, path: request.path,
             offset: HttpExchange.rangeStart(request.headers["range"]))
         let answer = state.faults.answer(request, at: address, nowMs: arrivedMs) {
-            let published = content.publication(arrivedMs, ports)[String(request.path.dropFirst())]
+            let published = content.file(String(request.path.dropFirst()), arrivedMs, ports)
             return HttpExchange.resolve(request, body: published)
         }
         let framed = answer.response.map {

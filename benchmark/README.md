@@ -13,6 +13,10 @@ adb shell am start -n com.superplayer.benchmark/.BenchmarkActivity \
     --es arm SUPERPLAYER --es stream "VOD, HLS" --el durationMs 1800000
 ```
 
+The iOS half is [`ios/Benchmark/`](../ios/Benchmark/README.md): the same matrix and honesty rules on
+the simulator against `AVPlayer`, on real time, with its committed report in `ios-baseline/` here.
+It is not comparable to these reports cell for cell, since the engine and the clock both differ.
+
 `bench` publishes the library to Maven local first, always, because this build resolves SuperPlayer
 from published coordinates rather than from `project(":superplayer-core")` — so a run against a
 stale artifact would measure the previous version and record a commit that did not make it.

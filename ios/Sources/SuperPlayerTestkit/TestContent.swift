@@ -59,6 +59,35 @@ public struct TestContent: Sendable {
     /// ignores the ports.
     let publication: @Sendable (_ elapsedMs: Int64, _ ports: [UInt16]) -> [String: [UInt8]]
 
+    /// The one file at `path` under the origin's root once the origin has been serving for
+    /// `elapsedMs`, or nil — what the origin asks per request. ``publication`` looked up, for every
+    /// content but a ladder, whose files are built when asked for rather than held
+    /// (`SyntheticVideoLadder`'s *Lookup by name*).
+    let file: @Sendable (_ path: String, _ elapsedMs: Int64, _ ports: [UInt16]) -> [UInt8]?
+
+    private init(
+        sourcePath: String, isLive: Bool, hosts: Int,
+        publication:
+            @escaping @Sendable (_ elapsedMs: Int64, _ ports: [UInt16]) -> [String: [UInt8]]
+    ) {
+        self.sourcePath = sourcePath
+        self.isLive = isLive
+        self.hosts = hosts
+        self.publication = publication
+        self.file = { path, elapsedMs, ports in publication(elapsedMs, ports)[path] }
+    }
+
+    private init(
+        sourcePath: String, isLive: Bool,
+        file: @escaping @Sendable (_ path: String, _ elapsedMs: Int64) -> [UInt8]?
+    ) {
+        self.sourcePath = sourcePath
+        self.isLive = isLive
+        self.hosts = 1
+        self.publication = { _, _ in [:] }
+        self.file = { path, elapsedMs, _ in file(path, elapsedMs) }
+    }
+
     /// A real HLS stream: `SyntheticHlsStream`'s multivariant playlist, `variantCount` media
     /// playlists and `segmentCount` packed-audio segments, served at the origin's root — the port of
     /// the Kotlin `TestContent.hls`, and the bytes ADR-0021 rule 6 holds both platforms to.
@@ -126,6 +155,50 @@ public struct TestContent: Sendable {
             sourcePath: videoDirectory + SyntheticVideoHlsStream.multivariantPlaylistName,
             isLive: false, hosts: 1, publication: { _, _ in files })
     }
+
+    /// An on-demand rendition ladder of decodable video: `SyntheticVideoLadder`'s rungs at
+    /// `bitratesBps`, in the order given, each `segmentCount` two-second segments padded to exactly
+    /// the bitrate its playlist declares, served under `ladder/` on one host — the port of the Kotlin
+    /// `TestContent.videoLadder`, which the benchmark plays its matrix over (#414).
+    ///
+    /// Bytes where the Kotlin ladder is described: `AVPlayer` plays only what it fetches, so a rung
+    /// costs a shaped link what it declares only if its segments are that large.
+    public static func videoLadder(bitratesBps: [Int], segmentCount: Int) -> TestContent {
+        TestContent(
+            sourcePath: ladderDirectory + SyntheticVideoLadder.multivariantPlaylistName,
+            isLive: false
+        ) { path, _ in
+            guard path.hasPrefix(ladderDirectory) else { return nil }
+            return SyntheticVideoLadder.file(
+                String(path.dropFirst(ladderDirectory.count)), bitratesBps: bitratesBps,
+                segmentCount: segmentCount)
+        }
+    }
+
+    /// ``videoLadder(bitratesBps:segmentCount:)`` live: every rung's window slides on
+    /// ``liveHls(hosts:)``'s clock — a segment published every two seconds of real time from the
+    /// moment the origin starts, the window full at the start — served under `live-ladder/`. The
+    /// port of the Kotlin `TestContent.liveVideoLadder`.
+    public static func liveVideoLadder(bitratesBps: [Int]) -> TestContent {
+        TestContent(
+            sourcePath: liveLadderDirectory + SyntheticVideoLadder.multivariantPlaylistName,
+            isLive: true
+        ) { path, elapsedMs in
+            guard path.hasPrefix(liveLadderDirectory) else { return nil }
+            let published =
+                SyntheticVideoLadder.liveWindowSegmentCount
+                + Int(elapsedMs / SyntheticVideoLadder.segmentDurationMs)
+            return SyntheticVideoLadder.liveFile(
+                String(path.dropFirst(liveLadderDirectory.count)), bitratesBps: bitratesBps,
+                publishedSegmentCount: published)
+        }
+    }
+
+    /// Where ``videoLadder(bitratesBps:segmentCount:)`` is served.
+    static let ladderDirectory = "ladder/"
+
+    /// Where ``liveVideoLadder(bitratesBps:)`` is served.
+    static let liveLadderDirectory = "live-ladder/"
 
     /// Where ``videoHls(segmentCount:)`` is served.
     static let videoDirectory = "video/"

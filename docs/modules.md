@@ -153,6 +153,7 @@ runs. A target this table does not list fails, as a module the table above does 
 | `SuperPlayerTV` | 8 | `superplayer-tv` | i7 |
 | `SuperPlayerDiagnostics` | 9 | `superplayer-diagnostics` | i8 |
 | `SuperPlayerRealtime` | 13 | `superplayer-realtime` | i9 |
+| `SuperPlayerBenchmark` | — | `benchmark/`, a separate build | i2 |
 
 Three Android modules have no row. `superplayer-cache` does not port as a product of its own, since
 its content is the offline store's (`docs/ios-plan.md` §4); `superplayer-moq`'s product,
@@ -160,6 +161,13 @@ its content is the offline store's (`docs/ios-plan.md` §4); `superplayer-moq`'s
 `superplayer-whep` is contingent on both platforms. Kotlin friend modules have no Swift analog — a
 seam a later product reaches is `package`-scoped rather than `internal` — so nothing above the
 table's dependency column needs a Swift counterpart. Every product is empty until its phase.
+
+`SuperPlayerBenchmark` is a target and not a product — nothing ships it — and it is the one row
+with no phase, deliberately: it ports `benchmark/`, which stands outside the phases as a consumer
+of all of them, and an unscheduled row is exactly that shape under the rule above — it may depend
+on every product, and nothing may depend on it. It is declared in the root manifest rather than a
+package of its own only because a `SuperPlayer` playing video in `xctest` needs core's
+`package`-scoped lifecycle seam (`ios/Benchmark/README.md`).
 
 ## Two separate builds beside this one
 

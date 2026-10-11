@@ -247,7 +247,8 @@ origin.responses()                         // how each was answered: status, fau
 - **A trace's clock starts at the first media segment asked for** (#474), not at the origin's
   start, because a freshly booted simulator spends seconds between the playlists. And **a link
   slower than a stream never delivers it**: AVFoundation abandons a segment not whole within about a
-  target duration and asks again from byte zero, so a session stalled on such a link stays stalled,
+  target duration and asks again from byte zero, so a session that has not started on such a link
+  never does, and on 27.1 one stalled there stays stalled,
   on a stock player as on a `SuperPlayer` (`SlowLinkPlaybackTests`, `docs/testing.md`'s *The fault
   sweep on iOS*). Assert that a stall began, never that it ended.
 - **Two hosts are one origin with two listeners**: `.hls(hosts: 2)` or `.liveHls(hosts: 2)`, on one

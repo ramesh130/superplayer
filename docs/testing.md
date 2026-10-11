@@ -930,6 +930,20 @@ see a request.
   **What a pooled player costs and how many decoders a device sustains are a device's** — the
   per-player budget and the ceiling are argued, not measured, and i10 (#439) measures both on the
   device matrix.
+- **A feed's prefetch is counted per row** (#417). `PreloadCoordinatorPlaybackTests` serves every
+  row of a feed from an origin of its own, so what was fetched for a row is that origin's count: a
+  row prefetched ahead fetched its playlists once and not again when it played, a pool with no
+  coordinator fetched nothing ahead, the row the feed moved to was handed the player holding it —
+  the very item kept by `setMediaRequest` — a memory warning made the row fetch again, and a
+  constrained path fetched nothing until it changed. The device is stated through the
+  coordinator's `package` initialiser — the memory left, and no real path watched — with
+  `pathChanged(isConstrained:)` the reading a test states Low Data Mode with, since no simulator
+  setting turns it on; the memory warning is the real notification, posted. `PreloadSignalRegisterTests`
+  counts ADR-0010 rule 13 as live registrations of the coordinator's own register, process-wide,
+  because a pool with no coordinator has nothing to ask. **That a prerolled player reaches its first
+  frame sooner, and that memory stays flat over a long scroll, are a device's** — real time cannot
+  show "sooner" (ADR-0021 rule 4), and the feed demo under `xctrace` is i4's exit (`docs/ios-plan.md`
+  §7).
 - **A realtime player's engine is read where no public reading exists** (#431).
   `SuperPlayerRealtimeTests` imports the realtime product `@testable`, each file arguing it:
   `RealtimeFormatsTests`, because the codec table answers CoreMedia vocabulary and is internal, as
@@ -1175,6 +1189,11 @@ on the kept `AVPlayer` is enough, or whether the engine itself must be rebuilt, 
 `player.avPlayer` as the escape hatch every view holds. The same goes for `AVError.mediaServicesWereReset`
 failing an item, which the classifier maps to rung 5 but which no test can raise. A real CDN's
 token scheme is the last: the origin's refusal is the one `FaultScript` writes.
+
+**One gap is not a device's.** An asset `SuperPlayerPreload` prefetched for a pooled player is made
+before any refusal, so it carries no refreshed credential. A refusal it then meets reaches a ladder
+that already holds the credential, and a provider handed that credential as the one sent may
+decline. No test covers a feed whose token expires.
 
 ## The layers above the fakes
 

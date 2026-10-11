@@ -13,5 +13,6 @@
 // limitations under the License.
 
 // SuperPlayerPreload is `superplayer-preload`'s port: the preload coordinator attached to a player
-// pool, the memory guard and the Low Data Mode rule. It is empty until i4 (docs/ios-plan.md §7),
-// and its public API is held to ios/api/SuperPlayerPreload.baseline.
+// pool (`PreloadCoordinator.swift`), the memory guard and the Low Data Mode rule
+// (`PlatformRules.swift`), and what it observes (`PreloadSignals.swift`), since #417. It depends on
+// core alone, and its public API is held to ios/api/SuperPlayerPreload.baseline.

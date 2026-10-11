@@ -208,7 +208,12 @@ extension SuperPlayer {
             return
         }
         rememberedPositions.remember(atMs, for: request.contentId)
-        let item = makeItem(for: request, source: index, startingAtMs: atMs).item
+        let item = freshItem(for: request, source: index)
+        // Before the item is the player's, as `load` seeks, so the first segment fetched is the one
+        // at the held position; zero tolerance, because the position is the viewer's.
+        item.seek(
+            to: CMTime(value: atMs, timescale: 1_000), toleranceBefore: .zero,
+            toleranceAfter: .zero, completionHandler: nil)
         replaceCurrentItem(with: item, identified: true)
         currentRequest = request
         itemStartMs = atMs

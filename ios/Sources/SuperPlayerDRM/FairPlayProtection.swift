@@ -40,6 +40,17 @@ import SuperPlayerCore
 /// told, which offers it to the ladder as the item's own failure (``ProtectionHost/licenceFailed(_:)``).
 /// A failed **renewal** is not offered: the key it would have renewed is still in force, which is
 /// the Kotlin `KeyRotationTest`'s finding about `DefaultDrmSession` kept on purpose.
+///
+/// ## The offline store's half (#423)
+///
+/// A player configured with an ``OfflineLicence`` answers every key from it and asks nobody, its
+/// session delivering every request persistable; one acquisition answered so is measured as
+/// `servedFromOfflineStore`. And on any FairPlay player the store's verbs ask the key session for a
+/// *persistable* request by identifier, which is told apart from the content's own requests by the
+/// verb waiting on it and answered through the same exchange. One window is left open on purpose:
+/// a content request for an identifier the store is asking for at that moment is answered by the
+/// store's exchange and measured by nobody, because the two requests carry nothing else to tell them
+/// apart; it costs one acquisition span, never a key.
 @MainActor
 final class FairPlayProtection: ProtectionSession {
 
@@ -68,10 +79,27 @@ final class FairPlayProtection: ProtectionSession {
 
     private var isReleased = false
 
-    init(keySession: any FairPlayKeySession, exchange: LicenceExchange, host: any ProtectionHost) {
+    /// The stored licence this player plays from, or nil for one that asks the server (#423).
+    private let offline: OfflineLicence?
+
+    /// The keys the content playing now has asked for, in the order it asked: what the offline
+    /// store's acquisition persists, since only the content declares which keys it is encrypted
+    /// under (the Kotlin `protectedFormat`).
+    private(set) var contentKeyIdentifiers: [String] = []
+
+    /// The offline store's verbs waiting on the persistable request they asked the key session for,
+    /// by key identifier.
+    private var awaitingPersistable: [String: [CheckedContinuation<Data, any Error>]] = [:]
+
+    init(
+        keySession: any FairPlayKeySession, exchange: LicenceExchange, host: any ProtectionHost,
+        offline: OfflineLicence? = nil
+    ) {
         self.keySession = keySession
         self.exchange = exchange
         self.host = host
+        self.offline = offline
+        if offline != nil { keySession.persistEveryKey() }
         keySession.start { [weak self] request in
             Task { @MainActor in
                 guard let self else { return request.fail(CancellationError()) }
@@ -87,6 +115,7 @@ final class FairPlayProtection: ProtectionSession {
         recipients.append(WeakAsset(asset: asset))
         contentKeyed = false
         contentGeneration += 1
+        contentKeyIdentifiers = []
         keySession.addRecipient(asset)
     }
 
@@ -96,11 +125,149 @@ final class FairPlayProtection: ProtectionSession {
         keySession.invalidate()
         for task in inFlight.values { task.cancel() }
         inFlight = [:]
+        let waiting = awaitingPersistable.values.joined()
+        awaitingPersistable = [:]
+        for continuation in waiting { continuation.resume(throwing: CancellationError()) }
         Task { [exchange] in await exchange.cancel() }
     }
 
+    // MARK: The offline store's half (#423)
+
+    /// A persistable key for `keyIdentifier`, acquired from the configured server over this player's
+    /// exchange — its budget, its credential — and handed back once the key session has been
+    /// answered with it. Throws the ``LicenceExchangeError`` the exchange ended on — at
+    /// ``LicenceExchangeError/Stage/keyRequest`` where the device would not make the request
+    /// persistable — or `CancellationError` once the player is released.
+    ///
+    /// Two verbs asking for one identifier at once share one request: the key session is asked only
+    /// by the first, so no second persistable request arrives with nobody waiting on it to be read as
+    /// the content's own.
+    func persistableKey(for keyIdentifier: String) async throws -> Data {
+        guard !isReleased else { throw CancellationError() }
+        return try await withCheckedThrowingContinuation { continuation in
+            let first = awaitingPersistable[keyIdentifier] == nil
+            awaitingPersistable[keyIdentifier, default: []].append(continuation)
+            guard first else { return }
+            keySession.requestPersistableKey(keyIdentifier) { [weak self] error in
+                Task { @MainActor in self?.persistableRequestRefused(keyIdentifier, error) }
+            }
+        }
+    }
+
+    /// Deletes `key` from the device and answers the device's proof of the deletion. Throws a
+    /// ``LicenceExchangeError`` at ``LicenceExchangeError/Stage/keyRequest`` where the device would
+    /// not.
+    func invalidate(key: Data) async throws -> Data {
+        guard !isReleased else { throw CancellationError() }
+        do {
+            return try await keySession.invalidatePersistableKey(key)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw LicenceExchangeError(
+                stage: .keyRequest, status: nil, attempts: 0, underlyingError: error as NSError)
+        }
+    }
+
+    /// Tells the configured server of a deletion, `proof` `POST`ed on the licence budget. Throws the
+    /// ``LicenceExchangeError`` the server's answer ended on.
+    func tellServer(proofOfDeletion proof: Data) async throws {
+        guard !isReleased else { throw CancellationError() }
+        let budget: @MainActor @Sendable () -> RetryBudget? = { [weak self] in
+            self?.host?.licenceBudget
+        }
+        if case .failure(let error) = try await exchange.release(proof: proof, budget: budget) {
+            throw error
+        }
+    }
+
+    /// The device would not turn the request for `keyIdentifier` persistable, so none is coming:
+    /// every verb waiting on it is told, rather than left waiting for the player's release.
+    private func persistableRequestRefused(_ keyIdentifier: String, _ error: any Error) {
+        let waiting = awaitingPersistable.removeValue(forKey: keyIdentifier) ?? []
+        let refusal = LicenceExchangeError(
+            stage: .keyRequest, status: nil, attempts: 0, underlyingError: error as NSError)
+        for continuation in waiting { continuation.resume(throwing: refusal) }
+    }
+
+    /// Answers a persistable request the store asked for: the licence from the server, made into
+    /// the key the device keeps, which answers the request and every verb waiting on it. Nothing is
+    /// measured — the store's exchange is not a licence the viewing waited for, as the Kotlin
+    /// `OfflineLicenseHelper` reports to an event dispatcher of its own — and nothing is offered to
+    /// the ladder, because no playback asked.
+    private func persist(_ request: FairPlayKeyRequest) {
+        let waiting = awaitingPersistable.removeValue(forKey: request.keyIdentifier) ?? []
+        let id = nextRequest
+        nextRequest += 1
+        inFlight[id] = Task { [exchange, weak self] in
+            let budget: @MainActor @Sendable () -> RetryBudget? = { [weak self] in
+                self?.host?.licenceBudget
+            }
+            let result: Result<Data, any Error>
+            // `try?` loses nothing: the exchange throws only `CancellationError`, and every failure
+            // with evidence arrives as its `.failure`.
+            switch try? await exchange.licence(for: request, budget: budget) {
+            case nil: result = .failure(CancellationError())
+            case .failure(let error): result = .failure(error)
+            case .success(let licence):
+                do {
+                    let key = try request.persistableKey(licence)
+                    request.respond(key)
+                    result = .success(key)
+                } catch {
+                    result = .failure(
+                        LicenceExchangeError(
+                            stage: .keyRequest, status: nil, attempts: 0,
+                            underlyingError: error as NSError))
+                }
+            }
+            if case .failure(let error) = result { request.fail(error) }
+            self?.inFlight[id] = nil
+            for continuation in waiting { continuation.resume(with: result) }
+        }
+    }
+
+    /// Answers a key request from the stored licence and asks nobody — the Kotlin `MODE_PLAYBACK`,
+    /// whose sessions restore keys rather than ask for them. An expired licence is refused with
+    /// core's ``OfflineLicenceExpiredError``, read at the moment the key is asked for; a key the
+    /// licence does not hold — a licence stored for other content — is refused as a licence that did
+    /// not arrive, with no request made (`attempts` zero), since asking the server is what this
+    /// player was configured not to do. A refusal is not measured: no acquisition was attempted.
+    private func answerFromStore(_ request: FairPlayKeyRequest, _ licence: OfflineLicence) {
+        let refusal: (any Error)?
+        if licence.isExpired {
+            refusal = OfflineLicenceExpiredError(
+                contentId: licence.contentId,
+                playbackDurationRemainingMs: licence.playbackDurationRemainingMs,
+                licenceDurationRemainingMs: licence.licenceDurationRemainingMs)
+        } else if let key = licence.keys[request.keyIdentifier] {
+            let isAcquisition = !request.isRenewal && !contentKeyed
+            request.respond(key)
+            if !request.isRenewal { contentKeyed = true }
+            if isAcquisition {
+                host?.licenceAcquisitionEnded(durationMs: 0, outcome: .servedFromOfflineStore)
+            }
+            refusal = nil
+        } else {
+            refusal = LicenceExchangeError(
+                stage: .licence, status: nil, attempts: 0, underlyingError: nil)
+        }
+        guard let refusal else { return }
+        request.fail(refusal)
+        if !request.isRenewal { host?.licenceFailed(refusal) }
+    }
+
+    // MARK: Playback
+
     private func handle(_ request: FairPlayKeyRequest) {
         guard !isReleased else { return request.fail(CancellationError()) }
+        if request.isPersistable, awaitingPersistable[request.keyIdentifier] != nil {
+            return persist(request)
+        }
+        if !request.isRenewal, !contentKeyIdentifiers.contains(request.keyIdentifier) {
+            contentKeyIdentifiers.append(request.keyIdentifier)
+        }
+        if let offline { return answerFromStore(request, offline) }
         let isAcquisition = !request.isRenewal && !contentKeyed
         let generation = contentGeneration
         let startedMs = Self.now()

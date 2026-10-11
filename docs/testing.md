@@ -1302,6 +1302,31 @@ rule 13 as the session a player holds — the **set**, never the answer, as `Sup
 counts it — and `CollectorSignalRegisterTests` the output reading a protected player's session alone
 registers.
 
+The offline store (#423) is held the same way. `OfflineLicenceTests` opens `OfflineLicences.store`
+on a fresh temporary directory inside a parent of its own, and drives the four verbs through the
+stand-in's persistable half: a request asked for by identifier and delivered persistable at once,
+a licence turned into a "persistable key" by a prefix, and a key turned into a "proof of deletion" the
+same way, so a test can tell which bytes travelled where. Each claim is counted at the licence server:
+an acquisition and a renewal are one `POST` per key, a release is one `POST` carrying the proof, and a
+player configured with a stored licence — on a licence server of its own — makes **no** request at
+all. Beside them: a reopened store reading what another wrote, an expired licence readable before
+playback and refused as `Drm.LicenceExpired` after, renewed on the player that refused it, a
+release the server refused waiting for its release — no longer playable, since its key is gone —
+and retried with the proof the device gave the first time, and a device that will not make a request
+persistable refusing the acquisition typed rather than leaving it waiting. "Nothing outside the directory" is read as the parent
+holding the directory alone and the directory holding the store's file and SQLite's companions of it.
+The store's file is real SQLite on the simulator; nothing about it is stood in.
+
+**What only a device shows of the store**: that `respondByRequestingPersistableContentKeyRequest`
+yields a persistable request for an identifier asked with `processContentKeyRequest(withIdentifier:)`
+and for every request of a player playing offline; that `persistableContentKey(fromKeyVendorResponse:)`
+makes a key that plays with no network; that `invalidatePersistableContentKey` answers a proof a real
+key server accepts as a release, and whether a proof re-sent after a refusal is accepted as one;
+that an offline player's expired licence is refused as its first key is asked for, which is where
+`check` refuses it; and what a dual-expiry licence does on first playback — the session hands the app an updated key
+(`didUpdatePersistableContentKey`), which the store does not yet write back, so a rental replayed
+after its window began may need its key renewed.
+
 **What only a device shows**, and none of it is faked — the i6 device ticket's run:
 
 - that a FairPlay item reaches a key request at all, and that `SystemFairPlayKeySession`, the one

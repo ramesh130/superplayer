@@ -69,9 +69,11 @@ package protocol ProtectionHost: AnyObject {
     /// for the collector, if the player has one (``TelemetryCollector/licenceAcquisitionEnded(durationMs:outcome:)``).
     func licenceAcquisitionEnded(durationMs: Int64, outcome: LicenceOutcome)
 
-    /// The exchange for a key could not produce one, with everything the budget allowed spent: the
-    /// current item's failure, offered to the ladder as an item's own failure is.
-    func licenceFailed(_ error: LicenceExchangeError)
+    /// The exchange for a key could not produce one, with everything the budget allowed spent — a
+    /// ``LicenceExchangeError`` — or a stored licence was refused without asking (an
+    /// ``OfflineLicenceExpiredError``, #423): the current item's failure, offered to the ladder as an
+    /// item's own failure is.
+    func licenceFailed(_ error: any Error)
 }
 
 /// A FairPlay key request this library made and could not complete — the evidence a licence failure
@@ -157,7 +159,7 @@ extension SuperPlayer: ProtectionHost {
     /// replaced it. A device question as much as a design one, listed in `docs/testing.md`'s
     /// *FairPlay on iOS*. With no current item — content released or replaced by a bare `nil` —
     /// there is nothing to fail and the error is dropped; the key request was still told.
-    package func licenceFailed(_ error: LicenceExchangeError) {
+    package func licenceFailed(_ error: any Error) {
         guard !isReleased, let item = avPlayer.currentItem, !failureDelivered, let rungs else {
             return
         }

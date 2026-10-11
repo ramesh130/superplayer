@@ -351,7 +351,7 @@ final class LicenceExchangeTests: XCTestCase {
 }
 
 /// The video-on-demand decision with the licence budget a test names.
-private struct LicenceBudget: PlaybackPolicy {
+struct LicenceBudget: PlaybackPolicy {
     let licence: RetryBudget
 
     func decide(_ conditions: PlaybackConditions) -> PlaybackDecision {

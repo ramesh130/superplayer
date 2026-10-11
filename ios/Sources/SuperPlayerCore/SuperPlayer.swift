@@ -224,8 +224,9 @@ public final class SuperPlayer {
     let framePath: FramePath?
 
     /// The key session ``Configuration/drm`` made for this player (`Protection.swift`), or nil on a
-    /// player configured without one — what the pays-nothing count reads.
-    private(set) var protection: (any ProtectionSession)?
+    /// player configured without one — what the pays-nothing count reads, and what
+    /// `SuperPlayerDRM`'s offline store performs its verbs over (`store.over(player)`, #423).
+    package private(set) var protection: (any ProtectionSession)?
 
     /// The pool attachment this player adopts through, set by the ``PlayerPool`` that made it while
     /// one is attached; nil on every other player, which asks nothing at adoption (ADR-0010 rule

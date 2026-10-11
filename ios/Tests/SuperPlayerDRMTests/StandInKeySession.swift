@@ -49,6 +49,53 @@ final class StandInKeySession: FairPlayKeySession {
         handler = nil
     }
 
+    // MARK: Persistable keys (#423)
+
+    /// Whether every request is delivered persistable, as a player playing from a stored licence
+    /// asks.
+    private(set) var persistsEveryKey = false
+
+    /// Every identifier the offline store asked for a persistable key for, in order, with how each
+    /// request was answered.
+    private(set) var persistableRequests: [(keyIdentifier: String, record: KeyRequestRecord)] = []
+
+    /// Every persistable key the player asked the device to delete, in order.
+    private(set) var invalidatedKeys: [Data] = []
+
+    /// Whether a request asked for by identifier cannot be made persistable, as a device whose
+    /// protection stack will not persist a key refuses `respondByRequestingPersistableContentKeyRequest`.
+    var refusesToPersist = false
+
+    func persistEveryKey() {
+        persistsEveryKey = true
+    }
+
+    /// Delivers the persistable request at once, as a device answers
+    /// `processContentKeyRequest(withIdentifier:)`.
+    func requestPersistableKey(
+        _ keyIdentifier: String, refused: @escaping @Sendable (any Error) -> Void
+    ) {
+        guard !refusesToPersist else { return refused(ProtectionStackRefused()) }
+        persistableRequests.append((keyIdentifier, request(keyIdentifier, persistable: true)))
+    }
+
+    func invalidatePersistableKey(_ key: Data) async throws -> Data {
+        invalidatedKeys.append(key)
+        return Self.proofOfDeletion(of: key)
+    }
+
+    /// The key a device keeps for the licence `licence`: `persisted:` and the licence.
+    nonisolated static func persistedKey(for licence: Data) -> Data {
+        Data("persisted:".utf8) + licence
+    }
+
+    /// The proof of deletion a device answers for `key`: `deleted:` and the key.
+    nonisolated static func proofOfDeletion(of key: Data) -> Data {
+        Data("deleted:".utf8) + key
+    }
+
+    // MARK: Requests
+
     /// The key request a device composes for `keyIdentifier`: `spc:` and the identifier.
     nonisolated static func serverPlaybackContext(for keyIdentifier: String) -> Data {
         Data("spc:\(keyIdentifier)".utf8)
@@ -56,25 +103,32 @@ final class StandInKeySession: FairPlayKeySession {
 
     /// Asks for `keyIdentifier`'s key — or to renew it — as the session's delegate would be asked,
     /// returning the record of how it is answered. `composes: false` is a device whose protection
-    /// stack refuses to compose the key request.
-    func request(_ keyIdentifier: String, renewal: Bool = false, composes: Bool = true)
-        -> KeyRequestRecord
-    {
+    /// stack refuses to compose the key request. The request is persistable where this session was
+    /// told to persist every key, or where `persistable` says so.
+    func request(
+        _ keyIdentifier: String, renewal: Bool = false, composes: Bool = true,
+        persistable: Bool = false
+    ) -> KeyRequestRecord {
         let record = KeyRequestRecord()
         guard let handler else {
             record.answer(.failed("the session was never started, or was invalidated"))
             return record
         }
+        let isPersistable = persistable || persistsEveryKey
         handler(
             FairPlayKeyRequest(
-                keyIdentifier: keyIdentifier, isRenewal: renewal,
+                keyIdentifier: keyIdentifier, isRenewal: renewal, isPersistable: isPersistable,
                 makeServerPlaybackContext: { certificate, contentIdentifier in
                     record.composed(certificate: certificate, contentIdentifier: contentIdentifier)
                     guard composes else { throw ProtectionStackRefused() }
                     return Self.serverPlaybackContext(for: keyIdentifier)
                 },
                 respond: { licence in record.answer(.licence(licence)) },
-                fail: { error in record.answer(.failed(String(describing: error))) }))
+                fail: { error in record.answer(.failed(String(describing: error))) },
+                persistableKey: { licence in
+                    guard isPersistable else { throw FairPlayKeyRequest.NotPersistable() }
+                    return Self.persistedKey(for: licence)
+                }))
         return record
     }
 

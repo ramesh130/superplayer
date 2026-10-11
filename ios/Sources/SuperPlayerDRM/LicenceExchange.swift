@@ -104,10 +104,28 @@ actor LicenceExchange {
                     stage: .keyRequest, status: nil, attempts: 0, underlyingError: error as NSError)
             )
         }
-        return try await fetch(.licence, budget: budget) { headers in
+        return try await post(spc, budget: budget)
+    }
+
+    /// Tells the key server a persistable key was deleted: the device's proof of the deletion,
+    /// `POST`ed to the configured server as a key request is, on the same budget and with the same
+    /// credential repair — the Kotlin `OfflineLicenseHelper.releaseLicense`, a round trip whose whole
+    /// purpose is the server hearing of it (#423). Throws only `CancellationError`.
+    func release(
+        proof: Data, budget: @escaping @MainActor @Sendable () -> RetryBudget?
+    ) async throws -> Result<Data, LicenceExchangeError> {
+        try await post(proof, budget: budget)
+    }
+
+    /// `body` `POST`ed raw to the configured licence server, asked until answered or the budget is
+    /// spent.
+    private func post(
+        _ body: Data, budget: @escaping @MainActor @Sendable () -> RetryBudget?
+    ) async throws -> Result<Data, LicenceExchangeError> {
+        try await fetch(.licence, budget: budget) { headers in
             var post = URLRequest(url: self.config.licenceURL)
             post.httpMethod = "POST"
-            post.httpBody = spc
+            post.httpBody = body
             post.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
             for (name, value) in headers { post.setValue(value, forHTTPHeaderField: name) }
             return post

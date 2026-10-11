@@ -43,17 +43,39 @@ public enum Drm {
     /// key session, the fetched certificate and the credential a refusal refreshed are made per
     /// player, as the player is.
     public static func fairPlay(_ config: FairPlayConfig) -> any PlaybackDrm {
-        FairPlayDrm(config: config, keySession: { SystemFairPlayKeySession() })
+        FairPlayDrm(config: config, offline: nil, keySession: { SystemFairPlayKeySession() })
+    }
+
+    /// FairPlay that plays from `licence`, a licence an ``OfflineLicenceStore`` holds — the fourth of
+    /// the offline verbs, which is a configuration rather than a call because playing from a stored
+    /// licence is a property of the player's key session (the Kotlin `Drm.widevine(config, licence)`,
+    /// #423).
+    ///
+    /// Every key the content asks for is answered from the licence, so the player makes **no**
+    /// licence request: no certificate is fetched and nothing is `POST`ed. A licence that has
+    /// **expired** is refused rather than re-acquired — the first key the content asks for fails with
+    /// core's ``OfflineLicenceExpiredError``, which the classifier names `Drm.licenceExpired` —
+    /// because a round trip on a player configured to play offline is the one thing it was not to
+    /// do, and with no network it would fail as a licence that did not arrive rather than as the
+    /// licence that died. Read ``OfflineLicence/isExpired`` first, and say so before building
+    /// anything.
+    ///
+    /// `config` is still needed: ``OfflineLicenceStore/over(_:)``'s verbs work on this player too,
+    /// so a dead download can be renewed on the player that refused it.
+    public static func fairPlay(_ config: FairPlayConfig, licence: OfflineLicence)
+        -> any PlaybackDrm
+    {
+        FairPlayDrm(config: config, offline: licence, keySession: { SystemFairPlayKeySession() })
     }
 
     /// FairPlay whose key session is `keySession`'s — the one seam `check` stands a key session in
     /// at, because the simulator has no FairPlay (ADR-0021 rule 5, `docs/testing.md`'s *FairPlay on
     /// iOS*). Called once per player.
     package static func fairPlay(
-        _ config: FairPlayConfig,
+        _ config: FairPlayConfig, licence: OfflineLicence? = nil,
         keySession: @escaping @MainActor @Sendable () -> any FairPlayKeySession
     ) -> any PlaybackDrm {
-        FairPlayDrm(config: config, keySession: keySession)
+        FairPlayDrm(config: config, offline: licence, keySession: keySession)
     }
 }
 
@@ -104,12 +126,17 @@ public struct FairPlayConfig: Sendable, Hashable {
 struct FairPlayDrm: ContentProtecting {
 
     let config: FairPlayConfig
+
+    /// The stored licence the player plays from, or nil for one that asks the server.
+    let offline: OfflineLicence?
+
     let keySession: @MainActor @Sendable () -> any FairPlayKeySession
 
     @MainActor
     func protectionSession(host: any ProtectionHost) -> any ProtectionSession {
         FairPlayProtection(
             keySession: keySession(),
-            exchange: LicenceExchange(config: config, provider: host.headerProvider), host: host)
+            exchange: LicenceExchange(config: config, provider: host.headerProvider), host: host,
+            offline: offline)
     }
 }

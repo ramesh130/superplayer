@@ -101,6 +101,16 @@ core's `package` protocol `PlaybackEngine` — the view hosts either, and `Share
 — and what they do not yet (telemetry, sessions, interruptions) is listed in `docs/testing.md`'s *A
 realtime transport on iOS*. #340's observed bytes are `ios/Tests/Fixtures/realtime/observed-bytes.tsv`,
 read by both platforms' tests.
+#432 mirrored the codec configuration and made it several tracks. `CodecConfigurationRecords.swift`
+runs the Kotlin conversion **the other way**: an `avcC`/`hvcC` is parsed for its NAL length width and
+passed into the description's atom untouched, its samples walked at that width; in-band parameter sets
+are lifted into a description by `CMVideoFormatDescriptionCreateFromH264ParameterSets` (or HEVC's) and
+Annex-B samples re-framed to four-byte lengths — `TrackFraming` per track, with the same refusals. The
+engine anchors every track on the first frame of any, reconciles one more than thirty seconds off as an
+epoch of its own, and ends the stream on core's `RealtimeTrackStalledError` past the five-second late
+and three-second stalled bounds, **in media time against the leading track**. An AAC magic cookie is the
+`ES_Descriptor` around the AudioSpecificConfig, never the bare config, which an audio renderer takes and
+then silently fails to decode.
 #419 is the first of i5: `SuperPlayerResilience` holds `FailureClass` — the Kotlin taxonomy as a
 nested enum, every leaf with its stable name, three answers, category and message key — and
 `ErrorClassifier`, the one `switch` that names a failure, over the `NSError` chain (cause first), the

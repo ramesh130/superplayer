@@ -204,6 +204,8 @@ Func RealtimeTrack.CodedSize.__derived_struct_equals(_:_:) : Swift.Bool, SuperPl
 Func RealtimeTrack.CodedSize.hash(into:) : (), Swift.Hasher
 Func RealtimeTrack.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.RealtimeTrack, SuperPlayerCore.RealtimeTrack [static]
 Func RealtimeTrack.hash(into:) : (), Swift.Hasher
+Func RealtimeTrackStalledError.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.RealtimeTrackStalledError, SuperPlayerCore.RealtimeTrackStalledError [static]
+Func RealtimeTrackStalledError.hash(into:) : (), Swift.Hasher
 Func RetryBudget.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.RetryBudget, SuperPlayerCore.RetryBudget [static]
 Func RetryBudget.hash(into:) : (), Swift.Hasher
 Func RetryPolicy.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.RetryPolicy, SuperPlayerCore.RetryPolicy [static]
@@ -302,6 +304,7 @@ Struct PreloadPolicy : Equatable, Hashable, Sendable
 Struct RealtimeStreamNotSeekableError : CustomStringConvertible, Equatable, Error, Hashable, Sendable
 Struct RealtimeTrack : Equatable, Hashable, Sendable
 Struct RealtimeTrack.CodedSize : CustomStringConvertible, Equatable, Hashable, Sendable
+Struct RealtimeTrackStalledError : CustomStringConvertible, Equatable, Error, Hashable, Sendable
 Struct RetryBudget : Equatable, Hashable, Sendable
 Struct RetryPolicy : Equatable, Hashable, Sendable
 Struct SelectionPace : Equatable, Hashable, Sendable
@@ -431,6 +434,11 @@ Var RealtimeTrack.codec : Swift.String { get }
 Var RealtimeTrack.codecConfiguration : SuperPlayerCore.RealtimeTrack.CodecConfiguration { get }
 Var RealtimeTrack.codedSize : SuperPlayerCore.RealtimeTrack.CodedSize? { get }
 Var RealtimeTrack.hashValue : Swift.Int { get }
+Var RealtimeTrackStalledError.behindByMs : Swift.Int64 { get }
+Var RealtimeTrackStalledError.boundMs : Swift.Int64 { get }
+Var RealtimeTrackStalledError.codec : Swift.String { get }
+Var RealtimeTrackStalledError.description : Swift.String { get }
+Var RealtimeTrackStalledError.hashValue : Swift.Int { get }
 Var RetryBudget.hashValue : Swift.Int { get }
 Var RetryBudget.initialBackoffMs : Swift.Int64 { get set }
 Var RetryBudget.maxBackoffMs : Swift.Int64 { get set }

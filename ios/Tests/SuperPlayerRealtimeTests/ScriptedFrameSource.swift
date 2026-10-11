@@ -17,21 +17,28 @@ import SuperPlayerCore
 import SuperPlayerTestMedia
 
 /// A transport that is a script — the Kotlin `ScriptedFrameSource`: it declares its tracks, then
-/// delivers frames on a thread of its own, in real time, until it is cancelled.
+/// delivers their frames on a thread of its own, interleaved in the order a publisher would send
+/// them, until each track's script runs out or it is cancelled.
 ///
-/// **Real H.264, not described video.** Android's fake feeds Media3's fake renderers, which decode
-/// nothing; here the display layer decodes what it is handed, so the frames are
-/// `SyntheticVideoHlsStream`'s hand-written bitstream without its container — an `avc1` track whose
-/// record is that stream's `avcC` and whose samples are its length-prefixed NAL units, CoreMedia's own
-/// framing (ADR-0018 rule 4). #340's observed bytes are not decodable — no slice of theirs was dumped
-/// — so they are what the formats tests read (`ObservedBytes`), and this is what plays.
+/// **Real H.264 and real AAC, not described media.** Android's fake feeds Media3's fake renderers,
+/// which decode nothing; here the renderers decode what they are handed, so the video is
+/// `SyntheticVideoHlsStream`'s hand-written bitstream without its container and the audio
+/// `SyntheticHlsStream`'s silent AAC frame without its ADTS header. The video comes in each of
+/// ADR-0018 rule 4's shapes (``ScriptedTrack/VideoShape``): an `avc1` record and length-prefixed
+/// samples, the same at a two-byte length width, and `avc3` with its parameter sets in band and
+/// Annex-B start codes. #340's observed bytes are not decodable — no slice of theirs was dumped —
+/// so they are what the framing and formats tests read (`ObservedBytes`), and this is what plays.
 ///
 /// **On an epoch of its own**: the first timestamp is two hours in, as an RTP stream's random
 /// initial timestamp is (RFC 3550 §5.1), so a player that forgot to subtract it would wait two hours
-/// for its first frame — the defect a fake starting at zero hides.
+/// for its first frame — the defect a fake starting at zero hides. A track can be put on an epoch
+/// of its own besides, which is what the shared-epoch rule is tested with.
 ///
-/// **Endless and asynchronous by default**, joining its thread in ``cancel()``, because a fake that
-/// finishes inside `subscribe` satisfies obligation 9 by arithmetic (the Kotlin #347 reason).
+/// **Asynchronous, and paced in real time by default**, joining its thread in ``cancel()``, because
+/// a fake that finishes inside `subscribe` satisfies obligation 9 by arithmetic (the Kotlin #347
+/// reason). An unpaced script delivers as fast as the sink takes it, which is what a test of the
+/// late and stalled bounds uses: those are media time, so a verdict reached at speed is the one
+/// reached in real time.
 ///
 /// `@unchecked Sendable`: every `var` is read and written under `lock`, and the rest is immutable.
 final class ScriptedFrameSource: FrameSource, @unchecked Sendable {
@@ -39,14 +46,16 @@ final class ScriptedFrameSource: FrameSource, @unchecked Sendable {
     /// Where the script's timeline starts: two hours, in microseconds.
     static let epochUs: Int64 = 7_200_000_000
 
-    /// How many frames are delivered at once before the rest are paced: half a second's, so the
+    /// How much of the script is delivered at once before the rest is paced: half a second, so the
     /// first picture is already queued when the clock starts at it rather than arriving on its
     /// presentation time exactly, which is a race against the clock the test is not about.
+    static let prerollUs: Int64 = 500_000
+
+    /// Half a second of video frames, the preroll counted in them.
     static let prerollFrames = SyntheticVideoHlsStream.framesPerSecond / 2
 
-    private let tracks: [RealtimeTrack]
-    private let frameLimit: Int?
-    private let corruptsSlices: Bool
+    private let scripts: [ScriptedTrack]
+    private let paced: Bool
 
     private let lock = NSLock()
     private var cancelled = false
@@ -55,30 +64,30 @@ final class ScriptedFrameSource: FrameSource, @unchecked Sendable {
     private var _subscribeCount = 0
     private var _cancelCount = 0
     private var _delivered = 0
+    private var _lastTimestamps: [Int64?]
 
-    /// A source declaring `tracks` — the synthetic `avc1` track unless told otherwise — and
-    /// delivering `frameLimit` frames, or frames for ever. With `corruptsSlices`, every byte of
-    /// every frame past its length field and NAL header is overwritten — a stream whose framing is
-    /// right and whose pictures are noise, the control showing the layer really decodes.
-    init(
-        tracks: [RealtimeTrack] = [ScriptedFrameSource.syntheticH264], frameLimit: Int? = nil,
-        corruptsSlices: Bool = false
-    ) {
-        self.tracks = tracks
-        self.frameLimit = frameLimit
-        self.corruptsSlices = corruptsSlices
+    /// A source declaring `tracks` — the synthetic `avc1` video, endless, unless told otherwise —
+    /// and delivering their frames in script-time order, paced in real time when `paced`.
+    init(tracks: [ScriptedTrack] = [.video()], paced: Bool = true) {
+        self.scripts = tracks
+        self.paced = paced
+        self._lastTimestamps = Array(repeating: nil, count: tracks.count)
     }
 
-    /// The synthetic stream's video as a track: `avc1` with its record, at its coded size.
-    static let syntheticH264 = RealtimeTrack(
-        codec: "avc1.42c01e",
-        codecConfiguration: .record(Data(SyntheticVideoHlsStream.avcDecoderConfigurationRecord())),
-        codedSize: RealtimeTrack.CodedSize(
-            width: SyntheticVideoHlsStream.width, height: SyntheticVideoHlsStream.height))
+    /// The synthetic video, endless, with every byte of every frame past its length field and NAL
+    /// header overwritten — a stream whose framing is right and whose pictures are noise, the
+    /// control showing the layer really decodes.
+    convenience init(corruptsSlices: Bool) {
+        self.init(tracks: [.video(corruptsSlices ? .corruptAvc1 : .avc1)])
+    }
 
     var subscribeCount: Int { lock.withLock { _subscribeCount } }
     var cancelCount: Int { lock.withLock { _cancelCount } }
     var deliveredFrames: Int { lock.withLock { _delivered } }
+
+    /// The transport timestamp of the last frame delivered on each track, nil for one that has
+    /// delivered none — what a test waits for the engine to have caught up with.
+    var lastTimestamps: [Int64?] { lock.withLock { _lastTimestamps } }
 
     func subscribe(_ sink: any FrameSink) {
         lock.withLock {
@@ -87,27 +96,39 @@ final class ScriptedFrameSource: FrameSource, @unchecked Sendable {
         }
         let thread = Thread { [self] in
             defer { finished.signal() }
-            sink.onTracks(tracks)
-            let frameInterval = 1 / Double(SyntheticVideoHlsStream.framesPerSecond)
-            var index = 0
-            while !isCancelled, frameLimit.map({ index < $0 }) ?? true {
-                var (sample, isKeyFrame) = SyntheticVideoHlsStream.elementaryFrame(index)
-                if corruptsSlices {
-                    // Past the four-byte length and the one-byte NAL header, so the framing still
-                    // reads and only the slice — what a decoder decodes — is noise.
-                    for offset in 5..<sample.count {
-                        sample[offset] = UInt8(truncatingIfNeeded: offset &* 37)
-                    }
+            sink.onTracks(scripts.map(\.track))
+            var next = Array(repeating: 0, count: scripts.count)
+            let start = Date()
+            while !isCancelled {
+                // The track whose next frame is due soonest in script time, ties to the earlier
+                // declared — one publisher's interleaving, deterministic.
+                let due = scripts.indices.filter { index in
+                    scripts[index].frames.map { limit in next[index] < limit } ?? true
                 }
-                let timestampUs =
-                    Self.epochUs + Int64(index) * 1_000_000
-                    / Int64(SyntheticVideoHlsStream.framesPerSecond)
+                guard
+                    let track = due.min(by: {
+                        scripts[$0].scriptTimeUs(next[$0]) < scripts[$1].scriptTimeUs(next[$1])
+                    })
+                else { break }
+                let script = scripts[track]
+                let scriptTimeUs = script.scriptTimeUs(next[track])
+                if paced, scriptTimeUs > Self.prerollUs {
+                    let wait =
+                        Double(scriptTimeUs - Self.prerollUs) / 1_000_000
+                        - Date().timeIntervalSince(start)
+                    if wait > 0 { Thread.sleep(forTimeInterval: wait) }
+                }
+                let (payload, keyFrame) = script.frame(next[track])
+                let timestampUs = script.epochUs + scriptTimeUs
                 sink.onFrame(
                     EncodedFrame(
-                        timestampUs: timestampUs, payload: Data(sample), keyFrame: isKeyFrame))
-                lock.withLock { _delivered += 1 }
-                index += 1
-                if index >= Self.prerollFrames { Thread.sleep(forTimeInterval: frameInterval) }
+                        timestampUs: timestampUs, payload: payload, keyFrame: keyFrame,
+                        trackIndex: track))
+                lock.withLock {
+                    _delivered += 1
+                    _lastTimestamps[track] = timestampUs
+                }
+                next[track] += 1
             }
         }
         thread.name = "ScriptedFrameSource"
@@ -127,9 +148,167 @@ final class ScriptedFrameSource: FrameSource, @unchecked Sendable {
     private var isCancelled: Bool { lock.withLock { cancelled } }
 }
 
+/// One track of a ``ScriptedFrameSource``'s script: what it declares, how many frames it sends and
+/// how far apart, and where on the transport's timeline its frames are stamped.
+struct ScriptedTrack: Sendable {
+
+    /// What the source declares for this track.
+    let track: RealtimeTrack
+
+    /// How many frames are sent, or nil for frames until the source is cancelled.
+    let frames: Int?
+
+    /// The transport timestamp of script time zero: ``ScriptedFrameSource/epochUs`` unless the
+    /// track is on an epoch of its own.
+    let epochUs: Int64
+
+    /// Script time of the first frame — a publisher's start skew on a shared epoch.
+    let startsAtUs: Int64
+
+    /// The frame's spacing in microseconds of script time, as a function of its index so that a
+    /// rate that does not divide a second (AAC's 1024 / 44100 s) accumulates no rounding.
+    let timeOfFrameUs: @Sendable (Int) -> Int64
+
+    /// Frame `index`'s payload and whether it is a keyframe.
+    let frame: @Sendable (Int) -> (payload: Data, keyFrame: Bool)
+
+    func scriptTimeUs(_ index: Int) -> Int64 { startsAtUs + timeOfFrameUs(index) }
+
+    /// The shapes the synthetic video is sent in — ADR-0018 rule 4's two branches, and the
+    /// controls.
+    enum VideoShape: Sendable {
+        /// `avc1` with the stream's `avcC` and its four-byte length-prefixed samples.
+        case avc1
+        /// `avc1` with the record rewritten to declare two-byte lengths and every sample re-framed
+        /// at that width: the case a hard-coded four would pass every other test while failing on.
+        case avc1TwoByteLengths
+        /// `avc3`: no record, Annex-B start codes, and the SPS and PPS before every keyframe.
+        case avc3
+        /// ``avc1`` with every slice overwritten with noise: the decode control.
+        case corruptAvc1
+    }
+
+    /// The synthetic video in `shape`, thirty frames a second.
+    static func video(
+        _ shape: VideoShape = .avc1, frames: Int? = nil,
+        epochUs: Int64 = ScriptedFrameSource.epochUs,
+        startsAtUs: Int64 = 0
+    ) -> ScriptedTrack {
+        let configuration: RealtimeTrack.CodecConfiguration
+        switch shape {
+        case .avc1, .corruptAvc1: configuration = .record(Data(SyntheticH264.record))
+        case .avc1TwoByteLengths: configuration = .record(Data(SyntheticH264.record(lengthSize: 2)))
+        case .avc3: configuration = .inBand
+        }
+        return ScriptedTrack(
+            track: RealtimeTrack(
+                codec: shape == .avc3 ? "avc3.42c01e" : "avc1.42c01e",
+                codecConfiguration: configuration,
+                codedSize: RealtimeTrack.CodedSize(
+                    width: SyntheticVideoHlsStream.width, height: SyntheticVideoHlsStream.height)),
+            frames: frames, epochUs: epochUs, startsAtUs: startsAtUs,
+            timeOfFrameUs: {
+                Int64($0) * 1_000_000 / Int64(SyntheticVideoHlsStream.framesPerSecond)
+            },
+            frame: { index in
+                let (sample, keyFrame) = SyntheticVideoHlsStream.elementaryFrame(index)
+                return (
+                    Data(SyntheticH264.reshaped(sample, keyFrame: keyFrame, as: shape)), keyFrame
+                )
+            })
+    }
+
+    /// The synthetic silent AAC-LC, 44.1 kHz stereo, its `AudioSpecificConfig` as the record.
+    static func audio(
+        frames: Int? = nil, epochUs: Int64 = ScriptedFrameSource.epochUs, startsAtUs: Int64 = 0
+    ) -> ScriptedTrack {
+        let frame = Data(SyntheticHlsStream.elementaryAudioFrame())
+        return ScriptedTrack(
+            track: RealtimeTrack(
+                codec: "mp4a.40.2",
+                codecConfiguration: .record(Data(SyntheticHlsStream.audioSpecificConfig()))),
+            frames: frames, epochUs: epochUs, startsAtUs: startsAtUs,
+            timeOfFrameUs: {
+                Int64($0) * Int64(SyntheticHlsStream.samplesPerFrame) * 1_000_000
+                    / Int64(SyntheticHlsStream.samplingFrequencyHz)
+            },
+            frame: { _ in (frame, true) })
+    }
+
+    /// How many audio frames span `seconds` of script time, rounded up.
+    static func audioFrames(spanning seconds: Double) -> Int {
+        Int(
+            (seconds * Double(SyntheticHlsStream.samplingFrequencyHz)
+                / Double(SyntheticHlsStream.samplesPerFrame)).rounded(.up))
+    }
+}
+
+/// The synthetic stream's H.264 in each shape the fake sends it in.
+enum SyntheticH264 {
+
+    /// The stream's `avcC`, as its sample entry carries it.
+    static let record = SyntheticVideoHlsStream.avcDecoderConfigurationRecord()
+
+    /// The record with its `lengthSizeMinusOne` rewritten and nothing else touched — the Kotlin
+    /// test's `avcCDeclaringLengthSize`. The six bits above it are reserved and set to one.
+    static func record(lengthSize: Int) -> [UInt8] {
+        var bytes = record
+        bytes[4] = 0xFC | UInt8(lengthSize - 1)
+        return bytes
+    }
+
+    /// The SPS and PPS the record carries, read at the fixed offsets of a record holding one of
+    /// each (ISO/IEC 14496-15 §5.3.3.1.2): a two-byte length at 6, then the PPS's count and length.
+    static let parameterSets: [[UInt8]] = {
+        let spsLength = Int(record[6]) << 8 | Int(record[7])
+        let sps = Array(record[8..<8 + spsLength])
+        let ppsAt = 8 + spsLength + 1
+        let ppsLength = Int(record[ppsAt]) << 8 | Int(record[ppsAt + 1])
+        return [sps, Array(record[ppsAt + 2..<ppsAt + 2 + ppsLength])]
+    }()
+
+    /// `sample` — four-byte length-prefixed, as the stream carries it — in `shape`.
+    static func reshaped(_ sample: [UInt8], keyFrame: Bool, as shape: ScriptedTrack.VideoShape)
+        -> [UInt8]
+    {
+        let units = units(of: sample)
+        switch shape {
+        case .avc1:
+            return sample
+        case .corruptAvc1:
+            // Past the four-byte length and the one-byte NAL header, so the framing still reads
+            // and only the slice — what a decoder decodes — is noise.
+            var noisy = sample
+            for offset in 5..<noisy.count {
+                noisy[offset] = UInt8(truncatingIfNeeded: offset &* 37)
+            }
+            return noisy
+        case .avc1TwoByteLengths:
+            return units.flatMap {
+                [UInt8(truncatingIfNeeded: $0.count >> 8), UInt8(truncatingIfNeeded: $0.count)] + $0
+            }
+        case .avc3:
+            let startCode: [UInt8] = [0, 0, 0, 1]
+            return ((keyFrame ? parameterSets : []) + units).flatMap { startCode + $0 }
+        }
+    }
+
+    /// The NAL units of a four-byte length-prefixed sample.
+    private static func units(of sample: [UInt8]) -> [[UInt8]] {
+        var units: [[UInt8]] = []
+        var offset = 0
+        while offset + 4 <= sample.count {
+            let length = sample[offset..<offset + 4].reduce(0) { $0 << 8 | Int($1) }
+            units.append(Array(sample[offset + 4..<offset + 4 + length]))
+            offset += 4 + length
+        }
+        return units
+    }
+}
+
 /// A source that declares tracks and nothing else, and refuses nothing — for a test about what the
-/// player makes of a declaration. `@unchecked Sendable` only because the protocol asks; immutable.
-final class DeclaringFrameSource: FrameSource, @unchecked Sendable {
+/// player makes of a declaration. Immutable, so checked `Sendable`.
+final class DeclaringFrameSource: FrameSource, Sendable {
     private let tracks: [RealtimeTrack]
     init(tracks: [RealtimeTrack]) { self.tracks = tracks }
     func subscribe(_ sink: any FrameSink) { sink.onTracks(tracks) }

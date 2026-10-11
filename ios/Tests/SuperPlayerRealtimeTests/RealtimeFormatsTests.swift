@@ -126,11 +126,15 @@ final class RealtimeFormatsTests: XCTestCase {
         XCTAssertEqual([dimensions.width, dimensions.height], [640, 480])
     }
 
-    func testAnInBandTrackIsDescribedWithNoAtomAndAnUnstatedSizeWithNone() throws {
+    /// A codec that is not NAL units, handed over with no record, is described as it is — no atom,
+    /// and no size where none was stated. An in-band H.264 or H.265 track is not described here at
+    /// all: its description is made from the parameter sets its first keyframe carries
+    /// (`CodecConfigurationRecordsTests`).
+    func testANonNalTrackWithNoRecordIsDescribedWithNoAtomAndAnUnstatedSizeWithNone() throws {
         let description = try RealtimeFormats.formatDescription(
-            for: RealtimeTrack(codec: "hev1.1.6.L93.B0"))
+            for: RealtimeTrack(codec: "vp09.00.10.08"))
 
-        XCTAssertEqual(description.mediaSubType, .hevc)
+        XCTAssertEqual(description.mediaSubType, .init(rawValue: kCMVideoCodecType_VP9))
         XCTAssertNil(atoms(of: description))
         let dimensions = CMVideoFormatDescriptionGetDimensions(description)
         XCTAssertEqual([dimensions.width, dimensions.height], [0, 0])

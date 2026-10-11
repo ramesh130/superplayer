@@ -34,3 +34,15 @@ dependencies {
 // rule 3 took the ninth. `superplayer-moq` and `superplayer-whep` are deliberately **not** friends:
 // they implement core's public `FrameSource`, which is the test that the seam is real.
 declareKotlinFriendModule(":superplayer-core")
+
+// #340's observed bytes live under `ios/Tests/Fixtures/realtime/` so the Swift port's tests read the
+// same bytes as `ObservedBytes` (#431, `docs/testing.md`'s *A realtime transport on iOS*). Nothing
+// generates them, so there is no update mode: the file is edited by hand, and is an input so an edit
+// re-runs the tests that read it. The directory travels relative to the module, where AGP runs unit
+// tests, as `superplayer-testmedia`'s fixture directories do.
+val realtimeFixtures = rootProject.layout.projectDirectory.dir("ios/Tests/Fixtures/realtime")
+
+tasks.withType<Test>().configureEach {
+    systemProperty("superplayer.realtimeFixtures.dir", realtimeFixtures.asFile.relativeTo(projectDir).invariantSeparatorsPath)
+    inputs.files(fileTree(realtimeFixtures)).withPropertyName("realtimeFixtures").withPathSensitivity(PathSensitivity.RELATIVE)
+}

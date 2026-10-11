@@ -100,11 +100,13 @@ final class SystemLifecyclePlatform: LifecyclePlatform {
 /// player paused beside one that is playing must not deactivate the session under it, nor let the
 /// screen dim under a video it is not showing. So each ``LifecycleBinding`` states what it needs
 /// and this object makes the platform call only when the first need arrives or the last one leaves.
+/// A `RealtimePlayer` states its needs here too, through the `package` half below, so one session
+/// and one idle timer are counted across both player types (ADR-0020 rule 11).
 @MainActor
 package final class SharedLifecycle {
 
     /// The system's, which every player a consumer makes shares.
-    static let system = SharedLifecycle(platform: SystemLifecyclePlatform())
+    package static let system = SharedLifecycle(platform: SystemLifecyclePlatform())
 
     private let platform: any LifecyclePlatform
 
@@ -124,20 +126,20 @@ package final class SharedLifecycle {
 
     /// A token naming one binding for its life: never reused, unlike an object's address, which a
     /// binding made after another's release may take before the release has been withdrawn here.
-    func issueToken() -> UInt64 {
+    package func issueToken() -> UInt64 {
         nextToken += 1
         return nextToken
     }
 
     /// What the binding `token` needs now.
-    func state(_ token: UInt64, wantsToPlay: Bool, showsVideo: Bool) {
+    package func state(_ token: UInt64, wantsToPlay: Bool, showsVideo: Bool) {
         if wantsToPlay { playing.insert(token) } else { playing.remove(token) }
         if showsVideo { showingVideo.insert(token) } else { showingVideo.remove(token) }
         reconcile()
     }
 
     /// The binding `token` is gone and needs nothing.
-    func withdraw(_ token: UInt64) {
+    package func withdraw(_ token: UInt64) {
         state(token, wantsToPlay: false, showsVideo: false)
     }
 

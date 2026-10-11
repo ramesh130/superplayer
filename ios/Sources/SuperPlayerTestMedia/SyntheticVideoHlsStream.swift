@@ -289,13 +289,48 @@ public enum SyntheticVideoHlsStream {
     /// `lengthSizeMinusOne + 1` bytes; four here, as `avcC` declares.
     private static func samples(ofSegment index: Int) -> [[UInt8]] {
         (0..<framesPerSegment).map { frame in
-            let unit =
-                frame == 0 ? idrSlice(segment: index) : skippedSlice(frameNum: frame)
-            var writer = ByteWriter()
-            writer.u32(UInt32(unit.count))
-            writer.append(unit)
-            return writer.bytes
+            elementaryFrame(index * framesPerSegment + frame).sample
         }
+    }
+
+    /// Frame `index` of the stream's video, counted from the first frame of segment 0, as the
+    /// length-prefixed sample a segment carries, and whether it is the IDR opening its segment.
+    ///
+    /// The same bitstream without its container, for a realtime test (#431): a transport hands
+    /// over codec bitstream and nothing else (ADR-0018 rule 3), and this is that bitstream —
+    /// four-byte lengths, as ``avcDecoderConfigurationRecord()`` declares, which is CoreMedia's own
+    /// framing and the `avc1` half of ADR-0018 rule 4.
+    public static func elementaryFrame(_ index: Int) -> (sample: [UInt8], isKeyFrame: Bool) {
+        let frame = index % framesPerSegment
+        let unit =
+            frame == 0
+            ? idrSlice(segment: index / framesPerSegment) : skippedSlice(frameNum: frame)
+        var writer = ByteWriter()
+        writer.u32(UInt32(unit.count))
+        writer.append(unit)
+        return (writer.bytes, frame == 0)
+    }
+
+    /// The stream's `AVCDecoderConfigurationRecord` — the body of the `avcC` box its sample entry
+    /// carries, and what a realtime transport hands over as an `avc1` track's record (#431).
+    ///
+    /// spec: ISO/IEC 14496-15 §5.3.3.1.
+    public static func avcDecoderConfigurationRecord() -> [UInt8] {
+        let sps = networkAbstractionLayerUnit(
+            type: 7, referenceIdc: 3, payload: sequenceParameterSet())
+        let pps = networkAbstractionLayerUnit(
+            type: 8, referenceIdc: 3, payload: pictureParameterSet())
+        var record = ByteWriter()
+        record.u8(1)  // configurationVersion
+        record.append(Array(sps[1...3]))  // profile, compatibility, level, from the SPS
+        record.u8(0xFC | 3)  // reserved, lengthSizeMinusOne: four-byte lengths
+        record.u8(0xE0 | 1)  // reserved, numOfSequenceParameterSets
+        record.u16(UInt16(sps.count))
+        record.append(sps)
+        record.u8(1)  // numOfPictureParameterSets
+        record.u16(UInt16(pps.count))
+        record.append(pps)
+        return record.bytes
     }
 
     // MARK: - Fragmented MP4
@@ -545,11 +580,7 @@ public enum SyntheticVideoHlsStream {
     /// with the `avcC` decoder configuration record (§5.3.3.1) carrying the parameter sets — so
     /// `avc1` and not `avc3`, and every sample carries slices alone.
     private static func visualSampleEntry() -> [UInt8] {
-        let sps = networkAbstractionLayerUnit(
-            type: 7, referenceIdc: 3, payload: sequenceParameterSet())
-        let pps = networkAbstractionLayerUnit(
-            type: 8, referenceIdc: 3, payload: pictureParameterSet())
-        return box("avc1") { entry in
+        box("avc1") { entry in
             entry.zeros(6)  // reserved
             entry.u16(1)  // data_reference_index
             entry.zeros(16)  // pre_defined, reserved, pre_defined[3]
@@ -562,18 +593,7 @@ public enum SyntheticVideoHlsStream {
             entry.zeros(32)  // compressorname: empty
             entry.u16(0x0018)  // depth: colour, no alpha
             entry.u16(0xFFFF)  // pre_defined: -1
-            entry.append(
-                box("avcC") { record in
-                    record.u8(1)  // configurationVersion
-                    record.append(Array(sps[1...3]))  // profile, compatibility, level, from the SPS
-                    record.u8(0xFC | 3)  // reserved, lengthSizeMinusOne: four-byte lengths
-                    record.u8(0xE0 | 1)  // reserved, numOfSequenceParameterSets
-                    record.u16(UInt16(sps.count))
-                    record.append(sps)
-                    record.u8(1)  // numOfPictureParameterSets
-                    record.u16(UInt16(pps.count))
-                    record.append(pps)
-                })
+            entry.append(box("avcC") { $0.append(avcDecoderConfigurationRecord()) })
         }
     }
 

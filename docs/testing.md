@@ -374,6 +374,46 @@ through `verifyAll` in both branches, so the implementation an adopter reads is 
 defines. That test also holds the suite's list of codec families to `RealtimeFormats`' table, which is
 written down twice because the table is `internal` to a phase 13 module and the suite is phase 2's.
 
+### A realtime transport on iOS
+
+On Apple platforms a realtime stream has a player of its own, `SuperPlayerRealtime`'s `RealtimePlayer`
+(ADR-0020 rule 11, #431), and **the simulator decodes what it is pushed**: the player wraps each frame
+in a `CMSampleBuffer` and enqueues it to an `AVSampleBufferDisplayLayer` under an
+`AVSampleBufferRenderSynchronizer`, and those decode it. So where Android's fake carries H.264 of the
+right shape and no picture, the iOS fake, `ScriptedFrameSource` in `SuperPlayerRealtimeTests`, carries
+`SyntheticVideoHlsStream`'s hand-written bitstream without its container — an `avc1` track with that
+stream's `avcC` and four-byte length-prefixed samples, CoreMedia's own framing — at thirty frames a
+second in real time, on an epoch two hours in so a missing subtraction would hold every frame two hours
+ahead of the clock. `RealtimePlayerTests` reads "rendering" three ways: the synchronizer's clock
+advancing, the layer's renderer `rendering` with no error, and **no decode failure** — the renderer's
+own `didFailToDecodeNotification` — on a stream whose control, the same framing with noise for slices,
+fails frame by frame. That control is what shows the layer decodes rather than ignores, and it is why
+the synthetic stream is used rather than #340's bytes, which have no slice in them. The simulator
+decodes with no window but composites nothing offscreen, so `copyDisplayedPixelBuffer()` answers nil
+with or without one and the picture itself is not read. **A synchronizer with only a video renderer
+advances in an `xctest` host**, where #405 found a video-only `AVPlayerItem` never does.
+
+#340's observed bytes are committed once, under `ios/Tests/Fixtures/realtime/observed-bytes.tsv`, and
+**both platforms read that file**: `superplayer-realtime`'s `ObservedBytes` and the Swift tests' twin.
+Nothing generates them, so unlike the synthetic corpus above there is no update task: the file is edited
+by hand, each row says whether it was observed or synthesized, and the Kotlin build declares it an input
+of every test task so an edit re-runs what reads it. On iOS they are the format table's fixtures — an
+observed `avcC` passes into a format description's atom byte for byte — while #432's in-band conversion
+is where they are read as parameter sets.
+
+What is **not** covered yet, and whose it is: in-band parameter sets converted and the record's NAL
+length size read (#432), more than one track and the bounds on a late or stalled one (#432), the
+conformance suite (#433), Picture in Picture from the realtime layer — which ADR-0022 rule 5 says
+the layer makes possible and for which no playback delegate answers a live, unseekable timeline yet —
+and audio actually played through an `AVSampleBufferAudioRenderer` — the
+tracer describes AAC and Opus tracks and no test enqueues one. A `RealtimePlayer` is measured by no
+telemetry collector and published by no `PlaybackSession`, both of which take a `SuperPlayer` today,
+and its lifecycle is the shared audio session and idle timer count without `LifecycleBinding`'s
+interruption and route-change rules, which are an `AVPlayer`'s; the synchronizer stops itself for an
+interruption. #461 owns telemetry, sessions, those rules and Picture in Picture. ADR-0020 rule 11's other half — a realtime source handed to a `SuperPlayer` refused typed
+— waits for an error surface on that facade (the rule's #431 addendum). What a device alone shows is a
+real transport's frames on a screen, which is #438's.
+
 ### The MoQ bindings
 
 `superplayer-moq` links a native library, and everything unusual about testing it follows from where
@@ -855,6 +895,14 @@ see a request.
   **What a pooled player costs and how many decoders a device sustains are a device's** — the
   per-player budget and the ceiling are argued, not measured, and i10 (#439) measures both on the
   device matrix.
+- **A realtime player's engine is read where no public reading exists** (#431).
+  `SuperPlayerRealtimeTests` imports the realtime product `@testable`, each file arguing it:
+  `RealtimeFormatsTests`, because the codec table answers CoreMedia vocabulary and is internal, as
+  the Kotlin table is; and `RealtimePlayerTests`, for the display layer's renderer — its decode-failure
+  notification and its error, the only reading of a decode the simulator gives — and for the
+  presentation time the first frame was stamped with, which is what shows the first timestamp was
+  subtracted. Everything else there is the public `RealtimePlayer`: its clock, `isRendering`,
+  `failure` and the typed refusals. *A realtime transport on iOS* above says what the fake is.
 
 What it cannot show is what real time cannot: a test here is evidence that something happened and in
 what order, never that it happened sooner, and a device is still the only place a FairPlay key, a
@@ -1043,12 +1091,18 @@ classify an unfinished session are the ones ADR-0021 rule 4's #412 addendum admi
 because the iOS facade adds nothing between `AVPlayer` and the corpus yet, so there is no typed
 failure to record. Every entry plays at once, from an origin of its own, inside one forty-second
 budget, so the table costs one budget rather than nineteen; it read the same on consecutive runs
-before it was committed. The table is a Swift literal edited **by hand**, as the Kotlin record is: a
-moved row fails with the whole observation printed as that literal, and the change that moves it
-writes the reason beside the row. Two rows differ from Android's, and both are findings rather than
-gaps: `hls-dangling-audio-group`, which Media3 plays, fails in AVFoundation; and
-`hls-cached-live-playlist` stalls at the live edge with no error inside the budget, where core names
-the cache.
+before it was committed, and one row has since been shown to depend on the host's clock (#459): a
+live entry is judged against the wall clock, so `hls-cached-live-playlist` stalls at the live edge on
+a fast host, or rejoins the unchanged window later on the live timeline and replays it — a position
+past the media, read as degraded — if it waits long enough, and fails with -12889 or never starts on
+a host whose responses arrive a target duration late. That row accepts the four, listed in
+`timingDependent` with each mechanism traced, and any other outcome still fails. The table is a
+Swift literal edited **by hand**, as the Kotlin record is: a moved row fails with the whole
+observation printed as that literal, and the change that moves it writes the reason beside the row.
+Two rows differ from Android's, and both are findings rather than gaps: `hls-dangling-audio-group`,
+which Media3 plays, fails in AVFoundation; and `hls-cached-live-playlist` freezes with no error it
+fails with, where core names the cache — its error log carries -12888, the playlist unchanged, which
+nothing surfaces.
 
 ## The layers above the fakes
 

@@ -35,9 +35,10 @@ import XCTest
 /// `HostileObservation.OBSERVATION_MS`, for its reason: twice the longest on-demand entry. Played
 /// together because one after another would be nineteen budgets rather than one; the outcomes are
 /// coarse enough — failed with which error, ended, still playing, stalled, never started — that a
-/// loaded host moves none of them, and a run of the table twice in a row is how that was checked.
-/// No duration is asserted; the budget and ``readyWindow`` classify an unfinished session, which
-/// ADR-0021 rule 4's #412 addendum admits and argues.
+/// loaded host moves none of them but one, the live entry ``timingDependent`` names with its
+/// mechanisms. No duration is asserted; the budget and ``readyWindow`` classify an unfinished
+/// session, which ADR-0021 rule 4's #412 addendum admits and argues, and its #459 addendum records
+/// the one row the host's clock decides.
 ///
 /// **How the table is regenerated: by hand, deliberately.** A row that moves fails the test with
 /// the whole observed table printed as the Swift literal ``recorded`` is, ready to paste; there is
@@ -126,9 +127,10 @@ final class HostileManifestCorpusTests: XCTestCase {
         "hls-inconsistent-segment-durations (severe)": .playsToEnd,
         "hls-discontinuity-without-timeline (severe)": .playsToEnd,
         // The frozen live stream, reproduced: the playlist never changes, the player plays to the
-        // live edge and waits there for the rest of the budget with no error it reports. Android's
-        // row reads `FAILS_TYPED`, because core names the cache; a stock AVPlayer names nothing,
-        // within the budget at least.
+        // live edge and waits there with no error it fails with — its error log carries -12888, the
+        // playlist unchanged, which nothing surfaces. Android's row reads `FAILS_TYPED`, because core
+        // names the cache; a stock AVPlayer names nothing, within the budget at least. What a fast
+        // host reads by the budget's end; ``timingDependent`` lists the others, and why.
         "hls-cached-live-playlist (severe)": .stalls,
         // The delivery entries play through for the Kotlin record's reason: nothing here refuses an
         // unsigned or expired URI, and no native player reads a CORS header. What they carry is the
@@ -140,11 +142,45 @@ final class HostileManifestCorpusTests: XCTestCase {
         "hls-cors-refuses-credentials (severe)": .playsToEnd,
     ]
 
+    /// The rows whose outcome is decided by when things happen on the host's clock rather than by
+    /// the entry, each with every outcome it has been seen to read — its ``recorded`` one among them — and why. Not a tolerance to widen
+    /// when a row flakes: a row belongs here only with the mechanism that makes it host-dependent
+    /// shown, and an outcome outside its set still fails.
+    ///
+    /// The frozen live playlist is the one row, and #459 traced each of its four readings.
+    /// AVFoundation judges a live stream against the wall clock — its playlist reloads, its segment
+    /// timeouts and its live timeline run on time, not on bytes — so where the budget's end finds
+    /// this entry depends on how fast the host served it and on when the player gives up waiting:
+    ///
+    /// - **Stalls**: joined three target durations back, played to the live edge at 8 s, and waited.
+    /// - **Degrades**: waited at the edge long enough — some seventeen seconds in the run traced —
+    ///   that the player joined again where the live timeline had reached and replayed the same
+    ///   unchanged window there, at 23 s to 31 s, which the observation reads as a position outside
+    ///   the 8 s of media served. The freeze becoming a loop is the same defect, later.
+    /// - **Never starts** and **-12889**, no segment in time: the corpus plays nineteen players at
+    ///   once, and on a host slow enough that this entry's responses arrive a target duration late
+    ///   the player never reaches the edge; it waits at position zero and fails, inside the budget
+    ///   when only the segments are late and past it when everything is. Both were forced with
+    ///   ``FaultScript/Builder/addLatencyMs(_:kind:index:firstAttempts:host:)`` on this entry, and
+    ///   CI's macOS runner read the second.
+    ///
+    /// Any other outcome — playing on, ending, or failing with any other error — is a change in what
+    /// AVFoundation does with a frozen playlist, and fails.
+    static let timingDependent: [String: Set<Outcome>] = [
+        "hls-cached-live-playlist (severe)": [
+            .stalls, .degrades, .neverStarts, .fails("CoreMediaErrorDomain -12889"),
+        ]
+    ]
+
     func testEveryGradedEntryIsPlayedAndItsBehaviourRecorded() async throws {
         let corpus = HostileManifests.graded(nowEpochSeconds: now)
         let observed = try await observe(corpus)
 
-        if observed != Self.recorded {
+        let moved = observed.filter { key, outcome in
+            outcome != Self.recorded[key]
+                && !(Self.timingDependent[key]?.contains(outcome) ?? false)
+        }
+        if !moved.isEmpty || observed.count != Self.recorded.count {
             XCTFail(
                 "A stock AVPlayer no longer does what the record says. Observed, as the literal:\n"
                     + Self.literal(observed, in: corpus))
@@ -159,6 +195,12 @@ final class HostileManifestCorpusTests: XCTestCase {
 
         XCTAssertEqual(entries.filter { !rows.contains($0) }, [], "entries with no recorded row")
         XCTAssertEqual(rows.subtracting(entries).sorted(), [], "rows naming no entry")
+        for (row, outcomes) in Self.timingDependent {
+            XCTAssertTrue(rows.contains(row), "\(row) is host-dependent but has no recorded row")
+            XCTAssertTrue(
+                Self.recorded[row].map(outcomes.contains) ?? false,
+                "\(row)'s accepted outcomes leave out the one recorded")
+        }
     }
 
     func testTheBudgetFitsEveryEntryTwice() {

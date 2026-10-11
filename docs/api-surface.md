@@ -189,6 +189,12 @@ arguments, and the marker conformances (`Copyable`, `Escapable`, `SendableMetaty
 Swift infers on every type — so a baseline recorded under one Xcode would fail under another for
 nothing an adopter can see. Sorting is for the same reason: the order is the digester's.
 
+**A `package` declaration is left out.** The digester dumps it beside the public ones, marked
+`isInternal`, and the reduction drops it: a `package` seam is what another product of this package
+reaches (`ios/CLAUDE.md`, *Dependencies point inward*), the Swift analog of a Kotlin friend's
+`internal`, which the Android `.api` files do not track either, and no adopter can name one. The
+first were #402's `LifecyclePlatform`, `SharedLifecycle` and `SuperPlayer.init(configuration:lifecycle:)`.
+
 What the reduction cannot promise is that two Xcode versions print a *type* the same way, since a
 printed name is the compiler's. CI pins its Xcode (`.github/workflows/ci.yml`), and a baseline diff
 that appears only under a newer local Xcode is that, to be read as such before it is committed.

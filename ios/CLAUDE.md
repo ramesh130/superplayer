@@ -124,6 +124,19 @@ register, none without it — `ResiliencePaysNothingTests`) and delivers a `Supe
 `player.classify(_:)` the answer `QoeCollector` reads `classification` from. The same publisher
 carries core's `UnplayableSourceSchemeError`, refusing on every player a source whose scheme
 `AVPlayer` cannot load and naming `RealtimePlayer` (ADR-0020 rule 11's #419 addendum).
+#420 put the rungs above the typed error on the same seam, and `FailureClassifying` now makes one
+`PlayerStateRungs` per player (`PlayerStateRungs.swift`, the Kotlin `PlayerStateLadder`).
+`SuperPlayerResilience`'s `PlayerStateLadder` decides and core performs, asking only once its own
+half holds. There are three repairs, all re-adoptions that are not an adopt, with the same identity,
+the same measurement session and the position held. The credential repair goes first:
+`Resilience.standard(headers:)` takes a `HeaderProvider`, asked once per refused request on a 401
+or 403, whose headers ride every later asset through `AVURLAssetHTTPHeaderFieldsKey`, an option the
+SDK does not declare. It costs every playlist again. Rung 4 is the next of `MediaRequest.sources`.
+Rung 5 is the item rebuilt on the kept `AVPlayer` after `mediaServicesWereResetNotification`, at
+most `SuperPlayer.maxDecoderRecreations` (two) times at one position. A repaired failure reaches no
+consumer, and telemetry hears it through `TelemetryCollector.contentReopened(after:)`. A re-adoption
+resumes at the rate the viewer last asked for (`resilienceRateChanged`), because a failed item drops
+the rate to zero with no reason given. The new asset changes the CMCD `sid` and not the session.
 `SuperPlayerMoQ` is not declared yet — its binary target is
 i9's — and there is no `SuperPlayerCache`, since its content is the offline store's.
 

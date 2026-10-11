@@ -57,11 +57,21 @@ final class ResiliencePaysNothingTests: XCTestCase {
     }
 
     private func resilienceObservations(_ player: SuperPlayer) -> [ObservedSignal: Int] {
-        player.liveObservations.filter { $0.key.scope == .resilienceItem }
+        player.liveObservations.filter {
+            [.resilienceItem, .resiliencePlayer].contains($0.key.scope)
+        }
     }
 
+    /// The item's two failure signals and the player's two (#420), each once.
     private var eachOnce: [ObservedSignal: Int] {
-        [.resilienceItemStatus: 1, .resilienceItemFailedToPlayToEnd: 1]
+        thePlayersOnce.merging([.resilienceItemStatus: 1, .resilienceItemFailedToPlayToEnd: 1]) {
+            $1
+        }
+    }
+
+    /// The media services reset and the requested rate: the player's for its whole life.
+    private var thePlayersOnce: [ObservedSignal: Int] {
+        [.resilienceMediaServicesReset: 1, .resilienceRateChanged: 1]
     }
 
     func testAPlayerWithoutResilienceObservesAndClassifiesNothing() {
@@ -99,8 +109,9 @@ final class ResiliencePaysNothingTests: XCTestCase {
         player.setMediaURL(nowhere)
         XCTAssertEqual(resilienceObservations(player), eachOnce)
 
+        // The item's go with the item; the player's are the player's for life.
         player.resetForReuse()
-        XCTAssertEqual(resilienceObservations(player), [:])
+        XCTAssertEqual(resilienceObservations(player), thePlayersOnce)
 
         player.setMediaURL(nowhere)
         player.release()
@@ -108,17 +119,26 @@ final class ResiliencePaysNothingTests: XCTestCase {
     }
 }
 
-/// A hand-written resilience that names every failure the same, so what is read is the seam.
+/// A hand-written resilience that names every failure the same and takes on no rung, so what is
+/// read is the seam.
 private struct StandInResilience: FailureClassifying {
-    func typedError(
-        for error: NSError, loggedFailure: AVPlayerItemErrorLogEvent?, playlistURL: URL?,
-        positionMs: Int64?
-    ) -> SuperPlayerError {
+    func playerStateRungs() -> any PlayerStateRungs { StandInLadder() }
+}
+
+@MainActor
+private final class StandInLadder: PlayerStateRungs {
+    let requestHeaders: [String: String] = [:]
+    func refusesCredential(_ evidence: FailureEvidence) -> Bool { false }
+    func refreshCredential(_ evidence: FailureEvidence) async -> Bool { false }
+    func opensNextSource(_ evidence: FailureEvidence) -> Bool { false }
+    func recreatesPlayer(_ evidence: FailureEvidence) -> Bool { false }
+    func typedError(for evidence: FailureEvidence, positionMs: Int64?) -> SuperPlayerError {
         SuperPlayerError(
             causeClass: "StandIn.Failure", userMessageKey: "stand_in", isRetryable: false,
             category: .unknown, lowerSecurityLevelMayHelp: false, rungsTried: [],
-            positionMs: positionMs, underlyingError: error)
+            positionMs: positionMs, underlyingError: evidence.error)
     }
+    func forgetClimb() {}
 }
 
 /// A consumer's own conformance to the public marker, which core has nothing to ask.

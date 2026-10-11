@@ -150,6 +150,18 @@ them under `Added` would be worse than stating them here:
   `SuperPlayer` now refuses a source whose scheme is not `http`, `https` or `file` with
   `UnplayableSourceSchemeError` on `errors`, leaving the player as it was, where it used to fail the
   item as an unplayable URL. No Android behaviour moved.
+- **iOS rungs 4 and 5 and the credential repair (#420).** `SuperPlayerResilience` gains
+  `HeaderProvider` and `CredentialRefusal`, and `Resilience.standard()` becomes
+  `standard(headers:)`, its argument defaulted. A player configured with resilience now repairs
+  three failures before rung 6, each by re-adopting the content at the position held with the same
+  identity and measurement session. A 401 or 403 is re-adopted with what the provider returns, once
+  per refused request, at the cost of fetching every playlist again. A failure the class lets climb
+  opens the next of `MediaRequest.sources`. A media services reset rebuilds the item, at most twice
+  at one position. A repaired failure is not delivered on `errors`. `SuperPlayerCore`'s
+  `TelemetryCollector` gains `contentReopened(after:)`, which has a default that does nothing so a
+  consumer's collector still compiles, and `QoeCollector` follows the new item with it.
+  `schemaVersion` stays 2. On the wire the CMCD `sid` changes at a repair. No Android behaviour
+  moved.
 - **Phase 9 — Diagnostics and docs.** `MediaSourceDoctor`, which names twenty pathologies over the
   chain a player would load through; the postmortem reading; `SessionBundle`; the debug HUD; and
   the documents in `docs/`.

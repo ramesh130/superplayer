@@ -31,8 +31,9 @@ import Network
 /// (ADR-0022 rule 9). `PolicyPaysNothingTests` counts the ``Scope/reapplicationPlayer`` and
 /// ``Scope/reapplicationItem`` signals: none on a player under its profile's static policy, each once
 /// on a player given a policy of its own (ADR-0009 rule 7, `DecisionReapplication.swift`).
-/// `ResiliencePaysNothingTests` counts the ``Scope/resilienceItem`` signals the
-/// same way: once each on a player configured with resilience, and on no other (ADR-0011 rule 14).
+/// `ResiliencePaysNothingTests` counts the ``Scope/resilienceItem`` and ``Scope/resiliencePlayer``
+/// signals the same way: once each on a player configured with resilience, and on no other (ADR-0011
+/// rule 14).
 ///
 /// The ``Scope/player`` signals are the lifecycle's (`LifecycleBinding.swift`, #402), registered on
 /// every player as it is made and for its whole life. ADR-0006 rule 1 makes the lifecycle
@@ -70,6 +71,19 @@ enum ObservedSignal: CaseIterable, Hashable, Sendable {
     /// beside ``resilienceItemStatus`` because AVFoundation promises the error here and not that the
     /// status moves first. One typed error per item either way (`SuperPlayer.itemFailed`).
     case resilienceItemFailedToPlayToEnd
+
+    /// The system reset the media services beneath every player, on a player configured with
+    /// resilience: the decoders and outputs it held are gone, and rung 5 is the remedy (#420,
+    /// `PlayerStateRungs.swift`). Registered on the player for its life, because a reset is not an
+    /// item's, and on no other player, which is ADR-0011 rule 14's count.
+    case resilienceMediaServicesReset
+
+    /// The rate the player was asked for changed, on a player configured with resilience: a change
+    /// whose reason is `setRateCalled` is the viewer's — or the app's — and is the rate a rung's
+    /// re-adoption resumes at, because a failed item drops the rate to zero with no reason (observed,
+    /// #420) and a rescued viewing that came back paused would not be rescued. A registration of its
+    /// own beside ``playerRateChanged`` for ``decisionRateChanged``'s reason: a different scope.
+    case resilienceRateChanged
 
     /// The audio session was interrupted, or the interruption ended — a phone call, an alarm,
     /// another app's session that does not mix. The Android audio focus's transient loss and its
@@ -129,6 +143,9 @@ enum ObservedSignal: CaseIterable, Hashable, Sendable {
         /// The current item, whatever it carries, on a player configured with resilience — nothing
         /// on any other player, which is ADR-0011 rule 14's count.
         case resilienceItem
+        /// The player and the process's audio session, for the player's whole life, on a player
+        /// configured with resilience — nothing on any other player, for the same count.
+        case resiliencePlayer
     }
 
     var scope: Scope {
@@ -136,6 +153,7 @@ enum ObservedSignal: CaseIterable, Hashable, Sendable {
         case .itemPlayedToEnd, .itemTimeJumped: .identifiedItem
         case .frameOutputItemTimeJumped: .frameOutputItem
         case .resilienceItemStatus, .resilienceItemFailedToPlayToEnd: .resilienceItem
+        case .resilienceMediaServicesReset, .resilienceRateChanged: .resiliencePlayer
         case .audioSessionInterrupted, .audioRouteChanged, .playerRateChanged,
             .playerTimeControlStatus:
             .player
@@ -198,7 +216,7 @@ final class Observation {
             preconditionFailure("\(signal) hands over an error; register it with registerFailure")
         case .audioSessionInterrupted, .audioRouteChanged, .playerRateChanged,
             .playerTimeControlStatus, .decisionNetworkPath, .decisionRateChanged,
-            .decisionTimeControlStatus:
+            .decisionTimeControlStatus, .resilienceMediaServicesReset, .resilienceRateChanged:
             preconditionFailure("\(signal) is registered on a player, not on an item")
         }
         let token = NotificationCenter.default.addObserver(
@@ -248,7 +266,7 @@ final class Observation {
             .audioSessionInterrupted, .audioRouteChanged, .playerRateChanged,
             .playerTimeControlStatus, .decisionNetworkPath, .decisionRateChanged,
             .decisionTimeControlStatus, .decisionItemTimeJumped, .decisionItemDuration,
-            .decisionAccessLogEntry:
+            .decisionAccessLogEntry, .resilienceMediaServicesReset, .resilienceRateChanged:
             preconditionFailure("\(signal) is not a resilience item signal")
         }
     }
@@ -278,7 +296,11 @@ final class Observation {
             (name, object) = (
                 AVAudioSession.routeChangeNotification, AVAudioSession.sharedInstance()
             )
-        case .playerRateChanged, .decisionRateChanged:
+        case .resilienceMediaServicesReset:
+            (name, object) = (
+                AVAudioSession.mediaServicesWereResetNotification, AVAudioSession.sharedInstance()
+            )
+        case .playerRateChanged, .decisionRateChanged, .resilienceRateChanged:
             (name, object) = (AVPlayer.rateDidChangeNotification, player)
         case .playerTimeControlStatus, .decisionTimeControlStatus:
             let observation = player.observe(\.timeControlStatus) { _, _ in

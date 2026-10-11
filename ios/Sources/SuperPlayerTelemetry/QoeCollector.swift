@@ -204,6 +204,27 @@ public final class QoeCollector: TelemetryCollector {
         declaredIntentMonotonicMs = monotonicTimeMs
     }
 
+    public func contentReopened(after failure: SuperPlayerError) {
+        guard let session = openSession, let player, let item = player.avPlayer.currentItem,
+            item !== session.item
+        else { return }
+        // The repaired failure is reported as any failure is (ADR-0011 rule 3), against the item it
+        // happened on, unless that item's own observation already did — it is withheld from the
+        // consumer, not from measurement.
+        if !session.failed { failed(with: failure.underlyingError, classified: failure) }
+        stopObserving()
+        // The same session on the item that replaced the failed one: its first frame, if there was
+        // one, stays the session's, so a later failure is mid-stream, and the replacement's own
+        // failure is a new one to report.
+        session.item = item
+        session.failed = false
+        observations = CollectorObservation.registerAll(
+            on: player.avPlayer, item: item, positionIntervalMs: Self.positionReadingIntervalMs
+        ) { [weak self] event in self?.handle(event) }
+        scheduleSampling()
+        timeControlStatusChanged()
+    }
+
     public func detach() {
         stopObserving()
         player = nil
@@ -364,13 +385,15 @@ public final class QoeCollector: TelemetryCollector {
     /// The item failed — before the first frame a startup failure, after it a mid-stream one: the
     /// split CTA-2066 draws and a viewer experiences. One per session, because a failed item can
     /// report through both its status and its failed-to-play-to-end notification.
-    private func failed(with error: NSError?) {
+    private func failed(with error: NSError?, classified known: SuperPlayerError? = nil) {
         guard let session = openSession, !session.failed else { return }
         session.failed = true
         let now = Self.now()
         // Asked of the player as a consumer would, for `classify`'s reason: this product is not
         // resilience's, and the typed error a consumer was handed and this event are one answer.
-        let classified = error.flatMap { player?.classify($0) }
+        // A failure a rung repaired arrives already classified, because the item it was the
+        // player's answer for is no longer current.
+        let classified = known ?? error.flatMap { player?.classify($0) }
         let failure = Self.playbackFailure(
             error, errorLog: session.item.errorLog(), classified: classified)
         if session.firstFrameAtMs == nil {
@@ -704,8 +727,9 @@ struct PositionReading {
 private final class OpenSession {
     let id: String
     let contentId: String
-    /// The item the session is of: the one core made current before opening it.
-    let item: AVPlayerItem
+    /// The item the session is of: the one core made current before opening it, or the one a rung
+    /// re-adopted the content on since (`contentReopened(after:)`).
+    var item: AVPlayerItem
     let ttffStartMonotonicMs: Int64
     let ttffStartBoundary: TtffStartBoundary
 

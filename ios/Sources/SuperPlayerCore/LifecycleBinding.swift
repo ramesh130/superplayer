@@ -327,7 +327,7 @@ enum LifecycleEvent: Equatable, Sendable {
         case .itemPlayedToEnd, .itemTimeJumped, .frameOutputItemTimeJumped, .resilienceItemStatus,
             .resilienceItemFailedToPlayToEnd, .decisionNetworkPath, .decisionRateChanged,
             .decisionTimeControlStatus, .decisionItemTimeJumped, .decisionItemDuration,
-            .decisionAccessLogEntry:
+            .decisionAccessLogEntry, .resilienceMediaServicesReset, .resilienceRateChanged:
             // An item's signals are never registered on a player, and the policy's are never
             // handed to the lifecycle (``Observation``).
             self = .unreadable

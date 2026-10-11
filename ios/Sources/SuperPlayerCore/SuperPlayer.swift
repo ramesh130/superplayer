@@ -55,6 +55,20 @@ public final class SuperPlayer {
     /// exactly the kind of app a feed of players is.
     nonisolated public static let maxRememberedPositions = 128
 
+    /// How many times rung 5 rebuilds the item at one position before the ladder gives up on it:
+    /// two — the Kotlin `SuperPlayer.MAX_DECODER_RECREATIONS`, for its reasons. The first covers the
+    /// case the rung exists for, the media services reset once and back at once; the second a
+    /// device where that moment had not passed when the first rebuild asked. A third failure at a
+    /// position that has played nothing in between is a decoder that is not coming back, and a
+    /// viewer is better served by rung 6's typed error than by a player rebuilding itself behind a
+    /// spinner. The count starts over wherever playback advanced (``mayRecreatePlayer(at:)``), so it
+    /// bounds futile rebuilds only.
+    ///
+    /// `package` rather than public, for the Kotlin `internal`'s reason — it bounds no promise a
+    /// consumer writes code against — and rather than internal because `SuperPlayerResilience`'s
+    /// tests drive the bound through a real player.
+    nonisolated package static let maxDecoderRecreations = 2
+
     /// What a player is configured with, fixed for its lifetime (ADR-0020 rule 5).
     ///
     /// The Android `SuperPlayer.Builder`, as a value: each builder setter arrives here as a property
@@ -160,7 +174,7 @@ public final class SuperPlayer {
 
     /// The request the current item was made from, if ``setMediaRequest(_:)`` made it — what a
     /// ``PlaybackSnapshot`` names. Cleared at every replacement the facade makes.
-    private(set) var currentRequest: MediaRequest?
+    var currentRequest: MediaRequest?
 
     /// The decision in force: what the policy answered at construction, and on a player whose
     /// policy is consulted again, its latest different answer — the Kotlin `playbackDecision`
@@ -199,17 +213,38 @@ public final class SuperPlayer {
     /// The frame output's display path (`FramePath.swift`), or nil on a player without one running.
     let framePath: FramePath?
 
-    /// What ``Configuration/resilience`` answers a failure with, or nil on a player configured
-    /// without one, or with a value that conforms to ``PlaybackResilience`` alone.
-    private let classifier: (any FailureClassifying)?
+    /// The ladder ``Configuration/resilience`` made for this player (`PlayerStateRungs.swift`), or
+    /// nil on a player configured without one, or with a value that conforms to
+    /// ``PlaybackResilience`` alone.
+    let rungs: (any PlayerStateRungs)?
 
     /// The typed error the current item's failure was classified as, decided once per item so that
     /// ``classify(_:)``, the publisher and the collector are one answer rather than three (the Kotlin
     /// `failureTypedError` memo). Cleared at every replacement.
-    private var decidedFailure: SuperPlayerError?
+    var decidedFailure: SuperPlayerError?
 
-    /// Whether ``errors`` has been handed the current item's failure.
-    private var failureDelivered = false
+    /// Whether the current item's failure has been taken up — climbed for, or handed to ``errors``.
+    var failureDelivered = false
+
+    /// Which of the current request's ``MediaRequest/sources`` is playing: rung 4 moves it on.
+    var sourceIndex = 0
+
+    /// Where rung 5 last rebuilt the item, and how many times at that position — core's half of the
+    /// rung (``mayRecreatePlayer(at:)``).
+    var recreatedAtMs: Int64?
+    var recreations = 0
+
+    /// The position the current item was made to start at, or nil — what the held position is
+    /// while the item reports none of its own (``heldPositionMs(of:)``).
+    var itemStartMs: Int64?
+
+    /// The rate the viewer last asked for, heard on a player configured with resilience: what a
+    /// rung's re-adoption resumes at (``ObservedSignal/resilienceRateChanged``).
+    var requestedRate: Float = 0
+
+    /// The media services reset and the requested rate, registered for the player's whole life on a
+    /// player configured with resilience and on no other (ADR-0011 rule 14).
+    private var resilienceObservations: [Observation] = []
 
     /// What ``errors`` publishes from.
     private let errorSubject = PassthroughSubject<any Error, Never>()
@@ -259,7 +294,7 @@ public final class SuperPlayer {
         self.lifecycle = LifecycleBinding(player: avPlayer, shared: lifecycle)
         playbackDecision.apply(to: avPlayer)
         self.framePath = FramePath.make(configuration: configuration, player: avPlayer)
-        self.classifier = configuration.resilience as? any FailureClassifying
+        self.rungs = (configuration.resilience as? any FailureClassifying)?.playerStateRungs()
         self.collector = configuration.telemetry?()
         self.measurement = collector.map { _ in MeasurementSession() }
         collector?.attach(to: self)
@@ -269,6 +304,20 @@ public final class SuperPlayer {
             self?.decisionChanged(to: decision, on: trigger)
         }
         reapplication?.start(on: avPlayer)
+        if rungs != nil {
+            resilienceObservations = [
+                Observation.register(.resilienceMediaServicesReset, on: avPlayer) {
+                    [weak self] _ in self?.mediaServicesWereReset()
+                },
+                Observation.register(.resilienceRateChanged, on: avPlayer) {
+                    [weak self] userInfo in
+                    let reason = userInfo?[AVPlayer.rateDidChangeReasonKey] as? String
+                    guard let self, reason == AVPlayer.RateDidChangeReason.setRateCalled.rawValue
+                    else { return }
+                    self.requestedRate = self.avPlayer.rate
+                },
+            ]
+        }
     }
 
     /// Makes `decision` the one in force: laid on the player and on the item playing now, in place
@@ -301,9 +350,27 @@ public final class SuperPlayer {
     /// position, and makes it current — what ``setMediaRequest(_:)`` and ``restoreSnapshot(_:)``
     /// share, the second with a position it was handed rather than one it resolved.
     func load(_ request: MediaRequest, startingAtMs startMs: Int64?) {
+        let (item, asset) = makeItem(for: request, source: 0, startingAtMs: startMs)
+        endMeasurement()
+        forgetClimb()
+        replaceCurrentItem(with: item, identified: true)
+        currentRequest = request
+        itemStartMs = startMs
+        beginMeasurement(of: request.contentId, playing: asset)
+    }
+
+    /// The item for `request`'s source at `index`, starting at `startMs` or at the content's own
+    /// default position: what an adoption and a rung's re-adoption (`PlayerStateRungs.swift`) share.
+    func makeItem(for request: MediaRequest, source index: Int, startingAtMs startMs: Int64?)
+        -> (item: AVPlayerItem, asset: AVURLAsset)
+    {
         // A fresh asset per adoption, never a copy: its `httpSessionIdentifier` is this session's
-        // id, on the wire and in telemetry (`CmcdBinding.swift`).
-        let asset = AVURLAsset(url: request.sources[0])
+        // id, on the wire and in telemetry (`CmcdBinding.swift`). Headers only where a refreshed
+        // credential gave some, so every other player builds its assets exactly as before.
+        let headers = rungs?.requestHeaders ?? [:]
+        let asset = AVURLAsset(
+            url: request.sources[index],
+            options: headers.isEmpty ? nil : [assetHTTPHeaderFieldsKey: headers])
         CmcdBinding.apply(cmcdMode, to: asset)
         let item = AVPlayerItem(asset: asset)
         item.externalMetadata = ContentIdentity.metadata(of: request)
@@ -317,10 +384,7 @@ public final class SuperPlayer {
                 to: CMTime(value: startMs, timescale: Self.millisecondsPerSecond),
                 toleranceBefore: .zero, toleranceAfter: .zero, completionHandler: nil)
         }
-        endMeasurement()
-        replaceCurrentItem(with: item, identified: true)
-        currentRequest = request
-        beginMeasurement(of: request.contentId, playing: asset)
+        return (item, asset)
     }
 
     /// Plays `url` with no identity — the Kotlin `setMediaItem` with a bare `MediaItem`, for parity.
@@ -346,6 +410,7 @@ public final class SuperPlayer {
         guard !isReleased, admits(url) else { return }
         rememberPositionOfCurrentContent()
         endMeasurement()
+        forgetClimb()
         replaceCurrentItem(with: AVPlayerItem(url: url), identified: false)
     }
 
@@ -360,6 +425,7 @@ public final class SuperPlayer {
         collector?.detach()
         isReleased = true
         observations = []
+        resilienceObservations = []
         forgetFailure()
         reapplication?.stop()
         lifecycle.release()
@@ -412,6 +478,7 @@ public final class SuperPlayer {
         currentItemEnded = false
         currentRequest = nil
         forgetFailure()
+        forgetClimb()
         avPlayer.replaceCurrentItem(with: nil)
 
         avPlayer.defaultRate = 1
@@ -454,17 +521,18 @@ public final class SuperPlayer {
     var liveObservations: [ObservedSignal: Int] {
         let all =
             observations + lifecycle.observations + (framePath?.observations ?? [])
-            + (reapplication?.observations ?? [])
+            + (reapplication?.observations ?? []) + resilienceObservations
         return all.reduce(into: [:]) { counts, observation in
             counts[observation.signal, default: 0] += 1
         }
     }
 
-    private func replaceCurrentItem(with item: AVPlayerItem, identified: Bool) {
+    func replaceCurrentItem(with item: AVPlayerItem, identified: Bool) {
         observations = []
         currentItemEnded = false
         currentRequest = nil
         forgetFailure()
+        itemStartMs = nil
         playbackDecision.apply(to: item)
         reapplication?.itemChanged(to: item)
         if identified {
@@ -477,7 +545,7 @@ public final class SuperPlayer {
                 },
             ]
         }
-        if classifier != nil {
+        if rungs != nil {
             // On every item, a bare URL's included: a failure is classifiable whatever named it.
             observations += [ObservedSignal.resilienceItemStatus, .resilienceItemFailedToPlayToEnd]
                 .map { signal in
@@ -491,28 +559,24 @@ public final class SuperPlayer {
         avPlayer.replaceCurrentItem(with: item)
     }
 
-    /// Names `item`'s failure and delivers it, once per item — the status and the notification can
-    /// both report one failure — and only while `item` is still the current one, so a late
-    /// notification for content already replaced is not mistaken for the new content's.
+    /// Climbs the ladder for `item`'s failure (`PlayerStateRungs.swift`), once per item — the status
+    /// and the notification can both report one failure — and only while `item` is still the current
+    /// one, so a late notification for content already replaced is not mistaken for the new
+    /// content's. What reaches ``errors`` is rung 6's, and only where no rung below took it on.
     private func itemFailed(_ item: AVPlayerItem, with error: NSError?) {
-        guard item === avPlayer.currentItem, !failureDelivered, let classifier,
+        guard item === avPlayer.currentItem, !failureDelivered, let rungs,
             // The item's own error first, so the classification reads the item's evidence.
             let error = item.error as NSError? ?? error
         else { return }
         failureDelivered = true
-        deliver(decidedFailure ?? decide(error, of: item, classifier))
+        climb(evidence(of: error, on: item), of: item, rungs)
     }
 
-    /// Classifies `error` as `item`'s failure, on the item's own evidence, and keeps the answer as
-    /// the one ``classify(_:)``, ``errors`` and telemetry all give for it.
-    private func decide(
-        _ error: NSError, of item: AVPlayerItem, _ classifier: any FailureClassifying
-    ) -> SuperPlayerError {
-        let typed = classifier.typedError(
-            for: error, loggedFailure: item.errorLog()?.events.last,
-            playlistURL: (item.asset as? AVURLAsset)?.url, positionMs: Self.positionMs(of: item))
-        decidedFailure = typed
-        return typed
+    /// `error` with `item`'s own evidence beside it: its error log's last entry and its asset's URL.
+    private func evidence(of error: NSError, on item: AVPlayerItem) -> FailureEvidence {
+        FailureEvidence(
+            error: error, loggedFailure: item.errorLog()?.events.last,
+            playlistURL: (item.asset as? AVURLAsset)?.url)
     }
 
     /// What `error` was, in SuperPlayer's vocabulary: the ``SuperPlayerError`` it ended — or will
@@ -532,7 +596,7 @@ public final class SuperPlayer {
     /// the same thereafter. Any other error is classified on itself alone, with no evidence of an
     /// item it may not belong to.
     public func classify(_ error: any Error) -> SuperPlayerError? {
-        guard let classifier else { return nil }
+        guard let rungs else { return nil }
         if let typed = error as? SuperPlayerError { return typed }
         let nsError = error as NSError
         if let decidedFailure, decidedFailure.underlyingError.isEqual(nsError) {
@@ -540,15 +604,18 @@ public final class SuperPlayer {
         }
         let item = avPlayer.currentItem
         if let item, item.status == .failed, (item.error as NSError?)?.isEqual(nsError) == true {
-            return decide(nsError, of: item, classifier)
+            let typed = rungs.typedError(
+                for: evidence(of: nsError, on: item), positionMs: heldPositionMs(of: item))
+            decidedFailure = typed
+            return typed
         }
-        return classifier.typedError(
-            for: nsError, loggedFailure: nil, playlistURL: nil,
+        return rungs.typedError(
+            for: FailureEvidence(error: nsError, loggedFailure: nil, playlistURL: nil),
             positionMs: item.flatMap { Self.positionMs(of: $0) })
     }
 
     /// Hands `error` to ``errors`` and leaves it on ``playerError``.
-    private func deliver(_ error: any Error) {
+    func deliver(_ error: any Error) {
         playerError = error
         errorSubject.send(error)
     }
@@ -604,7 +671,7 @@ public final class SuperPlayer {
 
     /// `time` in whole milliseconds, never negative; zero for a time that is not a number, which
     /// is what an item not yet ready reports.
-    private static func milliseconds(_ time: CMTime) -> Int64 {
+    static func milliseconds(_ time: CMTime) -> Int64 {
         guard time.isNumeric else { return 0 }
         return max(0, Int64((time.seconds * Double(millisecondsPerSecond)).rounded()))
     }

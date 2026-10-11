@@ -1143,6 +1143,36 @@ which Media3 plays, fails in AVFoundation; and `hls-cached-live-playlist` freeze
 fails with, where core names the cache — its error log carries -12888, the playlist unchanged, which
 nothing surfaces.
 
+### Rungs 4 and 5 on iOS
+
+#420's three repairs are driven through a real `SuperPlayer` at the loopback origin, in
+`SuperPlayerResilienceTests`, each beside the control that keeps it from being "always repair":
+
+- **Rung 4** (`NextSourcePlaybackTests`): two sources are two origins, so which one served a
+  request is which origin recorded it. The request starts at five seconds, so "at the held
+  position" is the second origin's first segment, never a reading of a clock. The controls are a
+  request with one source, which ends on rung 6 as it always did, and a player without resilience,
+  whose second origin is asked for nothing.
+- **The credential repair** (`CredentialRepairPlaybackTests`): `FaultScript`'s
+  `expireTokenAtSegment(_:refreshable:)` refuses with 403 until a request bears a different
+  `Authorization`. The test counts what the repair costs, the multivariant playlist fetched a second
+  time and carrying the new credential, and that count is also what holds
+  `AVURLAssetHTTPHeaderFieldsKey`, an option no SDK header declares, to reaching the wire. The
+  controls are an expiry no credential lifts, which asks the provider once and ends classified, and
+  a provider that returns what was refused or throws, which declines.
+- **Rung 5** (`MediaServicesResetPlaybackTests`): `AVAudioSession.mediaServicesWereResetNotification`
+  is posted from `AVAudioSession.sharedInstance()`, as `LifecyclePlaybackTests` posts an
+  interruption, with the player paused so the held position is one the test read. Two resets at one
+  position are rebuilt and the third ends on rung 6. The control is playback that advanced, which
+  starts the count over.
+
+**What only a device shows**, and none of it is faked. The post resets nothing on the simulator, so
+what a real reset does to the decoders under an item is unobserved. So is whether the item rebuilt
+on the kept `AVPlayer` is enough, or whether the engine itself must be rebuilt, which would break
+`player.avPlayer` as the escape hatch every view holds. The same goes for `AVError.mediaServicesWereReset`
+failing an item, which the classifier maps to rung 5 but which no test can raise. A real CDN's
+token scheme is the last: the origin's refusal is the one `FaultScript` writes.
+
 ## The layers above the fakes
 
 Both harnesses put their fakes where the *transport* goes — the HTTP stack — and not in place of the

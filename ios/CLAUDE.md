@@ -43,6 +43,15 @@ observation, notifications, the access and error logs and, on 18, `AVMetrics` �
 in its own register, `CollectorSignals.swift`, held as core's is — and
 `player.declarePlaybackIntent()` on core; each event's derivation is the *How derived on iOS*
 column of `docs/telemetry-schema.md`.
+#405 built ADR-0022's frame output: `Configuration.frameOutput` takes a `FrameOutput` — a
+`CVPixelBuffer` and its `CMTime` in, the buffer to show out, called on a queue of the player's —
+and `FramePath.swift` is the whole display path, made only on a player configured with one: an
+`AVPlayerItemVideoOutput` per item, a `CADisplayLink`, and an `AVSampleBufferDisplayLayer` whose
+control timebase is the item's own. `PlayerLayerView` (UIKit) and `PlayerView` (SwiftUI) host that
+layer, or an `AVPlayerLayer` they make for a player without one, and make a Picture in Picture
+content source from either. A player configured for protection has the output off for its lifetime
+and says so in `frameOutputOffReason`; protection is a `package` stub, `Configuration.protection`,
+until #422's `drm` replaces it.
 `SuperPlayerMoQ` is not declared yet — its binary target is
 i9's — and there is no `SuperPlayerCache`, since its content is the offline store's.
 
@@ -95,6 +104,11 @@ origin.responses()                         // how each was answered: status, fau
   `FaultScript.Builder().addDeclaredResponseHeaders(of: entry)`; its fixtures are under
   `ios/Tests/Fixtures/hostile/`, and `HostileManifestCorpusTests` records what a stock `AVPlayer`
   does with each entry (`docs/testing.md`, *The hostile corpus on iOS*).
+- **`.videoHls()` is the one stream with pictures** (#405): `SyntheticVideoHlsStream`'s hand-written
+  H.264 in fragmented MP4, thirty frames a second, with silent AAC beside it so a player with no
+  video output still has a clock (a video-only item never advances in `xctest`). It has no Kotlin
+  twin, and a test playing it on a `SuperPlayer` passes a lifecycle platform that does nothing,
+  because a video item holds the idle timer and `xctest` has no `UIApplication`.
 - **One place a test measures time**: `NetworkShapingTests` holds a shaped transfer to the trace's
   rate as a bound — never faster, exactly, and within a stated slack slower — because #410's
   acceptance asks for a rate; ADR-0021 rule 4's #410 addendum records it. The hostile corpus's

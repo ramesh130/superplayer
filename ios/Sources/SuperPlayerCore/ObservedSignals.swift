@@ -23,9 +23,11 @@ import AVFoundation
 /// for a feature the configuration never named. So every registration goes through one of
 /// ``Observation``'s two `register` functions, which take a case of this enum and nothing else, and
 /// `ObservedSignalRegisterTests` counts the live ones: on a player given no content, each
-/// ``Scope/player`` signal once and nothing else; each case exactly once while a request is
-/// playing, still once after a replacement; and only the ``Scope/player`` signals while an item
-/// from a bare URL is.
+/// ``Scope/player`` signal once and nothing else; each case but the frame output's exactly once
+/// while a request is playing, still once after a replacement; only the ``Scope/player`` signals
+/// while an item from a bare URL is. `FrameOutputPaysNothingTests` counts the
+/// ``Scope/frameOutputItem`` signal: once on a player whose frame output runs, and on no other
+/// (ADR-0022 rule 9).
 ///
 /// The ``Scope/player`` signals are the lifecycle's (`LifecycleBinding.swift`, #402), registered on
 /// every player as it is made and for its whole life. ADR-0006 rule 1 makes the lifecycle
@@ -43,6 +45,13 @@ enum ObservedSignal: CaseIterable, Hashable, Sendable {
     /// because content sought back from its end has not ended: the Kotlin facade's `STATE_ENDED`
     /// is left the same way.
     case itemTimeJumped
+
+    /// The current item's time jumped, on a player whose frame output runs: the sample-buffer layer
+    /// is flushed, so frames enqueued for the old position are not shown at the new one (ADR-0022
+    /// rule 5, `FramePath.swift`). A signal of its own rather than a second registration of
+    /// ``itemTimeJumped``, because it is registered on every item such a player plays — a bare URL's
+    /// included — and nowhere else, which is a different scope and a different count.
+    case frameOutputItemTimeJumped
 
     /// The audio session was interrupted, or the interruption ended — a phone call, an alarm,
     /// another app's session that does not mix. The Android audio focus's transient loss and its
@@ -67,11 +76,15 @@ enum ObservedSignal: CaseIterable, Hashable, Sendable {
         case identifiedItem
         /// The player and the process's audio session, for the player's whole life.
         case player
+        /// The current item, whatever it carries, on a player whose frame output runs — nothing on
+        /// any other player, which is ADR-0022 rule 9's count.
+        case frameOutputItem
     }
 
     var scope: Scope {
         switch self {
         case .itemPlayedToEnd, .itemTimeJumped: .identifiedItem
+        case .frameOutputItemTimeJumped: .frameOutputItem
         case .audioSessionInterrupted, .audioRouteChanged, .playerRateChanged,
             .playerTimeControlStatus:
             .player
@@ -102,8 +115,8 @@ final class Observation {
         self.registration = registration
     }
 
-    /// Registers `handler` for an ``ObservedSignal/Scope/identifiedItem`` `signal` as posted by
-    /// `item`, delivered on the main queue — the facade's actor, so the handler runs in its
+    /// Registers `handler` for an ``ObservedSignal/Scope/identifiedItem`` or
+    /// ``ObservedSignal/Scope/frameOutputItem`` `signal` as posted by `item`, delivered on the main queue — the facade's actor, so the handler runs in its
     /// isolation.
     @MainActor
     static func register(
@@ -113,7 +126,7 @@ final class Observation {
         let name: Notification.Name
         switch signal {
         case .itemPlayedToEnd: name = AVPlayerItem.didPlayToEndTimeNotification
-        case .itemTimeJumped: name = AVPlayerItem.timeJumpedNotification
+        case .itemTimeJumped, .frameOutputItemTimeJumped: name = AVPlayerItem.timeJumpedNotification
         case .audioSessionInterrupted, .audioRouteChanged, .playerRateChanged,
             .playerTimeControlStatus:
             preconditionFailure("\(signal) is registered on a player, not on an item")
@@ -160,7 +173,7 @@ final class Observation {
                 }
             }
             return Observation(signal: signal, registration: .keyValue(observation))
-        case .itemPlayedToEnd, .itemTimeJumped:
+        case .itemPlayedToEnd, .itemTimeJumped, .frameOutputItemTimeJumped:
             preconditionFailure("\(signal) is registered on an item, not on a player")
         }
         let token = NotificationCenter.default.addObserver(

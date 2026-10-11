@@ -765,7 +765,7 @@ see a request.
   driven through `player.avPlayer`, since that is where a consumer's transport controls are too, and
   ADR-0021 rule 1's addendum bounds what a test may do there; a start is asserted as the position at
   the first poll that finds the player playing, inside a window argued at
-  `SuperPlayerPlaybackTests.startTolerance` — a position, never a duration. Four core tests import
+  `SuperPlayerPlaybackTests.startTolerance` — a position, never a duration. Six core tests import
   core `@testable`, each arguing it in its own comment: `RememberedPositionsTests`, for the order
   rule a read-is-a-use that no playback can isolate, and `ObservedSignalRegisterTests`, for the
   register's live count, which no public reading can see until the notification it waits for
@@ -777,7 +777,11 @@ see a request.
   `LifecycleRulesTests` (#402), for the lifecycle's reading of each notification and its
   process-wide count of who needs the session and the idle timer, which playback shows one player
   at a time and on audio alone; the count's constructor and its platform protocol are `package`,
-  because `LifecyclePlaybackTests` in testkit's target reaches them too.
+  because `LifecyclePlaybackTests` in testkit's target reaches them too. A fifth,
+  `TelemetryPaysNothingTests` (#408), for the collector and measurement session a player holds,
+  which nothing reports on a player without a collector. A sixth, `FrameOutputPaysNothingTests`
+  (#405), for whether a player holds a display link, which is visible to nothing but the link's
+  target (*A frame output*).
   `ProfileTableTests` reads each profile's knobs off `player.avPlayer`, and `SnapshotPlaybackTests`
   an item's readiness, under rule 1's #401 addendum.
 - **The lifecycle is driven by the platform's own notifications** (#402). `LifecyclePlaybackTests`
@@ -790,9 +794,11 @@ see a request.
   feature, through the `package` initializer `SuperPlayer(configuration:lifecycle:)`. Three things only a device shows,
   and none is faked: that the system honours an activation and interrupts the session for a real
   call; that headphones pulled out post the route change; and the idle timer's video half, because
-  every synthetic stream is audio — `LifecycleRulesTests` holds the rule over a presentation size,
-  and that a video item's is non-zero by the time it plays is AVFoundation's documented behaviour
-  that only a video stream on a device can confirm.
+  every synthetic stream was audio when it was written — `LifecycleRulesTests` holds the rule over a
+  presentation size, and that a video item's is non-zero by the time it plays is AVFoundation's
+  documented behaviour. #405's synthetic video could now show it on the simulator; no test does yet,
+  and `FrameOutputPlaybackTests` plays that video under a platform that does nothing, because an
+  `xctest` host has no `UIApplication` to hold the idle timer on.
 - **The collector's playback tests are in its own target** (#409). `SuperPlayerTelemetryTests`
   depends on the harness, which telemetry may, both being phase 2, as `superplayer-telemetry`'s tests
   drive the Kotlin harness. `QoeCollectorPlaybackTests` asserts the first frame and both of its start
@@ -800,7 +806,8 @@ see a request.
   as counts, flags and an order of readings on the monotonic clock — never a duration. The synthetic
   streams are audio, so **nothing here can show a video track switch, dropped frames, or a first
   frame that is a video frame**; those derivations rest on the schema document's citations until a
-  video fixture or a device run shows them. `CollectorSignalRegisterTests` is the collector's own
+  video fixture or a device run shows them — #405's `.videoHls()` is such a fixture, and no
+  collector test plays it yet. `CollectorSignalRegisterTests` is the collector's own
   observed register, held as core's is: it reads `liveObservations` and `isSampling` through
   `@testable`, the same seam argued the same way. Two more telemetry tests import the product
   `@testable`, each arguing it in its own comment: `QoeCollectorPlaybackTests`, for
@@ -1269,6 +1276,39 @@ shader compiles and what it draws is what the surface shows, and the frames an e
 rule 4's tunneling half and rule 6's realtime half are core's `SuperPlayerFrameOutputSeamTest`, the
 first because it is a selector parameter on content that plays untunneled either way, the second because
 a phase 8 module's tests cannot reach phase 13's.
+
+**On iOS the pipeline is core's own and the simulator runs it** (#405, ADR-0022 rule 5): an
+`AVPlayerItemVideoOutput` on each item, a display link, the consumer's `FrameOutput` on a queue of the
+player's, and an `AVSampleBufferDisplayLayer`. What it needs that nothing else here has is *pictures*:
+every synthetic stream is audio, and Android's described video is a `Format` Media3's fakes synthesize
+without a byte. So `SuperPlayerTestMedia`'s `SyntheticVideoHlsStream` writes real H.264 by hand — an
+IDR whose macroblocks are all `I_PCM`, raw samples needing no encoder, then fifty-nine P pictures
+whose every macroblock is skipped — in fragmented MP4 under an HLS playlist, thirty frames a second
+at 64×64, a few kilobytes a segment, generated rather than committed for *Synthetic media, not
+fixtures*' reasons. A silent AAC track is muxed beside it, because a video-only item in an `xctest`
+host never advances without a video output on it — no layer there is ever in a window — so the
+control, a player with no frame output, could not otherwise play it at all. It has **no Kotlin twin and no committed fixture**, because ADR-0021 rule 6 holds
+two generators to one corpus and there is one generator; `SyntheticVideoDecodingTests` holds it to
+decoding instead, counting every frame an `AVAssetReader` decompresses and reading each segment's grey
+level back off the pixels. `TestContent.videoHls()` serves it. `FrameOutputPlaybackTests` plays it
+with testkit's `PassThroughFrameOutput` — the pass-through ADR-0022 rule 8 keeps out of the library —
+and asserts the frames handed over in presentation order, off the main thread, none twice, each a
+frame of the stream, and at least half of those that played, which is a bound and not a rate
+(ADR-0021 rule 4; the class comment argues the half); that the layer's renderer took them; that
+after a seek back the frames follow the new position; and that a player configured for protected
+content plays to its end with the output never called. Protection is #422's, so the test fills
+`Configuration.protection`, a `package` stub standing where `drm` will. `FrameOutputPaysNothingTests`
+is rule 9's count, in core's own target: no output, link or sample-buffer layer on a player without a
+frame output and an `AVPlayerLayer` in the view, each of them once with a stand-in, none on a protected
+player, and a Picture in Picture content source made from either layer. What only a device shows, and
+#435 is the ticket: that a pass-through drops no frame `AVPlayerLayer` would have shown, that the
+layer presents each frame on time against the item's timebase, that Picture in Picture runs from the
+sample-buffer layer, and that FairPlay content yields no pixel buffer at all (i6). Two things
+the simulator could show and no test does: that the flush on a seek keeps an old frame off the
+screen — what the output is handed follows the new position with or without it, and what the layer
+shows is not readable here, so the flush is held only by its registration being counted — and that
+the layer goes on presenting across an item replacement, when its control timebase moves to the next
+item's.
 
 ## The debug HUD
 

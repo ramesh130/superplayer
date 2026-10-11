@@ -45,8 +45,13 @@ final class ObservedSignalRegisterTests: XCTestCase {
         MediaRequest(contentId: contentId, sources: [nowhere])
     }
 
+    /// Every signal a player configured with nothing but content registers, once: all of the
+    /// register but the frame output's, which `FrameOutputPaysNothingTests` counts on a player that
+    /// has one and on one that does not (ADR-0022 rule 9).
     private var everySignalOnce: [ObservedSignal: Int] {
-        Dictionary(uniqueKeysWithValues: ObservedSignal.allCases.map { ($0, 1) })
+        Dictionary(
+            uniqueKeysWithValues: ObservedSignal.allCases.filter { $0.scope != .frameOutputItem }
+                .map { ($0, 1) })
     }
 
     /// The lifecycle's signals, each once: what every player observes for its whole life (#402).

@@ -810,12 +810,21 @@ see a request.
   debugger is attached, so the format is asserted where it is made. None is `package`, since no later
   product reaches it. The seek test seeks through `player.avPlayer`, a consumer's transport control
   like `play()` and `pause()` and reached where a consumer reaches it (ADR-0021 rule 1's addendum).
+- **CMCD's join is asserted at the origin** (#446). `CmcdPlaybackTests`, in the collector's target
+  because the claim is about every event, compares the `sid` and `X-Playback-Session-Id` each
+  request carried with the `sessionId` the sink was handed — one session, two adoptions of one
+  content, and `.disabled` as the control that sends no `CMCD-*` header. It skips below iOS 18,
+  as `CmcdFindingTests` does. **No runtime here is below 18**, so the branch that sends nothing
+  there is reached in `CmcdConfigurationTests` instead, through `@testable` and an argument the
+  binding takes for exactly that, on a later runtime: what it covers is the absence of a call, and
+  that an iOS 17 device sends no CMCD and still sends the header is the header's documentation,
+  confirmed by no run. Nor can it show `br`, which needs a video ladder the harness does not serve.
 - **A pool's device is stated, as on Android** (#404). `PlayerPool`'s bound is
   `DeviceCapacity.swift`'s reading of `os_proc_available_memory()`, which an `xctest` runner — not an
   app — reads as zero; so a test states the memory left through the pool's `package` initialiser,
   `PlayerPool(configuration:availableMemory:)` — the memory half of what `TestDevice` states — and `PlayerPoolTests` holds the
   bound to stated figures through `DeviceCapacity.concurrentPlayers(availableMemoryBytes:)`. Being
-  `package`, it needs no `@testable`; `PlayerPoolTests`, the fifth core test to import core `@testable`, does so for the
+  `package`, it needs no `@testable`; `PlayerPoolTests` imports core `@testable` for the
   register's count alone, `ObservedSignalRegisterTests`' seam. What a recycled player no longer carries after
   its content really played is `PlayerPoolPlaybackTests`', read through `.resumeFromLastKnown`.
   **What a pooled player costs and how many decoders a device sustains are a device's** — the

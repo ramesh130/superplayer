@@ -1,7 +1,11 @@
 # CMCD on iOS — the spike's finding
 
 **Status:** finding, 2026-10-11 (#413). **Decision: CMCD ports**, through the SDK's own emitter, and
-the schema's `sid` join holds on iOS 18 and tvOS 18 and later. The implementation is #446.
+the schema's `sid` join holds on iOS 18 and tvOS 18 and later. **Implemented** by #446:
+`SuperPlayerCore`'s `CmcdBinding.swift` sets the switch on a fresh asset per adoption and reads the
+telemetry `sessionId` off it, and `CmcdPlaybackTests` asserts the join at the origin. One question
+this document handed #446 stays open: whether `br` appears on a video ladder, since the harness
+still serves audio alone.
 
 [ADR-0020](adr/0020-compose-on-avfoundations-avplayer-and-bring-no-other-engine.md) rule 7 made CMCD
 on Apple platforms conditional on two questions, to be answered against the SDK before a line of CMCD

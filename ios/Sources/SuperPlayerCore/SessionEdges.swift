@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import AVFoundation
+
 /// The measurement session's edges, signalled by core because only core knows which item change
 /// carried a ``MediaRequest`` (ADR-0008 rule 2; the Kotlin facade's `adopt`, `restoreSnapshot`,
 /// `resetForReuse` and `release`).
@@ -32,11 +34,15 @@ extension SuperPlayer {
 
     /// Opens a measurement session for `contentId` and tells the collector. Call after the item is
     /// the player's, so a collector that reads the player on this signal reads the new content.
-    func beginMeasurement(of contentId: String) {
+    ///
+    /// The session's id is *read* off `asset`, the one the facade built for this adoption: its
+    /// `httpSessionIdentifier` is what AVFoundation sends as CMCD's `sid` and as
+    /// `X-Playback-Session-Id`, and cannot be set, so the telemetry id follows it rather than the
+    /// other way round (`CmcdBinding.swift`). Read only past the guard, so a player measuring
+    /// nothing reads nothing.
+    func beginMeasurement(of contentId: String, playing asset: AVURLAsset) {
         guard !isReleased, let collector, measurement != nil else { return }
-        // The one call site #446 changes: the id becomes the new asset's `httpSessionIdentifier`
-        // (`MeasurementSession`'s doc comment).
-        let sessionId = MeasurementSession.newSessionId()
+        let sessionId = CmcdBinding.sessionId(of: asset)
         measurement?.open(contentId: contentId, sessionId: sessionId)
         collector.startSession(contentId: contentId, sessionId: sessionId)
     }

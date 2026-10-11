@@ -9,7 +9,7 @@ Constructor PlaybackFailure.init(category:code:message:classification:) : SuperP
 Constructor PlaybackSnapshot.init(from:) : SuperPlayerCore.PlaybackSnapshot, any Swift.Decoder [throwing]
 Constructor PlayerPool.Configuration.init() : SuperPlayerCore.PlayerPool.Configuration
 Constructor PlayerPool.init(configuration:) : SuperPlayerCore.PlayerPool, SuperPlayerCore.PlayerPool.Configuration
-Constructor PlayerPool.init(configuration:availableMemory:) : SuperPlayerCore.PlayerPool, SuperPlayerCore.PlayerPool.Configuration, SuperPlayerCore.DeviceCapacity.MemoryReader
+Constructor PlayerPool.init(configuration:availableMemory:) : SuperPlayerCore.PlayerPool, SuperPlayerCore.PlayerPool.Configuration, () -> Swift.UInt64
 Constructor SuperPlayer.Configuration.init() : SuperPlayerCore.SuperPlayer.Configuration
 Constructor SuperPlayer.Configuration.init(profile:) : SuperPlayerCore.SuperPlayer.Configuration, SuperPlayerCore.PlaybackProfile
 Constructor SuperPlayer.init(configuration:) : SuperPlayerCore.SuperPlayer, SuperPlayerCore.SuperPlayer.Configuration
@@ -177,13 +177,12 @@ Struct TelemetryEvent.SessionStarted : Equatable, Hashable, Sendable
 Struct TelemetryEvent.StartupFailed : Equatable, Hashable, Sendable
 Struct TelemetryEvent.TrackSwitched : Equatable, Hashable, Sendable
 Struct TelemetryEvent.VideoFramesDropped : Equatable, Hashable, Sendable
-TypeAlias DeviceCapacity.MemoryReader : () -> Swift.UInt64
 TypeAlias PlaybackProfile.AllCases : [SuperPlayerCore.PlaybackProfile]
 Var DecisionTrigger.hashValue : Swift.Int { get }
 Var DeviceCapacity.bytesPerPlayer : Swift.UInt64 [static] { get }
 Var DeviceCapacity.ceiling : Swift.Int [static] { get }
 Var DeviceCapacity.minimum : Swift.Int [static] { get }
-Var DeviceCapacity.processAvailableMemory : SuperPlayerCore.DeviceCapacity.MemoryReader [static] { get }
+Var DeviceCapacity.processAvailableMemory : () -> Swift.UInt64 [static] { get }
 Var FailureCategory.hashValue : Swift.Int { get }
 Var LicenceOutcome.hashValue : Swift.Int { get }
 Var MediaRequest.StartPosition.hashValue : Swift.Int { get }

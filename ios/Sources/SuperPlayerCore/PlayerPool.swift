@@ -111,7 +111,7 @@ public final class PlayerPool {
     /// A pool bounded by what `availableMemory` reports — the seam a test states a device through,
     /// as the Kotlin `PlayerPoolCapacityTest` does with its device statements. `package` because a
     /// consumer has no device to state but the one it runs on.
-    package init(configuration: Configuration, availableMemory: DeviceCapacity.MemoryReader) {
+    package init(configuration: Configuration, availableMemory: @Sendable () -> UInt64) {
         if let requested = configuration.maxSize {
             precondition(
                 requested >= 1, "A pool needs room for at least one player, not \(requested)")

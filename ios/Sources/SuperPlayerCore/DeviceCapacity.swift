@@ -46,13 +46,11 @@ import os
 /// ref: `superplayer-core/src/main/kotlin/com/superplayer/core/DeviceCapacity.kt`
 package enum DeviceCapacity {
 
-    /// Reads the bytes this process may still dirty before the system ends it, or zero where the
-    /// platform will not say. A type of its own so that a test states the device — the pool's
-    /// `package` initialiser takes one — and ``processAvailableMemory`` stays the only reader that
-    /// asks the platform.
-    package typealias MemoryReader = @Sendable () -> UInt64
-
-    /// The platform's answer: the process's dirty-memory limit less its footprint, now.
+    /// The platform's answer: the process's dirty-memory limit less its footprint, now. A function
+    /// rather than a value, so a test states the device instead — the pool's `package` initialiser
+    /// takes any `@Sendable () -> UInt64` — and this stays the only reader that asks the platform.
+    /// The closure type is spelled out rather than named by a typealias, because the API digester
+    /// prints an alias differently across Xcode versions and the tracked baseline must read one way.
     ///
     /// Zero is two things in Apple's header — "the calling process is not an app" (an `xctest`
     /// runner is not) and "the calling process exceeds its memory limit" — and
@@ -60,7 +58,7 @@ package enum DeviceCapacity {
     /// both.
     ///
     /// ref: `<os/proc.h>`, `os_proc_available_memory`
-    package static let processAvailableMemory: MemoryReader = {
+    package static let processAvailableMemory: @Sendable () -> UInt64 = {
         UInt64(os_proc_available_memory())
     }
 

@@ -15,6 +15,7 @@
 import AVFoundation
 import SuperPlayerCore
 import SuperPlayerTelemetry
+import SuperPlayerTestMedia
 import SuperPlayerTestkit
 import XCTest
 
@@ -33,6 +34,17 @@ import XCTest
 /// Kotlin test's history is the reason it is one player and not two: two players driven through one
 /// script differ as *players*, which is the benchmark's subject, not this test's.
 ///
+/// ## Why the stream is `.videoHls()` and not the matrix's ladder
+///
+/// The comparison needs video — a bitrate, a rendition choice and a sample are video's in this
+/// schema — and a stall, and nothing else: no particular rung, and no switch. On CI's iOS 26.5
+/// simulator a `SuperPlayer` playing the ladder the matrix plays (`TestContent.videoLadder`) stopped
+/// fetching partway through in every run — after a switch, mid-stall, and before the item was ever
+/// ready — while it plays on 27.1 and a stock `AVPlayer` plays the same ladder on 26.5. That is
+/// #474, an engine finding for the matrix rather than a disagreement between collectors, and this
+/// test does not wait on it: it plays the one video stream every `SuperPlayer` playback test
+/// already plays on CI, one variant, and gets its stall from the link.
+///
 /// ## What is compared on real time
 ///
 /// Everything the collectors derive that is not a reading of a clock: the sequence of event kinds,
@@ -47,7 +59,7 @@ import XCTest
 /// test's for the other) and `SessionStarted`'s profile and decision.
 ///
 /// The control is that the session is not quiet: the script seeks, the link then falls below the
-/// rung for longer than the buffer lasts, so there is a stall, and the rung played is a rendition
+/// stream's bitrate for longer than the buffer lasts, so there is a stall, and the variant played is a rendition
 /// choice; each is asserted to have happened before the two streams are held equal, so the
 /// agreement is not two empty lists.
 @MainActor
@@ -65,6 +77,11 @@ final class StockTelemetryAgreementTests: XCTestCase {
     private static let forwardBufferSeconds: TimeInterval = 4
 
     private let bound: Duration = .seconds(90)
+
+    /// How long a first attempt may take to start before ``session()`` plays it again: well past
+    /// the second or so a start takes here on the fast stretch of the link, and inside it, so the
+    /// second attempt starts while its own link is still fast.
+    private let startBound: Duration = .seconds(8)
 
     func testBothCollectorsDeriveTheSameEventsFromTheSameCallbacks() async throws {
         let (qoe, stock) = try await session()
@@ -137,17 +154,33 @@ final class StockTelemetryAgreementTests: XCTestCase {
     // MARK: - One session, watched twice
 
     /// Plays the scripted session once for the whole class: a stall, a seek, a sample.
+    ///
+    /// **Once more, from nothing, if the first attempt never reaches a first frame** — and only
+    /// then. A `SuperPlayer` on a freshly booted simulator was seen, once on 27.1 and on CI's 26.5,
+    /// to fail its item (`CoreMediaErrorDomain` -12889) or stop fetching before it started: #474,
+    /// an engine question and not this test's. A session that never starts has nothing for two
+    /// collectors to disagree about, so a second session on a new origin and player is the same
+    /// comparison rather than a weaker one; one that started and then went wrong is not retried.
     private func session() async throws -> (qoe: [TelemetryEvent], stock: [TelemetryEvent]) {
         if let played = Self.played { return played }
         if let unplayable = Self.unplayable { throw XCTSkip("Not played: \(unplayable)") }
+        do {
+            return try await attempt(retryingAStartThatNeverCame: true)
+        } catch is NeverStarted {
+            return try await attempt(retryingAStartThatNeverCame: false)
+        }
+    }
+
+    /// A first attempt's start that never came, which ``session()`` plays again.
+    private struct NeverStarted: Error {}
+
+    private func attempt(retryingAStartThatNeverCame retrying: Bool) async throws -> (
+        qoe: [TelemetryEvent], stock: [TelemetryEvent]
+    ) {
         let harness = PlaybackHarness()
         defer { harness.stop() }
         let origin = try await harness.serve(
-            // One rung: the comparison needs a rendition choice, which the initial one is, and not a
-            // switch. A two-rung ladder here was seen on CI's iOS 26.5 simulator to stop fetching
-            // after its switch to the second rung before the first frame, a start that never came;
-            // that is a finding for the matrix to show, not a reason for this test to wait on it.
-            .videoLadder(bitratesBps: [365_000], segmentCount: 30),
+            .videoHls(segmentCount: 30),
             network: try Self.outage())
 
         let qoe = EventRecorder()
@@ -194,6 +227,16 @@ final class StockTelemetryAgreementTests: XCTestCase {
             }
         }
 
+        if retrying {
+            do {
+                try await harness.until("the first frame", timeout: startBound) {
+                    stock.events.contains { $0.kind == "firstFrameRendered" }
+                }
+            } catch is ConditionTimeout {
+                player.release()
+                throw NeverStarted()
+            }
+        }
         try await until("the first frame") {
             stock.events.contains { $0.kind == "firstFrameRendered" }
         }
@@ -232,12 +275,11 @@ final class StockTelemetryAgreementTests: XCTestCase {
 
 extension StockTelemetryAgreementTests {
 
-    /// A link fast enough to start on, then too slow for any rung: 2 Mbit/s for ten seconds, so
-    /// the first frame and the seek come however slow the host, then 150 kbit/s for good — under
-    /// half of what the 365 kbit/s rung needs, so the buffer drains whatever the player chose and it
-    /// has to wait.
+    /// A link fast enough to start on, then too slow for the stream: 2 Mbit/s for ten seconds, so
+    /// the first frame and the seek come however slow the host, then a quarter of the stream's own
+    /// bitrate for good, so the buffer drains and the player has to wait.
     ///
-    /// Two earlier forms are why it is this one. A link cut to nothing stalled on a developer's
+    /// The earlier forms are why it is this one. A link cut to nothing stalled on a developer's
     /// simulator and never on CI's; a link slow from six seconds in was slow before CI's player had
     /// started, and a player that has not started waits rather than stalls, which no collector
     /// reports as a rebuffer. The session also caps the item's forward buffer
@@ -246,10 +288,19 @@ extension StockTelemetryAgreementTests {
     static func outage() throws -> ThroughputTrace {
         try ThroughputTrace.Builder()
             .add(durationMs: 10_000, bandwidthBps: 2_000_000, transport: .wifi)
-            .add(durationMs: 1_000, bandwidthBps: 150_000, transport: .wifi)
+            .add(durationMs: 1_000, bandwidthBps: streamBitrateBps / 4, transport: .wifi)
             .holdAtEnd()
             .build()
     }
+
+    /// What `.videoHls()` costs a second to fetch: one of its media segments, over the two seconds
+    /// it plays for — read off the generator, so the slow stretch is slow for these bytes whatever
+    /// they become.
+    static let streamBitrateBps: Int64 = {
+        let segment = SyntheticVideoHlsStream.files(segmentCount: 2)[
+            SyntheticVideoHlsStream.segmentName(1)]!
+        return Int64(segment.count) * 8 * 1_000 / SyntheticVideoHlsStream.segmentDurationMs
+    }()
 }
 
 extension TelemetryEvent {

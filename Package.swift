@@ -204,7 +204,7 @@ let package = Package(
             name: "SuperPlayerBenchmarkTests",
             dependencies: [
                 "SuperPlayerBenchmark", "SuperPlayerCore", "SuperPlayerTelemetry",
-                "SuperPlayerTestkit",
+                "SuperPlayerTestkit", "SuperPlayerTestMedia",
             ],
             path: "ios/Benchmark/Tests/SuperPlayerBenchmarkTests"
         ),

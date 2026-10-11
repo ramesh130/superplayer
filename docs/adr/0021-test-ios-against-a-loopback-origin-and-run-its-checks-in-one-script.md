@@ -9,7 +9,10 @@
   at rule 1, admitting a pause or resume the lifecycle made, and at rule 5, adding the lifecycle to
   the device list with its one protocol. Amended again (#403) at rule 1, admitting a pause a remote
   command made, and at rule 5, adding the Now Playing session to the device list with its one
-  protocol.
+  protocol. Amended again (#459) at rule 4, recording the one corpus row the host's clock decides
+  and two collector readings held as orders rather than equalities. Amended again (#411) at rule 4,
+  defining the structural reading a golden is compared in — times masked, periodic samples dropped,
+  order kept within each kind.
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
 - **Refines:** [`docs/testing.md`](../testing.md)'s rule — *no device and no network, through the
@@ -179,6 +182,37 @@ rule names the ticket that brings its enforcement, and *What nothing enforces* s
    stood still for most of the budget, and the only unfinished row today has stood still for over
    thirty seconds. The table read the same on consecutive runs before it was committed. These two
    bounds are admitted here by name, and a further one needs an addendum of its own.
+
+   *Addendum (2026-10-11, #459).* Two readings the batch committed as exact were decided by the
+   host's speed, and CI's macOS runner found both; neither is fixed by a wider bound. The corpus row
+   `hls-cached-live-playlist` is a **live** entry, which AVFoundation judges against the wall clock:
+   a fast host plays it to the live edge and stalls there; a player left waiting long enough rejoins
+   the unchanged window later on the live timeline and replays it, past the media served, which reads
+   as degraded; and one whose responses arrive a target duration late never reaches the edge and
+   fails with -12889, inside the budget or past it, where it reads as never starting — #459 traced
+   the second and forced the last two with injected latency, and CI read the fourth. The row
+   therefore accepts those four outcomes, each named with its mechanism in `timingDependent`, and any
+   other still fails; it is the only row so marked, and another needs its mechanism shown the same
+   way. In `QoeCollectorPlaybackTests`, a seek's landing is the collector's reading of
+   `currentTime()` when the main thread handles a notification AVFoundation posts there with no
+   position, so it is now held between the target and where playback had reached — an order of two
+   readings of one media clock — rather than equated to the target; and a live state sample is waited
+   for while playing rather than assumed of the first, which a stream waiting on a segment published
+   in real time can truthfully deny.
+
+   *Addendum (2026-10-11, #411).* What "kinds and order with every time masked" means in practice,
+   decided where the first golden was written. Three readings, each forced by real time rather than
+   chosen. **Masked** is every field whose name ends in `Ms` and the two rates measured on the host's
+   clock, the field names kept. **Dropped** are the periodic samples, because their *count* is the
+   session's length over the cadence — the first golden, written on a simulator that had just booted,
+   carried a sample the next run did not. **Order is kept within each kind**, and the kinds are
+   printed in their rank: AVFoundation reports a trace's facts through independent paths, and which of
+   two delivers first within a few milliseconds is the host's scheduling, while within a kind the
+   order is causal. So a structural diff cannot show a fact that moved relative to one of another
+   kind, which is a further thing it cannot show beside a slower start-up, and `docs/testing.md`'s
+   *Golden traces on iOS* lists both. These are `SessionTrace.structural()`'s, a reading of the
+   grammar, so `FORMAT_VERSION` is unmoved; a golden's mode reaches the test process from
+   `ios/check --update-golden` alone, its only writer.
 
 5. **What needs a device is listed and not faked, and `check` covers the logic around it at one
    package-scoped protocol per feature.** The list: FairPlay key exchange and playback; background

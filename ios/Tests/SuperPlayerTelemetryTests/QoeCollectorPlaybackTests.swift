@@ -20,7 +20,8 @@ import os
 
 // `@testable` for `QoeCollector.now()`, the one clock a time to first frame is a difference on: the
 // test reads it before declaring intent, so the boundary's place is asserted by order on that clock
-// rather than by a duration.
+// rather than by a duration; and for `QoeCollector.milliseconds`, so a position the test reads is
+// converted as the collector's are.
 @testable import SuperPlayerTelemetry
 
 /// What `QoeCollector` derives from a real `AVPlayer` playing from the loopback origin (ADR-0021
@@ -176,16 +177,20 @@ final class QoeCollectorPlaybackTests: XCTestCase {
         let player = measuredPlayer(sink)
 
         try await play("live", from: origin, on: player)
-        try await harness.until("a live latency sample", timeout: bound) {
+        // A sample taken while playing is waited for rather than assumed of the first: a live
+        // stream on a loaded host can be waiting for a segment the origin publishes on real time at
+        // the instant the timer fires, and that sample says so truthfully (#459). A collector that
+        // never reports playing still fails, at the bound.
+        try await harness.until("a latency sample and a playing sample", timeout: bound) {
             !sink.events.compactMap(\.liveLatency).isEmpty
+                && sink.events.compactMap(\.stateSample).contains(where: \.playing)
         }
         player.avPlayer.pause()
         player.release()
         try await waitForSessionEnd(sink)
 
-        let sample = try XCTUnwrap(sink.events.compactMap(\.stateSample).first)
+        let sample = try XCTUnwrap(sink.events.compactMap(\.stateSample).first(where: \.playing))
         XCTAssertEqual(sample.samplingIntervalMs, 10_000)
-        XCTAssertTrue(sample.playing)
         XCTAssertGreaterThan(sample.bufferedDurationMs, 0, "a playing stream has media ahead")
         let latency = try XCTUnwrap(sink.events.compactMap(\.liveLatency).first)
         XCTAssertGreaterThanOrEqual(latency.liveLatencyMs, 0)
@@ -195,6 +200,14 @@ final class QoeCollectorPlaybackTests: XCTestCase {
 
     /// A seek during playback is requested from where playback was and completed at the target,
     /// in that order, once.
+    ///
+    /// Where it landed is a reading and is bounded rather than equated (#459). AVFoundation posts
+    /// the jump on the main thread and names no position, so the collector reads the time when the
+    /// notification is handled: on a main thread that was busy as the time jumped, that is the
+    /// target plus whatever played meanwhile — CI read 5456 and 5580 for a seek to 5000. So the
+    /// landing is held between the target and where playback had reached once the seek completed,
+    /// an order of two readings of one media clock, which a collector reporting where the seek came
+    /// from, or a reading from before the jump, still fails.
     func testASeekIsRequestedAndThenCompletedAtItsTarget() async throws {
         let origin = try await harness.serve(.hls())
         let sink = RecordingSink()
@@ -206,6 +219,9 @@ final class QoeCollectorPlaybackTests: XCTestCase {
         try await harness.until("the seek completes", timeout: bound) {
             !sink.events.compactMap(\.seekCompleted).isEmpty
         }
+        // Read after both events were delivered, with no seek since, and by the collector's own
+        // conversion: no earlier on the media clock than either event's reading.
+        let playedToMs = QoeCollector.milliseconds(player.avPlayer.currentTime())
         try await playToEnd(player)
         player.release()
         try await waitForSessionEnd(sink)
@@ -218,10 +234,14 @@ final class QoeCollectorPlaybackTests: XCTestCase {
         XCTAssertLessThan(
             try XCTUnwrap(kinds.firstIndex(of: "seekRequested")),
             try XCTUnwrap(kinds.firstIndex(of: "seekCompleted")))
-        XCTAssertEqual(requested[0].toPositionMs, 5_000, "an exact seek lands on its target")
+        XCTAssertGreaterThanOrEqual(
+            requested[0].toPositionMs, 5_000, "an exact seek lands on its target, not before it")
+        XCTAssertLessThanOrEqual(
+            requested[0].toPositionMs, playedToMs, "nor past where playback had reached")
         XCTAssertLessThan(
-            requested[0].fromPositionMs, requested[0].toPositionMs, "it came from earlier on")
-        XCTAssertGreaterThanOrEqual(completed[0].toPositionMs, 5_000)
+            requested[0].fromPositionMs, 5_000, "it came from earlier on")
+        XCTAssertGreaterThanOrEqual(completed[0].toPositionMs, requested[0].toPositionMs)
+        XCTAssertLessThanOrEqual(completed[0].toPositionMs, playedToMs)
         XCTAssertGreaterThanOrEqual(completed[0].seekLatencyMs, 0)
         XCTAssertTrue(
             sink.events.compactMap(\.rebufferStarted).allSatisfy(\.seekInduced),

@@ -6,6 +6,8 @@
 #
 #   ios/check                 format, simulator tests, tvOS build, API baselines
 #   ios/check --update-api    the same, rewriting ios/api/<Product>.baseline instead of diffing it
+#   ios/check --update-golden the same, rewriting ios/Tests/Fixtures/golden/*.trace instead of
+#                             comparing them; the only writer of the iOS golden traces
 #
 #   SP_SIMULATOR      the simulator to test on, by name (default superplayer-check); made if absent
 #   SP_DERIVED_DATA   xcodebuild's DerivedData (default .build/DerivedData, gitignored)
@@ -15,13 +17,15 @@
 set -euo pipefail
 
 usage() {
-    sed -n '5,11p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '5,13p' "$0" | sed 's/^# \{0,1\}//' >&2
 }
 
 update_api=false
+update_golden=false
 case "${1:-}" in
     "") ;;
     --update-api) update_api=true ;;
+    --update-golden) update_golden=true ;;
     -h | --help) usage; exit 0 ;;
     *) usage; exit 2 ;;
 esac
@@ -100,6 +104,16 @@ fi
 rm -rf "$results"
 mkdir -p "$results/api"
 
+# The golden traces' mode reaches the test process as SP_UPDATE_GOLDEN: xcodebuild hands a variable
+# named TEST_RUNNER_<NAME> to the test runner as <NAME>. Set either way, so a value left in the
+# caller's environment cannot rewrite a golden behind a plain check (docs/testing.md, *Golden traces
+# on iOS*).
+if $update_golden; then
+    export TEST_RUNNER_SP_UPDATE_GOLDEN=1
+else
+    export TEST_RUNNER_SP_UPDATE_GOLDEN=0
+fi
+
 step "Test: every test target on the iOS simulator"
 if ! xcodebuild test -quiet \
     -scheme "$scheme" \
@@ -119,6 +133,9 @@ read -r result passed < <(
 [ "$passed" -ge ${#products[@]} ] ||
     fail "$passed tests passed, fewer than the ${#products[@]} products"
 echo "$passed tests passed"
+if $update_golden; then
+    echo "rewrote the golden traces under ios/Tests/Fixtures/golden; review and commit the diff"
+fi
 
 # tvOS is built and not tested: a tvOS simulator runtime is not something every host has, and no
 # product holds tvOS-only code until i7 (docs/ios-plan.md §7), which is when a tvOS test run earns

@@ -205,6 +205,16 @@ them under `Added` would be worse than stating them here:
   `isOutputObscuredDueToInsufficientExternalProtection` on a protected player, and by nothing on
   Android, which has no such reading; `schemaVersion` stays 2, a new event being shape. An exhaustive
   `when` over `TelemetryEvent` needs a branch for it. No Android behaviour moved.
+- **Offline FairPlay licences on iOS (#423).** `SuperPlayerDRM` gains `OfflineLicences.store(directory:)`
+  and `OfflineLicenceStore` — one SQLite file through the system `libsqlite3`, inside the directory
+  the consumer named and nowhere else — with `licence(for:)` answering an `OfflineLicence`'s two
+  durations, `isExpired` and `renewalDue` (a day) with no player and no network; `store.over(player)`'s
+  `OfflineLicenceExchange` acquiring, renewing and releasing persistable keys over the player's
+  exchange, a refused release kept in `contentIdsAwaitingRelease()` with its proof of deletion; `Drm.fairPlay(_:licence:)`, which plays from the stored keys with no licence request and
+  reports `SERVED_FROM_OFFLINE_STORE`; and `OfflineLicenceStoreError`. `SuperPlayerCore` gains the
+  `LicenceStore` marker and `OfflineLicenceExpiredError`, which `ErrorClassifier` names
+  `Drm.LicenceExpired`. Unlike Android's, the two durations are stated by the app, because FairPlay
+  reports neither to the client. Additive; `schemaVersion` stays 2.
 - **Phase 9 — Diagnostics and docs.** `MediaSourceDoctor`, which names twenty pathologies over the
   chain a player would load through; the postmortem reading; `SessionBundle`; the debug HUD; and
   the documents in `docs/`.

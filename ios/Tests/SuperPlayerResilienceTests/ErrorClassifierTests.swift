@@ -218,6 +218,23 @@ final class ErrorClassifierTests: XCTestCase {
         XCTAssertEqual(classify(exchange(.keyRequest, under: refused), nil), .drm(.unsupported))
     }
 
+    /// A stored licence refused before playback is the expiry leaf with its own message key — never
+    /// the licence that failed to arrive (#423) — whatever the fields say.
+    func testAnExpiredOfflineLicenceIsLicenceExpired() {
+        let expired = OfflineLicenceExpiredError(
+            contentId: "film", playbackDurationRemainingMs: 0, licenceDurationRemainingMs: 5)
+        XCTAssertEqual(classify(expired as NSError, nil), .drm(.licenceExpired))
+        XCTAssertEqual(
+            FailureClass.drm(.licenceExpired).userMessageKey,
+            FailureClass.licenceExpiredMessageKey)
+        XCTAssertNotEqual(classify(expired as NSError, nil), classify(exchangeRefusal(), nil))
+    }
+
+    private func exchangeRefusal() -> NSError {
+        LicenceExchangeError(stage: .licence, status: 500, attempts: 1, underlyingError: nil)
+            as NSError
+    }
+
     func testTheCauseDecidesOverItsWrapper() {
         let cause = NSError(
             domain: AVFoundationErrorDomain, code: AVError.Code.decoderNotFound.rawValue)

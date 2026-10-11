@@ -87,8 +87,9 @@ public struct LoggedFailure: Sendable, Hashable {
 /// ``FailureClass/Fatal/unsupported``, and two `Drm` leaves from core's ``LicenceExchangeError`` —
 /// the FairPlay exchange `SuperPlayerDRM` makes (#422): ``FailureClass/Drm/licenceAcquisition`` for a
 /// certificate or licence the server did not give, ``FailureClass/Drm/systemError`` for a key request
-/// the device would not compose. ``FailureClass/Drm/licenceExpired`` and
-/// ``FailureClass/Drm/downgradeRefused`` wait on the offline store (i6's) and have no evidence yet;
+/// the device would not compose — and ``FailureClass/Drm/licenceExpired`` from core's
+/// ``OfflineLicenceExpiredError``, a stored licence refused before playback (#423).
+/// ``FailureClass/Drm/downgradeRefused`` has no evidence, FairPlay having no levels to refuse;
 /// ``FailureClass/Drm/provisioning`` and ``FailureClass/Device/secureDecoderInit`` have none on this
 /// platform at all, and the taxonomy's doc comment says why they are declared anyway.
 public enum ErrorClassifier {
@@ -334,6 +335,11 @@ public enum ErrorClassifier {
             case .certificate, .licence: return .drm(.licenceAcquisition)
             case nil: return nil
             }
+        case OfflineLicenceExpiredError.errorDomain:
+            // A stored licence that ran out, refused before any server was asked (#423): the domain
+            // says exactly what happened, as the Kotlin `ERROR_CODE_DRM_LICENSE_EXPIRED` does, so the
+            // fields are not read.
+            return .drm(.licenceExpired)
         case coreMediaErrorDomain:
             switch error.code {
             // A playlist AVFoundation would not parse: the corpus's dangling audio group fails with

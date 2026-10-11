@@ -79,7 +79,11 @@ let package = Package(
         .target(
             name: "SuperPlayerDRM",
             dependencies: ["SuperPlayerCore"],
-            path: "ios/Sources/SuperPlayerDRM"
+            path: "ios/Sources/SuperPlayerDRM",
+            // The offline store's index is SQLite, the system's: the SDK's `SQLite3` module links
+            // it by itself, and naming it here is where a reader of the manifest finds the link
+            // (`OfflineLicenceIndex.swift`). No package dependency.
+            linkerSettings: [.linkedLibrary("sqlite3")]
         ),
         .target(
             name: "SuperPlayerOffline",

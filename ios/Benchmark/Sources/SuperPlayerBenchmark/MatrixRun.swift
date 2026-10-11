@@ -45,6 +45,12 @@ struct MatrixRun {
     /// Where the report and its traces go.
     let output: URL
 
+    /// Runs a cell when nobody says otherwise, and the committed baseline's count: the fewest that
+    /// estimates a spread on more than one degree of freedom, and as many as a cell has built arms,
+    /// so each takes each place in the rotation once. `ios/Benchmark/README.md`, *The run count*,
+    /// argues it against the simulator's real time; `ios/Benchmark/bench` passes the same number.
+    static let defaultRunsPerCell = 3
+
     /// The report's file name: the Android reports' own.
     static let reportFileName = "baseline-report.md"
 

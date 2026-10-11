@@ -314,27 +314,42 @@ enum ReportWriter {
             With no adaptive arm the one instance is `dataSaver`'s static cap — 800 kbit/s and \
             480p — so this is the data-saver row on every cellular profile, \(Arm.candidate.label) \
             against \(Arm.stockDefaults.label), bitrate beside the stalls and the score, each by \
-            the same rule as everywhere else. A bitrate cut with no stall win beside it is a trade \
-            that bought nothing, and reads that way.
+            the same rule as everywhere else — until arm (d) is built, when the section compares \
+            it with the static profile on every scenario, as Android's does. A bitrate cut with no \
+            stall win beside it is a trade that bought nothing, and reads that way.
 
 
             """
         let traded: Set = [Metric.bitrate, Metric.rebufferRatio, Metric.rebufferCount, Metric.qoe]
-        let rows = report.comparisons(against: .stockDefaults)
-            .filter { $0.scenario == .vodDataSaver && MatrixNetwork.cellular.contains($0.network) }
-            .sorted {
-                MatrixNetwork.cellular.firstIndex(of: $0.network)!
-                    < MatrixNetwork.cellular.firstIndex(of: $1.network)!
-            }
-            .flatMap { cell in
-                cell.comparisons.filter { traded.contains($0.metric) }.map { (cell, $0) }
-            }
+        let rows = f1Comparisons(report).flatMap { cell in
+            cell.comparisons.filter { traded.contains($0.metric) }.map { (cell, $0) }
+        }
         if rows.isEmpty {
             out +=
                 "_This run measured no cellular data-saver cell for both arms, so the trade is not shown._\n\n"
         } else {
-            table(rows, reference: .stockDefaults, &out)
+            table(rows, reference: f1Reference, &out)
         }
+    }
+
+    /// Which arm the F1 section compares the candidate against: stock, on the data-saver row, while
+    /// the static cap is the only instance of the trade; and the static profile on every scenario
+    /// once the adaptive arm is built and makes the trade itself — Android's Phase 3 section.
+    private static var f1Reference: Arm {
+        Arm.candidate == .adaptive ? ExitCriterion.reference : .stockDefaults
+    }
+
+    /// The cellular cells the F1 section shows, in ``MatrixNetwork/cellular``'s order.
+    private static func f1Comparisons(_ report: MatrixReport) -> [CellComparison] {
+        report.comparisons(against: f1Reference)
+            .filter {
+                MatrixNetwork.cellular.contains($0.network)
+                    && (Arm.candidate == .adaptive || $0.scenario == .vodDataSaver)
+            }
+            .sorted {
+                MatrixNetwork.cellular.firstIndex(of: $0.network)!
+                    < MatrixNetwork.cellular.firstIndex(of: $1.network)!
+            }
     }
 
     private static func fullTables(_ report: MatrixReport, _ out: inout String) {

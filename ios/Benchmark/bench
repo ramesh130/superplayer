@@ -30,9 +30,9 @@ die() {
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$root"
 
-# Three: the fewest that estimates a cell's spread on more than one degree of freedom, and the
-# number that lets each built arm take each place in a cell's rotation once (MatrixRun.swift). The
-# README's *The run count* is the argument, against the simulator's real time.
+# MatrixRun.defaultRunsPerCell, whose reason is written there and argued in the README's *The run
+# count*: the fewest that estimates a cell's spread on more than one degree of freedom, and the
+# number that lets each built arm take each place in a cell's rotation once.
 runs=3
 out="$root/ios/Benchmark/out"
 cells=""
@@ -91,7 +91,7 @@ fi
 # and no host toolchain reach it. They travel as TEST_RUNNER_ variables, which xcodebuild hands the
 # test process with the prefix taken off (ios/check does the same for the golden traces).
 dirty=0
-if ! git diff --quiet HEAD --; then
+if [ -n "$(git status --porcelain)" ]; then
     dirty=1
     # A warning, not a refusal: running the matrix on work in progress is how it is developed. The
     # report says in prose at its top that such a run is not a baseline.

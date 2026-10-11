@@ -117,8 +117,8 @@ let package = Package(
         // The benchmark (#414): benchmark/'s matrix on the simulator, its sources under
         // ios/Benchmark/. A target and no product — nothing ships it — and in this manifest rather than
         // a package of its own because a SuperPlayer playing video in xctest needs core's `package`
-        // lifecycle seam (ios/Benchmark/README.md). Unscheduled in docs/modules.md, as benchmark/
-        // stands outside the phases: it may depend on every product and nothing depends on it.
+        // lifecycle seam (ios/Benchmark/README.md). Phase 2 in docs/modules.md, the latest of what
+        // it measures with, until i3's adaptive arm brings in SuperPlayerABR; nothing depends on it.
         .target(
             name: "SuperPlayerBenchmark",
             dependencies: [

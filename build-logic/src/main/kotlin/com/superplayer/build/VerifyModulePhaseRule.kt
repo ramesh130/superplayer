@@ -166,7 +166,8 @@ private fun violation(module: String, dependency: String, phases: Map<String, In
  * `SuperPlayerABR` is — which is what the Android reading does too, since a
  * `testImplementation(project(...))` line is matched like any other. Unlike Android, a target the
  * table does not list is itself a violation rather than an unscheduled module: every Swift target
- * here is a product or a product's tests, and a target with no row is one nobody gave a phase.
+ * here is a product, a product's tests, or `SuperPlayerBenchmark` and its tests — a target with a
+ * row and no product, since nothing ships it — and a target with no row is one nobody gave a phase.
  */
 internal fun findSwiftTargetPhaseViolations(
     modulesDocument: File,

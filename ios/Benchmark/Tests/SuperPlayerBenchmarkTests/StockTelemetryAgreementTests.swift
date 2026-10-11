@@ -203,7 +203,28 @@ extension StockTelemetryAgreementTests {
 extension TelemetryEvent {
     /// The case's name, which is what the two streams are compared by: the events themselves carry
     /// ids and clock readings that differ by construction.
-    var kind: String { "\(self)".prefix { $0 != "(" }.description }
+    ///
+    /// An exhaustive switch rather than the value's printed form, which is no stable format; a case
+    /// added to the vocabulary fails to compile here.
+    var kind: String {
+        switch self {
+        case .sessionStarted: "sessionStarted"
+        case .decisionChanged: "decisionChanged"
+        case .sessionEnded: "sessionEnded"
+        case .firstFrameRendered: "firstFrameRendered"
+        case .rebufferStarted: "rebufferStarted"
+        case .rebufferEnded: "rebufferEnded"
+        case .startupFailed: "startupFailed"
+        case .midStreamFailed: "midStreamFailed"
+        case .trackSwitched: "trackSwitched"
+        case .seekRequested: "seekRequested"
+        case .seekCompleted: "seekCompleted"
+        case .licenceAcquisitionEnded: "licenceAcquisitionEnded"
+        case .liveLatencySampled: "liveLatencySampled"
+        case .playbackStateSampled: "playbackStateSampled"
+        case .videoFramesDropped: "videoFramesDropped"
+        }
+    }
 
     var firstFrame: FirstFrameRendered? {
         if case .firstFrameRendered(let e) = self { e } else { nil }

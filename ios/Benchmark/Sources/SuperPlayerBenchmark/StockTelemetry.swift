@@ -538,7 +538,9 @@ extension StockTelemetry {
         return nil
     }
 
-    /// `QoeCollector.playbackFailure(_:errorLog:)` and its `category(_:loggedStatus:)`.
+    /// `QoeCollector.playbackFailure(_:errorLog:)` and its `category(_:loggedStatus:)`. The one
+    /// derivation the agreement test's session cannot reach, since nothing in it fails, so
+    /// `StockTelemetryFailureTableTests` holds the two tables to each other code by code.
     static func playbackFailure(_ error: NSError?, errorLog: AVPlayerItemErrorLog?)
         -> PlaybackFailure
     {
@@ -549,7 +551,7 @@ extension StockTelemetry {
             message: error?.localizedDescription ?? logged?.errorComment)
     }
 
-    private static func category(_ error: NSError?, loggedStatus: Int?) -> FailureCategory {
+    static func category(_ error: NSError?, loggedStatus: Int?) -> FailureCategory {
         if error?.domain == NSURLErrorDomain { return .network }
         if let status = loggedStatus, (400..<600).contains(status) { return .network }
         if let error, error.domain == AVFoundationErrorDomain {

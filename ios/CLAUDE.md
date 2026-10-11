@@ -102,7 +102,7 @@ core's `package` protocol `PlaybackEngine` — the view hosts either, and `Share
 realtime transport on iOS*. #340's observed bytes are `ios/Tests/Fixtures/realtime/observed-bytes.tsv`,
 read by both platforms' tests.
 #414 is the benchmark: `SessionMetrics` and `QoeScore` in `SuperPlayerTelemetry`, the matrix in
-`ios/Benchmark/` as a target of the manifest and not a product (unscheduled in `docs/modules.md`),
+`ios/Benchmark/` as a target of the manifest and not a product (phase 2 in `docs/modules.md`),
 run by `ios/Benchmark/bench` and never by `ios/check`, which runs only its agreement and honesty
 tests. `ios/Benchmark/README.md` is its manual, and its *What the simulator taught the harness* is
 worth reading before playing a ladder anywhere: an `AVPlayer` whose video nobody consumes never

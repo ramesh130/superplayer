@@ -20,10 +20,10 @@ import XCTest
 /// The matrix run itself — a measurement and not a check, hosted in an XCTest only because that is
 /// how a process reaches the simulator. `ios/Benchmark/bench` is the one thing that runs it: it
 /// passes `SP_BENCH_OUT` and the rest through the test runner's environment, and `ios/check` names
-/// this class in `-skip-testing`, so the hour of real time it costs never reaches the suite.
+/// this class in `-skip-testing`, so the two hours of real time it costs never reach the suite.
 ///
 /// Without `SP_BENCH_OUT` it skips, so a person running the whole scheme from Xcode does not start
-/// an hour of playback by accident.
+/// two hours of playback by accident.
 ///
 /// It fails only when it could not measure — a session that threw, a report that could not be
 /// written, a cell with no session at all — and never because of *what* it measured, the Kotlin
@@ -36,7 +36,7 @@ final class BenchmarkMatrixRun: XCTestCase {
         guard let out = environment["SP_BENCH_OUT"], !out.isEmpty else {
             throw XCTSkip("A measurement, run by ios/Benchmark/bench: SP_BENCH_OUT is not set")
         }
-        let runs = environment["SP_BENCH_RUNS"].flatMap(Int.init) ?? 3
+        let runs = environment["SP_BENCH_RUNS"].flatMap(Int.init) ?? MatrixRun.defaultRunsPerCell
         let filter = environment["SP_BENCH_CELLS"].flatMap { $0.isEmpty ? nil : $0 }
 
         let report = try await MatrixRun(

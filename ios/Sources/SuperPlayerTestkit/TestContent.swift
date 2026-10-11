@@ -50,21 +50,18 @@ public struct TestContent: Sendable {
     /// How many hosts serve it — the listeners its origin opens.
     public let hosts: Int
 
-    /// What exists once the origin has been serving for `elapsedMs` milliseconds, keyed by path
-    /// under the origin's root, given the port of each of its hosts in order.
-    ///
-    /// A function rather than a map for the reason the Kotlin `publication` is one: a live media
-    /// playlist is *defined* by changing (RFC 8216 §6.2.1), so a live stream served from fixed bytes
-    /// is a live stream that has stopped. On-demand content ignores the time; content on one host
-    /// ignores the ports.
-    let publication: @Sendable (_ elapsedMs: Int64, _ ports: [UInt16]) -> [String: [UInt8]]
-
     /// The one file at `path` under the origin's root once the origin has been serving for
-    /// `elapsedMs`, or nil — what the origin asks per request. ``publication`` looked up, for every
-    /// content but a ladder, whose files are built when asked for rather than held
-    /// (`SyntheticVideoLadder`'s *Lookup by name*).
+    /// `elapsedMs` milliseconds, given the port of each of its hosts in order, or nil — what the
+    /// origin asks per request.
+    ///
+    /// A function of the time for the reason the Kotlin `publication` is one: a live media playlist
+    /// is *defined* by changing (RFC 8216 §6.2.1), so a live stream served from fixed bytes is a live
+    /// stream that has stopped. On-demand content ignores the time; content on one host ignores the
+    /// ports. A lookup by path rather than a map of everything published, so a ladder's files are
+    /// built when asked for rather than held (`SyntheticVideoLadder`'s *Lookup by name*).
     let file: @Sendable (_ path: String, _ elapsedMs: Int64, _ ports: [UInt16]) -> [UInt8]?
 
+    /// Content whose files are a map of what is published by a moment: looked up by path.
     private init(
         sourcePath: String, isLive: Bool, hosts: Int,
         publication:
@@ -73,10 +70,10 @@ public struct TestContent: Sendable {
         self.sourcePath = sourcePath
         self.isLive = isLive
         self.hosts = hosts
-        self.publication = publication
         self.file = { path, elapsedMs, ports in publication(elapsedMs, ports)[path] }
     }
 
+    /// Content on one host whose files are built by path when asked for.
     private init(
         sourcePath: String, isLive: Bool,
         file: @escaping @Sendable (_ path: String, _ elapsedMs: Int64) -> [UInt8]?
@@ -84,7 +81,6 @@ public struct TestContent: Sendable {
         self.sourcePath = sourcePath
         self.isLive = isLive
         self.hosts = 1
-        self.publication = { _, _ in [:] }
         self.file = { path, elapsedMs, _ in file(path, elapsedMs) }
     }
 

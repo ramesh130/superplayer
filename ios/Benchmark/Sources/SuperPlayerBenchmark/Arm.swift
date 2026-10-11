@@ -68,7 +68,12 @@ enum Arm: String, CaseIterable, Sendable {
     /// The arm every built arm before it is compared against: the most capable one built. Arm (c)
     /// while (d) is a slot — the Phase 1 report's shape — and arm (d) from i3 on, the Phase 3 one's,
     /// with nothing to change here when it arrives.
-    static var candidate: Arm { allCases.last { $0.isBuilt }! }
+    static var candidate: Arm {
+        guard let built = allCases.last(where: \.isBuilt) else {
+            preconditionFailure("No arm is built, so the benchmark has nothing to grade")
+        }
+        return built
+    }
 
     /// What arm (b) configures: the two changes every such recipe makes, pulling against each
     /// other, in the vocabulary iOS offers for them.

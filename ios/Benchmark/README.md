@@ -30,8 +30,8 @@ on Android: a `SuperPlayer` playing video in `xctest` has to be given a lifecycl
 nothing — its video holds the idle timer, and `xctest` has no `UIApplication` — and that seam,
 `SharedLifecycle(platform:)`, is `package`-scoped, which SwiftPM grants to targets of one package
 only. So `SuperPlayerBenchmark` is a target of `Package.swift` and **not a product**: nothing ships
-it, it has no API baseline, and `docs/modules.md` lists it with no phase, the shape of something that
-consumes every product and that nothing depends on.
+it, it has no API baseline, and `docs/modules.md` gives it the phase of the latest product it measures
+with — 2 today, 3 once arm (d) brings in `SuperPlayerABR` — with nothing depending on it.
 
 **Why the matrix is not in `ios/check`**, for `benchmark/README.md`'s reasons: it measures rather
 than checks, a change that made a number worse should produce a finding rather than a red build,

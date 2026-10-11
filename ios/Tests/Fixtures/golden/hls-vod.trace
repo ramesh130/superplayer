@@ -1,0 +1,23 @@
+superplayer-session-trace v1
+timings omitted
+item id=series/expanse/s01e01 reason=PLAYLIST_CHANGED
+state BUFFERING
+state READY
+state ENDED
+playing true
+playing false
+load started manifest
+load completed manifest durationMs=*
+load started manifest
+load completed manifest durationMs=*
+load started media:audio
+load completed media:audio durationMs=*
+load started media:audio
+load completed media:audio durationMs=*
+bandwidth bitrateBps=*
+bandwidth bitrateBps=*
+bandwidth bitrateBps=*
+bandwidth bitrateBps=*
+telemetry SessionStarted profile=VIDEO_ON_DEMAND
+telemetry FirstFrameRendered timeToFirstFrameMs=* startBoundary=CONTENT_ADOPTED
+telemetry SessionEnded droppedEventCount=0

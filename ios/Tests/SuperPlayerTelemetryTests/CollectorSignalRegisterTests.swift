@@ -108,8 +108,9 @@ final class CollectorSignalRegisterTests: XCTestCase {
     }
 
     /// "Nowhere else", held mechanically, as core's register test holds it: every registration
-    /// call in this product's sources is in the register's own file.
-    func testNoTelemetrySourceButTheRegisterRegistersAnObservation() throws {
+    /// call in this product's sources is in a register's own file — this one's, or the session
+    /// trace recorder's, which `RecorderSignals.swift` argues is a register of its own.
+    func testNoTelemetrySourceButARegisterRegistersAnObservation() throws {
         let sources = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/SuperPlayerTelemetry")
@@ -124,12 +125,16 @@ final class CollectorSignalRegisterTests: XCTestCase {
             "addObserver(", ".observe(", "addPeriodicTimeObserver(", "addBoundaryTimeObserver(",
             "metrics(forType:", "allMetrics(",
         ]
-        for file in files where file.lastPathComponent != "CollectorSignals.swift" {
+        let registers: Set = ["CollectorSignals.swift", "RecorderSignals.swift"]
+        XCTAssertTrue(
+            files.contains { $0.lastPathComponent == "RecorderSignals.swift" },
+            "the recorder's register moved; this scan names it")
+        for file in files where !registers.contains(file.lastPathComponent) {
             let text = try String(contentsOf: file, encoding: .utf8)
             for call in registrations {
                 XCTAssertFalse(
                     text.contains(call),
-                    "\(file.lastPathComponent) calls \(call) outside the collector's register")
+                    "\(file.lastPathComponent) calls \(call) outside a register")
             }
         }
     }

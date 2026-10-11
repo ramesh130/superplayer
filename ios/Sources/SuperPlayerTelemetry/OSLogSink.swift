@@ -180,10 +180,11 @@ public struct OSLogSink: TelemetrySink {
     }
 }
 
-// The Kotlin constant each case is, so a line greps the same on both platforms.
+// The Kotlin constant each case is, so a line greps the same on both platforms — internal rather
+// than private, because the session trace prints the same words for the same reason.
 
 extension PlaybackProfile {
-    fileprivate var kotlinName: String {
+    var kotlinName: String {
         switch self {
         case .videoOnDemand: "VIDEO_ON_DEMAND"
         case .liveLinear: "LIVE_LINEAR"
@@ -195,7 +196,7 @@ extension PlaybackProfile {
 }
 
 extension DecisionTrigger {
-    fileprivate var kotlinName: String {
+    var kotlinName: String {
         switch self {
         case .transportChanged: "TRANSPORT_CHANGED"
         case .streamTypeChanged: "STREAM_TYPE_CHANGED"
@@ -207,7 +208,7 @@ extension DecisionTrigger {
 }
 
 extension TtffStartBoundary {
-    fileprivate var kotlinName: String {
+    var kotlinName: String {
         switch self {
         case .userIntent: "USER_INTENT"
         case .contentAdopted: "CONTENT_ADOPTED"
@@ -216,7 +217,7 @@ extension TtffStartBoundary {
 }
 
 extension TrackSwitchDirection {
-    fileprivate var kotlinName: String {
+    var kotlinName: String {
         switch self {
         case .initial: "INITIAL"
         case .up: "UP"
@@ -226,7 +227,7 @@ extension TrackSwitchDirection {
 }
 
 extension LicenceOutcome {
-    fileprivate var kotlinName: String {
+    var kotlinName: String {
         switch self {
         case .acquiredFromServer: "ACQUIRED_FROM_SERVER"
         case .servedFromOfflineStore: "SERVED_FROM_OFFLINE_STORE"
@@ -236,7 +237,7 @@ extension LicenceOutcome {
 }
 
 extension FailureCategory {
-    fileprivate var kotlinName: String {
+    var kotlinName: String {
         switch self {
         case .network: "NETWORK"
         case .source: "SOURCE"

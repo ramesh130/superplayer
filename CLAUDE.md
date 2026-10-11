@@ -1471,6 +1471,7 @@ devicelab/lab run jank [--plant P]     # the feed scrolled and tapped in one tra
 ./gradlew huntLeaks                # the leak hunt on a device; NOT in check (devicelab/leak/README.md)
 ios/check                         # the iOS package's whole check, on macOS: format, simulator tests, tvOS build, API baselines
 ios/check --update-api            # regenerate ios/api/<Product>.baseline after a deliberate API change (docs/api-surface.md)
+ios/check --update-golden         # regenerate ios/Tests/Fixtures/golden/*.trace after a deliberate behaviour change; the goldens' only writer
 ```
 
 `ios/check` is to the Swift package what `check` is to the library, and the macOS CI job runs it

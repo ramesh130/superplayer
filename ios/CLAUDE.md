@@ -37,6 +37,12 @@ any player wants to play, an interruption pausing and resuming only on `.shouldR
 unplugged pausing, and the idle timer held while video plays — process-wide state counted across
 players in `SharedLifecycle`, the platform calls behind the one `package` protocol
 `LifecyclePlatform`, and its signals in the observed register.
+#409 added
+`QoeCollector(sink:)` and `OSLogSink` there, the collector deriving the vocabulary from key-value
+observation, notifications, the access and error logs and, on 18, `AVMetrics` — every registration
+in its own register, `CollectorSignals.swift`, held as core's is — and
+`player.declarePlaybackIntent()` on core; each event's derivation is the *How derived on iOS*
+column of `docs/telemetry-schema.md`.
 `SuperPlayerMoQ` is not declared yet — its binary target is
 i9's — and there is no `SuperPlayerCache`, since its content is the offline store's.
 

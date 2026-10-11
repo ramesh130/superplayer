@@ -793,6 +793,23 @@ see a request.
   every synthetic stream is audio — `LifecycleRulesTests` holds the rule over a presentation size,
   and that a video item's is non-zero by the time it plays is AVFoundation's documented behaviour
   that only a video stream on a device can confirm.
+- **The collector's playback tests are in its own target** (#409). `SuperPlayerTelemetryTests`
+  depends on the harness, which telemetry may, both being phase 2, as `superplayer-telemetry`'s tests
+  drive the Kotlin harness. `QoeCollectorPlaybackTests` asserts the first frame and both of its start
+  boundaries, a rebuffer the origin causes by holding a segment back, a seek and the session's end,
+  as counts, flags and an order of readings on the monotonic clock — never a duration. The synthetic
+  streams are audio, so **nothing here can show a video track switch, dropped frames, or a first
+  frame that is a video frame**; those derivations rest on the schema document's citations until a
+  video fixture or a device run shows them. `CollectorSignalRegisterTests` is the collector's own
+  observed register, held as core's is: it reads `liveObservations` and `isSampling` through
+  `@testable`, the same seam argued the same way. Two more telemetry tests import the product
+  `@testable`, each arguing it in its own comment: `QoeCollectorPlaybackTests`, for
+  `QoeCollector.now()`, the monotonic reading taken before declaring intent so the boundary's place
+  is asserted as an order on the clock the collector measures with; and `OSLogSinkTests`, for
+  `OSLogSink.line(for:)`, because what the unified log keeps of a private value depends on whether a
+  debugger is attached, so the format is asserted where it is made. None is `package`, since no later
+  product reaches it. The seek test seeks through `player.avPlayer`, a consumer's transport control
+  like `play()` and `pause()` and reached where a consumer reaches it (ADR-0021 rule 1's addendum).
 
 What it cannot show is what real time cannot: a test here is evidence that something happened and in
 what order, never that it happened sooner, and a device is still the only place a FairPlay key, a

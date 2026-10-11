@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import Foundation
 import os
 
 /// Where measurement leaves the library: one call, one event, the consumer's own pipeline
@@ -142,7 +143,7 @@ private enum TelemetryLog {
 /// never has to close one implicitly — a departure from the Kotlin facade, which leaves that to the
 /// collector, made because here the facade sees every replacement it makes.
 ///
-/// Later tickets add what they bring: declared intent (#409), a changed decision (#415).
+/// Later tickets add what they bring: a changed decision (#415).
 @MainActor
 public protocol TelemetryCollector {
 
@@ -163,6 +164,45 @@ public protocol TelemetryCollector {
     /// produces two ends.
     func endSession()
 
+    /// The consumer declared intent to play, at `monotonicTimeMs` on `CLOCK_MONOTONIC` — the Kotlin
+    /// `declareIntent(monotonicTimeMs)`.
+    ///
+    /// Core forwards ``SuperPlayer/declarePlaybackIntent()`` here and does nothing else with it: the
+    /// declaration is the start boundary of time to first frame, and what a boundary means is the
+    /// schema's business rather than the facade's. Hold it for the next session that starts; a
+    /// session that opens without one measures from its own start and says so through
+    /// ``TtffStartBoundary/contentAdopted``. Usually called before
+    /// ``startSession(contentId:sessionId:)`` — the app declares at the tap and loads once its
+    /// catalogue answers — and a declaration after the session opened belongs to the next one
+    /// (`docs/telemetry-schema.md`, *Time to first frame*).
+    func declareIntent(monotonicTimeMs: Int64)
+
     /// The player is being released: unregister everything ``attach(to:)`` registered.
     func detach()
+}
+
+extension SuperPlayer {
+
+    /// Says that a viewer just asked for playback — the start boundary of time to first frame, the
+    /// Kotlin `declarePlaybackIntent()`.
+    ///
+    /// Call it at the tap, before whatever the app does to turn that tap into a ``MediaRequest``:
+    /// the catalogue lookup, the entitlement check, the navigation transition. That interval is part
+    /// of what the viewer waited through, and `PRD.md` §3.4 puts the metric's boundary at intent
+    /// rather than at item creation precisely so that it is counted. The library cannot see a tap,
+    /// which is why this is declared rather than observed.
+    ///
+    /// Cheap and safe with no telemetry configured: it reads the monotonic clock and hands the
+    /// reading to the collector, and a player configured without one does neither. Safe before the
+    /// content is known, which is the point of it. A session that never gets one is measured from
+    /// the moment the player took the content on and reports
+    /// ``TtffStartBoundary/contentAdopted``, so the two are never silently averaged together.
+    public func declarePlaybackIntent() {
+        guard !isReleased, let collector else { return }
+        // ref: CTA-2066 measures video start-up time from the viewer's request; CMCD v2's `msd`
+        // uses the same boundary. `CLOCK_MONOTONIC` because the reading is one end of a duration —
+        // ``TelemetryEvent``'s *The clocks* — and the collector reads the other end on it too.
+        collector.declareIntent(
+            monotonicTimeMs: Int64(clock_gettime_nsec_np(CLOCK_MONOTONIC) / 1_000_000))
+    }
 }

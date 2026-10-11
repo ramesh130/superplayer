@@ -32,8 +32,10 @@ import XCTest
 /// the link's fast stretch lasts, which is where the cold simulator spent its time.
 ///
 /// The control is that the slow stretch still comes: the anchor moves the trace and does not make
-/// it a fast link, so once the fast stretch has run out a segment cannot arrive and is asked for
-/// again (`SlowLinkPlaybackTests`).
+/// it a fast link, so once the fast stretch has run out playback waits. Waits, rather than a
+/// segment asked for again: on 27.1 a started session abandons the segment it cannot get, as one
+/// that has not started does (`SlowLinkPlaybackTests`), while CI's 26.5 was seen to ask for no
+/// segment again inside a minute, which reads as a wait that grows with what is buffered.
 @MainActor
 final class TraceStartPlaybackTests: XCTestCase {
 
@@ -65,10 +67,9 @@ final class TraceStartPlaybackTests: XCTestCase {
         XCTAssertEqual(VideoPlayback.attempts(at: VideoPlayback.firstSegmentPath, origin), 1)
 
         // The control: the fast stretch ends a few seconds after the first segment, and the link
-        // after it is too slow for any segment to arrive, so one is asked for again.
-        try await harness.until("a segment asked for again", timeout: StockPlayback.bound) {
-            let segments = origin.networkRequests().filter { $0.kind == .mediaSegment }
-            return Set(segments.map(\.path)).count < segments.count
+        // after it is too slow for the stream, so the buffer drains and the player waits.
+        try await harness.until("playback waits on the slow link", timeout: StockPlayback.bound) {
+            player.timeControlStatus == .waitingToPlayAtSpecifiedRate
         }
     }
 

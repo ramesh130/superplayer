@@ -1273,8 +1273,10 @@ decline. No test covers a feed whose token expires.
   wait: a segment not whole within it ("No response for media file in 2s") is abandoned and asked
   for again from its first byte. On a link slower than a segment's bytes over a target duration —
   for a segment as long as its target, slower than the stream — no segment ever arrives, so a player
-  that has not started never does, and one that has stalls for good at the first segment it fetches
-  there. `SlowLinkPlaybackTests` holds a stock player and a `SuperPlayer` to the same outcome, with a
+  that has not started never does, and on 27.1 one that has stalls for good at the first segment it
+  fetches there. CI's 26.5 was seen not to ask a started session's segment again within a minute, which
+  reads as a wait that grows with what is buffered, so the started half is a 27.1 reading.
+  `SlowLinkPlaybackTests` holds a stock player and a `SuperPlayer` to the same outcome, with a
   link fast enough as the control. A session scripted to stall on a slow stretch therefore asserts
   that the stall began, never that it ended.
 

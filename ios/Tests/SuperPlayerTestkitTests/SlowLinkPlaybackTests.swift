@@ -27,8 +27,10 @@ import XCTest
 /// again from its first byte. Bytes flowing steadily do not extend the wait. So on a link slower
 /// than a segment's bytes over a target duration — for a segment as long as its target, slower
 /// than the stream itself — no segment ever arrives: a player that has not started never does, and
-/// one that has stalls at the first segment it has to fetch on that link, for good. Seen on the iOS
-/// 27.1 simulator with both players on the same link; it is not a claim about a device.
+/// on 27.1 one that has stalls at the first segment it has to fetch on that link, for good. Seen on
+/// the iOS 27.1 simulator with both players on the same link, and the never-starting half on CI's
+/// 26.5; it is not a claim about a device. A started session on 26.5 was seen to ask for no segment
+/// again inside a minute (`TraceStartPlaybackTests`), so there the wait may grow with the buffer.
 ///
 /// #474's table is consistent with it — four of its stuck points were on a stretch below the rung
 /// being fetched, each met at a different place because a slower simulator met it at a different

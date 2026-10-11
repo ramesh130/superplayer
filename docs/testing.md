@@ -426,7 +426,7 @@ with the AudioSpecificConfig as a bare magic cookie — what #431 described AAC 
 converter given the description's cookie as the renderer's decoder is, the bare cookie as the control.
 `AVAudioConverter` is not the instrument: it decodes both.
 
-What is **not** covered yet, and whose it is: the conformance suite (#433), Picture in Picture from the
+What is **not** covered yet, and whose it is: Picture in Picture from the
 realtime layer — which ADR-0022 rule 5 says the layer makes possible and for which no playback delegate
 answers a live, unseekable timeline yet — and **Opus**, whose description is made and whose cookie, an
 OpusHead, no test decodes. A `RealtimePlayer` is measured by no
@@ -436,6 +436,37 @@ interruption and route-change rules, which are an `AVPlayer`'s; the synchronizer
 interruption. #461 owns telemetry, sessions, those rules and Picture in Picture. ADR-0020 rule 11's other half — a realtime source handed to a `SuperPlayer` refused typed
 — waits for an error surface on that facade (the rule's #431 addendum). What a device alone shows is a
 real transport's frames on a screen, which is #438's.
+
+#### The conformance suite on iOS
+
+`FrameSourceConformance` is `SuperPlayerTestkit`'s public API too (#433), and it is the Kotlin suite
+ported check for check — the section above is its argument on both platforms, and what follows is
+only where this one differs. **Eleven checks, the same eleven**: the seam's documentation now numbers
+ten obligations where the Kotlin suite's counted nine, and the tenth, the coded size, is unenforceable
+for obligation 5's reason, so it adds a line to what the suite cannot check and no check. **A failure
+is a thrown `FrameSourceConformanceError`**, a plain `Error` — `SuperPlayerTestkit` links no XCTest,
+so XCTest, Swift Testing and a consumer's own runner all report it as the failure — and each message
+keeps the Kotlin shape: the rule, what the source did, what the rule requires. **The checks are a
+`CaseIterable` enumeration** behind `verify(_:)`'s exhaustive `switch`, because Swift has no
+reflection over methods: `FrameSourceConformanceTests`' register compares itself to `allCases`, as
+`FaultSweepTests` holds `FaultScript.Kind`. **Obligation 8 is read off memory rather than identity**:
+`Data` is a value, so a pooled array refilled after it was handed over cannot happen through the
+type, and what is left is a `Data` made with `bytesNoCopy` over memory the transport goes on writing.
+Two frames over one address whose bytes differed when each arrived is a buffer rewritten between
+deliveries — a value could not have changed, so one `Data` sent twice is refused by nothing — and a
+payload whose bytes differ from the copy taken on arrival is memory written afterwards. Both are read
+before the source is cancelled, since a transport may free its buffers once it has been. And the
+Kotlin suite's rule for a throw out of `subscribe` has nothing to check here: `subscribe` does not
+throw, so `onError` is a failure's only route by the type.
+
+What scores it is the Kotlin pair. `FrameSourceConformanceTests` drives `PublishingFrameSource`, a
+wrong publisher per obligation — its two obligation 8 defects by `bytesNoCopy`, one pooled buffer and
+memory of its own written after delivery — with the correct one through `verifyAll` in both of
+obligation 7's branches and asynchronously, joining its thread in `cancel`. And
+`ScriptedFrameSourceConformanceTests`, in `SuperPlayerRealtimeTests`, runs the fake the realtime tests
+play — real H.264 and AAC, paced and on its own thread — through `verifyAll` as `avc1`, as `avc3` and
+as `avc1` at two-byte lengths, and holds the suite's codec families to `RealtimeFormats.mappedTokens`.
+No socket is opened by any of it. What a real transport delivers is a device's and #438's.
 
 ### The MoQ bindings
 
@@ -955,7 +986,9 @@ see a request.
   subtracted. #432 added three: `CodecConfigurationRecordsTests` and `RealtimeAudioDecodingTests`,
   because the framing and the description are internal as the Kotlin object is; and
   `RealtimeTracksTests`, for each track's enqueued presentation times and its renderer — the only
-  reading of A/V sync and of a played audio track the simulator gives. Everything else there is the
+  reading of A/V sync and of a played audio track the simulator gives. #433 added one more,
+  `ScriptedFrameSourceConformanceTests`, for the table's `mappedTokens` alone, which the suite's own
+  list of codec families is held to. Everything else there is the
   public `RealtimePlayer`: its clock, `isRendering`, `failure` and the typed refusals. *A realtime
   transport on iOS* above says what the fake is.
 

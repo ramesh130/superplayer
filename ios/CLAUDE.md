@@ -54,6 +54,14 @@ internal `resetForReuse`, which ends the session edge `SessionEdges.swift` names
 `DeviceCapacity.swift`, the one place the device is read: no decoder limit is reported on Apple's
 platforms, so the bound is a per-player budget against `os_proc_available_memory()` under an argued
 ceiling of four, never below one, both numbers i10's (#439) to measure.
+#403 added
+`PlaybackSession(player:resolver:)` — a choice and not a default, publishing one player to the
+process's Now Playing dictionary and remote command centre behind the one `package` protocol
+`NowPlayingPlatform`, the most recent session holding them; `release()` ends the session and then
+the player, `setPlayer(_:)` swaps the player behind it — and `MediaRequestResolver`, through which
+`setMediaRequest(forContentId:)` adopts content named from outside the app. What it observes is its
+own register, `SessionSignals.swift`. There is no service, and CarPlay's entitlement and templates
+are the app's.
 #405 built ADR-0022's frame output: `Configuration.frameOutput` takes a `FrameOutput` — a
 `CVPixelBuffer` and its `CMTime` in, the buffer to show out, called on a queue of the player's —
 and `FramePath.swift` is the whole display path, made only on a player configured with one: an

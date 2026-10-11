@@ -16,6 +16,9 @@
   Amended again (#419) at rule 1, admitting a failed item's error and its error log's last entry.
   Amended again (#421) at rule 4, admitting the fault sweep's ceiling and latency margin and the
   stale-playlist tests' use of the corpus's host-dependent row.
+  Amended again (#474) at rule 1, admitting a screen's stand-in and a short forward buffer written
+  alike on a stock and a `SuperPlayer` item and a stalled item's error log, and at rule 4, admitting
+  the slow-link tests' stretches and positions.
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
 - **Refines:** [`docs/testing.md`](../testing.md)'s rule — *no device and no network, through the
@@ -137,6 +140,18 @@ rule names the ticket that brings its enforcement, and *What nothing enforces* s
    failing test rather than a silently wrong classification. Neither lapses with a playback state:
    both are AVFoundation's evidence, which the facade by design does not republish.
 
+   *Addendum (2026-10-12, #474).* Three readings more, for tests whose subject is that a
+   `SuperPlayer` and a stock player do the *same* thing on one link (`SlowLinkPlaybackTests`, and
+   `StockTelemetryAgreementTests`, which already did the first two). **An `AVPlayerItemVideoOutput`
+   added to the item**, which is what consumes video in `xctest`, where no layer is ever in a window —
+   a stand-in for a screen, not a reading. **A short `preferredForwardBufferDuration` written on the
+   item**, the same value on either player, so a scripted slow stretch is met within seconds rather
+   than after whatever the fast one buffered; it departs from the profile's knob, which is why it is
+   written on both players and why no assertion is about the buffer. **A stalled item's error log**,
+   held to contain AVFoundation's -12889 for a segment it gave up on: the #419 addendum's reason, a
+   platform fact pinned so a runtime that changes it fails a test, on an item that has not failed
+   because the fact is that it never does. None lapses with a playback state.
+
 2. **The harness is a loopback HTTP origin, started per test, and the carve-out is widened to every
    iOS test.** `SuperPlayerTestkit` starts an HTTP/1.1 server on `127.0.0.1` at an ephemeral port
    for each test, serving the synthetic streams `SuperPlayerTestMedia` generates, and shuts it down
@@ -228,6 +243,18 @@ rule names the ticket that brings its enforcement, and *What nothing enforces* s
    enough to rejoin the timeline, while here one player is judged at the edge it reached, two and a
    half target durations into the freeze and well before a rejoin. No duration is asserted there;
    the judgement's bounds are held over values in `StalePlaylistJudgementTests`.
+
+   *Addendum (2026-10-12, #474).* Two tests script a link that is fast and then too slow, and each
+   stretch is a reading near the host's clock, admitted by name. `TraceStartPlaybackTests` gives a
+   first frame four seconds of fast link from the first segment, against the second or so one took
+   on the simulator, and holds the media playlist for eight. `SlowLinkPlaybackTests` gives its ladder
+   six, against under two for a start and a climb, and waits for a position of twenty seconds, twice
+   what the fast stretch and the four-second forward buffer could carry; its slow links are a quarter
+   of the stream's rate, four target durations a segment against AVFoundation's wait of about one,
+   and its fast one twice, the fault sweep's factor. A host slow enough to spend those margins would
+   fail to start inside a stretch, which is the race #474 found and the reason the trace's clock now
+   starts at the first segment (rule 3). Both read the same on consecutive runs before they were
+   committed.
 
    *Addendum (2026-10-11, #411).* What "kinds and order with every time masked" means in practice,
    decided where the first golden was written. Three readings, each forced by real time rather than

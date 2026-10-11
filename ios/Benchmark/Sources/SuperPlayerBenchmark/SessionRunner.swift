@@ -26,8 +26,8 @@ import os
 ///
 /// 1. **One transport.** Every session gets a fresh `LoopbackOrigin` from testkit's harness, serving
 ///    the scenario's content over the network profile's trace, paced at the socket from the moment
-///    the origin starts — which is just before the player exists, so every arm meets the same
-///    stretch of the trace at the same point in its session.
+///    the session asks for its first media segment, so every arm meets the same stretch of the
+///    trace at the same point in its session however long the host took to get it there (#474).
 /// 2. **One reducer.** Every arm's events are reduced by `SessionMetrics`.
 /// 3. **One derivation, checked.** Arm (c)'s events are `QoeCollector`'s and the stock arms'
 ///    ``StockTelemetry``'s, held to each other by the agreement test.

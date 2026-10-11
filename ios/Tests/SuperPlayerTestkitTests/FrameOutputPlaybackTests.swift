@@ -166,10 +166,3 @@ final class FrameOutputPlaybackTests: XCTestCase {
 
 /// A `PlaybackDrm` that acquires nothing: still a declaration that the content is protected, which is all the frame output reads (ADR-0012 rule 13).
 private struct StandInDrm: PlaybackDrm {}
-
-/// A lifecycle platform that does nothing: the session is left alone and the idle timer unheld.
-private final class QuietPlatform: LifecyclePlatform {
-    func activateAudioSession() {}
-    func deactivateAudioSession() {}
-    func setIdleTimerDisabled(_ disabled: Bool) {}
-}

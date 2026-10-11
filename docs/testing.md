@@ -835,8 +835,9 @@ see a request.
 - **The replay is per connection, and a trace's transport is reported, not switched.** Each
   connection sees the whole link, the limit the Android replay states; and nothing in the simulator
   can move the host's interface, so the transport a stretch names is what `OriginResponse.transport`
-  says a request arrived on and nothing a player observes. Time zero is the origin's start, which on
-  Android is the moment the player was built.
+  says a request arrived on and nothing a player observes. Time zero is the first media segment asked
+  for; on Android it is the moment the player was built. The origin's own start counted a cold host's
+  start-up as link time (#474, `TraceStartPlaybackTests`).
 - **One test measures a duration, and argues its bound.** `NetworkShapingTests` holds a shaped
   transfer to the trace: never faster, which is exact — the origin sends a chunk no earlier than its
   last byte is due and the client's stopwatch starts first — and no more than a second slower on a
@@ -885,7 +886,9 @@ see a request.
   it. `TypedErrorPlaybackTests` reads a failed item's `error` and its
   error log's last entry off `player.avPlayer`, under rule 1's #419 addendum.
   `ProfileTableTests` reads each profile's knobs off `player.avPlayer`, and `SnapshotPlaybackTests`
-  an item's readiness, under rule 1's #401 addendum.
+  an item's readiness, under rule 1's #401 addendum. `SlowLinkPlaybackTests` adds a video output and
+  a short forward buffer to a `SuperPlayer`'s item as to a stock one's, and reads a stalled item's
+  error log, under rule 1's #474 addendum.
 - **The lifecycle is driven by the platform's own notifications** (#402). `LifecyclePlaybackTests`
   posts `AVAudioSession.interruptionNotification` and `routeChangeNotification` from
   `AVAudioSession.sharedInstance()` with the `userInfo` keys `AVAudioSession.h` declares, as the
@@ -1266,6 +1269,14 @@ decline. No test covers a feed whose token expires.
   the Kotlin row's meaning ("a delay, not a failure"), and not the Kotlin twenty seconds. Nothing
   detects the never-answering segment yet, so it is the one origin fault left that neither recovers
   nor ends named.
+- **So does a link too slow for the stream** (#474). Bytes flowing steadily do not extend that
+  wait: a segment not whole within it ("No response for media file in 2s") is abandoned and asked
+  for again from its first byte. On a link slower than a segment's bytes over a target duration —
+  for a segment as long as its target, slower than the stream — no segment ever arrives, so a player
+  that has not started never does, and one that has stalls for good at the first segment it fetches
+  there. `SlowLinkPlaybackTests` holds a stock player and a `SuperPlayer` to the same outcome, with a
+  link fast enough as the control. A session scripted to stall on a slow stretch therefore asserts
+  that the stall began, never that it ended.
 
 **What only another runtime or a device shows.** The coarser judgement below iOS 18 counts
 AVFoundation's -12888 entries. It is held over values and never played, because nothing here runs

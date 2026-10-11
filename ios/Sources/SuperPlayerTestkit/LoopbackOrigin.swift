@@ -53,6 +53,18 @@ import os
 /// And it paces the *body*, at the moment each chunk's last byte is due by the trace — computed from
 /// when the response could first arrive and the bytes sent so far, never from how long the last
 /// wait took, so a late wake delays one chunk and is not carried into the next.
+///
+/// **The trace's clock starts at the first media segment asked for** (#474), not at the origin's
+/// start: how long a host takes to get a player that far is the host's time and not the link's. On
+/// a freshly booted simulator a stock `AVPlayer` was seen to take nine seconds between the
+/// multivariant and the media playlist, so a link scripted fast for ten seconds was slow before the
+/// session had fetched a byte of media, and AVFoundation, which abandons a segment that does not
+/// arrive within about a target duration, never started — a session's link depended on how cold the
+/// host was. The Kotlin replay's time zero is the player built, on a fake clock the host's own work
+/// never moves; the first segment is the nearest instant here that the host's start-up has already
+/// passed. A response asked for before it — the playlists, an initialization segment — is paced as
+/// at the trace's start. The publication clock of live content, and a fault's latency, stay on the
+/// origin's own time: a live edge moves whether or not anyone has asked for media yet.
 public final class LoopbackOrigin: Sendable {
 
     /// The port the system gave this origin's first host.
@@ -79,6 +91,9 @@ public final class LoopbackOrigin: Sendable {
         var responses: [OriginResponse] = []
         var connections: [Int: NWConnection] = [:]
         var acceptedConnections = 0
+        /// When the first media segment was asked for, in the origin's milliseconds: the trace's
+        /// time zero, nil until then.
+        var traceStartMs: Int64?
         var stopped = false
         var faults: OriginFaults
     }
@@ -113,8 +128,13 @@ public final class LoopbackOrigin: Sendable {
     public func responses() -> [OriginResponse] { state.withLock { $0.responses } }
 
     /// The transport the trace is on now — reported, never switched (``NetworkTransport``) — or nil
-    /// when the origin paces nothing.
-    public func transport() -> NetworkTransport? { network?.transport(at: elapsedMs()) }
+    /// when the origin paces nothing. Before the first media segment is asked for, that is the
+    /// trace's first stretch's.
+    public func transport() -> NetworkTransport? {
+        let nowMs = elapsedMs()
+        let startMs = state.withLock { $0.traceStartMs } ?? nowMs
+        return network?.transport(at: nowMs - startMs)
+    }
 
     /// Starts an origin serving `content` on each of its hosts, returning once every listener is
     /// ready on a port.
@@ -303,6 +323,12 @@ public final class LoopbackOrigin: Sendable {
             kind: ResourceKind.of(path: request.path), headers: request.headers,
             connection: arrival.ordinal, host: arrival.host, body: request.body)
         state.requests.append(recorded)
+        if state.traceStartMs == nil, recorded.kind == .mediaSegment {
+            state.traceStartMs = arrivedMs
+        }
+        // Before the first segment, a request is answered as at the trace's start.
+        let traceStartMs = state.traceStartMs ?? arrivedMs
+        let traceMs = arrivedMs - traceStartMs
         let address = state.faults.address(
             host: arrival.host, path: request.path,
             offset: HttpExchange.rangeStart(request.headers["range"]))
@@ -326,16 +352,16 @@ public final class LoopbackOrigin: Sendable {
                     uniquingKeysWith: { _, last in last }),
                 bodyBytesSent: body.count, faults: answer.faults,
                 servedFromCache: answer.servedFromCache,
-                transport: network?.transport(at: arrivedMs)))
+                transport: network?.transport(at: traceMs)))
         // A reset is dropped after the round trip and before any latency: the Kotlin injector
         // raises the failures below a response before it waits out a latency.
-        let rttMs = network?.rttMs(at: arrivedMs) ?? 0
+        let rttMs = network?.rttMs(at: traceMs) ?? 0
         return Reply(
             head: framed?.serialized(forHead: true), body: body,
             truncated: answer.truncateAfterBytes != nil,
             pacing: Pacing(
                 firstByteMs: arrivedMs + rttMs + (framed == nil ? 0 : answer.latencyMs),
-                trace: network, capBps: answer.capBps))
+                trace: network, traceStartMs: traceStartMs, capBps: answer.capBps))
     }
 
     /// Sends `reply` on `connection`: nothing at all for a reset, the whole response at its first
@@ -431,10 +457,12 @@ public final class LoopbackOrigin: Sendable {
 }
 
 /// When a response's body bytes may go: the trace's arrival time and a cap's, whichever is later,
-/// from the moment its first byte could arrive.
+/// from the moment its first byte could arrive. Every time here is the origin's; the trace's own
+/// time is the origin's less `traceStartMs`, the moment it started.
 struct Pacing: Sendable {
     let firstByteMs: Int64
     let trace: ThroughputTrace?
+    let traceStartMs: Int64
     let capBps: Int64?
 
     var isUnpaced: Bool { trace == nil && capBps == nil }
@@ -443,7 +471,11 @@ struct Pacing: Sendable {
     /// `arrivalMs` for the trace, and the same integer arithmetic for a cap, so the slower governs.
     func dueMs(afterBytes bytes: Int) -> Int64 {
         var due = firstByteMs
-        if let trace { due = max(due, trace.arrivalMs(startMs: firstByteMs, bytes: Int64(bytes))) }
+        if let trace {
+            let arrivalMs = trace.arrivalMs(
+                startMs: firstByteMs - traceStartMs, bytes: Int64(bytes))
+            due = max(due, traceStartMs + arrivalMs)
+        }
         if let capBps {
             let bitMillis = Int64(bytes) * ThroughputTrace.bitMillisPerByte
             due = max(due, firstByteMs + ThroughputTrace.ceilDiv(bitMillis, capBps))

@@ -68,7 +68,7 @@ name. #416 fills it in `SessionRunner` and `Arm.isBuilt`; `Arm.candidate` — th
 grades — then moves from (c) to (d) on its own.
 
 **Six network profiles**, testkit's `NetworkProfile` less `ethernet`, paced at the loopback socket
-from the moment each session's origin starts. **Four scenarios** (`Scenario.swift`), with Android's
+from the moment each session asks for its first media segment (#474). **Four scenarios** (`Scenario.swift`), with Android's
 ladders rung for rung: 365, 730, 2 000 and 4 500 kbit/s, and the feed ladder without its top.
 
 **The content is bytes** — `TestContent.videoLadder` and `liveVideoLadder`, over testkit's
@@ -121,6 +121,17 @@ runner is the shape it is. None is a claim about a device.
   rotates each run (`MatrixRun.swift`), and the report reads every start as a returning viewer's.
   Android's runner idles its fake clock past `superplayer-abr`'s memory instead; there is no clock
   here to idle.
+- **A link below a rung's bitrate never delivers that rung again.** AVFoundation abandons a segment
+  not whole within about a target duration and asks for it from its first byte, so on a link slower
+  than the rung — for a segment as long as its target — no segment arrives and the session stalls
+  for good — on every arm alike
+  (`SlowLinkPlaybackTests`, #474). Every profile in the matrix stays above the bottom rung
+  but for `lteWithDropouts`' two seconds at zero, after which its link is faster than every rung
+  again.
+- **A cold simulator spends seconds before its first segment.** Nine, between the two playlists, on
+  a freshly booted one — so the link's clock starts at the first media segment rather than at the
+  origin, or the first session of a run would meet a later stretch of its profile than the rest
+  (#474).
 - **The access log's `indicatedBitrate` can read −1** on an entry the player did play, once seen
   after a climb to the top rung. `QoeCollector` reads −1 as unknown and reports no switch for it,
   so such a session's bitrate column holds the rung before; it is the collector's derivation on

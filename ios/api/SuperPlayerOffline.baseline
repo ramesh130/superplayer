@@ -1,5 +1,6 @@
 // SuperPlayerOffline: public API as ios/check reads it. Regenerate with ios/check --update-api.
 Class Downloads : OfflineAssets, OfflineContent, Sendable
+Constructor DownloadProtection.init(drm:licences:licenceDuration:playbackDuration:) : SuperPlayerOffline.DownloadProtection, any SuperPlayerCore.PlaybackDrm, any SuperPlayerCore.LicenceStore, Swift.Duration, Swift.Duration
 Constructor DownloadRefusal.init(rawValue:) : SuperPlayerOffline.DownloadRefusal?, Swift.String
 Constructor DownloadState.init(rawValue:) : SuperPlayerOffline.DownloadState?, Swift.String
 Constructor Downloads.Configuration.init(directory:sessionIdentifier:) : SuperPlayerOffline.Downloads.Configuration, Foundation.URL, Swift.String
@@ -17,6 +18,7 @@ EnumElement DownloadsError.database : (SuperPlayerOffline.DownloadsError.Type) -
 EnumElement DownloadsError.notADirectory : (SuperPlayerOffline.DownloadsError.Type) -> (Foundation.URL) -> SuperPlayerOffline.DownloadsError
 EnumElement DownloadsError.unavailableOnThisPlatform : (SuperPlayerOffline.DownloadsError.Type) -> SuperPlayerOffline.DownloadsError
 Func DownloadItem.==(_:_:) : Swift.Bool, SuperPlayerOffline.DownloadItem, SuperPlayerOffline.DownloadItem [static]
+Func DownloadLicence.==(_:_:) : Swift.Bool, SuperPlayerOffline.DownloadLicence, SuperPlayerOffline.DownloadLicence [static]
 Func Downloads.addListener(_:) : (), any SuperPlayerOffline.DownloadsListener
 Func Downloads.download(_:) : SuperPlayerOffline.DownloadItem?, Swift.String
 Func Downloads.downloads() : [SuperPlayerOffline.DownloadItem]
@@ -30,6 +32,8 @@ Func DownloadsListener.downloadChanged(_:) : (), SuperPlayerOffline.DownloadItem
 Func DownloadsListener.downloadRemoved(_:) : (), Swift.String where <Self where Self : SuperPlayerOffline.DownloadsListener>
 Protocol DownloadsListener where <Self : AnyObject>
 Struct DownloadItem : CustomStringConvertible, Equatable, Sendable
+Struct DownloadLicence : CustomStringConvertible, Equatable, Sendable
+Struct DownloadProtection : Sendable
 Struct Downloads.Configuration : Sendable
 TypeAlias DownloadRefusal.AllCases : [SuperPlayerOffline.DownloadRefusal]
 TypeAlias DownloadRefusal.RawValue : Swift.String
@@ -39,9 +43,18 @@ Var DownloadItem.bytesDownloaded : Swift.Int64 { get }
 Var DownloadItem.contentId : Swift.String { get }
 Var DownloadItem.description : Swift.String { get }
 Var DownloadItem.failure : SuperPlayerCore.SuperPlayerError? { get }
+Var DownloadItem.licence : SuperPlayerOffline.DownloadLicence? { get }
 Var DownloadItem.percentDownloaded : Swift.Double? { get }
 Var DownloadItem.refusal : SuperPlayerOffline.DownloadRefusal? { get }
 Var DownloadItem.state : SuperPlayerOffline.DownloadState { get }
+Var DownloadLicence.description : Swift.String { get }
+Var DownloadLicence.expiry : SuperPlayerCore.SuperPlayerError? { get }
+Var DownloadLicence.isExpired : Swift.Bool { get }
+Var DownloadLicence.renewalDue : Swift.Bool { get }
+Var DownloadProtection.drm : any SuperPlayerCore.PlaybackDrm { get set }
+Var DownloadProtection.licenceDuration : Swift.Duration { get set }
+Var DownloadProtection.licences : any SuperPlayerCore.LicenceStore { get set }
+Var DownloadProtection.playbackDuration : Swift.Duration { get set }
 Var DownloadRefusal.allCases : [SuperPlayerOffline.DownloadRefusal] [static] { get }
 Var DownloadRefusal.rawValue : Swift.String { get }
 Var DownloadState.allCases : [SuperPlayerOffline.DownloadState] [static] { get }
@@ -50,6 +63,7 @@ Var Downloads.Configuration.directory : Foundation.URL { get set }
 Var Downloads.Configuration.meteredNetworksAllowed : Swift.Bool { get set }
 Var Downloads.Configuration.policy : (any SuperPlayerCore.PlaybackPolicy)? { get set }
 Var Downloads.Configuration.profile : SuperPlayerCore.PlaybackProfile { get set }
+Var Downloads.Configuration.protection : SuperPlayerOffline.DownloadProtection? { get set }
 Var Downloads.Configuration.resilience : (any SuperPlayerCore.PlaybackResilience)? { get set }
 Var Downloads.Configuration.sessionIdentifier : Swift.String { get set }
 Var Downloads.configuration : SuperPlayerOffline.Downloads.Configuration { get }

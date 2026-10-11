@@ -47,10 +47,11 @@ public enum NetworkTransport: String, Sendable, Hashable, CaseIterable {
 /// recorded trace loops (ref: Netravali et al., "Mahimahi: Accurate Record-and-Replay for HTTP",
 /// USENIX ATC 2015 — `mm-link` wraps to the start of its trace), and a handover holds.
 ///
-/// Time zero is the moment the ``LoopbackOrigin`` serving under it started — on Android it is the
-/// moment the harness built the player, which on iOS is a moment no harness sees, since a test builds
-/// its `AVPlayer` itself; the origin starts just before, so the two differ by the time a test takes
-/// to make a player.
+/// Time zero is the moment the ``LoopbackOrigin`` serving under it was first asked for a media
+/// segment — on Android it is the moment the harness built the player, on a fake clock the host's own
+/// work never moves. No harness here sees an `AVPlayer` built, and the origin's own start would
+/// count the host's start-up as link time, which on a freshly booted simulator was nine seconds of a
+/// ten-second fast stretch (#474); the first segment is the nearest instant the start-up has passed.
 public struct ThroughputTrace: Sendable, Hashable, CustomStringConvertible {
 
     /// The first line of every trace: the format's name and its version.

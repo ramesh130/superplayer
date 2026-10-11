@@ -231,6 +231,12 @@ origin.responses()                         // how each was answered: status, fau
   the script's cache — and is what a test shows a fault happened with. What a server cannot produce
   (a DNS or TLS failure, the client's own timeout) is not in the script, and a trace's transport is
   reported on each response rather than switched.
+- **A trace's clock starts at the first media segment asked for** (#474), not at the origin's
+  start, because a freshly booted simulator spends seconds between the playlists. And **a link
+  slower than a stream never delivers it**: AVFoundation abandons a segment not whole within about a
+  target duration and asks again from byte zero, so a session stalled on such a link stays stalled,
+  on a stock player as on a `SuperPlayer` (`SlowLinkPlaybackTests`, `docs/testing.md`'s *The fault
+  sweep on iOS*). Assert that a stall began, never that it ended.
 - **Two hosts are one origin with two listeners**: `.hls(hosts: 2)` or `.liveHls(hosts: 2)`, on one
   publication clock, the multivariant playlist listing each variant again on the second host as a
   redundant stream; `origin.url(path:host:)` addresses one, and a fault's `host:` narrows to it.

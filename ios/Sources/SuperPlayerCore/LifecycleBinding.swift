@@ -209,6 +209,18 @@ final class LifecycleBinding {
         shared.withdraw(token)
     }
 
+    /// Puts the binding back in a fresh player's idle state for ``SuperPlayer``'s `resetForReuse`
+    /// (#404): wanting nothing, with no interruption to resume after, and saying so to
+    /// ``SharedLifecycle`` at once — not on the rate change the reset's pause may post later, if
+    /// at all, since a recycled player that went on holding the session or the idle timer would be
+    /// the last user's need outliving its row. The observations stay: they are the player's, for
+    /// its whole life, as a fresh player's are.
+    func resetForReuse() {
+        wantsToPlay = false
+        resumeAfterInterruption = false
+        publish()
+    }
+
     deinit {
         // `deinit` is not isolated to the main actor — an isolated `deinit` needs a runtime newer
         // than the iOS 17 floor — so the release is withdrawn one main-actor turn after it.

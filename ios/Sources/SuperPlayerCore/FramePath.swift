@@ -137,7 +137,7 @@ final class FramePath {
 
     /// Lets go of the current item: its output removed, the display link stopped, its observation
     /// gone, and the layer emptied, so no frame of it reaches a view that shows the next item —
-    /// which is why #404's reset for reuse is to call it before anything else.
+    /// which is why ``SuperPlayer``'s reset for reuse (#404) calls it before anything else.
     func detach() {
         displayLink?.invalidate()
         displayLink = nil

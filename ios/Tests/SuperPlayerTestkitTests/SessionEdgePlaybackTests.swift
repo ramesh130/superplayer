@@ -25,7 +25,7 @@ import XCTest
 /// what is asserted is what core tells any collector, and in what order.
 ///
 /// Restore is an adoption too, through the snapshot's request. Reset-for-reuse is the fourth edge,
-/// and its caller is #404's `resetForReuse`; `SessionEdges.swift` says what it calls.
+/// and its caller is #404's `resetForReuse`, held by `PlayerPoolTests` with no network.
 ///
 /// Time is real and nothing here measures it: each step waits, with a ceiling, for the position to
 /// advance, so every session asserted is one whose content was playing.

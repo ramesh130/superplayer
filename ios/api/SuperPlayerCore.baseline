@@ -1,5 +1,6 @@
 // SuperPlayerCore: public API as ios/check reads it. Regenerate with ios/check --update-api.
-Class PlayerLayerView : CALayerDelegate, CLBodyIdentifiable, CMBodyIdentifiable, CVarArg, CustomDebugStringConvertible, CustomStringConvertible, Equatable, Hashable, NSCoding, NSObjectProtocol, UIAccessibilityIdentification, UIActivityItemsConfigurationProviding, UIAppearance, UIAppearanceContainer, UICoordinateSpace, UIDynamicItem, UIFocusEnvironment, UIFocusItem, UIFocusItemContainer, UILargeContentViewerItem, UIPasteConfigurationSupporting, UIPopoverPresentationControllerSourceItem, UIResponderStandardEditActions, UITraitChangeObservable, UITraitEnvironment, UIUserActivityRestoring
+Class PlayerLayerView : superclass UIKit.UIView
+Class PlayerPool : Sendable
 Class SuperPlayer : Sendable
 Constructor MediaRequest.StartPosition.init(from:) : SuperPlayerCore.MediaRequest.StartPosition, any Swift.Decoder [throwing]
 Constructor MediaRequest.init(contentId:sources:startPosition:title:subtitle:artworkURL:) : SuperPlayerCore.MediaRequest, Swift.String, [Foundation.URL], SuperPlayerCore.MediaRequest.StartPosition, Swift.String?, Swift.String?, Foundation.URL?
@@ -9,6 +10,8 @@ Constructor PlaybackFailure.init(category:code:message:classification:) : SuperP
 Constructor PlaybackSnapshot.init(from:) : SuperPlayerCore.PlaybackSnapshot, any Swift.Decoder [throwing]
 Constructor PlayerLayerView.init(frame:) : SuperPlayerCore.PlayerLayerView, CoreFoundation.CGRect
 Constructor PlayerLayerView.init(player:) : SuperPlayerCore.PlayerLayerView, SuperPlayerCore.SuperPlayer?
+Constructor PlayerPool.Configuration.init() : SuperPlayerCore.PlayerPool.Configuration
+Constructor PlayerPool.init(configuration:) : SuperPlayerCore.PlayerPool, SuperPlayerCore.PlayerPool.Configuration
 Constructor PlayerView.init(player:videoGravity:) : SuperPlayerCore.PlayerView, SuperPlayerCore.SuperPlayer, AVFoundation.AVLayerVideoGravity
 Constructor SuperPlayer.Configuration.init() : SuperPlayerCore.SuperPlayer.Configuration
 Constructor SuperPlayer.Configuration.init(profile:) : SuperPlayerCore.SuperPlayer.Configuration, SuperPlayerCore.PlaybackProfile
@@ -109,6 +112,9 @@ Func PlaybackSnapshot.encode(to:) : (), any Swift.Encoder [throwing]
 Func PlaybackSnapshot.hash(into:) : (), Swift.Hasher
 Func PlayerLayerView.layoutSubviews() : ()
 Func PlayerLayerView.makePictureInPictureContentSource() : AVKit.AVPictureInPictureController.ContentSource?
+Func PlayerPool.acquire() : SuperPlayerCore.SuperPlayer?
+Func PlayerPool.recycle(_:) : (), SuperPlayerCore.SuperPlayer
+Func PlayerPool.release() : ()
 Func PlayerView.makeUIView(context:) : SuperPlayerCore.PlayerLayerView, SuperPlayerCore.PlayerView.Context
 Func PlayerView.updateUIView(_:context:) : (), SuperPlayerCore.PlayerLayerView, SuperPlayerCore.PlayerView.Context
 Func SuperPlayer.declarePlaybackIntent() : ()
@@ -168,6 +174,7 @@ Struct MediaRequest : Decodable, Encodable, Equatable, Hashable, Sendable
 Struct PlaybackDecision : Equatable, Hashable, Sendable
 Struct PlaybackFailure : Equatable, Hashable, Sendable
 Struct PlaybackSnapshot : Decodable, Encodable, Equatable, Hashable, Sendable
+Struct PlayerPool.Configuration : Sendable
 Struct PlayerView : Sendable, UIViewRepresentable, View
 Struct SuperPlayer.Configuration : Sendable
 Struct TelemetryEvent.DecisionChanged : Equatable, Hashable, Sendable
@@ -215,6 +222,12 @@ Var PlaybackSnapshot.positionMs : Swift.Int64? { get }
 Var PlaybackSnapshot.request : SuperPlayerCore.MediaRequest? { get }
 Var PlayerLayerView.player : SuperPlayerCore.SuperPlayer? { get set }
 Var PlayerLayerView.videoGravity : AVFoundation.AVLayerVideoGravity { get set }
+Var PlayerPool.Configuration.maxSize : Swift.Int? { get set }
+Var PlayerPool.Configuration.player : SuperPlayerCore.SuperPlayer.Configuration { get set }
+Var PlayerPool.configuration : SuperPlayerCore.PlayerPool.Configuration { get }
+Var PlayerPool.inUseCount : Swift.Int { get }
+Var PlayerPool.maxSize : Swift.Int { get }
+Var PlayerPool.size : Swift.Int { get }
 Var SuperPlayer.Configuration.frameOutput : (any SuperPlayerCore.FrameOutput)? { get set }
 Var SuperPlayer.Configuration.profile : SuperPlayerCore.PlaybackProfile { get set }
 Var SuperPlayer.Configuration.telemetry : (() -> any SuperPlayerCore.TelemetryCollector)? { get set }

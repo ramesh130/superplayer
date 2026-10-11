@@ -110,6 +110,25 @@ final class FrameOutputPaysNothingTests: XCTestCase {
         XCTAssertEqual(player.liveObservations, [:])
     }
 
+    /// A recycled player keeps nothing of its output's last item (#404's `resetForReuse`, output
+    /// first): no item output, no display link, no observation — and the next item it is given
+    /// gets them back, once.
+    func testARecycledPlayerKeepsNoOutputLinkOrObservationUntilItsNextItem() throws {
+        let player = player(output: StandInOutput())
+        let item = try XCTUnwrap(player.avPlayer.currentItem)
+
+        player.resetForReuse()
+
+        XCTAssertEqual(item.outputs.count, 0)
+        XCTAssertFalse(try XCTUnwrap(player.framePath).hasDisplayLink)
+        XCTAssertNil(player.liveObservations[.frameOutputItemTimeJumped])
+
+        player.setMediaRequest(MediaRequest(contentId: "b", sources: [nowhere]))
+        XCTAssertEqual(try XCTUnwrap(player.avPlayer.currentItem).outputs.count, 1)
+        XCTAssertTrue(try XCTUnwrap(player.framePath).hasDisplayLink)
+        XCTAssertEqual(player.liveObservations[.frameOutputItemTimeJumped], 1)
+    }
+
     /// ADR-0022 rule 6 through #422's stub: protection and an output meet when the player is made,
     /// and the answer is a reason, with nothing of the output made — the view is an `AVPlayerLayer`.
     func testAProtectedPlayerHasItsOutputOffAndMakesNothingForIt() throws {

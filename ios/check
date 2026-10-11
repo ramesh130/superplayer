@@ -150,7 +150,7 @@ xcodebuild build -quiet \
 # when a product's public API stops being enough for an app. Built and not run, for both platforms
 # its one target supports; whether it plays a real stream needs a network, which no check has
 # (ios/Demo/README.md). Its DerivedData is its own: the demo is a second workspace, and one writing
-# its products where the digester below reads the package's modules would be a race between them.
+# its products into the same DerivedData would overwrite the package modules the digester reads.
 step "Build: the demo, iOS and tvOS simulators"
 for platform in 'iOS Simulator' 'tvOS Simulator'; do
     xcodebuild build -quiet \

@@ -202,7 +202,6 @@ origin.responses()                         // how each was answered: status, fau
 ios/check                     # swift-format lint, simulator tests, tvOS build, demo build, API diff
 ios/check --update-api        # the same, rewriting ios/api/*.baseline; commit the diff
 ios/check --update-golden     # the same, rewriting ios/Tests/Fixtures/golden/*.trace; review and commit the diff
-xcrun simctl launch booted com.superplayer.demo -SPDemoScreen playback   # the demo, once installed (ios/Demo/README.md)
 SP_SIMULATOR=mine ios/check   # test on a simulator of that name instead (created if absent)
 xcrun swift-format format --in-place --recursive --configuration ios/.swift-format ios Package.swift
 ```

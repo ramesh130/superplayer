@@ -21,7 +21,7 @@ import SuperPlayerCore
 /// (a) stockDefaults      AVPlayer(playerItem:), play(), and nothing else
 /// (b) stockNaiveTuning   the same, plus what an app writes from intuition
 /// (c) superPlayer        SuperPlayer(configuration:) with the scenario's profile
-/// (d) adaptive           the same plus the adaptive policy — an empty slot until i3 (#416)
+/// (d) adaptive           the same plus SuperPlayerABR's AdaptivePolicy for that profile (#416)
 /// ```
 ///
 /// Arm (b) is what keeps arm (a) from being a straw man, for the Kotlin reason: the question an
@@ -55,25 +55,12 @@ enum Arm: String, CaseIterable, Sendable {
         }
     }
 
-    /// Whether this arm can be played yet. **Arm (d) is a slot, not an arm, until i3**: the iOS
-    /// adaptive policy is #416's, and a report that ran arm (c) twice under two names would be the
-    /// fabrication the report's honesty rules exist to prevent. The matrix skips it, and the report
-    /// prints it as unmeasured rather than leaving it out — an absent column reads as one nobody
-    /// needed. #416 fills it by building the player in `SessionRunner` and returning true here.
-    var isBuilt: Bool { self != .adaptive }
-
     /// Whether this is one of the two stock arms, which is what decides how a player is built.
     var isStock: Bool { self == .stockDefaults || self == .stockNaiveTuning }
 
-    /// The arm every built arm before it is compared against: the most capable one built. Arm (c)
-    /// while (d) is a slot — the Phase 1 report's shape — and arm (d) from i3 on, the Phase 3 one's,
-    /// with nothing to change here when it arrives.
-    static var candidate: Arm {
-        guard let built = allCases.last(where: \.isBuilt) else {
-            preconditionFailure("No arm is built, so the benchmark has nothing to grade")
-        }
-        return built
-    }
+    /// The arm every arm before it is compared against: the most capable one, arm (d) — the Kotlin
+    /// Phase 3 report's shape. It was arm (c) while (d) was an empty slot (#414's baseline).
+    static let candidate = Arm.adaptive
 
     /// What arm (b) configures: the two changes every such recipe makes, pulling against each
     /// other, in the vocabulary iOS offers for them.

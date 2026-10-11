@@ -544,6 +544,18 @@ knob a decision reaches is live-settable on the playing item, so every player ex
 profile's static policy is consulted again, a consumer's own policy included (`DecisionChanged`'s
 *How derived on iOS* cell).
 
+**The throughput a decision was made on is a different input on iOS**, and a `THROUGHPUT_CHANGED`
+row reads accordingly. Android's estimate is `superplayer-abr`'s `BandwidthOracle` over sampled
+transfers, each timed by the engine, with a read a cache answered excluded from it. AVFoundation
+reports no transfer to an app, so on iOS every sample is **one access-log entry's
+`observedBitrate`** — Apple's own measure of what was fetched while that entry was current, which
+spans a variant, a seek or a stall rather than one segment — and the cache-hit exclusion has nothing
+to exclude. `SuperPlayerABR`'s `AdaptivePolicy` keeps those samples per transport for the process,
+with Android's cold defaults and aging (ADR-0009 rules 8 and 9); any other iOS policy is handed the
+playing item's own entries alone. Either way the trigger's threshold — a fifth of the last estimate
+announced — is Android's, and nothing in this schema's fields changed for it: `SCHEMA_VERSION` stays
+2.
+
 **A display change is not a decision change.** On a player built with `superplayer-tv`, an HDMI hotplug
 re-selects renditions under the new display without consulting the policy, so it appears as
 `TrackSwitched` and never as `DecisionChanged` ([ADR-0014][adr14] rules 5, 9 and 11; *Release notes*,

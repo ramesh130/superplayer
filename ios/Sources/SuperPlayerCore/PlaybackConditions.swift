@@ -31,7 +31,10 @@ public struct PlaybackConditions: Sendable, Hashable {
     public var transport: NetworkTransport?
 
     /// What the network is believed to deliver, or nil before the item's access log has recorded a
-    /// transfer — from the access log's `observedBitrate` over its recent entries.
+    /// transfer — from the access log's `observedBitrate` over its recent entries. On a player whose
+    /// policy brings an estimator of its own — `SuperPlayerABR`'s `AdaptivePolicy` — it is that
+    /// estimator's instead: the same readings kept per transport across items, and a cold default
+    /// with a ``ThroughputEstimate/sampleCount`` of zero before anything was measured.
     public var throughput: ThroughputEstimate?
 
     /// What this session has already suffered — from the player's own `timeControlStatus`, on the

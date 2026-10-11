@@ -19,19 +19,20 @@ import XCTest
 @testable import SuperPlayerBenchmark
 
 /// `PRD.md` §6's honesty rules, held where the report is made — the Kotlin `ReportHonestyTest`,
-/// against a fixture built so that SuperPlayer loses — plus the two rules the iOS report adds: the
-/// empty adaptive slot is printed as one, and the exit criterion reads it as unmeasured.
+/// against a fixture built so that SuperPlayer loses — plus the rule the iOS report adds: a run that
+/// played no cell the exit criterion compares reads it as unmeasured, not met.
 ///
 /// No playback: the fixture is `SessionMetrics` written by hand, so this costs `ios/check` nothing
 /// a reader would notice.
 final class ReportHonestyTests: XCTestCase {
 
-    /// Arm (c) stalls more than stock on 3G, by far more than the noise: a loss, and printed first.
+    /// Arm (d) stalls more than stock on 3G, by far more than the noise: a loss, and printed first.
     func testALossIsPrintedBeforeAnyWinInTheSameWords() throws {
         let text = ReportWriter.write(fixture())
 
-        let worse = try XCTUnwrap(text.range(of: "## Where SuperPlayer is worse, or no better"))
-        let better = try XCTUnwrap(text.range(of: "## Where SuperPlayer is better"))
+        let worse = try XCTUnwrap(
+            text.range(of: "## Where SuperPlayer (adaptive) is worse, or no better"))
+        let better = try XCTUnwrap(text.range(of: "## Where SuperPlayer (adaptive) is better"))
         XCTAssertLessThan(worse.lowerBound, better.lowerBound)
         let lossRow = try XCTUnwrap(
             text.range(of: "| VOD | 3G | rebuffer count |"), "the loss is in a table")
@@ -83,14 +84,13 @@ final class ReportHonestyTests: XCTestCase {
                 .contains("1 (+1 excluded)"))
     }
 
-    /// Arm (d) is a slot until i3: printed as not built in every scenario's table, never left out,
-    /// and the exit criterion reads every profile as not measured rather than met.
-    func testTheEmptyAdaptiveSlotIsPrintedAndTheCriterionIsNotMeasured() {
+    /// The criterion compares arm (d) with arm (c), and the fixture played no arm (c): every profile
+    /// reads not measured, never met — absence of evidence is not a pass.
+    func testACriterionWithNothingToCompareIsNotMeasuredAndNotMet() {
         let report = fixture()
         let text = ReportWriter.write(report)
 
-        XCTAssertEqual(Arm.candidate, .superPlayer, "the candidate is the most capable built arm")
-        XCTAssertTrue(text.contains("| 3G | SuperPlayer (adaptive) | not built (i3, #416) "))
+        XCTAssertEqual(Arm.candidate, .adaptive, "the candidate is the most capable arm")
         XCTAssertTrue(text.contains("**Not met — not measured.**"))
         XCTAssertTrue(ExitCriterion.judge(report).allSatisfy { !$0.measured && !$0.met })
     }
@@ -105,15 +105,15 @@ final class ReportHonestyTests: XCTestCase {
 
     // MARK: - The fixture
 
-    /// VOD on 3G: stock stalls once a session, SuperPlayer four times, with a little spread each.
+    /// VOD on 3G: stock stalls once a session, adaptive SuperPlayer four times, a little spread each.
     private func fixture() -> MatrixReport {
         let stock = CellResult(
             key: CellKey(scenario: .vod, network: .threeG, arm: .stockDefaults),
             all: [1, 1, 1].map { metrics(rebufferMs: 500, playingMs: 30_000, rebufferCount: $0) })
-        let superPlayer = CellResult(
-            key: CellKey(scenario: .vod, network: .threeG, arm: .superPlayer),
+        let adaptive = CellResult(
+            key: CellKey(scenario: .vod, network: .threeG, arm: .adaptive),
             all: [4, 4, 5].map { metrics(rebufferMs: 4_000, playingMs: 30_000, rebufferCount: $0) })
-        return MatrixReport(conditions: conditions(), cells: [stock, superPlayer])
+        return MatrixReport(conditions: conditions(), cells: [stock, adaptive])
     }
 
     private func conditions() -> RunConditions {

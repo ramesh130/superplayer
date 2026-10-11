@@ -16,7 +16,7 @@ import Foundation
 import SuperPlayerCore
 import SuperPlayerTelemetry
 
-/// The matrix, run: every built arm of every scenario on every network, `runs` times, written out
+/// The matrix, run: every arm of every scenario on every network, `runs` times, written out
 /// as a report and its raw traces — the Kotlin `BenchmarkMatrixTest.runsTheMatrixAndWritesTheReport`.
 ///
 /// ## The order sessions run in, and why it is not the obvious one
@@ -28,10 +28,10 @@ import SuperPlayerTelemetry
 /// just before is an input to the one after, as `superplayer-abr`'s estimate memory is on Android —
 /// where the runner can idle the clock past the memory's lifetime, and here it cannot.
 ///
-/// What is done about it is **balance**, since removal is unavailable: a cell's built arms play
-/// back to back on one network, so each arm's predecessor is usually a session on the same link,
-/// and their order rotates by one place every run, so over three runs each arm takes each position
-/// once. No arm is always the one that inherits the previous cell's network. A returning viewer's
+/// What is done about it is **balance**, since removal is unavailable: a cell's arms play back to
+/// back on one network, so each arm's predecessor is usually a session on the same link, and their
+/// order rotates by one place every run and every cell, so across a run each arm opens as many
+/// cells as any other. No arm is always the one that inherits the previous cell's network. A returning viewer's
 /// warm estimate is what every session after the first measures, which the report says.
 @MainActor
 struct MatrixRun {
@@ -46,8 +46,8 @@ struct MatrixRun {
     let output: URL
 
     /// Runs a cell when nobody says otherwise, and the committed baseline's count: the fewest that
-    /// estimates a spread on more than one degree of freedom, and as many as a cell has built arms,
-    /// so each takes each place in the rotation once. `ios/Benchmark/README.md`, *The run count*,
+    /// estimates a spread on more than one degree of freedom. It was also as many as a cell had arms
+    /// while arm (d) was a slot; with four, the rotation's offset by cell is what balances the order. `ios/Benchmark/README.md`, *The run count*,
     /// argues it against the simulator's real time; `ios/Benchmark/bench` passes the same number.
     static let defaultRunsPerCell = 3
 
@@ -56,14 +56,15 @@ struct MatrixRun {
 
     /// Plays the matrix and writes ``reportFileName`` and `traces/` into ``output``, returning the report.
     func run(log: (String) -> Void = { print($0) }) async throws -> MatrixReport {
-        let built = Arm.allCases.filter(\.isBuilt)
         var sessions: [CellKey: [[TelemetryEvent]]] = [:]
         for run in 0..<runs {
             var position = 0
             for scenario in Scenario.allCases {
                 for network in MatrixNetwork.profiles {
-                    let keys = built.map { CellKey(scenario: scenario, network: network, arm: $0) }
-                        .filter { key in cellFilter.map { "\(key)".contains($0) } ?? true }
+                    let keys = Arm.allCases.map {
+                        CellKey(scenario: scenario, network: network, arm: $0)
+                    }
+                    .filter { key in cellFilter.map { "\(key)".contains($0) } ?? true }
                     guard !keys.isEmpty else { continue }
                     // Rotated by the run, so a cell's arms take each position once over as many runs
                     // as there are arms, and by the cell, so no arm opens every cell of a run.

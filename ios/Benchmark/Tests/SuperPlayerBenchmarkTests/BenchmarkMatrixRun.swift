@@ -45,12 +45,11 @@ final class BenchmarkMatrixRun: XCTestCase {
 
         XCTAssertFalse(report.cells.isEmpty, "the filter matched no cell")
         if filter == nil {
-            // The completeness assertion the Kotlin runner makes: every built arm of every scenario
-            // on every network, so a cell quietly missing cannot read as one nobody needed.
-            let built = Arm.allCases.filter(\.isBuilt).count
+            // The completeness assertion the Kotlin runner makes: every arm of every scenario on
+            // every network, so a cell quietly missing cannot read as one nobody needed.
             XCTAssertEqual(
                 report.cells.count,
-                Scenario.allCases.count * MatrixNetwork.profiles.count * built)
+                Scenario.allCases.count * MatrixNetwork.profiles.count * Arm.allCases.count)
         }
         for cell in report.cells {
             XCTAssertEqual(

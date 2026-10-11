@@ -6,14 +6,17 @@ whose rules it keeps and whose reasoning this page does not repeat; what is here
 iOS, and why.
 
 ```bash
-ios/Benchmark/bench                          # the matrix, 3 runs a cell, into ios/Benchmark/out (~2 h)
-ios/Benchmark/bench --baseline               # into benchmark/ios-baseline, the committed reference
+ios/Benchmark/bench                          # the matrix, 3 runs a cell, into ios/Benchmark/out (~2 h 40 min)
+ios/Benchmark/bench --baseline               # into benchmark/ios-phase3, the committed reference
 ios/Benchmark/bench --runs 1 --cells "VOD / 3G"   # a filtered smoke run, for working on the harness
 ```
 
-The committed report is [`benchmark/ios-baseline/baseline-report.md`](../../benchmark/ios-baseline/baseline-report.md),
-beside the Android reports and not among them: they measure a different engine, on a fake clock, and
-no cell of one is comparable to a cell of the other.
+The committed reports sit beside the Android reports and not among them: they measure a different
+engine, on a fake clock, and no cell of one is comparable to a cell of the other.
+[`benchmark/ios-baseline/`](../../benchmark/ios-baseline/baseline-report.md) is i2's, frozen, run
+with arm (d) an empty slot; [`benchmark/ios-phase3/`](../../benchmark/ios-phase3/baseline-report.md)
+is i3's (#416), with all four arms, and is what `--baseline` writes now — the Android `phase3/`'s
+place.
 
 ---
 
@@ -31,12 +34,12 @@ nothing — its video holds the idle timer, and `xctest` has no `UIApplication` 
 `SharedLifecycle(platform:)`, is `package`-scoped, which SwiftPM grants to targets of one package
 only. So `SuperPlayerBenchmark` is a target of `Package.swift` and **not a product**: nothing ships
 it, it has no API baseline, and `docs/modules.md` gives it the phase of the latest product it measures
-with — 2 today, 3 once arm (d) brings in `SuperPlayerABR` — with nothing depending on it.
+with — 3, since arm (d) brought in `SuperPlayerABR` (#416) — with nothing depending on it.
 
 **Why the matrix is not in `ios/check`**, for `benchmark/README.md`'s reasons: it measures rather
 than checks, a change that made a number worse should produce a finding rather than a red build,
-and it takes two hours of real time. It is hosted in an XCTest only because that is how a process
-reaches the simulator. `ios/check` passes `-skip-testing:SuperPlayerBenchmarkTests/BenchmarkMatrixRun`,
+and it takes nearly three hours of real time. It is hosted in an XCTest only because that is how a
+process reaches the simulator. `ios/check` passes `-skip-testing:SuperPlayerBenchmarkTests/BenchmarkMatrixRun`,
 and the test skips itself anyway without `SP_BENCH_OUT`, so the whole scheme run from Xcode does not
 start an hour of playback.
 
@@ -55,17 +58,18 @@ than a minute.
 | (a) stock (defaults) | `AVPlayer(playerItem:)` and `play()`, and nothing else |
 | (b) stock (naive tuning) | the same, plus `preferredForwardBufferDuration` of 120 s and `playImmediately(atRate: 1)` |
 | (c) SuperPlayer | `SuperPlayer(configuration:)` with the scenario's profile and its static policy |
-| (d) SuperPlayer (adaptive) | **an empty slot until i3 (#416)** |
+| (d) SuperPlayer (adaptive) | the same plus `SuperPlayerABR`'s `AdaptivePolicy.forProfile` for that profile (#416), its estimate memory forgotten before each session |
 
 Arm (b) is the Kotlin arm's two pulling-against-each-other changes in the vocabulary iOS offers:
 *buffer much more* is the forward-buffer preference, and *start much sooner* is Apple's own "start
 now even if it may stall", since iOS has no start floor to lower. `Arm.swift` says why it is not
 `automaticallyWaitsToMinimizeStalling = false`, which would measure the runner's resume loop.
 
-Arm (d) is printed in every table as *not built*, and the report's exit criterion reads every
-profile as **not measured**, which is not met. It is not imitated by running arm (c) under a second
-name. #416 fills it in `SessionRunner` and `Arm.isBuilt`; `Arm.candidate` — the arm the report
-grades — then moves from (c) to (d) on its own.
+Arm (d) is the arm the report grades (`Arm.candidate`), and `ExitCriterion` judges it against arm
+(c). Until #416 it was an empty slot, printed as *not built*, which is what i2's frozen report shows.
+**Each of its sessions starts cold**: `SessionRunner` forgets the process's estimate memory first,
+as the Android runner idles its fake clock past ADR-0009 rule 9's stale age, so no session decides on
+the one before it. AVFoundation's own carried estimate (below) is untouched on every arm alike.
 
 **Six network profiles**, testkit's `NetworkProfile` less `ethernet`, paced at the loopback socket
 from the moment each session's origin starts. **Four scenarios** (`Scenario.swift`), with Android's
@@ -136,19 +140,21 @@ seconds of playback (`Scenario.playbackMs`, the least that keeps Android's reaso
 ten-second samples, the LTE outage at twenty seconds, the handover at ten), then the release. Call
 it thirty-three seconds a session.
 
-| Runs a cell | Sessions (24 cells × 3 built arms) | Wall clock |
+| Runs a cell | Sessions (24 cells × 4 arms) | Wall clock |
 | --- | --- | --- |
-| 20 | 1 440 | about 13 h 12 min |
-| 5 | 360 | about 3 h 18 min |
-| **3** | **216** | **about 2 h** |
-| 2 | 144 | about 1 h 20 min |
+| 20 | 1 920 | about 17 h 36 min |
+| 5 | 480 | about 4 h 24 min |
+| **3** | **288** | **about 2 h 40 min** |
+| 2 | 192 | about 1 h 46 min |
 
-**Three is the default and the committed baseline's count**, for three reasons. It is the fewest
+**Three is the default and the committed reports' count**, for three reasons. It is the fewest
 that estimates a spread on more than one degree of freedom, which is what the two-standard-error
-band is made of — at two, one unusual run sets the band by itself. It is the number at which a
-cell's three arms each take each place in the rotation once, which is what balances the carried
-estimate. And it fits a working session on a shared host, where twenty would not fit a day and
-running sessions side by side to go faster would let each one's estimate and CPU reach the others'.
+band is made of — at two, one unusual run sets the band by itself. It was the number at which a
+cell's three arms each took each place in the rotation once; with arm (d) there are four, and what
+balances the carried estimate is the rotation's offset by cell, so across a run every arm opens as
+many cells as any other. And it fits a working session on a shared host, where twenty would not fit
+a day and running sessions side by side to go faster would let each one's estimate and CPU reach the
+others'.
 
 What it costs is said where it matters: the report opens by saying it is three runs and not twenty,
 and with three samples the noise band is wide, so most differences read as **neutral** — which is

@@ -138,7 +138,7 @@ package enum ConditionsBinding {
     /// The radio access technology of the service carrying data now, or nil where there is none —
     /// the platform half of ``cellularGeneration(radioAccessTechnology:)``.
     @MainActor
-    static func currentRadioAccessTechnology() -> String? {
+    package static func currentRadioAccessTechnology() -> String? {
         #if canImport(CoreTelephony)
             let info = CTTelephonyNetworkInfo()
             guard let service = info.dataServiceIdentifier else { return nil }
@@ -214,7 +214,7 @@ package enum ConditionsBinding {
 
     /// `CLOCK_MONOTONIC` in milliseconds: the clock every duration here is measured on, as
     /// ``PlaybackConditions`` says.
-    static func monotonicNowMs() -> Int64 {
+    package static func monotonicNowMs() -> Int64 {
         Int64(clock_gettime_nsec_np(CLOCK_MONOTONIC) / 1_000_000)
     }
 }
@@ -305,7 +305,7 @@ package struct StallObservation: Sendable {
 /// three readings are `SuperPlayerABR`'s `SampleWindow`'s on Android — mean, population spread, and
 /// the nearest-rank ``conservativePercentile`` — in integer bits per second rounded down, so a value
 /// a test computes by hand is the value this returns. The per-transport memory, cold defaults and
-/// aging are not here: they are the oracle's (ADR-0009 rule 8), which is i3's ABR half.
+/// aging are not here: they are `SuperPlayerABR`'s `BandwidthOracle`'s (ADR-0009 rule 8).
 package struct AccessLogThroughput: Sendable {
 
     private var samplesBps: [Int64] = []
@@ -326,20 +326,10 @@ package struct AccessLogThroughput: Sendable {
 
     /// The estimate at `nowMs`, or nil before the log has recorded a transfer.
     package func estimate(atMs nowMs: Int64) -> ThroughputEstimate? {
-        guard let newestAtMs, !samplesBps.isEmpty else { return nil }
-        let count = Int64(samplesBps.count)
-        let sum = samplesBps.reduce(0, +)
-        let mean = sum / count
-        let exactMean = Double(sum) / Double(count)
-        let variance =
-            samplesBps.map { (Double($0) - exactMean) * (Double($0) - exactMean) }
-            .reduce(0, +) / Double(count)
-        let sorted = samplesBps.sorted()
-        let rank = Int(
-            (Double(Self.conservativePercentile) / 100 * Double(sorted.count)).rounded(.up))
+        guard let newestAtMs, let readings = WindowReadings(of: samplesBps) else { return nil }
         return ThroughputEstimate(
-            meanBps: mean, spreadBps: Int64(variance.squareRoot()),
-            conservativeBps: sorted[rank - 1], sampleCount: samplesBps.count,
+            meanBps: readings.meanBps, spreadBps: readings.spreadBps,
+            conservativeBps: readings.conservativeBps, sampleCount: samplesBps.count,
             newestSampleAgeMs: max(0, nowMs - newestAtMs))
     }
 
@@ -373,4 +363,42 @@ package struct AccessLogThroughput: Sendable {
     /// rungs of every published ladder differ by more, so a smaller move could change no selection.
     /// ref: https://developer.apple.com/documentation/http-live-streaming/hls-authoring-specification-for-apple-devices
     package static let materialMoveFraction = 0.2
+}
+
+/// The three readings a window of throughput samples gives — the Kotlin `SampleWindow`'s mean,
+/// population spread and nearest-rank percentile, written once so that ``AccessLogThroughput``'s
+/// window and `SuperPlayerABR`'s per-transport one cannot summarise the same samples two ways.
+///
+/// Integer bits per second rounded down, so a value a test computes by hand is the value this
+/// returns. Population rather than sample deviation, for the Kotlin reason: the window *is* the set
+/// described. Nearest rank, with no interpolation, so the percentile is always a figure the network
+/// actually delivered.
+package struct WindowReadings: Sendable, Hashable {
+
+    /// The arithmetic mean, rounded down.
+    package let meanBps: Int64
+
+    /// The population standard deviation, rounded down.
+    package let spreadBps: Int64
+
+    /// The ``AccessLogThroughput/conservativePercentile``th percentile by nearest rank.
+    package let conservativeBps: Int64
+
+    /// The readings of `samplesBps`, or nil for an empty window, which has none.
+    package init?(of samplesBps: [Int64]) {
+        guard !samplesBps.isEmpty else { return nil }
+        let count = Int64(samplesBps.count)
+        let sum = samplesBps.reduce(0, +)
+        let exactMean = Double(sum) / Double(count)
+        let variance =
+            samplesBps.map { (Double($0) - exactMean) * (Double($0) - exactMean) }
+            .reduce(0, +) / Double(count)
+        let sorted = samplesBps.sorted()
+        let rank = Int(
+            (Double(AccessLogThroughput.conservativePercentile) / 100 * Double(sorted.count))
+                .rounded(.up))
+        meanBps = sum / count
+        spreadBps = Int64(variance.squareRoot())
+        conservativeBps = sorted[rank - 1]
+    }
 }

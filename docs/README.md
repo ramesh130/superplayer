@@ -61,6 +61,10 @@ Maven repository that `superplayer-moq` alone reads. It carries the rebuild reci
 limits — one ABI, reproducible by nobody else — and `CRATES.md`, the licence of every crate in that
 build. Nothing in `./gradlew check` rebuilds it.
 
+`ios/Demo/README.md` is the iOS and tvOS demo: an Xcode project resolving the Swift package by
+path, what each screen shows, how to run it on a simulator and read its position log, and how the
+project file was produced. `ios/check` builds it and runs nothing.
+
 Read `CRATES.md` and `THIRD_PARTY.md` before drawing a conclusion about that build's licences. The
 codec subtraction removed every `symphonia` and `openh264` symbol, and it did **not** empty the
 graph of copyleft: UniFFI is MPL-2.0 and `uniffi_core` is linked. That is admitted by

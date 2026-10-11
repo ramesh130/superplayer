@@ -13,10 +13,13 @@
 // limitations under the License.
 
 import AVFoundation
-import CoreTelephony
 import XCTest
 
 @testable import SuperPlayerCore
+
+#if canImport(CoreTelephony)
+    import CoreTelephony
+#endif
 
 /// `ConditionsBinding.swift`'s translations, at its `package` readers, with no device (#415's second
 /// acceptance line): a path, a radio, a memory reading, a duration, a rate, a run of player activity
@@ -54,14 +57,17 @@ final class ConditionsBindingTests: XCTestCase {
         XCTAssertEqual(transport(.other), .unknown)
     }
 
-    func testTheRadioCollapsesToThreeGenerations() {
-        XCTAssertEqual(generation(CTRadioAccessTechnologyNR), .nr)
-        XCTAssertEqual(generation(CTRadioAccessTechnologyNRNSA), .nr)
-        XCTAssertEqual(generation(CTRadioAccessTechnologyLTE), .lte)
-        XCTAssertEqual(generation(CTRadioAccessTechnologyWCDMA), .older)
-        XCTAssertEqual(generation(CTRadioAccessTechnologyEdge), .older)
-        XCTAssertNil(generation(nil))
-    }
+    // Where CoreTelephony is, as the reader's own guard says: tvOS has no radio to report.
+    #if canImport(CoreTelephony)
+        func testTheRadioCollapsesToThreeGenerations() {
+            XCTAssertEqual(generation(CTRadioAccessTechnologyNR), .nr)
+            XCTAssertEqual(generation(CTRadioAccessTechnologyNRNSA), .nr)
+            XCTAssertEqual(generation(CTRadioAccessTechnologyLTE), .lte)
+            XCTAssertEqual(generation(CTRadioAccessTechnologyWCDMA), .older)
+            XCTAssertEqual(generation(CTRadioAccessTechnologyEdge), .older)
+            XCTAssertNil(generation(nil))
+        }
+    #endif
 
     // MARK: - Heap, stream type, rate
 

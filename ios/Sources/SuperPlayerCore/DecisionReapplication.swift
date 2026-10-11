@@ -19,7 +19,8 @@ import Network
 /// decision back to be laid on the engine: ADR-0009 rules 3, 4 and 5 as one object — the Kotlin
 /// `DecisionReapplication`, `docs/ios-plan.md` §3.3's fourth row.
 ///
-/// **Exists only on a player whose policy is not its profile's static one.** On that player none of
+/// **Exists only on a player whose policy is not a profile's static one** (any profile's:
+/// ``PlaybackProfile/policy`` handed in for another profile is just as unchanging). On that player none of
 /// this is allocated and nothing below is registered — the static policy's answer cannot change, so
 /// there is nothing to observe for — which `PolicyPaysNothingTests` counts through the observed
 /// register (ADR-0009 rule 7). Every other policy has one, whoever wrote it, because every knob a
@@ -166,6 +167,8 @@ final class DecisionReapplication {
         if stalls.onActivity(activity, atMs: ConditionsBinding.monotonicNowMs()) {
             reconsult(.rebufferEnded)
         }
+        // A second occasion to read the access log, for the reason `readAccessLog()` gives.
+        if let item = player.currentItem { accessLogChanged(item) }
     }
 
     private func seeked() {
@@ -184,13 +187,33 @@ final class DecisionReapplication {
     }
 
     private func accessLogChanged(_ item: AVPlayerItem) {
-        let now = ConditionsBinding.monotonicNowMs()
+        readAccessLog(of: item)
+        if throughput.movedMaterially(atMs: ConditionsBinding.monotonicNowMs()) {
+            reconsult(.throughputChanged)
+        }
+    }
+
+    /// Reads `item`'s access log into the throughput window.
+    ///
+    /// **When is the limit of this reading, and it is stated rather than hidden.** An entry's
+    /// `observedBitrate` keeps moving while the entry is current, and AVFoundation posts
+    /// `AVPlayerItemNewAccessLogEntry` for a new entry — a variant switch, a seek, a stall — and
+    /// promises nothing for an update to the current one. So the log is read on that notification,
+    /// again on every `timeControlStatus` change, and again before every consultation whatever its
+    /// trigger, so a policy is never handed a figure older than the occasion it was asked on. What it
+    /// cannot do is notice a move on a steady session between those occasions: the Kotlin meter is
+    /// told of every transfer, and nothing here is. A timer would close that gap at the cost of a
+    /// registration on every policy player and a consultation cadence ADR-0009 rule 4 rules out, so
+    /// ``DecisionTrigger/throughputChanged`` fires on those occasions only — the adaptive policy
+    /// (i3's ABR half) is where a finer reading belongs if one is measured to matter.
+    private func readAccessLog(of item: AVPlayerItem) {
         throughput.read(
-            observedBitratesBps: item.accessLog()?.events.map(\.observedBitrate) ?? [], atMs: now)
-        if throughput.movedMaterially(atMs: now) { reconsult(.throughputChanged) }
+            observedBitratesBps: ConditionsBinding.observedBitrates(of: item),
+            atMs: ConditionsBinding.monotonicNowMs())
     }
 
     private func reconsult(_ trigger: DecisionTrigger) {
+        if let item = player?.currentItem { readAccessLog(of: item) }
         let next = policy.decide(currentConditions())
         guard next != decision else { return }
         decision = next

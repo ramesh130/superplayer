@@ -63,6 +63,21 @@ public final class SuperPlayer {
         /// What kind of playback this is; ``PlaybackProfile/videoOnDemand`` unless set.
         public var profile: PlaybackProfile = .videoOnDemand
 
+        /// What decides how this player plays, or nil — the default — for ``profile``'s own static
+        /// decision (``PlaybackProfile/policy``). The Android `setPolicy(policy)`.
+        ///
+        /// A player under its profile's static policy observes nothing and is consulted once. Any
+        /// other policy — a consumer's own, or `SuperPlayerABR`'s adaptive one — is consulted again
+        /// on the five ``DecisionTrigger``s, and each change is laid on the playing item in place
+        /// and reported as ``SuperPlayer/playbackDecision`` and a `DecisionChanged` event
+        /// (``PlaybackPolicy`` says why that is every other policy here, where on Android it is only
+        /// the adaptive one). An instance rather than ``telemetry``'s factory: a policy is a pure
+        /// function, so one may serve many players.
+        ///
+        /// ``profile`` still names the use case to everything that reads it — CMCD's per-profile
+        /// table and `SessionStarted.profile` — whatever policy decides the numbers.
+        public var policy: (any PlaybackPolicy)?
+
         public init() {}
 
         /// Makes the collector that measures this player, or nil — the default — for a player that
@@ -132,8 +147,18 @@ public final class SuperPlayer {
     /// ``PlaybackSnapshot`` names. Cleared at every replacement the facade makes.
     private(set) var currentRequest: MediaRequest?
 
-    /// The profile's numbers, looked up once: the profile is fixed for the player's lifetime.
-    private let knobs: ProfileKnobs
+    /// The decision in force: what the policy answered at construction, and on a player whose
+    /// policy is consulted again, its latest different answer — the Kotlin `playbackDecision`
+    /// (ADR-0009 rule 6). Each change after construction is also a `DecisionChanged` event.
+    ///
+    /// It says what was *decided*, which on iOS is more than what is laid: the halves no player
+    /// here reads — the selection pace, the manifest and segment budgets, tunneling — and the two
+    /// read by products still to land are reported as decided (``PlaybackDecision``).
+    public private(set) var playbackDecision: PlaybackDecision
+
+    /// The policy's observer and re-consulter, or nil on a player under its profile's static policy,
+    /// which observes nothing (`DecisionReapplication.swift`).
+    private let reapplication: DecisionReapplication?
 
     /// The CMCD mode in force, resolved once: the configuration's, else the profile's.
     private let cmcdMode: CmcdMode
@@ -168,15 +193,41 @@ public final class SuperPlayer {
     package init(configuration: Configuration = Configuration(), lifecycle: SharedLifecycle) {
         self.configuration = configuration
         self.avPlayer = AVPlayer()
-        self.knobs = StaticProfilePolicy.knobs(for: configuration.profile)
+        let policy = configuration.policy ?? configuration.profile.policy
+        if policy is StaticProfilePolicy {
+            // Asked once, with nothing observed — the Kotlin static player's consultation, and an
+            // answer the conditions cannot change.
+            self.reapplication = nil
+            self.playbackDecision = policy.decide(PlaybackConditions())
+        } else {
+            let reapplication = DecisionReapplication(
+                policy: policy, availableMemoryBytes: DeviceCapacity.processAvailableMemory())
+            self.reapplication = reapplication
+            self.playbackDecision = reapplication.decision
+        }
         self.cmcdMode =
             configuration.cmcdMode ?? StaticCmcdPolicy.defaultMode(for: configuration.profile)
         self.lifecycle = LifecycleBinding(player: avPlayer, shared: lifecycle)
-        knobs.apply(to: avPlayer)
+        playbackDecision.apply(to: avPlayer)
         self.framePath = FramePath.make(configuration: configuration, player: avPlayer)
         self.collector = configuration.telemetry?()
         self.measurement = collector.map { _ in MeasurementSession() }
         collector?.attach(to: self)
+        // Last, so a change heard as the observers start — the first network path — finds the
+        // player and its collector whole.
+        reapplication?.onDecisionChanged = { [weak self] decision, trigger in
+            self?.decisionChanged(to: decision, on: trigger)
+        }
+        reapplication?.start(on: avPlayer)
+    }
+
+    /// Makes `decision` the one in force: laid on the player and on the item playing now, in place
+    /// (`EngineBinding.swift` says why that honours it whole), and told to the collector.
+    private func decisionChanged(to decision: PlaybackDecision, on trigger: DecisionTrigger) {
+        playbackDecision = decision
+        decision.apply(to: avPlayer)
+        if let item = avPlayer.currentItem { decision.apply(to: item) }
+        collector?.decisionChanged(decision, trigger: trigger)
     }
 
     /// Plays what `request` describes: the first of its sources, starting where its
@@ -253,6 +304,7 @@ public final class SuperPlayer {
         collector?.detach()
         isReleased = true
         observations = []
+        reapplication?.stop()
         lifecycle.release()
         framePath?.detach()
         avPlayer.replaceCurrentItem(with: nil)
@@ -285,7 +337,7 @@ public final class SuperPlayer {
     ///
     /// **Then the playback state** a previous holder may have changed through ``avPlayer``: paused,
     /// the default rate, full volume and unmuted, pausing at an item's end (`AVPlayer`'s own
-    /// default), the profile's player knobs again, and no media
+    /// default), the decision's player knobs again, and no media
     /// selection criteria — the Kotlin reset's forced audio language, which here a holder sets on
     /// the player rather than on the selector.
     ///
@@ -308,7 +360,8 @@ public final class SuperPlayer {
         avPlayer.volume = 1
         avPlayer.isMuted = false
         avPlayer.actionAtItemEnd = .pause
-        knobs.apply(to: avPlayer)
+        playbackDecision.apply(to: avPlayer)
+        reapplication?.itemChanged(to: nil)
         for characteristic in [AVMediaCharacteristic.audible, .legible] {
             avPlayer.setMediaSelectionCriteria(nil, forMediaCharacteristic: characteristic)
         }
@@ -341,7 +394,9 @@ public final class SuperPlayer {
     /// counts (ADR-0020 rule 13). Internal, and reached by that test through `@testable`: no later
     /// product needs it, so it is not a `package` seam and stays off the tracked API surface.
     var liveObservations: [ObservedSignal: Int] {
-        let all = observations + lifecycle.observations + (framePath?.observations ?? [])
+        let all =
+            observations + lifecycle.observations + (framePath?.observations ?? [])
+            + (reapplication?.observations ?? [])
         return all.reduce(into: [:]) { counts, observation in
             counts[observation.signal, default: 0] += 1
         }
@@ -351,7 +406,8 @@ public final class SuperPlayer {
         observations = []
         currentItemEnded = false
         currentRequest = nil
-        knobs.apply(to: item)
+        playbackDecision.apply(to: item)
+        reapplication?.itemChanged(to: item)
         if identified {
             observations = [
                 Observation.register(.itemPlayedToEnd, on: item) { [weak self] in

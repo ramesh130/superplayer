@@ -245,7 +245,7 @@ final class RealtimePlayerTests: XCTestCase {
 /// Counts the display layer's decode failures — the renderer's own notification, posted per frame
 /// it could not decode, which is the one reading of a decode the simulator gives without a screen.
 @MainActor
-private final class DecodeFailures {
+final class DecodeFailures {
     private let counter = Counter()
     /// `nonisolated(unsafe)` for `deinit`, which is not isolated on the iOS 17 floor; it is written
     /// once in `init` and never again.
@@ -273,7 +273,7 @@ private final class DecodeFailures {
 
 /// A lifecycle platform that does nothing: an `xctest` host has no `UIApplication` whose idle timer
 /// a video could hold (#402).
-private final class QuietPlatform: LifecyclePlatform {
+final class QuietPlatform: LifecyclePlatform {
     func activateAudioSession() {}
     func deactivateAudioSession() {}
     func setIdleTimerDisabled(_ disabled: Bool) {}

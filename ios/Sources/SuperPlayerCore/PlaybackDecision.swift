@@ -26,9 +26,9 @@
 /// is removed rather than kept for later. Three parts are read by no part of an iOS player and are
 /// present for exactly one reason — a policy, a log line and a warehouse row read the same on both
 /// platforms — and each says so where it is declared: ``TrackSelectionPolicy/pace``, the
-/// ``RetryPolicy/manifest`` and ``RetryPolicy/segment`` budgets, and ``output``. Two more are read
-/// by products that have not landed: ``preload`` by the preload coordinator (i4) and ``download``
-/// by the download store (i7); until then they are decided and ignored, and
+/// ``RetryPolicy/manifest`` budget, and ``output``. Three more are read by no player but by another
+/// product: ``preload`` by the preload coordinator (i4), and ``download`` and the
+/// ``RetryPolicy/segment`` budget by the download store (#424); a player still decides them, and
 /// ``SuperPlayer/playbackDecision`` still says what was decided, which is the Kotlin contract for a
 /// player outside a pool.
 ///
@@ -64,13 +64,14 @@ public struct PlaybackDecision: Sendable, Hashable {
     /// a policy says otherwise.
     public var preload: PreloadPolicy
 
-    /// How often a failed load is asked for again. **Only ``RetryPolicy/licence`` is honoured on
-    /// iOS**, by the FairPlay key request this library makes itself (#422, `docs/ios-plan.md` §3.6);
-    /// the manifest and segment budgets are present and ignored, because `AVPlayer` retries inside
-    /// the engine and nothing configures it (§3.5).
+    /// How often a failed load is asked for again. **No player honours the manifest and segment
+    /// budgets**, because `AVPlayer` retries inside the engine and nothing configures it (§3.5);
+    /// ``RetryPolicy/licence`` is spent by the FairPlay key request this library makes itself (#422,
+    /// `docs/ios-plan.md` §3.6), and ``RetryPolicy/segment`` by the download store re-enqueueing a
+    /// failed task (#424, §3.7).
     public var retry: RetryPolicy
 
-    /// The ceiling a download's rendition is chosen under — read by the download store (i7,
+    /// The ceiling a download's rendition is chosen under — read by the download store (#424,
     /// `docs/ios-plan.md` §3.7) once per item as it is enqueued, and by no player.
     public var download: DownloadSelectionPolicy
 
@@ -315,17 +316,20 @@ public enum PreloadDepth: Sendable, Hashable {
 /// `RetryPolicy`, its three budgets kept apart for its reason: one exhausted budget must not spend
 /// another's.
 ///
-/// **Only ``licence`` is honoured on iOS** (`docs/ios-plan.md` §3.5 and §3.6). `AVPlayer` retries a
-/// playlist and a segment inside the engine, nothing configures how often, and content steering is
-/// the server's host failover — so ``manifest`` and ``segment`` are present, read by nothing, and
-/// carried so a policy and a logged decision read the same on both platforms. The FairPlay key
-/// request is this library's own round trip (#422), and it spends ``licence``.
+/// **No player honours ``manifest`` or ``segment`` on iOS** (`docs/ios-plan.md` §3.5 and §3.6).
+/// `AVPlayer` retries a playlist and a segment inside the engine, nothing configures how often, and
+/// content steering is the server's host failover — so both are carried for a player so a policy and
+/// a logged decision read the same on both platforms. The FairPlay key request is this library's own
+/// round trip (#422), and it spends ``licence``; the download store starts a failed download task
+/// again on ``segment`` (#424, §3.7), the one budget a task's failure can spend, since the requests
+/// inside it are AVFoundation's.
 public struct RetryPolicy: Sendable, Hashable {
 
     /// What a playlist gets. **Ignored on iOS.**
     public var manifest: RetryBudget
 
-    /// What a segment gets. **Ignored on iOS.**
+    /// What a segment gets. **Ignored by every player**; spent by the download store, which starts
+    /// a failed download task again on it (#424, `docs/ios-plan.md` §3.7).
     public var segment: RetryBudget
 
     /// What a licence round trip gets — honoured, by the key request #422 makes.
@@ -383,7 +387,7 @@ public struct RetryBudget: Sendable, Hashable {
 }
 
 /// The ceiling a download's rendition is chosen under — the Kotlin `DownloadSelectionPolicy`, read
-/// by the download store (i7) and by no player.
+/// by the download store (#424) and by no player.
 public struct DownloadSelectionPolicy: Sendable, Hashable {
 
     /// Ceiling on the downloaded variant's declared bitrate, in bits per second, or nil for none.

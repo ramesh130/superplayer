@@ -3,8 +3,9 @@
 - **Status:** Accepted
 - **Date:** 2026-10-10
 - **Amended:** 2026-10-11 (#402), by an addendum at rule 13 placing the lifecycle's signals in the
-  observed register with a player scope, since ADR-0006 rule 1 puts them on every player. Amended
-  again (#403) at rule 13, admitting the session's register as core's second.
+  observed register with a player scope, since ADR-0006 rule 1 puts them on every player.
+  Amended 2026-10-11 (#446), by an addendum at rule 7 recording that CMCD is built. Amended again
+  (#403) at rule 13, admitting the session's register as core's second.
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
 - **Refines:** [ADR-0001](0001-compose-dont-fork.md), restated for Apple platforms rather than
@@ -204,6 +205,14 @@ that, and *What nothing enforces* sums them.
    9's measurement shape rather than a refusal. The implementation is #446, and
    `CmcdFindingTests` pins the three facts it rests on — which pins the SDK's behaviour, not this
    rule, so the rule is still enforced by nothing.
+
+   *Addendum (2026-10-11, #446).* Built. Core sets the switch on a fresh `AVURLAsset` per adoption
+   and reads the telemetry `sessionId` off its `httpSessionIdentifier`; `CmcdMode.queryParameter`
+   is refused at configuration with `CmcdModeUnsupportedError`, rule 9's first shape without a
+   version to name, since no release offers the mode. `CmcdPlaybackTests` asserts the join at the
+   origin — `sid` equal to every event's `sessionId`, one per adoption — which enforces the
+   implementation; whether CMCD ports at all remains this rule's decision and is still enforced by
+   nothing.
 
 8. **The doctor parses HLS with a lint parser of its own, written to RFC 8216, and says so.**
    ADR-0015 rule 6 has the doctor parse with the parsers the engine would run, so that the doctor and

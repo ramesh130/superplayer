@@ -43,6 +43,11 @@ observation, notifications, the access and error logs and, on 18, `AVMetrics` �
 in its own register, `CollectorSignals.swift`, held as core's is — and
 `player.declarePlaybackIntent()` on core; each event's derivation is the *How derived on iOS*
 column of `docs/telemetry-schema.md`.
+#446 put CMCD on every player from iOS 18, in `CmcdBinding.swift`: AVFoundation sends the keys once
+the switch is set on the asset, so core builds a fresh `AVURLAsset` per adoption and **reads** the
+telemetry `sessionId` off its `httpSessionIdentifier` — the `sid` the SDK sends — where Android
+mints it. `Configuration.setCmcdMode(_:)` refuses `.queryParameter` typed, and `StaticCmcdPolicy`
+is the per-profile table.
 #404 added
 `PlayerPool(configuration:)` — `acquire()` nil past the bound, `recycle(_:)` through the facade's
 internal `resetForReuse`, which ends the session edge `SessionEdges.swift` names — bounded by

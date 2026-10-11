@@ -3,7 +3,8 @@
 - **Status:** Accepted
 - **Date:** 2026-10-10
 - **Amended:** 2026-10-11 (#402), by an addendum at rule 13 placing the lifecycle's signals in the
-  observed register with a player scope, since ADR-0006 rule 1 puts them on every player.
+  observed register with a player scope, since ADR-0006 rule 1 puts them on every player. Amended
+  again (#403) at rule 13, admitting the session's register as core's second.
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
 - **Refines:** [ADR-0001](0001-compose-dont-fork.md), restated for Apple platforms rather than
@@ -297,6 +298,18 @@ that, and *What nothing enforces* sums them.
     rate change and its `timeControlStatus` — are in the register with a *player* scope, registered
     as each player is made and removed with it, and "nothing configured" counts exactly those and
     no item's. The rule's promise is unchanged for everything a configuration does name.
+
+    *Addendum (2026-10-11, #403).* A `PlaybackSession` is an object of its own over a player and a
+    choice a consumer makes (ADR-0007 rule 1), not a setting of the player, so what it observes —
+    the current item, its duration and readiness, the rate, and a seek — is not in the facade's file
+    but in a second register in core, `SessionSignals.swift`, held the same way: registered on the
+    player the session publishes and only while it publishes it, counted by `PlaybackSessionTests`
+    once while publishing, once after a swap and none after a release. Core's register test admits
+    exactly these two files as the places a registration may be written, so "one file per register"
+    is kept and "a player nobody published observes none of it" is counted rather than asserted.
+    That the system's two singletons are reached by nothing else in core is held by a source scan in
+    the same test. The register is not merged into the facade's because that file's count is what a
+    player with nothing configured carries, and a session is something configured from outside it.
 
 ### What nothing enforces
 

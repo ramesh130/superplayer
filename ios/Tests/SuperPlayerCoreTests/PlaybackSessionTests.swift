@@ -55,7 +55,10 @@ final class PlaybackSessionTests: XCTestCase {
 
     /// The control the rest needs: a centre no session has claimed has asked nothing of the
     /// platform — so the counts below are of what a session did — and a session adds a target for
-    /// every command and publishes the request it found.
+    /// every command and publishes the request it found. That a player *alone* can reach no
+    /// centre at all is not this count's to show — no player is handed one — but
+    /// ``testNoCoreSourceButThePlatformNamesTheSystemCentres``', and, for the dictionary, the
+    /// system-centre test in `PlaybackSessionPlaybackTests`.
     func testNothingIsAskedOfThePlatformUntilASessionIsMade() {
         let platform = RecordingNowPlaying()
         let centre = NowPlayingCentre(platform: platform)
@@ -127,7 +130,9 @@ final class PlaybackSessionTests: XCTestCase {
             platform.info?[MPNowPlayingInfoPropertyExternalContentIdentifier] as? String, "b")
         platform.calls = []
 
-        earlier.player.setMediaRequest(request("c"))
+        // A swap publishes at once rather than a main-queue turn later, so the displaced session
+        // really asks the centre to publish here, and the centre is what refuses it.
+        earlier.setPlayer(playing("c"))
         earlier.release()
         XCTAssertEqual(platform.calls, [], "a displaced session touches nothing")
         XCTAssertTrue(platform.fire(.pause), "the holder answers")
@@ -135,6 +140,28 @@ final class PlaybackSessionTests: XCTestCase {
         later.release()
         XCTAssertEqual(
             platform.calls, [.publish(contentId: nil)] + RemoteCommand.allCases.map { .remove($0) })
+    }
+
+    /// The toggle and the two skips, which the playback tests do not fire: the toggle starts a
+    /// paused player and pauses a playing one (the rate asked for, which `AVPlayer.h` says is set
+    /// at once), a skip lands relative to where the player is and back never before the start, and
+    /// a seek with no item to seek in is refused.
+    func testTheToggleAndTheSkipsAct() {
+        let platform = RecordingNowPlaying()
+        let player = playing("a")
+        let session = PlaybackSession(player: player, centre: NowPlayingCentre(platform: platform))
+
+        XCTAssertTrue(platform.fire(.togglePlayPause))
+        XCTAssertEqual(player.avPlayer.rate, 1)
+        XCTAssertTrue(platform.fire(.togglePlayPause))
+        XCTAssertEqual(player.avPlayer.rate, 0)
+        XCTAssertTrue(platform.fire(.skip(bySeconds: 15)))
+        XCTAssertTrue(platform.fire(.skip(bySeconds: -5)))
+
+        player.setMediaURL(nowhere)
+        player.avPlayer.replaceCurrentItem(with: nil)
+        XCTAssertFalse(platform.fire(.skip(bySeconds: 15)), "nothing to seek in")
+        session.release()
     }
 
     /// The resolver's two refusals: no resolver declines every id, and one that does not recognise

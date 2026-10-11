@@ -406,13 +406,37 @@ enum RealtimeFormats {
             return Data([tag] + size) + body
         }
         let decoderConfig =
-            Data([0x40, (0x05 << 2) | 0x01] + [UInt8](repeating: 0, count: 3 + 4 + 4))
-            + descriptor(0x05, audioSpecificConfig)
+            Data([objectTypeMpeg4AudioIndication, audioStreamTypeAndReservedBit])
+            + Data(count: unknownBufferSizeAndBitrateBytes)
+            + descriptor(decoderSpecificInfoTag, audioSpecificConfig)
         let elementaryStream =
-            Data([0x00, 0x00, 0x00]) + descriptor(0x04, decoderConfig)
-            + descriptor(0x06, Data([0x02]))
-        return descriptor(0x03, elementaryStream)
+            Data(count: esIdAndFlagsBytes) + descriptor(decoderConfigTag, decoderConfig)
+            + descriptor(slConfigTag, Data([slConfigPredefinedMp4]))
+        return descriptor(esDescriptorTag, elementaryStream)
     }
+
+    // The descriptor tags of ISO/IEC 14496-1 §7.2.2.1, Table 1.
+    private static let esDescriptorTag: UInt8 = 0x03
+    private static let decoderConfigTag: UInt8 = 0x04
+    private static let decoderSpecificInfoTag: UInt8 = 0x05
+    private static let slConfigTag: UInt8 = 0x06
+
+    /// `objectTypeIndication` 0x40, ISO/IEC 14496-3 audio — the syntax an AudioSpecificConfig is
+    /// written in, whichever of AAC's two object types the codec string named.
+    private static let objectTypeMpeg4AudioIndication = UInt8(objectTypeMpeg4Audio)
+
+    /// `streamType` 5 (audio) in six bits, `upStream` 0, and the reserved bit, which is 1.
+    private static let audioStreamTypeAndReservedBit: UInt8 = (0x05 << 2) | 0x01
+
+    /// `bufferSizeDB` (24 bits), `maxBitrate` and `avgBitrate` (32 each): zero, as unknown, because a
+    /// realtime track states none of them and the decoder reads none of them.
+    private static let unknownBufferSizeAndBitrateBytes = 3 + 4 + 4
+
+    /// `ES_ID` (16 bits, zero for a stream outside a scene) and the flags byte, every flag clear.
+    private static let esIdAndFlagsBytes = 3
+
+    /// `SLConfigDescriptor.predefined` 2, "reserved for use in MP4 files" (§7.3.2.3.2).
+    private static let slConfigPredefinedMp4: UInt8 = 0x02
 
     /// The object type, sampling rate and channel count an AudioSpecificConfig opens with.
     ///

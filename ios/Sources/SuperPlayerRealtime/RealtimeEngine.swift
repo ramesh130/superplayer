@@ -94,8 +94,7 @@ final class RealtimeEngine: @unchecked Sendable {
         var framing: TrackFraming
         let renderer: any AVQueuedSampleBufferRendering
         /// What this track's timestamps are rebased by, fixed at its first frame
-        /// (``anchor(for:among:)``). Nil until that frame, which is also how "this track has
-        /// delivered nothing" is read.
+        /// (``anchor(for:among:)``). Nil until that frame.
         var offsetUs: Int64?
         /// The rebased presentation time of the first sample enqueued, and of the latest — the
         /// Kotlin queue's `largestQueuedTimestampUs` — in microseconds on the stream's timeline.
@@ -105,6 +104,12 @@ final class RealtimeEngine: @unchecked Sendable {
         /// How far this track has been written, on the stream's timeline: its start where it has
         /// written nothing, which is what "buffered nothing" means here, as on Android.
         var bufferedUs: Int64 { largestUs ?? 0 }
+
+        /// Whether a sample of this track has reached its renderer — what the bounds read as
+        /// "started", rather than ``offsetUs``, because a first frame carrying parameter sets alone
+        /// or refused is anchored and enqueues nothing, and a track that has enqueued nothing is
+        /// still connecting.
+        var hasDelivered: Bool { largestUs != nil }
     }
 
     /// `report` is called on the main queue, in the order the events happened, with the number of
@@ -252,14 +257,15 @@ final class RealtimeEngine: @unchecked Sendable {
             guard let payload = try states[frame.trackIndex].framing.sample(from: frame.payload),
                 let description = states[frame.trackIndex].framing.description
             else {
-                // Parameter sets and nothing to decode: the description moved, no sample did.
+                // Parameter sets and nothing to decode: the description moved, no sample did. No
+                // bound is checked, since no track's written position moved either.
                 tracks = states
                 return
             }
             let renderer = states[frame.trackIndex].renderer
             let sample = try Self.sampleBuffer(
                 payload, keyFrame: frame.keyFrame, description: description,
-                presentationUs: presentationUs)
+                presentationUs: presentationUs, codec: states[frame.trackIndex].framing.codec)
             // A video renderer that failed — a decoder lost while backgrounded, say — refuses
             // everything until it is flushed, and says so; flushing then is the documented recovery.
             // ref: https://developer.apple.com/documentation/avfoundation/avsamplebuffervideorenderer/requiresflushtoresumedecoding
@@ -330,7 +336,7 @@ final class RealtimeEngine: @unchecked Sendable {
     /// one reading for ``anchor(for:among:)``, as the point to place a track on another clock, and
     /// for ``failIfATrackHasFallenBehind()``, as the line every other track is measured against.
     private static func leadingBufferedUs(_ states: [TrackState]) -> Int64? {
-        states.filter { $0.offsetUs != nil }.map(\.bufferedUs).max()
+        states.filter(\.hasDelivered).map(\.bufferedUs).max()
     }
 
     /// Ends the stream where one track has fallen far enough behind the others to have stopped
@@ -354,7 +360,7 @@ final class RealtimeEngine: @unchecked Sendable {
         else { return }
         for state in states {
             let boundUs =
-                state.offsetUs != nil ? Self.stalledTrackBoundUs : Self.lateTrackStartBoundUs
+                state.hasDelivered ? Self.stalledTrackBoundUs : Self.lateTrackStartBoundUs
             let behindUs = leaderUs - state.bufferedUs
             if behindUs > boundUs {
                 return fail(
@@ -433,7 +439,8 @@ final class RealtimeEngine: @unchecked Sendable {
     /// size, which is how CoreMedia is told where it ends.
     /// ref: https://developer.apple.com/documentation/coremedia/cmaudiosamplebuffercreatereadywithpacketdescriptions(allocator:databuffer:formatdescription:samplecount:presentationtimestamp:packetdescriptions:samplebufferout:)
     static func sampleBuffer(
-        _ payload: Data, keyFrame: Bool, description: CMFormatDescription, presentationUs: Int64
+        _ payload: Data, keyFrame: Bool, description: CMFormatDescription, presentationUs: Int64,
+        codec: String
     ) throws -> CMSampleBuffer {
         let blockBuffer = try CMBlockBuffer(length: payload.count)
         try payload.withUnsafeBytes { bytes in
@@ -451,7 +458,7 @@ final class RealtimeEngine: @unchecked Sendable {
                 sampleBufferOut: &sample)
             guard status == noErr, let sample else {
                 throw RealtimeDescriptionError(
-                    codec: "\(description.mediaSubType)", status: status)
+                    codec: codec, status: status)
             }
             return sample
         }

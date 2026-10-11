@@ -125,7 +125,8 @@ final class RealtimeAudioDecodingTests: XCTestCase {
             packets: try (0..<count).map { index in
                 // Through the engine's own sample buffer, so what is decoded is what is enqueued.
                 let sample = try RealtimeEngine.sampleBuffer(
-                    frame, keyFrame: true, description: description, presentationUs: Int64(index))
+                    frame, keyFrame: true, description: description, presentationUs: Int64(index),
+                    codec: "mp4a.40.2")
                 return try XCTUnwrap(sample.dataBuffer).dataBytes()
             })
         let capacity = UInt32(SyntheticHlsStream.samplesPerFrame)
@@ -156,7 +157,10 @@ final class RealtimeAudioDecodingTests: XCTestCase {
 /// callback contract — and says it has none left with a status of its own. The packet and its
 /// description live in memory this object allocates, so the pointers handed out outlive the call.
 private final class PacketFeeder {
-    /// A status no AudioToolbox call returns, so running dry is told from a decoder's failure.
+    /// The status the feeder answers with once it has nothing left, so running dry is told from a
+    /// decoder's failure: chosen by this test, outside every `kAudioConverterErr_…` and
+    /// `kAudioCodec…Error` value AudioToolbox's headers declare, all of which are four-character
+    /// codes or small negatives near -50.
     static let exhausted: OSStatus = -50_001
 
     private var packets: [Data]

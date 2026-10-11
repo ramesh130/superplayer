@@ -31,8 +31,11 @@ import XCTest
 /// reading of a render — the video composites nothing offscreen and an audio renderer reports no
 /// sample at all. What would break lip sync shows there exactly: a track rebased on its own first
 /// frame moves its stamps by the publisher's skew, one left on another epoch by hours. Beside it,
-/// the clock is read advancing and both renderers read as rendering without error, so the stamps
-/// are ones that played.
+/// the clock is read advancing, the video decodes with no failure, and the audio renderer reads as
+/// rendering without error — which alone would not show the audio decoded, since an audio renderer
+/// reports exactly that over a decoder that never started; `RealtimeAudioDecodingTests` is what
+/// shows these packets under this description decode. This is one step short of Android's reading,
+/// which records what each renderer accepted, and the simulator offers no nearer one.
 ///
 /// **The bounds are forced unpaced**: they are media time against the leading track, so the verdict
 /// a script reaches at speed is the one it reaches in real time, and the test waits for no clock.
@@ -170,6 +173,15 @@ final class RealtimeTracksTests: XCTestCase {
     func testATrackStillConnectingInsideTheBoundFailsNothing() async throws {
         let failure = try await failureOf([
             .video(frames: 0), .audio(frames: ScriptedTrack.audioFrames(spanning: 4)),
+        ])
+        XCTAssertNil(failure)
+    }
+
+    /// The stall bound pinned from below: one video frame and then nothing, against two and a half
+    /// seconds of audio, is inside the three seconds — so a bound shorter than it argues fails here.
+    func testATrackQuietForLessThanTheStallBoundFailsNothing() async throws {
+        let failure = try await failureOf([
+            .video(frames: 1), .audio(frames: ScriptedTrack.audioFrames(spanning: 2.5)),
         ])
         XCTAssertNil(failure)
     }

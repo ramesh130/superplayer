@@ -307,8 +307,8 @@ enum SyntheticH264 {
 }
 
 /// A source that declares tracks and nothing else, and refuses nothing — for a test about what the
-/// player makes of a declaration. `@unchecked Sendable` only because the protocol asks; immutable.
-final class DeclaringFrameSource: FrameSource, @unchecked Sendable {
+/// player makes of a declaration. Immutable, so checked `Sendable`.
+final class DeclaringFrameSource: FrameSource, Sendable {
     private let tracks: [RealtimeTrack]
     init(tracks: [RealtimeTrack]) { self.tracks = tracks }
     func subscribe(_ sink: any FrameSink) { sink.onTracks(tracks) }

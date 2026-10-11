@@ -134,11 +134,7 @@ enum NalFamily: Equatable {
     /// spec: ITU-T H.265 §7.3.1.2 and Table 7-1 — `nal_unit_type` is the six bits after the
     ///   forbidden zero bit; 32, 33 and 34 are the video, sequence and picture parameter sets.
     func isParameterSet(_ unit: Data) -> Bool {
-        guard let first = unit.first else { return false }
-        switch self {
-        case .h264: return [7, 8].contains(first & 0x1F)
-        case .hevc: return (32...34).contains((first >> 1) & 0x3F)
-        }
+        !unit.isEmpty && requiredTypes.contains(type(of: unit))
     }
 
     /// The parameter set types a description needs, in the order CoreMedia takes them.
@@ -160,10 +156,10 @@ enum NalFamily: Equatable {
 
     /// What a type is called, for a refusal's words.
     func name(of type: UInt8) -> String {
-        switch type {
-        case 7, 33: "SPS"
-        case 8, 34: "PPS"
-        case 32: "VPS"
+        switch (self, type) {
+        case (.h264, 7), (.hevc, 33): "SPS"
+        case (.h264, 8), (.hevc, 34): "PPS"
+        case (.hevc, 32): "VPS"
         default: "NAL unit type \(type)"
         }
     }
@@ -288,9 +284,8 @@ enum CodecConfigurationRecords {
         let size = try nalLengthSize(&reader, codec: codec)
         for _ in 0..<(try reader.readByte()) {
             try reader.skip(1)  // array_completeness, a reserved bit and NAL_unit_type
-            for _ in 0..<(try reader.readLength(2, "a two-byte count")) {
-                _ = try reader.readUnit()
-            }
+            let count = try reader.readLength(hevcNalUnitCountBytes, "a two-byte count")
+            for _ in 0..<count { _ = try reader.readUnit() }
         }
         return size
     }
@@ -432,6 +427,7 @@ enum CodecConfigurationRecords {
     ) -> Result {
         func step(_ index: Int, _ collected: [UnsafePointer<UInt8>]) -> Result {
             guard index < arrays.count else { return body(collected) }
+            // Never nil: every array is a parameter set, and `annexBUnits` yields no empty unit.
             return arrays[index].withUnsafeBufferPointer { buffer in
                 step(index + 1, collected + [buffer.baseAddress!])
             }
@@ -446,6 +442,9 @@ enum CodecConfigurationRecords {
     /// Bytes 1 to 20 of an `hvcC`: profile, tier, level, chroma and frame-rate fields, none of which
     /// this side reads.
     private static let hevcHeaderBytesBeforeLengthSize = 20
+
+    /// `unsigned int(16) numNalus`, an `hvcC` array's unit count: 16-bit by §8.3.3.1.2's grammar.
+    private static let hevcNalUnitCountBytes = 2
 
     /// `lengthSizeMinusOne` is the low two bits of its byte; the six above it are reserved.
     private static let lengthSizeMinusOneMask: UInt8 = 0x03

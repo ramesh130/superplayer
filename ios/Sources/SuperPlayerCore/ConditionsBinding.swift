@@ -167,6 +167,15 @@ package enum ConditionsBinding {
         availableMemoryBytes == 0 ? nil : Int64(clamping: availableMemoryBytes)
     }
 
+    /// Each entry's `observedBitrate` in `item`'s access log, oldest first — the throughput's
+    /// reading, which ``AccessLogThroughput`` takes. Empty before the log has an entry.
+    ///
+    /// ref: https://developer.apple.com/documentation/avfoundation/avplayeritemaccesslogevent/observedbitrate
+    @MainActor
+    static func observedBitrates(of item: AVPlayerItem) -> [Double] {
+        item.accessLog()?.events.map(\.observedBitrate) ?? []
+    }
+
     /// What an item's `duration` says the content is: live when indefinite, on-demand when it is a
     /// number, nil until the playlist has been read.
     ///
@@ -311,7 +320,7 @@ package struct AccessLogThroughput: Sendable {
         let samples = observedBitratesBps.filter { $0.isFinite && $0 > 0 }
             .suffix(Self.windowEntries).map { Int64($0) }
         guard samples != samplesBps else { return }
-        samplesBps = Array(samples)
+        samplesBps = samples
         newestAtMs = samples.isEmpty ? nil : nowMs
     }
 
@@ -319,8 +328,9 @@ package struct AccessLogThroughput: Sendable {
     package func estimate(atMs nowMs: Int64) -> ThroughputEstimate? {
         guard let newestAtMs, !samplesBps.isEmpty else { return nil }
         let count = Int64(samplesBps.count)
-        let mean = samplesBps.reduce(0, +) / count
-        let exactMean = Double(samplesBps.reduce(0, +)) / Double(count)
+        let sum = samplesBps.reduce(0, +)
+        let mean = sum / count
+        let exactMean = Double(sum) / Double(count)
         let variance =
             samplesBps.map { (Double($0) - exactMean) * (Double($0) - exactMean) }
             .reduce(0, +) / Double(count)

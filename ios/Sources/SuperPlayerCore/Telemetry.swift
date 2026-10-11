@@ -142,7 +142,6 @@ private enum TelemetryLog {
 /// released or recycled. Core always ends an open session before it starts the next, so a collector
 /// never has to close one implicitly — a departure from the Kotlin facade, which leaves that to the
 /// collector, made because here the facade sees every replacement it makes.
-///
 @MainActor
 public protocol TelemetryCollector {
 

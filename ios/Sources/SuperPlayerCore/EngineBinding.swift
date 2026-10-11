@@ -29,9 +29,11 @@ import AVFoundation
 /// `DefaultLoadControl` fixes its durations at construction. `preferredForwardBufferDuration`, both
 /// ceilings and their expensive-network pair, the live offset and its preservation are all
 /// documented as read by the item as it plays, and `automaticallyWaitsToMinimizeStalling` by the
-/// player — so `DecisionReapplication.swift` lays a changed decision on the *current* item and the
-/// player in place, through these same two functions, and nothing is left half in force. There is
-/// no second target as the Kotlin file grew one.
+/// player — so the facade (`SuperPlayer.decisionChanged(to:on:)`) lays a decision
+/// `DecisionReapplication.swift` changed on the *current* item and the player in place, through
+/// these same two functions, and nothing is left half in force. There is no second target as the
+/// Kotlin file grew one. The cost, recorded at ADR-0009 rule 5's #415 addendum: a knob a consumer
+/// set on the playing item through `player.avPlayer` is rewritten by the next change.
 ///
 /// What is not laid, because nothing on this platform reads it: ``TrackSelectionPolicy/pace``, the
 /// ``RetryPolicy/manifest`` and ``RetryPolicy/segment`` budgets, and ``PlaybackDecision/output``

@@ -62,6 +62,9 @@ final class PolicyPlaybackTests: XCTestCase {
         XCTAssertEqual(item.preferredForwardBufferDuration, 12)
         XCTAssertEqual(item.preferredPeakBitRate, 400_000)
         XCTAssertEqual(player.playbackDecision, Self.slow)
+        XCTAssertTrue(
+            recorder.changes.isEmpty,
+            "the first network path changes nothing for a policy that reads no transport")
 
         let other = playerWith(
             SpeedPolicy(atRealTime: Self.fast, faster: Self.slow), recorder: DecisionRecorder())
@@ -120,9 +123,10 @@ final class PolicyPlaybackTests: XCTestCase {
     }
 
     /// The control: a player under its profile's static policy — the default, or the same policy
-    /// handed back explicitly — plays its profile's row, and a rate change consults nothing and
-    /// reports nothing, so "a trigger re-consults" above is not every player re-deciding.
-    func testAStaticPlayerIsConsultedOnceAndReportsNothing() async throws {
+    /// handed back explicitly — plays its profile's row, and a rate change reports nothing, so "a
+    /// trigger re-consults" above is not every player re-deciding. That such a player is not even
+    /// consulted again, because it observes nothing, is `PolicyPaysNothingTests`' count.
+    func testAStaticPlayerReportsNothingOnARateChange() async throws {
         let origin = try await harness.serve(.hls())
         let policies: [(any PlaybackPolicy)?] = [nil, PlaybackProfile.shortForm.policy]
         for policy in policies {

@@ -117,7 +117,7 @@ document that describes it says how. **Not ported** is a rule rather than a gap 
 | --- | --- | --- |
 | `PlaybackPolicy`, `PlaybackConditions` (six observations), `PlaybackDecision` and its halves | Identical protocol and value types, naming no AVFoundation type | Ports 1:1 (ADR-0005, ADR-0009) |
 | `EngineBinding.kt` | One file laying a decision onto the `AVPlayerItem` properties in §3.1; every property is live-settable, so a re-consulted decision is honoured whole, which is ADR-0009 rule 5's condition met by the platform | Ports |
-| `ConditionsBinding.kt` | Transport from `NWPathMonitor` (`isExpensive`, `isConstrained`, interface type), throughput from the access log's `observedBitrate` with a spread computed over recent entries, stall history from the collector, stream type from `seekableTimeRanges` and the playlist, heap from `os_proc_available_memory`, rate from `AVPlayer.rate` | Ports |
+| `ConditionsBinding.kt` | Transport from `NWPathMonitor` (`isExpensive`, interface type; an expensive WiFi or wired path is a hotspot's cellular link). `isConstrained` is not a transport and not one of the six: it is the data-saver rule's (§3.4), throughput from the access log's `observedBitrate` with a spread computed over recent entries, stall history from the collector, stream type from `seekableTimeRanges` and the playlist, heap from `os_proc_available_memory`, rate from `AVPlayer.rate` | Ports |
 | `DecisionReapplication` on five triggers, `DecisionChanged` events | Same triggers, same event | Ports |
 | `AdaptiveBufferPolicy`, five branches | Identical pure logic; the heap cap applies to `preferredForwardBufferDuration` | Ports |
 | `AdaptiveLoadControl` | No load control; the buffer half is the property above | Not needed |

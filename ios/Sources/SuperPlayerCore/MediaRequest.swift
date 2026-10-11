@@ -72,9 +72,9 @@ public struct MediaRequest: Codable, Sendable, Hashable {
 
     /// Artwork for the content, as a URL the system fetches rather than the app.
     ///
-    /// Carried and not yet displayed: the item's external metadata takes artwork as image *data*,
-    /// which nothing here fetches, and the surface that takes a URL is the Now Playing session's
-    /// (#403), which is where this one is read.
+    /// Read by a ``PlaybackSession``, which fetches it and publishes the image to Now Playing (#403),
+    /// as Media3's session loads the Kotlin `artworkUri`. The item's external metadata does not
+    /// carry it: that takes artwork as image *data*, and a player with no session fetches nothing.
     public let artworkURL: URL?
 
     /// Describes `contentId`, played from `sources` in order of preference.

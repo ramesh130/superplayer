@@ -7,7 +7,9 @@
   decided and lapses as the facade's state arrives. Amended again (#401) at the same rule, admitting
   a profile's knobs and an item's readiness until the facade publishes its own. Amended again (#402)
   at rule 1, admitting a pause or resume the lifecycle made, and at rule 5, adding the lifecycle to
-  the device list with its one protocol.
+  the device list with its one protocol. Amended again (#403) at rule 1, admitting a pause a remote
+  command made, and at rule 5, adding the Now Playing session to the device list with its one
+  protocol.
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
 - **Refines:** [`docs/testing.md`](../testing.md)'s rule — *no device and no network, through the
@@ -112,6 +114,13 @@ rule names the ticket that brings its enforcement, and *What nothing enforces* s
    there is no reading through SuperPlayer to prefer. It lapses with the others as the facade
    publishes a playback state.
 
+   *Addendum (2026-10-11, #403).* One reading more, for the #402 addendum's reason: **a pause, a
+   play or a seek a remote command made** through a `PlaybackSession` is read off
+   `timeControlStatus` and `currentTime()`. The behaviour under test is the player responding to a
+   lock-screen button, and a consumer sees that exactly there. What the session *publishes* is not
+   read off the player: it is read where it is published, the Now Playing dictionary. It lapses with
+   the others as the facade publishes a playback state.
+
 2. **The harness is a loopback HTTP origin, started per test, and the carve-out is widened to every
    iOS test.** `SuperPlayerTestkit` starts an HTTP/1.1 server on `127.0.0.1` at an ephemeral port
    for each test, serving the synthetic streams `SuperPlayerTestMedia` generates, and shuts it down
@@ -190,6 +199,18 @@ rule names the ticket that brings its enforcement, and *What nothing enforces* s
    idle timer — and the notifications are not stubbed at all: a test posts the real ones from
    `AVAudioSession.sharedInstance()`. Its device run is the i1 demo's on an iPhone (`docs/ios-plan.md`
    §7), which plays video and is where a call and a headphone unplug are made by hand.
+
+   *Addendum (2026-10-11, #403).* The Now Playing session joins the list: that the system calls a
+   command target when a lock-screen, headset, CarPlay or Siri-remote button is pressed, and that
+   what is published is drawn there, need a device. Its one protocol is `NowPlayingPlatform` — set
+   the Now Playing dictionary, add and remove the targets of a remote command — because
+   `MPNowPlayingInfoCenter.default()` and `MPRemoteCommandCenter.shared()` are process singletons a
+   test cannot reset, and `MPRemoteCommand` has no public way to invoke a target. The dictionary is
+   the platform's own `[String: Any]`, so a stub records what the system would have been handed. One
+   test drives the system's real Now Playing centre, which is read back exactly as it was set, so
+   "a player with no session left it untouched" and "a session set and cleared it" are asserted
+   against the platform rather than the stub. Its device run is the i1 demo's on an iPhone, where a
+   lock-screen pause is pressed by hand.
 
 6. **The shared documents are tested on both platforms.** ADR-0020 rule 4 makes the documents the
    authority, and each platform holds itself to them with a test of its own: the telemetry schema

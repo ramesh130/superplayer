@@ -1,4 +1,5 @@
 // SuperPlayerCore: public API as ios/check reads it. Regenerate with ios/check --update-api.
+Class PlaybackSession : Sendable
 Class PlayerPool : Sendable
 Class SuperPlayer : Sendable
 Constructor MediaRequest.StartPosition.init(from:) : SuperPlayerCore.MediaRequest.StartPosition, any Swift.Decoder [throwing]
@@ -6,6 +7,7 @@ Constructor MediaRequest.init(contentId:sources:startPosition:title:subtitle:art
 Constructor MediaRequest.init(from:) : SuperPlayerCore.MediaRequest, any Swift.Decoder [throwing]
 Constructor PlaybackDecision.init() : SuperPlayerCore.PlaybackDecision
 Constructor PlaybackFailure.init(category:code:message:classification:) : SuperPlayerCore.PlaybackFailure, SuperPlayerCore.FailureCategory, Swift.String?, Swift.String?, Swift.String?
+Constructor PlaybackSession.init(player:resolver:) : SuperPlayerCore.PlaybackSession, SuperPlayerCore.SuperPlayer, (any SuperPlayerCore.MediaRequestResolver)?
 Constructor PlaybackSnapshot.init(from:) : SuperPlayerCore.PlaybackSnapshot, any Swift.Decoder [throwing]
 Constructor PlayerPool.Configuration.init() : SuperPlayerCore.PlayerPool.Configuration
 Constructor PlayerPool.init(configuration:) : SuperPlayerCore.PlayerPool, SuperPlayerCore.PlayerPool.Configuration
@@ -99,12 +101,16 @@ Func MediaRequest.StartPosition.hash(into:) : (), Swift.Hasher
 Func MediaRequest.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.MediaRequest, SuperPlayerCore.MediaRequest [static]
 Func MediaRequest.encode(to:) : (), any Swift.Encoder [throwing]
 Func MediaRequest.hash(into:) : (), Swift.Hasher
+Func MediaRequestResolver.resolve(contentId:) : SuperPlayerCore.MediaRequest?, Swift.String where <Self where Self : SuperPlayerCore.MediaRequestResolver>
 Func PlaybackDecision.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.PlaybackDecision, SuperPlayerCore.PlaybackDecision [static]
 Func PlaybackDecision.hash(into:) : (), Swift.Hasher
 Func PlaybackFailure.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.PlaybackFailure, SuperPlayerCore.PlaybackFailure [static]
 Func PlaybackFailure.hash(into:) : (), Swift.Hasher
 Func PlaybackProfile.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerCore.PlaybackProfile, SuperPlayerCore.PlaybackProfile [static]
 Func PlaybackProfile.hash(into:) : (), Swift.Hasher
+Func PlaybackSession.release() : ()
+Func PlaybackSession.setMediaRequest(forContentId:) : SuperPlayerCore.MediaRequest?, Swift.String
+Func PlaybackSession.setPlayer(_:) : (), SuperPlayerCore.SuperPlayer
 Func PlaybackSnapshot.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.PlaybackSnapshot, SuperPlayerCore.PlaybackSnapshot [static]
 Func PlaybackSnapshot.encode(to:) : (), any Swift.Encoder [throwing]
 Func PlaybackSnapshot.hash(into:) : (), Swift.Hasher
@@ -161,6 +167,7 @@ Func TrackSwitchDirection.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerC
 Func TrackSwitchDirection.hash(into:) : (), Swift.Hasher
 Func TtffStartBoundary.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerCore.TtffStartBoundary, SuperPlayerCore.TtffStartBoundary [static]
 Func TtffStartBoundary.hash(into:) : (), Swift.Hasher
+Protocol MediaRequestResolver
 Protocol TelemetryCollector
 Protocol TelemetrySink where <Self : Swift.Sendable> : Sendable
 Struct CmcdModeUnsupportedError : CustomStringConvertible, Equatable, Error, Hashable, Sendable
@@ -212,6 +219,9 @@ Var PlaybackFailure.hashValue : Swift.Int { get }
 Var PlaybackFailure.message : Swift.String? { get }
 Var PlaybackProfile.allCases : [SuperPlayerCore.PlaybackProfile] [static] { get }
 Var PlaybackProfile.hashValue : Swift.Int { get }
+Var PlaybackSession.player : SuperPlayerCore.SuperPlayer { get }
+Var PlaybackSession.skipBackwardIntervalMs : Swift.Int64 [static] { get }
+Var PlaybackSession.skipForwardIntervalMs : Swift.Int64 [static] { get }
 Var PlaybackSnapshot.hashValue : Swift.Int { get }
 Var PlaybackSnapshot.playWhenReady : Swift.Bool { get }
 Var PlaybackSnapshot.positionMs : Swift.Int64? { get }

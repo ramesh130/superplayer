@@ -12,16 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import SuperPlayerCore
+import Foundation
 
 /// How long to wait before asking for a failed licence again: exponential growth, jittered — the
 /// Kotlin `superplayer-resilience` `Backoff`, ported line for line, with its reasons.
 ///
-/// **Here rather than in `SuperPlayerResilience`**, where the Kotlin object lives, because on Apple
-/// platforms the licence exchange is the one load this library retries itself — `AVPlayer` retries
-/// playlists and segments inside the engine, and nothing configures it (`docs/ios-plan.md` §3.5) — so
-/// this product is its only caller, and ADR-0012 keeps the two optional products from depending on
-/// each other.
+/// **Core's rather than `SuperPlayerResilience`'s**, where the Kotlin object lives, and `package`.
+/// On Apple platforms `AVPlayer` retries playlists and segments inside the engine and nothing
+/// configures it (`docs/ios-plan.md` §3.5), so the loads this library retries itself are two, in two
+/// optional products: `SuperPlayerDRM`'s licence exchange (#422) and `SuperPlayerOffline`'s
+/// re-enqueue of a failed download task (#424). ADR-0012 and ADR-0013 rule 1 keep each of those
+/// products depending on core alone, so the one place both can reach is here — one copy of the
+/// jitter rather than two.
 ///
 /// Pure and stateless — a budget, an attempt number and a source of randomness in, a number of
 /// milliseconds out — so the property that matters can be asserted on the distribution rather than
@@ -52,14 +54,14 @@ import SuperPlayerCore
 /// asks a server that failed a millisecond ago — a wasted request out of a budget of three to five.
 /// Equal jitter keeps a floor that grows with the attempt while still spreading the arrivals across
 /// a window as wide as the base.
-enum Backoff {
+package enum Backoff {
 
     /// How long to wait before `retry` — the first retry being 1 — of a request whose budget this
     /// is. The window doubles per retry from ``RetryBudget/initialBackoffMs`` and is clamped at
     /// ``RetryBudget/maxBackoffMs``; `random` draws within its upper half. A budget whose initial
     /// wait is zero waits zero, which is a consumer asking for no backoff rather than a case to
     /// special-case.
-    static func delayMs(
+    package static func delayMs(
         for budget: RetryBudget, retry: Int, using random: inout some RandomNumberGenerator
     ) -> Int64 {
         let window = windowMs(for: budget, retry: retry)
@@ -74,7 +76,7 @@ enum Backoff {
     /// randomness. Separate so a test states the growth and the ceiling without a distribution, and
     /// so the overflow guard lives in one place: shifting past the width of an `Int64` would come
     /// back negative, and anything past the cap's own bit is the cap.
-    static func windowMs(for budget: RetryBudget, retry: Int) -> Int64 {
+    package static func windowMs(for budget: RetryBudget, retry: Int) -> Int64 {
         precondition(retry >= 1, "A retry is numbered from 1, was \(retry)")
         let doublings = retry - 1
         guard budget.initialBackoffMs > 0 else { return 0 }

@@ -201,7 +201,8 @@ struct StaticProfilePolicy: PlaybackPolicy {
     }
 
     /// The Kotlin `LONG_FORM_SEGMENT_BUDGET`, shared by `.videoOnDemand` and `.tvLeanback` and argued
-    /// at the Kotlin `VIDEO_ON_DEMAND` row. Ignored on iOS (``RetryPolicy/segment``).
+    /// at the Kotlin `VIDEO_ON_DEMAND` row. Spent on iOS by the download store alone
+    /// (``RetryPolicy/segment``).
     static let longFormSegmentBudget = RetryBudget(
         maxRetries: 5, initialBackoffMs: 500, maxBackoffMs: 8_000)
 

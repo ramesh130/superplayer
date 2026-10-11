@@ -305,6 +305,7 @@ Protocol FrameSourceFactory where <Self : Swift.Sendable> : Sendable
 Protocol HeaderProvider where <Self : Swift.Sendable> : Sendable
 Protocol LicenceStore where <Self : AnyObject, Self : Swift.Sendable> : Sendable
 Protocol MediaRequestResolver
+Protocol OfflineContent where <Self : AnyObject, Self : Swift.Sendable> : Sendable
 Protocol PlaybackDrm where <Self : Swift.Sendable> : Sendable
 Protocol PlaybackPolicy where <Self : Swift.Sendable> : Sendable
 Protocol PlaybackResilience where <Self : Swift.Sendable> : Sendable
@@ -527,6 +528,7 @@ Var StreamType.hashValue : Swift.Int { get }
 Var SuperPlayer.Configuration.cmcdMode : SuperPlayerCore.CmcdMode? { get }
 Var SuperPlayer.Configuration.drm : (any SuperPlayerCore.PlaybackDrm)? { get set }
 Var SuperPlayer.Configuration.frameOutput : (any SuperPlayerCore.FrameOutput)? { get set }
+Var SuperPlayer.Configuration.offlineContent : (any SuperPlayerCore.OfflineContent)? { get set }
 Var SuperPlayer.Configuration.policy : (any SuperPlayerCore.PlaybackPolicy)? { get set }
 Var SuperPlayer.Configuration.profile : SuperPlayerCore.PlaybackProfile { get set }
 Var SuperPlayer.Configuration.resilience : (any SuperPlayerCore.PlaybackResilience)? { get set }

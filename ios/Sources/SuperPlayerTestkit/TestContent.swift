@@ -202,6 +202,106 @@ public struct TestContent: Sendable {
     /// Where ``liveVideoLadder(bitratesBps:)`` is served.
     static let liveLadderDirectory = "live-ladder/"
 
+    /// An on-demand stream with something to choose: two variants at
+    /// `SyntheticHlsStream.declaredBitrateBps` and `.higherDeclaredBitrateBps`, and one audio
+    /// rendition per entry of `audioLanguages` in a group both variants name, the first the default,
+    /// and one WebVTT subtitle rendition per entry of `subtitleLanguages` — served under `choice/`,
+    /// every rendition from a directory of its own (`choice/low/`, `choice/high/`,
+    /// `choice/audio-<language>/`, `choice/subtitles-<language>/`) so a count at the origin says which
+    /// renditions were fetched. The download store's selection is tested on it (#424), as the Kotlin
+    /// `TestContent.dashWithChoice`'s ladder and languages are; it has no Kotlin twin, because that
+    /// one is DASH, so its path is its own.
+    ///
+    /// Every audio rendition plays `SyntheticHlsStream`'s own media playlist and AAC segments, copied
+    /// into its directory, so nothing here is new media; a subtitle segment is a WebVTT file holding
+    /// its header and no cue, which is a valid file with nothing to show.
+    ///
+    /// spec: RFC 8216 §4.3.4.1 — an `EXT-X-MEDIA` tag of `TYPE=AUDIO` or `TYPE=SUBTITLES` with a
+    /// `LANGUAGE` (RFC 5646) and a `URI` is an alternative rendition, and §4.3.4.2's `AUDIO` and
+    /// `SUBTITLES` attributes name its group from a variant; §4.3.4.1.1 — at most one rendition of a
+    /// group may be `DEFAULT=YES`; §3.5 — a WebVTT segment; W3C WebVTT §4.1 — a file is the
+    /// `WEBVTT` line and any cues, none required.
+    public static func hlsWithChoice(
+        audioLanguages: [String], subtitleLanguages: [String] = [],
+        segmentCount: Int = defaultSegmentCount
+    ) -> TestContent {
+        precondition(!audioLanguages.isEmpty, "A choice of languages needs at least one")
+        let stream = SyntheticHlsStream.files(segmentCount: segmentCount)
+        let media = stream.filter { $0.key != SyntheticHlsStream.multivariantPlaylistName }
+        let codecs = SyntheticHlsStream.declaredCodecs
+        var files: [String: [UInt8]] = [:]
+        func rendition(_ directory: String) {
+            for (name, bytes) in media { files[choiceDirectory + directory + name] = bytes }
+        }
+        var lines = ["#EXTM3U"]
+        for (index, language) in audioLanguages.enumerated() {
+            let directory = choiceAudioDirectory(language)
+            rendition(directory)
+            let isDefault = index == 0 ? "YES" : "NO"
+            lines.append(
+                "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"audio\",NAME=\"\(language)\","
+                    + "LANGUAGE=\"\(language)\",DEFAULT=\(isDefault),AUTOSELECT=YES,"
+                    + "URI=\"\(directory)\(SyntheticHlsStream.mediaPlaylistName)\"")
+        }
+        for language in subtitleLanguages {
+            let directory = choiceSubtitlesDirectory(language)
+            var playlist = [
+                "#EXTM3U", "#EXT-X-VERSION:3",
+                "#EXT-X-TARGETDURATION:\(SyntheticHlsStream.segmentDurationMs / 1_000)",
+                "#EXT-X-MEDIA-SEQUENCE:0", "#EXT-X-PLAYLIST-TYPE:VOD",
+            ]
+            for index in 0..<segmentCount {
+                let name = "subtitle\(index).vtt"
+                files[choiceDirectory + directory + name] = Array("WEBVTT\n".utf8)
+                playlist += [
+                    "#EXTINF:\(Double(SyntheticHlsStream.segmentDurationMs) / 1_000),", name,
+                ]
+            }
+            playlist.append("#EXT-X-ENDLIST")
+            files[choiceDirectory + directory + SyntheticHlsStream.mediaPlaylistName] = Array(
+                playlist.joined(separator: "\n").utf8)
+            lines.append(
+                "#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID=\"subtitles\",NAME=\"\(language)\","
+                    + "LANGUAGE=\"\(language)\",DEFAULT=NO,AUTOSELECT=YES,"
+                    + "URI=\"\(directory)\(SyntheticHlsStream.mediaPlaylistName)\"")
+        }
+        let subtitles = subtitleLanguages.isEmpty ? "" : ",SUBTITLES=\"subtitles\""
+        for (bandwidth, directory) in [
+            (SyntheticHlsStream.declaredBitrateBps, choiceLowDirectory),
+            (SyntheticHlsStream.higherDeclaredBitrateBps, choiceHighDirectory),
+        ] {
+            rendition(directory)
+            lines += [
+                "#EXT-X-STREAM-INF:BANDWIDTH=\(bandwidth),CODECS=\"\(codecs)\",AUDIO=\"audio\""
+                    + subtitles,
+                directory + SyntheticHlsStream.mediaPlaylistName,
+            ]
+        }
+        files[choiceDirectory + SyntheticHlsStream.multivariantPlaylistName] = Array(
+            lines.joined(separator: "\n").utf8)
+        let served = files
+        return TestContent(
+            sourcePath: choiceDirectory + SyntheticHlsStream.multivariantPlaylistName,
+            isLive: false, hosts: 1, publication: { _, _ in served })
+    }
+
+    /// Where ``hlsWithChoice(audioLanguages:subtitleLanguages:segmentCount:)`` is served.
+    public static let choiceDirectory = "choice/"
+
+    /// The directory under ``choiceDirectory`` of the lower variant.
+    public static let choiceLowDirectory = "low/"
+
+    /// The directory under ``choiceDirectory`` of the higher variant.
+    public static let choiceHighDirectory = "high/"
+
+    /// The directory under ``choiceDirectory`` of the audio rendition in `language`.
+    public static func choiceAudioDirectory(_ language: String) -> String { "audio-\(language)/" }
+
+    /// The directory under ``choiceDirectory`` of the subtitle rendition in `language`.
+    public static func choiceSubtitlesDirectory(_ language: String) -> String {
+        "subtitles-\(language)/"
+    }
+
     /// Where ``videoHls(segmentCount:)`` is served.
     static let videoDirectory = "video/"
 

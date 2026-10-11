@@ -142,8 +142,6 @@ private enum TelemetryLog {
 /// released or recycled. Core always ends an open session before it starts the next, so a collector
 /// never has to close one implicitly — a departure from the Kotlin facade, which leaves that to the
 /// collector, made because here the facade sees every replacement it makes.
-///
-/// Later tickets add what they bring: a changed decision (#415).
 @MainActor
 public protocol TelemetryCollector {
 
@@ -176,6 +174,17 @@ public protocol TelemetryCollector {
     /// catalogue answers — and a declaration after the session opened belongs to the next one
     /// (`docs/telemetry-schema.md`, *Time to first frame*).
     func declareIntent(monotonicTimeMs: Int64)
+
+    /// The decision in force changed to `decision`, because of `trigger` — the Kotlin
+    /// `decisionChanged(decision, trigger)`. Emit it as a ``TelemetryEvent/DecisionChanged`` under
+    /// the open session; with none open there is nothing to stamp it on, and the next
+    /// ``TelemetryEvent/SessionStarted`` carries the decision then in force, so nothing is lost.
+    ///
+    /// Core signals it rather than letting a collector infer it, for
+    /// ``startSession(contentId:sessionId:)``'s reason: only core knows the trigger, and the trigger
+    /// is what makes a decision series legible (ADR-0009 rule 6). Never called on a player under its
+    /// profile's static policy.
+    func decisionChanged(_ decision: PlaybackDecision, trigger: DecisionTrigger)
 
     /// The player is being released: unregister everything ``attach(to:)`` registered.
     func detach()

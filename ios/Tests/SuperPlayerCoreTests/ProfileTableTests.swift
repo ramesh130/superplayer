@@ -19,10 +19,10 @@ import XCTest
 /// Each profile's row, read off the engine the player built: the item a request made, and the
 /// `AVPlayer` itself for the one knob that is the player's.
 ///
-/// **Read through `player.avPlayer`, because no public reading exists**: the numbers are internal to
-/// `StaticProfilePolicy` by design, and the facade publishes no decision yet — `playbackDecision`
-/// arrives with the policy boundary (`docs/ios-plan.md` §3.3) — so the engine's own properties are
-/// the only place a row can be seen, which ADR-0021 rule 1's #401 addendum admits. The expected
+/// **Read through `player.avPlayer`**, which ADR-0021 rule 1's #401 addendum admits: the numbers
+/// are internal to `StaticProfilePolicy` by design, and although `playbackDecision` now says what
+/// was decided, a decision is honoured only if it is on the engine's own properties — so those are
+/// what a row is checked against. The expected
 /// values are written out here rather than read from the table, so a retuned row fails a test that
 /// says what it was.
 ///

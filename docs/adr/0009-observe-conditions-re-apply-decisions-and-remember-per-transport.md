@@ -7,7 +7,7 @@
 - **Extends:** [ADR-0005](0005-decide-playback-policy-behind-an-engine-agnostic-boundary.md), whose
   rules 3 and 4 are reworded below and whose rules 1 and 2 stand as written.
 - **Refined by:** [ADR-0014](0014-match-the-display-and-watch-it-change-behind-one-output-slot.md)
-  rules 5 and 7, recorded as an addendum at rule 5, and rules 9 to 11, which change the kind of rule
+  rules 5 and 7, recorded as an addendum at rule 5, and on iOS by #415's addendum at the same rule, and rules 9 to 11, which change the kind of rule
   2's display row and are recorded there. (ADR-0010 and ADR-0011 refine rule 7 and are recorded at
   it.)
 - **Summary:** Cashes in ADR-0005's bet for the adaptive engine (`superplayer-abr`). Six concrete,
@@ -236,6 +236,19 @@ Nine rules follow, and they are binding.
    on each selection instead, so a display change re-selects without writing
    `TrackSelectionParameters`. This rule's promise, that a re-application never rewrites the
    parameters, holds without exception there.
+
+   *Addendum (2026-10-11, #415, iOS and tvOS).* The rule's condition is a capability of the engine,
+   and `AVPlayer` has it for every knob a decision reaches: `preferredForwardBufferDuration`, both
+   ceilings and their expensive-network pair, the live offset and its preservation are read by the
+   item as it plays, and `automaticallyWaitsToMinimizeStalling` by the player. So on iOS every
+   policy but a profile's static one is re-consulted on rule 4's triggers, a consumer's own
+   included, and its changed decision is laid on the playing item in place — honoured whole, which
+   is what the rule asks, with no retargetable component needed to make it so. The static policy
+   is consulted once and observes nothing, which rule 7's count holds on iOS too. One promise does
+   not carry over: a re-application lays every item knob, a nil written as Apple's own default, so
+   a knob a consumer set on the playing item through `player.avPlayer` is rewritten on the next
+   change — the escape hatch is outside the compatibility promise (ADR-0020 rule 3), and a decision
+   left half laid over a consumer's knob is the state this rule exists to refuse.
 
 6. **`SuperPlayer.playbackDecision` is the decision currently in force; `SessionStarted.decision`
    is the decision in force when the session started; and every change afterwards is a

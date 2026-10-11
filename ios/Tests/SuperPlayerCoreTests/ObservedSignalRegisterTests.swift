@@ -47,10 +47,14 @@ final class ObservedSignalRegisterTests: XCTestCase {
 
     /// Every signal a player configured with nothing but content registers, once: all of the
     /// register but the frame output's, which `FrameOutputPaysNothingTests` counts on a player that
-    /// has one and on one that does not (ADR-0022 rule 9).
+    /// has one and on one that does not (ADR-0022 rule 9), and the policy's, which
+    /// `PolicyPaysNothingTests` counts the same way (ADR-0009 rule 7).
     private var everySignalOnce: [ObservedSignal: Int] {
-        Dictionary(
-            uniqueKeysWithValues: ObservedSignal.allCases.filter { $0.scope != .frameOutputItem }
+        let elsewhere: Set<ObservedSignal.Scope> = [
+            .frameOutputItem, .reapplicationPlayer, .reapplicationItem,
+        ]
+        return Dictionary(
+            uniqueKeysWithValues: ObservedSignal.allCases.filter { !elsewhere.contains($0.scope) }
                 .map { ($0, 1) })
     }
 
@@ -145,6 +149,7 @@ final class ObservedSignalRegisterTests: XCTestCase {
 
         let registrations = [
             "addObserver(", ".observe(", "addPeriodicTimeObserver(", "addBoundaryTimeObserver(",
+            "NWPathMonitor(",
         ]
         let registers: Set = ["ObservedSignals.swift", "SessionSignals.swift"]
         for file in files where !registers.contains(file.lastPathComponent) {

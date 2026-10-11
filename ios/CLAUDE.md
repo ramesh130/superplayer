@@ -31,7 +31,17 @@ pinned by `PlaybackSnapshotTests`. The telemetry vocabulary (#408) is core's too
 held to `docs/telemetry-schema.md` by `TelemetrySchemaDocumentTests`, `TelemetrySink`,
 `TelemetryCollector` made by `Configuration.telemetry`'s factory, the session edges in
 `SessionEdges.swift` — and the bounded `TelemetryDelivery` queue is `SuperPlayerTelemetry`'s, as on
-Android. `PlaybackDecision` is declared there ahead of #415, which owns what it means. #402 put the
+Android. #415 put the policy boundary in front of the profile: `PlaybackPolicy`,
+`PlaybackConditions` (the six observations) and `PlaybackDecision` with all seven halves, the parts
+no iOS player reads — the selection pace, the manifest and segment budgets, tunneling — present and
+documented as ignored; `Configuration.policy`, nil for the profile's `StaticProfilePolicy`
+(`PlaybackProfile.policy`); `EngineBinding.swift` laying a decision on the item and player, and
+`ConditionsBinding.swift` the one place a platform reading becomes an observation, its readers
+`package` so `ConditionsBindingTests` states a path or a memory reading by hand. Any policy but the
+static one gets a `DecisionReapplication` — re-consulted on the five triggers, each change laid on
+the playing item in place, reported as `player.playbackDecision` and to the collector's
+`decisionChanged(_:trigger:)` — because every knob is live-settable; its registrations are two scopes
+of the observed register, and a static player has none (`PolicyPaysNothingTests`). #402 put the
 platform's lifecycle on every player, in `LifecycleBinding.swift`: the audio session active while
 any player wants to play, an interruption pausing and resuming only on `.shouldResume`, headphones
 unplugged pausing, and the idle timer held while video plays — process-wide state counted across

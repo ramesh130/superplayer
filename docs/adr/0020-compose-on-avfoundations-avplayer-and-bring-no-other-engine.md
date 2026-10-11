@@ -9,6 +9,8 @@
   11, recording what of the realtime split is built and moving `SuperPlayer`'s refusal to #419.
   Amended again (#411) at rule 13, admitting the session trace recorder's register as telemetry's
   second.
+  Amended again (#419) at rule 11, recording that `SuperPlayer`'s refusal is built and why it is a
+  rule over schemes rather than a registry.
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
 - **Refines:** [ADR-0001](0001-compose-dont-fork.md), restated for Apple platforms rather than
@@ -293,6 +295,21 @@ that, and *What nothing enforces* sums them.
     error surface to refuse a realtime source through — `setMediaRequest` returns nothing, and making
     it throw for this one case would change every call site the facade has. #419's error publisher is
     the surface a failure of the facade arrives on, and the refusal is enforced by a test there.
+
+    *Addendum (2026-10-11, #419).* Built. A `SuperPlayer` handed a source whose scheme `AVPlayer`
+    cannot load refuses it with `UnplayableSourceSchemeError`, naming `RealtimePlayer`, on the
+    facade's error publisher (`player.errors`, with `player.playerError` keeping it) — before any of
+    adoption's bookkeeping, so the player is left playing what it played, and on every player, since
+    the refusal is core's and carries no failure class. #431 named two seams and this takes the
+    second: **a rule over the schemes `AVPlayer` loads** — `http`, `https` and `file` — rather than a
+    `package` registry of realtime schemes that `Realtime.transport(scheme:)` fills. A registry would
+    be process-wide state, and the refusal would depend on whether the realtime sources happened to
+    be built before the request reached the wrong player; a source of any other scheme can never play
+    on an `AVPlayer` whoever registered what, and the one other kind of URL `AVPlayer` takes — a
+    custom scheme behind `AVAssetResourceLoaderDelegate` — rule 6 already forbids. The cost is that a
+    typo'd scheme is refused naming `RealtimePlayer` too, which the error's description makes
+    readable by listing the three schemes expected. *Enforced by `SourceSchemeRefusalTests`, with
+    `http`, `https` and `file` sources taken as its controls.*
 
 12. **The Swift products ride the Android modules' version line, and the API digester is their
     arbiter.** One `MAJOR.MINOR.PATCH`, cut by the one `release` command, tagged once with the

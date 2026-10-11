@@ -844,7 +844,11 @@ see a request.
   `TelemetryPaysNothingTests` (#408), for the collector and measurement session a player holds,
   which nothing reports on a player without a collector. A sixth, `FrameOutputPaysNothingTests`
   (#405), for whether a player holds a display link, which is visible to nothing but the link's
-  target (*A frame output*).
+  target (*A frame output*). A seventh, `ResiliencePaysNothingTests` (#419), for the item-failure
+  observations a player registers, which no public reading can see until an item fails; the
+  classifying seam it fills with a stand-in, `FailureClassifying`, is `package`, because
+  `SuperPlayerResilience` fills it. `TypedErrorPlaybackTests` reads a failed item's `error` and its
+  error log's last entry off `player.avPlayer`, under rule 1's #419 addendum.
   `ProfileTableTests` reads each profile's knobs off `player.avPlayer`, and `SnapshotPlaybackTests`
   an item's readiness, under rule 1's #401 addendum.
 - **The lifecycle is driven by the platform's own notifications** (#402). `LifecyclePlaybackTests`

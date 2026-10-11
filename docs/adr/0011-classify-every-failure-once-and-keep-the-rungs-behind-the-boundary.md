@@ -9,6 +9,8 @@
   Rule 10's addendum also deviates from
   [ADR-0003](0003-implement-player-by-delegation.md) rule 3, which carries the matching note and
   which #182 needed no widening of.
+  Amended 2026-10-11 (#419) by an addendum at rule 1, recording the classifier's evidence on Apple
+  platforms.
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
 - **Refines:** [ADR-0005](0005-decide-playback-policy-behind-an-engine-agnostic-boundary.md)
@@ -160,6 +162,22 @@ Fourteen rules follow, and they are binding.
    postmortem prints the classification and the findings side by side in two fields that keep their
    own vocabularies, and a report in which the two disagree is information rather than a defect. Rule
    2's totality is therefore still a claim about `PlaybackException`s alone.
+
+   *Addendum (2026-10-11, #419).* On Apple platforms the rule binds as written, over AVFoundation's
+   evidence instead of Media3's ([ADR-0020](0020-compose-on-avfoundations-avplayer-and-bring-no-other-engine.md)
+   rule 4: the taxonomy is shared, the code is not). `SuperPlayerResilience`'s `ErrorClassifier` is
+   the one place, its `FailureClass` the Kotlin taxonomy leaf for leaf and string for string, and its
+   inputs are the item's `NSError` chain, the HTTP status AVFoundation reports as a
+   `CoreMediaErrorDomain` code, and the error log's last entry. The entry stands in for the `LoadKind`
+   stamp, which needs the transfer chain that does not port (ADR-0020 rule 6): its URI is the only
+   place AVFoundation says which request failed, and that is what tells a refused segment from a
+   refused playlist. Rule 2's totality is a claim about *any* error there, since the door takes
+   `any Error`. One reading is not the classifier's and is argued rather than moved: the collector's
+   coarse `category` for a player configured **without** resilience reads the error's domain and
+   code, as the Kotlin collector buckets Media3's band. It names a bucket and never a class, it is
+   not consulted where a class exists, and telemetry on a player with no classifier must still say
+   something — so it is the band's counterpart rather than a second taxonomy. Apple numbers no bands,
+   which is why it reads codes.
 
 2. **The classifier is total, and the taxonomy has no unknown class.** For every `PlaybackException`
    the engine can deliver the classifier returns a class and never throws; where no evidence

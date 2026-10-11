@@ -114,12 +114,15 @@ else
     export TEST_RUNNER_SP_UPDATE_GOLDEN=0
 fi
 
+# Every test but the benchmark's matrix run, which is a measurement of two hours' real time and
+# ios/Benchmark/bench's alone; the benchmark's agreement and honesty tests run here like any other.
 step "Test: every test target on the iOS simulator"
 if ! xcodebuild test -quiet \
     -scheme "$scheme" \
     -destination "id=$udid" \
     -derivedDataPath "$derived_data" \
-    -resultBundlePath "$results/test.xcresult"; then
+    -resultBundlePath "$results/test.xcresult" \
+    -skip-testing:SuperPlayerBenchmarkTests/BenchmarkMatrixRun; then
     xcrun xcresulttool get test-results summary --path "$results/test.xcresult" >&2 || true
     fail "xcodebuild test failed"
 fi

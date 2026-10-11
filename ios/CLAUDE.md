@@ -103,6 +103,12 @@ core's `package` protocol `PlaybackEngine` — the view hosts either, and `Share
 — and what they do not yet (telemetry, sessions, interruptions) is listed in `docs/testing.md`'s *A
 realtime transport on iOS*. #340's observed bytes are `ios/Tests/Fixtures/realtime/observed-bytes.tsv`,
 read by both platforms' tests.
+#414 is the benchmark: `SessionMetrics` and `QoeScore` in `SuperPlayerTelemetry`, the matrix in
+`ios/Benchmark/` as a target of the manifest and not a product (phase 2 in `docs/modules.md`),
+run by `ios/Benchmark/bench` and never by `ios/check`, which runs only its agreement and honesty
+tests. `ios/Benchmark/README.md` is its manual, and its *What the simulator taught the harness* is
+worth reading before playing a ladder anywhere: an `AVPlayer` whose video nobody consumes never
+climbs one.
 #432 mirrored the codec configuration and made it several tracks. `CodecConfigurationRecords.swift`
 runs the Kotlin conversion **the other way**: an `avcC`/`hvcC` is parsed for its NAL length width and
 passed into the description's atom untouched, its samples walked at that width; in-band parameter sets
@@ -229,6 +235,7 @@ ios/check                     # swift-format lint, simulator tests, tvOS build, 
 ios/check --update-api        # the same, rewriting ios/api/*.baseline; commit the diff
 ios/check --update-golden     # the same, rewriting ios/Tests/Fixtures/golden/*.trace; review and commit the diff
 SP_SIMULATOR=mine ios/check   # test on a simulator of that name instead (created if absent)
+ios/Benchmark/bench           # PRD.md §6's matrix on the simulator, ~2 h; NOT in ios/check (ios/Benchmark/README.md)
 ios/hunt-leaks                # the leak hunt on a simulator; minutes, a network, and not a check
 xcrun swift-format format --in-place --recursive --configuration ios/.swift-format ios Package.swift
 ```

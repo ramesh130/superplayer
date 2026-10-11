@@ -3,7 +3,10 @@ Class QoeCollector : Sendable, TelemetryCollector
 Class SessionTraceRecorder : Sendable, TelemetrySink
 Constructor OSLogSink.init() : SuperPlayerTelemetry.OSLogSink
 Constructor QoeCollector.init(sink:) : SuperPlayerTelemetry.QoeCollector, any SuperPlayerCore.TelemetrySink
+Constructor QoeScore.Breakdown.init(bitrateUtility:rebufferPenalty:switchPenalty:) : SuperPlayerTelemetry.QoeScore.Breakdown, Swift.Double, Swift.Double, Swift.Double
+Constructor SessionMetrics.init(sessionId:timeToFirstFrameMs:startBoundary:rebufferMs:rebufferCount:playingMs:averageBitrateBps:switchCount:upshiftCount:downshiftCount:switchMagnitudeBpsSum:startupFailed:midStreamFailed:exitBeforeVideoStart:droppedEventCount:decisionChangeCount:ended:) : SuperPlayerTelemetry.SessionMetrics, Swift.String, Swift.Int64?, SuperPlayerCore.TtffStartBoundary?, Swift.Int64, Swift.Int, Swift.Int64, Swift.Double?, Swift.Int, Swift.Int, Swift.Int, Swift.Int64, Swift.Bool, Swift.Bool, Swift.Bool, Swift.Int, Swift.Int, Swift.Bool
 Constructor SessionTraceRecorder.init() : SuperPlayerTelemetry.SessionTraceRecorder
+Enum QoeScore
 Func OSLogSink.onEvent(_:) : (), SuperPlayerCore.TelemetryEvent
 Func QoeCollector.attach(to:) : (), SuperPlayerCore.SuperPlayer
 Func QoeCollector.contentReopened(after:) : (), SuperPlayerCore.SuperPlayerError
@@ -13,6 +16,14 @@ Func QoeCollector.detach() : ()
 Func QoeCollector.endSession() : ()
 Func QoeCollector.sessionFailed(_:) : (), SuperPlayerCore.SuperPlayerError
 Func QoeCollector.startSession(contentId:sessionId:) : (), Swift.String, Swift.String
+Func QoeScore.Breakdown.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerTelemetry.QoeScore.Breakdown, SuperPlayerTelemetry.QoeScore.Breakdown [static]
+Func QoeScore.Breakdown.hash(into:) : (), Swift.Hasher
+Func QoeScore.breakdown(_:ladderTopBitrateBps:) : SuperPlayerTelemetry.QoeScore.Breakdown?, SuperPlayerTelemetry.SessionMetrics, Swift.Int [static]
+Func QoeScore.of(_:ladderTopBitrateBps:) : Swift.Double?, SuperPlayerTelemetry.SessionMetrics, Swift.Int [static]
+Func QoeScore.rebufferPenaltyPerSecond(ladderTopBitrateBps:) : Swift.Double, Swift.Int [static]
+Func SessionMetrics.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerTelemetry.SessionMetrics, SuperPlayerTelemetry.SessionMetrics [static]
+Func SessionMetrics.from(sessionId:events:) : SuperPlayerTelemetry.SessionMetrics, Swift.String, [SuperPlayerCore.TelemetryEvent] [static]
+Func SessionMetrics.hash(into:) : (), Swift.Hasher
 Func SessionTrace.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerTelemetry.SessionTrace, SuperPlayerTelemetry.SessionTrace [static]
 Func SessionTrace.format() : Swift.String
 Func SessionTrace.hash(into:) : (), Swift.Hasher
@@ -24,8 +35,35 @@ Func SessionTraceRecorder.detach() : ()
 Func SessionTraceRecorder.onEvent(_:) : (), SuperPlayerCore.TelemetryEvent
 Func SessionTraceRecorder.trace() : SuperPlayerTelemetry.SessionTrace
 Struct OSLogSink : Sendable, TelemetrySink
+Struct QoeScore.Breakdown : Equatable, Hashable, Sendable
+Struct SessionMetrics : Equatable, Hashable, Sendable
 Struct SessionTrace : CustomStringConvertible, Equatable, Hashable, Sendable
 Struct SessionTraceFormatError : CustomStringConvertible, Error, Sendable
+Var QoeScore.Breakdown.bitrateUtility : Swift.Double { get }
+Var QoeScore.Breakdown.hashValue : Swift.Int { get }
+Var QoeScore.Breakdown.rebufferPenalty : Swift.Double { get }
+Var QoeScore.Breakdown.score : Swift.Double { get }
+Var QoeScore.Breakdown.switchPenalty : Swift.Double { get }
+Var SessionMetrics.averageBitrateBps : Swift.Double? { get }
+Var SessionMetrics.decisionChangeCount : Swift.Int { get }
+Var SessionMetrics.downshiftCount : Swift.Int { get }
+Var SessionMetrics.droppedEventCount : Swift.Int { get }
+Var SessionMetrics.ended : Swift.Bool { get }
+Var SessionMetrics.exitBeforeVideoStart : Swift.Bool { get }
+Var SessionMetrics.hashValue : Swift.Int { get }
+Var SessionMetrics.midStreamFailed : Swift.Bool { get }
+Var SessionMetrics.playingMs : Swift.Int64 { get }
+Var SessionMetrics.rebufferCount : Swift.Int { get }
+Var SessionMetrics.rebufferMs : Swift.Int64 { get }
+Var SessionMetrics.rebufferRatio : Swift.Double? { get }
+Var SessionMetrics.sessionId : Swift.String { get }
+Var SessionMetrics.startBoundary : SuperPlayerCore.TtffStartBoundary? { get }
+Var SessionMetrics.startupFailed : Swift.Bool { get }
+Var SessionMetrics.switchCount : Swift.Int { get }
+Var SessionMetrics.switchMagnitudeBpsSum : Swift.Int64 { get }
+Var SessionMetrics.timeToFirstFrameMs : Swift.Int64? { get }
+Var SessionMetrics.upshiftCount : Swift.Int { get }
+Var SessionMetrics.usable : Swift.Bool { get }
 Var SessionTrace.description : Swift.String { get }
 Var SessionTrace.formatHeader : Swift.String [static] { get }
 Var SessionTrace.formatVersion : Swift.Int [static] { get }

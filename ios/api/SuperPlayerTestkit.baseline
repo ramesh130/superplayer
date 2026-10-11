@@ -64,7 +64,9 @@ Func ResourceKind.hash(into:) : (), Swift.Hasher
 Func TestContent.hls(segmentCount:variantCount:hosts:) : SuperPlayerTestkit.TestContent, Swift.Int, Swift.Int, Swift.Int [static]
 Func TestContent.hostile(_:) : SuperPlayerTestkit.TestContent, SuperPlayerTestMedia.HostileStream [static]
 Func TestContent.liveHls(hosts:) : SuperPlayerTestkit.TestContent, Swift.Int [static]
+Func TestContent.liveVideoLadder(bitratesBps:) : SuperPlayerTestkit.TestContent, [Swift.Int] [static]
 Func TestContent.videoHls(segmentCount:) : SuperPlayerTestkit.TestContent, Swift.Int [static]
+Func TestContent.videoLadder(bitratesBps:segmentCount:) : SuperPlayerTestkit.TestContent, [Swift.Int], Swift.Int [static]
 Func ThroughputTrace.Builder.add(durationMs:bandwidthBps:transport:rttMs:) : SuperPlayerTestkit.ThroughputTrace.Builder, Swift.Int64, Swift.Int64, SuperPlayerTestkit.NetworkTransport, Swift.Int64
 Func ThroughputTrace.Builder.build() : SuperPlayerTestkit.ThroughputTrace [throwing]
 Func ThroughputTrace.Builder.holdAtEnd() : SuperPlayerTestkit.ThroughputTrace.Builder

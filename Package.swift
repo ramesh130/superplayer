@@ -114,6 +114,18 @@ let package = Package(
             name: "SuperPlayerTestMedia",
             path: "ios/Sources/SuperPlayerTestMedia"
         ),
+        // The benchmark (#414): benchmark/'s matrix on the simulator, its sources under
+        // ios/Benchmark/. A target and no product — nothing ships it — and in this manifest rather than
+        // a package of its own because a SuperPlayer playing video in xctest needs core's `package`
+        // lifecycle seam (ios/Benchmark/README.md). Phase 2 in docs/modules.md, the latest of what
+        // it measures with, until i3's adaptive arm brings in SuperPlayerABR; nothing depends on it.
+        .target(
+            name: "SuperPlayerBenchmark",
+            dependencies: [
+                "SuperPlayerCore", "SuperPlayerTelemetry", "SuperPlayerTestkit",
+            ],
+            path: "ios/Benchmark/Sources/SuperPlayerBenchmark"
+        ),
         .testTarget(
             name: "SuperPlayerCoreTests",
             dependencies: ["SuperPlayerCore"],
@@ -185,6 +197,16 @@ let package = Package(
             name: "SuperPlayerTestkitTests",
             dependencies: ["SuperPlayerTestkit", "SuperPlayerTestMedia", "SuperPlayerCore"],
             path: "ios/Tests/SuperPlayerTestkitTests"
+        ),
+        // The agreement test and the report's honesty rules, which ios/check runs, and the matrix
+        // run itself, which it skips: ios/Benchmark/bench is the one thing that runs it.
+        .testTarget(
+            name: "SuperPlayerBenchmarkTests",
+            dependencies: [
+                "SuperPlayerBenchmark", "SuperPlayerCore", "SuperPlayerTelemetry",
+                "SuperPlayerTestkit", "SuperPlayerTestMedia",
+            ],
+            path: "ios/Benchmark/Tests/SuperPlayerBenchmarkTests"
         ),
         .testTarget(
             name: "SuperPlayerTestMediaTests",

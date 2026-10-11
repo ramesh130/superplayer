@@ -144,6 +144,10 @@ final class TypedErrorPlaybackTests: XCTestCase {
 
         XCTAssertEqual(player.avPlayer.currentItem?.errorLog()?.events.count ?? 0, 0)
         XCTAssertEqual(try assertOneTypedError(record, on: player).causeClass, "Transient.Network")
+        // An error that is not the item's is classified on itself, not answered with the item's.
+        let unrelated = NSError(
+            domain: AVFoundationErrorDomain, code: AVError.Code.decoderNotFound.rawValue)
+        XCTAssertEqual(player.classify(unrelated)?.causeClass, "Device.DecoderInit")
     }
 
     // MARK: Telemetry reads the same class

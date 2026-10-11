@@ -111,13 +111,14 @@ final class ErrorClassifierTests: XCTestCase {
             .transient(.network))
     }
 
-    /// A status in the HTTP range is read as one, wherever it arrives.
-    func testALoggedHttpStatusIsReadAsOne() {
+    /// Only CoreMedia's codes are read as statuses: another domain's code in the HTTP range — a
+    /// Cocoa file-write error is 512 — is not a refused segment.
+    func testACodeInTheHttpRangeFromAnotherDomainIsNoStatus() {
         XCTAssertEqual(
             classify(
-                NSError(domain: NSURLErrorDomain, code: NSURLErrorBadServerResponse),
-                LoggedFailure(uri: segment, errorStatusCode: 403, errorDomain: "NSURLErrorDomain")),
-            .transient(.cdnEdge))
+                NSError(domain: NSCocoaErrorDomain, code: NSFileWriteUnknownError),
+                LoggedFailure(uri: segment, errorStatusCode: 403, errorDomain: NSCocoaErrorDomain)),
+            .transient(.network))
     }
 
     // MARK: The codes

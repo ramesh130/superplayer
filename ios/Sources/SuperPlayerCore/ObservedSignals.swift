@@ -173,10 +173,14 @@ final class Observation {
     ) -> Observation {
         switch signal {
         case .resilienceItemStatus:
-            let observation = item.observe(\.status) { item, _ in
-                guard item.status == .failed else { return }
+            // Captures nothing and reads nothing off the posting thread: the hop comes first, and
+            // the status and error are read on the main actor, from an item held weakly.
+            let observation = item.observe(\.status) { [weak item] _, _ in
                 DispatchQueue.main.async {
-                    MainActor.assumeIsolated { handler(item.error as NSError?) }
+                    MainActor.assumeIsolated {
+                        guard let item, item.status == .failed else { return }
+                        handler(item.error as NSError?)
+                    }
                 }
             }
             return Observation(signal: signal, registration: .keyValue(observation))
@@ -190,7 +194,9 @@ final class Observation {
                 MainActor.assumeIsolated { handler(error) }
             }
             return Observation(signal: signal, registration: .notification(token))
-        default:
+        case .itemPlayedToEnd, .itemTimeJumped, .frameOutputItemTimeJumped,
+            .audioSessionInterrupted, .audioRouteChanged, .playerRateChanged,
+            .playerTimeControlStatus:
             preconditionFailure("\(signal) is not a resilience item signal")
         }
     }

@@ -185,13 +185,12 @@ public enum ErrorClassifier {
     /// The HTTP status `error` reports, or nil — the one place an AVFoundation code is read as a
     /// status, so a status is read the same way whether it arrived on the item's error or in its log.
     ///
-    /// A status in the HTTP range is taken as one. Below it, `CoreMediaErrorDomain` reports a refused
-    /// request as a code of its own per status, and only the codes observed are read: each was forced
+    /// `CoreMediaErrorDomain` reports a refused request as a code of its own per status — in every
+    /// failure #419 forced, never the status itself — and only the codes observed are read: each was forced
     /// by #419 at the loopback origin on the iOS 27.1 simulator, with the status in the error's own
     /// description beside it (`"CoreMediaErrorDomain error -12938 - HTTP 404: File Not Found"`). A
     /// status no row names says nothing narrower, and the codes decide.
     static func httpStatus(_ error: NSError) -> Int? {
-        if (400...599).contains(error.code) { return error.code }
         guard error.domain == coreMediaErrorDomain else { return nil }
         switch error.code {
         case -16840: return 401

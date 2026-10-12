@@ -263,6 +263,30 @@ first**. What `ios/check` runs is `FrameSourceConformance` in both of ADR-0018 r
 over `ScriptedMoqRelay`, which proves the bridge and nothing about MoQ, and `MoqFfiLinkageTests`,
 which calls across the FFI into the simulator slice an app links. A broadcast on a device is the i9
 device ticket's. There is no `SuperPlayerCache`, since its content is the offline store's.
+#416 is i3's adaptive half, `SuperPlayerABR`: `AdaptivePolicy.forProfile(profile)` composes
+`AdaptiveSelectionPolicy` and `AdaptiveBufferPolicy`, the Kotlin pure functions with their constants,
+and brings a `BandwidthOracle` per player through core's `package` seam `ThroughputSource.swift` —
+`DecisionReapplication` hands it every access-log read, item change and transport change and asks it
+for the estimate and the throughput trigger, where any other policy gets the item's own window. A
+sample is **one access-log entry's `observedBitrate`**, revised while the entry is current, kept per
+transport in the process's `EstimateMemory` with Android's cold defaults and aging. Two Kotlin
+branches move start floors iOS has no knob for and so move nothing here; the heap cap applies to a
+decided `preferredForwardBufferDuration` and never to Apple's automatic one; the cellular cap lands on
+the expensive-network pair. `AdaptivePolicy.forProfile(_:rebufferCooldownMs:memory:)` is the
+`package` seam `AdaptivePolicyPlaybackTests` shortens the cooldown through. The benchmark's arm (d) is
+it, every session starting from a forgotten memory, and `benchmark/ios-phase3/` is its report.
+#427 is the first of i8: `SuperPlayerDiagnostics`' `MediaSourceDoctor(configuration:)`, whose
+`examine(_:)` is `async` and **not** `throws` — a playlist that cannot be fetched or read is a
+`manifest-unreachable` or `manifest-unreadable` finding — and answers a `DiagnosticReport` of
+`Finding`s (`Pathology`, `FindingSeverity`, magnitude, the corpus's citation and cause). It fetches
+the multivariant playlist and every media playlist it names over an ephemeral `URLSession` of its own,
+carrying what the configured `HeaderProvider` returns after a 401 or 403 as a player would, and no
+segment. It reads them with **a lint of its own** (`PlaylistLint.swift`, ADR-0020 rule 8 and its #427
+addendum): three refusals, the RFC's, and leniency everywhere else. The rules are the Kotlin ones with
+the Kotlin thresholds (`HlsPathologies.swift`, `LadderPathologies.swift`), plus `hls-short-live-window`,
+the HLS analog of core's `LiveWindowDepthCheck`, which lives in the doctor here. `CorpusRegisterTests`
+is the register, and the delivery rules and the postmortem are #428's, over the response headers each
+fetch already carries.
 
 **Dependencies point inward** under `docs/modules.md`'s phase rule, and the phase a product takes is
 the Android module's it ports: `docs/modules.md`'s *iOS products* table is the source, and
@@ -295,7 +319,8 @@ origin.responses()                         // how each was answered: status, fau
   Never sleep and then assert.
 - **`.liveHls()` publishes a segment every two seconds of real time** from the moment the origin
   starts, in a six-segment window under `live/` — the Kotlin `TestContent.liveHls()`'s stream and
-  timing, on the host's clock.
+  timing, on the host's clock. `.liveHls(windowSegmentCount:)` is the same stream with a shorter
+  window, already slid, which is how the doctor is shown a window RFC 8216 §6.2.2 forbids (#427).
 - **No App Transport Security key is set in this repository.** Plain HTTP to the origin is allowed
   by Xcode's `xctest` host, whose embedded `Info.plist` sets `NSAllowsArbitraryLoads`, and
   `LoopbackOriginTests` pins that; a test hosted in an app would need `NSAllowsLocalNetworking`
@@ -338,7 +363,7 @@ ios/check                     # swift-format lint, simulator tests, tvOS build, 
 ios/check --update-api        # the same, rewriting ios/api/*.baseline; commit the diff
 ios/check --update-golden     # the same, rewriting ios/Tests/Fixtures/golden/*.trace; review and commit the diff
 SP_SIMULATOR=mine ios/check   # test on a simulator of that name instead (created if absent)
-ios/Benchmark/bench           # PRD.md §6's matrix on the simulator, ~2 h; NOT in ios/check (ios/Benchmark/README.md)
+ios/Benchmark/bench           # PRD.md §6's matrix on the simulator, ~2 h 40 min; NOT in ios/check (ios/Benchmark/README.md)
 ios/hunt-leaks                # the leak hunt on a simulator; minutes, a network, and not a check
 xcrun swift-format format --in-place --recursive --configuration ios/.swift-format ios Package.swift
 ```

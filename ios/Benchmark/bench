@@ -8,13 +8,13 @@
 #   ios/Benchmark/bench --runs 1            fewer runs, for working on the harness
 #   ios/Benchmark/bench --out DIR           somewhere other than ios/Benchmark/out
 #   ios/Benchmark/bench --cells "VOD / 3G"  a substring filter, for working on the harness
-#   ios/Benchmark/bench --baseline          write into benchmark/ios-baseline, the committed reference
+#   ios/Benchmark/bench --baseline          write into benchmark/ios-phase3, the committed reference
 #
 #   SP_SIMULATOR      the simulator to run on, by name (default superplayer-bench); made if absent
 #   SP_DERIVED_DATA   xcodebuild's DerivedData (default .build/DerivedData, ios/check's)
 #
-# Not a test and not part of ios/check: a measurement someone reads, which takes about two hours of
-# real time at the default. ios/Benchmark/README.md says why, and argues the run count.
+# Not a test and not part of ios/check: a measurement someone reads, which takes nearly three hours
+# of real time at the default. ios/Benchmark/README.md says why, and argues the run count.
 set -euo pipefail
 
 usage() {
@@ -31,8 +31,7 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$root"
 
 # MatrixRun.defaultRunsPerCell, whose reason is written there and argued in the README's *The run
-# count*: the fewest that estimates a cell's spread on more than one degree of freedom, and the
-# number that lets each built arm take each place in a cell's rotation once.
+# count*: the fewest that estimates a cell's spread on more than one degree of freedom.
 runs=3
 out="$root/ios/Benchmark/out"
 cells=""
@@ -42,8 +41,10 @@ while [ $# -gt 0 ]; do
         --out) out="${2:?--out needs a value}"; shift 2 ;;
         --cells) cells="${2:?--cells needs a value}"; shift 2 ;;
         # In the repository, because a number nobody can find is not a baseline; beside the Android
-        # reports rather than among them, since the two measure different engines.
-        --baseline) out="$root/benchmark/ios-baseline"; shift ;;
+        # reports rather than among them, since the two measure different engines. ios-baseline/ is
+        # i2's report, frozen, with no adaptive arm; ios-phase3/ is i3's and the current reference,
+        # as benchmark/bench --baseline moved to benchmark/phase3 when Phase 3 measured.
+        --baseline) out="$root/benchmark/ios-phase3"; shift ;;
         -h | --help) usage ;;
         *) die "unknown option $1" ;;
     esac

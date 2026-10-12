@@ -14,6 +14,7 @@
 
 import AVFoundation
 import Foundation
+import SuperPlayerABR
 import SuperPlayerCore
 import SuperPlayerTelemetry
 import SuperPlayerTestkit
@@ -29,7 +30,7 @@ import os
 ///    the session asks for its first media segment, so every arm meets the same stretch of the
 ///    trace at the same point in its session however long the host took to get it there (#474).
 /// 2. **One reducer.** Every arm's events are reduced by `SessionMetrics`.
-/// 3. **One derivation, checked.** Arm (c)'s events are `QoeCollector`'s and the stock arms'
+/// 3. **One derivation, checked.** Arms (c) and (d)'s events are `QoeCollector`'s and the stock arms'
 ///    ``StockTelemetry``'s, held to each other by the agreement test.
 ///
 /// **One stand-in for a screen, on every arm**: an `AVPlayerItemVideoOutput` on the item. In
@@ -38,7 +39,7 @@ import os
 /// (`SyntheticVideoLadder.declaredHeightPx(bitrateBps:)`). An output nobody reads is the least that
 /// makes the video consumed, and it is the same object on every arm, so it moves no comparison.
 ///
-/// **Arm (c) runs on a lifecycle platform that does nothing**, the one place a `SuperPlayer` here
+/// **Arms (c) and (d) run on a lifecycle platform that does nothing**, the one place a `SuperPlayer` here
 /// differs from an adopter's: its video holds the idle timer, and `xctest` has no `UIApplication`
 /// (`ios/CLAUDE.md`, *The harness*). The audio session and idle timer it skips are not inputs to
 /// anything measured, and the stock arms touch neither.
@@ -46,7 +47,7 @@ import os
 struct SessionRunner {
 
     /// The one content id every session reports, the Kotlin `CONTENT_ID`: a stock player has none,
-    /// so it is the runner's, and arm (c)'s request carries the same one.
+    /// so it is the runner's, and arms (c) and (d)'s requests carry the same one.
     static let contentId = "benchmark:ladder"
 
     /// How long to wait for a first frame or a startup failure before the wait is a defect of the
@@ -55,7 +56,7 @@ struct SessionRunner {
     /// seconds, so a minute is far past any start that is going to happen.
     static let startBound: Duration = .seconds(60)
 
-    /// How long to wait for arm (c)'s asynchronous delivery to hand over `SessionEnded`, the Kotlin
+    /// How long to wait for a SuperPlayer arm's asynchronous delivery to hand over `SessionEnded`, the Kotlin
     /// `DELIVERY_TIMEOUT_MS`: a session that misses it has no end and `SessionMetrics.usable`
     /// excludes it, counted.
     static let deliveryBound: Duration = .seconds(10)
@@ -106,12 +107,22 @@ struct SessionRunner {
         player.replaceCurrentItem(with: nil)
     }
 
-    /// Arm (c): a `SuperPlayer` with the scenario's profile, measured by the shipped collector.
+    /// Arms (c) and (d): a `SuperPlayer` with the scenario's profile — and for (d) its adaptive
+    /// policy — measured by the shipped collector.
+    ///
+    /// **Arm (d) starts every session cold**, as the Kotlin runner's does by idling its clock past
+    /// ADR-0009 rule 9's stale age: the process's estimate memory is forgotten first, so no session
+    /// is decided on the one before it. AVFoundation's own estimate, which nothing public clears, is
+    /// carried on every arm alike and balanced by the rotation (`ios/Benchmark/README.md`).
     private func playSuperPlayer(
         _ url: URL, into recorder: EventRecorder, harness: PlaybackHarness
     ) async throws {
         var configuration = SuperPlayer.Configuration()
         configuration.profile = key.scenario.profile
+        if key.arm == .adaptive {
+            EstimateMemory.process.forget()
+            configuration.policy = AdaptivePolicy.forProfile(key.scenario.profile)
+        }
         configuration.telemetry = { QoeCollector(sink: recorder) }
         let player = SuperPlayer(
             configuration: configuration, lifecycle: SharedLifecycle(platform: QuietPlatform()))
@@ -151,7 +162,7 @@ struct SessionRunner {
     }
 }
 
-/// A sink both collectors write to — arm (c)'s on the delivery queue, the stock arms' on the main
+/// A sink both collectors write to — the SuperPlayer arms' on the delivery queue, the stock arms' on the main
 /// actor — and the runner reads, so behind a lock.
 final class EventRecorder: TelemetrySink {
 
@@ -166,7 +177,7 @@ final class EventRecorder: TelemetrySink {
     var events: [TelemetryEvent] { recorded.withLock { $0 } }
 }
 
-/// The lifecycle platform arm (c) runs on: one that does nothing (``SessionRunner``'s *Arm (c)*).
+/// The lifecycle platform arms (c) and (d) run on: one that does nothing (``SessionRunner``'s *Arms (c) and (d)*).
 @MainActor
 final class QuietPlatform: LifecyclePlatform {
     func activateAudioSession() {}

@@ -126,12 +126,12 @@ let package = Package(
         // The benchmark (#414): benchmark/'s matrix on the simulator, its sources under
         // ios/Benchmark/. A target and no product — nothing ships it — and in this manifest rather than
         // a package of its own because a SuperPlayer playing video in xctest needs core's `package`
-        // lifecycle seam (ios/Benchmark/README.md). Phase 2 in docs/modules.md, the latest of what
-        // it measures with, until i3's adaptive arm brings in SuperPlayerABR; nothing depends on it.
+        // lifecycle seam (ios/Benchmark/README.md). Phase 3 in docs/modules.md, the latest of what
+        // it measures with since arm (d) brought in SuperPlayerABR (#416); nothing depends on it.
         .target(
             name: "SuperPlayerBenchmark",
             dependencies: [
-                "SuperPlayerCore", "SuperPlayerTelemetry", "SuperPlayerTestkit",
+                "SuperPlayerCore", "SuperPlayerTelemetry", "SuperPlayerTestkit", "SuperPlayerABR",
             ],
             path: "ios/Benchmark/Sources/SuperPlayerBenchmark"
         ),
@@ -147,9 +147,12 @@ let package = Package(
             dependencies: ["SuperPlayerTelemetry", "SuperPlayerTestkit", "SuperPlayerCore"],
             path: "ios/Tests/SuperPlayerTelemetryTests"
         ),
+        // Core for the conditions the pure tests state, and the harness for the one that plays a
+        // shaped link: testkit is phase 2, below this one, as superplayer-abr's own tests drive the
+        // Kotlin harness.
         .testTarget(
             name: "SuperPlayerABRTests",
-            dependencies: ["SuperPlayerABR"],
+            dependencies: ["SuperPlayerABR", "SuperPlayerCore", "SuperPlayerTestkit"],
             path: "ios/Tests/SuperPlayerABRTests"
         ),
         // The harness and core too, because a prefetch is a count of what reached an origin:
@@ -207,9 +210,13 @@ let package = Package(
             ],
             path: "ios/Tests/SuperPlayerTVTests"
         ),
+        // Testkit for the origin the doctor fetches from, testmedia for the corpus it is scored on.
         .testTarget(
             name: "SuperPlayerDiagnosticsTests",
-            dependencies: ["SuperPlayerDiagnostics"],
+            dependencies: [
+                "SuperPlayerDiagnostics", "SuperPlayerCore", "SuperPlayerTestkit",
+                "SuperPlayerTestMedia",
+            ],
             path: "ios/Tests/SuperPlayerDiagnosticsTests"
         ),
         // Core for the seam the fake implements, testmedia for the H.264 it delivers, and testkit

@@ -1019,6 +1019,18 @@ see a request.
   §7). `ios/hunt-leaks` (#418) records that feed on a **simulator**, outside every check, and says
   whether the app keeps what a scroll made; the same scroll on an iPhone, memory flat over 200 rows
   and TTFF there, is #435's.
+- **The adaptive policy's seams are `package`, and no ABR test is `@testable`** (#416).
+  `SuperPlayerABRTests` reads the product's pure halves through their public API and the oracle
+  through core's `package` `ThroughputSource`, the methods core itself calls, on an `EstimateMemory`
+  of the test's own and a clock it states — so aging between two and fifteen minutes is asserted on
+  stated times rather than waited for. `AdaptivePolicyPlaybackTests` shortens the hysteresis cooldown
+  through `AdaptivePolicy.forProfile(_:rebufferCooldownMs:memory:)`, a `package` seam its comment
+  argues: the real half-minute is a constant the pure tests hold, and what the harness shows is the
+  mechanism — a stall holding the ceiling on the playing item, and the first trigger after the
+  cooldown lifting it. It plays the audio stream, not the video ladder, because of #474. **That a
+  held ceiling changes which rung is played, and that the cellular cap binds on a cellular path,
+  are a device's**: the simulator's path is its host's, and testkit reports a trace's transport
+  rather than switching it.
 - **A realtime player's engine is read where no public reading exists** (#431).
   `SuperPlayerRealtimeTests` imports the realtime product `@testable`, each file arguing it:
   `RealtimeFormatsTests`, because the codec table answers CoreMedia vocabulary and is internal, as
@@ -1233,6 +1245,26 @@ Two rows differ from Android's, and both are findings rather than gaps: `hls-dan
 which Media3 plays, fails in AVFoundation; and `hls-cached-live-playlist` freezes with no error it
 fails with, where core names the cache — its error log carries -12888, the playlist unchanged, which
 nothing surfaces.
+
+### The doctor on iOS
+
+`SuperPlayerDiagnosticsTests` scores the iOS doctor (#427) against the same corpus, served the same
+way: every test examines content on a loopback origin of its own through the public
+`MediaSourceDoctor`, and what the doctor fetched is the origin's record, so "playlists and never a
+segment" is an equality on `networkRequests()`. `CorpusRegisterTests` is `CorpusRegisterTest`'s
+shape — per entry, the findings at `severe` as an equality, and every `benign` grade and every
+healthy stream silent **one at a time** — and is also what holds ADR-0020 rule 8's lint to the
+corpus: a lint that misread an entry fails that entry's row. The four delivery entries are rows that
+name nothing yet, each with its reason, for #428. Three pathologies have no corpus entry and are
+forced by a named test instead: the two defects of the fetch, and `hls-short-live-window`, whose
+Kotlin twin is DASH's. Its stream is testkit's `TestContent.liveHls(windowSegmentCount:)`, a live
+window a test chooses, published as though the default window had already slid so its media sequence
+is above zero; two segments is the defect and three, exactly at RFC 8216 §6.2.2's bound, the
+control. `PlaylistLintTests` imports the product `@testable`, arguing it in its own comment: the
+lint's three refusals and its attribute-list grammar reach the public API only as an unreadable
+finding with no reason, and nothing the origin serves carries a byte-order mark, a quoted comma or
+both kinds of tag. No duration is asserted anywhere in the target, and no device is needed for any of
+it.
 
 ### Rungs 4 and 5 on iOS
 

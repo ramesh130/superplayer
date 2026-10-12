@@ -47,10 +47,13 @@ import UIKit
 @MainActor
 package protocol LifecyclePlatform: AnyObject {
 
-    /// Sets the playback category and activates the audio session.
+    /// Sets the playback category and activates the audio session. Asked on the main actor, it need
+    /// not be performed there, and the system's is not (``SystemLifecyclePlatform``); the calls are
+    /// performed in the order asked.
     func activateAudioSession()
 
-    /// Deactivates the audio session, telling other apps they may resume.
+    /// Deactivates the audio session, telling other apps they may resume, after every activation
+    /// asked before it.
     func deactivateAudioSession()
 
     /// Holds (`true`) or releases (`false`) the idle timer, which dims and locks the screen.
@@ -58,35 +61,85 @@ package protocol LifecyclePlatform: AnyObject {
 }
 
 /// The system's ``LifecyclePlatform``: `AVAudioSession.sharedInstance()` and `UIApplication.shared`.
+///
+/// **The session is activated and deactivated off the main thread** (#494), on one serial queue of
+/// this object's. Apple documents `setActive` as a call that blocks while the audio server answers
+/// and can take noticeable time, and the system reports one made on the main thread — which is
+/// where every player reaches it, on the main actor, when it starts wanting to play. The queue is
+/// serial so the calls are performed in the order ``SharedLifecycle`` made them: a deactivation
+/// never overtakes the activation before it, nor an activation the deactivation before it. The
+/// count already calls only on a change, so the queue holds alternating calls and never two alike
+/// in a row.
+///
+/// Moving it gives up nothing ADR-0006 rule 1 asks for. The activation was never a step of
+/// `play()`: it answers the rate change `play()` posts, so on the main thread too it ran once
+/// AVFoundation's own threads were already rendering toward the media, and ordered nothing against
+/// them. On the queue it is posted at that same moment, at user-initiated priority. Were the audio
+/// first, the system activates a session implicitly when audio starts, and the category set here
+/// then applies to the session already active. The idle timer stays on the main actor, with
+/// `UIApplication`.
+///
+/// ref: https://developer.apple.com/documentation/avfaudio/avaudiosession/setactive(_:options:)
 @MainActor
 final class SystemLifecyclePlatform: LifecyclePlatform {
 
+    /// Performs every session call, one at a time and in the order asked. User-initiated, because an
+    /// activation answers a viewer pressing play and the media waits on it.
+    private let queue: DispatchQueue
+
+    /// Activates (`true`) or deactivates (`false`) the session, blocking until the system answers;
+    /// run on ``queue`` and nowhere else. The shipped one is ``systemAudioSession(_:)``. A test hands
+    /// a recorder here to read the order and the thread of the calls: what the audio server does
+    /// with them stays the device's (ADR-0021 rule 5's #402 addendum), and the one protocol for the
+    /// feature is still ``LifecyclePlatform``.
+    private let audioSession: @Sendable (_ active: Bool) -> Void
+
+    init(
+        queue: DispatchQueue = DispatchQueue(
+            label: "com.superplayer.audio-session", qos: .userInitiated),
+        audioSession: @escaping @Sendable (_ active: Bool) -> Void = systemAudioSession
+    ) {
+        self.queue = queue
+        self.audioSession = audioSession
+    }
+
+    func activateAudioSession() {
+        queue.async { [audioSession] in audioSession(true) }
+    }
+
+    func deactivateAudioSession() {
+        queue.async { [audioSession] in audioSession(false) }
+    }
+
+    /// The calls themselves.
+    ///
     /// `.playback`, because playing media is the app's purpose while it plays — audio continues with
     /// the silent switch on and, where the app declares the background mode, with the screen locked
     /// — and `.moviePlayback`, the mode for video content, which lets the system tune the route's
     /// signal processing for it. One mode for every item, because the session is the process's and
-    /// is set before an item says whether it carries video.
+    /// is set before an item says whether it carries video. The category is set with each
+    /// activation, on the queue, so it is never set out of order with one.
     ///
-    /// ref: https://developer.apple.com/documentation/avfaudio/avaudiosession/category-swift.struct/playback
-    /// ref: https://developer.apple.com/documentation/avfaudio/avaudiosession/mode-swift.struct/movieplayback
-    func activateAudioSession() {
-        let session = AVAudioSession.sharedInstance()
-        // A refusal is not swallowed so much as answered elsewhere: the system refuses an
-        // activation only while something with priority holds the audio (a call), and AVPlayer
-        // is then held silent and the session interrupted — which the binding hears and handles.
-        try? session.setCategory(.playback, mode: .moviePlayback)
-        try? session.setActive(true)
-    }
-
     /// `.notifyOthersOnDeactivation`, so the app this player interrupted — a podcast, a music
     /// player — is told it may resume: the Android rule of abandoning focus when playback stops.
     ///
+    /// ref: https://developer.apple.com/documentation/avfaudio/avaudiosession/category-swift.struct/playback
+    /// ref: https://developer.apple.com/documentation/avfaudio/avaudiosession/mode-swift.struct/movieplayback
     /// ref: https://developer.apple.com/documentation/avfaudio/avaudiosession/setactiveoptions/notifyothersondeactivation
-    func deactivateAudioSession() {
-        // Fails only while audio I/O is still running in this process, which the shared count
-        // rules out for SuperPlayer's own players; a consumer's other audio keeps the session up,
-        // which is what it would want.
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    nonisolated static func systemAudioSession(_ active: Bool) {
+        let session = AVAudioSession.sharedInstance()
+        if active {
+            // A refusal is not swallowed so much as answered elsewhere: the system refuses an
+            // activation only while something with priority holds the audio (a call), and AVPlayer
+            // is then held silent and the session interrupted — which the binding hears and handles.
+            try? session.setCategory(.playback, mode: .moviePlayback)
+            try? session.setActive(true)
+        } else {
+            // Fails only while audio I/O is still running in this process, which the shared count
+            // rules out for SuperPlayer's own players; a consumer's other audio keeps the session
+            // up, which is what it would want.
+            try? session.setActive(false, options: .notifyOthersOnDeactivation)
+        }
     }
 
     func setIdleTimerDisabled(_ disabled: Bool) {

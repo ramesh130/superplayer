@@ -149,6 +149,11 @@ public struct OSLogSink: TelemetrySink {
         case .outputObscuredChanged(let e):
             // Not an error either: nothing failed, the platform enforced the licence's policy.
             return info("evt=output_obscured \(common) obscured=\(e.obscured)")
+        case .displayModeChanged(let e):
+            // Not an error: a display switching modes is the request working.
+            return info(
+                "evt=display_mode \(common) switchInProgress=\(e.switchInProgress) "
+                    + "criteriaMatchingEnabled=\(e.criteriaMatchingEnabled)")
         }
     }
 

@@ -27,6 +27,10 @@ enum DemoScreen: String, CaseIterable, Identifiable, Hashable {
     /// Two hundred rows over a `PlayerPool` and a `PreloadCoordinator`, one row playing at a time.
     case feed
 
+    /// `tvLeanback` through `TvOutput` on `AVPlayerViewController`'s system controls — what a tvOS
+    /// app opens on.
+    case tv
+
     var id: String { rawValue }
 
     var title: String {
@@ -34,6 +38,7 @@ enum DemoScreen: String, CaseIterable, Identifiable, Hashable {
         case .playback: "Playback"
         case .frameOutput: "Frame output"
         case .feed: "Feed"
+        case .tv: "Television"
         }
     }
 
@@ -42,6 +47,7 @@ enum DemoScreen: String, CaseIterable, Identifiable, Hashable {
         case .playback: "Apple's HLS example on the stock VideoPlayer"
         case .frameOutput: "The same stream through a pass-through frame output"
         case .feed: "200 rows over the pool and the preload coordinator"
+        case .tv: "tvLeanback and the display's criteria on the system controls"
         }
     }
 
@@ -51,12 +57,23 @@ enum DemoScreen: String, CaseIterable, Identifiable, Hashable {
         case .playback: PlaybackScreen(stream: .bipbopAdvanced)
         case .frameOutput: FrameOutputScreen(stream: .bipbopAdvanced)
         case .feed: FeedScreen()
+        case .tv: TvScreen(stream: .bipbopAdvanced)
         }
     }
 
     /// The screen `-SPDemoScreen` names, or nil to open on the list. A launch argument of that form
     /// lands in `UserDefaults`' argument domain, so reading the key is reading the argument.
+    ///
+    /// On tvOS with no argument it is ``tv``: a television opens on its own screen, as the Android
+    /// APK opens its TV screen on a television, and the list stays one Menu press away.
     static func fromLaunchArguments(_ defaults: UserDefaults = .standard) -> DemoScreen? {
-        defaults.string(forKey: "SPDemoScreen").flatMap(DemoScreen.init(rawValue:))
+        if let named = defaults.string(forKey: "SPDemoScreen") {
+            return DemoScreen(rawValue: named)
+        }
+        #if os(tvOS)
+            return .tv
+        #else
+            return nil
+        #endif
     }
 }

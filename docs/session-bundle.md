@@ -150,7 +150,7 @@ line below as a `classification`.
 One line per event of SuperPlayer's own telemetry schema, printed as the event's name and its
 fields: `SessionStarted`, `FirstFrameRendered`, `RebufferStarted`, `RebufferEnded`, `TrackSwitched`,
 `SeekRequested`, `SeekCompleted`, `LiveLatencySampled`, `PlaybackStateSampled`,
-`LicenceAcquisitionEnded`, `OutputObscuredChanged`, `VideoFramesDropped`, `StartupFailed`, `MidStreamFailed`,
+`LicenceAcquisitionEnded`, `OutputObscuredChanged`, `DisplayModeChanged`, `VideoFramesDropped`, `StartupFailed`, `MidStreamFailed`,
 `DecisionChanged`, `SessionEnded`. **What each number means is
 [`docs/telemetry-schema.md`](telemetry-schema.md)** — the same definitions a data pipeline is held
 to, so a line here and a row in a warehouse are the same measurement. A failure prints its category,

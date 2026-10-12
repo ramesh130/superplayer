@@ -10,6 +10,7 @@ plays a real stream over a real CDN needs a network, which no check here has (AD
 | --- | --- |
 | `PlaybackScreen` | the player on SwiftUI's stock `VideoPlayer(player: player.avPlayer)`, with no adapter |
 | `FrameOutputScreen` | the same stream through a pass-through `FrameOutput` on the library's `PlayerView`, counting the frames it is handed |
+| `TvScreen` | `tvLeanback` through `TvOutput` on `AVPlayerViewController`'s system controls, with AVKit's own criteria matching off — what the app opens on under tvOS |
 | `FeedScreen` | 200 rows over a `PlayerPool` and a `PreloadCoordinator`, one row playing at a time, a header sampling the pool and the coordinator, and each row's time to first frame from `declarePlaybackIntent()` |
 
 `DemoPlayback`'s doc comment is the lifecycle a consumer copies for one player, and `FeedScreen`'s
@@ -27,7 +28,7 @@ file, because its sources are a folder Xcode keeps in step with the disk (a
 xcodebuild build -project ios/Demo/SuperPlayerDemo.xcodeproj -scheme SuperPlayerDemo \
     -destination 'generic/platform=iOS Simulator' -derivedDataPath .build/DerivedData-demo
 xcrun simctl install booted .build/DerivedData-demo/Build/Products/Debug-iphonesimulator/SuperPlayerDemo.app
-xcrun simctl launch booted com.superplayer.demo -SPDemoScreen playback   # or frameOutput, feed, or nothing for the list
+xcrun simctl launch booted com.superplayer.demo -SPDemoScreen playback   # or frameOutput, feed, tv, or nothing for the list (tv on tvOS)
 xcrun simctl spawn booted log show --last 1m --style compact --predicate 'subsystem == "com.superplayer.demo"'
 ```
 
@@ -37,8 +38,23 @@ on the frame-output screen, and a position that advances between two lines is wh
 Telemetry goes to the same log under the subsystem `com.superplayer`, category `SuperPlayerQoE`.
 
 Two things a simulator run does not show: whether the pass-through drops a frame an `AVPlayerLayer`
-would have shown, which is a device count (#435), and anything about tvOS beyond the build — one
-target serves both platforms with the same screens, and tvOS's own recipe is i7's.
+would have shown, which is a device count (#435), and whether a television's panel switched modes
+for the TV screen, which is an Apple TV's (`docs/testing.md`, *A television on tvOS*).
+
+## The television
+
+On tvOS the app opens on `TvScreen` (#426), whose doc comment is the recipe a tvOS app copies:
+`tvLeanback`, `TvOutput.standard()`, and `AVPlayerViewController` with the system's own controls —
+no `TvPlaybackControls` port, as `docs/ios-plan.md` §8 decided — and AVKit's
+`appliesPreferredDisplayCriteriaAutomatically` off, so the output is the one owner of the display's
+criteria. Run it on a tvOS simulator as above, with `-destination 'generic/platform=tvOS Simulator'`
+and the `Debug-appletvsimulator` products; the Menu button goes back to the list.
+
+**It stays one target.** #407 left splitting it to i7 if tvOS needed a recipe of its own, and it
+does not: what differs is a screen and the launch default, both in Swift — one `#if os(tvOS)` for
+the default and one for the controller property only tvOS declares — while every build setting, the
+Info.plist keys and the linked products are the same on both platforms. A second target would be a
+second copy of all of that kept in step by hand.
 
 ## The feed and the leak hunt
 
@@ -90,8 +106,8 @@ measurement to judge rather than a check to pass. Four things it does not show:
 
 `project.pbxproj` and the shared scheme were **written by hand**, kept to what Xcode needs: one
 application target supporting both iOS and tvOS (`SDKROOT = auto`), the synchronized source folder,
-a local package reference and the three products it links, `SuperPlayerCore`,
-`SuperPlayerTelemetry` and `SuperPlayerPreload`. No generator is involved, so none is a dependency. The Info.plist is
+a local package reference and the four products it links, `SuperPlayerCore`,
+`SuperPlayerTelemetry`, `SuperPlayerPreload` and `SuperPlayerTV`. No generator is involved, so none is a dependency. The Info.plist is
 generated from build settings, and no signing team is set, which a simulator build does not need;
 running on a device means choosing a team in Xcode. The app declares no `audio` background mode, so
 playback stops when it is backgrounded — that entry is the app's to make (ADR-0007 rule 4).

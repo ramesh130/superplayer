@@ -13,6 +13,7 @@ Func QoeCollector.contentReopened(after:) : (), SuperPlayerCore.SuperPlayerError
 Func QoeCollector.decisionChanged(_:trigger:) : (), SuperPlayerCore.PlaybackDecision, SuperPlayerCore.DecisionTrigger
 Func QoeCollector.declareIntent(monotonicTimeMs:) : (), Swift.Int64
 Func QoeCollector.detach() : ()
+Func QoeCollector.displayModeChanged(switchInProgress:criteriaMatchingEnabled:) : (), Swift.Bool, Swift.Bool
 Func QoeCollector.endSession() : ()
 Func QoeCollector.licenceAcquisitionEnded(durationMs:outcome:) : (), Swift.Int64, SuperPlayerCore.LicenceOutcome
 Func QoeCollector.sessionFailed(_:) : (), SuperPlayerCore.SuperPlayerError

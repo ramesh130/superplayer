@@ -459,6 +459,34 @@ public sealed class TelemetryEvent {
         public val obscured: Boolean,
     ) : TelemetryEvent()
 
+    /**
+     * The display's mode reading on a television: whether a display mode switch is in progress — the
+     * panel may be blank while the link resynchronises — and whether the viewer's *Match Content*
+     * settings allow a switch at all. The first of a session is the reading as the display was asked
+     * for the content's criteria; each later one a switch beginning or ending, or the settings
+     * changing. **Reported and never acted on**: on Apple platforms the system re-selects for a
+     * display change itself.
+     *
+     * **Reached on tvOS only**, from `AVDisplayManager` on a player configured with `SuperPlayerTV`'s
+     * output (`docs/ios-plan.md` §3.8). Android has no such reading to report: a display change here
+     * re-selects through core's display watch and SuperPlayer's own selection gate, reaching a
+     * pipeline as [TrackSwitched] (ADR-0014 rule 5), and `Surface.setFrameRate` reports no mode
+     * switch back. So nothing here emits
+     * it, and it is declared so that the one vocabulary both platforms share stays one, as
+     * [OutputObscuredChanged] was. A new event is shape and not meaning, so [SCHEMA_VERSION] did not
+     * move.
+     */
+    public data class DisplayModeChanged(
+        override val sessionId: String,
+        override val contentId: String,
+        override val timestampMs: Long,
+        override val monotonicTimeMs: Long,
+        /** Whether a display mode switch is in progress from this moment on. */
+        public val switchInProgress: Boolean,
+        /** Whether the viewer's settings allow the display to switch modes to match content. */
+        public val criteriaMatchingEnabled: Boolean,
+    ) : TelemetryEvent()
+
     public companion object {
         /**
          * The current meaning-version of this vocabulary. See the class KDoc for what moves it, and

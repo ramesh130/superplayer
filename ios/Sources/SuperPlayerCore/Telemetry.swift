@@ -221,6 +221,20 @@ public protocol TelemetryCollector {
     /// rotation is not signalled, for the schema's reason. A default that does nothing is provided,
     /// so a collector written before it is unchanged.
     func licenceAcquisitionEnded(durationMs: Int64, outcome: LicenceOutcome)
+
+    /// The display's mode reading, on a player configured with `SuperPlayerTV`'s output: whether a
+    /// display mode switch is in progress — the panel may be blank — and whether the viewer's
+    /// *Match Content* settings allow one at all. One ``TelemetryEvent/DisplayModeChanged`` under the
+    /// open session where the reading differs from the last this session reported, so the first
+    /// reading of a session is always reported and a change heard twice is one event.
+    ///
+    /// Core signals it because the reading is the output binding's (`PlaybackOutput.swift`): a tvOS
+    /// display manager belongs to a window, which a collector attached to a player cannot see. It is
+    /// **reported and never acted on** — the system re-selects for a display change on Apple
+    /// platforms (`docs/ios-plan.md` §3.8) — and Android, where a display change re-selects through
+    /// SuperPlayer's own gate, emits none. A default that does nothing is provided, so a collector
+    /// written before it is unchanged.
+    func displayModeChanged(switchInProgress: Bool, criteriaMatchingEnabled: Bool)
 }
 
 extension TelemetryCollector {
@@ -233,6 +247,9 @@ extension TelemetryCollector {
 
     /// Does nothing: a collector that measures no licence reports none.
     public func licenceAcquisitionEnded(durationMs: Int64, outcome: LicenceOutcome) {}
+
+    /// Does nothing: a collector that reports no display has nothing to say about one.
+    public func displayModeChanged(switchInProgress: Bool, criteriaMatchingEnabled: Bool) {}
 }
 
 extension SuperPlayer {

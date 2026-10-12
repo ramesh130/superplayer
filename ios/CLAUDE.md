@@ -261,8 +261,10 @@ renditions as a Swift `Dictionary` — and the Rust side already collects them i
 there is no declaration order, and the rendition taken per kind is the one whose **name sorts
 first**. What `ios/check` runs is `FrameSourceConformance` in both of ADR-0018 rule 4's branches
 over `ScriptedMoqRelay`, which proves the bridge and nothing about MoQ, and `MoqFfiLinkageTests`,
-which calls across the FFI into the simulator slice an app links. A broadcast on a device is the i9
-device ticket's. There is no `SuperPlayerCache`, since its content is the offline store's.
+which calls across the FFI into the simulator slice an app links. A broadcast on a device is #438's:
+`ios/Demo/SuperPlayerDemoUITests`' XCUITest, run by `devicelab/lab run moq-smoke --platform ios`,
+which played `cdn.moq.dev/demo/bbb.hang` on an iPhone and found #367's two address defects there as on
+Android (`docs/testing.md`, *The first real MoQ session on an iPhone*). There is no `SuperPlayerCache`, since its content is the offline store's.
 #416 is i3's adaptive half, `SuperPlayerABR`: `AdaptivePolicy.forProfile(profile)` composes
 `AdaptiveSelectionPolicy` and `AdaptiveBufferPolicy`, the Kotlin pure functions with their constants,
 and brings a `BandwidthOracle` per player through core's `package` seam `ThroughputSource.swift` —
@@ -391,6 +393,7 @@ SP_SIMULATOR=mine ios/check   # test on a simulator of that name instead (create
 ios/Benchmark/bench           # PRD.md §6's matrix on the simulator, ~2 h 40 min; NOT in ios/check (ios/Benchmark/README.md)
 ios/hunt-leaks                # the leak hunt on a simulator; minutes, a network, and not a check
 devicelab/lab run frames --platform ios   # i1's and i4's device exits on a phone (`feed`); devicelab/README.md, *iOS*
+devicelab/lab run moq-smoke --platform ios # i9's: a MoQ broadcast over QUIC, the XCUITest; SP_MOQ_BROADCAST names one
 xcrun swift-format format --in-place --recursive --configuration ios/.swift-format ios Package.swift
 ```
 

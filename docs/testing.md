@@ -501,7 +501,52 @@ evidence rather than less.
 The fixtures follow `DeclaredCatalogs`' provenance rules, and the observed `avcC` is read from
 `ios/Tests/Fixtures/realtime/observed-bytes.tsv` rather than restated, since a package of its own can
 reach that file by path where it could not reach another target's sources. A real broadcast — a relay,
-the `unroutable` retry, the session-URL namespace #367 settled — is the i9 device ticket's.
+the `unroutable` retry, the session-URL namespace #367 settled — is the device run's, below.
+
+#### The first real MoQ session on an iPhone
+
+The iOS twin of *The first real MoQ session* (below) and the same carve-out from the no-network
+rule, admitted by name: `SuperPlayerDemoUITests`' `MoqLiveSessionSmokeTests`, an **XCUITest** run by
+`devicelab/lab run moq-smoke --platform ios` (`devicelab/README.md`, *The moq-smoke scenario*) and by
+nothing under `ios/check`, which only compiles it. A UI test because it holds both halves: its runner
+is a process of its own that opens `MoqFrameSource` with no player, as the Kotlin instrumented test
+does, and it can launch the demo and read what `MoqScreen` shows, which no other process on a phone
+can. The same three outcomes are encoded the same way — pass, skip for a relay that announces
+nothing, fail — and every observation is printed before any assertion runs.
+
+**What the run found** (#438), on an iPhone 17 Pro Max, iOS 27.0, wired to the Mac and on house
+Wi-Fi, against `cdn.moq.dev`:
+
+- **The device slice links and QUIC works from it.** Against the old default,
+  `cdn.moq.pro/anon/catshark.hang`, the session connected and was refused `unroutable` — not a
+  defect: the relay no longer announced that name, and listed two others under `anon`.
+- **Both of #367's defects reproduce on iOS exactly as on Android**, which is what makes the fixes
+  ported into `UniffiMoqRelay` evidence rather than assumption. Connecting to the bare authority
+  lists nothing and every request is refused, in all three arms; connecting with the namespace in
+  the session URL lists the broadcasts, and then the **immediate** request is refused `unroutable`
+  while the **settling** and **listening** arms both read the catalog — waiting is what matters, not
+  listening, as #367's third arm found.
+- **MoQ's own demonstration broadcast plays**, `demo/bbb.hang`, now the iOS demo's default: two
+  tracks, `avc3.64001f` 1280×720 with its configuration **in band** and `mp4a.40.2` with a two-byte
+  AudioSpecificConfig **record** (`12 10`) — the first live `avc3` and the first live AAC record either
+  platform has seen, so ADR-0018 rule 4's two branches were exercised by one real publisher at once.
+  Thirty frames arrived inside the window, and none after `cancel()` returned. The session's round
+  trip read 5–8 ms, which says the relay has an edge near the house and nothing about the library.
+- **The demo played it** on a `RealtimePlayer`: two readings of `MoqScreen` five seconds apart, both
+  rendering, the clock risen from about 0.2 s to 5.2 s and the session's received bytes from 8 kB to
+  about 1 MB.
+
+**What it found that is not MoQ's.** The runner's Thread Performance Checker reports a priority
+inversion in `MoqFrameSource.cancel()`: the caller, at user-initiated quality of service, joins
+pump threads started at the default one. And the demo's process reports `AVAudioSession` activated
+synchronously on the main thread. Both are recorded here and changed nothing in this run.
+
+**What it cannot show.** It takes no latency figure and no rate, for the Kotlin test's reason. It
+cannot list the source's threads after a cancel, as the Kotlin test does: Swift enumerates no other
+module's threads and `MoqFrameSource.joinedThreadsHaveFinished` is `internal`, so that half stays
+`MoqFrameSourceTests`' under `ios/check`. "Rendering" is the display layer accepting the stream with
+the clock running; whether each frame was shown on time is not read. And it is one relay on one
+evening — dated, relay-specific readings go on #438, not here.
 
 ### The MoQ bindings
 

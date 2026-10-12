@@ -21,6 +21,7 @@ devicelab/lab device                                      # just a booted device
 devicelab/lab run smoke --platform ios                    # the same run on an iPhone, through Xcode's tools
 devicelab/lab run frames --platform ios                   # i1: frames the pass-through output never saw
 devicelab/lab run feed --platform ios                     # i4: the 200-row feed's TTFF and memory
+devicelab/lab run moq-smoke --platform ios                # i9: a MoQ broadcast over QUIC, as an XCUITest
 devicelab/test/selftest                                   # the device-free half, checked without one
 ```
 
@@ -169,6 +170,10 @@ device's ABIs and API level, and the Gradle log beside them. **The artifact is t
 the report is written whether the run passed, failed or skipped, because a relay that is up today
 may be down tomorrow and a finding that fails is still a finding.
 
+On an iPhone the same smoke is a scenario, `lab run moq-smoke --platform ios` (*The moq-smoke
+scenario*, below), because there the lab's iOS half already has the device, the signing and the build
+it needs, and one XCUITest target holds both halves — the transport, and the demo playing it.
+
 A relay that answers and announces nothing is a **skip**, not a failure. There is no broadcast to
 subscribe to and nothing in this repository could produce one, and a run that goes red whenever a
 public relay is quiet is a run whose red stops being read. Anything else fails, with the cause chain
@@ -194,6 +199,8 @@ A scenario is `scenarios/<name>.sh`, sourced into the run once the harness's fun
 | `scenario_cleanup` | no | Runs on every exit, success or failure: puts back what the scenario changed on the device. |
 | `SCENARIO_PLATFORMS` | no | `android` (default), `ios`, or both: which `--platform` may run it. A run on any other is refused before anything is built. |
 | `SCENARIO_IOS_LAUNCH` | no | On iOS, the demo's launch arguments, an array; `(-SPDemoScreen playback)` by default. |
+| `SCENARIO_IOS_UI_TEST` | no | On iOS, a UI test (`Target/Class`) the run is instead of a launch: built for testing, run by `xcodebuild test-without-building`, nothing recorded; `ios_test_demo` in lib/ios.sh. |
+| `SCENARIO_IOS_TEST_ENV` | no | With `SCENARIO_IOS_UI_TEST`, `NAME=value`s handed to the test runner (as `TEST_RUNNER_NAME`, the prefix xcodebuild strips). |
 
 From inside `scenario_setup` and `scenario_drive` a scenario can use:
 
@@ -312,6 +319,39 @@ judged against a longer one; whether the display layer then presented each frame
 the item's timebase; and Picture in Picture. A frame rate that changes at one picture size would read
 as losses — a false *not met*, never a false pass, and the largest gap shows it. A frame the output was handed and the layer
 then failed to show is not a frame this count can miss — and not one it can find.
+
+### The moq-smoke scenario
+
+i9's device exit (#438): *a broadcast plays on a device*, and the iPhone's reading of Android's
+`devicelab/moq-smoke`. The scenario is the XCUITest `MoqLiveSessionSmokeTests`
+(`ios/Demo/SuperPlayerDemoUITests`), so the run builds for testing and hands the phone to
+`xcodebuild test-without-building` — no launch, no console, no recording — and reads the test's log:
+
+- **the transport**, in the test runner with no player: `MoqFrameSource` subscribed to the broadcast,
+  its declared tracks and their codec-configuration branch, thirty frames counted, the session's
+  statistics, and no frame after `cancel()`. A failure, or `SP_MOQ_PROBE_MAPPINGS=true`, also asks the
+  relay what it announces and which of the two address splits routes, in the three arms #367 used —
+  which is how #367's two defects are checked for on iOS;
+- **the demo** playing the same broadcast on `MoqScreen`, read off its overlay's accessibility value,
+  the line it also logs (`content=… position=<ms> rendering=<bool> received=<bytes> rtt=<ms>`):
+  played when two readings four seconds apart are both rendering and the received bytes rose.
+
+```bash
+SP_DEVICE=<udid> SP_DEVELOPMENT_TEAM=<team id> devicelab/lab run moq-smoke --platform ios
+SP_MOQ_BROADCAST=moq://host/namespace/name SP_MOQ_PROBE_MAPPINGS=true devicelab/lab run moq-smoke --platform ios
+```
+
+`outcomes.tsv` holds each test case and how it ended, and `observations.txt` every block the tests
+printed — written before any assertion runs, so a failing run is still a finding. A skip (a relay that
+answers and announces nothing) is not a failing verdict, for Android's reason; a failure, or a runner
+that never started a test, is.
+
+Two things cost time the first time round. **UI automation is a setting on the phone**: until
+*Settings > Developer > Enable UI Automation* is on, the runner fails with "Timed out while enabling
+automation mode", which the outcomes name as `runner`. And **the default broadcast is somebody
+else's**: `MoqScreen.defaultBroadcast` was changed when the Android default stopped being announced,
+and will need changing again — `SP_MOQ_BROADCAST` is the way round it without a rebuild, and the
+relay's own HTTP listing (`curl https://<relay>/announced/<namespace>`) is how to find a live one.
 
 ### The feed scenario
 

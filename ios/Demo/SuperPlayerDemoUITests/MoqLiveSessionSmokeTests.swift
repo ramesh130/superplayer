@@ -204,7 +204,9 @@ final class MoqLiveSessionSmokeTests: XCTestCase {
             played = advanced && second.received > first.received
         }
         observations.record("played", played ? "yes" : "no")
-        if let second { observations.record("demo.position", String(second.positionMs)) }
+        // Only where it played: the lab reads this as the run's confirmed playback, and a position
+        // read off a failed session is not one.
+        if played, let second { observations.record("demo.position", String(second.positionMs)) }
         observations.emit()
 
         XCTAssertTrue(
@@ -365,7 +367,7 @@ final class MoqLiveSessionSmokeTests: XCTestCase {
     }
 
     /// `MoqScreen.defaultBroadcast`, restated because a UI test cannot import the app it drives.
-    static let defaultBroadcast = "moq://cdn.moq.pro/anon/catshark.hang"
+    static let defaultBroadcast = "moq://cdn.moq.dev/demo/bbb.hang"
 
     /// `MoqDemoSession.readingIdentifier`, restated for the same reason.
     static let readingIdentifier = "moq.reading"

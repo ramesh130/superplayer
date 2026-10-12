@@ -643,6 +643,25 @@ assert_eq "a runner that never started a test is one outcome naming why" \
     "runner	The test runner failed to initialize for UI testing. (Underlying Error: Timed out while enabling automation mode.)" \
     "$(ios_test_outcomes < "$ios_fixtures/xcodebuild-test-runner-failed.log")"
 assert_eq "and holds no observation" "" "$(ios_observation_blocks < "$ios_fixtures/xcodebuild-test-runner-failed.log")"
+# The passing run is #438's own on the iPhone (iOS 27.0), its backtrace noise cut.
+assert_eq "each finished test case is one outcome, named Class.method" \
+    "MoqLiveSessionSmokeTests.testALiveBroadcastDeclaresTracksDeliversFramesAndStopsWhenCancelled	passed
+MoqLiveSessionSmokeTests.testTheDemoPlaysTheBroadcast	passed" \
+    "$(ios_test_outcomes < "$ios_fixtures/xcodebuild-test-moq-smoke.log")"
+assert_eq "a Swift Testing-shaped line is read the same way, and a failure and a skip are outcomes too" \
+    "A.b	failed
+A.c	skipped" \
+    "$(printf "Test case 'M.A.b()' failed on 'iPhone' (1.0 seconds)\nTest Case '-[M.A c]' skipped (0.1 seconds).\nTest Case '-[M.A d]' started.\n" | ios_test_outcomes)"
+moq_blocks="$(ios_observation_blocks < "$ios_fixtures/xcodebuild-test-moq-smoke.log")"
+assert_eq "the observations are both tests' blocks, markers kept and nothing between them" \
+    "2 2 0" \
+    "$(printf '%s\n' "$moq_blocks" | grep -c 'moq-smoke begin') $(printf '%s\n' "$moq_blocks" | grep -c 'moq-smoke end') $(printf '%s\n' "$moq_blocks" | grep -c '^ *t = ')"
+assert_eq "an observation is read from its own test's block" 5233 \
+    "$(printf '%s\n' "$moq_blocks" | ios_observation demo demo.position)"
+assert_eq "and from no other's" "" "$(printf '%s\n' "$moq_blocks" | ios_observation transport demo.position)"
+assert_eq "a value keeps what follows its first ' = '" \
+    "broadcast=bbb.hang -> catalog read: 2 video, 1 audio (video=0.avc3|1.avc3 audio=2.aac)" \
+    "$(printf '%s\n' "$moq_blocks" | ios_observation transport 'mapping[authority-plus-first-segment].requested(settling)')"
 
 ios_metadata="$(
     RUN_METADATA_SCHEMA=1 RUN_ID=r RUN_STARTED_AT=a RUN_FINISHED_AT=b RUN_SCENARIO=frames SP_COMMIT=c SP_TREE_DIRTY=0 \

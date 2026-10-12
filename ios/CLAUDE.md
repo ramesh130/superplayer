@@ -49,7 +49,9 @@ platform's lifecycle on every player, in `LifecycleBinding.swift`: the audio ses
 any player wants to play, an interruption pausing and resuming only on `.shouldResume`, headphones
 unplugged pausing, and the idle timer held while video plays — process-wide state counted across
 players in `SharedLifecycle`, the platform calls behind the one `package` protocol
-`LifecyclePlatform`, and its signals in the observed register.
+`LifecyclePlatform`, and its signals in the observed register. Since #494 the system platform
+performs the session's activations and deactivations on a serial queue of its own, in the order
+asked, because `setActive` blocks and the system reports it on the main thread.
 #409 added
 `QoeCollector(sink:)` and `OSLogSink` there, the collector deriving the vocabulary from key-value
 observation, notifications, the access and error logs and, on 18, `AVMetrics` — every registration

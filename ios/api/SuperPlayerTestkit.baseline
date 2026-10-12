@@ -86,6 +86,7 @@ Func TestContent.hostile(_:) : SuperPlayerTestkit.TestContent, SuperPlayerTestMe
 Func TestContent.licence(for:) : [Swift.UInt8], [Swift.UInt8] [static]
 Func TestContent.licenceServer() : SuperPlayerTestkit.TestContent [static]
 Func TestContent.liveHls(hosts:) : SuperPlayerTestkit.TestContent, Swift.Int [static]
+Func TestContent.liveHls(windowSegmentCount:) : SuperPlayerTestkit.TestContent, Swift.Int [static]
 Func TestContent.liveVideoLadder(bitratesBps:) : SuperPlayerTestkit.TestContent, [Swift.Int] [static]
 Func TestContent.protectedHls(keyIdentifiers:segmentCount:) : SuperPlayerTestkit.TestContent, [Swift.String], Swift.Int [static]
 Func TestContent.videoHls(segmentCount:) : SuperPlayerTestkit.TestContent, Swift.Int [static]

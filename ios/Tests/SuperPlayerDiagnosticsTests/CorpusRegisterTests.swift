@@ -270,10 +270,12 @@ final class CorpusRegisterTests: XCTestCase {
     static let healthy: [(String, TestContent)] = [
         ("a healthy single-rung multivariant playlist", .hls()),
         ("a healthy two-rung ladder, built to the published guidance", .hls(variantCount: 2)),
-        // The control the live rule needs and no other can be: a conforming live playlist, whose
-        // window has slid and is twice the bound. A rule that read "live" as "defective" passes
-        // everything else here and fails on this — the role the Kotlin register gives the corpus's
-        // healthy dynamic MPD, which is DASH and not ported.
+        // The control the live rules need and no on-demand stream can be: a conforming live
+        // playlist, twice the bound. A rule that read "live" as "defective" passes everything else
+        // here and fails on this — the role the Kotlin register gives the corpus's healthy dynamic
+        // MPD, which is DASH and not ported. Examined at once its window has not slid yet, so the
+        // window comparison's own control, a slid window exactly at the bound, is
+        // `HlsPathologyTests`'.
         ("the ordinary live stream", .liveHls()),
     ]
 

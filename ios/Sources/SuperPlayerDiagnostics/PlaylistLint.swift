@@ -201,19 +201,24 @@ enum PlaylistLint {
             case "EXT-X-PROGRAM-DATE-TIME":
                 hasProgramDateTime = true
             case "EXT-X-TARGETDURATION":
-                targetDurationSeconds = Int(value)
+                targetDurationSeconds = Self.integer(value)
             case "EXT-X-MEDIA-SEQUENCE":
-                mediaSequence = Int(value) ?? 0
+                mediaSequence = Self.integer(value) ?? 0
             case "EXT-X-DISCONTINUITY-SEQUENCE":
                 // spec: RFC 8216 §4.3.3.3 — absent, it "SHALL be considered to be 0".
-                discontinuitySequence = Int(value) ?? 0
+                discontinuitySequence = Self.integer(value) ?? 0
             case "EXT-X-ENDLIST":
                 hasEndList = true
             case "EXT-X-PLAYLIST-TYPE":
-                playlistType = String(value)
+                playlistType = value.trimmingCharacters(in: .whitespaces)
             default:
                 break
             }
+        }
+
+        /// A tag's decimal-integer value (§4.2), read past any space after the colon.
+        static func integer(_ value: Substring) -> Int? {
+            Int(value.trimmingCharacters(in: .whitespaces))
         }
 
         /// A URI line: the variant the `EXT-X-STREAM-INF` before it described, or a media segment.
@@ -221,7 +226,12 @@ enum PlaylistLint {
         mutating func takeURI(_ line: String) {
             guard let url = URL(string: line, relativeTo: base)?.absoluteURL else { return }
             if let attributes = pendingVariant {
-                variants.append(Variant(url: url, attributes: attributes))
+                // ref: Media3's `HlsPlaylistParser` keeps one variant per URI, the first declared,
+                // and the Kotlin rules read that list; a lint that kept the repeats would score a
+                // ladder rung the Android doctor never sees.
+                if !variants.contains(where: { $0.url == url }) {
+                    variants.append(Variant(url: url, attributes: attributes))
+                }
                 pendingVariant = nil
             } else {
                 segments.append(
@@ -347,7 +357,7 @@ enum Codecs {
 
     /// Whether `codecs` names a video format.
     static func hasVideo(_ codecs: String) -> Bool {
-        !entries(codecs).filter { videoSampleEntries.contains(sampleEntry($0)) }.isEmpty
+        entries(codecs).contains { videoSampleEntries.contains(sampleEntry($0)) }
     }
 
     /// The audio entries of `codecs`, joined as the list was, or nil where it names none — Media3's

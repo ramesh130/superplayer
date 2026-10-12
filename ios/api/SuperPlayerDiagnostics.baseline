@@ -1,1 +1,64 @@
 // SuperPlayerDiagnostics: public API as ios/check reads it. Regenerate with ios/check --update-api.
+Class MediaSourceDoctor : Sendable
+Constructor ChainLayer.init(rawValue:) : SuperPlayerDiagnostics.ChainLayer?, Swift.String
+Constructor FindingSeverity.init(rawValue:) : SuperPlayerDiagnostics.FindingSeverity?, Swift.String
+Constructor MediaSourceDoctor.Configuration.init(headers:) : SuperPlayerDiagnostics.MediaSourceDoctor.Configuration, (any SuperPlayerCore.HeaderProvider)?
+Constructor MediaSourceDoctor.init(configuration:) : SuperPlayerDiagnostics.MediaSourceDoctor, SuperPlayerDiagnostics.MediaSourceDoctor.Configuration
+Constructor Pathology.init(rawValue:) : SuperPlayerDiagnostics.Pathology?, Swift.String
+Enum ChainLayer : CaseIterable, Equatable, Hashable, RawRepresentable, Sendable
+Enum FindingSeverity : CaseIterable, Comparable, CustomStringConvertible, Equatable, Hashable, RawRepresentable, Sendable
+Enum Pathology : CaseIterable, CustomStringConvertible, Equatable, Hashable, Identifiable, RawRepresentable, Sendable
+EnumElement ChainLayer.headerRefresh : (SuperPlayerDiagnostics.ChainLayer.Type) -> SuperPlayerDiagnostics.ChainLayer
+EnumElement FindingSeverity.advisory : (SuperPlayerDiagnostics.FindingSeverity.Type) -> SuperPlayerDiagnostics.FindingSeverity
+EnumElement FindingSeverity.blocking : (SuperPlayerDiagnostics.FindingSeverity.Type) -> SuperPlayerDiagnostics.FindingSeverity
+EnumElement FindingSeverity.degraded : (SuperPlayerDiagnostics.FindingSeverity.Type) -> SuperPlayerDiagnostics.FindingSeverity
+EnumElement Pathology.hlsAudioGroupCodecMismatch : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
+EnumElement Pathology.hlsDanglingAudioGroup : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
+EnumElement Pathology.hlsDiscontinuityWithoutTimeline : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
+EnumElement Pathology.hlsInconsistentSegmentDurations : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
+EnumElement Pathology.hlsLadderGap : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
+EnumElement Pathology.hlsMissingCodecs : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
+EnumElement Pathology.hlsOverstatedBitrate : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
+EnumElement Pathology.hlsShortLiveWindow : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
+EnumElement Pathology.manifestUnreachable : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
+EnumElement Pathology.manifestUnreadable : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
+Func DiagnosticReport.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerDiagnostics.DiagnosticReport, SuperPlayerDiagnostics.DiagnosticReport [static]
+Func DiagnosticReport.hash(into:) : (), Swift.Hasher
+Func Finding.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerDiagnostics.Finding, SuperPlayerDiagnostics.Finding [static]
+Func Finding.hash(into:) : (), Swift.Hasher
+Func FindingSeverity.<(_:_:) : Swift.Bool, SuperPlayerDiagnostics.FindingSeverity, SuperPlayerDiagnostics.FindingSeverity [static]
+Func MediaSourceDoctor.examine(_:) : SuperPlayerDiagnostics.DiagnosticReport, SuperPlayerCore.MediaRequest
+Struct DiagnosticReport : CustomStringConvertible, Equatable, Hashable, Sendable
+Struct Finding : CustomStringConvertible, Equatable, Hashable, Sendable
+Struct MediaSourceDoctor.Configuration : Sendable
+TypeAlias ChainLayer.AllCases : [SuperPlayerDiagnostics.ChainLayer]
+TypeAlias ChainLayer.RawValue : Swift.String
+TypeAlias FindingSeverity.AllCases : [SuperPlayerDiagnostics.FindingSeverity]
+TypeAlias FindingSeverity.RawValue : Swift.String
+TypeAlias Pathology.AllCases : [SuperPlayerDiagnostics.Pathology]
+TypeAlias Pathology.ID : Swift.String
+TypeAlias Pathology.RawValue : Swift.String
+Var ChainLayer.allCases : [SuperPlayerDiagnostics.ChainLayer] [static] { get }
+Var ChainLayer.rawValue : Swift.String { get }
+Var DiagnosticReport.chain : Swift.Set<SuperPlayerDiagnostics.ChainLayer> { get }
+Var DiagnosticReport.contentId : Swift.String { get }
+Var DiagnosticReport.description : Swift.String { get }
+Var DiagnosticReport.findings : [SuperPlayerDiagnostics.Finding] { get }
+Var DiagnosticReport.hashValue : Swift.Int { get }
+Var Finding.cause : Swift.String { get }
+Var Finding.description : Swift.String { get }
+Var Finding.hashValue : Swift.Int { get }
+Var Finding.magnitude : Swift.String? { get }
+Var Finding.pathology : SuperPlayerDiagnostics.Pathology { get }
+Var Finding.severity : SuperPlayerDiagnostics.FindingSeverity { get }
+Var Finding.specCitation : Swift.String { get }
+Var FindingSeverity.allCases : [SuperPlayerDiagnostics.FindingSeverity] [static] { get }
+Var FindingSeverity.description : Swift.String { get }
+Var FindingSeverity.rawValue : Swift.String { get }
+Var MediaSourceDoctor.Configuration.headers : (any SuperPlayerCore.HeaderProvider)? { get set }
+Var Pathology.allCases : [SuperPlayerDiagnostics.Pathology] [static] { get }
+Var Pathology.cause : Swift.String { get }
+Var Pathology.description : Swift.String { get }
+Var Pathology.id : Swift.String { get }
+Var Pathology.rawValue : Swift.String { get }
+Var Pathology.specCitation : Swift.String { get }

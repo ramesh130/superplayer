@@ -106,6 +106,40 @@ final class PlaylistLintTests: XCTestCase {
         XCTAssertNil(LadderPathologies.aacObjectType("ac-3"))
     }
 
+    func testARepeatedVariantUriIsOneRungAsMedia3ReadsIt() {
+        let text =
+            "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=128000\nmedia.m3u8\n"
+            + "#EXT-X-STREAM-INF:BANDWIDTH=6000000\nmedia.m3u8\n"
+        guard case .success(.multivariant(let playlist)) = lint(text) else {
+            return XCTFail("not read as a multivariant playlist")
+        }
+        XCTAssertEqual(playlist.variants.map(\.bandwidthBps), [128_000])
+    }
+
+    func testTheLiveWindowRuleWaitsForAWindowTheServerHasSlid() {
+        // The live-window rule's gate, which no served stream reaches: the origin's short window
+        // has always slid. Two segments against a two-second target are short in all three, and
+        // only the playlist that has removed something — and is no EVENT — breaks RFC 8216 §6.2.2.
+        func window(sequence: Int, type: String? = nil, durations: [String] = ["2.0", "2.0"])
+            -> [Pathology]
+        {
+            let lines =
+                ["#EXTM3U", "#EXT-X-TARGETDURATION: 2", "#EXT-X-MEDIA-SEQUENCE:\(sequence)"]
+                + (type.map { ["#EXT-X-PLAYLIST-TYPE:\($0)"] } ?? [])
+                + durations.enumerated().flatMap { ["#EXTINF:\($1),", "s\($0).aac"] }
+            guard case .success(.media(let playlist)) = lint(lines.joined(separator: "\n")) else {
+                XCTFail("not read as a media playlist")
+                return []
+            }
+            return HlsPathologies.inMediaPlaylist(playlist).map(\.pathology)
+        }
+        XCTAssertEqual(window(sequence: 4), [.hlsShortLiveWindow], "slid, and short")
+        XCTAssertEqual(window(sequence: 0), [], "a stream that has only just begun")
+        XCTAssertEqual(window(sequence: 4, type: "EVENT"), [], "an EVENT playlist only appends")
+        XCTAssertEqual(
+            window(sequence: 4, durations: ["2.0", "x"]), [], "a duration the lint could not read")
+    }
+
     private func lint(_ text: String) -> Result<PlaylistLint.Playlist, PlaylistLint.Unreadable> {
         PlaylistLint.read(Data(text.utf8), from: base)
     }

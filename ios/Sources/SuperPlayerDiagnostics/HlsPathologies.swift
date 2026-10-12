@@ -160,18 +160,23 @@ enum HlsPathologies {
     /// `EXT-X-MEDIA-SEQUENCE` above zero (§4.3.3.2 numbers the first segment listed). §6.2.2 binds
     /// *removal*, so a stream that has only just begun — or an `EVENT` playlist, which never removes
     /// — is shorter than the bound without breaking it, and flagging every live stream in its first
-    /// seconds is the false positive ADR-0015 rule 12 scores as heavily as a miss. What this leaves
-    /// out is stated rather than hidden: an origin that numbers its first segment above zero and is
-    /// asked about in its first seconds reads as having removed segments.
+    /// seconds is the false positive ADR-0015 rule 12 scores as heavily as a miss. An `EVENT`
+    /// playlist is passed over by its type too (§4.3.3.5: segments are only ever appended), whatever
+    /// sequence it starts at. What this leaves out is stated rather than hidden: an origin that
+    /// numbers its first segment above zero and is asked about in its first seconds reads as having
+    /// removed segments. A window with a segment whose `EXTINF` the lint could not read is not
+    /// judged at all, since summing the rest would shrink it toward a finding.
     ///
     /// ``FindingSeverity/blocking`` and **ungraded**, as the Kotlin finding is: the bound is a yes
     /// or a no, and grading it would be a second threshold. The magnitude is the window against the
     /// bound, in the words the Kotlin one uses for depth against lag.
     private static func shortLiveWindow(_ playlist: MediaPlaylist) -> Finding? {
-        guard playlist.isLive, playlist.mediaSequence > 0,
+        guard playlist.isLive, playlist.playlistType != "EVENT", playlist.mediaSequence > 0,
             let target = playlist.targetDurationSeconds, target > 0
         else { return nil }
-        let window = playlist.segments.compactMap(\.durationSeconds).reduce(0, +)
+        let durations = playlist.segments.compactMap(\.durationSeconds)
+        guard durations.count == playlist.segments.count else { return nil }
+        let window = durations.reduce(0, +)
         let bound = Double(liveWindowTargetDurations * target)
         guard window < bound else { return nil }
         return Finding(

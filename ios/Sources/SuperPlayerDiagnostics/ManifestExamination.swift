@@ -188,8 +188,10 @@ struct ManifestExamination {
 
 /// The credential a doctor carries across its examinations: the provider it was configured with,
 /// and what that provider last returned. Shared by every examination of one doctor, as a token is
-/// by every adoption of one player, so a doctor asked twice pays one refusal rather than two — the
-/// Kotlin doctor's one chain, which holds its header-refresh layer's state for the same reason.
+/// by every adoption of one player, so a doctor asked twice in turn pays one refusal rather than
+/// two — the Kotlin doctor's one chain, which holds its header-refresh layer's state for the same
+/// reason. Two examinations refused at once may each ask the provider, and the later answer is the
+/// one kept: either is a credential the provider minted, so nothing is lost but a second question.
 final class Credentials: Sendable {
 
     let provider: (any HeaderProvider)?

@@ -86,8 +86,9 @@ public final class MediaSourceDoctor: Sendable {
     /// been asked to serve anything.
     ///
     /// Called from any context, and it suspends for as long as the fetches take. Cancelling the task
-    /// that awaits it ends the fetching, and what could not be fetched is then reported as
-    /// unreachable, as anything else that did not arrive is.
+    /// that awaits it ends the fetching, and what could not be fetched then reads as unreachable —
+    /// so **a report from a cancelled task is not evidence about the stream**, and a caller that
+    /// cancelled discards it rather than logging it against a CDN.
     public func examine(_ request: MediaRequest) async -> DiagnosticReport {
         let session = URLSession(configuration: Self.sessionConfiguration)
         defer { session.finishTasksAndInvalidate() }

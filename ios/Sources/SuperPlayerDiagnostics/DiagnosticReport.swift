@@ -91,7 +91,16 @@ public enum FindingSeverity: String, Sendable, Hashable, CaseIterable, Comparabl
     case blocking
 
     public static func < (lhs: FindingSeverity, rhs: FindingSeverity) -> Bool {
-        allCases.firstIndex(of: lhs)! < allCases.firstIndex(of: rhs)!
+        lhs.rank < rhs.rank
+    }
+
+    /// Where the case sits, mildest first; the raw value is the printed name and not an order.
+    private var rank: Int {
+        switch self {
+        case .advisory: 0
+        case .degraded: 1
+        case .blocking: 2
+        }
     }
 
     public var description: String { rawValue }

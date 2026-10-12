@@ -4,7 +4,7 @@
 #
 # ios/check: the whole definition of passing for the iOS half, as `./gradlew check` is for Android.
 #
-#   ios/check                 format, simulator tests, tvOS build, demo build, API baselines
+#   ios/check                 format, simulator tests (ios/MoQ's too), tvOS build, demo build, API baselines
 #   ios/check --update-api    the same, rewriting ios/api/<Product>.baseline instead of diffing it
 #   ios/check --update-golden the same, rewriting ios/Tests/Fixtures/golden/*.trace instead of
 #                             comparing them; the only writer of the iOS golden traces
@@ -37,6 +37,8 @@ cd "$root"
 
 simulator="${SP_SIMULATOR:-superplayer-check}"
 derived_data="${SP_DERIVED_DATA:-$root/.build/DerivedData}"
+# Absolute, because the ios/MoQ step runs from that directory.
+case "$derived_data" in /*) ;; *) derived_data="$root/$derived_data" ;; esac
 results="$root/.build/ios-check"
 # SwiftPM's scheme over every product and test target of a multi-product package.
 scheme=SuperPlayer-Package

@@ -35,7 +35,7 @@
     ///    `.at` and `.resumeFromLastKnown` are refused typed (rule 5).
     /// 3. **Play**.
     /// 4. **Release with the screen.** `release()` is what ends the QUIC session: the source's
-    ///    `cancel()` closes the streams and the session and joins every thread it started.
+    ///    `cancel()` closes the streams and the session and joins the pumps and the poller.
     ///
     /// **Two players, not one** — the one place the iOS port's "one player" claim splits, because an
     /// `AVPlayer` cannot take pushed frames (ADR-0020 rule 11). **A realtime stream never ends** on

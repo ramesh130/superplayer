@@ -138,16 +138,29 @@ public final class MoqFrameSource: FrameSource, @unchecked Sendable {
     /// Connects on a thread of this source's own and returns: the caller is the main actor, and a
     /// QUIC handshake against a relay on the other side of the world is not a thing to block it on.
     public func subscribe(_ sink: any FrameSink) {
-        start("moq-connect", sink) { [self] in try connect(sink) }
+        start("moq-connect", sink, joinedOnCancel: false) { [self] in try connect(sink) }
     }
 
-    /// Ends delivery: closes the streams and the session, and **joins every thread this source
-    /// started** before returning (obligation 9).
+    /// Ends delivery: closes the streams and the session, waits out any callback in flight, and
+    /// **joins the pumps and the poller** before returning (obligation 9).
     ///
-    /// The join is the whole of it: closing stops the bytes, but a pump already inside `onFrame(_:)`
-    /// would go round its loop once more. Closing first is what makes the join finite — a pump parked
-    /// in a blocking ``MoqTrackStream/next()`` is woken by its stream closing. Safe to call twice and
-    /// from any thread; a call from one of this source's own threads does not join itself.
+    /// Two halves make the obligation true. **The barrier**: `cancelled` is set and then the
+    /// delivery lock is taken once, so a callback already inside the sink finishes first and every
+    /// later one finds the subscription over — nothing reaches the sink once this returns. **The
+    /// join**: a pump already inside `onFrame(_:)` would go round its loop once more, so the pumps are
+    /// joined, and closing first is what makes that finite — a pump parked in a blocking
+    /// ``MoqTrackStream/next()`` is woken by its stream closing, and the poller by its condition.
+    ///
+    /// **The connect thread is not joined**, which is where this departs from the Kotlin `cancel`,
+    /// and the reason is the caller: here it is the main actor (`FrameSource.cancel()`), and the
+    /// connect thread may be inside a QUIC handshake or the `unroutable` retry's wait, neither of
+    /// which this side can interrupt — joining it would freeze the screen being left for as long as
+    /// the relay takes. It needs no join: the barrier stops its callbacks, `start` refuses it any new
+    /// thread, and the registrations close at once whatever it opens late. It finishes on its own.
+    ///
+    /// Safe to call twice and from any thread **but a sink callback's**: a cancel from inside
+    /// `onFrame(_:)` would wait at the barrier for the callback it is in. Core calls it from the main
+    /// actor only.
     public func cancel() {
         let (openStreams, openSession) = lifecycle.withLock {
             cancelled = true
@@ -162,10 +175,11 @@ public final class MoqFrameSource: FrameSource, @unchecked Sendable {
         // The poller is parked on this condition rather than asleep, so the join below costs a
         // cancellation nothing instead of up to a whole polling interval.
         statisticsPacing.withLock { statisticsPacing.broadcast() }
+        // The barrier: a callback in flight finishes, and none begins after it.
+        delivery.withLock {}
         let running = lifecycle.withLock { threads }
-        for started in running where started.thread !== Thread.current {
-            started.finished.wait()
-            started.finished.signal()
+        for started in running where started.joinedOnCancel {
+            started.awaitFinished()
         }
     }
 
@@ -214,9 +228,10 @@ public final class MoqFrameSource: FrameSource, @unchecked Sendable {
             guard let reading = try? session.statistics() else { return }
             statisticsPacing.withLock {
                 latestStatistics = reading
-                guard !isCancelled else { return }
-                _ = statisticsPacing.wait(
-                    until: Date(timeIntervalSinceNow: Double(statisticsIntervalMs) / 1_000))
+                // Looped to the deadline, because a condition may wake spuriously and an early poll
+                // would be a cadence nobody chose.
+                let next = Date(timeIntervalSinceNow: Double(statisticsIntervalMs) / 1_000)
+                while !isCancelled && statisticsPacing.wait(until: next) {}
             }
         }
     }
@@ -255,11 +270,49 @@ public final class MoqFrameSource: FrameSource, @unchecked Sendable {
 
     // MARK: - Threads, registration and delivery
 
-    /// A thread this source started, and the semaphore its body signals as it exits, which is what
-    /// ``cancel()`` joins on.
-    private struct Started: @unchecked Sendable {
-        let thread: Thread
-        let finished: DispatchSemaphore
+    /// A thread this source started — named, whether ``cancel()`` joins it, and whether its body has
+    /// returned. `@unchecked Sendable`: `done` is under `condition`, and the rest is immutable.
+    private final class Started: @unchecked Sendable {
+        let name: String
+        let joinedOnCancel: Bool
+        private let condition = NSCondition()
+        private var done = false
+
+        init(name: String, joinedOnCancel: Bool) {
+            self.name = name
+            self.joinedOnCancel = joinedOnCancel
+        }
+
+        func markFinished() {
+            condition.withLock {
+                done = true
+                condition.broadcast()
+            }
+        }
+
+        var isFinished: Bool { condition.withLock { done } }
+
+        /// Waits until the body has returned, or until `deadline`.
+        func awaitFinished(until deadline: Date = .distantFuture) {
+            condition.withLock { while !done && condition.wait(until: deadline) {} }
+        }
+    }
+
+    /// Whether every thread ``cancel()`` joins — the pumps and the poller — has finished: what a test
+    /// reads to show that nothing of this source runs on after a cancel, rather than waiting a while
+    /// and seeing nothing arrive.
+    var joinedThreadsHaveFinished: Bool {
+        lifecycle.withLock { threads }.filter(\.joinedOnCancel).allSatisfy(\.isFinished)
+    }
+
+    /// Waits up to `bound` for the thread `name` to finish, and answers whether it had — the poller
+    /// giving up after a failed poll is an event a test waits for this way.
+    func awaitThread(_ name: String, within bound: TimeInterval) -> Bool {
+        guard let started = lifecycle.withLock({ threads.first { $0.name == name } }) else {
+            return false
+        }
+        started.awaitFinished(until: Date(timeIntervalSinceNow: bound))
+        return started.isFinished
     }
 
     private var isCancelled: Bool { lifecycle.withLock { cancelled } }
@@ -272,11 +325,12 @@ public final class MoqFrameSource: FrameSource, @unchecked Sendable {
     /// Registered **and started** under the one lock, so ``cancel()`` cannot read the list, join a
     /// thread that had not yet started and return while its body was still to run.
     private func start(
-        _ name: String, _ sink: any FrameSink, _ body: @escaping @Sendable () throws -> Void
+        _ name: String, _ sink: any FrameSink, joinedOnCancel: Bool = true,
+        _ body: @escaping @Sendable () throws -> Void
     ) {
-        let finished = DispatchSemaphore(value: 0)
+        let started = Started(name: name, joinedOnCancel: joinedOnCancel)
         let thread = Thread { [self] in
-            defer { finished.signal() }
+            defer { started.markFinished() }
             do {
                 try body()
             } catch {
@@ -286,7 +340,7 @@ public final class MoqFrameSource: FrameSource, @unchecked Sendable {
         thread.name = "\(name)-\(url.host ?? "")"
         lifecycle.withLock {
             guard !cancelled else { return }
-            threads.append(Started(thread: thread, finished: finished))
+            threads.append(started)
             thread.start()
         }
     }

@@ -87,9 +87,11 @@ final class MoqFrameSourceTests: XCTestCase {
         XCTAssertEqual(sink.frames.first?.timestampUs, transportEpochUs)
     }
 
-    /// Obligation 9 and what it closes: nothing arrives after `cancel()` returns, every stream and
-    /// the session are closed, and neither terminal callback is made — a cancelled subscription is a
-    /// viewer who left, not a stream that ended or failed.
+    /// Obligation 9 and what it closes: every stream and the session are closed, and **every pump
+    /// and the poller have finished by the time `cancel()` returns** — read off the threads
+    /// themselves rather than by waiting a while and seeing nothing arrive (ADR-0021 rule 4), since a
+    /// thread that has returned can deliver nothing. Neither terminal callback is made: a cancelled
+    /// subscription is a viewer who left, not a stream that ended or failed.
     func testCancelClosesTheSessionAndEveryStreamAndStopsDelivery() {
         let relay = relay(bothKinds())
         let sink = RecordingSink()
@@ -98,12 +100,8 @@ final class MoqFrameSourceTests: XCTestCase {
         source.subscribe(sink)
         XCTAssertTrue(sink.awaitFrames(Self.framesWatched))
         source.cancel()
-        let afterCancel = sink.callbacks
-        // A window in which a pump that outlived the cancel would deliver, many frame intervals
-        // long; what is asserted is a count, never the window's length.
-        Thread.sleep(forTimeInterval: Self.quietAfterCancel)
 
-        XCTAssertEqual(sink.callbacks, afterCancel, "no callback arrives after cancel() returned")
+        XCTAssertTrue(source.joinedThreadsHaveFinished, "a pump or the poller outlived cancel()")
         XCTAssertEqual(relay.streamsOpened, 2)
         XCTAssertEqual(relay.streamsClosed, relay.streamsOpened)
         XCTAssertEqual(relay.sessionsClosed, relay.sessionsOpened)
@@ -124,16 +122,47 @@ final class MoqFrameSourceTests: XCTestCase {
     }
 
     /// A cancel racing the connect thread leaks nothing: whatever was opened after it is closed by
-    /// the registration that found it cancelled.
+    /// the registration that found it cancelled. The connect thread is not joined, so it is waited
+    /// for as an event before the counts are read.
     func testCancelDuringConnectionLeaksNothing() {
         let relay = relay(bothKinds())
         let source = MoqFrameSource(url: broadcast, relay: relay)
 
         source.subscribe(RecordingSink())
         source.cancel()
+        XCTAssertTrue(source.awaitThread("moq-connect", within: RecordingSink.waitBound))
 
         XCTAssertEqual(relay.sessionsClosed, relay.sessionsOpened)
         XCTAssertEqual(relay.streamsClosed, relay.streamsOpened)
+    }
+
+    /// `cancel()` comes from the main actor, so it must not wait for a connection the relay is still
+    /// making — a QUIC handshake, or the `unroutable` retry — which nothing on this side can
+    /// interrupt. Here the connection is held open until the cancel has returned; the cancel would
+    /// never return if it joined the connect thread, and the session that arrives afterwards is
+    /// closed at once and calls nothing.
+    func testCancelDoesNotWaitForAConnectionStillBeingMade() {
+        let relay = ScriptedMoqRelay(catalog: bothKinds(), holdsConnect: true)
+        let sink = RecordingSink()
+        let source = MoqFrameSource(url: broadcast, relay: relay)
+
+        source.subscribe(sink)
+        XCTAssertTrue(relay.awaitConnectEntered(within: RecordingSink.waitBound))
+        let returned = DispatchSemaphore(value: 0)
+        Thread {
+            source.cancel()
+            returned.signal()
+        }.start()
+        let cancelReturned =
+            returned.wait(timeout: .now() + RecordingSink.waitBound) == .success
+        relay.releaseConnect()
+        XCTAssertTrue(source.awaitThread("moq-connect", within: RecordingSink.waitBound))
+
+        XCTAssertTrue(cancelReturned, "cancel() waited for the connection")
+        XCTAssertEqual(relay.sessionsOpened, 1)
+        XCTAssertEqual(relay.sessionsClosed, 1, "the late session was closed")
+        XCTAssertEqual(relay.streamsOpened, 0)
+        XCTAssertEqual(sink.callbacks, 0)
     }
 
     /// Every point of failure, from the connection to a frame, ends the subscription on `onError`
@@ -169,7 +198,7 @@ final class MoqFrameSourceTests: XCTestCase {
         source.subscribe(sink)
         XCTAssertTrue(sink.awaitTerminal())
         let whenItEnded = sink.frames.count
-        Thread.sleep(forTimeInterval: Self.quietAfterCancel)
+        // Joins the pumps, so every frame that could follow the end has had its chance to.
         source.cancel()
 
         XCTAssertEqual(sink.terminal, "onEnded")
@@ -230,7 +259,4 @@ final class MoqFrameSourceTests: XCTestCase {
 
     /// How many dependent frames precede the first keyframe.
     private static let dependentFramesFirst = 3
-
-    /// Twenty-five scripted frame intervals: a pump that outlived its cancel would deliver inside it.
-    private static let quietAfterCancel: TimeInterval = 0.05
 }

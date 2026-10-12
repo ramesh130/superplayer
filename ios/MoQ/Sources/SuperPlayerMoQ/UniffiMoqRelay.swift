@@ -88,13 +88,13 @@ struct UniffiMoqRelay: MoqRelay {
     /// How long a broadcast is asked for before `unroutable` is taken at its word: **5 s**, the
     /// Kotlin bound — chosen against a viewer's patience rather than the relay; the window #367
     /// observed was under three.
-    static let routableBoundMs: Int64 = 5_000
+    private static let routableBoundMs: Int64 = 5_000
 
     /// The first retry interval; it doubles from here. Short, because a ready relay never waits.
-    static let firstRetryMs: Int64 = 100
+    private static let firstRetryMs: Int64 = 100
 
     /// What MoQ calls the refusal a later ask can resolve.
-    static let unroutable = "unroutable"
+    private static let unroutable = "unroutable"
 
     /// The relay's own address: the URL's authority **and its namespace segment**, under `https`.
     ///

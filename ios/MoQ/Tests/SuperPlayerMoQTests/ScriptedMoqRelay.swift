@@ -68,14 +68,22 @@ final class ScriptedMoqRelay: MoqRelay, @unchecked Sendable {
     private let polled = NSCondition()
     private var _statisticsPolls = 0
 
+    /// Whether ``connect(_:)`` blocks until ``releaseConnect()`` — a relay still handshaking.
+    private let holdsConnect: Bool
+    private let connecting = NSCondition()
+    private var connectEntered = false
+    private var connectReleased = false
+
     init(
         catalog: MoqCatalog,
         tracks: [String: ScriptedMoqTrack] = [:],
         defaultTrack: ScriptedMoqTrack = ScriptedMoqTrack(),
         failsAt: FailurePoint? = nil,
         statisticsScript: @escaping @Sendable (Int) throws -> MoqSessionStatistics =
-            scriptedStatistics
+            scriptedStatistics,
+        holdsConnect: Bool = false
     ) {
+        self.holdsConnect = holdsConnect
         self.catalog = catalog
         self.tracks = tracks
         self.defaultTrack = defaultTrack
@@ -106,7 +114,29 @@ final class ScriptedMoqRelay: MoqRelay, @unchecked Sendable {
         }
     }
 
+    /// Waits until ``connect(_:)`` has been entered, and answers whether it was.
+    func awaitConnectEntered(within bound: TimeInterval) -> Bool {
+        let deadline = Date(timeIntervalSinceNow: bound)
+        return connecting.withLock {
+            while !connectEntered && connecting.wait(until: deadline) {}
+            return connectEntered
+        }
+    }
+
+    /// Lets a held ``connect(_:)`` return.
+    func releaseConnect() {
+        connecting.withLock {
+            connectReleased = true
+            connecting.broadcast()
+        }
+    }
+
     func connect(_ url: URL) throws -> any MoqBroadcastSession {
+        connecting.withLock {
+            connectEntered = true
+            connecting.broadcast()
+            while holdsConnect && !connectReleased { connecting.wait() }
+        }
         if failsAt == .connect { throw ScriptedFailure() }
         lock.withLock { _sessionsOpened += 1 }
         return ScriptedSession(relay: self)

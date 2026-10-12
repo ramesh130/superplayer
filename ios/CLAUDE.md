@@ -254,7 +254,8 @@ CI's macOS job has no Rust toolchain; `build-xcframework.sh` writes both, and
 `MoqCatalogTracks`, `MoqFrameSource(url:)` over the internal `MoqRelay` seam with `UniffiMoqRelay`
 the one implementation touching the bindings (its `async` calls made blocking on the source's own
 threads), a connect thread and a pump thread per track, obligations 2, 3 and 9 made true, `cancel()`
-joining every thread, and `statistics()` polled each second into `MoqSessionStatistics` beside
+joining the pumps and the poller behind a delivery barrier but never the connect thread (the main actor
+calls it, and a handshake cannot be interrupted), and `statistics()` polled each second into `MoqSessionStatistics` beside
 `MoqUpstreamMediaLoss.notInstrumented`. One departure is forced: the bindings carry a catalog's
 renditions as a Swift `Dictionary` — and the Rust side already collects them into a `HashMap` — so
 there is no declaration order, and the rendition taken per kind is the one whose **name sorts

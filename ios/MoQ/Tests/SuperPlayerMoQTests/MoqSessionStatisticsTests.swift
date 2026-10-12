@@ -35,31 +35,37 @@ final class MoqSessionStatisticsTests: XCTestCase {
         XCTAssertGreaterThan(reading.sampledAtMs, 0)
     }
 
-    /// Polled again and again — not once — and paced rather than continuous. Both halves are counts:
-    /// several polls are waited for as an event, and over a window the polls are bounded by the
-    /// window over the interval, which a slow host can only make smaller. The window's length is an
-    /// input to that bound and is asserted nowhere (ADR-0021 rule 4).
-    func testTheSessionIsPolledOnACadenceRatherThanOnceOrContinuously() throws {
+    /// Polled again and again, not once: several polls are waited for as an event, and the reading
+    /// in force moves with them.
+    func testTheSessionIsPolledAgainRatherThanOnce() throws {
         let relay = relay()
         let source = subscribed(relay)
         defer { source.cancel() }
 
         XCTAssertTrue(relay.awaitPolls(Self.pollsWatched, within: RecordingSink.waitBound))
-        let clock = ContinuousClock()
-        let before = relay.statisticsPolls
-        let start = clock.now
-        Thread.sleep(forTimeInterval: Self.quietWindow)
-        let elapsed = clock.now - start
-        let polled = relay.statisticsPolls - before
-        let ceiling =
-            Int(elapsed / .milliseconds(Int(MoqSessionStatisticsTests.interval))) + 2
-
-        XCTAssertLessThanOrEqual(polled, ceiling, "\(polled) polls in \(elapsed)")
-        // And the reading in force is a later one than the first, which is what makes the polls
+        // The reading in force is a later one than the first, which is what makes the polls
         // readings rather than calls whose answers went nowhere.
         let latest = try XCTUnwrap(source.statistics())
         XCTAssertGreaterThan(
             try XCTUnwrap(latest.bytesReceived), try XCTUnwrap(scriptedStatistics(0).bytesReceived))
+    }
+
+    /// Paced rather than continuous, stated as a count against another count rather than against a
+    /// clock (ADR-0021 rule 4): at an interval of an hour, the session is asked once while the
+    /// subscription delivers ``framesWhilePaced`` frames — which a poller that did not wait would
+    /// have outnumbered many times over, since a poll is no slower than a scripted frame.
+    func testTheSessionIsPolledOnACadenceRatherThanContinuously() {
+        let relay = relay()
+        let sink = RecordingSink()
+        let source = MoqFrameSource(
+            url: broadcast, relay: relay, statisticsIntervalMs: Self.anHour)
+        defer { source.cancel() }
+
+        source.subscribe(sink)
+        XCTAssertTrue(relay.awaitPolls(1, within: RecordingSink.waitBound))
+        XCTAssertTrue(sink.awaitFrames(Self.framesWhilePaced))
+
+        XCTAssertEqual(relay.statisticsPolls, 1)
     }
 
     /// A session that answers nothing leaves **no** reading — never a record of zeroes.
@@ -101,8 +107,11 @@ final class MoqSessionStatisticsTests: XCTestCase {
         defer { source.cancel() }
 
         source.subscribe(sink)
+        // The poller giving up is an event: its thread returns, after which it can ask nothing more.
+        // It is waited for once it has asked, which is when it certainly exists.
+        XCTAssertTrue(relay.awaitPolls(1, within: RecordingSink.waitBound))
+        XCTAssertTrue(source.awaitThread("moq-stats", within: RecordingSink.waitBound))
         XCTAssertTrue(sink.awaitFrames(Self.framesWatched))
-        Thread.sleep(forTimeInterval: Self.quietWindow)
 
         XCTAssertNil(sink.terminal)
         XCTAssertNil(source.statistics())
@@ -126,12 +135,10 @@ final class MoqSessionStatisticsTests: XCTestCase {
         let source = subscribed(relay)
         _ = try awaitStatistics(relay, source)
         source.cancel()
-        let pollsAtCancel = relay.statisticsPolls
-
-        Thread.sleep(forTimeInterval: Self.quietWindow)
 
         XCTAssertNotNil(source.statistics())
-        XCTAssertEqual(relay.statisticsPolls, pollsAtCancel)
+        // `cancel()` joins the poller, so it has returned and can ask nothing more.
+        XCTAssertTrue(source.joinedThreadsHaveFinished)
     }
 
     // MARK: - Fixtures
@@ -185,9 +192,12 @@ final class MoqSessionStatisticsTests: XCTestCase {
     /// The test cadence: twenty milliseconds, so a handful of polls costs a fraction of a second.
     private static let interval: Int64 = 20
 
-    /// Ten intervals: long enough that a continuous poller would be counted in the hundreds and a
-    /// poller that outlived its cancel would ask again inside it.
-    private static let quietWindow: TimeInterval = 0.2
+    /// An interval no test outlasts, so a second poll can only come from a poller that did not wait.
+    private static let anHour: Int64 = 3_600_000
+
+    /// Frames delivered while the hour-long interval holds: at the scripted relay's two milliseconds
+    /// each, about an eighth of a second in which an unpaced poller would ask hundreds of times.
+    private static let framesWhilePaced = 64
 
     /// Several polls, so "polled once" cannot pass.
     private static let pollsWatched = 8

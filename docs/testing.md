@@ -487,9 +487,16 @@ evidence rather than less.
   links the XCFramework's own arm64 simulator slice, the library an app on the simulator links, so CI's
   macOS job runs it too. What no check reaches is the device slice, which only a device runs; the demo
   is built against it by hand (`xcodebuild … -destination 'generic/platform=iOS'`), never by `ios/check`.
-- **The cadence test asserts counts.** `MoqSessionStatisticsTests` waits for several polls as an event
-  and bounds how many arrive over a window by the window over the interval — a bound a slow host can
-  only satisfy more easily — rather than timing the polls, which ADR-0021 rule 4 would not admit.
+- **Nothing waits a while and then asserts an absence.** Where the Kotlin tests pause and see nothing
+  arrive, these read the threads: `cancel()` joins the pumps and the poller, so a test asserts they
+  have *finished* the moment it returns, and a poller giving up after a failed poll is its thread
+  returning, waited for as an event. Pacing is a count against a count — at an hour's interval, one
+  poll while sixty-four frames arrive — never against a clock (ADR-0021 rule 4).
+- **`cancel()` does not join the connect thread**, which the Kotlin `cancel` does: here it is called on
+  the main actor, and a handshake or the `unroutable` retry cannot be interrupted, so it would freeze
+  the screen being left. A delivery barrier stops that thread's callbacks instead, and
+  `testCancelDoesNotWaitForAConnectionStillBeingMade` holds a scripted connection open across the
+  cancel to show both halves.
 
 The fixtures follow `DeclaredCatalogs`' provenance rules, and the observed `avcC` is read from
 `ios/Tests/Fixtures/realtime/observed-bytes.tsv` rather than restated, since a package of its own can

@@ -142,6 +142,10 @@ measurement to judge rather than a check to pass. Four things it does not show:
 application target supporting both iOS and tvOS (`SDKROOT = auto`), the synchronized source folder,
 a local package reference and the four products it links, `SuperPlayerCore`,
 `SuperPlayerTelemetry`, `SuperPlayerPreload` and `SuperPlayerTV`. No generator is involved, so none is a dependency. The Info.plist is
-generated from build settings, and no signing team is set, which a simulator build does not need;
+generated from build settings, merged with `Info.plist` beside the project for the one key no build
+setting names — `CADisableMinimumFrameDurationOnPhone`, without which an iPhone holds the frame
+output's display link at 60 Hz and the frames screen loses a frame every minute or two (#491). That
+file sits outside `SuperPlayerDemo/` because a synchronized folder would copy it into the bundle a
+second time. No signing team is set, which a simulator build does not need;
 running on a device means choosing a team in Xcode. The app declares no `audio` background mode, so
 playback stops when it is backgrounded — that entry is the app's to make (ADR-0007 rule 4).

@@ -194,6 +194,8 @@ final class MoqLiveSessionSmokeTests: XCTestCase {
             } else if first == nil, reading.rendering {
                 first = reading
             }
+            // Half a second between reads: the overlay refreshes once a second, so this misses no
+            // value and costs the accessibility snapshot nothing worth counting.
             if second == nil { try await Task.sleep(for: .milliseconds(500)) }
         }
         observations.record("reading.first", first?.line ?? "none rendering")
@@ -398,6 +400,7 @@ final class MoqLiveSessionSmokeTests: XCTestCase {
 
 /// What a test learned, in the order it learned it, printed as one block the lab cuts between the
 /// markers: one write per block, so lines from elsewhere in the runner cannot land inside it.
+/// `@unchecked Sendable`: `entries` is under `lock`, and nothing else is mutable.
 final class Observations: @unchecked Sendable {
     static let begin = "--- moq-smoke begin ---"
     static let end = "--- moq-smoke end ---"
@@ -485,6 +488,10 @@ final class RecordingSink: FrameSink, @unchecked Sendable {
         condition.withLock { failureDescription ?? (ended ? "the subscription ended" : nil) }
     }
 
+    /// Blocks the caller, which is a cooperative-pool thread of the async test: tolerable here and
+    /// nowhere in the library, because nothing this wait needs runs on that pool — the callbacks
+    /// arrive on `MoqFrameSource`'s own threads, and its binding calls on tasks the pool has other
+    /// threads for — and the runner does nothing else while one test waits.
     func awaitDeclarationOrEnd(boundSeconds: TimeInterval) {
         let deadline = Date(timeIntervalSinceNow: boundSeconds)
         condition.withLock {
@@ -495,7 +502,8 @@ final class RecordingSink: FrameSink, @unchecked Sendable {
     }
 
     /// Waits on the sink's own progress rather than sleeping out the window, so a slow relay and a
-    /// dead one are told apart before the bound rather than at it.
+    /// dead one are told apart before the bound rather than at it. Blocks as
+    /// ``awaitDeclarationOrEnd(boundSeconds:)`` does, for its reason.
     func awaitFrames(atLeast wanted: Int, boundSeconds: TimeInterval) -> Bool {
         let deadline = Date(timeIntervalSinceNow: boundSeconds)
         return condition.withLock {
@@ -509,6 +517,8 @@ final class RecordingSink: FrameSink, @unchecked Sendable {
     private static func chain(of error: any Error) -> String {
         var parts: [String] = []
         var current: (any Error)? = error
+        // Eight deep, the Kotlin test's bound and its reason: deep enough for FFI wrapping, bounded
+        // so a cycle a foreign runtime produced cannot hang the report.
         while let error = current, parts.count < 8 {
             parts.append("\(type(of: error)): \(error)")
             current = (error as NSError).userInfo[NSUnderlyingErrorKey] as? any Error

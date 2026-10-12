@@ -50,7 +50,10 @@ scenario_report() {
 # A failed test, a runner that never ran one, or no outcome at all is a failure; a skip — the relay
 # answered and announced nothing — is not, for Android's reason: a run that goes red whenever a public
 # relay is quiet is a run whose red stops being read. The report says it skipped.
+#
+# xcodebuild's own status counts too: a run the timeout killed after the first test passed leaves an
+# outcomes file of passes alone, with the demo half never judged.
 scenario_verdict() {
-    [ -s "$RUN_DIR/outcomes.tsv" ] || return 1
+    [ "$RUN_TEST_EXIT" = 0 ] && [ -s "$RUN_DIR/outcomes.tsv" ] || return 1
     ! cut -f2 "$RUN_DIR/outcomes.tsv" | grep -qv -E '^(passed|skipped)$'
 }

@@ -264,7 +264,8 @@ over `ScriptedMoqRelay`, which proves the bridge and nothing about MoQ, and `Moq
 which calls across the FFI into the simulator slice an app links. A broadcast on a device is #438's:
 `ios/Demo/SuperPlayerDemoUITests`' XCUITest, run by `devicelab/lab run moq-smoke --platform ios`,
 which played `cdn.moq.dev/demo/bbb.hang` on an iPhone and found #367's two address defects there as on
-Android (`docs/testing.md`, *The first real MoQ session on an iPhone*). There is no `SuperPlayerCache`, since its content is the offline store's.
+Android (`docs/testing.md`, *The first real MoQ session on an iPhone*). There is no
+`SuperPlayerCache`, since its content is the offline store's.
 #416 is i3's adaptive half, `SuperPlayerABR`: `AdaptivePolicy.forProfile(profile)` composes
 `AdaptiveSelectionPolicy` and `AdaptiveBufferPolicy`, the Kotlin pure functions with their constants,
 and brings a `BandwidthOracle` per player through core's `package` seam `ThroughputSource.swift` —

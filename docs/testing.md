@@ -532,7 +532,7 @@ Wi-Fi, against `cdn.moq.dev`:
   platform has seen, so ADR-0018 rule 4's two branches were exercised by one real publisher at once.
   Thirty frames arrived inside the window, and none after `cancel()` returned. The session's round
   trip read 5–8 ms, which says the relay has an edge near the house and nothing about the library.
-- **The demo played it** on a `RealtimePlayer`: two readings of `MoqScreen` five seconds apart, both
+- **The demo played it** on a `RealtimePlayer`: two readings of `MoqScreen`, both
   rendering, the clock risen from about 0.2 s to 5.2 s and the session's received bytes from 8 kB to
   about 1 MB.
 

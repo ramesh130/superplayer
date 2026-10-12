@@ -331,10 +331,12 @@ i9's device exit (#438): *a broadcast plays on a device*, and the iPhone's readi
   its declared tracks and their codec-configuration branch, thirty frames counted, the session's
   statistics, and no frame after `cancel()`. A failure, or `SP_MOQ_PROBE_MAPPINGS=true`, also asks the
   relay what it announces and which of the two address splits routes, in the three arms #367 used —
-  which is how #367's two defects are checked for on iOS;
+  which is how #367's two defects are checked for on iOS. A passing run without the flag exercises
+  `UniffiMoqRelay`'s two fixes only by working, so **the flag is what puts the evidence in the report**;
 - **the demo** playing the same broadcast on `MoqScreen`, read off its overlay's accessibility value,
   the line it also logs (`content=… position=<ms> rendering=<bool> received=<bytes> rtt=<ms>`):
-  played when two readings four seconds apart are both rendering and the received bytes rose.
+  played when two rendering readings show the clock risen by at least four seconds and the received
+  bytes risen too.
 
 ```bash
 SP_DEVICE=<udid> SP_DEVELOPMENT_TEAM=<team id> devicelab/lab run moq-smoke --platform ios

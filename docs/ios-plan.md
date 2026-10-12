@@ -222,7 +222,7 @@ into engine-owned queues and Apple has exactly that engine: `AVSampleBufferDispl
 | Facade: a realtime item through `setMediaRequest` on the one player | An `AVPlayer` cannot take pushed frames. Realtime is a second public type, `RealtimePlayer`, sharing the telemetry, lifecycle and session code through the same internal engine protocol, and the SwiftUI `PlayerView` renders either. This is the one place the "one player" claim splits, argued in the ADR | Differs |
 | `superplayer-moq` over UniFFI Kotlin bindings, `MoqFrameSource`, `MoqRelay` seam, `ScriptedMoqRelay`, statistics | UniFFI generates the Swift bindings from the **same** `third-party/moq/m2` checkout, which is the one artifact both platforms share; the bridge, the seam, the scripted relay, the pump-per-track and the one-second statistics poll port; `MoqUpstreamMediaLoss.NOT_INSTRUMENTED` stays and #354 covers both | Ports; `LOCAL_ONLY` publication has a SwiftPM analog in a binary target the demo resolves locally |
 | `superplayer-whep` (contingent) | Google's WebRTC iOS framework; whether encoded frames are reachable is the same unsettled question and Phase 12's finding decides it for both | Contingent, as on Android |
-| Device smoke test, `devicelab/moq-smoke` | An XCUITest target driven by the same lab script with `--platform ios` | Ports |
+| Device smoke test, `devicelab/moq-smoke` | An XCUITest target driven by the same lab script with `--platform ios` | Ports; **built (#438)**: `SuperPlayerDemoUITests`' `MoqLiveSessionSmokeTests`, run by `devicelab/lab run moq-smoke --platform ios`, which played a broadcast on an iPhone (`docs/testing.md`, *The first real MoQ session on an iPhone*) |
 
 ### 3.11 Frame output (no Android phase yet)
 

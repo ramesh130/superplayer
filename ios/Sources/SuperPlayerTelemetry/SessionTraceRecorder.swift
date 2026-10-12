@@ -73,8 +73,11 @@ import os
 ///    *capabilities* and must still refuse its identity — what the device can **do**, never what it
 ///    **is**: no model or OS build string, no hardware component name, no DRM identifier, no display
 ///    name, nothing of the network. Nothing in this recorder holds such a snapshot; the bundle
-///    (#429) is where the rule is carried out and tested, and it is stated here so that the six a
-///    trace obeys and the seventh a bundle obeys are read together.
+///    (`SuperPlayerDiagnostics`' `SessionBundle`, #429) is where the rule is carried out — over
+///    core's `CapabilitySnapshot`, which carries the platform, the OS's `major.minor`, the memory
+///    budget, a hardware-decode yes or no per codec and the display's short edge and HDR
+///    eligibility, and nothing else — and `SessionBundlePlaybackTests` is where it is tested. It is
+///    stated here so that the six a trace obeys and the seventh a bundle obeys are read together.
 ///
 /// `SessionTraceRecorderPlaybackTests` drives a session that really carried a signed URL, a
 /// URL-shaped content id and an `Authorization` header answering a `Basic` challenge, asserts each

@@ -124,7 +124,9 @@ describe the whole session rather than a moment in it, and
 they are usually what settles "is it just this handset?": the API level, whether the platform calls
 it a low-memory device, the heap the app was allowed, the video decoders it declares with their
 instance counts and profile levels, the display's short edge and HDR formats, and the security level
-protected content was delivered at.
+protected content was delivered at. A bundle from an Apple device says less, in different fields:
+the OS's major and minor version, the memory the app had left, a hardware yes or no for each of four
+codecs, the display's short edge and whether it plays HDR — `docs/session-bundle.md` lists them.
 
 One trap: the words that are not values. `unknown` and `none` are different facts, and so is the
 security level's `not-negotiated`; `docs/session-bundle.md` says what each means, and confusing the
@@ -165,6 +167,18 @@ recorder.attach(player)
 // ... play; take the trace once the sink has seen SessionEnded ...
 val bundle = SessionBundle.Builder(context).setTrace(recorder.trace()).setPlayer(player).build()
 bugReport.attach(bundle.format())
+```
+
+On iOS and tvOS the recipe is the same and shorter, because the bundle reads nothing of a player:
+
+```swift
+let recorder = SessionTraceRecorder()
+var configuration = SuperPlayer.Configuration()
+configuration.telemetry = { QoeCollector(sink: .composite(appSink, recorder)) }
+let player = SuperPlayer(configuration: configuration)
+recorder.attach(to: player)
+// ... play; take the trace once the sink has seen SessionEnded ...
+bugReport.attach(SessionBundle(trace: recorder.trace()).format())
 ```
 
 A trace taken before the delivery queue has drained lacks the tail of the telemetry, which is why

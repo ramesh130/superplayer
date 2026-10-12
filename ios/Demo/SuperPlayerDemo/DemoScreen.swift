@@ -31,6 +31,9 @@ enum DemoScreen: String, CaseIterable, Identifiable, Hashable {
     /// app opens on.
     case tv
 
+    /// The playback screen with the debug HUD over it: what each row reads, live.
+    case debugHud
+
     var id: String { rawValue }
 
     var title: String {
@@ -39,6 +42,7 @@ enum DemoScreen: String, CaseIterable, Identifiable, Hashable {
         case .frameOutput: "Frame output"
         case .feed: "Feed"
         case .tv: "Television"
+        case .debugHud: "Debug HUD"
         }
     }
 
@@ -48,6 +52,7 @@ enum DemoScreen: String, CaseIterable, Identifiable, Hashable {
         case .frameOutput: "The same stream through a pass-through frame output"
         case .feed: "200 rows over the pool and the preload coordinator"
         case .tv: "tvLeanback and the display's criteria on the system controls"
+        case .debugHud: "The same stream under the six-row debug overlay"
         }
     }
 
@@ -58,6 +63,7 @@ enum DemoScreen: String, CaseIterable, Identifiable, Hashable {
         case .frameOutput: FrameOutputScreen(stream: .bipbopAdvanced)
         case .feed: FeedScreen()
         case .tv: TvScreen(stream: .bipbopAdvanced)
+        case .debugHud: DebugHudScreen(stream: .bipbopAdvanced)
         }
     }
 

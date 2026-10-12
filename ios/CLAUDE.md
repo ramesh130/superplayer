@@ -271,6 +271,16 @@ addendum), and only it may spend the one-segment probe, a `HEAD` carrying the cr
 postmortem is `examine(_:classification:)`: the `SuperPlayerError` read onto
 `DiagnosticReport.classification`, never re-derived, which made the report drop `Hashable` because the
 error carries the engine's `NSError`.
+#429 is i8's bundle and HUD. `SessionBundle(trace:)` is `docs/session-bundle.md`'s format and version
+over the recorder's trace, its `capability` lines read whole from core's `package` `CapabilitySnapshot`
+— platform and OS `major.minor`, `os_proc_available_memory()`, `VTIsHardwareDecodeSupported` per codec,
+the display's short edge and `AVPlayer.eligibleForHDRPlayback` — so the seventh rule holds by what that
+type carries (ADR-0015 rule 10's #429 addendum, which says the decoder and display fields pass the
+readership test only as "what AVFoundation decided against"); it reads no player, since FairPlay has no
+level for a protection line. `DebugHud(player:telemetry:)` is SwiftUI over a `SuperPlayer` or a stock
+`AVPlayer`, its rows `HudFacts` re-read twice a second, its telemetry half the `DebugHudTelemetry`
+sink, guarded by `#if DEBUG` and the profile's `get-task-allow` (`isDebugHudAvailable()`). `GoldenFile`
+moved into testkit, throwing rather than naming XCTest; the demo's `DebugHudScreen` is the recipe.
 `SuperPlayerMoQ` is not declared yet — its binary target is
 i9's — and there is no `SuperPlayerCache`, since its content is the offline store's.
 

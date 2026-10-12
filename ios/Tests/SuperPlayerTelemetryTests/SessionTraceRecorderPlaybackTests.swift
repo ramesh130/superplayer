@@ -32,6 +32,12 @@ final class SessionTraceRecorderPlaybackTests: XCTestCase {
     private let bound: Duration = .seconds(90)
     private let harness = PlaybackHarness()
 
+    /// `ios/Tests/Fixtures/golden/`, beside the other fixtures.
+    private let goldens = GoldenFile(
+        directory: URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/golden"))
+
     override func tearDown() async throws {
         harness.stop()
         try await super.tearDown()
@@ -58,11 +64,11 @@ final class SessionTraceRecorderPlaybackTests: XCTestCase {
         let trace = try await settledTrace(recorder, origin: origin)
 
         if #available(iOS 18, tvOS 18, *) {
-            try GoldenFile.check("hls-vod", trace.structural().format())
+            try goldens.check("hls-vod", trace.structural().format())
         } else {
             let golden = try SessionTrace.parse(
                 String(
-                    contentsOf: GoldenFile.directory.appendingPathComponent("hls-vod.trace"),
+                    contentsOf: goldens.url(of: "hls-vod"),
                     encoding: .utf8))
             XCTAssertEqual(
                 withoutRequestKinds(trace.structural()), withoutRequestKinds(golden))

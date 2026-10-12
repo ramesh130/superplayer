@@ -59,7 +59,10 @@ public struct SessionTrace: Sendable, Hashable, CustomStringConvertible {
     /// Whether each line carries the `+<ms>` column.
     public let timed: Bool
 
-    init(lines: [String], timed: Bool) {
+    /// `package` rather than internal for one caller, `SuperPlayerDiagnostics`' `SessionBundle`
+    /// (#429), which rebuilds its trace half to read it structurally; a consumer gets a trace from a
+    /// recorder or from ``parse(_:)`` and never assembles one.
+    package init(lines: [String], timed: Bool) {
         self.lines = lines
         self.timed = timed
     }

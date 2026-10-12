@@ -1,0 +1,30 @@
+superplayer-session-bundle v1
+superplayer-session-trace v1
+timings omitted
+capability device platform=iOS osVersion=18.4 memoryBudgetMb=2048
+capability decoder mime=video/avc hardware=true
+capability decoder mime=video/hevc hardware=true
+capability decoder mime=video/x-vnd.on2.vp9 hardware=false
+capability decoder mime=video/av01 hardware=false
+capability display shortEdgePx=1179 hdrPlayback=true
+item id=series/expanse/s01e01 reason=PLAYLIST_CHANGED
+state BUFFERING
+state READY
+state ENDED
+playing true
+playing false
+load started manifest
+load completed manifest durationMs=*
+load started manifest
+load completed manifest durationMs=*
+load started media:audio
+load completed media:audio durationMs=*
+load started media:audio
+load completed media:audio durationMs=*
+bandwidth bitrateBps=*
+bandwidth bitrateBps=*
+bandwidth bitrateBps=*
+bandwidth bitrateBps=*
+telemetry SessionStarted profile=VIDEO_ON_DEMAND
+telemetry FirstFrameRendered timeToFirstFrameMs=* startBoundary=CONTENT_ADOPTED
+telemetry SessionEnded droppedEventCount=0

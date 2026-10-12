@@ -93,15 +93,39 @@ final class DemoPlayback {
         positionObserver = player.avPlayer.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: Self.positionLogIntervalSeconds, preferredTimescale: 600),
             queue: .main
-        ) { time in
+        ) { [weak self] time in
             let positionMs = Int64(time.seconds * 1000)
             // `frames=` only where there is an output to count, so the two screens' lines are told
-            // apart by their shape as well as by what they say.
-            let frames = frameOutput.map { " frames=\($0.framesProcessed)" } ?? ""
+            // apart by their shape as well as by what they say. The rest of the tally rides the same
+            // line, read once so its fields are one moment: devicelab's frames scenario reads it.
+            let frames =
+                frameOutput.map {
+                    let tally = $0.reading
+                    return
+                        " frames=\(tally.frames) missing=\(tally.missing) runs=\(tally.runs) repeated=\(tally.repeated)"
+                } ?? ""
+            // What AVFoundation says it dropped of the item's frames, summed over the access log's
+            // entries: on the playback screen that is the `AVPlayerLayer`'s own drops, the control
+            // devicelab's frames scenario reports beside the output's count.
+            // The observer is delivered on the main queue, which is the main actor.
+            let dropped = MainActor.assumeIsolated {
+                Self.droppedFrames(of: self?.player.avPlayer.currentItem)
+            }
             Self.logger.log(
-                "content=\(contentId, privacy: .public) position=\(positionMs, privacy: .public)\(frames, privacy: .public)"
+                "content=\(contentId, privacy: .public) position=\(positionMs, privacy: .public)\(frames, privacy: .public) dropped=\(dropped, privacy: .public)"
             )
         }
+    }
+
+    /// The access log's dropped video frames over every entry, or -1 when no entry knows the number;
+    /// an entry reports a negative value for "unknown", which is left out of the sum.
+    ///
+    /// ref: https://developer.apple.com/documentation/avfoundation/avplayeritemaccesslogevent/numberofdroppedvideoframes
+    private static func droppedFrames(of item: AVPlayerItem?) -> Int {
+        let known = (item?.accessLog()?.events ?? []).map(\.numberOfDroppedVideoFrames).filter {
+            $0 >= 0
+        }
+        return known.isEmpty ? -1 : known.reduce(0, +)
     }
 
     /// Ends the session and then the player. The screen calls it once, as it goes.

@@ -471,19 +471,34 @@ struct FeedScroll: Hashable, Sendable {
 
     let passes: Int
     let dwellMs: Int
+    /// How long the first row plays before the scroll starts, `-SPFeedLeadInMs`; none by default.
+    /// devicelab's feed scenario asks for a few seconds, because it confirms playback the way every
+    /// run does — a position advancing between two log lines — and a row a second is recycled before
+    /// its second line.
+    var leadInMs = 0
 
     /// `-SPFeedScroll <passes>`, or nil to scroll only under a finger.
     static func fromLaunchArguments(_ defaults: UserDefaults = .standard) -> FeedScroll? {
         let passes = defaults.integer(forKey: "SPFeedScroll")
         guard passes > 0 else { return nil }
         let dwell = defaults.integer(forKey: "SPFeedDwellMs")
-        return FeedScroll(passes: passes, dwellMs: dwell > 0 ? dwell : defaultDwellMs)
+        return FeedScroll(
+            passes: passes, dwellMs: dwell > 0 ? dwell : defaultDwellMs,
+            leadInMs: max(0, defaults.integer(forKey: "SPFeedLeadInMs")))
     }
 
-    /// Moves the top row through `rows` rows and back, `passes` times, waiting ``dwellMs`` on each.
+    /// Moves the top row through `rows` rows and back, `passes` times, waiting ``dwellMs`` on each,
+    /// after ``leadInMs`` on the first.
     @MainActor
     func run(rows: Int, moveTo: @MainActor (Int) -> Void) async {
         guard rows > 1 else { return }
+        if leadInMs > 0 {
+            do {
+                try await Task.sleep(for: .milliseconds(leadInMs))
+            } catch {
+                return
+            }
+        }
         Self.logger.log(
             "scroll started passes=\(passes, privacy: .public) rows=\(rows, privacy: .public)")
         for pass in 1...passes {

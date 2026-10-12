@@ -35,12 +35,15 @@ xcrun simctl spawn booted log show --last 1m --style compact --predicate 'subsys
 ```
 
 **A screenshot is weak evidence on its own** — it cannot tell a rendered frame from a stalled one
-(the root `CLAUDE.md`). The demo logs `content=… position=<ms>` every two seconds, with `frames=<n>`
-on the frame-output screen, and a position that advances between two lines is what to look for.
+(the root `CLAUDE.md`). The demo logs `content=… position=<ms> dropped=<n>` every two seconds — the
+access log's dropped video frames — with `frames=<n> missing=<n> runs=<n> repeated=<n>` before
+`dropped=` on the frame-output screen (`FrameTally`, which devicelab's `frames` scenario reads), and a
+position that advances between two lines is what to look for.
 Telemetry goes to the same log under the subsystem `com.superplayer`, category `SuperPlayerQoE`.
 
 Two things a simulator run does not show: whether the pass-through drops a frame an `AVPlayerLayer`
-would have shown, which is a device count (#435), and whether a television's panel switched modes
+would have shown, which is a device count — `devicelab/lab run frames --platform ios` (#435,
+`devicelab/README.md`'s *The frames scenario*) — and whether a television's panel switched modes
 for the TV screen, which is an Apple TV's (`docs/testing.md`, *A television on tvOS*).
 
 ## MoQ
@@ -79,7 +82,9 @@ second copy of all of that kept in step by hand.
 `-SPDemoScreen feed` opens the feed. Its rows cycle through `DemoStream`, as the Android feed's do,
 each under a content id of its own (`demo:feed-<n>`), so today every row is Apple's public example
 stream. `-SPFeedRows <n>` changes the count, and `-SPFeedScroll <passes>` makes the feed scroll
-itself down to the last row and back, `-SPFeedDwellMs` apart (1000 by default). The watched row logs
+itself down to the last row and back, `-SPFeedDwellMs` apart (1000 by default), after
+`-SPFeedLeadInMs` on the first row (none by default; devicelab's feed scenario asks for five
+seconds, so the first row's position is logged twice before the scroll moves it). The watched row logs
 `row=… contentId=… positionMs=…` every second under the category `Feed`, and the scroll logs its
 passes under `FeedScroll`.
 
@@ -110,7 +115,8 @@ measurement to judge rather than a check to pass. Four things it does not show:
 
 - **A device.** A simulator's memory is the host's, so the hunt says whether the app keeps what a
   scroll made, not what a phone would report. Memory flat over 200 rows on an iPhone, and TTFF
-  there, are #435's.
+  there, are `devicelab/lab run feed --platform ios`'s (#435, `devicelab/README.md`'s *The feed
+  scenario*).
 - **The first moments of a launch.** The recording attaches once the feed starts scrolling,
   because an attach in a launch's first moments is refused often enough to fail a run, and a launch
   under `xctrace` fails the Leaks instrument on a simulator. A leak from before that moment has no

@@ -1,0 +1,8 @@
+Launched application with com.superplayer.demo bundle identifier.
+2026-10-12 19:45:59.631496+1100 SuperPlayerDemo[801:36164] [Playback] content=demo:bipbop-advanced position=0 dropped=0
+2026-10-12 19:45:59.631726+1100 SuperPlayerDemo[801:36164] [Playback] content=demo:bipbop-advanced position=0 dropped=0
+2026-10-12 19:46:01.737293+1100 SuperPlayerDemo[801:36164] [Playback] content=demo:bipbop-advanced position=2000 dropped=0
+2026-10-12 19:46:03.737705+1100 SuperPlayerDemo[801:36164] [Playback] content=demo:bipbop-advanced position=4000 dropped=0
+2026-10-12 19:46:05.737594+1100 SuperPlayerDemo[801:36164] [Playback] content=demo:bipbop-advanced position=6000 dropped=0
+2026-10-12 19:46:07.737777+1100 SuperPlayerDemo[801:36164] [Playback] content=demo:bipbop-advanced position=8000 dropped=0
+2026-10-12 19:46:09.745001+1100 SuperPlayerDemo[801:36164] [Playback] content=demo:bipbop-advanced position=10000 dropped=0

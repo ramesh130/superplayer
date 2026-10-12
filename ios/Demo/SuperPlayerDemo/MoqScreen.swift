@@ -43,15 +43,18 @@
     /// The overlay is the transport's own reading, `MoqFrameSource.statistics()`, which deliberately
     /// reaches no telemetry sink.
     ///
-    /// **The broadcast is somebody else's.** ``MoqScreen/defaultBroadcast`` is a public relay's
-    /// anonymous namespace, and MoQ's refusal is `unroutable` for every reason at once, so a failure
-    /// is shown verbatim rather than interpreted, and `-SPMoqBroadcast <moq://…>` names another one
-    /// without a rebuild. Whether a broadcast plays on a phone is the i9 device ticket's.
+    /// **The broadcast is somebody else's.** ``MoqScreen/defaultBroadcast`` is on a public relay, and
+    /// MoQ's refusal is `unroutable` for every reason at once, so a failure is shown verbatim rather
+    /// than interpreted, and `-SPMoqBroadcast <moq://…>` names another one without a rebuild.
     struct MoqScreen: View {
 
-        /// The Android demo's default and its caveat: the one name observed playing there while #367
-        /// ran, which is a fact about one afternoon rather than a guarantee.
-        static let defaultBroadcast = "moq://cdn.moq.pro/anon/catshark.hang"
+        /// MoQ's own demonstration broadcast, Big Buck Bunny under the relay's `demo` namespace — the
+        /// one that played on an iPhone when #438 ran (`docs/testing.md`, *The first real MoQ session
+        /// on an iPhone*). Chosen over the Android demo's `anon/catshark.hang`, which the relay no
+        /// longer announced that day: `anon` is whatever its visitors left running, while `demo` is
+        /// the relay operator's own. That makes it likelier to last and no more than that, so a run
+        /// that finds it gone is a finding about the relay, and `-SPMoqBroadcast` is the way round it.
+        static let defaultBroadcast = "moq://cdn.moq.dev/demo/bbb.hang"
 
         @State private var session: MoqDemoSession?
 

@@ -1054,7 +1054,15 @@ see a request.
   show "sooner" (ADR-0021 rule 4), and the feed demo under `xctrace` is i4's exit (`docs/ios-plan.md`
   §7). `ios/hunt-leaks` (#418) records that feed on a **simulator**, outside every check, and says
   whether the app keeps what a scroll made; the same scroll on an iPhone, memory flat over 200 rows
-  and TTFF there, is #435's.
+  and TTFF there, is #435's, and `devicelab/lab run feed --platform ios` measured it on an iPhone 17
+  Pro Max on iOS 27.0 over a cable (`devicelab/README.md`, *The feed scenario*): 200 rows down and
+  back twice at a second a row, 602 first frames from declared intent at a median of 258 ms, p90
+  289 ms and max 780 ms — 259 ms in the first pass and 257 ms in the second — and the app's physical
+  footprint **flat**, a median of 15.9 MiB over the first pass's 393 samples (p90 16.4) and 16.3 MiB
+  over the second's, half a megabyte more and inside the first's spread. That footprint is the app's
+  own: AVFoundation decodes in system processes, so it says the app keeps nothing per row, not that
+  the device's memory stayed flat. What it still cannot show is a prerolled row's first frame
+  arriving sooner than a cold one's, which needs the same scroll with preload off beside it.
 - **The adaptive policy's seams are `package`, and no ABR test is `@testable`** (#416).
   `SuperPlayerABRTests` reads the product's pure halves through their public API and the oracle
   through core's `package` `ThroughputSource`, the methods core itself calls, on an `EstimateMemory`

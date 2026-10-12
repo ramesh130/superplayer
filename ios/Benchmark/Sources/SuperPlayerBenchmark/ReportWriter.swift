@@ -43,14 +43,14 @@ enum ReportWriter {
         return out
     }
 
-    /// The built arms the candidate is compared against, in ``Arm``'s order.
+    /// The arms the candidate is compared against, in ``Arm``'s order.
     private static var references: [Arm] {
-        Arm.allCases.filter { $0.isBuilt && $0 != Arm.candidate }
+        Arm.allCases.filter { $0 != Arm.candidate }
     }
 
     private static func title(_ out: inout String) {
         out += """
-            # SuperPlayer benchmark — iOS baseline (simulator)
+            # SuperPlayer benchmark — iOS (simulator)
 
             The fixed matrix of [`PRD.md`](../../PRD.md) §6 on the iOS simulator, run by \
             `ios/Benchmark/bench` over testkit's loopback origin and network shaper, with \
@@ -80,9 +80,9 @@ enum ReportWriter {
             out += "**Met.**\n\n"
         } else if judgement.allSatisfy({ !$0.measured }) {
             out += """
-                **Not met — not measured.** Arm (d) is an empty slot until i3 (#416) builds the iOS \
-                adaptive policy, so no profile has the comparison the criterion is about. Unmeasured \
-                is not met: absence of evidence is not a pass.
+                **Not met — not measured.** This run played no cell of both arms the criterion \
+                compares, so no profile has the comparison it is about. Unmeasured is not met: \
+                absence of evidence is not a pass.
 
 
                 """
@@ -172,15 +172,16 @@ enum ReportWriter {
                     "`SuperPlayer(configuration:)` with the profile each scenario names and its "
                         + "static policy. What it ran with is on every `sessionStarted` line of the traces."
                 case .adaptive:
-                    "**an empty slot until i3 (#416)**, which builds the iOS adaptive policy. Not run, "
-                        + "and not imitated by running arm (c) under another name."
+                    "the same with `SuperPlayerABR`'s `AdaptivePolicy.forProfile` for that profile: "
+                        + "the five buffer branches, the transport caps on the expensive-network pair "
+                        + "and the post-rebuffer hold, over the per-transport estimate memory, which "
+                        + "is forgotten before each session so every one starts cold, as Android's do."
                 }
             out += "- **\(arm.label)** — \(what)\n"
         }
         out += """
 
-            **\(Arm.candidate.label) is the arm graded**, against each built arm before it. From \
-            i3 on the candidate is arm (d), with nothing in the runner to change.
+            **\(Arm.candidate.label) is the arm graded**, against each arm before it.
 
             **The definitions are [`docs/telemetry-schema.md`](../../docs/telemetry-schema.md)**, \
             and every metric is reduced from one event vocabulary by one function, \
@@ -311,12 +312,14 @@ enum ReportWriter {
 
             `PRD.md` F1's trade is *lower bitrate on a constrained link in exchange for fewer \
             stalls*, and §6 requires it to appear **as a bitrate loss beside the rebuffer win**. \
-            With no adaptive arm the one instance is `dataSaver`'s static cap — 800 kbit/s and \
-            480p — so this is the data-saver row on every cellular profile, \(Arm.candidate.label) \
-            against \(Arm.stockDefaults.label), bitrate beside the stalls and the score, each by \
-            the same rule as everywhere else — until arm (d) is built, when the section compares \
-            it with the static profile on every scenario, as Android's does. A bitrate cut with no \
-            stall win beside it is a trade that bought nothing, and reads that way.
+            The adaptive policy makes it on cellular, so this is \(Arm.candidate.label) against \
+            \(ExitCriterion.reference.label) on every scenario of every cellular profile — bitrate \
+            beside the stalls and the score, each by the same rule as everywhere else, as Android's \
+            section is. A bitrate cut with no stall win beside it is a trade that bought nothing, \
+            and reads that way. **On the simulator the link is shaped but the path is not \
+            cellular**: testkit reports a trace's transport on each response rather than switching \
+            the device's (`ios/CLAUDE.md`), so the transport caps never bind here and what this \
+            section shows is the hold and the buffer branches on a cellular *rate*.
 
 
             """
@@ -332,19 +335,16 @@ enum ReportWriter {
         }
     }
 
-    /// Which arm the F1 section compares the candidate against: stock, on the data-saver row, while
-    /// the static cap is the only instance of the trade; and the static profile on every scenario
-    /// once the adaptive arm is built and makes the trade itself — Android's Phase 3 section.
-    private static var f1Reference: Arm {
-        Arm.candidate == .adaptive ? ExitCriterion.reference : .stockDefaults
-    }
+    /// Which arm the F1 section compares the candidate against: the static profile, on every
+    /// scenario — Android's Phase 3 section. (#414's baseline, with no adaptive arm, compared stock on
+    /// the data-saver row.)
+    private static var f1Reference: Arm { ExitCriterion.reference }
 
     /// The cellular cells the F1 section shows, in ``MatrixNetwork/cellular``'s order.
     private static func f1Comparisons(_ report: MatrixReport) -> [CellComparison] {
         report.comparisons(against: f1Reference)
             .filter {
                 MatrixNetwork.cellular.contains($0.network)
-                    && (Arm.candidate == .adaptive || $0.scenario == .vodDataSaver)
             }
             .sorted {
                 MatrixNetwork.cellular.firstIndex(of: $0.network)!
@@ -365,18 +365,7 @@ enum ReportWriter {
             for network in MatrixNetwork.profiles {
                 for arm in Arm.allCases {
                     let label = "| \(MatrixNetwork.label(network)) | \(arm.label) "
-                    guard let cell = report.cell(scenario, network, arm) else {
-                        // The slot is printed wherever its row would have been compared, so a
-                        // filtered run does not grow rows for networks it never played.
-                        let played = Arm.allCases.contains {
-                            report.cell(scenario, network, $0) != nil
-                        }
-                        if !arm.isBuilt && played {
-                            out += label + "| not built (i3, #416) "
-                            out += String(repeating: "| \(emDash) ", count: 7) + "|\n"
-                        }
-                        continue
-                    }
+                    guard let cell = report.cell(scenario, network, arm) else { continue }
                     let runs =
                         cell.excludedSessions == 0
                         ? "\(cell.runs)" : "\(cell.runs) (+\(cell.excludedSessions) excluded)"

@@ -984,6 +984,18 @@ see a request.
   §7). `ios/hunt-leaks` (#418) records that feed on a **simulator**, outside every check, and says
   whether the app keeps what a scroll made; the same scroll on an iPhone, memory flat over 200 rows
   and TTFF there, is #435's.
+- **The adaptive policy's seams are `package`, and no ABR test is `@testable`** (#416).
+  `SuperPlayerABRTests` reads the product's pure halves through their public API and the oracle
+  through core's `package` `ThroughputSource`, the methods core itself calls, on an `EstimateMemory`
+  of the test's own and a clock it states — so aging between two and fifteen minutes is asserted on
+  stated times rather than waited for. `AdaptivePolicyPlaybackTests` shortens the hysteresis cooldown
+  through `AdaptivePolicy.forProfile(_:rebufferCooldownMs:memory:)`, a `package` seam its comment
+  argues: the real half-minute is a constant the pure tests hold, and what the harness shows is the
+  mechanism — a stall holding the ceiling on the playing item, and the first trigger after the
+  cooldown lifting it. It plays the audio stream, not the video ladder, because of #474. **That a
+  held ceiling changes which rung is played, and that the cellular cap binds on a cellular path,
+  are a device's**: the simulator's path is its host's, and testkit reports a trace's transport
+  rather than switching it.
 - **A realtime player's engine is read where no public reading exists** (#431).
   `SuperPlayerRealtimeTests` imports the realtime product `@testable`, each file arguing it:
   `RealtimeFormatsTests`, because the codec table answers CoreMedia vocabulary and is internal, as

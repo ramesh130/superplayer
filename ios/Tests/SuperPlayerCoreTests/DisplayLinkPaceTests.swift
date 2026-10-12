@@ -28,8 +28,8 @@ final class DisplayLinkPaceTests: XCTestCase {
 
     func testSixtyFramesASecondAsksForOneHundredAndTwenty() throws {
         var pace = DisplayLinkPace()
-        XCTAssertNil(pace.observe(10), "one frame says nothing about a rate")
-        let range = try XCTUnwrap(pace.observe(10 + 1.0 / 60))
+        XCTAssertNil(pace.rangeAfterFrame(at: 10), "one frame says nothing about a rate")
+        let range = try XCTUnwrap(pace.rangeAfterFrame(at: 10 + 1.0 / 60))
         XCTAssertEqual(range.preferred ?? 0, 120, accuracy: 0.01)
         XCTAssertEqual(range.maximum, 120, accuracy: 0.01)
         XCTAssertEqual(range.minimum, 60, accuracy: 0.01, "never slower than the content")
@@ -39,8 +39,8 @@ final class DisplayLinkPaceTests: XCTestCase {
     /// stream asks for sixty, which is what an iPhone's link runs at anyway.
     func testThirtyFramesASecondAsksForSixty() throws {
         var pace = DisplayLinkPace()
-        _ = pace.observe(0)
-        let range = try XCTUnwrap(pace.observe(1.0 / 30))
+        _ = pace.rangeAfterFrame(at: 0)
+        let range = try XCTUnwrap(pace.rangeAfterFrame(at: 1.0 / 30))
         XCTAssertEqual(range.preferred ?? 0, 60, accuracy: 0.01)
         XCTAssertEqual(range.minimum, 30, accuracy: 0.01)
     }
@@ -49,21 +49,23 @@ final class DisplayLinkPaceTests: XCTestCase {
     /// again only when that gap shortens — a variant switch to a faster rate.
     func testALongerGapChangesNothingAndAShorterOneRaisesTheRate() throws {
         var pace = DisplayLinkPace()
-        _ = pace.observe(0)
-        XCTAssertNotNil(pace.observe(1.0 / 30))
-        XCTAssertNil(pace.observe(3.0 / 30), "a gap of two frames is a lost frame, not a rate")
-        XCTAssertNil(pace.observe(4.0 / 30), "the same interval again asks nothing new")
-        let faster = try XCTUnwrap(pace.observe(4.0 / 30 + 1.0 / 60))
+        _ = pace.rangeAfterFrame(at: 0)
+        XCTAssertNotNil(pace.rangeAfterFrame(at: 1.0 / 30))
+        XCTAssertNil(
+            pace.rangeAfterFrame(at: 3.0 / 30), "a gap of two frames is a lost frame, not a rate")
+        XCTAssertNil(pace.rangeAfterFrame(at: 4.0 / 30), "the same interval again asks nothing new")
+        let faster = try XCTUnwrap(pace.rangeAfterFrame(at: 4.0 / 30 + 1.0 / 60))
         XCTAssertEqual(faster.preferred ?? 0, 120, accuracy: 0.01)
     }
 
     /// A seek back, or the same frame handed twice, is no interval at all.
     func testASeekBackOrARepeatSaysNothing() throws {
         var pace = DisplayLinkPace()
-        _ = pace.observe(5)
-        XCTAssertNil(pace.observe(5))
-        XCTAssertNil(pace.observe(1))
-        let range = try XCTUnwrap(pace.observe(1 + 1.0 / 60), "measured from the frame after it")
+        _ = pace.rangeAfterFrame(at: 5)
+        XCTAssertNil(pace.rangeAfterFrame(at: 5))
+        XCTAssertNil(pace.rangeAfterFrame(at: 1))
+        let range = try XCTUnwrap(
+            pace.rangeAfterFrame(at: 1 + 1.0 / 60), "measured from the frame after it")
         XCTAssertEqual(range.preferred ?? 0, 120, accuracy: 0.01)
     }
 }

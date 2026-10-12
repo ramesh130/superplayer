@@ -1150,7 +1150,7 @@ core's public `RealtimeSources`, which `SuperPlayer.Builder.setRealtime` takes, 
 implements is `FrameSource` — subscribe, receive encoded frames carrying a timestamp, a codec, a
 keyframe flag and optional codec-specific data, cancel — which names **no Media3 type**, for
 `HttpTransport`'s reason and for one more: it is the only boundary at which either transport is
-testable, since neither QUIC nor WebRTC runs under `check`. Its KDoc carries **nine obligations, each
+testable, since neither QUIC nor WebRTC runs under `check`. Its KDoc carries **ten obligations, each
 with what getting it wrong costs**, in `HttpTransport`'s register, because every one of them fails
 silently — a wrong length-field size produces a decoder that configures cleanly and renders nothing.
 Since #356 that seam — `FrameSource`, `FrameSink`, `RealtimeTrack`, `EncodedFrame` and

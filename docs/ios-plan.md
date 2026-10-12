@@ -214,7 +214,7 @@ into engine-owned queues and Apple has exactly that engine: `AVSampleBufferDispl
 
 | Android | iOS | Verdict |
 | --- | --- | --- |
-| `FrameSource`, `FrameSink`, `RealtimeTrack`, `EncodedFrame`, `CodecConfiguration`, nine obligations | Identical protocols in the core product | Ports 1:1 |
+| `FrameSource`, `FrameSink`, `RealtimeTrack`, `EncodedFrame`, `CodecConfiguration`, ten obligations | Identical protocols in the core product | Ports 1:1 |
 | `RealtimeMediaSource`/`MediaPeriod` over `SampleQueue`s, unseekable timeline | A `RealtimeEngine` over the synchronizer and the two renderers; the shared-epoch anchor, the late-track and stalled-track bounds in media time, and the typed refusals of `At` and `ResumeFromLastKnown` port unchanged | Ports |
 | `RealtimeFormats` table | `CMFormatDescription` per codec, keyed by the same two spellings, with the same citations | Ports |
 | `CodecConfigurationRecords`: record to Annex-B, NAL length size read and used | **Reversed.** CoreMedia's native shape is the record (`avcC`/`hvcC` as the format description's atom) and length-prefixed samples; so `Record` passes through and `InBand` is what needs conversion (parameter sets to a description through `CMVideoFormatDescriptionCreateFromH264ParameterSets`, Annex-B samples re-framed to four-byte lengths). The same refusals apply, in the other direction | Ports, mirrored, and the KDoc says which way |

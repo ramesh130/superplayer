@@ -58,7 +58,9 @@ final class MoqFrameSourceTests: XCTestCase {
         let sink = subscribeWatching(
             relay(
                 DeclaredCatalogs.catalog(
-                    audio: [Self.audio: DeclaredCatalogs.audio(DeclaredCatalogs.synthesizedAacCodec)]
+                    audio: [
+                        Self.audio: DeclaredCatalogs.audio(DeclaredCatalogs.synthesizedAacCodec)
+                    ]
                 )))
 
         XCTAssertEqual(sink.tracks.map(\.codec), [DeclaredCatalogs.synthesizedAacCodec])

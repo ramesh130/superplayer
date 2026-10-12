@@ -152,7 +152,8 @@ final class MoqCatalogTracksTests: XCTestCase {
                 coded: MoqDimensions(width: 3520, height: 3520)))
 
         // The observed broadcast's own square size: a rendition is not obliged to be 16:9.
-        XCTAssertEqual(tracks[0].track.codedSize, RealtimeTrack.CodedSize(width: 3520, height: 3520))
+        XCTAssertEqual(
+            tracks[0].track.codedSize, RealtimeTrack.CodedSize(width: 3520, height: 3520))
     }
 
     func testARenditionDeclaringNoSizeCarriesTheUnknownRatherThanAZero() throws {

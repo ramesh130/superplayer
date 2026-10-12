@@ -31,6 +31,12 @@ enum DemoScreen: String, CaseIterable, Identifiable, Hashable {
     /// app opens on.
     case tv
 
+    #if canImport(SuperPlayerMoQ)
+        /// A MoQ broadcast through a `RealtimePlayer` and `MoqFrameSource` — iOS alone, because the
+        /// MoQ product's native library carries no tvOS slice.
+        case moq
+    #endif
+
     var id: String { rawValue }
 
     var title: String {
@@ -39,6 +45,9 @@ enum DemoScreen: String, CaseIterable, Identifiable, Hashable {
         case .frameOutput: "Frame output"
         case .feed: "Feed"
         case .tv: "Television"
+        #if canImport(SuperPlayerMoQ)
+            case .moq: "MoQ"
+        #endif
         }
     }
 
@@ -48,6 +57,9 @@ enum DemoScreen: String, CaseIterable, Identifiable, Hashable {
         case .frameOutput: "The same stream through a pass-through frame output"
         case .feed: "200 rows over the pool and the preload coordinator"
         case .tv: "tvLeanback and the display's criteria on the system controls"
+        #if canImport(SuperPlayerMoQ)
+            case .moq: "A live broadcast over Media over QUIC on a RealtimePlayer"
+        #endif
         }
     }
 
@@ -58,6 +70,9 @@ enum DemoScreen: String, CaseIterable, Identifiable, Hashable {
         case .frameOutput: FrameOutputScreen(stream: .bipbopAdvanced)
         case .feed: FeedScreen()
         case .tv: TvScreen(stream: .bipbopAdvanced)
+        #if canImport(SuperPlayerMoQ)
+            case .moq: MoqScreen()
+        #endif
         }
     }
 

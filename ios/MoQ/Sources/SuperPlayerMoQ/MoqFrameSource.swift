@@ -158,7 +158,7 @@ public final class MoqFrameSource: FrameSource, @unchecked Sendable {
             }
             return (streams, session)
         }
-        openStreams.forEach { $0.close() }
+        for stream in openStreams { stream.close() }
         openSession?.close()
         // The poller is parked on this condition rather than asleep, so the join below costs a
         // cancellation nothing instead of up to a whole polling interval.
@@ -272,8 +272,9 @@ public final class MoqFrameSource: FrameSource, @unchecked Sendable {
     ///
     /// Registered **and started** under the one lock, so ``cancel()`` cannot read the list, join a
     /// thread that had not yet started and return while its body was still to run.
-    private func start(_ name: String, _ sink: any FrameSink, _ body: @escaping @Sendable () throws -> Void)
-    {
+    private func start(
+        _ name: String, _ sink: any FrameSink, _ body: @escaping @Sendable () throws -> Void
+    ) {
         let finished = DispatchSemaphore(value: 0)
         let thread = Thread { [self] in
             defer { finished.signal() }

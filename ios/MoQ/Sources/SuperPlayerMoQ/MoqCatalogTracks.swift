@@ -138,7 +138,8 @@ enum MoqCatalogTracks {
             throw MoqTransportError(
                 "The MoQ catalog declares track \"\(trackName)\" as "
                     + "\(declared.width)x\(declared.height), which is not a size a decoder can be "
-                    + "configured with. A publisher that does not know its resolution declares none.")
+                    + "configured with. A publisher that does not know its resolution declares none."
+            )
         }
         return size
     }

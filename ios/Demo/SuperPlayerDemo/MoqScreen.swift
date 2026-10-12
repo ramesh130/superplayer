@@ -75,7 +75,9 @@
             }
             .background(.black)
             .navigationTitle(DemoScreen.moq.title)
-            .onAppear { if session == nil { session = MoqDemoSession(broadcast: Self.broadcast()) } }
+            .onAppear {
+                if session == nil { session = MoqDemoSession(broadcast: Self.broadcast()) }
+            }
             .onDisappear {
                 session?.release()
                 session = nil

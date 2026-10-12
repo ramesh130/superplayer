@@ -15,6 +15,7 @@ orientation — this file adds only what is different under `ios/`.
 | `ios/api/<Product>.baseline` | the tracked public API, the `<module>/api/<module>.api` analog (`docs/api-surface.md`, *The iOS products*) |
 | `ios/scripts/api-surface.swift` | reduces the digester's JSON to that baseline |
 | `ios/check` | the whole definition of passing |
+| `ios/MoQ/` | `SuperPlayerMoQ` (#434), a package of its own rather than a root product, so it stays unpublished; over `third-party/moq/swift/`'s committed bindings |
 | `ios/Demo/` | the demo (#407): a hand-written Xcode project resolving the package **by path**, one target for iOS and tvOS, built by `ios/check` and run by hand — `ios/Demo/README.md`; its `FeedScreen` (#418) is the pool-and-coordinator recipe |
 | `ios/hunt-leaks` | the leak hunt (#418), `huntLeaks`' analog: an `xctrace` Leaks recording over the feed scrolling itself on a simulator, **not** in `ios/check` — `ios/Demo/README.md`, *The feed and the leak hunt* |
 | `ios/.swift-format` | the format's configuration: four-space indent and 100 columns, as the Kotlin half |
@@ -239,8 +240,28 @@ the event `DisplayModeChanged`, reported and never acted on. The platform is the
 protocol `DisplayManaging`; the system's, `SystemDisplayManager`, is tvOS-only and runs under no test
 (`docs/testing.md`, *A television on tvOS*). On iOS `standard()` makes nothing. The demo's `TvScreen`
 is the recipe on `AVPlayerViewController`'s system controls, and the app opens on it on tvOS.
-`SuperPlayerMoQ` is not declared yet — its binary target is
-i9's — and there is no `SuperPlayerCache`, since its content is the offline store's.
+#434 is `SuperPlayerMoQ`, and it is **not a product of the root manifest**: it is a package of its
+own, `ios/MoQ/Package.swift`, because a root product is resolvable by anyone who names this
+repository's URL and the Kotlin module it ports is deliberately unpublished — the SwiftPM analog of
+`LOCAL_ONLY`, which `CONTRIBUTING.md`'s #364 amendment reads for iOS. It depends on the root package
+by path, `ios/check` tests it in a step of its own on the same simulator, it tracks no API baseline,
+and `ios/Demo/` resolves it by path for `MoqScreen`. Its native half is `third-party/moq/swift/`: the
+`MoqFFI` package — UniFFI's generated Swift, compiled in Swift 5 mode as generated code — over an
+XCFramework built from the same `moq-dev/moq` commit as `third-party/moq/m2` and **committed**, since
+CI's macOS job has no Rust toolchain; `build-xcframework.sh` writes both, and
+`third-party/moq/README.md`'s *The Swift bindings* is the manual, with the size (58 MB on disk, about
+20 MB in Git) and why it is two iOS slices and no tvOS. The product is the Kotlin module ported whole:
+`MoqCatalogTracks`, `MoqFrameSource(url:)` over the internal `MoqRelay` seam with `UniffiMoqRelay`
+the one implementation touching the bindings (its `async` calls made blocking on the source's own
+threads), a connect thread and a pump thread per track, obligations 2, 3 and 9 made true, `cancel()`
+joining every thread, and `statistics()` polled each second into `MoqSessionStatistics` beside
+`MoqUpstreamMediaLoss.notInstrumented`. One departure is forced: the bindings carry a catalog's
+renditions as a Swift `Dictionary` — and the Rust side already collects them into a `HashMap` — so
+there is no declaration order, and the rendition taken per kind is the one whose **name sorts
+first**. What `ios/check` runs is `FrameSourceConformance` in both of ADR-0018 rule 4's branches
+over `ScriptedMoqRelay`, which proves the bridge and nothing about MoQ, and `MoqFfiLinkageTests`,
+which calls across the FFI into the simulator slice an app links. A broadcast on a device is the i9
+device ticket's. There is no `SuperPlayerCache`, since its content is the offline store's.
 
 **Dependencies point inward** under `docs/modules.md`'s phase rule, and the phase a product takes is
 the Android module's it ports: `docs/modules.md`'s *iOS products* table is the source, and
@@ -322,7 +343,8 @@ xcrun swift-format format --in-place --recursive --configuration ios/.swift-form
 ```
 
 `ios/check` is a script rather than a Gradle task (ADR-0021), and the macOS CI job runs it and
-nothing else, path-filtered to `ios/**`, `Package.swift` and the shared documents. The Linux job's
+nothing else, path-filtered to `ios/**`, `Package.swift`, `third-party/moq/swift/` and the shared
+documents. The Linux job's
 `./gradlew check` covers the two iOS readings that are text, because a check that can be a Gradle
 task belongs in `check`: the phase rule above, and the licence header below.
 

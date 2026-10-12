@@ -43,7 +43,9 @@ let package = Package(
         .library(name: "SuperPlayerRealtime", targets: ["SuperPlayerRealtime"]),
         .library(name: "SuperPlayerTestkit", targets: ["SuperPlayerTestkit"]),
         .library(name: "SuperPlayerTestMedia", targets: ["SuperPlayerTestMedia"]),
-        // SuperPlayerMoQ is not declared: its binary target is i9's (docs/ios-plan.md §7).
+        // SuperPlayerMoQ is deliberately not a product here: a root product is resolvable by
+        // anyone who names this repository's URL, and it is unpublished, as superplayer-moq is.
+        // It is a package of its own, ios/MoQ/Package.swift, which says why (#434).
     ],
     targets: [
         .target(

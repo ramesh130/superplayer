@@ -34,7 +34,10 @@ import SuperPlayerCore
 ///
 /// It fetches the multivariant playlist and every media playlist it names, and **downloads no
 /// segment**: the pathologies are declarations, and fetching media to check one would make a
-/// preflight cost what a start costs (ADR-0015 rule 7). It reads them with **a lint of its own
+/// preflight cost what a start costs (ADR-0015 rule 7). The one request that is not a playlist is a
+/// `HEAD` of a single segment, made only where a live playlist is held past its update bound and
+/// the doctor needs the segment's own caching to say which side is wrong — rule 7's #289 addendum;
+/// `DeliveryPathologies` argues it. It reads them with **a lint of its own
 /// written to RFC 8216**, because AVFoundation exposes no playlist parser — ADR-0020 rule 8's
 /// departure from ADR-0015 rule 6, bounded by the lint deciding nothing about playback. A finding
 /// on this platform therefore reads a document as RFC 8216 describes it rather than as AVFoundation
@@ -89,12 +92,38 @@ public final class MediaSourceDoctor: Sendable {
     /// that awaits it ends the fetching, and what could not be fetched then reads as unreachable —
     /// so **a report from a cancelled task is not evidence about the stream**, and a caller that
     /// cancelled discards it rather than logging it against a CDN.
-    public func examine(_ request: MediaRequest) async -> DiagnosticReport {
+    ///
+    /// ## The postmortem of a session that failed
+    ///
+    /// `classification` is what a *failed* session ended on, and passing it is the whole of the
+    /// difference between a preflight and a postmortem — one call, one report type (ADR-0015 rule
+    /// 8). A ticket reading "live stream freezes after 30 s" then comes back as a named defect with a
+    /// citation beside the class of failure, rather than as the class alone:
+    ///
+    /// ```swift
+    /// player.errors.sink { error in
+    ///     Task {
+    ///         // nil on a player configured without SuperPlayerResilience (ADR-0011 rule 14),
+    ///         // which answers a report of findings and no classification.
+    ///         let report = await doctor.examine(request, classification: player.classify(error))
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// The value is **read and never re-derived** (ADR-0015 rule 5): it is carried onto
+    /// ``DiagnosticReport/classification`` and read by nothing here — in particular the findings are
+    /// the ones the same request answers as a preflight, because what failed narrows, widens and
+    /// reorders nothing about what the stream says.
+    public func examine(_ request: MediaRequest, classification: SuperPlayerError? = nil) async
+        -> DiagnosticReport
+    {
         let session = URLSession(configuration: Self.sessionConfiguration)
         defer { session.finishTasksAndInvalidate() }
         let findings = await ManifestExamination(session: session, credentials: credentials)
             .examine(request.sources[0])
-        return DiagnosticReport(contentId: request.contentId, findings: findings, chain: chain)
+        return DiagnosticReport(
+            contentId: request.contentId, findings: findings, chain: chain,
+            classification: classification)
     }
 
     /// Ephemeral, with no local cache: a doctor reads what a player would be served now, and a

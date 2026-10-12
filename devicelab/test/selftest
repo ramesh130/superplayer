@@ -637,6 +637,13 @@ grep -v "pass=1 ended" "$ios_fixtures/console-feed.log" > "$scratch/one-pass.log
 ios_feed_report "$scratch/one-pass.log" "$scratch/flat.tsv" 1791794399000 "$scratch/verdict" >/dev/null
 assert_eq "one pass has no baseline to be flat against, so it is unknown" unknown "$(cat "$scratch/verdict")"
 
+# A UI test's log (`ios_test_demo`): the moq-smoke scenario's outcomes and observations. The runner
+# that never ran a test is the first run's own log, on a phone whose UI automation was not yet enabled.
+assert_eq "a runner that never started a test is one outcome naming why" \
+    "runner	The test runner failed to initialize for UI testing. (Underlying Error: Timed out while enabling automation mode.)" \
+    "$(ios_test_outcomes < "$ios_fixtures/xcodebuild-test-runner-failed.log")"
+assert_eq "and holds no observation" "" "$(ios_observation_blocks < "$ios_fixtures/xcodebuild-test-runner-failed.log")"
+
 ios_metadata="$(
     RUN_METADATA_SCHEMA=1 RUN_ID=r RUN_STARTED_AT=a RUN_FINISHED_AT=b RUN_SCENARIO=frames SP_COMMIT=c SP_TREE_DIRTY=0 \
         SP_VERSION=0.1.0-SNAPSHOT DEMO_CONFIGURATION=Release DEMO_APP_SHA256=h IOS_UDID=u DEVICE_IS_EMULATOR=0 \

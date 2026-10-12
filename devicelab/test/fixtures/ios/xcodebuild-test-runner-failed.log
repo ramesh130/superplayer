@@ -1,0 +1,9 @@
+2026-10-12 22:00:30.656481+1100 SuperPlayerDemoUITests-Runner[1163:126795] [Default] Running tests...
+2026-10-12 22:01:30.764608+1100 SuperPlayerDemoUITests-Runner[1163:126795] [Default] Failed to initialize for UI testing: Error Domain=com.apple.dt.XCTest.XCTFuture Code=1000 "Timed out while enabling automation mode." UserInfo={NSLocalizedDescription=Timed out while enabling automation mode.}
+Test session results, code coverage, and logs:
+	/repo/.build/moq-try1.xcresult
+
+Testing failed:
+	SuperPlayerDemoUITests-Runner (1163) encountered an error (The test runner failed to initialize for UI testing. (Underlying Error: Timed out while enabling automation mode.))
+
+** TEST EXECUTE FAILED **

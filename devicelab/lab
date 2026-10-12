@@ -130,6 +130,8 @@ load_scenario() {
     SCENARIO_DATA_SOURCES=""
     SCENARIO_PLATFORMS=android
     SCENARIO_IOS_LAUNCH=(-SPDemoScreen playback)
+    SCENARIO_IOS_UI_TEST=""
+    SCENARIO_IOS_TEST_ENV=()
     # shellcheck source=/dev/null
     . "$file"
     declare -F scenario_drive >/dev/null || die "scenario '$1' defines no scenario_drive"
@@ -473,10 +475,19 @@ cmd_run_ios() {
     if declare -F scenario_prepare >/dev/null; then scenario_prepare; fi
     ios_ensure_device
     log "device: $IOS_UDID ($DEVICE_MODEL, iOS $DEVICE_OS_VERSION ($DEVICE_OS_BUILD), $IOS_REALITY, $IOS_TRANSPORT)"
-    ios_build_demo
-    ios_install_demo
-
-    if [ "${SCENARIO_IOS_RECORDED_LAUNCH:-0}" = 1 ]; then
+    if [ -n "${SCENARIO_IOS_UI_TEST:-}" ]; then
+        # The scenario is a UI test (`ios_test_demo`): xcodebuild installs and launches what it needs,
+        # nothing is recorded, and what the run read comes out of the test's log. The scenario sets
+        # RUN_PLAYBACK_POSITION_MS from it, and its verdict judges the outcomes.
+        ios_build_demo build-for-testing
+        ios_test_demo "$SCENARIO_IOS_UI_TEST"
+        RUN_TRACE_ENDED_BY_BOUND=0
+        IOS_TRACE_ENDED_EARLY=0
+        IOS_TRACE_END_REASON="not recorded: the run is a UI test"
+        scenario_drive
+    elif [ "${SCENARIO_IOS_RECORDED_LAUNCH:-0}" = 1 ]; then
+        ios_build_demo
+        ios_install_demo
         # The recording launches the demo and the scenario drives itself (lib/ios.sh,
         # `ios_record_launch`), so readiness is read back afterwards rather than waited on.
         ios_record_launch "${SCENARIO_IOS_LAUNCH[@]}"
@@ -485,6 +496,8 @@ cmd_run_ios() {
         log "played (position ${RUN_PLAYBACK_POSITION_MS} ms)"
         scenario_drive
     else
+        ios_build_demo
+        ios_install_demo
         [ "$TRACE_FROM" != launch ] || ios_trace_start
         ios_launch_demo main "${SCENARIO_IOS_LAUNCH[@]}"
         RUN_PLAYBACK_POSITION_MS="$(ios_wait_for_playback "${PLAYBACK_TIMEOUT:-90}")"
@@ -514,6 +527,10 @@ cmd_run_ios() {
 }
 
 write_report_ios() {
+    if [ -n "${SCENARIO_IOS_UI_TEST:-}" ]; then
+        write_report_ios_ui_test
+        return
+    fi
     cat <<REPORT
 # devicelab run \`$RUN_ID\`
 
@@ -533,6 +550,36 @@ in the demo's $DEMO_CONFIGURATION build, built by $HOST_XCODE.
 | \`console-*.log\` | each launch's console: the demo's os_log lines, telemetry included |
 | \`build.log\` | the build and the install |
 | \`xctrace.log\` | what xctrace said while it recorded |
+REPORT
+    if declare -F scenario_report >/dev/null; then
+        printf '\n## %s\n\n' "$RUN_SCENARIO"
+        scenario_report
+    fi
+}
+
+# The report of a run whose scenario is a UI test: the same header, and the files such a run leaves in
+# place of a recording and a console.
+write_report_ios_ui_test() {
+    cat <<REPORT
+# devicelab run \`$RUN_ID\`
+
+Scenario **$RUN_SCENARIO** on $DEVICE_MODEL \`$DEVICE_PRODUCT_TYPE\` (iOS $DEVICE_OS_VERSION, build $DEVICE_OS_BUILD$([ "$DEVICE_IS_EMULATOR" = 1 ] && printf ', simulator')),
+against SuperPlayer \`$SP_COMMIT\`$([ -z "$SP_TREE_NOTE" ] || printf ' **%s**' "$SP_TREE_NOTE"),
+in the demo's $DEMO_CONFIGURATION build, built by $HOST_XCODE.
+
+- The UI test \`$SCENARIO_IOS_UI_TEST\`, run by \`xcodebuild test-without-building\`; it exited $RUN_TEST_EXIT.
+- Playback confirmed advancing at ${RUN_PLAYBACK_POSITION_MS:-no} ms, as the test read it off the demo.
+- No xctrace recording: xcodebuild owns the app and the runner for the test's length.
+- The package is resolved by path and built in the same \`xcodebuild\`, so the app is the tree; its executable's sha256 is in \`run.json\`.
+
+| File | What it is |
+| --- | --- |
+| \`observations.txt\` | every block the test printed between its markers, whatever its outcome |
+| \`outcomes.tsv\` | each test case and how it ended |
+| \`test.log\` | xcodebuild's log of the test run |
+| \`test.xcresult\` | its result bundle; open in Xcode, or \`xcrun xcresulttool\` |
+| \`run.json\` | what was measured on what — \`lib/metadata.sh\`'s shape, with \`platform\` saying which |
+| \`build.log\` | the build |
 REPORT
     if declare -F scenario_report >/dev/null; then
         printf '\n## %s\n\n' "$RUN_SCENARIO"

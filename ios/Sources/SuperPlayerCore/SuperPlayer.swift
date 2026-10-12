@@ -184,6 +184,19 @@ public final class SuperPlayer {
         /// the download's own asset (``OfflineAssets``). Identity, measurement and remembered
         /// positions are the request's as for any adoption; only the asset differs.
         public var offlineContent: (any OfflineContent)?
+
+        /// What the picture is shown on, or nil — the default — for a player that asks nothing of the
+        /// display and pays nothing for it (ADR-0014 rule 14): no binding made, nothing registered.
+        /// The Android `setOutput`, taking `SuperPlayerTV`'s `TvOutput.standard()`, and fixed for the
+        /// player's lifetime as every configuration is. It sits beside ``frameOutput`` — the second
+        /// output slot ADR-0022 rule 3 shaped — and neither reads the other.
+        ///
+        /// ```swift
+        /// var configuration = SuperPlayer.Configuration()
+        /// configuration.profile = .tvLeanback
+        /// configuration.output = TvOutput.standard()
+        /// ```
+        public var output: (any PlaybackOutput)?
     }
 
     /// The configuration this player was made with.
@@ -244,6 +257,11 @@ public final class SuperPlayer {
     /// player configured without one — what the pays-nothing count reads, and what
     /// `SuperPlayerDRM`'s offline store performs its verbs over (`store.over(player)`, #423).
     package private(set) var protection: (any ProtectionSession)?
+
+    /// The binding ``Configuration/output`` made for this player (`PlaybackOutput.swift`), or nil on
+    /// a player configured without one, or with one that has nothing to do on this platform — what
+    /// the pays-nothing count reads (`OutputPaysNothingTests`).
+    private(set) var videoOutput: (any VideoOutputBinding)?
 
     /// The pool attachment this player adopts through, set by the ``PlayerPool`` that made it while
     /// one is attached; nil on every other player, which asks nothing at adoption (ADR-0010 rule
@@ -347,6 +365,7 @@ public final class SuperPlayer {
         reapplication?.start(on: avPlayer)
         // After every stored property, because the session holds the player as its host.
         protection = (configuration.drm as? any ContentProtecting)?.protectionSession(host: self)
+        videoOutput = (configuration.output as? any VideoOutputting)?.videoOutputBinding(host: self)
         if rungs != nil {
             resilienceObservations = [
                 Observation.register(.resilienceMediaServicesReset, on: avPlayer) {
@@ -574,6 +593,7 @@ public final class SuperPlayer {
         lifecycle.release()
         framePath?.detach()
         protection?.release()
+        videoOutput?.release()
         avPlayer.replaceCurrentItem(with: nil)
     }
 
@@ -651,6 +671,9 @@ public final class SuperPlayer {
     /// is the app's, and the app detaches it, as ``PlayerPool/recycle(_:)`` says.
     private func detachOwnedOutput() {
         framePath?.detach()
+        // And the display's criteria with it: a recycled player shows nothing, so what it asked of
+        // the display is withdrawn until its next row adopts an item.
+        videoOutput?.itemChanged(to: nil)
     }
 
     /// The ``MediaRequest/contentId`` of what is playing, read back off the current item's external
@@ -717,6 +740,7 @@ public final class SuperPlayer {
         let keepsWarmItem = item === heldWarm && avPlayer.currentItem === item
         heldWarm = nil
         if !keepsWarmItem { avPlayer.replaceCurrentItem(with: item) }
+        videoOutput?.itemChanged(to: item)
     }
 
     /// Climbs the ladder for `item`'s failure (`PlayerStateRungs.swift`), once per item — the status

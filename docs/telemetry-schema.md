@@ -484,6 +484,17 @@ lets a player be configured with a stored licence, which answers every key itsel
 declared appearing in a population that had none, so **`SCHEMA_VERSION` does not move**. Its
 `durationMs` reads zero: no round trip is made, and the key session is answered as it asks.
 
+**Version 2 still stands — the display's mode on tvOS (`#426`).** The vocabulary gained one event,
+**`DisplayModeChanged`**, which a tvOS player configured with `SuperPlayerTV`'s output emits: the
+reading as each session's content asks the display for its criteria, then each display mode switch
+beginning and ending, and each change of the viewer's *Match Content* settings. **`SCHEMA_VERSION` does
+not move**: a new event type is shape, no existing field's definition changes, and the event is
+declared on Android and emitted by nothing there, as `OutputObscuredChanged` is.
+
+| On tvOS | What a pipeline sees | Why the version does not move |
+| --- | --- | --- |
+| `DisplayModeChanged` | A new event, on tvOS sessions of a player configured with `TvOutput` only | A population Android never had: Android's display change re-selects and reaches a pipeline as `TrackSwitched`, and no Android API reports a mode switch back. A session's `switchInProgress = true` followed by `false` brackets the time the panel may have been blank, which on a sink whose switches are not seamless is inside `timeToFirstFrameMs` (*Time to first frame*, *On a television*) |
+
 **A sink must tolerate a new event type.** `TelemetryEvent` is sealed, so a `when` over it can be
 exhaustive without an `else` — and such a `when` fails to compile when a later version adds an event.
 An `else` branch is the forward-compatible spelling; take the exhaustive one only if being told about
@@ -510,6 +521,7 @@ additions is what you want.
 | `LiveLatencySampled` | Every 10 s, live content only | `liveLatencyMs`, `targetLiveLatencyMs` | On the sampling timer, for an item whose `duration` is indefinite: the end of the last `seekableTimeRanges` entry less `currentTime()` — AVFoundation's own live edge, where Android reads the program clock. The target is `configuredTimeOffsetFromLive` where the profile set one, else `recommendedTimeOffsetFromLive` |
 | `PlaybackStateSampled` | Every 10 s | `samplingIntervalMs`, `videoBitrateBps`, `bufferedDurationMs`, `playing`, `throughputEstimateBps` | On the sampling timer. `bufferedDurationMs` from the `loadedTimeRanges` entry holding `currentTime()`; `playing` is `timeControlStatus` of `.playing`; `throughputEstimateBps` is the access log's last `observedBitrate` — **Apple's own figure**, smoothed over everything the item downloaded and not a sample, where Android's is Media3's meter |
 | `OutputObscuredChanged` | The picture began or stopped being obscured for want of output protection | `obscured` | Key-value observation of `AVPlayer.isOutputObscuredDueToInsufficientExternalProtection` — HDCP on an external display — on a player configured with `drm` alone, and read once as each session opens. **Reported and never acted on**: what an output may show is the licence's policy, which the platform enforces ([ADR-0012][adr12] rule 11). **Android emits none**: it has no such reading, and an output that cannot be secured fails as `Device.SecureDecoderInit` there |
+| `DisplayModeChanged` | A television's display mode reading: as content asks for its criteria, then a mode switch beginning or ending, or the viewer's settings changing | `switchInProgress`, `criteriaMatchingEnabled` | `AVDisplayManager`'s `isDisplayModeSwitchInProgress` and `isDisplayCriteriaMatchingEnabled`, read by `SuperPlayerTV`'s output binding as it asks the key window's display for the item's `preferredDisplayCriteria` and at `AVDisplayManagerModeSwitchStart`, `…End` and `…SettingsChanged`, on tvOS on a player configured with `TvOutput` alone (`#426`); a reading the session already reported is not reported again. **Reported and never acted on**: the system re-selects for a display change on Apple platforms. **Android emits none**: core's display watch re-selects there, through SuperPlayer's own selection gate, and a pipeline sees `TrackSwitched` ([ADR-0014][adr14] rule 5) |
 | `VideoFramesDropped` | Every 10 s, while video renders | `droppedFrames`, `repeatedFrames`, `elapsedPlayingMs` | On the sampling timer, video items only: the change since the last sample in the access log's summed `numberOfDroppedVideoFrames` and `durationWatched`. `repeatedFrames` is 0, unobservable as on Android |
 
 The *How derived on iOS* column says which AVFoundation API each event comes from on iOS and
@@ -641,7 +653,9 @@ rate* to *Always*, a switch that is not seamless blanks the panel while the HDMI
 and the first frame waits for it. That wait is **inside** `timeToFirstFrameMs`, and on some sinks it is
 seconds rather than milliseconds. The meaning does not change, because the viewer waited for it, so
 the schema version does not move. A report comparing a television arm with a phone arm will still show
-the difference, and should say which device each ran on.
+the difference, and should say which device each ran on. On tvOS the same wait is bracketed by
+`DisplayModeChanged`'s `switchInProgress` going `true` and then `false`, so a pipeline can say how much
+of a session's start-up the display took.
 
 *Agreement with CMCD:* CMCD v2's `msd` (media start delay) uses the same boundary — the viewer's
 request to the first frame — so the two routes report the same number rather than two numbers with

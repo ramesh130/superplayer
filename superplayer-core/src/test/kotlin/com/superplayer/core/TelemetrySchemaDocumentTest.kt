@@ -44,8 +44,8 @@ class TelemetrySchemaDocumentTest {
         val documented = documentedEvents()
         // A guard on the parser rather than a second authority on the count: a table it read none of
         // would otherwise compare as "nothing documented" and fail less legibly.
-        assertWithMessage("the parser found ${documented.keys}; the table has sixteen events")
-            .that(documented).hasSize(16)
+        assertWithMessage("the parser found ${documented.keys}; the table has seventeen events")
+            .that(documented).hasSize(17)
 
         assertThat(differences(documented, carriedEvents())).isEmpty()
     }

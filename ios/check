@@ -10,6 +10,8 @@
 #                             comparing them; the only writer of the iOS golden traces
 #
 #   SP_SIMULATOR      the simulator to test on, by name (default superplayer-check); made if absent
+#   SP_TV_SIMULATOR   the tvOS simulator SuperPlayerTVTests runs on (default <SP_SIMULATOR>-tv)
+#   SP_REQUIRE_TVOS   1 to fail, rather than skip the tvOS test run, where no tvOS runtime is installed
 #   SP_DERIVED_DATA   xcodebuild's DerivedData (default .build/DerivedData, gitignored)
 #
 # The macOS CI job runs exactly this, so a contributor sees what CI sees. A script rather than a
@@ -17,7 +19,7 @@
 set -euo pipefail
 
 usage() {
-    sed -n '5,13p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '5,15p' "$0" | sed 's/^# \{0,1\}//' >&2
 }
 
 update_api=false
@@ -140,14 +142,75 @@ if $update_golden; then
     echo "rewrote the golden traces under ios/Tests/Fixtures/golden; review and commit the diff"
 fi
 
-# tvOS is built and not tested: a tvOS simulator runtime is not something every host has, and no
-# product holds tvOS-only code until i7 (docs/ios-plan.md §7), which is when a tvOS test run earns
-# its place here.
+# tvOS is built whole, and SuperPlayerTVTests — the one product with tvOS-only code (#426) — runs
+# on a tvOS simulator as well as the iOS one: the stand-in display is the same on both, and this run
+# is what exercises the product as tvOS compiles it. A host with no tvOS runtime skips it and says
+# so; CI sets SP_REQUIRE_TVOS so that a runner image losing the runtime fails rather than passes.
 step "Build: tvOS"
 xcodebuild build -quiet \
     -scheme "$scheme" \
     -destination 'generic/platform=tvOS Simulator' \
     -derivedDataPath "$derived_data"
+
+tv_simulator="${SP_TV_SIMULATOR:-$simulator-tv}"
+step "Test: SuperPlayerTVTests on the tvOS simulator $tv_simulator"
+tv_udid="$(xcrun simctl list -j | python3 -I -c '
+import json, sys
+name = sys.argv[1]
+listing = json.load(sys.stdin)
+tvos = [r for r in listing["runtimes"] if r["platform"] == "tvOS" and r["isAvailable"]]
+for runtime in tvos:
+    for device in listing["devices"].get(runtime["identifier"], []):
+        if device["name"] == name and device["isAvailable"]:
+            print(device["udid"])
+            sys.exit()
+if not tvos:
+    print("none")
+    sys.exit()
+newest = max(tvos, key=lambda r: [int(p) for p in r["version"].split(".")])
+tvs = [t for t in newest["supportedDeviceTypes"] if t.get("productFamily") == "Apple TV"]
+if not tvs:
+    sys.exit("tvOS " + newest["version"] + " supports no Apple TV device type")
+print("create", newest["identifier"], tvs[0]["identifier"])
+' "$tv_simulator")"
+case "$tv_udid" in
+    none)
+        [ "${SP_REQUIRE_TVOS:-0}" != 1 ] || fail "no tvOS simulator runtime is installed"
+        echo "skipped: no tvOS simulator runtime is installed (SuperPlayerTVTests ran on iOS only)"
+        ;;
+    *)
+        case "$tv_udid" in
+            create\ *)
+                read -r _ runtime device_type <<<"$tv_udid"
+                tv_udid="$(xcrun simctl create "$tv_simulator" "$device_type" "$runtime")"
+                echo "created $tv_udid ($device_type, $runtime)"
+                ;;
+            *) echo "using $tv_udid" ;;
+        esac
+        tv_booted_here=false
+        if xcrun simctl list devices | grep -q "$tv_udid) (Shutdown)"; then tv_booted_here=true; fi
+        tv_status=0
+        xcodebuild test -quiet \
+            -scheme "$scheme" \
+            -destination "id=$tv_udid" \
+            -derivedDataPath "$derived_data" \
+            -resultBundlePath "$results/test-tvos.xcresult" \
+            -only-testing:SuperPlayerTVTests || tv_status=$?
+        if $tv_booted_here; then xcrun simctl shutdown "$tv_udid" >/dev/null 2>&1 || true; fi
+        if [ "$tv_status" -ne 0 ]; then
+            xcrun xcresulttool get test-results summary \
+                --path "$results/test-tvos.xcresult" >&2 || true
+            fail "xcodebuild test on tvOS failed"
+        fi
+        read -r tv_result tv_passed < <(
+            xcrun xcresulttool get test-results summary --path "$results/test-tvos.xcresult" |
+                python3 -I -c 'import json, sys; s = json.load(sys.stdin); print(s["result"], s["passedTests"])'
+        )
+        [ "$tv_result" = "Passed" ] || fail "the tvOS result bundle says \"$tv_result\", not Passed"
+        [ "$tv_passed" -ge 1 ] || fail "no SuperPlayerTVTests test passed on tvOS"
+        echo "$tv_passed tests passed on tvOS"
+        ;;
+esac
 
 # The demo resolves the package by path, as an adopter's app does, so this is the build that fails
 # when a product's public API stops being enough for an app. Built and not run, for both platforms

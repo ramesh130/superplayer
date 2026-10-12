@@ -523,8 +523,8 @@ done
 ios_fixtures="$fixtures/ios"
 
 assert_eq "a paired, booted phone in Developer Mode and a booted simulator are usable; a phone not in Developer Mode, one nobody paired, a television and a shut-down simulator are not" \
-    "00008150-000000000000AB01	physical	A phone	iPhone 17 Pro Max	iPhone18,2	27.0	24A437
-E97F7811-0000-0000-0000-000000000006	simulated	sp-435	iPhone Duo	iPhone19,4	27.1	24A94232" \
+    "00008150-000000000000AB01	physical	A phone	iPhone 17 Pro Max	iPhone18,2	27.0	24A437	localNetwork
+E97F7811-0000-0000-0000-000000000006	simulated	sp-435	iPhone Duo	iPhone19,4	27.1	24A94232	sameMachine" \
     "$(ios_usable_devices < "$ios_fixtures/devicectl-devices.json")"
 assert_eq "a simulator is found by name on an iOS runtime — not the tvOS one of the same name, nor an unavailable one" \
     "E97F7811-0000-0000-0000-000000000012" "$(ios_simulator_named sp-435 < "$ios_fixtures/simctl-devices.json")"
@@ -546,7 +546,9 @@ assert_eq "nor a later position of different content: a row that moved on is not
     "$(printf '[Feed] row=0 contentId=a positionMs=0\n[Feed] row=1 contentId=b positionMs=900\n' | ios_advancing_position)"
 
 assert_eq "the frame reading is the span logged and the last line's counts" \
-    "0 30000 1791 12 2 0 0" "$(ios_frame_reading < "$ios_fixtures/console-frame-output.log")"
+    "0 30000 1791 12 2 0 0 - -" "$(ios_frame_reading < "$ios_fixtures/console-frame-output.log")"
+assert_eq "and the interval and largest gap where the line carries them" "2000 2000 121 1 1 0 0 16.67 33.33@1500" \
+    "$(printf '[Playback] content=a position=2000 frames=121 missing=1 runs=1 repeated=0 intervalMs=16.67 largestGapMs=33.33@1500 dropped=0\n' | ios_frame_reading)"
 assert_eq "a screen with no frame output has no frame reading" "" \
     "$(ios_frame_reading < "$ios_fixtures/console-playback.log")"
 assert_eq "the control's reading is the span and AVFoundation's dropped count" \
@@ -606,6 +608,11 @@ assert_contains "it reads time to first frame from declared intent only, and say
 assert_contains "with the median and p90 of the four from intent" "$feed_report" "median **337 ms**, p90 693 ms"
 assert_contains "and counts the watched rows that found the pool at its bound" "$feed_report" "found the pool at its bound: 1"
 assert_not_contains "a sample of another process is not the demo's" "$feed_report" "900.0 MiB"
+assert_contains "and gives time to first frame per pass, the rows played before the scroll apart" "$feed_report" \
+    "| before the scroll | 1 | 374 ms | 374 ms | 374 ms |"
+assert_contains "each first frame in the pass it arrived in" "$feed_report" "| 1 | 2 | 496 ms | 693 ms | 693 ms |"
+ios_feed_report "$ios_fixtures/console-feed.log" "$scratch/flat.tsv" 1791794399000 "$scratch/verdict" 1 >/dev/null
+assert_eq "a recording that ended before the run did is unknown, however flat what it holds" unknown "$(cat "$scratch/verdict")"
 ios_feed_report "$ios_fixtures/console-feed.log" "$scratch/growing.tsv" 1791794399000 "$scratch/verdict" >/dev/null
 assert_eq "a second pass above the first's p90 is growing" growing "$(cat "$scratch/verdict")"
 ios_feed_report "$ios_fixtures/console-feed.log" /dev/null 1791794399000 "$scratch/verdict" >/dev/null

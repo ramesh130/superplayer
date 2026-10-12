@@ -390,6 +390,7 @@ ios/check --update-golden     # the same, rewriting ios/Tests/Fixtures/golden/*.
 SP_SIMULATOR=mine ios/check   # test on a simulator of that name instead (created if absent)
 ios/Benchmark/bench           # PRD.md §6's matrix on the simulator, ~2 h 40 min; NOT in ios/check (ios/Benchmark/README.md)
 ios/hunt-leaks                # the leak hunt on a simulator; minutes, a network, and not a check
+devicelab/lab run frames --platform ios   # i1's and i4's device exits on a phone (`feed`); devicelab/README.md, *iOS*
 xcrun swift-format format --in-place --recursive --configuration ios/.swift-format ios Package.swift
 ```
 

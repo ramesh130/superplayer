@@ -15,31 +15,34 @@
 
 SCENARIO_DESCRIPTION="iOS: FRAMES_SECONDS (default 120) through the pass-through frame output, counting the frames it never saw; then AVPlayerLayer's own drops as the control."
 SCENARIO_PLATFORMS=ios
+# Two minutes is 7200 frames at the stream's 60 a second: enough that one lost frame is a reading and
+# not a rounding, short enough that both arms fit in a few minutes.
+FRAMES_SECONDS="${FRAMES_SECONDS:-120}"
 SCENARIO_IOS_LAUNCH=(-SPDemoScreen frameOutput)
 # From playing, so the recording is the playback the count covers; a bound with room for both arms.
 SCENARIO_TRACE_FROM=playing
-SCENARIO_TRACE_MS=$(((${FRAMES_SECONDS:-120} * 2 + 300) * 1000))
+SCENARIO_TRACE_MS=$((($FRAMES_SECONDS * 2 + 300) * 1000))
 
 # DemoPlayback.positionLogIntervalSeconds, in milliseconds: what a steady stretch advances by.
 FRAMES_LOG_INTERVAL_MS=2000
 
 scenario_drive() {
-    sleep "${FRAMES_SECONDS:-120}"
+    sleep "$FRAMES_SECONDS"
     FRAMES_READING="$(ios_frame_reading <"$IOS_LOG")"
     [ -n "$FRAMES_READING" ] || die "the frame-output screen logged no frames= line"
     FRAMES_STEADY="$(ios_frame_steady "$FRAMES_LOG_INTERVAL_MS" <"$IOS_LOG")"
 
-    log "the control: the same stream on AVPlayerLayer for ${FRAMES_SECONDS:-120} s"
+    log "the control: the same stream on AVPlayerLayer for $FRAMES_SECONDS s"
     ios_launch_demo control -SPDemoScreen playback
     ios_wait_for_playback 90 >/dev/null
-    sleep "${FRAMES_SECONDS:-120}"
+    sleep "$FRAMES_SECONDS"
     CONTROL_READING="$(ios_dropped_reading <"$IOS_LOG")"
 }
 
 scenario_report() {
-    local first last frames missing runs repeated dropped c_first c_last c_dropped
+    local first last frames missing runs repeated dropped interval gap c_first c_last c_dropped
     local steady_ms steady_frames steady_missing other_ms other_missing
-    read -r first last frames missing runs repeated dropped <<<"$FRAMES_READING"
+    read -r first last frames missing runs repeated dropped interval gap <<<"$FRAMES_READING"
     read -r steady_ms steady_frames steady_missing other_ms other_missing <<<"$FRAMES_STEADY"
     read -r c_first c_last c_dropped <<<"${CONTROL_READING:-- - -}"
     cat <<REPORT
@@ -52,7 +55,13 @@ scenario_report() {
 | … around a stall or a seek ($other_ms ms) | $other_missing | — |
 | Stretches of one picture size (variant switches + 1) | $runs | — |
 | Frames handed twice | $repeated | — |
+| Frame interval (the last stretch's) · largest gap @ where it ended | $interval ms · $gap ms | — |
 | Dropped, by AVFoundation's access log | $dropped | **$c_dropped** |
+
+The two columns are two counters over two sessions, one after the other on the same network, and are
+not one comparison: the left is inferred from presentation times, the right is AVFoundation's own
+\`numberOfDroppedVideoFrames\`. The control says what an \`AVPlayerLayer\` drops on this phone, which is
+what the output's count is read beside; the verdict is the left column's alone.
 
 $(frames_verdict_line "$FRAMES_STEADY")
 
@@ -76,9 +85,9 @@ REPORT
 frames_verdict_line() {
     local steady_ms steady_frames steady_missing
     read -r steady_ms steady_frames steady_missing _ <<<"$1"
-    if [ "${steady_ms:-0}" -lt $((${FRAMES_SECONDS:-120} * 500)) ]; then
+    if [ "${steady_ms:-0}" -lt $(($FRAMES_SECONDS * 500)) ]; then
         printf 'Verdict: **unknown** — %s ms of steady playback, under half the %s s played: too disturbed to judge; run it again.\n' \
-            "${steady_ms:-0}" "${FRAMES_SECONDS:-120}"
+            "${steady_ms:-0}" "$FRAMES_SECONDS"
     elif [ "$steady_missing" = 0 ]; then
         printf 'Verdict: **met** — in %s ms of steady playback, every frame the content held reached the output (%s handed).\n' \
             "$steady_ms" "$steady_frames"

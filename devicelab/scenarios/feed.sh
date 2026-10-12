@@ -34,10 +34,13 @@ scenario_drive() {
 }
 
 scenario_report() {
-    printf 'The feed: %s rows, %s pass(es) down and back, %s ms a row, on the device above.\n\n' \
+    # Every row's first frame, one per line, for a reader who wants the rows rather than the spread.
+    ios_first_frames <"$RUN_DIR/console-main.log" >"$RUN_DIR/ttff.tsv"
+    printf 'The feed: %s rows, %s pass(es) down and back, %s ms a row, on the device above. `ttff.tsv`\n' \
         "$FEED_ROWS" "$FEED_PASSES" "$FEED_DWELL_MS"
+    printf 'holds every first frame by content id: the time and its boundary.\n\n'
     ios_feed_report "$RUN_DIR/console-main.log" "$RUN_DIR/footprint.tsv" "${IOS_TRACE_START_MS:-0}" \
-        "$RUN_DIR/feed-verdict.txt"
+        "$RUN_DIR/feed-verdict.txt" "${IOS_TRACE_ENDED_EARLY:-0}"
 }
 
 scenario_verdict() {

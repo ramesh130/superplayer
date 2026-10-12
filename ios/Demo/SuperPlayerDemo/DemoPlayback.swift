@@ -103,6 +103,8 @@ final class DemoPlayback {
                     let tally = $0.reading
                     return
                         " frames=\(tally.frames) missing=\(tally.missing) runs=\(tally.runs) repeated=\(tally.repeated)"
+                        + " intervalMs=\(String(format: "%.2f", tally.intervalMs))"
+                        + " largestGapMs=\(String(format: "%.2f", tally.largestGapMs))@\(Int64(tally.largestGapAtMs))"
                 } ?? ""
             // What AVFoundation says it dropped of the item's frames, summed over the access log's
             // entries: on the playback screen that is the `AVPlayerLayer`'s own drops, the control

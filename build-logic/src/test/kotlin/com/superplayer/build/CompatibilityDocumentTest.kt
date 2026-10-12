@@ -28,8 +28,12 @@ import java.io.File
  * going undocumented (ADR-0017 rule 1).
  *
  * The synthetic cases state both sides as string literals, because the function under test is a
- * pure function over two documents; the last test is the control, and runs the real
- * `settings.gradle.kts` against the real document.
+ * pure function over two documents; the control runs the real `settings.gradle.kts` against the
+ * real document.
+ *
+ * Since #430 the same check has a Swift half, `findSwiftProductTableViolations`: the document's
+ * Swift products table against the root `Package.swift` and `ios/MoQ/Package.swift`, stated the
+ * same way and checked by the same control.
  */
 class CompatibilityDocumentTest {
 
@@ -369,7 +373,130 @@ class CompatibilityDocumentTest {
                 File(repoRoot, "docs/compatibility.md").readText()
             )
         )
+        assertEquals(
+            emptyList<String>(),
+            findSwiftProductTableViolations(
+                File(repoRoot, "Package.swift").readText(),
+                File(repoRoot, "ios/MoQ/Package.swift").readText(),
+                File(repoRoot, "docs/compatibility.md").readText()
+            )
+        )
+        // A guard on the parser rather than a second authority on the count: a manifest it read no
+        // product from would agree with an empty table.
+        assertTrue(swiftLibraryProducts(File(repoRoot, "Package.swift").readText()).size > 1)
     }
+
+    @Test
+    fun `a Swift table naming every product, the unpublished one as Not published, passes`() {
+        assertEquals(
+            emptyList<String>(),
+            findSwiftProductTableViolations(
+                swiftManifest,
+                moqManifest,
+                swiftTable("SuperPlayerCore" to "Public", "SuperPlayerMoQ" to "Not published")
+            )
+        )
+    }
+
+    @Test
+    fun `a Swift product with no row fails, naming its manifest`() {
+        assertEquals(
+            listOf(
+                "SuperPlayerMoQ is a product of ios/MoQ/Package.swift and has no row in the Swift " +
+                    "products table."
+            ),
+            findSwiftProductTableViolations(
+                swiftManifest,
+                moqManifest,
+                swiftTable("SuperPlayerCore" to "Public")
+            )
+        )
+    }
+
+    @Test
+    fun `the Swift table is read under its own heading and not the Android one`() {
+        // The control on scoping: a document whose Swift products sit in the Android table has no
+        // Swift table at all, rather than one that happens to agree.
+        val document = table("SuperPlayerCore", "SuperPlayerMoQ")
+        assertEquals(
+            listOf(
+                "docs/compatibility.md has no \"Which Swift products are stable?\" section to read " +
+                    "the Swift products table out of. If the heading was reworded, " +
+                    "VerifyCompatibilityDocument in build-logic has to learn the new wording."
+            ),
+            findSwiftProductTableViolations(swiftManifest, moqManifest, document)
+        )
+    }
+
+    @Test
+    fun `an unpublished Swift product whose row promises an artifact fails, and so does the reverse`() {
+        assertEquals(
+            listOf(
+                "SuperPlayerCore's row reads \"Not published\", but it is a product of the root " +
+                    "Package.swift, which anyone resolving this repository by URL reaches.",
+                "SuperPlayerMoQ's status reads \"Public\", but it is a product of " +
+                    "ios/MoQ/Package.swift, which resolving this repository by URL never reaches, " +
+                    "so its row must read \"Not published\".",
+            ),
+            findSwiftProductTableViolations(
+                swiftManifest,
+                moqManifest,
+                swiftTable("SuperPlayerCore" to "Not published", "SuperPlayerMoQ" to "Public")
+            )
+        )
+    }
+
+    @Test
+    fun `a Swift row no manifest declares fails, and a commented-out product is no product`() {
+        val manifest = """
+            products: [
+                .library(name: "SuperPlayerCore", targets: ["SuperPlayerCore"]),
+                // .library(name: "SuperPlayerCache", targets: ["SuperPlayerCache"]),
+            ],
+        """.trimIndent()
+        assertEquals(setOf("SuperPlayerCore"), swiftLibraryProducts(manifest))
+        assertEquals(
+            listOf(
+                "SuperPlayerCache has a row in the Swift products table but neither Swift manifest " +
+                    "declares it."
+            ),
+            findSwiftProductTableViolations(
+                manifest,
+                moqManifest,
+                swiftTable(
+                    "SuperPlayerCore" to "Public",
+                    "SuperPlayerCache" to "Public",
+                    "SuperPlayerMoQ" to "Not published"
+                )
+            )
+        )
+    }
+
+    /** The root manifest's shape, one product being enough to state every case. */
+    private val swiftManifest = """
+        let package = Package(
+            name: "SuperPlayer",
+            products: [
+                .library(name: "SuperPlayerCore", targets: ["SuperPlayerCore"]),
+            ],
+        )
+    """.trimIndent()
+
+    /** `ios/MoQ/Package.swift`'s shape: its products on one line, as that file writes them. */
+    private val moqManifest = """
+        products: [.library(name: "SuperPlayerMoQ", targets: ["SuperPlayerMoQ"])],
+    """.trimIndent()
+
+    private fun swiftTable(vararg rows: Pair<String, String>): String =
+        buildList {
+            add("## What about iOS and tvOS?")
+            add("")
+            add("### Which Swift products are stable?")
+            add("")
+            add("| Product | Status | What you may depend on |")
+            add("| --- | --- | --- |")
+            rows.forEach { (product, status) -> add("| `$product` | **$status** | Something |") }
+        }.joinToString("\n")
 
     /**
      * The same two, plus one module the build carries and does not publish — declared the way

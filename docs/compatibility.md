@@ -214,21 +214,65 @@ The honest list. Each of these is a real gap rather than a disclaimer.
 
 ## What about iOS and tvOS?
 
-**Nothing iOS is released, and nothing here is a promise about it.** The repository's root
-`Package.swift` declares an iOS and tvOS Swift package (`docs/ios-plan.md`), and its products —
-`SuperPlayerCore` and the eleven beside it — are **empty**: they carry no public API, which their
-recorded baselines under `ios/api/` say in as many words. SwiftPM can resolve the package by its
-git URL today, and what that gets you is the scaffold and nothing to call. MoQ's iOS product,
-`SuperPlayerMoQ`, is not among them at all: it is a package of its own under `ios/MoQ/`, which
-resolving this repository by URL never reaches, for the reason `superplayer-moq` is **Not published**
-above.
+The repository's root `Package.swift` is an iOS and tvOS Swift package, and its products carry the
+same vocabulary over AVFoundation's `AVPlayer` ([`ios.md`](ios.md) is the adopter's guide).
+**The rules above bind it too**, by
+[ADR-0020](adr/0020-compose-on-avfoundations-avplayer-and-bring-no-other-engine.md) rule 12, which
+carries ADR-0017 rules 1 and 2's addendum:
 
-When it is released, the plan is that it follows the same version line as the Android modules,
-cut by the same `release` command under ADR-0017, with the same `vX.Y.Z` tag the one SwiftPM
-resolves; `ios/api/<Product>.baseline` is its API surface, as `<module>/api/<module>.api` is
-Android's ([`api-surface.md`](api-surface.md)). That is a plan rather than a rule until the record
-deciding it lands and the first product has something in it, and this section is rewritten then.
-The stability table above is Android's alone, and `verifyCompatibilityDocument` reads it alone.
+- **One version line.** The Swift products ride the Android modules' `MAJOR.MINOR.PATCH`, cut by the
+  same `release` command and tagged once with the `vX.Y.Z` tag SwiftPM resolves. Under `0.x` a change
+  that touches one platform bumps both. Every product of the package is at that one version, so
+  mixing two is not even expressible: SwiftPM resolves one revision of one package.
+- **The surface is the arbiter.** Each product's public API is recorded in
+  `ios/api/<Product>.baseline` and checked by `ios/check` with the Swift API digester
+  ([`api-surface.md`](api-surface.md), *The iOS products*), so "a declaration removed is a major"
+  reads the same on both platforms. **The release command does not run the digester yet**, which
+  ADR-0021's *Consequences* names as a gap.
+- **Nothing is resolvable at a version.** No release has been cut, so there is no tag to resolve.
+  SwiftPM will resolve this repository's URL at a branch or a revision, and what that gets you is
+  whatever was on it — the `-SNAPSHOT` caveat above in SwiftPM's terms.
+- **`player.avPlayer` is the escape hatch, and outside the promise**, as `player.exoPlayer` is
+  (ADR-0020 rule 3). Code written against it is code written against AVFoundation.
+
+### Which Swift products are stable?
+
+The statuses mean what they mean in the Android table above. `SuperPlayerCore` is the only product
+an app needs, and the rest are additive. The **Not published** row is a product this repository
+builds that resolving it by URL never reaches: a package of its own under `ios/MoQ/`, for the reason
+`superplayer-moq` is not published.
+
+| Product | Status | What you may depend on |
+| --- | --- | --- |
+| `SuperPlayerCore` | **Public** | `SuperPlayer(configuration:)` and `player.avPlayer`, `MediaRequest`, `PlaybackProfile`, `PlaybackSnapshot`, `PlaybackSession`, `PlayerPool`, the telemetry sink and event types, `PlaybackPolicy`, `FrameOutput`, `FrameSource`, and `PlayerView`/`PlayerLayerView`. The only product an app needs |
+| `SuperPlayerTestMedia` | **Public (for your tests)** | Synthetic HLS streams and the HLS half of the hostile-manifest corpus, the Kotlin generators' output byte for byte |
+| `SuperPlayerTelemetry` | **Public** | `QoeCollector`, `OSLogSink`, `SessionTraceRecorder`, and the session reduction (`SessionMetrics`, `QoeScore`) |
+| `SuperPlayerTestkit` | **Public (for your tests)** | `PlaybackHarness` and its loopback origin, `FaultScript`, `ThroughputTrace`, and `FrameSourceConformance` — the suite to run against your own `FrameSource` |
+| `SuperPlayerABR` | **Public** | `AdaptivePolicy` and `BandwidthOracle`. The adaptive behaviour behind them is tuning work and is expected to move; the types are not |
+| `SuperPlayerPreload` | **Public** | `PreloadCoordinator`, attached to a `PlayerPool` |
+| `SuperPlayerResilience` | **Public** | `Resilience.standard(headers:)`, `FailureClass` and `ErrorClassifier` — the failure taxonomy a log line and a warehouse row share, the Android one leaf for leaf |
+| `SuperPlayerDRM` | **Public** | `Drm.fairPlay`, `FairPlayConfig`, and the offline licence store. Offline licences are iOS only: tvOS has no persistable keys and refuses typed |
+| `SuperPlayerOffline` | **Public** | `Downloads`, `DownloadItem`, `DownloadsListener`. iOS only: tvOS has no asset download session and the store refuses to open, typed |
+| `SuperPlayerTV` | **Public** | `TvOutput.standard()`, which matches the display on tvOS and does nothing on iOS |
+| `SuperPlayerDiagnostics` | **Public** | `MediaSourceDoctor` over HLS ([`media-source-doctor.md`](media-source-doctor.md)), `SessionBundle` ([`session-bundle.md`](session-bundle.md)) and `DebugHud` |
+| `SuperPlayerRealtime` | **Public** | `RealtimePlayer` and `Realtime.transport`, the second player type, because an `AVPlayer` cannot take pushed frames (ADR-0020 rule 11) |
+| `SuperPlayerMoQ` | **Not published** | Nothing. The Swift twin of `superplayer-moq`, over MoQ's bindings compiled into a committed XCFramework with two iOS slices and no tvOS one (`third-party/moq/README.md`, *The Swift bindings*). This repository's own `ios/Demo/` resolves it by path; nothing about it is covered by any promise here |
+
+`./gradlew verifyCompatibilityDocument` holds this table to the two Swift manifests as it holds the
+one above to `settings.gradle.kts`: every `.library` product of the root `Package.swift` needs a row,
+every product of `ios/MoQ/Package.swift` a row reading **Not published**, and no row may name a
+product neither declares. It reads the manifests as text, so it runs on Linux with no Swift toolchain
+(ADR-0021 rule 7). The third column is prose, as it is above.
+
+**What a release does not promise on iOS and tvOS** is the list above read in Apple's terms, and
+[`ios.md`](ios.md)'s *What a release does not promise* is the long form: anything reached through
+`player.avPlayer`; behaviour on a device, since every test runs on a simulator and FairPlay,
+background downloads across a process's death, display-mode switching, HDCP and a real MoQ session
+are listed as a device's rather than faked ([`testing.md`](testing.md)); behaviour on a real network,
+since every test plays from a loopback origin on the host; and performance numbers.
+
+The Android table above and this one are read separately, so a module on one platform and a product
+on the other are never mistaken for each other.
 
 ## Where to look next
 
@@ -239,4 +283,5 @@ The stability table above is Android's alone, and `verifyCompatibilityDocument` 
 | What exactly is the public API? | [`api-surface.md`](api-surface.md), and `<module>/api/<module>.api` |
 | Which modules exist and how do they depend on each other? | [`modules.md`](modules.md) |
 | What does a telemetry field mean? | [`telemetry-schema.md`](telemetry-schema.md) |
+| How do I use it on iOS or tvOS? | [`ios.md`](ios.md) — install, configuration, what ports and what does not, and what the app declares |
 | How is a release cut? | [`releasing.md`](releasing.md) — for a maintainer, not an adopter |

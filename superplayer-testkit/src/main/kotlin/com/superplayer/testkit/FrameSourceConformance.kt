@@ -45,7 +45,7 @@ import kotlin.concurrent.thread
  *
  * ## Why this is a test you run rather than a paragraph you read
  *
- * [FrameSource]'s nine obligations are on code this library cannot see, and **every one of them
+ * [FrameSource]'s ten obligations are on code this library cannot see, and **every one of them
  * fails silently** — that sentence is in the seam's own KDoc and it is the whole argument for this
  * class. A transport that hands over its parameter sets in the wrong shape does not throw: it
  * produces a decoder that configures cleanly and renders nothing. One that frames its samples as
@@ -93,11 +93,14 @@ import kotlin.concurrent.thread
  *
  * ## What this cannot check, said plainly
  *
- * Four things are beyond it, and naming them is worth more than a check that pretends:
+ * Five things are beyond it, and naming them is worth more than a check that pretends:
  *
  * - **Obligation 5, the precision you state**, is unenforceable by construction and says so where it
  *   is written: nothing here can tell a transport that truncated to milliseconds from a publisher
  *   that emitted whole milliseconds. It is a documentation obligation on you.
+ * - **Obligation 10, the coded size you state**, is unenforceable for 5's reason, which the seam's
+ *   KDoc gives: nothing here knows your stream's true resolution, so a transport that omitted
+ *   [RealtimeTrack.codedSize] cannot be told from one that genuinely does not know it.
  * - **Obligation 6, payload is codec bitstream and nothing else**, is reached only as far as the
  *   framing walk below goes. A fragmented-MP4 sample handed over whole is usually caught by
  *   [verifySamplesAreFramedAsTheFourccRequires], because its box headers do not walk as NAL units —
@@ -127,7 +130,7 @@ public class FrameSourceConformance(
      * Every check, in the order [FrameSource]'s KDoc numbers the obligations, stopping at the first
      * one broken.
      *
-     * Two of the eleven enforce a rule that is not one of the nine — the codec string's, and the
+     * Two of the eleven enforce a rule that is not one of the ten — the codec string's, and the
      * finality of a terminal callback — and each runs at the point it bears on rather than at the
      * end: the codec string after obligation 4 because obligation 7 is stated in terms of its
      * fourcc, and termination before cancellation because the two are the pair of ways a
@@ -974,7 +977,7 @@ private const val OBLIGATION_8 =
 private const val OBLIGATION_9 = "FrameSource obligation 9 (cancel stops delivery before it returns)"
 
 /**
- * The two rules that are not one of the nine numbered obligations: the codec string's own
+ * The two rules that are not one of the ten numbered obligations: the codec string's own
  * requirement, which [RealtimeTrack.codec]'s KDoc carries, and the finality of a terminal callback,
  * which [FrameSink.onEnded]'s and [FrameSink.onError]'s do.
  */

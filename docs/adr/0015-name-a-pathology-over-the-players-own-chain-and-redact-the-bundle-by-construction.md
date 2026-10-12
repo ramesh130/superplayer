@@ -27,8 +27,9 @@
   exportable JSON/Perfetto-compatible artifact", and rule 9 makes the session trace's own grammar the
   canonical format with a JSON or Perfetto rendering beside it, which is what `SessionTrace`'s KDoc
   already anticipated. Nothing is superseded. Amended (#429) at rules 10 and 11 for Apple
-  platforms: what the iOS capability snapshot carries and how the readership test reads where the
-  engine is AVFoundation, and the SwiftUI HUD's two-reading guard.
+  platforms: what the iOS capability snapshot carries, with rule 10's readership test read more
+  widely there — as what AVFoundation, the engine, decided against — and the SwiftUI HUD's
+  two-reading guard.
 - **Summary:** Decides Phase 9's shape before any of its code lands (#284, #285).
   `superplayer-diagnostics` depends on `superplayer-core` and `superplayer-telemetry` and reaches
   core as its **ninth** Kotlin friend, mostly of the shape `superplayer-offline` already has: built

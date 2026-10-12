@@ -220,13 +220,17 @@ final class DebugHudTests: XCTestCase {
         XCTAssertFalse(
             debugHudAvailability(
                 compiledForDebug: true, simulator: false, provisioningProfile: Data("junk".utf8)))
-        // This test runs Debug-compiled on a simulator, so the real reading answers yes.
-        XCTAssertTrue(isDebugHudAvailable())
+        #if DEBUG && targetEnvironment(simulator)
+            // A Debug simulator build, which is what `ios/check` runs: the real reading answers yes.
+            XCTAssertTrue(isDebugHudAvailable())
+        #endif
     }
 
     /// The overlay draws: rendered off screen, it is an image of the overlay's size, and the HUD's
     /// body — this run being a Debug build on a simulator — renders the same overlay.
     func testTheOverlayRendersAndTheGuardedBodyIsTheOverlay() async throws {
+        // What `ios/check` runs is a Debug simulator build; any other run says so rather than fails.
+        try XCTSkipUnless(isDebugHudAvailable(), "the guarded body renders only where the HUD is")
         let origin = try await harness.serve(.hls())
         let player = AVPlayer(url: origin.sourceURL)
         let hud = DebugHud(player: player)

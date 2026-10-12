@@ -19,9 +19,9 @@ import SwiftUI
 /// The playback screen with `SuperPlayerDiagnostics`' debug HUD over it — **the recipe a consumer
 /// copies**, the Android demo's `DebugHudScreen`:
 ///
-/// 1. **One `DebugHudTelemetry` per player, composed beside the app's own sink**, so the overlay
-///    and the app's pipeline read one collector's derivation rather than two (``DemoPlayback``'s
-///    `alsoTelling:`).
+/// 1. **One `DebugHudTelemetry` per player, composed beside the app's own sink**, made with the
+///    player and dropped with it, so the overlay and the app's pipeline read one collector's
+///    derivation rather than two (``DemoPlayback``'s `alsoTelling:`).
 /// 2. **The overlay placed by the app**, over its own surface and where it chooses — here the top
 ///    leading corner, clear of `VideoPlayer`'s controls. No configuration attaches a HUD to a player.
 /// 3. **Nothing in a release build**: `DebugHud` renders `EmptyView` unless the build is Debug and
@@ -34,15 +34,16 @@ struct DebugHudScreen: View {
 
     let stream: DemoStream
 
-    @State private var playback: DemoPlayback?
-    @State private var telemetry = DebugHudTelemetry()
+    /// The player and its HUD sink, made and released together.
+    @State private var watched: (playback: DemoPlayback, telemetry: DebugHudTelemetry)?
 
     var body: some View {
         Group {
-            if let playback {
+            if let watched {
                 ZStack(alignment: .topLeading) {
-                    VideoPlayer(player: playback.player.avPlayer)
-                    DebugHud(player: playback.player, telemetry: telemetry).padding()
+                    VideoPlayer(player: watched.playback.player.avPlayer)
+                    DebugHud(player: watched.playback.player, telemetry: watched.telemetry)
+                        .padding()
                 }
             } else {
                 Color.black
@@ -52,13 +53,14 @@ struct DebugHudScreen: View {
         // Guarded for ``PlaybackScreen``'s reason: `onAppear` can fire again without an
         // `onDisappear` between, and a second player would orphan the first unreleased.
         .onAppear {
-            if playback == nil {
-                playback = DemoPlayback(stream: stream, alsoTelling: telemetry)
+            if watched == nil {
+                let telemetry = DebugHudTelemetry()
+                watched = (DemoPlayback(stream: stream, alsoTelling: telemetry), telemetry)
             }
         }
         .onDisappear {
-            playback?.release()
-            playback = nil
+            watched?.playback.release()
+            watched = nil
         }
     }
 }

@@ -93,7 +93,7 @@ public struct DebugHud: View {
 
     public var body: some View {
         #if DEBUG
-            if isDebugHudAvailable() {
+            if Self.available {
                 overlay
             }
         #else
@@ -115,6 +115,11 @@ public struct DebugHud: View {
     /// reason. Fast enough that the buffer and the position look live, slow enough to be irrelevant
     /// beside the frames decoded next to it, and deliberately not the collector's ten-second sample.
     static let refreshInterval: TimeInterval = 0.5
+
+    /// ``isDebugHudAvailable()``, read once per process rather than per render: the build's
+    /// configuration and its embedded profile cannot change while it runs, and the reading parses
+    /// a file.
+    private static let available = isDebugHudAvailable()
 }
 
 /// The six rows of one reading.
@@ -158,8 +163,7 @@ private struct HudRows: View {
         red: 0x9E / 255.0, green: 0x9E / 255.0, blue: 0x9E / 255.0)
     private static let valueColour = Color.white
 
-    /// Eight points, half a step of the 16-point grid Apple's layout guides use and the Kotlin 8dp,
-    /// so the text does not touch the background's edge.
+    /// Eight points, the Kotlin 8dp, so the text does not touch the background's edge.
     private static let padding: CGFloat = 8
 
     /// Wide enough for the longest label, `estimate`, plus a space, so every value starts in one

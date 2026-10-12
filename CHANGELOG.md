@@ -234,6 +234,16 @@ them under `Added` would be worse than stating them here:
   `superplayer-core` on Android, emitted by nothing there — so an exhaustive `when` or `switch` over
   `TelemetryEvent` needs a branch for it; `schemaVersion` stays 2. The demo opens a tvOS screen on
   `AVPlayerViewController`'s system controls. No Android behaviour moved.
+- **The session bundle and the debug HUD on iOS (#429).** `SuperPlayerDiagnostics` gains
+  `SessionBundle(trace:)` — `docs/session-bundle.md`'s format, version 1, over the recorder's trace —
+  whose `capability` lines on Apple's platforms are the platform and the OS's `major.minor`, the
+  memory budget, a hardware-decode yes or no for H.264, HEVC, VP9 and AV1, and the display's short
+  edge and HDR eligibility, with no device name, model, identifier or OS build, and no protection
+  line, FairPlay having no level. It gains `DebugHud`, a SwiftUI overlay over a `SuperPlayer` or a
+  stock `AVPlayer`, `DebugHudTelemetry`, its sink, and `isDebugHudAvailable()`, true only in a Debug
+  build signed for development. `SuperPlayerTestkit` gains `GoldenFile` and `GoldenFileMismatchError`.
+  Additive; `schemaVersion` and the trace's `formatVersion` stay where they were. No Android
+  behaviour moved.
 - **Phase 9 — Diagnostics and docs.** `MediaSourceDoctor`, which names twenty pathologies over the
   chain a player would load through; the postmortem reading; `SessionBundle`; the debug HUD; and
   the documents in `docs/`.

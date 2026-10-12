@@ -16,7 +16,6 @@ import AVFoundation
 import Foundation
 import UIKit
 import VideoToolbox
-import os
 
 /// What the device a session ran on can **do**, read whole and handed over whole — the Kotlin
 /// `CapabilitySnapshot` and `capabilitySnapshotOf`, ADR-0015 rule 3's second seam, read on Apple's

@@ -47,7 +47,6 @@ enum DeliveryPathologies {
     /// attribute.
     static func inDelivery(
         source: URL, playlist: MediaPlaylist, playlistHeaders: [String: String],
-        now: Date = Date(),
         segmentHeaders: (URL) async -> [String: String]?
     ) async -> [Finding] {
         var findings: [Finding] = []
@@ -57,7 +56,7 @@ enum DeliveryPathologies {
         if let scoped = tokenScopedToManifest(source: source, playlist: playlist) {
             findings.append(scoped)
         }
-        if let expiring = tokenExpiringInWindow(source: source, playlist: playlist, now: now) {
+        if let expiring = tokenExpiringInWindow(source: source, playlist: playlist, now: Date()) {
             findings.append(expiring)
         }
         return findings
@@ -141,7 +140,10 @@ enum DeliveryPathologies {
     /// every viewer: the number decides *whether* the stream ends, not how well it plays.
     ///
     /// Live playlists are passed over, and that is the rule rather than a gap: a live stream has no
-    /// end to cover, so every finite token expires inside it.
+    /// end to cover, so every finite token expires inside it. "Live" is the lint's `isLive`, which
+    /// reads a `PLAYLIST-TYPE:VOD` with no `EXT-X-ENDLIST` as ended where the Kotlin rule reads
+    /// `hasEndTag` alone: §4.3.3.5 says such a playlist cannot change, so it has an end to cover,
+    /// and the cache rule above reads it the same way.
     private static func tokenExpiringInWindow(source: URL, playlist: MediaPlaylist, now: Date)
         -> Finding?
     {

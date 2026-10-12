@@ -61,12 +61,15 @@ struct ManifestExamination {
         }
     }
 
+    /// One media playlist as it was read, with the headers it arrived with, names lowercased.
+    typealias Delivered = (playlist: MediaPlaylist, headers: [String: String])
+
     /// What a multivariant playlist's examination read: the findings of the documents, and every
     /// media playlist it fetched with the headers it arrived with, which is what the delivery rules
     /// read afterwards.
     private struct Read {
         var findings: [Finding]
-        var mediaPlaylists: [(playlist: MediaPlaylist, headers: [String: String])]
+        var mediaPlaylists: [Delivered]
     }
 
     /// A multivariant playlist and **every media playlist it names**, variants and audio
@@ -77,7 +80,7 @@ struct ManifestExamination {
     private func examine(_ multivariant: MultivariantPlaylist) async -> Read {
         var findings = HlsPathologies.inMultivariant(multivariant)
         var mediaPlaylists: [URL: MediaPlaylist] = [:]
-        var read: [(playlist: MediaPlaylist, headers: [String: String])] = []
+        var read: [Delivered] = []
         var named: [URL] = []
         for url in multivariant.variants.map(\.url) + multivariant.audioRenditions.compactMap(\.url)
         where !named.contains(url) {
@@ -106,7 +109,7 @@ struct ManifestExamination {
     /// headers every playlist arrived with, and the media playlists, which are where the segments a
     /// token has to cover are declared.
     private func delivery(
-        _ source: URL, mediaPlaylists: [(playlist: MediaPlaylist, headers: [String: String])],
+        _ source: URL, mediaPlaylists: [Delivered],
         responses: [[String: String]]
     ) async -> [Finding] {
         var findings = DeliveryPathologies.inResponses(responses)

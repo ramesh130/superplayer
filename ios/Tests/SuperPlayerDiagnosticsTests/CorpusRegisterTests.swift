@@ -35,12 +35,13 @@ import XCTest
 /// defect that is not there, or missed one that is — fails that entry's row here, which is what
 /// keeps the two platforms' doctors reading one corpus one way.
 ///
-/// **Four rows name nothing yet, and say why.** The delivery entries — a defect of a response
-/// header or an address rather than of a document — are #428's, and ADR-0015 rule 12 admits "an
-/// entry the doctor cannot yet name" as recorded rather than removed. Each carries `cannotYetName`,
-/// required of a row with no findings and forbidden of any other
-/// (``testARowThatNamesNothingSaysWhyRatherThanPassingQuietly``), so relaxing the gate is never the
-/// edit that looks like recording it. #428 replaces each reason with its findings.
+/// **The delivery rows are scored like the rest** (#428): a defect of a response header or an
+/// address rather than of a document, served by the origin from the headers each entry declares
+/// (`Examining.swift`), so a row there is as much an equality as a ladder's. ADR-0015 rule 12 still
+/// admits "an entry the doctor cannot yet name" as recorded rather than removed, and the gate stays
+/// for the next one: such a row carries `cannotYetName`, required of a row with no findings and
+/// forbidden of any other (``testARowThatNamesNothingSaysWhyRatherThanPassingQuietly``), so
+/// relaxing the gate is never the edit that looks like recording it.
 ///
 /// It does not touch `HostileManifestCorpusTests`, which records what a *player* does with the same
 /// entries: naming a defect is not recovering from it (ADR-0015 rule 4).
@@ -165,12 +166,6 @@ final class CorpusRegisterTests: XCTestCase {
         let forcedBy: TestMethod
     }
 
-    /// The reason the four delivery rows give, once: the four are one ticket's.
-    static let deliveryIsNext =
-        "a delivery pathology — a defect of a response header or an address rather than of a "
-        + "document — whose rule reads the response and is #428's; at severe the document itself is "
-        + "healthy, so the doctor is silent and the row records that rather than leaving it out"
-
     /// **The register**, in the corpus's order: per entry, the findings at `severe` and the test that
     /// forces them.
     static let register: [(id: String, reading: Reading)] = [
@@ -222,24 +217,36 @@ final class CorpusRegisterTests: XCTestCase {
                 findings: [.hlsDiscontinuityWithoutTimeline: .degraded],
                 forcedBy: hls("testASpliceWithNothingToPlaceItsTimelineIsNamed"))
         ),
-        // A live playlist whose bytes never change. Its window is four segments of two seconds
-        // against a two-second target — past the three target durations the live-window rule asks
-        // for, and at a media sequence of zero besides — so that rule is silent here, correctly.
+        // A live playlist whose bytes never change, held ten minutes by its declared cache rule. Its
+        // window is four segments of two seconds against a two-second target — past the three
+        // target durations the live-window rule asks for, and at a media sequence of zero besides —
+        // so that rule is silent here, correctly, and the cache rule alone speaks.
         (
             "hls-cached-live-playlist",
-            Reading(findings: [:], forcedBy: nil, cannotYetName: deliveryIsNext)
+            Reading(
+                findings: [.hlsCachedLivePlaylist: .blocking],
+                forcedBy: delivery(
+                    "testALivePlaylistHeldPastItsUpdateBoundIsNamedAndSoIsTheSideThatIsWrong"))
         ),
         (
             "hls-token-scoped-to-manifest",
-            Reading(findings: [:], forcedBy: nil, cannotYetName: deliveryIsNext)
+            Reading(
+                findings: [.hlsTokenScopedToManifest: .blocking],
+                forcedBy: delivery("testAManifestSignedWhoseSegmentsAreNotIsNamed"))
         ),
+        // Half a viewing left: blocking on its magnitude, the one delivery grade that is.
         (
             "hls-token-expiring-in-window",
-            Reading(findings: [:], forcedBy: nil, cannotYetName: deliveryIsNext)
+            Reading(
+                findings: [.hlsTokenExpiringInWindow: .blocking],
+                forcedBy: delivery(
+                    "testATokenThatDiesInsideTheContentIsNamedAndGradedOnWhatIsLeftOfIt"))
         ),
         (
             "hls-cors-refuses-credentials",
-            Reading(findings: [:], forcedBy: nil, cannotYetName: deliveryIsNext)
+            Reading(
+                findings: [.hlsCorsRefusesCredentials: .blocking],
+                forcedBy: delivery("testResponseHeadersThatWouldRefuseAPlayersRequestAreNamed"))
         ),
     ]
 
@@ -285,5 +292,9 @@ final class CorpusRegisterTests: XCTestCase {
 
     static func doctor(_ methodName: String) -> TestMethod {
         TestMethod(className: "MediaSourceDoctorTests", methodName: methodName)
+    }
+
+    static func delivery(_ methodName: String) -> TestMethod {
+        TestMethod(className: "DeliveryPathologyTests", methodName: methodName)
     }
 }

@@ -208,12 +208,14 @@ let package = Package(
             ],
             path: "ios/Tests/SuperPlayerTVTests"
         ),
-        // Testkit for the origin the doctor fetches from, testmedia for the corpus it is scored on.
+        // Testkit for the origin the doctor fetches from, testmedia for the corpus it is scored on,
+        // and resilience for the postmortem's classifications alone (#428): a real player's
+        // `classify(_:)` is what a postmortem reads, while the product itself stays off it.
         .testTarget(
             name: "SuperPlayerDiagnosticsTests",
             dependencies: [
                 "SuperPlayerDiagnostics", "SuperPlayerCore", "SuperPlayerTestkit",
-                "SuperPlayerTestMedia",
+                "SuperPlayerTestMedia", "SuperPlayerResilience",
             ],
             path: "ios/Tests/SuperPlayerDiagnosticsTests"
         ),

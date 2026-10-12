@@ -59,6 +59,22 @@ abstract class VerifyCompatibilityDocument : DefaultTask() {
     abstract val compatibilityDocument: RegularFileProperty
 
     /**
+     * The root `Package.swift`, whose `.library` products are the Swift products an adopter can
+     * resolve by this repository's URL — the iOS half of the same question (#430).
+     */
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val swiftPackageManifest: RegularFileProperty
+
+    /**
+     * `ios/MoQ/Package.swift`, whose product resolving this repository by URL never reaches: the
+     * SwiftPM analog of an unpublished module (`CONTRIBUTING.md`'s #364 amendment).
+     */
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val unpublishedSwiftPackageManifest: RegularFileProperty
+
+    /**
      * A stamp file written on success. A verification task has no real product, but declaring an
      * output is what lets Gradle skip the task when nothing it reads has changed.
      */
@@ -67,9 +83,14 @@ abstract class VerifyCompatibilityDocument : DefaultTask() {
 
     @TaskAction
     fun verify() {
+        val document = compatibilityDocument.get().asFile.readText()
         val violations = findCompatibilityDocumentViolations(
             settingsScript.get().asFile.readText(),
-            compatibilityDocument.get().asFile.readText()
+            document
+        ) + findSwiftProductTableViolations(
+            swiftPackageManifest.get().asFile.readText(),
+            unpublishedSwiftPackageManifest.get().asFile.readText(),
+            document
         )
 
         val stamp = stampFile.get().asFile
@@ -82,10 +103,11 @@ abstract class VerifyCompatibilityDocument : DefaultTask() {
                 buildString {
                     appendLine(
                         "docs/compatibility.md's \"$STABILITY_HEADING\" table must carry one row " +
-                            "per module settings.gradle.kts includes, carrying the publication that " +
-                            "file declares, so a module an adopter can resolve cannot go " +
-                            "undocumented and one they cannot resolve cannot read as though they " +
-                            "could (ADR-0017 rule 1)."
+                            "per module settings.gradle.kts includes, and its " +
+                            "\"$SWIFT_STABILITY_HEADING\" table one row per Swift product, each " +
+                            "carrying the publication its build declares, so a module an adopter " +
+                            "can resolve cannot go undocumented and one they cannot resolve cannot " +
+                            "read as though they could (ADR-0017 rule 1, ADR-0021 rule 6)."
                     )
                     appendLine("Violations:")
                     violations.forEach { appendLine("  $it") }
@@ -130,7 +152,7 @@ internal fun findCompatibilityDocumentViolations(
     // one question and `LOCAL_ONLY`'s artifact exists only in the local repository of the machine
     // that built it (#353, [ModulePublication]).
     val unpublished = unpublishedModules(settingsScript) + locallyPublishedModules(settingsScript)
-    val section = stabilitySection(compatibilityDocument)
+    val section = stabilitySection(compatibilityDocument, STABILITY_HEADING)
         ?: return listOf(
             "docs/compatibility.md has no \"$STABILITY_HEADING\" section to read a table out of. " +
                 "If the heading was reworded, VerifyCompatibilityDocument in build-logic has to " +
@@ -190,8 +212,86 @@ private fun describe(publication: ModulePublication): String = when (publication
     ModulePublication.NOT_PUBLISHED -> "unpublished"
 }
 
+/**
+ * The Swift half (#430, ADR-0021 rules 6 and 7): one sentence per disagreement between the
+ * document's Swift products table and the products the two Swift manifests declare, sorted as
+ * [findCompatibilityDocumentViolations] sorts.
+ *
+ * The same check over a different build, with the same vocabulary of statuses. What an adopter can
+ * resolve by this repository's URL is the root [packageManifest]'s `.library` products; what they
+ * cannot is [unpublishedManifest]'s — `ios/MoQ/Package.swift`, a package of its own so that no
+ * resolution by URL reaches it, which is the SwiftPM reading of `LOCAL_ONLY` — and its rows must
+ * read [NOT_PUBLISHED_STATUS] as an unpublished module's do. It runs here rather than in a Swift
+ * test because it reads two files and no Swift type, which is the line ADR-0021 rule 7 draws.
+ */
+internal fun findSwiftProductTableViolations(
+    packageManifest: String,
+    unpublishedManifest: String,
+    compatibilityDocument: String
+): List<String> {
+    val published = swiftLibraryProducts(packageManifest)
+    val unpublished = swiftLibraryProducts(unpublishedManifest)
+    val section = stabilitySection(compatibilityDocument, SWIFT_STABILITY_HEADING)
+        ?: return listOf(
+            "docs/compatibility.md has no \"$SWIFT_STABILITY_HEADING\" section to read the Swift " +
+                "products table out of. If the heading was reworded, VerifyCompatibilityDocument " +
+                "in build-logic has to learn the new wording."
+        )
+    val documented = parseStabilityRows(section)
+
+    val missing = (published - documented.keys).map {
+        "$it is a product of Package.swift and has no row in the Swift products table."
+    }
+    val missingUnpublished = (unpublished - documented.keys).map {
+        "$it is a product of ios/MoQ/Package.swift and has no row in the Swift products table."
+    }
+    val stale = (documented.keys - published - unpublished).map {
+        "$it has a row in the Swift products table but neither Swift manifest declares it."
+    }
+    val unknownStatus = documented
+        .filterValues { it !in STABILITY_STATUSES }
+        .map { (product, status) ->
+            "$product's status reads \"$status\", which is not one of: " +
+                STABILITY_STATUSES.joinToString(", ")
+        }
+    val wrongPublication = documented
+        .filterValues { it in STABILITY_STATUSES }
+        .mapNotNull { (product, status) ->
+            when {
+                product in unpublished && status != NOT_PUBLISHED_STATUS ->
+                    "$product's status reads \"$status\", but it is a product of " +
+                        "ios/MoQ/Package.swift, which resolving this repository by URL never " +
+                        "reaches, so its row must read \"$NOT_PUBLISHED_STATUS\"."
+
+                product in published && status == NOT_PUBLISHED_STATUS ->
+                    "$product's row reads \"$NOT_PUBLISHED_STATUS\", but it is a product of the " +
+                        "root Package.swift, which anyone resolving this repository by URL reaches."
+
+                else -> null
+            }
+        }
+
+    return (missing + missingUnpublished + stale + unknownStatus + wrongPublication).sorted()
+}
+
+/**
+ * The `.library` products a `Package.swift` declares, read as text for [swiftTargetsIn]'s reason:
+ * evaluating a manifest needs a Swift toolchain the Linux job does not have. The shape is the one
+ * SwiftPM documents, `.library(name: "X", targets: [...])`, and a commented-out line is no product.
+ */
+internal fun swiftLibraryProducts(manifest: String): Set<String> =
+    manifest.lineSequence()
+        .filterNot { it.trimStart().startsWith("//") }
+        .flatMap { line -> SWIFT_LIBRARY_PRODUCT.findAll(line).map { it.groupValues[1] } }
+        .toSet()
+
+private val SWIFT_LIBRARY_PRODUCT = Regex("""\.library\(\s*name:\s*"([^"]+)"""")
+
 /** The heading the table sits under, named in the failure message so it can be found. */
 private const val STABILITY_HEADING = "Which parts are stable?"
+
+/** The heading the Swift products table sits under, for the same reason. */
+private const val SWIFT_STABILITY_HEADING = "Which Swift products are stable?"
 
 /**
  * The statuses a row may carry. Four, because there are four answers an adopter needs: a module
@@ -223,10 +323,10 @@ private val STABILITY_ROW = Regex("""\|\s*`([\w-]+)`\s*\|\s*\*\*([^*|]+)\*\*\s*\
  * reason: only this section is read, so a module named in a row of some other table is not
  * mistaken for a stability row.
  */
-private fun stabilitySection(markdown: String): String? {
+private fun stabilitySection(markdown: String, title: String): String? {
     val lines = markdown.lines()
     val heading = lines.indexOfFirst {
-        it.trimStart().startsWith("#") && it.contains(STABILITY_HEADING)
+        it.trimStart().startsWith("#") && it.contains(title)
     }
     if (heading < 0) return null
 

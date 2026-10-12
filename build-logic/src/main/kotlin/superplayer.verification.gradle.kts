@@ -70,13 +70,17 @@ val verifyMedia3SupportedVersion =
 // coordinate an adopter can resolve, and a row that was never written is a promise that was never
 // made. This holds the table to the build's own module list, as verifyModulePhaseRule holds
 // docs/modules.md's phase column to the module build scripts. Root-only, because the authority is
-// settings.gradle.kts and no single module's test can read it without restating it.
+// settings.gradle.kts and no single module's test can read it without restating it. Since #430 it
+// holds the Swift products table to the two Swift manifests the same way (ADR-0021 rules 6 and 7):
+// that half reads text and no Swift type, so it belongs here rather than in ios/check.
 val verifyCompatibilityDocument =
     tasks.register<VerifyCompatibilityDocument>("verifyCompatibilityDocument") {
         group = "verification"
-        description = "Fails if docs/compatibility.md's stability table and the published modules disagree."
+        description = "Fails if docs/compatibility.md's stability tables and the published modules or Swift products disagree."
         settingsScript.set(layout.projectDirectory.file("settings.gradle.kts"))
         compatibilityDocument.set(layout.projectDirectory.file("docs/compatibility.md"))
+        swiftPackageManifest.set(layout.projectDirectory.file("Package.swift"))
+        unpublishedSwiftPackageManifest.set(layout.projectDirectory.file("ios/MoQ/Package.swift"))
         stampFile.set(layout.buildDirectory.file("verification/compatibility-document.txt"))
     }
 

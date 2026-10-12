@@ -13,54 +13,65 @@
 // limitations under the License.
 
 import Foundation
-import XCTest
 
 /// The check-or-update comparison a golden test calls — the Kotlin testkit's `GoldenFile`, on the
 /// same contract as `docs/api-surface.md`'s: **nothing regenerates a golden implicitly**.
 ///
-/// In check mode, the default and what `ios/check` runs, a difference fails with the diff in the
-/// message, as does a golden that does not exist. In update mode the golden is written and the
-/// test passes; the mode is `SP_UPDATE_GOLDEN=1` in the test process's environment, which
-/// `ios/check --update-golden` and nothing else sets — `xcodebuild` hands a variable named
-/// `TEST_RUNNER_<NAME>` to the test runner as `<NAME>`. The goldens live in
-/// `ios/Tests/Fixtures/golden/`, beside the other fixtures, read and written through `#filePath`
-/// as the fixture tests read theirs; the simulator's test process runs on the host's file system.
+/// ```swift
+/// let goldens = GoldenFile(directory: fixtures.appendingPathComponent("golden"))
+/// try goldens.check("hls-vod", trace.structural().format())
+/// ```
 ///
-/// In this test target rather than in `SuperPlayerTestkit`, where the Kotlin one is, because one
-/// product calls it: putting it on testkit's tracked API surface waits for the second — the
-/// session bundle's, #429.
-enum GoldenFile {
+/// In check mode, the default and what `ios/check` runs, a difference throws
+/// ``GoldenFileMismatchError`` with the diff in its message, as does a golden that does not exist.
+/// In update mode the golden is written and nothing is thrown; the mode is `SP_UPDATE_GOLDEN=1` in
+/// the test process's environment, which `ios/check --update-golden` and nothing else sets —
+/// `xcodebuild` hands a variable named `TEST_RUNNER_<NAME>` to the test runner as `<NAME>`. A golden
+/// is `<name>.trace` in ``directory``; the simulator's test process runs on the host's file system,
+/// so a test names its directory through `#filePath`.
+///
+/// In testkit since its second caller, the session bundle's (#429) — #411 kept it in the telemetry
+/// tests until then. It **throws** rather than calling a test framework, for
+/// ``FrameSourceConformanceError``'s reason: testkit names no test framework, and a thrown error is a
+/// failure to XCTest and Swift Testing alike.
+public struct GoldenFile: Sendable {
 
-    static let directory = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent().deletingLastPathComponent()
-        .appendingPathComponent("Fixtures/golden")
+    /// Where the goldens are read and written.
+    public let directory: URL
 
-    static var isUpdating: Bool {
+    public init(directory: URL) {
+        self.directory = directory
+    }
+
+    /// Whether this run rewrites goldens rather than checking them.
+    public static var isUpdating: Bool {
         ProcessInfo.processInfo.environment["SP_UPDATE_GOLDEN"] == "1"
     }
 
+    /// The golden `name`.trace.
+    public func url(of name: String) -> URL {
+        directory.appendingPathComponent("\(name).trace")
+    }
+
     /// Compares `text` with the golden `name`.trace, or rewrites it in update mode.
-    static func check(
-        _ name: String, _ text: String, file: StaticString = #filePath, line: UInt = #line
-    ) throws {
-        let url = directory.appendingPathComponent("\(name).trace")
-        if isUpdating {
+    public func check(_ name: String, _ text: String) throws {
+        let url = url(of: name)
+        if Self.isUpdating {
             try FileManager.default.createDirectory(
                 at: directory, withIntermediateDirectories: true)
             try text.write(to: url, atomically: true, encoding: .utf8)
             return
         }
         guard let golden = try? String(contentsOf: url, encoding: .utf8) else {
-            XCTFail(
+            throw GoldenFileMismatchError(
                 "No golden at \(url.path); run ios/check --update-golden, review the file, and "
-                    + "commit it", file: file, line: line)
-            return
+                    + "commit it")
         }
         guard golden != text else { return }
-        XCTFail(
+        throw GoldenFileMismatchError(
             "\(name).trace differs from what the session now records. If the change is "
                 + "deliberate, run ios/check --update-golden and commit the diff with it.\n"
-                + diff(golden, text), file: file, line: line)
+                + Self.diff(golden, text))
     }
 
     /// A line diff, `-` the golden's and `+` the session's, in the order the golden reads.
@@ -96,4 +107,18 @@ enum GoldenFile {
         }
         return lines.joined(separator: "\n")
     }
+}
+
+/// A golden that differs from what was recorded, or that does not exist, from
+/// ``GoldenFile/check(_:_:)``: the message carries the diff. A plain `Error`, so whichever test
+/// framework runs the check reports it as the failure.
+public struct GoldenFileMismatchError: Error, CustomStringConvertible, LocalizedError {
+
+    /// The message, the diff included.
+    public let message: String
+
+    init(_ message: String) { self.message = message }
+
+    public var description: String { message }
+    public var errorDescription: String? { message }
 }

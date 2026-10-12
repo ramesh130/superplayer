@@ -263,6 +263,15 @@ the Kotlin thresholds (`HlsPathologies.swift`, `LadderPathologies.swift`), plus 
 the HLS analog of core's `LiveWindowDepthCheck`, which lives in the doctor here. `CorpusRegisterTests`
 is the register, and the delivery rules and the postmortem are #428's, over the response headers each
 fetch already carries.
+#428 added them. `DeliveryPathologies.swift` is the Kotlin file rule for rule — a live playlist held
+past its update bound, a token scoped to the manifest or dying inside the content, a wildcard origin
+beside allowed credentials — reading the lowercased headers every playlist arrived with. The cache
+rule **asks core's** `StalePlaylistJudgement.cachedPastTheUpdateBoundSeconds`, `package` for it, so
+the doctor and a resilient player's stale-playlist watch are one comparison (ADR-0020 rule 8's #428
+addendum), and only it may spend the one-segment probe, a `HEAD` carrying the credential. The
+postmortem is `examine(_:classification:)`: the `SuperPlayerError` read onto
+`DiagnosticReport.classification`, never re-derived, which made the report drop `Hashable` because the
+error carries the engine's `NSError`.
 `SuperPlayerMoQ` is not declared yet — its binary target is
 i9's — and there is no `SuperPlayerCache`, since its content is the offline store's.
 

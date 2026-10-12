@@ -1888,7 +1888,16 @@ frame output and an `AVPlayerLayer` in the view, each of them once with a stand-
 player, and a Picture in Picture content source made from either layer. What only a device shows, and
 #435 is the ticket: that a pass-through drops no frame `AVPlayerLayer` would have shown, that the
 layer presents each frame on time against the item's timebase, that Picture in Picture runs from the
-sample-buffer layer, and that FairPlay content yields no pixel buffer at all (i6). Two things
+sample-buffer layer, and that FairPlay content yields no pixel buffer at all (i6). The first of those
+is now **counted**, by `devicelab/lab run frames --platform ios` (`devicelab/README.md`, *The frames
+scenario*), and on an iPhone 17 Pro Max on iOS 27.0, over Apple's BipBop example at 60 frames a second,
+it is **not quite met**: in two runs of two minutes' steady playback, one frame of about 7,200 never
+reached the output each time — a single gap of exactly two intervals (33.33 ms against 16.67), once at
+63.6 s and once near 85 s — while an `AVPlayerLayer` on the same phone dropped 0 and 4 frames by its
+own access log over the same length of playback. A third run met a network stall, which the scenario
+reports apart: twelve frames went missing around it, none in steady playback. Why the frame path
+skips that one frame is not established; the display link's rate and the path's one-frame
+back-pressure are the two candidates. The other three remain a device's and unrun. Two things
 the simulator could show and no test does: that the flush on a seek keeps an old frame off the
 screen — what the output is handed follows the new position with or without it, and what the layer
 shows is not readable here, so the flush is held only by its registration being counted — and that

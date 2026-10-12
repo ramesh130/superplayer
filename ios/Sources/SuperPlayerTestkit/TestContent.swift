@@ -159,6 +159,26 @@ public struct TestContent: Sendable {
     /// `SyntheticHlsStream.liveFiles(publishedSegmentCount:)` gives. `hosts` is
     /// ``hls(segmentCount:variantCount:hosts:)``'s, on one clock for every host.
     public static func liveHls(hosts: Int = 1) -> TestContent {
+        live(hosts: hosts, windowSegmentCount: SyntheticHlsStream.liveWindowSegmentCount)
+    }
+
+    /// ``liveHls(hosts:)`` on one host listing only the newest `windowSegmentCount` segments — a
+    /// live playlist whose window a test chooses, which is how the doctor's live-window rule (#427)
+    /// is shown a window shorter than RFC 8216 §6.2.2 allows and one exactly at it.
+    ///
+    /// Publication runs on the same clock from the same start, as though
+    /// `SyntheticHlsStream.liveWindowSegmentCount` segments were already out, so even at once the
+    /// window has slid: `EXT-X-MEDIA-SEQUENCE` is above zero, and the playlist reads as an origin
+    /// that has removed segments rather than as a stream that has only just begun.
+    public static func liveHls(windowSegmentCount: Int) -> TestContent {
+        precondition(
+            windowSegmentCount < SyntheticHlsStream.liveWindowSegmentCount,
+            "A window of \(windowSegmentCount) is liveHls()'s own or longer; serve liveHls()")
+        return live(hosts: 1, windowSegmentCount: windowSegmentCount)
+    }
+
+    /// The live stream behind ``liveHls(hosts:)`` and ``liveHls(windowSegmentCount:)``.
+    private static func live(hosts: Int, windowSegmentCount: Int) -> TestContent {
         precondition(hosts >= 1, "Content is served by at least one host, not \(hosts)")
         let window = SyntheticHlsStream.liveWindowSegmentCount
         return TestContent(
@@ -166,9 +186,11 @@ public struct TestContent: Sendable {
             hosts: hosts,
             publication: { elapsedMs, ports in
                 let published = window + Int(elapsedMs / SyntheticHlsStream.segmentDurationMs)
-                let files = SyntheticHlsStream.liveFiles(publishedSegmentCount: published)
-                    .reduce(into: [:]) { paths, file in paths[liveDirectory + file.key] = file.value
-                    }
+                let files = SyntheticHlsStream.liveFiles(
+                    publishedSegmentCount: published, windowSegmentCount: windowSegmentCount
+                )
+                .reduce(into: [:]) { paths, file in paths[liveDirectory + file.key] = file.value
+                }
                 return redundant(files, directory: liveDirectory, ports: ports)
             })
     }

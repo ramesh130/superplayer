@@ -188,11 +188,26 @@ public enum SyntheticHlsStream {
     /// `EXT-X-PROGRAM-DATE-TIME` form exists on Android for one test of a live-offset policy that is
     /// i3's here, and it is unprotected, because protection on iOS is FairPlay.
     public static func liveFiles(publishedSegmentCount: Int) -> [String: [UInt8]] {
+        liveFiles(
+            publishedSegmentCount: publishedSegmentCount, windowSegmentCount: liveWindowSegmentCount
+        )
+    }
+
+    /// ``liveFiles(publishedSegmentCount:)`` listing the newest `windowSegmentCount` segments
+    /// rather than ``liveWindowSegmentCount`` — the one way here to publish a live playlist
+    /// **shorter than RFC 8216 §6.2.2 allows**, which the diagnostics doctor's live-window rule
+    /// (#427) is tested on, and at three segments one exactly at that bound. The hostile corpus has
+    /// no such entry: its Kotlin twin is DASH's `dash-short-time-shift-buffer-depth`, and DASH is not
+    /// ported (ADR-0020 rule 6).
+    public static func liveFiles(publishedSegmentCount: Int, windowSegmentCount: Int)
+        -> [String: [UInt8]]
+    {
+        precondition(windowSegmentCount >= 1, "A live window lists at least one segment")
         precondition(
-            publishedSegmentCount >= liveWindowSegmentCount,
-            "A live window of \(liveWindowSegmentCount) segments needs that many published, "
+            publishedSegmentCount >= windowSegmentCount,
+            "A live window of \(windowSegmentCount) segments needs that many published, "
                 + "not \(publishedSegmentCount)")
-        let window = (publishedSegmentCount - liveWindowSegmentCount)..<publishedSegmentCount
+        let window = (publishedSegmentCount - windowSegmentCount)..<publishedSegmentCount
 
         var files: [String: [UInt8]] = [:]
         files[multivariantPlaylistName] = Array(multivariantPlaylist(1).utf8)

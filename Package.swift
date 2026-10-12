@@ -208,9 +208,13 @@ let package = Package(
             ],
             path: "ios/Tests/SuperPlayerTVTests"
         ),
+        // Testkit for the origin the doctor fetches from, testmedia for the corpus it is scored on.
         .testTarget(
             name: "SuperPlayerDiagnosticsTests",
-            dependencies: ["SuperPlayerDiagnostics"],
+            dependencies: [
+                "SuperPlayerDiagnostics", "SuperPlayerCore", "SuperPlayerTestkit",
+                "SuperPlayerTestMedia",
+            ],
             path: "ios/Tests/SuperPlayerDiagnosticsTests"
         ),
         // Core for the seam the fake implements, testmedia for the H.264 it delivers, and testkit

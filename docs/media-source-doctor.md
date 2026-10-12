@@ -530,6 +530,15 @@ written where the packager wanted minutes.
 **What to change.** Declare a window several segments deep — deeper than the time a segment takes to
 become available, with room for a playhead.
 
+**On iOS and tvOS**, where DASH is not read, the same defect in HLS is `hls-short-live-window`
+(ADR-0020 rule 8's #427 addendum; its own section arrives with this document's platform columns,
+#430). It is a live media playlist that has removed segments — `EXT-X-MEDIA-SEQUENCE` above zero —
+and lasts **less than three target durations**, which RFC 8216 §6.2.2 forbids a server to produce
+and §6.3.3 explains: a client should start no closer than three target durations to the end, so a
+shorter window has no segment to start at. Three is the RFC's own number, not a derivation, and the
+finding is `BLOCKING` and ungraded for the reason above. A stream in its first seconds, or an `EVENT`
+playlist, has removed nothing and is not flagged.
+
 #### `dash-missing-time-shift-buffer-depth`
 
 - **Citation:** ISO/IEC 23009-1 §5.3.1.2

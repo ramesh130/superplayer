@@ -251,6 +251,18 @@ decided `preferredForwardBufferDuration` and never to Apple's automatic one; the
 the expensive-network pair. `AdaptivePolicy.forProfile(_:rebufferCooldownMs:memory:)` is the
 `package` seam `AdaptivePolicyPlaybackTests` shortens the cooldown through. The benchmark's arm (d) is
 it, every session starting from a forgotten memory, and `benchmark/ios-phase3/` is its report.
+#427 is the first of i8: `SuperPlayerDiagnostics`' `MediaSourceDoctor(configuration:)`, whose
+`examine(_:)` is `async` and **not** `throws` — a playlist that cannot be fetched or read is a
+`manifest-unreachable` or `manifest-unreadable` finding — and answers a `DiagnosticReport` of
+`Finding`s (`Pathology`, `FindingSeverity`, magnitude, the corpus's citation and cause). It fetches
+the multivariant playlist and every media playlist it names over an ephemeral `URLSession` of its own,
+carrying what the configured `HeaderProvider` returns after a 401 or 403 as a player would, and no
+segment. It reads them with **a lint of its own** (`PlaylistLint.swift`, ADR-0020 rule 8 and its #427
+addendum): three refusals, the RFC's, and leniency everywhere else. The rules are the Kotlin ones with
+the Kotlin thresholds (`HlsPathologies.swift`, `LadderPathologies.swift`), plus `hls-short-live-window`,
+the HLS analog of core's `LiveWindowDepthCheck`, which lives in the doctor here. `CorpusRegisterTests`
+is the register, and the delivery rules and the postmortem are #428's, over the response headers each
+fetch already carries.
 `SuperPlayerMoQ` is not declared yet — its binary target is
 i9's — and there is no `SuperPlayerCache`, since its content is the offline store's.
 
@@ -285,7 +297,8 @@ origin.responses()                         // how each was answered: status, fau
   Never sleep and then assert.
 - **`.liveHls()` publishes a segment every two seconds of real time** from the moment the origin
   starts, in a six-segment window under `live/` — the Kotlin `TestContent.liveHls()`'s stream and
-  timing, on the host's clock.
+  timing, on the host's clock. `.liveHls(windowSegmentCount:)` is the same stream with a shorter
+  window, already slid, which is how the doctor is shown a window RFC 8216 §6.2.2 forbids (#427).
 - **No App Transport Security key is set in this repository.** Plain HTTP to the origin is allowed
   by Xcode's `xctest` host, whose embedded `Info.plist` sets `NSAllowsArbitraryLoads`, and
   `LoopbackOriginTests` pins that; a test hosted in an app would need `NSAllowsLocalNetworking`

@@ -11,7 +11,8 @@
   second.
   Amended again (#419) at rule 11, recording that `SuperPlayer`'s refusal is built and why it is a
   rule over schemes rather than a registry. Amended again (#420) at rule 6, recording the option the
-  credential repair puts its headers on and why.
+  credential repair puts its headers on and why. Amended again (#427) at rule 8, recording what the
+  lint refuses, the Android readings it keeps, and the live-window pathology it holds alone.
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
 - **Refines:** [ADR-0001](0001-compose-dont-fork.md), restated for Apple platforms rather than
@@ -256,6 +257,27 @@ that, and *What nothing enforces* sums them.
    `docs/media-source-doctor.md` states each threshold once as the authority and both platforms
    are scored against the one corpus register (ADR-0021 rule 6). *Enforced by the corpus register
    once #427 ports it, where a parser that misreads an entry fails that entry's row.*
+
+   *Addendum (2026-10-12, #427): what the lint is, and the one judgement it holds that Android's
+   doctor does not.* The lint (`PlaylistLint.swift`) reads the tags a rule asks about and skips every
+   other, and **refuses exactly the three things RFC 8216 tells a client to refuse** — bytes that are
+   not UTF-8 or open with a byte-order mark (§4.1), a first line that is not `#EXTM3U` (§4.3.1.1),
+   and a document carrying both multivariant and media tags (§4.3.4) — which is what
+   `manifest-unreadable` means on this platform. Everything else is read leniently, because a lint
+   stricter than the engine would call a playable stream unreadable, and that is the false positive
+   ADR-0015 rule 12 scores as heavily as a miss. The rules over it are the Kotlin ones with the
+   Kotlin thresholds and their sources (`HlsPathologies`, `LadderPathologies`), and two readings
+   Media3 makes for its own parser are kept rather than re-decided — a segment's container read off
+   its URI's extension, and a variant's channel count taken as two — because a lint that read either
+   differently would score one corpus entry two ways. The live-window judgement this rule places in
+   the doctor is `hls-short-live-window`, a pathology of this platform's own, since Android's is
+   DASH's `timeShiftBufferDepth`: a live playlist that has removed segments (`EXT-X-MEDIA-SEQUENCE`
+   above zero) and lasts less than three target durations, which breaks RFC 8216 §6.2.2's MUST and
+   leaves §6.3.3's client no segment to start at. Its threshold is the RFC's own number rather than a
+   derived one, and no corpus entry carries it — its Kotlin twin is a DASH entry — so the register
+   records it with the test that forces it rather than against a row. The register is built and in
+   `ios/check` (`CorpusRegisterTests`); the four delivery entries are recorded there as not yet
+   named, for #428.
 
 ### Platforms, versions and the surface
 

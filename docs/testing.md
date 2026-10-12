@@ -1199,6 +1199,26 @@ which Media3 plays, fails in AVFoundation; and `hls-cached-live-playlist` freeze
 fails with, where core names the cache — its error log carries -12888, the playlist unchanged, which
 nothing surfaces.
 
+### The doctor on iOS
+
+`SuperPlayerDiagnosticsTests` scores the iOS doctor (#427) against the same corpus, served the same
+way: every test examines content on a loopback origin of its own through the public
+`MediaSourceDoctor`, and what the doctor fetched is the origin's record, so "playlists and never a
+segment" is an equality on `networkRequests()`. `CorpusRegisterTests` is `CorpusRegisterTest`'s
+shape — per entry, the findings at `severe` as an equality, and every `benign` grade and every
+healthy stream silent **one at a time** — and is also what holds ADR-0020 rule 8's lint to the
+corpus: a lint that misread an entry fails that entry's row. The four delivery entries are rows that
+name nothing yet, each with its reason, for #428. Three pathologies have no corpus entry and are
+forced by a named test instead: the two defects of the fetch, and `hls-short-live-window`, whose
+Kotlin twin is DASH's. Its stream is testkit's `TestContent.liveHls(windowSegmentCount:)`, a live
+window a test chooses, published as though the default window had already slid so its media sequence
+is above zero; two segments is the defect and three, exactly at RFC 8216 §6.2.2's bound, the
+control. `PlaylistLintTests` imports the product `@testable`, arguing it in its own comment: the
+lint's three refusals and its attribute-list grammar reach the public API only as an unreadable
+finding with no reason, and nothing the origin serves carries a byte-order mark, a quoted comma or
+both kinds of tag. No duration is asserted anywhere in the target, and no device is needed for any of
+it.
+
 ### Rungs 4 and 5 on iOS
 
 #420's three repairs are driven through a real `SuperPlayer` at the loopback origin, in

@@ -70,10 +70,12 @@ enum PlaylistLint {
         if bytes.starts(with: [0xEF, 0xBB, 0xBF]) { return .failure(.byteOrderMark) }
         guard let text = String(data: bytes, encoding: .utf8) else { return .failure(.notUtf8) }
 
-        // spec: RFC 8216 §4.1 — lines end in LF or CR LF, and blank lines are ignored.
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
-            .map { $0.hasSuffix("\r") ? $0.dropLast() : $0 }
-            .map { $0.trimmingCharacters(in: .whitespaces) }
+        // spec: RFC 8216 §4.1 — lines end in LF or CR LF, and blank lines are ignored. Swift reads
+        // CR LF as one `Character`, so both terminators are named rather than LF alone.
+        let lines = text.split(
+            omittingEmptySubsequences: false, whereSeparator: { $0 == "\n" || $0 == "\r\n" }
+        )
+        .map { $0.trimmingCharacters(in: .whitespaces) }
         guard lines.first == "#EXTM3U" else { return .failure(.noHeader) }
 
         var reading = Reading(base: url)

@@ -13,6 +13,8 @@ EnumElement FindingSeverity.advisory : (SuperPlayerDiagnostics.FindingSeverity.T
 EnumElement FindingSeverity.blocking : (SuperPlayerDiagnostics.FindingSeverity.Type) -> SuperPlayerDiagnostics.FindingSeverity
 EnumElement FindingSeverity.degraded : (SuperPlayerDiagnostics.FindingSeverity.Type) -> SuperPlayerDiagnostics.FindingSeverity
 EnumElement Pathology.hlsAudioGroupCodecMismatch : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
+EnumElement Pathology.hlsCachedLivePlaylist : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
+EnumElement Pathology.hlsCorsRefusesCredentials : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
 EnumElement Pathology.hlsDanglingAudioGroup : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
 EnumElement Pathology.hlsDiscontinuityWithoutTimeline : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
 EnumElement Pathology.hlsInconsistentSegmentDurations : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
@@ -20,15 +22,15 @@ EnumElement Pathology.hlsLadderGap : (SuperPlayerDiagnostics.Pathology.Type) -> 
 EnumElement Pathology.hlsMissingCodecs : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
 EnumElement Pathology.hlsOverstatedBitrate : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
 EnumElement Pathology.hlsShortLiveWindow : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
+EnumElement Pathology.hlsTokenExpiringInWindow : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
+EnumElement Pathology.hlsTokenScopedToManifest : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
 EnumElement Pathology.manifestUnreachable : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
 EnumElement Pathology.manifestUnreadable : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
-Func DiagnosticReport.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerDiagnostics.DiagnosticReport, SuperPlayerDiagnostics.DiagnosticReport [static]
-Func DiagnosticReport.hash(into:) : (), Swift.Hasher
 Func Finding.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerDiagnostics.Finding, SuperPlayerDiagnostics.Finding [static]
 Func Finding.hash(into:) : (), Swift.Hasher
 Func FindingSeverity.<(_:_:) : Swift.Bool, SuperPlayerDiagnostics.FindingSeverity, SuperPlayerDiagnostics.FindingSeverity [static]
-Func MediaSourceDoctor.examine(_:) : SuperPlayerDiagnostics.DiagnosticReport, SuperPlayerCore.MediaRequest
-Struct DiagnosticReport : CustomStringConvertible, Equatable, Hashable, Sendable
+Func MediaSourceDoctor.examine(_:classification:) : SuperPlayerDiagnostics.DiagnosticReport, SuperPlayerCore.MediaRequest, SuperPlayerCore.SuperPlayerError?
+Struct DiagnosticReport : CustomStringConvertible, Sendable
 Struct Finding : CustomStringConvertible, Equatable, Hashable, Sendable
 Struct MediaSourceDoctor.Configuration : Sendable
 TypeAlias ChainLayer.AllCases : [SuperPlayerDiagnostics.ChainLayer]
@@ -41,10 +43,10 @@ TypeAlias Pathology.RawValue : Swift.String
 Var ChainLayer.allCases : [SuperPlayerDiagnostics.ChainLayer] [static] { get }
 Var ChainLayer.rawValue : Swift.String { get }
 Var DiagnosticReport.chain : Swift.Set<SuperPlayerDiagnostics.ChainLayer> { get }
+Var DiagnosticReport.classification : SuperPlayerCore.SuperPlayerError? { get }
 Var DiagnosticReport.contentId : Swift.String { get }
 Var DiagnosticReport.description : Swift.String { get }
 Var DiagnosticReport.findings : [SuperPlayerDiagnostics.Finding] { get }
-Var DiagnosticReport.hashValue : Swift.Int { get }
 Var Finding.cause : Swift.String { get }
 Var Finding.description : Swift.String { get }
 Var Finding.hashValue : Swift.Int { get }

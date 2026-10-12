@@ -234,6 +234,16 @@ them under `Added` would be worse than stating them here:
   `superplayer-core` on Android, emitted by nothing there — so an exhaustive `when` or `switch` over
   `TelemetryEvent` needs a branch for it; `schemaVersion` stays 2. The demo opens a tvOS screen on
   `AVPlayerViewController`'s system controls. No Android behaviour moved.
+- **Delivery pathologies and the postmortem on iOS (#428).** `SuperPlayerDiagnostics`' `Pathology`
+  gains the four delivery defects — `hlsCachedLivePlaylist`, `hlsTokenScopedToManifest`,
+  `hlsTokenExpiringInWindow`, `hlsCorsRefusesCredentials` — read off the response headers of the
+  playlists the doctor fetches, with one `HEAD` of a segment spent only where a live playlist is held
+  past its update bound; the cache rule asks core's own judgement rather than restating it.
+  `MediaSourceDoctor.examine(_:)` becomes `examine(_:classification:)` with a default, and
+  `DiagnosticReport` gains `classification`, the `SuperPlayerError` a failed session ended on, read
+  and never re-derived. **Breaking for the iOS Diagnostics product**: `DiagnosticReport` is no longer
+  `Equatable` or `Hashable`, because the error it now carries holds the engine's `NSError`; and an
+  exhaustive `switch` over `Pathology` needs four more cases. No Android behaviour moved.
 - **Phase 9 — Diagnostics and docs.** `MediaSourceDoctor`, which names twenty pathologies over the
   chain a player would load through; the postmortem reading; `SessionBundle`; the debug HUD; and
   the documents in `docs/`.

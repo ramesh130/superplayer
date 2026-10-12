@@ -290,7 +290,9 @@ that, and *What nothing enforces* sums them.
    `hls-cached-live-playlist` rule **asks core's** — the function is `package`, the iOS analog of
    ADR-0015 rule 3's fourth seam — and a playlist the doctor calls held too long is the one a
    player configured with resilience ends a session on. The "doctor alone" sentence now holds for
-   the live-window judgement only, which core does not hold on this platform. The one-segment probe
+   the live-window judgement only, which core does not hold on this platform, and the four delivery
+   entries the addendum above records as not yet named are named and scored like every other row.
+   The one-segment probe
    ADR-0015 rule 7's #289 addendum admits is spent under that addendum's conditions — only by the
    cache rule, only once it has a defect to attribute, at most once per media playlist — but is a
    **`HEAD`** where Android opens a one-byte range: Media3's `DataSource` has no `HEAD`, while

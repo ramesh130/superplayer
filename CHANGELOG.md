@@ -215,6 +215,15 @@ them under `Added` would be worse than stating them here:
   `LicenceStore` marker and `OfflineLicenceExpiredError`, which `ErrorClassifier` names
   `Drm.LicenceExpired`. Unlike Android's, the two durations are stated by the app, because FairPlay
   reports neither to the client. Additive; `schemaVersion` stays 2.
+- **A protected download carries its licence on iOS (#425).** `SuperPlayerOffline` gains
+  `Downloads.Configuration.protection`, a `DownloadProtection` of the `PlaybackDrm`, the
+  `LicenceStore` and the two durations FairPlay does not report. Content whose multivariant playlist
+  declares a FairPlay `EXT-X-SESSION-KEY` acquires its persistable keys before the first media byte; a
+  refusal fails the item named with nothing written; `DownloadItem.licence`, a `DownloadLicence`,
+  reports `isExpired`, `renewalDue` and the expiry as the typed error; and `remove` deletes the
+  package, owes the licence at once, deletes the key on the device and tells the key server once the
+  store's network is there. The offline licence store's file gains a table for owed releases, made
+  as it opens. Additive.
 - **Display criteria on tvOS (#426).** `SuperPlayerTV` gains `TvOutput.standard()`, which
   `SuperPlayerCore`'s new `Configuration.output` takes (a `PlaybackOutput`, the Kotlin `setOutput`):
   each item a player makes current asks the key window's `AVDisplayManager` for the asset's

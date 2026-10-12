@@ -109,6 +109,20 @@ public final class Downloads: OfflineContent, OfflineAssets {
         /// change of mind is a store opened again.
         public var meteredNetworksAllowed = false
 
+        /// The protection a protected download acquires its offline licence under, and the store it
+        /// keeps the licence in — the Kotlin `setDrm(drm, licences)` (ADR-0013 rule 13). Nil by
+        /// default, and then content that declares protection downloads with no licence, and
+        /// nothing can play it offline.
+        ///
+        /// With it, content whose multivariant playlist declares a FairPlay key (``DownloadProtection``
+        /// says which declaration) acquires a persistable key after its manifest is read and before
+        /// its first media byte, and a refused licence fails the item named, with nothing written.
+        /// ``Downloads/remove(_:)`` deletes the package at once and the key with it, from the device
+        /// at once and at the key server once the network the store downloads under is there; until
+        /// then the licence store lists it in `contentIdsAwaitingRelease()` and gives it to no player.
+        /// What the licence allows is ``DownloadItem/licence``, and nothing renews it.
+        public var protection: DownloadProtection?
+
         public init(directory: URL, sessionIdentifier: String) {
             self.directory = directory
             self.sessionIdentifier = sessionIdentifier
@@ -134,6 +148,19 @@ public final class Downloads: OfflineContent, OfflineAssets {
     private var random = SystemRandomNumberGenerator()
     private var released = false
 
+    // The licence half (#425): nothing below is made or registered until a protected download, or a
+    // release owed, needs it — so a store with no protection pays for none of it (ADR-0013 rule 15).
+    private let network: any NetworkWatching
+    private var licensing: (any DownloadLicensing)?
+    private var licensingAsked = false
+    private var licenceTail: Task<Void, Never>?
+    private var watchingNetwork = false
+    private var networkHolds = false
+    private var releasingLicences = false
+    private var releaseAgain = false
+    private var expiries: [String: SuperPlayerError] = [:]
+    private var lastOrdinal: Int64 = 0
+
     /// Opens the store in ``Configuration/directory``, reading its index and re-attaching to the
     /// background session by ``Configuration/sessionIdentifier``: a download an earlier process left
     /// running is the system's still, and one it no longer holds is started again from its plan.
@@ -146,10 +173,14 @@ public final class Downloads: OfflineContent, OfflineAssets {
     }
 
     /// The store over a downloader of the caller's: the seam `AssetDownloading` describes, `package`
-    /// so the tests stand the transfer in where the simulator cannot run one.
+    /// so the tests stand the transfer in where the simulator cannot run one — and over a watch of
+    /// the network of the caller's (`NetworkWatching`), so they can take the network away.
     package init(
         configuration: Configuration,
-        downloader makeDownloader: (DownloaderContext) -> any AssetDownloading
+        downloader makeDownloader: (DownloaderContext) -> any AssetDownloading,
+        network makeNetwork: (DownloadConstraints) -> any NetworkWatching = {
+            SystemNetworkWatch(constraints: $0)
+        }
     ) throws {
         let directory = configuration.directory
         var isDirectory: ObjCBool = false
@@ -162,13 +193,15 @@ public final class Downloads: OfflineContent, OfflineAssets {
         self.configuration = configuration
         let (stream, continuation) = AsyncStream<DownloadEvent>.makeStream()
         events = continuation
+        let constraints = DownloadConstraints(
+            meteredNetworksAllowed: configuration.meteredNetworksAllowed)
         downloader = makeDownloader(
             DownloaderContext(
                 sessionIdentifier: configuration.sessionIdentifier,
-                constraints: DownloadConstraints(
-                    meteredNetworksAllowed: configuration.meteredNetworksAllowed),
+                constraints: constraints,
                 packagesDirectory: directory.appendingPathComponent(Self.packagesDirectoryName),
                 events: { continuation.yield($0) }))
+        network = makeNetwork(constraints)
         index = DownloadIndex(directory: directory)
         decision = Self.decide(configuration)
         for row in try index.rows() {
@@ -179,6 +212,7 @@ public final class Downloads: OfflineContent, OfflineAssets {
                 contentId: row.plan.contentId, state: row.state, bytesDownloaded: row.bytes,
                 percentDownloaded: row.percent)
         }
+        lastOrdinal = try index.maxOrdinal()
         // One consumer, in order: the downloader's events reach the store as it observed them.
         consumer = Task { [weak self] in
             for await event in stream { self?.handle(event) }
@@ -192,6 +226,8 @@ public final class Downloads: OfflineContent, OfflineAssets {
             let held = await downloader.inFlight()
             self?.resume(unfinished, except: held)
         }
+        // A release a last process owed is owed still: the Kotlin store's pass on opening.
+        releaseOwedLicences()
     }
 
     deinit {
@@ -201,11 +237,13 @@ public final class Downloads: OfflineContent, OfflineAssets {
 
     // MARK: Reading
 
-    /// The download of `contentId`, or nil where the store holds none.
-    public func download(_ contentId: String) -> DownloadItem? { items[contentId] }
+    /// The download of `contentId`, or nil where the store holds none — its licence read now.
+    public func download(_ contentId: String) -> DownloadItem? {
+        items[contentId].map(withLicence)
+    }
 
-    /// Every download, in the order it was first enqueued.
-    public func downloads() -> [DownloadItem] { order.compactMap { items[$0] } }
+    /// Every download, in the order it was first enqueued — each licence read now.
+    public func downloads() -> [DownloadItem] { order.compactMap { items[$0] }.map(withLicence) }
 
     public func addListener(_ listener: any DownloadsListener) {
         guard !listeners.contains(where: { $0 === listener }) else { return }
@@ -238,16 +276,26 @@ public final class Downloads: OfflineContent, OfflineAssets {
         if !order.contains(id) { order.append(id) }
         report(DownloadItem(contentId: id, state: .queued))
         let ceiling = decision.download
+        // Its place in the index's order, taken now: the plan is written once its manifest is read,
+        // and two reads finish in either order.
+        lastOrdinal += 1
+        let ordinal = lastOrdinal
         Task {
             await self.plan(
-                request, generation: generation, ceiling: ceiling, audioLanguages: audioLanguages,
-                subtitleLanguages: subtitleLanguages)
+                request, generation: generation, ordinal: ordinal, ceiling: ceiling,
+                audioLanguages: audioLanguages, subtitleLanguages: subtitleLanguages)
         }
     }
 
     /// Removes the download of `contentId`: its task cancelled, its package deleted, then the store
     /// forgets it — reported ``DownloadState/removing`` and then removed. Content with no download is
     /// ignored.
+    ///
+    /// A protected download's licence goes with it (ADR-0013 rule 13): owed a release at once, so
+    /// the licence store gives it to no player from the moment the viewer asked; its keys deleted
+    /// from the device, which needs no network; and the key server told, now if the network the
+    /// store downloads under is there and otherwise as soon as it is — the storage is the viewer's at
+    /// once, and a release is a round trip a removal made on a plane still owes.
     public func remove(_ contentId: String) {
         guard !released, let item = items[contentId] else { return }
         _ = nextGeneration(of: contentId)
@@ -266,7 +314,9 @@ public final class Downloads: OfflineContent, OfflineAssets {
         packagePaths[contentId] = nil
         lastReported[contentId] = nil
         retries[contentId] = nil
+        expiries[contentId] = nil
         for listener in listeners { listener.downloadRemoved(contentId) }
+        oweRelease(contentId)
     }
 
     /// The app's `handleEventsForBackgroundURLSession` hand-off: answers whether `identifier` is
@@ -286,6 +336,8 @@ public final class Downloads: OfflineContent, OfflineAssets {
         guard !released else { return }
         released = true
         downloader.close()
+        network.cancel()
+        licensing?.close()
         index.close()
         events.finish()
         consumer?.cancel()
@@ -307,7 +359,7 @@ public final class Downloads: OfflineContent, OfflineAssets {
     /// Reads `request`'s manifest and hands the downloader a plan, unless the item was removed or
     /// enqueued again meanwhile.
     private func plan(
-        _ request: MediaRequest, generation: Int, ceiling: DownloadSelectionPolicy,
+        _ request: MediaRequest, generation: Int, ordinal: Int64, ceiling: DownloadSelectionPolicy,
         audioLanguages: [String], subtitleLanguages: [String]
     ) async {
         let id = request.contentId
@@ -335,18 +387,89 @@ public final class Downloads: OfflineContent, OfflineAssets {
             audioLanguages: audio,
             subtitleLanguages: DownloadSelection.carried(
                 subtitleLanguages, offered: reading.subtitleLanguages))
+        // Between the plan and the first media byte, a protected download's persistable key is
+        // acquired (ADR-0013 rule 13): nothing has been fetched but playlists, so a refused licence
+        // costs no media and writes nothing — the plan reaches the index only after it, as the Kotlin
+        // store's item reaches the manager only after it.
+        switch await licence(for: request, generation) {
+        case .stale: return
+        case .failed(let failure):
+            report(DownloadItem(contentId: id, state: .failed, failure: failure))
+            return
+        case .held: break
+        }
         do {
-            try index.insert(plan)
+            try index.insert(plan, ordinal: ordinal)
         } catch {
             report(DownloadItem(contentId: id, state: .failed))
             return
         }
         plans[id] = plan
-        // Between the plan and the first media byte is where a protected download's persistable key
-        // is acquired (ADR-0013 rule 13, #425): the plan names what will be downloaded, and nothing
-        // has been fetched but playlists.
         downloader.start(plan)
     }
+
+    /// How a download's licence step ended.
+    private enum LicenceStep {
+        /// Held — acquired, kept, or none needed — and the download may go on.
+        case held
+        /// The item failed, with the typed error where the store can name it.
+        case failed(SuperPlayerError?)
+        /// The item was removed or enqueued again meanwhile, and this work is nobody's.
+        case stale
+    }
+
+    /// The licence step of `request`'s download: its declared keys read, and acquired where it
+    /// declares any.
+    private func licence(for request: MediaRequest, _ generation: Int) async -> LicenceStep {
+        let id = request.contentId
+        let keys = await sessionKeys(of: request.sources[0])
+        guard isCurrent(id, generation) else { return .stale }
+        // The multivariant playlist could not be read for its keys: a manifest that cannot be read,
+        // failed unnamed as the asset's read is.
+        guard let keys else { return .failed(nil) }
+        guard !keys.isEmpty else { return .held }
+        let failure = await acquireLicence(id, keyIdentifiers: keys)
+        guard isCurrent(id, generation) else {
+            // Removed while its licence was on the way: a licence for a download nobody wants, owed
+            // a release at once. Enqueued again instead, the newer enqueue keeps it.
+            if failure == nil, items[id] == nil { oweRelease(id) }
+            return .stale
+        }
+        return failure.map { .failed(named($0)) } ?? .held
+    }
+
+    /// The FairPlay keys `source` declares, on a store whose protection can acquire them; an empty
+    /// list on any other store, which reads nothing more; nil where the playlist could not be read.
+    private func sessionKeys(of source: URL) async -> [String]? {
+        // Asked of the configuration and not of `licences()`, which would make a key session for
+        // content that may turn out clear.
+        guard configuration.protection?.drm is any DownloadProtecting, storedLicences != nil else {
+            return []
+        }
+        do {
+            return SessionKeys.declared(in: try await Self.playlistText(source))
+        } catch {
+            return nil
+        }
+    }
+
+    /// `url`'s body as text, read once more for what an `AVURLAsset` does not say — its
+    /// `EXT-X-SESSION-KEY`s. One extra request of the multivariant playlist, and only on a store
+    /// configured with protection, the price of the store, not the asset, reading the declaration.
+    /// It goes as the asset's read went: with no credential, since a `HeaderProvider` answers a
+    /// refusal rather than holding a credential to send first, and asked once, a failure failing the
+    /// item unnamed as an unreadable manifest does on Android — so a manifest the asset could read
+    /// is one this read meets the same way.
+    nonisolated private static func playlistText(_ url: URL) async throws -> String {
+        let (data, response) = try await playlistSession.data(from: url)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 200
+        guard (200..<300).contains(status) else { throw URLError(.badServerResponse) }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    /// Ephemeral, so the read lands nothing on disk outside the directory and is never answered
+    /// from a cache instead of the origin.
+    nonisolated private static let playlistSession = URLSession(configuration: .ephemeral)
 
     private static func decide(_ configuration: Configuration) -> PlaybackDecision {
         (configuration.policy ?? configuration.profile.policy).decide(PlaybackConditions())
@@ -376,6 +499,176 @@ public final class Downloads: OfflineContent, OfflineAssets {
     /// Whether `generation` is still `contentId`'s, its item still queued, and the store open.
     private func isCurrent(_ contentId: String, _ generation: Int) -> Bool {
         !released && generations[contentId] == generation && items[contentId]?.state == .queued
+    }
+
+    // MARK: Licences (#425)
+
+    /// The licence store, where the store was configured with one this product can read.
+    private var storedLicences: (any StoredLicences)? {
+        configuration.protection?.licences as? any StoredLicences
+    }
+
+    /// The store's licence exchanges, made the first time they are needed and never before — nil
+    /// where the protection or the licence store is not one that can acquire, in which case
+    /// protected content downloads with no licence, as on a store configured with none.
+    private func licences() -> (any DownloadLicensing)? {
+        if licensingAsked { return licensing }
+        guard !released, let protection = configuration.protection,
+            let drm = protection.drm as? any DownloadProtecting, let stored = storedLicences
+        else { return nil }
+        licensingAsked = true
+        let fallback = Self.decide(configuration).retry.licence
+        licensing = drm.downloadLicences(
+            over: stored,
+            // Re-read at every ask, as a player's licence budget is.
+            budget: { [weak self] in self?.decision.retry.licence ?? fallback },
+            headerProvider: (configuration.resilience as? any FailureClassifying)?.headerProvider)
+        return licensing
+    }
+
+    /// Runs `work` once every licence exchange asked for before it has ended — one at a time, the
+    /// Kotlin `DownloadLicences`' single thread — so a release and an acquisition of one content id
+    /// never interleave, and two acquisitions of one never both write.
+    private func onLicenceQueue<T: Sendable>(_ work: @escaping @MainActor () async -> T) async -> T
+    {
+        let previous = licenceTail
+        let task = Task { @MainActor in
+            await previous?.value
+            return await work()
+        }
+        licenceTail = Task { _ = await task.value }
+        return await task.value
+    }
+
+    /// Acquires `contentId`'s licence for `keyIdentifiers`, answering what it failed on or nil.
+    ///
+    /// A licence still in force is kept rather than acquired again, which would leave the first one
+    /// counted against the device with nobody holding it — the Kotlin store's rule. One that has
+    /// expired, or that an earlier removal still owes, is released first, at the device and the
+    /// server: the store's index holds one licence per content id, and a release the server never
+    /// heard of is the defect a release exists to prevent. The network is there, since the
+    /// acquisition is about to use it; a release it refuses fails the item with nothing written.
+    private func acquireLicence(_ contentId: String, keyIdentifiers: [String]) async
+        -> (any Error)?
+    {
+        guard let protection = configuration.protection else { return nil }
+        return await onLicenceQueue { [weak self] () -> (any Error)? in
+            guard let self, !self.released else { return CancellationError() }
+            // A protection that cannot acquire downloads with no licence, as `protection` says.
+            guard let licensing = self.licences(), let stored = self.storedLicences else {
+                return nil
+            }
+            do {
+                if let standing = try stored.standing(of: contentId) {
+                    guard standing.isExpired else { return nil }
+                    _ = try stored.awaitRelease(contentId)
+                }
+                if try stored.awaitingRelease().contains(contentId) {
+                    try await licensing.release(contentId, tellingServer: true)
+                }
+                try await licensing.acquire(
+                    contentId, keyIdentifiers: keyIdentifiers,
+                    licenceDuration: protection.licenceDuration,
+                    playbackDuration: protection.playbackDuration)
+                return nil
+            } catch {
+                return error
+            }
+        }
+    }
+
+    /// Releases every licence owed a release: each key deleted from the device at once, and the key
+    /// server told where the network the store downloads under is there. One the server refuses
+    /// stays owed for a later pass — when the network next comes, when another removal asks, or
+    /// when the store is next opened — as the Kotlin store keeps it for its next chance.
+    ///
+    /// The network is watched while anything is owed and not otherwise.
+    private func releaseOwedLicences() {
+        guard !released, let stored = storedLicences else { return }
+        let owed = (try? stored.awaitingRelease()) ?? []
+        guard !owed.isEmpty else { return stopWatchingNetwork() }
+        guard let licensing = licences() else { return }
+        if !watchingNetwork {
+            watchingNetwork = true
+            network.watch { [weak self] holds in
+                guard let self else { return }
+                let came = holds && !self.networkHolds
+                self.networkHolds = holds
+                if came { self.releaseOwedLicences() }
+            }
+        }
+        guard !releasingLicences else {
+            releaseAgain = true
+            return
+        }
+        releasingLicences = true
+        // Before the watch's first reading this is false, so the first pass after a removal deletes
+        // on the device alone and the reading that follows — the path at once, when there is one —
+        // starts the pass that tells the server. Two passes rather than a wait for the reading,
+        // because the device half needs no network and should not wait for one.
+        let tellingServer = networkHolds
+        Task { [weak self] in
+            guard let self else { return }
+            await self.onLicenceQueue { [weak self] in
+                for contentId in owed.sorted() {
+                    guard let self, !self.released else { return }
+                    try? await licensing.release(contentId, tellingServer: tellingServer)
+                }
+            }
+            self.releasingLicences = false
+            if self.releaseAgain {
+                self.releaseAgain = false
+                self.releaseOwedLicences()
+            } else if (try? stored.awaitingRelease())?.isEmpty == true {
+                self.stopWatchingNetwork()
+            }
+        }
+    }
+
+    /// Owes `contentId`'s licence a release, where the licence store holds one, and starts a pass.
+    private func oweRelease(_ contentId: String) {
+        guard let stored = storedLicences, (try? stored.awaitRelease(contentId)) == true else {
+            return
+        }
+        releaseOwedLicences()
+    }
+
+    private func stopWatchingNetwork() {
+        guard watchingNetwork else { return }
+        watchingNetwork = false
+        networkHolds = false
+        network.cancel()
+    }
+
+    /// `item` with what its licence allows read from the licence store now, on a store with one.
+    private func withLicence(_ item: DownloadItem) -> DownloadItem {
+        guard let stored = storedLicences,
+            let standing = try? stored.standing(of: item.contentId)
+        else { return item }
+        var expiry: SuperPlayerError?
+        if standing.isExpired {
+            expiry =
+                expiries[item.contentId]
+                ?? named(
+                    OfflineLicenceExpiredError(
+                        contentId: item.contentId,
+                        playbackDurationRemainingMs: standing.playbackDurationRemainingMs,
+                        licenceDurationRemainingMs: standing.licenceDurationRemainingMs))
+            // Made once, so an item reporting it again compares equal.
+            expiries[item.contentId] = expiry
+        } else {
+            // Renewed since: a later expiry is a new one, with its own remaining durations.
+            expiries[item.contentId] = nil
+        }
+        return item.with(
+            licence: DownloadLicence(
+                isExpired: standing.isExpired, renewalDue: standing.renewalDue, expiry: expiry))
+    }
+
+    /// `error` as the typed error it is, where the store has a resilience to name it; nil otherwise.
+    private func named(_ error: any Error) -> SuperPlayerError? {
+        (configuration.resilience as? any DownloadFailureClassifying)?
+            .downloadFailure(of: error as NSError)
     }
 
     // MARK: Events
@@ -469,12 +762,17 @@ public final class Downloads: OfflineContent, OfflineAssets {
                 percentDownloaded: item.percentDownloaded, failure: failure))
     }
 
-    /// Makes `item` current and tells every listener, unless it is what they were last told.
+    /// Makes `item` current and tells every listener, unless it is what they were last told — its
+    /// licence read on a change of state and carried otherwise, because a progress report is no
+    /// reason to read the licence store (the Kotlin store's rule).
     private func report(_ item: DownloadItem) {
         items[item.contentId] = item
-        guard lastReported[item.contentId] != item else { return }
-        lastReported[item.contentId] = item
-        for listener in listeners { listener.downloadChanged(item) }
+        let last = lastReported[item.contentId]
+        let told =
+            last?.state == item.state ? item.with(licence: last?.licence) : withLicence(item)
+        guard last != told else { return }
+        lastReported[item.contentId] = told
+        for listener in listeners { listener.downloadChanged(told) }
     }
 
     // MARK: Paths

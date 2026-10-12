@@ -88,7 +88,10 @@ and `FramePath.swift` is the whole display path, made only on a player configure
 control timebase is the item's own. `PlayerLayerView` (UIKit) and `PlayerView` (SwiftUI) host that
 layer, or an `AVPlayerLayer` they make for a player without one, and make a Picture in Picture
 content source from either. A player configured for protection has the output off for its lifetime
-and says so in `frameOutputOffReason`; protection is `Configuration.drm` set at all (#422).
+and says so in `frameOutputOffReason`; protection is `Configuration.drm` set at all (#422). The link
+asks for twice the content's frame rate (`DisplayLinkPace`, #491), because one at the content's own
+rate skipped a frame whenever the display's clock drifted across a frame boundary; on an iPhone that
+needs the app's `CADisableMinimumFrameDurationOnPhone`, which the demo's `Info.plist` declares.
 #431 is the realtime tracer. The seam is core's (`FrameSource.swift`: `FrameSource`, `FrameSink`,
 `RealtimeTrack`, `EncodedFrame`, `FrameSourceFactory` and the obligations, plus three typed errors),
 and `SuperPlayerRealtime` holds `RealtimePlayer` — the second public player type, because an

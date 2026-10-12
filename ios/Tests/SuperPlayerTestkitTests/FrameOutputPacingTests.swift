@@ -34,6 +34,8 @@ import XCTest
 @MainActor
 final class FrameOutputPacingTests: XCTestCase {
 
+    /// The bound on every wait, only a ceiling: two frames arrive within a second of playing at 1×,
+    /// and the rest is room for a loaded host.
     private let bound: Duration = .seconds(60)
 
     private let harness = PlaybackHarness()

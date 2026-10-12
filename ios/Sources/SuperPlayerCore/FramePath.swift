@@ -208,10 +208,10 @@ final class FramePath {
 /// sees a frame and never whether one does; `hasNewPixelBuffer` keeps the second tick's cost to one
 /// call.
 ///
-/// The content's rate is the shortest gap between two handed presentation times — the
-/// `FrameTally` reasoning the device count uses (`ios/Demo`), since a variant's frame rate is
-/// constant and a lost frame only lengthens a gap — so it needs no reading of the asset, which an
-/// HLS item does not reliably expose. Until two frames have arrived the link keeps the system's
+/// The content's rate is the shortest gap between two handed presentation times: a variant declares
+/// one frame rate (RFC 8216 §4.3.4.2's `FRAME-RATE`), and a lost frame only lengthens a gap, so the
+/// shortest is the frame interval — and that needs no reading of the asset, which an HLS item does
+/// not reliably expose. Until two frames have arrived the link keeps the system's
 /// default. A display that cannot refresh faster than the content gets its maximum and the loss
 /// stays — there is no faster tick to ask for — and on an iPhone a link above 60 Hz needs the app's
 /// `CADisableMinimumFrameDurationOnPhone` (`docs/ios.md`), which is the app's Info.plist and not the

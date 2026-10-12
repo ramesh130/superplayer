@@ -178,7 +178,9 @@ final class FramePath {
             let frame = videoOutput.copyPixelBuffer(
                 forItemTime: itemTime, itemTimeForDisplay: &presentationTime)
         else { return processing.end() }
-        if presentationTime.isNumeric, let range = pace.observe(presentationTime.seconds) {
+        if presentationTime.isNumeric,
+            let range = pace.rangeAfterFrame(at: presentationTime.seconds)
+        {
             link.preferredFrameRateRange = range
         }
         processing.process(
@@ -236,7 +238,7 @@ struct DisplayLinkPace {
 
     /// The range to ask for after a frame presented at `seconds`, or nil where it is unchanged —
     /// before two frames, and while the shortest gap stays what it was.
-    mutating func observe(_ seconds: Double) -> CAFrameRateRange? {
+    mutating func rangeAfterFrame(at seconds: Double) -> CAFrameRateRange? {
         defer { lastPresentationTime = seconds }
         guard let last = lastPresentationTime else { return nil }
         let interval = seconds - last

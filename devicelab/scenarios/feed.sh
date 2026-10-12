@@ -21,16 +21,20 @@ FEED_DWELL_MS="${FEED_DWELL_MS:-1000}"
 FEED_LEAD_IN_MS="${FEED_LEAD_IN_MS:-5000}"
 SCENARIO_IOS_LAUNCH=(-SPDemoScreen feed -SPFeedRows "$FEED_ROWS" -SPFeedScroll "$FEED_PASSES"
     -SPFeedDwellMs "$FEED_DWELL_MS" -SPFeedLeadInMs "$FEED_LEAD_IN_MS")
-# From launch, so the recording holds the footprint before the first row as well as through the
-# scroll. A ceiling, never an expected duration: two dwells a row a pass, doubled, and ten minutes for
-# a slow CDN — `ios/hunt-leaks`' own.
+# The recording launches the demo (`ios_record_launch`), because a recording over every process ends
+# after about a second on a phone and this one needs the whole scroll. So the run is as long as the
+# recording, and the recording as long as the scroll is expected to be: the lead-in, every step of
+# every pass at its dwell with 15% for the time a step itself takes (36 steps took 37 s on the phone
+# #435 ran on), and a minute for the launch, the first row and a sample or two at rest afterwards.
+SCENARIO_IOS_RECORDED_LAUNCH=1
 SCENARIO_TRACE_FROM=launch
-SCENARIO_TRACE_MS=$((((FEED_ROWS * 2 * FEED_PASSES * FEED_DWELL_MS / 1000) * 2 + 600) * 1000))
+SCENARIO_TRACE_MS=$((FEED_LEAD_IN_MS + (FEED_ROWS - 1) * 2 * FEED_PASSES * FEED_DWELL_MS * 115 / 100 + 60000))
 
+# Nothing to drive: the feed scrolled itself inside the recording. A scroll the recording did not see
+# finish is said here and judged `unknown` by the report.
 scenario_drive() {
-    ios_wait_for_log "scroll finished" $((TRACE_MS / 1000))
-    # A sample or two of the feed at rest, after the last row was recycled.
-    sleep "${FEED_SETTLE_S:-10}"
+    grep -q "scroll finished" "$IOS_LOG" ||
+        log "warning: the recording ended before the scroll finished; memory will read unknown"
 }
 
 scenario_report() {

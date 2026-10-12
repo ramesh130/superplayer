@@ -346,8 +346,10 @@ simulator and an emulator together will not fit.
 
 **Built for iOS by #435** (`devicelab/README.md`, *iOS*; tvOS is not reached yet). Two things differ
 from the sketch above: the readiness signal is the demo's own position lines rather than Now Playing,
-which a shell cannot read on a phone, and the recording is the Activity Monitor template over every
-process, because xctrace cannot attach to a process `devicectl`'s console launched.
+which a shell cannot read on a phone, and the recording is the Activity Monitor template — over
+every process beside `devicectl`'s console, whose process xctrace cannot attach to, or, where the
+recording must be whole, launching the demo itself with the `os_log` instrument, because a recording
+over every process ends after about a second on a phone.
 
 ## 7. Phases
 

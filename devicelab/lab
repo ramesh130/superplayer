@@ -472,7 +472,7 @@ cmd_run_ios() {
 
     if declare -F scenario_prepare >/dev/null; then scenario_prepare; fi
     ios_ensure_device
-    log "device: $IOS_UDID ($DEVICE_MODEL, iOS $DEVICE_OS_VERSION ($DEVICE_OS_BUILD), $IOS_REALITY)"
+    log "device: $IOS_UDID ($DEVICE_MODEL, iOS $DEVICE_OS_VERSION ($DEVICE_OS_BUILD), $IOS_REALITY, $IOS_TRANSPORT)"
     ios_build_demo
     ios_install_demo
 

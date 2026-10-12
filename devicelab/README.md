@@ -253,7 +253,7 @@ SP_SIMULATOR=sp-sim devicelab/lab run smoke --platform ios               # a sim
 | Signing | the debug key | `SP_DEVELOPMENT_TEAM`, passed with `-allowProvisioningUpdates` and **never committed**: a run that finds the project file changed after the build fails, so a team Xcode wrote into it is reverted rather than measured |
 | Playing | `dumpsys media_session` | the demo's own position lines, read off its console. iOS publishes no playback state a shell can read, so the demo logs it (`DemoPlayback`, `FeedPlayback`), and two lines of one content with the position risen is the same evidence |
 | Log | logcat | `devicectl device process launch --console` with `OS_ACTIVITY_DT_MODE`, which copies the app's own `os_log` lines to the console, because `log collect` from a phone needs root. One `console-<launch>.log` per launch |
-| Trace | Perfetto | xctrace's **Activity Monitor**, over every process, as `trace.trace`; the demo's footprint is exported from it as `footprint.tsv` |
+| Trace | Perfetto | xctrace's **Activity Monitor**, as `trace.trace`, with the demo's footprint exported from it as `footprint.tsv`: over every process beside the console, or — for a scenario that sets `SCENARIO_IOS_RECORDED_LAUNCH`, `feed` — with xctrace launching the demo and recording its `os_log` too, the console read back out of the recording |
 
 Five things cost time the first time round, and each is handled where it bites:
 
@@ -264,11 +264,16 @@ Five things cost time the first time round, and each is handled where it bites:
 - **xctrace cannot attach to a process the console launched** ("Cannot find process"), and a launch by
   xctrace would take the console the log is read from. So the recording is Activity Monitor over
   every process, and the demo's rows are found by name and pid.
-- **xctrace needs the phone on a cable.** With the phone reached over the network — devicectl's
-  `transportType` `localNetwork` — every recording ended after about a second, its table of contents
-  saying `Device disconnected`, while devicectl went on working. The run records the reason in
-  `run.json` (`xctrace.end_reason`, `trace_ended_early`) and says so at the top of the report, and a
-  scenario that needs the recording reads `unknown` rather than passing.
+- **A recording over every process ends after about a second**, its table of contents saying
+  `Device disconnected`, while devicectl goes on working — over the network and on a cable alike, so
+  the cable was not the cause, as this harness first guessed. A recording of a process xctrace
+  *launched* runs to its limit. So a scenario that needs the recording whole sets
+  `SCENARIO_IOS_RECORDED_LAUNCH=1`: xctrace launches the demo with the Activity Monitor template and
+  the `os_log` instrument, nothing is waited on while it runs, and the demo's lines are rebuilt from
+  the recording into `console-main.log` (`ios_oslog_lines`), where every reader finds them. Such a
+  scenario drives itself and states its own length. A run records why a recording ended in
+  `run.json` (`xctrace.end_reason`, `trace_ended_early`), and a scenario that needs it reads `unknown`
+  when it ended early.
 - **A phone is not a device until it says so.** devicectl lists a phone that is unpaired, locked out
   of Developer Mode or still booting, and an install to one fails minutes later; such a phone is not
   adopted.
@@ -318,7 +323,12 @@ and the run's readiness holds. Time to first frame is each row's `first_frame` e
 intent, as median, p90 and max. Memory is the demo's physical footprint in the recording, judged per
 pass as the leak hunts judge it (`ios_feed_report`): the first pass is the baseline, and a later pass is
 **flat** when its median is at or under the first's p90, **growing** above it, and **unknown** with fewer
-than two passes of ten samples — which is not a pass.
+than two passes of ten samples, a recording that ended early, or a scroll it did not see finish —
+none of which is a pass. The footprint is the **app's own**: AVFoundation decodes in system
+processes (`mediaserverd`), so decoded frames and most of the media buffer are not in it, and a
+footprint flat over 200 rows says the app keeps nothing per row, not that the device's memory
+stayed flat. The feed runs inside the recording (`SCENARIO_IOS_RECORDED_LAUNCH`), and `ttff.tsv`
+holds every first frame by content id.
 
 ## Plants
 
@@ -457,7 +467,7 @@ step is still running in the next, and that boot fits in the job's timeout on a 
   "Activity monitoring service not available on this device", so a simulator run has no footprint,
   and `ios/hunt-leaks` stays the simulator's memory measurement. An iOS
   run needs Xcode, `python3` (which Xcode's command-line tools ship) for the JSON and XML it reads, and
-  a phone on a cable for its recording.
+  a phone that is unlocked for its whole length.
 - One device per run. Devices of the other kind are passed over, as is one that answers but never
   reports its features, or one that stopped answering and is not the harness's AVD. When several of
   the kind asked for are attached, the run fails and asks for `--serial` rather than

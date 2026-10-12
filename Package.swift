@@ -186,12 +186,14 @@ let package = Package(
         // Core, the harness and the classifier too: a download is counted at the loopback origin,
         // played offline through a real player and named by the resilience a consumer configures —
         // all phase 5 or below, as superplayer-offline's own tests drive the Kotlin harness with
-        // `setResilience`.
+        // `setResilience`. And SuperPlayerDRM, phase 6, for a protected download's licence (#425),
+        // as `DownloadLicenceTest` depends on superplayer-drm: the test target's dependency, never
+        // the product's (ADR-0013 rule 1).
         .testTarget(
             name: "SuperPlayerOfflineTests",
             dependencies: [
                 "SuperPlayerOffline", "SuperPlayerCore", "SuperPlayerTestkit",
-                "SuperPlayerResilience",
+                "SuperPlayerResilience", "SuperPlayerDRM",
             ],
             path: "ios/Tests/SuperPlayerOfflineTests"
         ),

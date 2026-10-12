@@ -1417,6 +1417,21 @@ read is the shipped classifier's of that error.
 - what the session's constraints do: that a task waits on cellular and in Low Data Mode, and what
   `isDiscretionary` holds it for — coarser than Android's battery-not-low, and reported to nobody.
 
+**A protected download's licence (#425)** is three stand-ins at once in `DownloadLicenceTests`, each at
+its own `package` seam: the transfer as above, the key session at `FairPlayKeySession` for *FairPlay on
+iOS*'s reason, and the network at `SuperPlayerOffline`'s second seam, `NetworkWatching`, because a test
+cannot take the simulator's network away and a deferred release is a claim about there being none.
+What runs as shipped is the `EXT-X-SESSION-KEY` read of the multivariant playlist, the store's order —
+the licence acquired after the manifest and before the downloader is handed anything, which the
+stand-in's `onStart` reads off both origins at that moment — the exchange against
+`TestContent.licenceServer()` on the store's licence budget, the licence store's SQLite file and its
+owed releases, and the classifier's name for a refusal or an expiry. `TestContent.protectedHls` declares
+the keys and encrypts nothing. What only a device shows, beside the list above: that
+`processContentKeyRequest(withIdentifier:)` on a session with no recipient delivers a persistable
+request on a device, that the persisted key then plays the downloaded `.movpkg` with no request, that
+`invalidatePersistableContentKey` answers a proof a real key server accepts, and that `NWPathMonitor`'s
+reading is the moment a removal's release reaches the server.
+
 ## The layers above the fakes
 
 Both harnesses put their fakes where the *transport* goes — the HTTP stack — and not in place of the

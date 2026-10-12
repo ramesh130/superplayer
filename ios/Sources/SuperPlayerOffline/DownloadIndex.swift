@@ -78,16 +78,26 @@ final class DownloadIndex {
         }.compactMap { $0 }
     }
 
-    /// Writes `plan` as a queued download, keeping its place in the order if it had one.
-    func insert(_ plan: DownloadPlan) throws {
+    /// The highest place in the order any row holds, or zero.
+    func maxOrdinal() throws -> Int64 {
+        try query("SELECT COALESCE(MAX(ordinal), 0) FROM \(Self.table)", []) {
+            sqlite3_column_int64($0, 0)
+        }.first ?? 0
+    }
+
+    /// Writes `plan` as a queued download, keeping its place in the order if it had one and taking
+    /// `ordinal` — the place the store gave it as it was enqueued — if not. Given rather than taken
+    /// here, because plans are written as their manifest reads finish, in whatever order that is
+    /// (#425: a licence acquired between the read and the write widened the window).
+    func insert(_ plan: DownloadPlan, ordinal: Int64) throws {
         try run(
             "INSERT OR REPLACE INTO \(Self.table) (content_id, ordinal, source, title, variant_bps, "
                 + "audio, subtitles, state, bytes, percent, package) VALUES (?, COALESCE("
-                + "(SELECT ordinal FROM \(Self.table) WHERE content_id = ?), "
-                + "(SELECT COALESCE(MAX(ordinal), 0) + 1 FROM \(Self.table))), "
+                + "(SELECT ordinal FROM \(Self.table) WHERE content_id = ?), ?), "
                 + "?, ?, ?, ?, ?, ?, 0, NULL, NULL)",
             [
-                .text(plan.contentId), .text(plan.contentId), .text(plan.source.absoluteString),
+                .text(plan.contentId), .text(plan.contentId), .integer(ordinal),
+                .text(plan.source.absoluteString),
                 .text(plan.title), plan.variantPeakBitRateBps.map(Value.real) ?? .null,
                 .text(plan.audioLanguages.joined(separator: "\n")),
                 .text(plan.subtitleLanguages.joined(separator: "\n")),

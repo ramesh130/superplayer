@@ -44,6 +44,7 @@ final class StandInDownloads: AssetDownloading, @unchecked Sendable {
         var diskFull: Set<String> = []
         var taskAssets: [String: AVURLAsset] = [:]
         var backgroundCompletion: (@Sendable () -> Void)?
+        var onStart: (@Sendable (DownloadPlan) -> Void)?
         var released = false
     }
 
@@ -75,7 +76,15 @@ final class StandInDownloads: AssetDownloading, @unchecked Sendable {
 
     // MARK: AssetDownloading
 
+    /// Called as the store hands a plan over, before the task fetches anything: where a test reads
+    /// what had happened by the first media byte (#425).
+    var onStart: (@Sendable (DownloadPlan) -> Void)? {
+        get { state.withLock { $0.onStart } }
+        set { state.withLock { $0.onStart = newValue } }
+    }
+
     func start(_ plan: DownloadPlan) {
+        state.withLock { $0.onStart }?(plan)
         let token = UUID()
         state.withLock { state in
             state.started.append(plan)

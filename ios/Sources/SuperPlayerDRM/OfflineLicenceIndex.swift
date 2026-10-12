@@ -105,15 +105,18 @@ final class OfflineLicenceIndex: @unchecked Sendable {
             playbackExpiresAtMs: playbackExpiresAtMs, keys: keys)
     }
 
-    /// The licence held for `contentId`, or nil — nil too for one whose release has begun, unless
-    /// `awaitingRelease` asks for it: its keys are gone from the device or going, and a licence that
-    /// read as playable then is the defect the Kotlin `contentIdsAwaitingRelease` exists to prevent.
+    /// The licence held for `contentId`, or nil — nil too for one owed a release or whose release
+    /// has begun, unless `awaitingRelease` asks for it: its keys are gone from the device or going,
+    /// and a licence that read as playable then is the defect the Kotlin `contentIdsAwaitingRelease`
+    /// exists to prevent.
     func read(_ contentId: String, awaitingRelease: Bool = false) throws -> OfflineLicence? {
         try locked { database in
             if !awaitingRelease,
                 try !query(
-                    database, "SELECT 1 FROM \(Self.releasesTable) WHERE content_id = ?",
-                    [.text(contentId)], { _ in () }
+                    database,
+                    "SELECT 1 FROM \(Self.releasesTable) WHERE content_id = ? UNION "
+                        + "SELECT 1 FROM \(Self.owedTable) WHERE content_id = ?",
+                    [.text(contentId), .text(contentId)], { _ in () }
                 ).isEmpty
             {
                 return nil
@@ -138,25 +141,46 @@ final class OfflineLicenceIndex: @unchecked Sendable {
         }
     }
 
-    /// Every content id a licence is held for and not being released.
+    /// Every content id a licence is held for and not owed a release or being released.
     func contentIds() throws -> Set<String> {
         try locked { database in
             Set(
                 try query(
                     database,
                     "SELECT content_id FROM \(Self.licencesTable) WHERE content_id NOT IN "
-                        + "(SELECT content_id FROM \(Self.releasesTable))", []
+                        + "(SELECT content_id FROM \(Self.releasesTable) UNION "
+                        + "SELECT content_id FROM \(Self.owedTable))", []
                 ) { row in Self.text(row, 0) })
         }
     }
 
-    /// Every content id whose release has begun and has not yet reached the server.
+    /// Every content id owed a release, or whose release has begun, that has not yet reached the
+    /// server.
     func awaitingRelease() throws -> Set<String> {
         try locked { database in
             Set(
-                try query(database, "SELECT content_id FROM \(Self.releasesTable)", []) { row in
-                    Self.text(row, 0)
-                })
+                try query(
+                    database,
+                    "SELECT content_id FROM \(Self.releasesTable) UNION "
+                        + "SELECT content_id FROM \(Self.owedTable)", []
+                ) { row in Self.text(row, 0) })
+        }
+    }
+
+    /// Marks `contentId`'s licence as owed a release before any key is deleted — a download store's
+    /// removal (#425) — and answers whether there was a licence to owe.
+    func owe(_ contentId: String) throws -> Bool {
+        try locked { database in
+            guard
+                try !query(
+                    database, "SELECT 1 FROM \(Self.licencesTable) WHERE content_id = ?",
+                    [.text(contentId)], { _ in () }
+                ).isEmpty
+            else { return false }
+            try run(
+                database, "INSERT OR IGNORE INTO \(Self.owedTable) VALUES (?)",
+                [.text(contentId)])
+            return true
         }
     }
 
@@ -181,12 +205,14 @@ final class OfflineLicenceIndex: @unchecked Sendable {
         }
     }
 
-    /// Forgets `contentId`'s licence, its keys and any proof of their deletion.
+    /// Forgets `contentId`'s licence, its keys, any proof of their deletion and any release owed.
     func remove(_ contentId: String) throws {
         try locked { database in
             try execute(database, "BEGIN IMMEDIATE")
             do {
-                for table in [Self.keysTable, Self.licencesTable, Self.releasesTable] {
+                for table in [
+                    Self.keysTable, Self.licencesTable, Self.releasesTable, Self.owedTable,
+                ] {
                     try run(
                         database, "DELETE FROM \(table) WHERE content_id = ?", [.text(contentId)])
                 }
@@ -250,6 +276,13 @@ final class OfflineLicenceIndex: @unchecked Sendable {
                     "CREATE TABLE IF NOT EXISTS \(Self.releasesTable) ("
                         + "content_id TEXT NOT NULL, key_identifier TEXT NOT NULL, "
                         + "proof BLOB NOT NULL, PRIMARY KEY (content_id, key_identifier))")
+                // A release owed and not yet begun: a download removed (#425), its licence given to
+                // no player from that moment though no key is deleted yet. A table of its own, so a
+                // file the #423 schema made gains it as it opens, with nothing to migrate.
+                try execute(
+                    opened,
+                    "CREATE TABLE IF NOT EXISTS \(Self.owedTable) ("
+                        + "content_id TEXT PRIMARY KEY NOT NULL)")
             } catch {
                 sqlite3_close_v2(opened)
                 throw error
@@ -360,5 +393,6 @@ final class OfflineLicenceIndex: @unchecked Sendable {
     private static let licencesTable = "offline_licences"
     private static let keysTable = "offline_licence_keys"
     private static let releasesTable = "offline_licence_releases"
+    private static let owedTable = "offline_licence_owed"
     private static let schemaVersion = 1
 }

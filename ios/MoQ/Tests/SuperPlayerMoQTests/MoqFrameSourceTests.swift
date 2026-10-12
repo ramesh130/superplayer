@@ -108,6 +108,48 @@ final class MoqFrameSourceTests: XCTestCase {
         XCTAssertNil(sink.terminal)
     }
 
+    /// #493: `cancel()` comes from the main actor and joins the pumps and the poller, so a thread it
+    /// waits on must not run below its caller — on an iPhone the Thread Performance Checker reported
+    /// that inversion when they ran at the default quality of service. Every thread a subscription
+    /// starts runs at the subscriber's, read off each thread from inside its own body, with the
+    /// connect thread named too because it starts the others. The rows are the controls: a
+    /// user-initiated subscriber is not raised to user-interactive, so this is not "every thread at
+    /// the top", and the two below user-initiated are raised to it, because the main actor that
+    /// cancels is never below it whoever subscribed.
+    func testEveryThreadASubscriptionStartsRunsAtTheSubscribersQualityOfServiceOrAbove() {
+        let expected: [(subscriber: QualityOfService, threads: QualityOfService)] = [
+            (.userInteractive, .userInteractive),
+            (.userInitiated, .userInitiated),
+            (.default, .userInitiated),
+            (.utility, .userInitiated),
+        ]
+        for row in expected {
+            let source = MoqFrameSource(url: broadcast, relay: relay(bothKinds()))
+            let sink = RecordingSink()
+            let subscribed = DispatchSemaphore(value: 0)
+            let subscriber = Thread {
+                source.subscribe(sink)
+                subscribed.signal()
+            }
+            subscriber.qualityOfService = row.subscriber
+            subscriber.start()
+            XCTAssertEqual(subscribed.wait(timeout: .now() + RecordingSink.waitBound), .success)
+            XCTAssertTrue(sink.awaitFrames(Self.framesWatched), "\(row.subscriber)")
+            source.cancel()
+
+            // Compared as raw values, because an `NSQualityOfService` prints no case name.
+            XCTAssertEqual(
+                source.startedThreadQualities.mapValues(\.rawValue),
+                [
+                    "moq-connect": row.threads.rawValue, "moq-stats": row.threads.rawValue,
+                    "moq-track-0": row.threads.rawValue, "moq-track-1": row.threads.rawValue,
+                ],
+                "subscribed at \(row.subscriber.rawValue)")
+            // Obligation 9 is unchanged by the quality the threads run at.
+            XCTAssertTrue(source.joinedThreadsHaveFinished, "\(row.subscriber)")
+        }
+    }
+
     func testCancelIsSafeToCallTwice() {
         let relay = relay(bothKinds())
         let sink = RecordingSink()

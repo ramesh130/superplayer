@@ -137,8 +137,29 @@ public final class MoqFrameSource: FrameSource, @unchecked Sendable {
 
     /// Connects on a thread of this source's own and returns: the caller is the main actor, and a
     /// QUIC handshake against a relay on the other side of the world is not a thing to block it on.
+    ///
+    /// Every thread the subscription starts runs at ``threadQuality(subscribedAt:)`` of the caller's
+    /// quality of service, read here because a `Thread` inherits nothing from the thread that made it.
     public func subscribe(_ sink: any FrameSink) {
-        start("moq-connect", sink, joinedOnCancel: false) { [self] in try connect(sink) }
+        let quality = Self.threadQuality(subscribedAt: Thread.current.qualityOfService)
+        start("moq-connect", sink, at: quality, joinedOnCancel: false) { [self] in
+            try connect(sink, at: quality)
+        }
+    }
+
+    /// The quality of service a subscription's threads run at: the subscriber's, and **never below
+    /// user-initiated** (#493). ``cancel()`` joins the pumps and the poller from the main actor, and
+    /// a thread waiting on one of lower quality is a priority inversion — the main thread held for
+    /// as long as a pump takes to wind down — which the join cannot repair on its own: it waits on a
+    /// condition, and a condition has no owner for the scheduler to lend the waiter's priority to.
+    /// ref: https://developer.apple.com/library/archive/documentation/Performance/Conceptual/EnergyGuide-iOS/PrioritizeWorkWithQoS.html
+    ///
+    /// The subscriber's, because a subscription made from the main actor is cancelled from it, and
+    /// a user-interactive caller would otherwise wait on user-initiated pumps. The floor, because the
+    /// canceller is the main actor whoever subscribed, so a background subscriber's quality says
+    /// nothing about who waits. Not user-interactive for everyone, because a pump draws no frame.
+    static func threadQuality(subscribedAt subscriber: QualityOfService) -> QualityOfService {
+        subscriber == .userInteractive ? .userInteractive : .userInitiated
     }
 
     /// Ends delivery: closes the streams and the session, waits out any callback in flight, and
@@ -186,13 +207,13 @@ public final class MoqFrameSource: FrameSource, @unchecked Sendable {
     // MARK: - The connect thread
 
     /// The connect thread's whole body: session, poller, catalog, subscriptions, declaration, pumps.
-    private func connect(_ sink: any FrameSink) throws {
+    private func connect(_ sink: any FrameSink, at quality: QualityOfService) throws {
         guard let connected = register(session: try relay.connect(url)) else { return }
         // Before the catalog is read, because a session that never publishes one is exactly the
         // session whose round trip time and byte counters say what went wrong. Unconditional: the
         // cost is a thread per MoQ subscription, paid only by a consumer who opened one (the Kotlin
         // reason, written out at that `start`).
-        start("moq-stats", sink) { [self] in poll(connected) }
+        start("moq-stats", sink, at: quality) { [self] in poll(connected) }
         let declared = try MoqCatalogTracks.declaredTracks(of: try connected.catalog())
         var pumps: [TrackPump] = []
         for (index, track) in declared.enumerated() {
@@ -208,7 +229,7 @@ public final class MoqFrameSource: FrameSource, @unchecked Sendable {
         guard deliver(sink, { $0.onTracks(declared.map(\.track)) }) else { return }
         let running = Countdown(pumps.count)
         for pump in pumps {
-            start("moq-track-\(pump.index)", sink) { [self] in
+            start("moq-track-\(pump.index)", sink, at: quality) { [self] in
                 try pump.run(self, sink)
                 // The last track to end ends the subscription; a publisher that stops its audio and
                 // keeps sending video has not ended the broadcast, and SuperPlayer bounds a silent
@@ -270,13 +291,15 @@ public final class MoqFrameSource: FrameSource, @unchecked Sendable {
 
     // MARK: - Threads, registration and delivery
 
-    /// A thread this source started — named, whether ``cancel()`` joins it, and whether its body has
-    /// returned. `@unchecked Sendable`: `done` is under `condition`, and the rest is immutable.
+    /// A thread this source started — named, whether ``cancel()`` joins it, the quality of service
+    /// it ran at, and whether its body has returned. `@unchecked Sendable`: `done` and `ranAt` are
+    /// under `condition`, and the rest is immutable.
     private final class Started: @unchecked Sendable {
         let name: String
         let joinedOnCancel: Bool
         private let condition = NSCondition()
         private var done = false
+        private var ranAt: QualityOfService?
 
         init(name: String, joinedOnCancel: Bool) {
             self.name = name
@@ -291,6 +314,12 @@ public final class MoqFrameSource: FrameSource, @unchecked Sendable {
         }
 
         var isFinished: Bool { condition.withLock { done } }
+
+        /// Records the quality of service the thread reports from inside its own body: what it ran
+        /// at, rather than what it was asked to.
+        func markRunning(at quality: QualityOfService) { condition.withLock { ranAt = quality } }
+
+        var quality: QualityOfService? { condition.withLock { ranAt } }
 
         /// Waits until the body has returned, or until `deadline`.
         func awaitFinished(until deadline: Date = .distantFuture) {
@@ -315,6 +344,12 @@ public final class MoqFrameSource: FrameSource, @unchecked Sendable {
         return started.isFinished
     }
 
+    /// The quality of service each thread this source started reported from inside its body, by
+    /// name: what a test reads to show that ``cancel()`` joins nothing below its caller (#493).
+    var startedThreadQualities: [String: QualityOfService] {
+        lifecycle.withLock { threads }.reduce(into: [:]) { $0[$1.name] = $1.quality }
+    }
+
     private var isCancelled: Bool { lifecycle.withLock { cancelled } }
 
     /// Runs `body` on a thread of this source's own, turning anything it throws into the one terminal
@@ -325,12 +360,13 @@ public final class MoqFrameSource: FrameSource, @unchecked Sendable {
     /// Registered **and started** under the one lock, so ``cancel()`` cannot read the list, join a
     /// thread that had not yet started and return while its body was still to run.
     private func start(
-        _ name: String, _ sink: any FrameSink, joinedOnCancel: Bool = true,
-        _ body: @escaping @Sendable () throws -> Void
+        _ name: String, _ sink: any FrameSink, at quality: QualityOfService,
+        joinedOnCancel: Bool = true, _ body: @escaping @Sendable () throws -> Void
     ) {
         let started = Started(name: name, joinedOnCancel: joinedOnCancel)
         let thread = Thread { [self] in
             defer { started.markFinished() }
+            started.markRunning(at: Thread.current.qualityOfService)
             do {
                 try body()
             } catch {
@@ -338,6 +374,7 @@ public final class MoqFrameSource: FrameSource, @unchecked Sendable {
             }
         }
         thread.name = "\(name)-\(url.host ?? "")"
+        thread.qualityOfService = quality
         lifecycle.withLock {
             guard !cancelled else { return }
             threads.append(started)

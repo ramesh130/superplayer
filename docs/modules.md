@@ -170,7 +170,7 @@ what it can reach rather than by the check: it depends on the root package's `Su
 `MoqFFI` bindings, which are a third-party package rather than a phase.
 
 Kotlin friend modules have no Swift analog — a seam a later product reaches is `package`-scoped
-rather than `internal` — so nothing above the table's dependency column needs a Swift counterpart. Every product is empty until its phase.
+rather than `internal` — so nothing above the table's dependency column needs a Swift counterpart. Every product was empty until its phase, and each now carries its phase's code.
 
 `SuperPlayerBenchmark` is a target and not a product — nothing ships it — porting `benchmark/`,
 which on Android is a build of its own and stands outside the phases. Here it is a target of the

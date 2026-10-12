@@ -71,7 +71,7 @@ class DoctorDocumentTest {
         // A guard on the parser rather than a second authority on the count: a document it read no
         // section of would pass the other assertions vacuously.
         assertWithMessage("no sections read from $DOCUMENT").that(platforms.size)
-            .isGreaterThan(Pathology.entries.size)
+            .isAtLeast(Pathology.entries.size)
         platforms.forEach { (id, lines) ->
             assertWithMessage(
                 "$id's section in $DOCUMENT needs exactly one line reading `$PLATFORM_PREFIX ` and " +

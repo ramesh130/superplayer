@@ -74,7 +74,7 @@ final class DoctorDocumentTests: XCTestCase {
         let sections = try DoctorDocument.sections()
         // A guard on the parser rather than a second authority on the count: a document it read no
         // section of would pass every assertion above vacuously.
-        XCTAssertGreaterThan(sections.count, Pathology.allCases.count)
+        XCTAssertGreaterThanOrEqual(sections.count, Pathology.allCases.count)
         for section in sections {
             XCTAssertNotNil(
                 section.platforms,

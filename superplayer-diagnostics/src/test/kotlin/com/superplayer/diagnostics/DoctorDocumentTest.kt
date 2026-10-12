@@ -42,6 +42,13 @@ import java.io.File
  *
  * What it does **not** hold is the corpus: a pathology the corpus carries and the doctor cannot yet
  * name has no entry here to fail on, and is `CorpusRegisterTest`'s to catch.
+ *
+ * Since #430 the document is both platforms' (ADR-0021 rule 6), so every section carries a
+ * **platform line** — `- **Platforms:** Android`, `iOS and tvOS`, or `Android, iOS and tvOS` — and
+ * this test reads the sections naming Android, while the Swift `DoctorDocumentTests` holds the iOS
+ * doctor's enum to the sections naming iOS and tvOS, by the same rule over the same file. A section
+ * whose line claims Android for a defect this enum lacks fails here as an unexpected id, and a
+ * section with no line, or one outside the three readings, fails on both platforms.
  */
 class DoctorDocumentTest {
 
@@ -51,11 +58,26 @@ class DoctorDocumentTest {
         // grouped by protocol because the enum is, and a defect appended to one group belongs in
         // that group's prose rather than at the end of the file.
         assertWithMessage(
-            "Every Pathology needs a `#### `<id>`` section in $DOCUMENT saying what it means, what " +
-                "causes it, what to change and its citation — in the enum's own order. Add the " +
-                "section in the change that adds the pathology: a reader outside this repository has " +
-                "no other way to learn what a finding means.",
-        ).that(documentedIds()).containsExactlyElementsIn(Pathology.entries.map { it.id }).inOrder()
+            "Every Pathology needs a `#### `<id>`` section in $DOCUMENT whose platform line names " +
+                "Android, saying what it means, what causes it, what to change and its citation — in " +
+                "the enum's own order. Add the section in the change that adds the pathology: a " +
+                "reader outside this repository has no other way to learn what a finding means.",
+        ).that(androidIds()).containsExactlyElementsIn(Pathology.entries.map { it.id }).inOrder()
+    }
+
+    @Test
+    fun everySectionNamesItsPlatformsInOneOfTheThreeReadings() {
+        val platforms = platformLines()
+        // A guard on the parser rather than a second authority on the count: a document it read no
+        // section of would pass the other assertions vacuously.
+        assertWithMessage("no sections read from $DOCUMENT").that(platforms.size)
+            .isGreaterThan(Pathology.entries.size)
+        platforms.forEach { (id, lines) ->
+            assertWithMessage(
+                "$id's section in $DOCUMENT needs exactly one line reading `$PLATFORM_PREFIX ` and " +
+                    "then one of: ${PLATFORM_READINGS.joinToString("; ")}",
+            ).that(lines.size == 1 && lines.single() in PLATFORM_READINGS).isTrue()
+        }
     }
 
     @Test
@@ -74,9 +96,17 @@ class DoctorDocumentTest {
         }
     }
 
-    /** The ids the document gives a section of their own, in the order it gives them. */
-    private fun documentedIds(): List<String> = document().readLines()
-        .mapNotNull { SECTION.matchEntire(it.trim())?.groupValues?.get(1) }
+    /** The ids whose section's platform line names Android, in the order the document gives them. */
+    private fun androidIds(): List<String> = platformLines()
+        .filterValues { lines -> lines.size == 1 && lines.single() in ANDROID_READINGS }
+        .keys.toList()
+
+    /** Each section's platform lines, the text after the prefix, keyed by id in document order. */
+    private fun platformLines(): Map<String, List<String>> = sections().mapValues { (_, text) ->
+        text.lines().map { it.trim() }
+            .filter { it.startsWith(PLATFORM_PREFIX) }
+            .map { it.removePrefix(PLATFORM_PREFIX).trim() }
+    }
 
     /**
      * The document's defect sections, keyed by the id each is headed with.
@@ -109,5 +139,18 @@ class DoctorDocumentTest {
 
         /** One defect's heading: a fourth-level heading whose whole text is the defect's id. */
         val SECTION = Regex("""#### `([a-z0-9-]+)`""")
+
+        /** What a section's platform line opens with. */
+        const val PLATFORM_PREFIX = "- **Platforms:**"
+
+        /**
+         * The three readings a platform line may carry, the Swift test's list too. A fixed
+         * vocabulary rather than a parse of a list, so a misspelt platform fails naming itself
+         * rather than silently counting on neither side.
+         */
+        val PLATFORM_READINGS = listOf("Android", "iOS and tvOS", "Android, iOS and tvOS")
+
+        /** The readings that make a section this platform's. */
+        val ANDROID_READINGS = setOf("Android", "Android, iOS and tvOS")
     }
 }

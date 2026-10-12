@@ -10,6 +10,12 @@ from. The rules themselves are
 [ADR-0015](adr/0015-name-a-pathology-over-the-players-own-chain-and-redact-the-bundle-by-construction.md);
 this is what they say in words.
 
+One document serves both platforms. The Android doctor (`superplayer-diagnostics`) reads HLS and
+DASH; the iOS and tvOS doctor (the `SuperPlayerDiagnostics` product, [`ios.md`](ios.md)) reads HLS
+alone, because HLS is all `AVPlayer` plays. Every defect's section opens with a **Platforms** line
+saying which doctors can name it, and where the two read a stream differently the section says so
+under *On iOS and tvOS*.
+
 ---
 
 ## What the doctor does, and what it deliberately does not
@@ -43,6 +49,12 @@ Two further limits are worth knowing before reading a report:
   through, so two apps can correctly be told different things about one manifest. The report says
   which of those layers it travelled (`DiagnosticReport.chain`), so that the difference reads as the
   difference it is.
+- **On iOS and tvOS there is no chain to travel**, because `AVPlayer` loads over its own HTTP stack
+  and offers no seam beneath it (ADR-0020 rule 6). The doctor fetches over an ephemeral `URLSession`
+  of its own, carrying the credential a player of the content carries — the `HeaderProvider` handed
+  to `Resilience.standard(headers:)`, asked again after a 401 or 403 as a player would — and with no
+  local cache, so it reads what a player would be served now. A CDN's cache stays in the path,
+  because a player meets it too.
 
 ## Asking
 
@@ -59,8 +71,24 @@ report.findings.forEach { finding ->
 }
 ```
 
-`examine` blocks the calling thread for as long as the fetch takes, so it is called off the main
-thread like any other network read. A doctor holds no thread, registers nothing with the platform
+On iOS and tvOS the doctor is configured by a value, and `examine` is `async` — it suspends for as
+long as the fetches take — and **not** `throws`, since a playlist that cannot be fetched or read is a
+finding:
+
+```swift
+let doctor = MediaSourceDoctor(configuration: .init(headers: tokens))  // the players' provider, if any
+let report = await doctor.examine(request)
+for finding in report.findings {
+    log(finding.pathology.id, finding.severity, finding.magnitude, finding.specCitation, finding.cause)
+}
+```
+
+Cancelling the task that awaits it ends the fetching, and what could not be fetched then reads as
+unreachable, so **a report from a cancelled task is not evidence about the stream** and is discarded
+rather than logged against a CDN.
+
+On Android, `examine` blocks the calling thread for as long as the fetch takes, so it is called off
+the main thread like any other network read. A doctor holds no thread, registers nothing with the platform
 and keeps nothing open between calls, so there is nothing to release.
 
 **An empty report is an answer, not an absence.** It means nothing the doctor can name is wrong with
@@ -109,16 +137,29 @@ disagree about what a manifest *says* before they disagree about what it means. 
 has no rules for yet is still fetched whole — so that a manifest no player of this app can reach
 never comes back looking like a healthy one — and read by nothing.
 
+**On iOS and tvOS** that is impossible, because AVFoundation exposes no playlist parser, and the
+doctor reads with **a lint of its own written to RFC 8216** (ADR-0020 rule 8). A finding there
+therefore reads a document as RFC 8216 describes it rather than as AVFoundation reads it. The lint
+refuses only the three things the RFC tells a client to refuse — see `manifest-unreadable` — and
+reads everything else leniently, because a lint stricter than the player would call a playable
+stream unreadable. Two readings Media3 makes are kept rather than re-decided, so that one stream is
+not scored two ways: a segment's container is read off its URI's extension, and an undeclared channel
+count is taken as two. Only HLS is read: an MPD comes back `manifest-unreadable`, which is what an
+`AVPlayer` handed it meets too.
+
 ---
 
 ## The defects
 
 Grouped as the vocabulary groups them: HLS, then DASH, then the two that name a defect of the
-*fetch* rather than of a document. Every defect but those two has a matching entry in this library's
-curated hostile-manifest corpus (`docs/testing.md`'s *The hostile manifest corpus*), and two tests
-are what keep the three lists in step: `CorpusRegisterTest` scores the doctor against every corpus
-entry — for misses and for false positives alike — and `DoctorDocumentTest` fails the build if a
-defect the doctor can name has no section below carrying its citation.
+*fetch* rather than of a document. Every defect but those two and `hls-short-live-window` has a
+matching entry in this library's curated hostile-manifest corpus (`docs/testing.md`'s *The hostile
+manifest corpus*), and tests on each platform keep the lists in step: `CorpusRegisterTest` (Android)
+and `CorpusRegisterTests` (iOS) score each doctor against every corpus entry it reads — for misses
+and for false positives alike — and `DoctorDocumentTest` and `DoctorDocumentTests` fail their
+platform's build if a defect that doctor can name has no section below naming that platform and
+carrying its citation. The Platforms line is read by both, so it cannot claim a defect for a doctor
+that does not name it.
 
 ### Where the numbers come from
 
@@ -148,6 +189,7 @@ library's build.
 #### `hls-ladder-gap`
 
 - **Citation:** RFC 8216 §4.3.4.2
+- **Platforms:** Android, iOS and tvOS
 - **Severity:** `ADVISORY` above a 2× step, `DEGRADED` above 8×. Magnitude names the widest step and
   the two rungs that make it.
 
@@ -166,6 +208,7 @@ target; the report's magnitude names the pair to fill in.
 #### `hls-overstated-bitrate`
 
 - **Citation:** RFC 8216 §4.3.4.2
+- **Platforms:** Android, iOS and tvOS
 - **Severity:** `ADVISORY` past the codec's ceiling, `DEGRADED` past twice it. Magnitude names what
   the rung declares and what its format can carry.
 
@@ -193,6 +236,7 @@ either side can be the wrong one.
 #### `hls-missing-codecs`
 
 - **Citation:** RFC 8216 §4.3.4.2
+- **Platforms:** Android, iOS and tvOS
 - **Severity:** `DEGRADED`. No magnitude: the attribute is present or it is not.
 
 **What it means.** At least one `EXT-X-STREAM-INF` carries no `CODECS`. The RFC says a variant
@@ -210,6 +254,7 @@ transcoder's job description.
 #### `hls-audio-group-codec-mismatch`
 
 - **Citation:** RFC 8216 §4.3.4.1, §4.3.4.2
+- **Platforms:** Android, iOS and tvOS
 - **Severity:** `DEGRADED`. No magnitude: a declared codec is the one delivered or it is not.
 
 **What it means.** An audio group is declared as a format the media its own playlist names cannot
@@ -232,6 +277,7 @@ package the audio in a container that can carry the declared object type.
 #### `hls-dangling-audio-group`
 
 - **Citation:** RFC 8216 §4.3.4.2
+- **Platforms:** Android, iOS and tvOS
 - **Severity:** `BLOCKING`. No magnitude.
 
 **What it means.** A variant's `AUDIO` attribute names a group the playlist does not carry. The RFC's
@@ -256,6 +302,7 @@ will do it again.
 #### `hls-inconsistent-segment-durations`
 
 - **Citation:** RFC 8216 §4.3.2.1, §4.3.3.1
+- **Platforms:** Android, iOS and tvOS
 - **Severity:** `ADVISORY` above a 3× spread, `DEGRADED` above 10×. Magnitude names the shortest and
   longest segment and the spread between them.
 
@@ -279,6 +326,7 @@ one segment in isolation.
 #### `hls-discontinuity-without-timeline`
 
 - **Citation:** RFC 8216 §4.3.2.3
+- **Platforms:** Android, iOS and tvOS
 - **Severity:** `DEGRADED`. No magnitude: the metadata is present or absent, with nothing in between.
 
 **What it means.** The playlist carries an `EXT-X-DISCONTINUITY` — correctly, since §4.3.2.3 requires
@@ -300,6 +348,7 @@ discontinuity sequence nor a program date time — the common case for server-si
 #### `hls-cached-live-playlist`
 
 - **Citation:** RFC 8216 §6.2.1, §6.3.4; RFC 9111 §5.2.2.1
+- **Platforms:** Android, iOS and tvOS
 - **Severity:** `BLOCKING`. Magnitude names how long the playlist is held against its own target
   duration, and what its segments were served with.
 
@@ -338,6 +387,7 @@ kind of origin.
 #### `hls-token-scoped-to-manifest`
 
 - **Citation:** RFC 3986 §3.4, §5.3; RFC 9110 §15.5.4
+- **Platforms:** Android, iOS and tvOS
 - **Severity:** `BLOCKING`. Magnitude counts the segments that carry no credential.
 
 **What it means.** The manifest was fetched from a signed URL and its segments are addressed
@@ -360,6 +410,7 @@ policy — so that a relatively-addressed segment is covered.
 #### `hls-token-expiring-in-window`
 
 - **Citation:** RFC 3986 §3.4; RFC 9110 §15.5.4
+- **Platforms:** Android, iOS and tvOS
 - **Severity:** `BLOCKING` where less token life remains than the content's own duration, `DEGRADED`
   where less than twice it. Magnitude names what is left of the token against the length of the
   content.
@@ -392,6 +443,7 @@ content, and as long again for the pauses a viewer takes inside it.
 #### `hls-cors-refuses-credentials`
 
 - **Citation:** WHATWG Fetch §3.3.5, §4.10
+- **Platforms:** Android, iOS and tvOS
 - **Severity:** `BLOCKING`. No magnitude: a configuration refuses the request or it does not.
 
 **What it means.** A response carries `Access-Control-Allow-Origin: *` **and**
@@ -416,6 +468,44 @@ segments are not is reported as clean.
 **What to change.** Echo the requesting origin in `Access-Control-Allow-Origin` (with `Vary: Origin`)
 where credentials are allowed, or stop advertising credentials.
 
+#### `hls-short-live-window`
+
+- **Citation:** RFC 8216 §6.2.2, §6.3.3
+- **Platforms:** iOS and tvOS
+- **Severity:** `BLOCKING`, and **ungraded on purpose**. Magnitude names the window against three
+  target durations.
+
+**What it means.** A live media playlist that has removed segments lasts less than three target
+durations. §6.2.2 says a server "MUST NOT remove a Media Segment from a Playlist file without an
+EXT-X-ENDLIST tag if that would produce a Playlist whose duration is less than three times the target
+duration", and §6.3.3 says why: a client "SHOULD NOT choose a segment that starts less than three
+target durations from the end of the Playlist file". A shorter window therefore has no segment a
+client may start at, and no playhead fits inside it. Three is the RFC's own number, not a derivation.
+
+It is the HLS twin of `dash-short-time-shift-buffer-depth` below, and it is iOS's alone for a reason
+of where the judgement lives rather than of the stream. On Android the live-window judgement is
+core's, made over a DASH manifest's `@timeShiftBufferDepth`, and the doctor asks it rather than
+restating it (ADR-0015 rule 6). On Apple platforms core holds no live-window judgement to ask, so the
+doctor holds this one itself (ADR-0020 rule 8 and its #427 addendum). No corpus entry carries it —
+its Android twin is a DASH entry — so it is forced by a test of its own rather than scored against a
+row. Ungraded for the DASH rule's reason: the bound is a yes or a no, and calling a window *slightly*
+too short advisory would hold the same playlist to a second threshold.
+
+**Read only where the server has removed something** — an `EXT-X-MEDIA-SEQUENCE` above zero in the
+playlist fetched — because §6.2.2 binds *removal*. A stream in its first seconds is shorter than the
+bound without breaking it, and flagging every live stream as it starts would be the false positive
+this doctor is scored against as heavily as a miss. An `EVENT` playlist never removes a segment and
+is passed over by its type. Two limits, stated rather than hidden: an origin that numbers its first
+segment above zero reads as having removed segments if it is asked about in its first seconds, and a
+window with a segment whose `EXTINF` the doctor could not read is not judged at all, since summing
+the rest would shrink it toward a finding.
+
+**What causes it.** A packager configured for the lowest possible latency, keeping a window of one or
+two segments — or a window counted in segments by a template written for shorter ones.
+
+**What to change.** Keep at least three target durations of segments in the live playlist, with room
+for a playhead behind the edge.
+
 ---
 
 ### DASH
@@ -423,6 +513,7 @@ where credentials are allowed, or stop advertising credentials.
 #### `dash-ladder-gap`
 
 - **Citation:** ISO/IEC 23009-1 §5.3.5.2; DASH-IF IOP §3.2.4
+- **Platforms:** Android
 - **Severity:** as `hls-ladder-gap`, over the same threshold.
 
 **What it means and what to change** are its HLS twin's, exactly: `@bandwidth` is required per
@@ -438,6 +529,7 @@ ladder definition.
 #### `dash-overstated-bitrate`
 
 - **Citation:** ISO/IEC 23009-1 §5.3.5.2
+- **Platforms:** Android
 - **Severity:** as `hls-overstated-bitrate`, over the same ceiling and the same narrow reading
   (audio-only rungs; video is never bounded).
 
@@ -451,6 +543,7 @@ packager that never measured a segment.
 #### `dash-missing-codecs`
 
 - **Citation:** ISO/IEC 23009-1 §5.3.7.2; DASH-IF IOP §3.2.4
+- **Platforms:** Android
 - **Severity:** `DEGRADED`. No magnitude.
 
 **What it means.** A Representation declares no `@codecs`. The attribute is an optional common
@@ -466,6 +559,7 @@ media — the job knows the bitrate and not the codec string.
 #### `dash-mid-stream-ladder-change`
 
 - **Citation:** ISO/IEC 23009-1 §5.3.2, §5.3.9.2
+- **Platforms:** Android
 - **Severity:** graded by the same pair of thresholds as a static ladder gap: `ADVISORY` above 2×,
   `DEGRADED` above 8×. Magnitude names how far the ladder moves at the boundary.
 
@@ -489,6 +583,7 @@ restarted encoder offers the rungs the main content does.
 #### `dash-availability-start-time-skew`
 
 - **Citation:** ISO/IEC 23009-1 §5.3.1.2, §5.3.9.5.3
+- **Platforms:** Android
 - **Severity:** `BLOCKING`, ungraded. Magnitude names how far ahead of the manifest's own clock the
   anchor sits; only the forward direction is ever reported, for the reason below.
 
@@ -515,6 +610,7 @@ correct `UTCTiming` and an `@availabilityStartTime` ahead of the stream's real s
 #### `dash-short-time-shift-buffer-depth`
 
 - **Citation:** ISO/IEC 23009-1 §5.3.1.2
+- **Platforms:** Android
 - **Severity:** `BLOCKING`, and **ungraded on purpose**. Magnitude names the declared window against
   the time a segment takes to become available.
 
@@ -536,18 +632,13 @@ written where the packager wanted minutes.
 **What to change.** Declare a window several segments deep — deeper than the time a segment takes to
 become available, with room for a playhead.
 
-**On iOS and tvOS**, where DASH is not read, the same defect in HLS is `hls-short-live-window`
-(ADR-0020 rule 8's #427 addendum; its own section arrives with this document's platform columns,
-#430). It is a live media playlist that has removed segments — `EXT-X-MEDIA-SEQUENCE` above zero —
-and lasts **less than three target durations**, which RFC 8216 §6.2.2 forbids a server to produce
-and §6.3.3 explains: a client should start no closer than three target durations to the end, so a
-shorter window has no segment to start at. Three is the RFC's own number, not a derivation, and the
-finding is `BLOCKING` and ungraded for the reason above. A stream in its first seconds, or an `EVENT`
-playlist, has removed nothing and is not flagged.
+**On iOS and tvOS**, where DASH is not read, the same defect in HLS is `hls-short-live-window`,
+which has its own section above.
 
 #### `dash-missing-time-shift-buffer-depth`
 
 - **Citation:** ISO/IEC 23009-1 §5.3.1.2
+- **Platforms:** Android
 - **Severity:** `DEGRADED`. No magnitude: an absent window has no size.
 
 **What it means.** A dynamic MPD carries no `@timeShiftBufferDepth` at all, and in its absence the
@@ -577,6 +668,7 @@ doctor threw" is the least useful thing a support ticket can say (ADR-0015 rule 
 #### `manifest-unreachable`
 
 - **Citation:** RFC 9110 §15
+- **Platforms:** Android, iOS and tvOS
 - **Severity:** `BLOCKING`. Magnitude is `HTTP <status>` where a server answered with one, and absent
   where none did.
 
@@ -596,6 +688,7 @@ may be the app's.
 #### `manifest-unreadable`
 
 - **Citation:** RFC 8216 §4, ISO/IEC 23009-1 §5.3
+- **Platforms:** Android, iOS and tvOS
 - **Severity:** `BLOCKING`. No magnitude: there is nothing to play and nothing to grade.
 
 **What it means.** The bytes arrived and are not a document either grammar admits — read off the

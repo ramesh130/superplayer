@@ -14,7 +14,7 @@ usual first wrong turn.
 | `build-logic/` | an **included build** holding the convention plugins every module applies |
 | `demo/` | a **separate** build resolving the library from published Maven coordinates |
 | `benchmark/` | a **separate** build, the same way, running `PRD.md` §6's matrix |
-| `Package.swift` + `ios/` | the **iOS and tvOS** Swift package (`docs/ios-plan.md`): manifest at the root so SwiftPM can resolve it by git URL, sources under `ios/`, empty products until their phase, checked by `ios/check` on macOS rather than by Gradle. `ios/CLAUDE.md` is its orientation |
+| `Package.swift` + `ios/` | the **iOS and tvOS** Swift package (`docs/ios-plan.md`): manifest at the root so SwiftPM can resolve it by git URL, sources under `ios/`, one product per Android module that ports, checked by `ios/check` on macOS rather than by Gradle. `ios/CLAUDE.md` is its orientation |
 
 A module's own build file holds only its dependencies; Android setup, SDK levels, Java and Kotlin
 targets, lint, and publishing all live in the `superplayer.android.library` convention plugin.
@@ -1809,7 +1809,8 @@ repository.
   reopened by intercepting segments through `AVAssetResourceLoaderDelegate`, which is ADR-0002's proxy
   in-process. A player is configured by a value (`SuperPlayer(configuration:)`) rather than built,
   Swift 6 strict concurrency is on, the floor is iOS 17 and tvOS 17 with iOS 18 features gated and
-  refused typed below it, CMCD on iOS is closed by a negative spike finding, and the doctor's HLS lint
+  refused typed below it, CMCD on iOS ports from iOS 18 on #413's positive spike finding (rule 7's
+  addenda), and the doctor's HLS lint
   parser is ADR-0015 rule 6's one argued departure. The Swift products ride ADR-0017's version line
   in lockstep with the API digester as their arbiter, and `RealtimePlayer` is the one place the "one
   player" claim splits.

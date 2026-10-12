@@ -20,7 +20,7 @@ orientation — this file adds only what is different under `ios/`.
 | `ios/hunt-leaks` | the leak hunt (#418), `huntLeaks`' analog: an `xctrace` Leaks recording over the feed scrolling itself on a simulator, **not** in `ios/check` — `ios/Demo/README.md`, *The feed and the leak hunt* |
 | `ios/.swift-format` | the format's configuration: four-space indent and 100 columns, as the Kotlin half |
 
-**Every product is empty until its phase.** i0 (#397) was the scaffold alone: twelve products, a
+**Every product was empty until its phase.** i0 (#397) was the scaffold alone: twelve products, a
 placeholder test each, baselines recording no API. `SuperPlayerTestMedia` (#398) and
 `SuperPlayerTestkit` (#399, *The harness* below) are the first to hold code, and `SuperPlayerCore`
 (#400) the first library code: `SuperPlayer(configuration:)` owning an `AVPlayer` as
@@ -305,6 +305,13 @@ level for a protection line. `DebugHud(player:telemetry:)` is SwiftUI over a `Su
 `AVPlayer`, its rows `HudFacts` re-read twice a second, its telemetry half the `DebugHudTelemetry`
 sink, guarded by `#if DEBUG` and the profile's `get-task-allow` (`isDebugHudAvailable()`). `GoldenFile`
 moved into testkit, throwing rather than naming XCTest; the demo's `DebugHudScreen` is the recipe.
+#430 is i8's docs half and changed no library code. `docs/ios.md` is the adopter's guide. Every
+section of `docs/media-source-doctor.md` carries a `- **Platforms:**` line, and `DoctorDocumentTests`
+holds `Pathology` to the sections naming iOS and tvOS, as the Kotlin `DoctorDocumentTest` holds its
+enum to the ones naming Android. `docs/compatibility.md`'s *Which Swift products are stable?* table
+is held to `Package.swift` and `ios/MoQ/Package.swift` by `verifyCompatibilityDocument`, on Linux,
+so **a new product needs its row there too**. `docs/testing.md`'s *Every shared document, on both
+platforms* lists each shared document with its test on each side.
 
 **Dependencies point inward** under `docs/modules.md`'s phase rule, and the phase a product takes is
 the Android module's it ports: `docs/modules.md`'s *iOS products* table is the source, and

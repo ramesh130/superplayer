@@ -274,6 +274,10 @@ being updated — the audio group still advertises what last year's profile prod
 **What to change.** Regenerate the variant's `CODECS` string from the audio actually written, or
 package the audio in a container that can carry the declared object type.
 
+**On iOS and tvOS** the container is read the same way, off the segment URI's extension. AVFoundation
+publishes no rule of its own for it, and a doctor that read the container differently from the
+Android one would score the same stream two ways.
+
 #### `hls-dangling-audio-group`
 
 - **Citation:** RFC 8216 §4.3.4.2
@@ -702,6 +706,12 @@ or a packager that emitted something else entirely.
 **What to change.** Usually nothing about the manifest: look at what the edge is really serving on
 that path, and at whether an error page is being returned with a success status.
 
+**On iOS and tvOS** there is no engine parser to ask, so unreadable means the doctor's own lint met
+one of the three refusals RFC 8216 itself tells a client to make: bytes that are not UTF-8 or open
+with a byte-order mark (§4.1), a first line that is not `#EXTM3U` (§4.3.1.1), or a document carrying
+both multivariant and media tags (§4.3.4). Anything else is read leniently. An MPD is unreadable
+there too, because no Apple player reads DASH.
+
 ---
 
 ## Reading a postmortem
@@ -712,6 +722,14 @@ The same call, handed what a session ended on, is the postmortem — one API and
 ```kotlin
 override fun onPlayerError(error: PlaybackException) {
     val report = doctor.examine(request, player.classify(error))
+}
+```
+
+On iOS and tvOS a failure arrives on the player's error publisher:
+
+```swift
+player.errors.sink { error in
+    Task { let report = await doctor.examine(request, classification: player.classify(error)) }
 }
 ```
 
@@ -750,6 +768,11 @@ Stated rather than left to be discovered:
   `dash-availability-start-time-skew`.
 - **Anything about the sources after the first.** Only the first entry of `MediaRequest.sources` is
   examined.
+- **On iOS and tvOS, anything DASH.** No Apple player reads it, so the iOS doctor names none of the
+  DASH defects; an MPD comes back `manifest-unreadable`.
+- **On iOS and tvOS, a reading AVFoundation makes differently from RFC 8216.** The lint reads a
+  document as the RFC describes it, and AVFoundation's own parser is not published. Where the two
+  differ, a finding is the RFC's reading, which is ADR-0020 rule 8's stated cost.
 
 ## Watching a session instead of examining a stream
 
@@ -758,7 +781,9 @@ The doctor answers a question about a *stream*. Two other artifacts answer quest
 
 - **The debug HUD** — `DebugHud(player, telemetry)`, an overlay the app places over its own surface
   while the thing is playing in front of a developer, and which renders nothing unless the
-  application is debuggable. Its rows and what each can and cannot show are `DebugHud`'s own
+  application is debuggable. On iOS and tvOS it is SwiftUI, `DebugHud(player:telemetry:)` over a
+  `SuperPlayer` or a stock `AVPlayer`, and renders nothing outside a Debug build signed for
+  development. Its rows and what each can and cannot show are `DebugHud`'s own
   documentation and `docs/testing.md`'s *The debug HUD*.
 - **The session bundle** — one session as one text artifact a bug report can carry.
   [`docs/session-bundle.md`](session-bundle.md) is its format and

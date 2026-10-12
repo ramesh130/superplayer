@@ -172,14 +172,20 @@ enum MoqRelayDiscovery {
         let race = Race<T>()
         return try await withCheckedThrowingContinuation { continuation in
             race.begin(continuation)
+            let timer = Task {
+                try? await Task.sleep(for: .milliseconds(boundMs))
+                race.finish(.success(nil))
+            }
             let work = Task {
                 do { race.finish(.success(try await operation())) } catch {
                     race.finish(.failure(error))
                 }
+                // The operation won: the timer has nothing left to decide.
+                timer.cancel()
             }
             Task {
-                try? await Task.sleep(for: .milliseconds(boundMs))
-                race.finish(.success(nil))
+                // The timer lost or won; either way the operation is no longer awaited.
+                _ = await timer.result
                 work.cancel()
             }
         }

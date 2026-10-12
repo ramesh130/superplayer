@@ -223,9 +223,9 @@ for line in sys.stdin:
 '
 }
 
-# xcodebuild's test log on stdin → every observation block, markers included, each line cut back to
-# start at its marker or its `key = value`: xcodebuild may prefix a runner's line with nothing or with a
-# timestamp and the process, and the report wants the observation alone.
+# xcodebuild's test log on stdin → every observation block, markers included and each line as the test
+# printed it. A runner's `print` reaches the log unprefixed (the fixture is the iPhone's own), and a
+# marker is matched anywhere in its line, so a prefix would cost the block's lines and never its edges.
 ios_observation_blocks() {
     tr -d '\r' | awk '
         /--- moq-smoke begin ---/ { inside = 1; print "--- moq-smoke begin ---"; next }

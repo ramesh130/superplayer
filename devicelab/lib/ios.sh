@@ -198,6 +198,56 @@ ios_first_frames() {
     }'
 }
 
+# --- Pure: a UI test's log ---------------------------------------------------------------------------
+#
+# A scenario that sets SCENARIO_IOS_UI_TEST runs an XCUITest rather than the demo (`ios_test_demo`),
+# and what it reads is xcodebuild's log of that run: the outcome of each test case, and the blocks of
+# observations the test printed between `--- moq-smoke begin ---` and `--- moq-smoke end ---`
+# (`MoqLiveSessionSmokeTests`' `Observations`), which are the run's findings whatever the outcome.
+
+# xcodebuild's test log on stdin → one "<test>\t<passed|failed|skipped>" per test case it finished,
+# the test named as `Class.method` whichever of xcodebuild's two spellings carried it — `-[Module.Class
+# method]` or `Class.method()` — and, where the runner never started a test, one "runner\t<why>".
+ios_test_outcomes() {
+    tr -d '\r' | python3 -I -c '
+import re, sys
+for line in sys.stdin:
+    case = re.search(r"[Tt]est [Cc]ase \x27(?:-\[(?:[\w]+\.)?(\w+) (\w+)\]|(?:[\w]+\.)?(\w+)\.(\w+)\(\))\x27 (passed|failed|skipped)", line)
+    if case:
+        cls, method = case.group(1) or case.group(3), case.group(2) or case.group(4)
+        print("%s.%s\t%s" % (cls, method, case.group(5)))
+        continue
+    broken = re.search(r"encountered an error \((.*)\)\s*$", line)
+    if broken:
+        print("runner\t%s" % broken.group(1))
+'
+}
+
+# xcodebuild's test log on stdin → every observation block, markers included, each line cut back to
+# start at its marker or its `key = value`: xcodebuild may prefix a runner's line with nothing or with a
+# timestamp and the process, and the report wants the observation alone.
+ios_observation_blocks() {
+    tr -d '\r' | awk '
+        /--- moq-smoke begin ---/ { inside = 1; print "--- moq-smoke begin ---"; next }
+        /--- moq-smoke end ---/ { if (inside) print "--- moq-smoke end ---"; inside = 0; next }
+        inside { print }
+    '
+}
+
+# Observation blocks on stdin → the value of `$2` in the block whose `test` is `$1`, or nothing.
+ios_observation() {
+    awk -v test="$1" -v key="$2" '
+        /--- moq-smoke begin ---/ { current = ""; next }
+        {
+            split_at = index($0, " = ")
+            if (!split_at) next
+            k = substr($0, 1, split_at - 1); v = substr($0, split_at + 3)
+            if (k == "test") current = v
+            else if (current == test && k == key) { print v; exit }
+        }
+    '
+}
+
 # --- Pure: xctrace's export ------------------------------------------------------------------------
 
 # Reads the export of an Activity Monitor recording's `activity-monitor-process-live` table on stdin
@@ -499,9 +549,10 @@ ios_ensure_device() {
 # `ios/hunt-leaks`' choice for its reason: a Debug build allocates in ways no adopter's app does — and
 # Debug for `debug`. The package is resolved **by path** in the same invocation, so there is no
 # published artifact that could be stale and nothing for `lib/artifacts.sh` to check: the app is the
-# tree.
+# tree. `$1` is the action, `build` by default; `build-for-testing` builds the scheme's UI tests and
+# their runner beside the app, for `ios_test_demo`.
 ios_build_demo() {
-    local configuration sdk before team_args=()
+    local action="${1:-build}" configuration sdk before team_args=()
     case "$BUILD_TYPE" in
         benchmark) configuration=Release ;;
         debug) configuration=Debug ;;
@@ -521,8 +572,8 @@ ios_build_demo() {
     SP_TREE_NOTE=""
     [ "$SP_TREE_DIRTY" = 0 ] || SP_TREE_NOTE="plus uncommitted changes"
     DEMO_CONFIGURATION="$configuration"
-    log "xcodebuild $IOS_SCHEME, $configuration, for $IOS_UDID (log: $RUN_DIR/build.log)"
-    if ! (cd "$REPO_ROOT" && xcodebuild build -quiet -project "$IOS_PROJECT" -scheme "$IOS_SCHEME" \
+    log "xcodebuild $action $IOS_SCHEME, $configuration, for $IOS_UDID (log: $RUN_DIR/build.log)"
+    if ! (cd "$REPO_ROOT" && xcodebuild "$action" -quiet -project "$IOS_PROJECT" -scheme "$IOS_SCHEME" \
         -configuration "$configuration" -destination "id=$IOS_UDID" \
         -derivedDataPath "$REPO_ROOT/.build/devicelab-ios" ${team_args[@]+"${team_args[@]}"}) >>"$RUN_DIR/build.log" 2>&1; then
         tail -40 "$RUN_DIR/build.log" >&2
@@ -544,6 +595,39 @@ ios_install_demo() {
         with_timeout 300 xcrun simctl install "$IOS_UDID" "$DEMO_APP" || die "simctl could not install the demo"
     fi
     log "installed the $DEMO_CONFIGURATION build"
+}
+
+# Runs the UI test `$1` (`Target/Class`) on the run's device from what `ios_build_demo
+# build-for-testing` built, writing xcodebuild's log to `$RUN_DIR/test.log` (which IOS_LOG then
+# names), its result bundle to `test.xcresult`, and what `ios_test_outcomes` and
+# `ios_observation_blocks` read from the log to `outcomes.tsv` and `observations.txt`. Sets
+# RUN_TEST_EXIT to xcodebuild's status and does **not** fail on it: a test that failed is a finding,
+# and the scenario's verdict is where it is judged.
+#
+# xcodebuild installs the app and the test runner itself, so there is no `ios_install_demo` and no
+# console: the runner's own output is the log. What reaches the runner from here is environment, each
+# `NAME=value` of SCENARIO_IOS_TEST_ENV handed on as `TEST_RUNNER_NAME`, the prefix xcodebuild strips
+# on the way in.
+ios_test_demo() {
+    local assignment env_args=()
+    for assignment in ${SCENARIO_IOS_TEST_ENV[@]+"${SCENARIO_IOS_TEST_ENV[@]}"}; do
+        env_args+=("TEST_RUNNER_$assignment")
+    done
+    IOS_LOG="$RUN_DIR/test.log"
+    log "xcodebuild test-without-building $1 on $IOS_UDID (log: $IOS_LOG)"
+    set +e
+    # Bounded at fifteen minutes, a ceiling as every bound here is: the two tests take about a minute
+    # against a relay that answers, and the runner's first install and launch take another.
+    (cd "$REPO_ROOT" && with_timeout "${IOS_TEST_TIMEOUT:-900}" env ${env_args[@]+"${env_args[@]}"} \
+        xcodebuild test-without-building -project "$IOS_PROJECT" -scheme "$IOS_SCHEME" \
+        -configuration "$DEMO_CONFIGURATION" -destination "id=$IOS_UDID" \
+        -derivedDataPath "$REPO_ROOT/.build/devicelab-ios" -only-testing:"$1" \
+        -resultBundlePath "$RUN_DIR/test.xcresult") >"$IOS_LOG" 2>&1
+    RUN_TEST_EXIT=$?
+    set -e
+    ios_test_outcomes <"$IOS_LOG" >"$RUN_DIR/outcomes.tsv"
+    ios_observation_blocks <"$IOS_LOG" >"$RUN_DIR/observations.txt"
+    log "xcodebuild exited $RUN_TEST_EXIT: $(cut -f2 "$RUN_DIR/outcomes.tsv" | sort | uniq -c | xargs)"
 }
 
 # Launches the demo with launch arguments `$2…` — `-SPDemoScreen <screen>` and whatever the screen

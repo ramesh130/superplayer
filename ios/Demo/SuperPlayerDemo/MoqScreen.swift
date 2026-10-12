@@ -62,13 +62,17 @@
                 } else {
                     Color.black
                 }
-                // Read once a second, the cadence the source polls its session at.
+                // Read once a second, the cadence the source polls its session at. The reading line
+                // rides the overlay as its accessibility value, which is how the device smoke's UI
+                // test reads it: nothing else in the app is readable from another process.
                 TimelineView(.periodic(from: .now, by: 1)) { _ in
                     Text(session?.status ?? "connecting")
                         .font(.footnote.monospacedDigit())
                         .padding(8)
                         .background(.black.opacity(0.6))
                         .foregroundStyle(.white)
+                        .accessibilityIdentifier(MoqDemoSession.readingIdentifier)
+                        .accessibilityValue(session?.reading ?? "")
                 }
                 .padding()
             }
@@ -93,12 +97,29 @@
     /// One player over one broadcast, and the source it opened, kept so the overlay can read the
     /// transport's statistics: a `RealtimePlayer` does not hand its source out, so the factory hands
     /// a copy here as it opens one.
+    ///
+    /// **It logs a reading every ``readingIntervalSeconds``**, in `DemoPlayback`'s shape —
+    /// `content=demo:moq-live position=<ms> rendering=<bool> received=<bytes> rtt=<ms>` — because a
+    /// screenshot cannot tell a rendered frame from a stalled one, and a position that advances while
+    /// the display layer is rendering and the session's byte count rises can. The same line is the
+    /// overlay's accessibility value, which `SuperPlayerDemoUITests`' `MoqLiveSessionSmokeTests`
+    /// reads on a phone (`devicelab/lab run moq-smoke --platform ios`, #438).
     @MainActor
     final class MoqDemoSession {
+
+        /// The overlay's accessibility identifier, which the UI test finds it by.
+        static let readingIdentifier = "moq.reading"
+
+        /// `DemoPlayback`'s interval and its reason: two lines within seconds of the first frame, and
+        /// a run of minutes still a screenful.
+        static let readingIntervalSeconds: Double = 2
+
+        static let contentId = "demo:moq-live"
 
         let player: RealtimePlayer
         private let opened: OSAllocatedUnfairLock<MoqFrameSource?>
         private let log = Logger(subsystem: "com.superplayer.demo", category: "moq")
+        private var logging: Task<Void, Never>?
 
         init(broadcast: URL) {
             let opened = OSAllocatedUnfairLock<MoqFrameSource?>(initialState: nil)
@@ -114,12 +135,34 @@
             do {
                 // Step 2, and step 3.
                 try player.setMediaRequest(
-                    MediaRequest(contentId: "demo:moq-live", sources: [broadcast]))
+                    MediaRequest(contentId: Self.contentId, sources: [broadcast]))
                 player.play()
                 log.info("subscribed to \(broadcast.absoluteString, privacy: .public)")
             } catch {
                 log.error("refused \(broadcast.absoluteString, privacy: .public): \(error)")
             }
+            logging = Task { [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(Self.readingIntervalSeconds))
+                    guard let self else { return }
+                    self.log.log("\(self.reading, privacy: .public)")
+                }
+            }
+        }
+
+        /// The line logged and read: the player's clock, whether the display layer is presenting,
+        /// and the session's received bytes and round trip — `-` where the session reported none —
+        /// with the failure verbatim at the end once there is one.
+        var reading: String {
+            let seconds = player.currentTime.seconds
+            let positionMs = seconds.isFinite ? Int64(seconds * 1_000) : 0
+            let statistics = opened.withLock { $0 }?.statistics()
+            let received = statistics?.bytesReceived.map(String.init) ?? "-"
+            let rtt = statistics?.roundTripTimeUs.map { String($0 / 1_000) } ?? "-"
+            let failure = player.failure.map { " failed=\($0)" } ?? ""
+            return
+                "content=\(Self.contentId) position=\(positionMs) rendering=\(player.isRendering)"
+                + " received=\(received) rtt=\(rtt)\(failure)"
         }
 
         /// What a person reads over the picture: the failure verbatim if there was one, else the
@@ -133,7 +176,10 @@
         }
 
         /// Step 4.
-        func release() { player.release() }
+        func release() {
+            logging?.cancel()
+            player.release()
+        }
     }
 
 #endif

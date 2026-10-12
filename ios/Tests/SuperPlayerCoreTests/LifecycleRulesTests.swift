@@ -131,78 +131,89 @@ final class LifecycleRulesTests: XCTestCase {
     /// calls in the order they were made, so a deactivation never overtakes the activation before
     /// it however long that activation takes.
     func testTheSystemPlatformActivatesOffTheMainThreadInTheOrderAsked() {
-        let session = RecordingAudioSession()
+        let session = RecordingAudioSession(holding: .activate)
         let queue = DispatchQueue(label: "LifecycleRulesTests.audio-session")
         let platform = SystemLifecyclePlatform(queue: queue, audioSession: session.call)
 
-        session.holdFirstCall()
         platform.activateAudioSession()
         platform.deactivateAudioSession()
         platform.activateAudioSession()
         // The main thread got here with the first activation still blocked in the audio server.
-        XCTAssertTrue(session.firstCallIsBlocked())
+        XCTAssertTrue(session.heldCallIsBlocked())
 
-        session.releaseFirstCall()
+        session.releaseHeldCall()
         queue.sync {}
-        XCTAssertEqual(session.calls.map(\.active), [true, false, true])
-        XCTAssertEqual(session.calls.map(\.onMainThread), [false, false, false])
+        XCTAssertEqual(session.calls.map(\.call), [.configure, .activate, .deactivate, .activate])
+        XCTAssertEqual(session.calls.map(\.onMainThread), [false, false, false, false])
     }
 
-    /// The control: the binding still asks for each change exactly once, so the queue is handed
-    /// alternating calls and the shared count is unchanged by where the platform performs them.
-    func testTheSystemPlatformPerformsEachCallItIsHandedOnce() {
-        let session = RecordingAudioSession()
+    /// Through the shared count, as every player reaches it: the category is set as the platform is
+    /// made, before any player wants to play, so audio that starts before the queued activation runs
+    /// starts in `.playback`; and each change the count makes is performed once, as on the main
+    /// thread before.
+    func testTheCategoryIsSetBeforeAnyActivationAndEachChangeIsPerformedOnce() {
+        let session = RecordingAudioSession(holding: nil)
         let queue = DispatchQueue(label: "LifecycleRulesTests.audio-session")
         let shared = SharedLifecycle(
             platform: SystemLifecyclePlatform(queue: queue, audioSession: session.call))
+        queue.sync {}
+        XCTAssertEqual(session.calls.map(\.call), [.configure])
+
         let first = shared.issueToken()
         let second = shared.issueToken()
-
         shared.state(first, wantsToPlay: true, showsVideo: false)
         shared.state(second, wantsToPlay: true, showsVideo: false)
         shared.withdraw(first)
         shared.withdraw(second)
 
         queue.sync {}
-        XCTAssertEqual(session.calls.map(\.active), [true, false])
+        XCTAssertEqual(session.calls.map(\.call), [.configure, .activate, .deactivate])
     }
 }
 
-/// The audio session's half of ``SystemLifecyclePlatform``, recording each call, whether it was made
-/// on the main thread, and — when asked — holding the first one until released, as an audio server
-/// slow to answer `setActive` would.
-final class RecordingAudioSession: @unchecked Sendable {
+/// The audio session's half of ``SystemLifecyclePlatform``, recording each call and whether it was
+/// made on the main thread, and holding the first call of one kind until released, as an audio
+/// server slow to answer `setActive` would.
+private final class RecordingAudioSession: @unchecked Sendable {
 
-    struct Call: Equatable {
-        let active: Bool
+    struct Recorded: Equatable {
+        let call: SystemLifecyclePlatform.SessionCall
         let onMainThread: Bool
     }
 
-    // Guards every field below: the calls arrive on the platform's queue, the reads on the main one.
+    private let held: SystemLifecyclePlatform.SessionCall?
+    private let release = DispatchSemaphore(value: 0)
+    private let blocked = DispatchSemaphore(value: 0)
+
+    // Guards `recorded` and `holding`: the calls arrive on the platform's queue, the reads on the
+    // main thread.
     private let lock = NSLock()
-    private var recorded: [Call] = []
-    private var holding: DispatchSemaphore?
-    private var blocked = DispatchSemaphore(value: 0)
+    private var recorded: [Recorded] = []
+    private var holding = true
 
-    var calls: [Call] { lock.withLock { recorded } }
+    init(holding call: SystemLifecyclePlatform.SessionCall?) {
+        held = call
+    }
 
-    func holdFirstCall() { lock.withLock { holding = DispatchSemaphore(value: 0) } }
+    var calls: [Recorded] { lock.withLock { recorded } }
 
-    /// Waits, bounded, until the first call has arrived and is being held.
-    func firstCallIsBlocked() -> Bool { blocked.wait(timeout: .now() + 5) == .success }
+    /// Waits, bounded, until the held call has arrived and is being held: a ceiling, not a duration
+    /// asserted (`docs/testing.md`).
+    func heldCallIsBlocked() -> Bool { blocked.wait(timeout: .now() + 5) == .success }
 
-    func releaseFirstCall() { lock.withLock { holding }?.signal() }
+    func releaseHeldCall() { release.signal() }
 
-    var call: @Sendable (Bool) -> Void {
-        { [self] active in
-            let hold: DispatchSemaphore? = lock.withLock {
-                let first = recorded.isEmpty
-                recorded.append(Call(active: active, onMainThread: Thread.isMainThread))
-                return first ? holding : nil
+    var call: @Sendable (SystemLifecyclePlatform.SessionCall) -> Void {
+        { [self] call in
+            let hold: Bool = lock.withLock {
+                recorded.append(Recorded(call: call, onMainThread: Thread.isMainThread))
+                guard holding, call == held else { return false }
+                holding = false
+                return true
             }
-            if let hold {
+            if hold {
                 blocked.signal()
-                hold.wait()
+                release.wait()
             }
         }
     }

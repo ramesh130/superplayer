@@ -539,7 +539,12 @@ Wi-Fi, against `cdn.moq.dev`:
 **What it found that is not MoQ's.** The runner's Thread Performance Checker reports a priority
 inversion in `MoqFrameSource.cancel()`: the caller, at user-initiated quality of service, joins
 pump threads started at the default one. And the demo's process reports `AVAudioSession` activated
-synchronously on the main thread. Both are recorded here and changed nothing in this run.
+synchronously on the main thread. Both are recorded here and changed nothing in this run. The second
+was the library's own call and is gone since #494, which performs the session's calls on a serial
+queue of the system platform's: `devicelab/lab run smoke --platform ios` on the same iPhone (iOS
+27.0, 2026-10-13) logged `[AVAudioSession Hang Risk] AVAudioSession_iOS.mm:978` once on the
+playback screen with the old binding, as the control, and not at all with the new one, both runs
+playing from 2 s to 16 s.
 
 **What it cannot show.** It takes no latency figure and no rate, for the Kotlin test's reason. It
 cannot list the source's threads after a cancel, as the Kotlin test does: Swift enumerates no other
@@ -1012,7 +1017,12 @@ see a request.
   the control is a route change for another reason, which goes on playing. What the binding asks of
   the platform — activating and deactivating the session, holding the idle timer — goes to a
   recording `LifecyclePlatform`, the one `package` protocol rule 5's #402 addendum allows the
-  feature, through the `package` initializer `SuperPlayer(configuration:lifecycle:)`. Three things only a device shows,
+  feature, through the `package` initializer `SuperPlayer(configuration:lifecycle:)`. The system
+  platform itself performs its session calls on a serial queue of its own (#494), and what
+  `LifecycleRulesTests` reads there — the order of the calls and that none runs on the main thread —
+  goes to a recorder handed to its internal initializer in place of the one function that calls
+  `AVAudioSession`: not a second protocol, but the implementation of the one under test, its
+  platform half still the device's. Three things only a device shows,
   and none is faked: that the system honours an activation and interrupts the session for a real
   call; that headphones pulled out post the route change; and the idle timer's video half, because
   every synthetic stream was audio when it was written — `LifecycleRulesTests` holds the rule over a

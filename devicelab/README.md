@@ -452,8 +452,10 @@ step is still running in the next, and that boot fits in the job's timeout on a 
   selection is in the self-test, but no run has booted it yet. A physical device takes the
   adoption path: it is never booted or restarted. The emulator-specific parts, such as the AVD name
   and `ro.boot.qemu`, then simply read empty.
-- On iOS it has been run on one iPhone 17 Pro Max on iOS 27.0, built by Xcode 27.1 (#435); the
-  simulator path is written and in the self-test's listing, and has not had a run of its own. An iOS
+- On iOS it has been run on one iPhone 17 Pro Max on iOS 27.0, built by Xcode 27.1 (#435), and
+  `smoke` once on an iOS 27.1 simulator, where the run is whole but the recording is not: xctrace says
+  "Activity monitoring service not available on this device", so a simulator run has no footprint,
+  and `ios/hunt-leaks` stays the simulator's memory measurement. An iOS
   run needs Xcode, `python3` (which Xcode's command-line tools ship) for the JSON and XML it reads, and
   a phone on a cable for its recording.
 - One device per run. Devices of the other kind are passed over, as is one that answers but never

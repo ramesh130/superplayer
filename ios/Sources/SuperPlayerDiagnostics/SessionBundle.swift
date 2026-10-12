@@ -125,7 +125,7 @@ public struct SessionBundle: Sendable, Hashable, CustomStringConvertible {
     /// Every value is one ``CapabilitySnapshot`` carries, which is the whole of rule 10's
     /// enforcement: this function cannot print what it was not handed. A reading the platform did
     /// not give prints `unknown`, the Kotlin bundle's word, and never a guess.
-    static func capabilityLines(_ snapshot: CapabilitySnapshot) -> [String] {
+    package static func capabilityLines(_ snapshot: CapabilitySnapshot) -> [String] {
         ["device platform=\(snapshot.platform) osVersion=\(snapshot.osVersion) "
             + "memoryBudgetMb=\(orUnknown(snapshot.memoryBudgetMb))"]
             + snapshot.videoDecoders.map { "decoder mime=\($0.mimeType) hardware=\($0.hardware)" }

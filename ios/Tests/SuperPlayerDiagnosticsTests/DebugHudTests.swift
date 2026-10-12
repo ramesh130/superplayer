@@ -186,7 +186,8 @@ final class DebugHudTests: XCTestCase {
             .sessionStarted(
                 TelemetryEvent.SessionStarted(
                     sessionId: "t", contentId: "b", timestampMs: 0, monotonicTimeMs: 0,
-                    profile: .videoOnDemand, decision: PlaybackProfile.videoOnDemand.policy
+                    profile: .videoOnDemand,
+                    decision: PlaybackProfile.videoOnDemand.policy
                         .decide(PlaybackConditions()))))
         XCTAssertEqual(telemetry.reading(), HudTelemetryReading())
     }
@@ -214,7 +215,8 @@ final class DebugHudTests: XCTestCase {
             debugHudAvailability(
                 compiledForDebug: true, simulator: false, provisioningProfile: distribution))
         XCTAssertFalse(
-            debugHudAvailability(compiledForDebug: true, simulator: false, provisioningProfile: nil))
+            debugHudAvailability(compiledForDebug: true, simulator: false, provisioningProfile: nil)
+        )
         XCTAssertFalse(
             debugHudAvailability(
                 compiledForDebug: true, simulator: false, provisioningProfile: Data("junk".utf8)))

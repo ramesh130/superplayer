@@ -126,8 +126,10 @@ public struct SessionBundle: Sendable, Hashable, CustomStringConvertible {
     /// enforcement: this function cannot print what it was not handed. A reading the platform did
     /// not give prints `unknown`, the Kotlin bundle's word, and never a guess.
     package static func capabilityLines(_ snapshot: CapabilitySnapshot) -> [String] {
-        ["device platform=\(snapshot.platform) osVersion=\(snapshot.osVersion) "
-            + "memoryBudgetMb=\(orUnknown(snapshot.memoryBudgetMb))"]
+        [
+            "device platform=\(snapshot.platform) osVersion=\(snapshot.osVersion) "
+                + "memoryBudgetMb=\(orUnknown(snapshot.memoryBudgetMb))"
+        ]
             + snapshot.videoDecoders.map { "decoder mime=\($0.mimeType) hardware=\($0.hardware)" }
             + [
                 "display shortEdgePx=\(orUnknown(snapshot.displayShortEdgePx)) "

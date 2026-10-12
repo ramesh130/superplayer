@@ -59,10 +59,11 @@ final class StandInKeySession: FairPlayKeySession {
     /// of how it is answered.
     func request(_ keyIdentifier: String) -> KeyRequestRecord {
         let record = KeyRequestRecord()
+        let context = Self.serverPlaybackContext(for: keyIdentifier)
         handler?(
             FairPlayKeyRequest(
                 keyIdentifier: keyIdentifier, isRenewal: false,
-                makeServerPlaybackContext: { _, _ in Self.serverPlaybackContext(for: keyIdentifier) },
+                makeServerPlaybackContext: { _, _ in context },
                 respond: { licence in record.answer(.licence(licence)) },
                 fail: { error in record.answer(.failed(String(describing: error))) }))
         return record

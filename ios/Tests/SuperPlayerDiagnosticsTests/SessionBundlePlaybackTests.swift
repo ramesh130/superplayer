@@ -120,7 +120,8 @@ final class SessionBundlePlaybackTests: XCTestCase {
                 // Index 1 is the media playlist; its first answer starts the session and every
                 // later one — the re-adoption's — is refused, so the session ends on it.
                 .failWithHttpStatus(
-                    FaultScript.httpNotFound, kind: .manifest, index: 1, afterAttempts: 1)
+                    FaultScript.httpNotFound, kind: .manifest, index: 1, afterAttempts: 1
+                )
                 .build())
         let server = try await harness.serve(.licenceServer())
         var components = try XCTUnwrap(
@@ -152,7 +153,8 @@ final class SessionBundlePlaybackTests: XCTestCase {
         try await harness.until("the session ends typed", timeout: bound) {
             !errors.errors.isEmpty
         }
-        let failedPlaylist = try XCTUnwrap(player.avPlayer.currentItem?.errorLog()?.events.last?.uri)
+        let failedPlaylist = try XCTUnwrap(
+            player.avPlayer.currentItem?.errorLog()?.events.last?.uri)
         player.release()
         let bundle = SessionBundle(
             trace: try await harness.settledTrace(recorder, origin: origin, bound: bound)
@@ -184,7 +186,8 @@ final class SessionBundlePlaybackTests: XCTestCase {
             [
                 token, bearer, String(bearer.dropFirst("Bearer ".count)), signed.absoluteString,
                 "127.0.0.1", ":\(origin.port)", ":\(server.port)", ".m3u8", ".aac", "http://",
-                failedPlaylist, keyIdentifier, "spc:", "ckc:", String(decoding: licence, as: UTF8.self),
+                failedPlaylist, keyIdentifier, "spc:", "ckc:",
+                String(decoding: licence, as: UTF8.self),
                 licence.base64EncodedString(),
             ] + device
         for value in withheld {
@@ -224,7 +227,8 @@ final class SessionBundlePlaybackTests: XCTestCase {
     /// non-empty value where it was read — so that its absence from the bundle means something.
     private func deviceIdentity() -> [String] {
         let modelIdentifier =
-            ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] ?? sysctl("hw.machine")
+            ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"]
+            ?? sysctl("hw.machine")
         let readings: [(String, String?)] = [
             ("the device's name", UIDevice.current.name),
             ("the model", UIDevice.current.model),
@@ -233,7 +237,8 @@ final class SessionBundlePlaybackTests: XCTestCase {
             ("the OS build", sysctl("kern.osversion")),
         ]
         for (what, value) in readings {
-            XCTAssertFalse(value?.isEmpty ?? true, "\(what) was not read, so its absence proves nothing")
+            XCTAssertFalse(
+                value?.isEmpty ?? true, "\(what) was not read, so its absence proves nothing")
         }
         return readings.compactMap(\.1).filter { !$0.isEmpty }
     }

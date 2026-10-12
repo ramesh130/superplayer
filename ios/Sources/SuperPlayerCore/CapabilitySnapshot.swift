@@ -130,7 +130,8 @@ package struct CapabilitySnapshot: Sendable, Hashable {
             osVersion: "\(version.majorVersion).\(version.minorVersion)",
             memoryBudgetMb: budget.map { Int($0 / bytesPerMegabyte) },
             videoDecoders: videoCodecs.map {
-                VideoDecoder(mimeType: $0.mimeType, hardware: VTIsHardwareDecodeSupported($0.codecType))
+                VideoDecoder(
+                    mimeType: $0.mimeType, hardware: VTIsHardwareDecodeSupported($0.codecType))
             },
             displayShortEdgePx: activeDisplayShortEdgePx(),
             hdrPlaybackEligible: AVPlayer.eligibleForHDRPlayback)

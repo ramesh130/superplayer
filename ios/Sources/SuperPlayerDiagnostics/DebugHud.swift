@@ -154,7 +154,8 @@ private struct HudRows: View {
 
     /// A mid grey label beside a white value: the eye reads down the values column — the Kotlin
     /// `0xFF9E9E9E` and white.
-    private static let labelColour = Color(red: 0x9E / 255.0, green: 0x9E / 255.0, blue: 0x9E / 255.0)
+    private static let labelColour = Color(
+        red: 0x9E / 255.0, green: 0x9E / 255.0, blue: 0x9E / 255.0)
     private static let valueColour = Color.white
 
     /// Eight points, half a step of the 16-point grid Apple's layout guides use and the Kotlin 8dp,
@@ -381,7 +382,9 @@ package struct HudFacts: Sendable, Hashable {
         [
             Row("source", source),
             Row("bitrate", Self.rate(selectedBitrateBps)),
-            Row("buffer", "\(Self.seconds(bufferedDurationMs)) ahead of \(Self.seconds(positionMs))"),
+            Row(
+                "buffer", "\(Self.seconds(bufferedDurationMs)) ahead of \(Self.seconds(positionMs))"
+            ),
             Row("dropped", droppedFrames.map(String.init) ?? Self.unavailable),
             Row("estimate", estimate),
             Row("failures", failures.isEmpty ? Self.none : failures.joined(separator: ", ")),

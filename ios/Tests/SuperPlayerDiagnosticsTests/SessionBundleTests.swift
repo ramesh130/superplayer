@@ -64,7 +64,9 @@ final class SessionBundleTests: XCTestCase {
 
         let lines = SessionBundle(trace: trace, capabilities: device).lines
 
-        XCTAssertTrue(lines.contains("+0 capability device platform=iOS osVersion=18.4 memoryBudgetMb=unknown"))
+        XCTAssertTrue(
+            lines.contains(
+                "+0 capability device platform=iOS osVersion=18.4 memoryBudgetMb=unknown"))
         XCTAssertTrue(lines.contains("+0 capability display shortEdgePx=unknown hdrPlayback=true"))
     }
 
@@ -73,7 +75,8 @@ final class SessionBundleTests: XCTestCase {
         let bundle = SessionBundle(trace: trace.withoutTimings(), capabilities: .stated)
 
         XCTAssertFalse(bundle.timed)
-        XCTAssertEqual(bundle.lines.first, "capability device platform=iOS osVersion=18.4 memoryBudgetMb=2048")
+        XCTAssertEqual(
+            bundle.lines.first, "capability device platform=iOS osVersion=18.4 memoryBudgetMb=2048")
         XCTAssertTrue(bundle.format().contains("\ntimings omitted\n"))
     }
 

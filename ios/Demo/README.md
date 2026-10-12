@@ -12,6 +12,7 @@ plays a real stream over a real CDN needs a network, which no check here has (AD
 | `FrameOutputScreen` | the same stream through a pass-through `FrameOutput` on the library's `PlayerView`, counting the frames it is handed |
 | `TvScreen` | `tvLeanback` through `TvOutput` on `AVPlayerViewController`'s system controls, with AVKit's own criteria matching off — what the app opens on under tvOS |
 | `FeedScreen` | 200 rows over a `PlayerPool` and a `PreloadCoordinator`, one row playing at a time, a header sampling the pool and the coordinator, and each row's time to first frame from `declarePlaybackIntent()` |
+| `DebugHudScreen` | the playback screen with `SuperPlayerDiagnostics`' `DebugHud` over it, fed by a `DebugHudTelemetry` composed beside the log sink — the recipe a consumer copies (#429); nothing shows in a Release build |
 
 `DemoPlayback`'s doc comment is the lifecycle a consumer copies for one player, and `FeedScreen`'s
 for a feed: the pool with a collector per player, the coordinator attached before the pool's first
@@ -28,7 +29,7 @@ file, because its sources are a folder Xcode keeps in step with the disk (a
 xcodebuild build -project ios/Demo/SuperPlayerDemo.xcodeproj -scheme SuperPlayerDemo \
     -destination 'generic/platform=iOS Simulator' -derivedDataPath .build/DerivedData-demo
 xcrun simctl install booted .build/DerivedData-demo/Build/Products/Debug-iphonesimulator/SuperPlayerDemo.app
-xcrun simctl launch booted com.superplayer.demo -SPDemoScreen playback   # or frameOutput, feed, tv, or nothing for the list (tv on tvOS)
+xcrun simctl launch booted com.superplayer.demo -SPDemoScreen playback   # or frameOutput, feed, tv, debugHud, or nothing for the list (tv on tvOS)
 xcrun simctl spawn booted log show --last 1m --style compact --predicate 'subsystem == "com.superplayer.demo"'
 ```
 

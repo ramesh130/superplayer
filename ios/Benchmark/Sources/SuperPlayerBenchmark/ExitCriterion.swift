@@ -15,14 +15,13 @@
 import SuperPlayerTestkit
 
 /// Phase 11's exit criterion for the adaptive policy, decided by one rule fixed before a matrix
-/// ran — the Kotlin `ExitCriterion`, rule for rule, so the iOS report can open with the same
-/// verdict once it has an adaptive arm to give one about.
+/// ran — the Kotlin `ExitCriterion`, rule for rule, so the iOS report opens with the same verdict.
 ///
 /// *Measured improvement of the adaptive policy over the static profile on the shaped-network
 /// suite, with no regression on stable WiFi*: on a shaped profile, a QoE score better than the
 /// static profile's by more than two standard errors in at least one scenario and worse in none; on
-/// stable WiFi, no metric of any scenario worse. **Unmeasured is not met**, which is what every
-/// profile reads until i3 (#416) fills arm (d): absence of evidence is not a pass.
+/// stable WiFi, no metric of any scenario worse. **Unmeasured is not met** — a filtered run that
+/// played no cell of both arms on a profile reads that way: absence of evidence is not a pass.
 enum ExitCriterion {
 
     /// The arm the candidate must improve on: the static profile.

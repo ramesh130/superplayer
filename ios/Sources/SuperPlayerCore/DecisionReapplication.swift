@@ -43,7 +43,9 @@ import Network
 ///
 /// **The history is the item's.** Every item the player is given starts a fresh stall history, an
 /// unknown stream type and an empty throughput window — the Kotlin object's media-item transition,
-/// observed here at the one place the facade replaces an item.
+/// observed here at the one place the facade replaces an item. The one exception is an estimator a
+/// policy brought (`ThroughputSource.swift`): it is told the item changed, and what it remembers
+/// across items — `SuperPlayerABR`'s per-transport memory — is its own to keep (ADR-0009 rule 8).
 ///
 /// A consultation whose answer equals the decision in force changes nothing and is not reported, so
 /// every report is a change with a trigger a reader can name.
@@ -64,7 +66,8 @@ final class DecisionReapplication {
     private var streamType: StreamType?
     private var playbackSpeed: Float?
     private var stalls = StallObservation()
-    private var throughput = AccessLogThroughput()
+    /// The item's access-log window, or the estimator the policy brought (`ThroughputSource.swift`).
+    private var throughput: any ThroughputSource
 
     private weak var player: AVPlayer?
     private var playerObservations: [Observation] = []
@@ -74,6 +77,9 @@ final class DecisionReapplication {
     /// rate of 1 — `AVPlayer`'s own default, as the Kotlin object reads Media3's default speed.
     init(policy: any PlaybackPolicy, availableMemoryBytes: UInt64) {
         self.policy = policy
+        self.throughput =
+            (policy as? any ThroughputEstimatingPolicy)?.makeThroughputSource()
+            ?? AccessLogThroughput()
         self.heapBudgetBytes = ConditionsBinding.heapBudgetBytes(
             availableMemoryBytes: availableMemoryBytes)
         self.playbackSpeed = 1
@@ -112,7 +118,7 @@ final class DecisionReapplication {
     func itemChanged(to item: AVPlayerItem?) {
         itemObservations = []
         stalls = StallObservation()
-        throughput = AccessLogThroughput()
+        throughput.itemChanged()
         streamType = nil
         guard let item else { return }
         itemObservations = [
@@ -149,6 +155,7 @@ final class DecisionReapplication {
         let observed = ConditionsBinding.transport(of: reading, cellularGeneration: generation)
         guard observed != transport else { return }
         transport = observed
+        throughput.transportChanged(to: observed, atMs: ConditionsBinding.monotonicNowMs())
         reconsult(.transportChanged)
     }
 
@@ -204,8 +211,8 @@ final class DecisionReapplication {
     /// cannot do is notice a move on a steady session between those occasions: the Kotlin meter is
     /// told of every transfer, and nothing here is. A timer would close that gap at the cost of a
     /// registration on every policy player and a consultation cadence ADR-0009 rule 4 rules out, so
-    /// ``DecisionTrigger/throughputChanged`` fires on those occasions only — the adaptive policy
-    /// (i3's ABR half) is where a finer reading belongs if one is measured to matter.
+    /// ``DecisionTrigger/throughputChanged`` fires on those occasions only. `SuperPlayerABR`'s oracle is
+    /// fed on the same occasions and no others, so it has the same limit and says so.
     private func readAccessLog(of item: AVPlayerItem) {
         throughput.read(
             observedBitratesBps: ConditionsBinding.observedBitrates(of: item),

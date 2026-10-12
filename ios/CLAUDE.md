@@ -239,6 +239,18 @@ the event `DisplayModeChanged`, reported and never acted on. The platform is the
 protocol `DisplayManaging`; the system's, `SystemDisplayManager`, is tvOS-only and runs under no test
 (`docs/testing.md`, *A television on tvOS*). On iOS `standard()` makes nothing. The demo's `TvScreen`
 is the recipe on `AVPlayerViewController`'s system controls, and the app opens on it on tvOS.
+#416 is i3's adaptive half, `SuperPlayerABR`: `AdaptivePolicy.forProfile(profile)` composes
+`AdaptiveSelectionPolicy` and `AdaptiveBufferPolicy`, the Kotlin pure functions with their constants,
+and brings a `BandwidthOracle` per player through core's `package` seam `ThroughputSource.swift` —
+`DecisionReapplication` hands it every access-log read, item change and transport change and asks it
+for the estimate and the throughput trigger, where any other policy gets the item's own window. A
+sample is **one access-log entry's `observedBitrate`**, revised while the entry is current, kept per
+transport in the process's `EstimateMemory` with Android's cold defaults and aging. Two Kotlin
+branches move start floors iOS has no knob for and so move nothing here; the heap cap applies to a
+decided `preferredForwardBufferDuration` and never to Apple's automatic one; the cellular cap lands on
+the expensive-network pair. `AdaptivePolicy.forProfile(_:rebufferCooldownMs:memory:)` is the
+`package` seam `AdaptivePolicyPlaybackTests` shortens the cooldown through. The benchmark's arm (d) is
+it, every session starting from a forgotten memory, and `benchmark/ios-phase3/` is its report.
 #427 is the first of i8: `SuperPlayerDiagnostics`' `MediaSourceDoctor(configuration:)`, whose
 `examine(_:)` is `async` and **not** `throws` — a playlist that cannot be fetched or read is a
 `manifest-unreachable` or `manifest-unreadable` finding — and answers a `DiagnosticReport` of
@@ -329,7 +341,7 @@ ios/check                     # swift-format lint, simulator tests, tvOS build, 
 ios/check --update-api        # the same, rewriting ios/api/*.baseline; commit the diff
 ios/check --update-golden     # the same, rewriting ios/Tests/Fixtures/golden/*.trace; review and commit the diff
 SP_SIMULATOR=mine ios/check   # test on a simulator of that name instead (created if absent)
-ios/Benchmark/bench           # PRD.md §6's matrix on the simulator, ~2 h; NOT in ios/check (ios/Benchmark/README.md)
+ios/Benchmark/bench           # PRD.md §6's matrix on the simulator, ~2 h 40 min; NOT in ios/check (ios/Benchmark/README.md)
 ios/hunt-leaks                # the leak hunt on a simulator; minutes, a network, and not a check
 xcrun swift-format format --in-place --recursive --configuration ios/.swift-format ios Package.swift
 ```

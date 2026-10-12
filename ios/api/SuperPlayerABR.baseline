@@ -1,1 +1,24 @@
 // SuperPlayerABR: public API as ios/check reads it. Regenerate with ios/check --update-api.
+Class BandwidthOracle : Sendable, ThroughputSource
+Constructor AdaptiveBufferPolicy.init(profile:) : SuperPlayerABR.AdaptiveBufferPolicy, SuperPlayerCore.PlaybackProfile
+Constructor AdaptiveSelectionPolicy.init(profile:) : SuperPlayerABR.AdaptiveSelectionPolicy, SuperPlayerCore.PlaybackProfile
+Constructor BandwidthOracle.init() : SuperPlayerABR.BandwidthOracle
+Enum AdaptivePolicy
+Func AdaptiveBufferPolicy.decide(_:) : SuperPlayerCore.PlaybackDecision, SuperPlayerCore.PlaybackConditions
+Func AdaptivePolicy.forProfile(_:) : any SuperPlayerCore.PlaybackPolicy, SuperPlayerCore.PlaybackProfile [static]
+Func AdaptiveSelectionPolicy.decide(_:) : SuperPlayerCore.PlaybackDecision, SuperPlayerCore.PlaybackConditions
+Func BandwidthOracle.currentEstimate() : SuperPlayerCore.ThroughputEstimate
+Func BandwidthOracle.currentTransport() : SuperPlayerCore.NetworkTransport
+Func BandwidthOracle.release() : ()
+Struct AdaptiveBufferPolicy : PlaybackPolicy, Sendable
+Struct AdaptiveSelectionPolicy : PlaybackPolicy, Sendable
+Var AdaptiveBufferPolicy.ceilingStepMs : Swift.Int64 [static] { get }
+Var AdaptiveBufferPolicy.deepCushionMs : Swift.Int [static] { get }
+Var AdaptiveBufferPolicy.defaultRebufferCooldownMs : Swift.Int64 [static] { get }
+Var AdaptiveBufferPolicy.floorStepMs : Swift.Int [static] { get }
+Var AdaptiveBufferPolicy.heapShareDivisor : Swift.Int64 [static] { get }
+Var AdaptiveBufferPolicy.highThroughputBps : Swift.Int64 [static] { get }
+Var AdaptiveBufferPolicy.liveLatency : SuperPlayerCore.LiveLatencyPolicy [static] { get }
+Var AdaptiveBufferPolicy.profile : SuperPlayerCore.PlaybackProfile { get }
+Var AdaptiveBufferPolicy.referenceBitrateBps : Swift.Int64 [static] { get }
+Var AdaptiveSelectionPolicy.profile : SuperPlayerCore.PlaybackProfile { get }

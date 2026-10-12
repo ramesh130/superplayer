@@ -38,6 +38,12 @@ import CoreVideo
 /// at that time against the item's own timebase, so display timing stays the system's. The frames
 /// are 32-bit BGRA and Metal-compatible (``SuperPlayer/frameOutputPixelFormat``).
 ///
+/// **The link asks for twice the content's frame rate**, because one ticking at the content's own
+/// rate skips a frame each time the display's clock drifts across a frame boundary (#491). An iPhone
+/// holds every display link at 60 Hz unless the app's `Info.plist` sets
+/// `CADisableMinimumFrameDurationOnPhone` to `YES`, so an app playing content above 30 frames a
+/// second through an output declares it; the key is the app's, and the library cannot set it.
+///
 /// **Called on a serial queue of the player's own**, never the main actor, once per frame the
 /// output yields, in presentation order. The method is on the path to the screen, so a frame it is
 /// late with is a frame not shown: while one call is running, the display link does not copy the

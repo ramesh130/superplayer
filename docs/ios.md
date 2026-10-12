@@ -128,8 +128,8 @@ player.avPlayer.play()
 **`player.avPlayer` is the `AVPlayer` itself.** `AVPlayerViewController`, `AVPlayerLayer` and
 SwiftUI's `VideoPlayer` all take it unchanged. It is the one escape hatch (ADR-0020 rule 3), and
 anything you do through it is outside the library's compatibility promise. `PlayerView` (SwiftUI)
-and `PlayerLayerView` (UIKit) host the player's own layer, and either can give you a Picture in
-Picture content source.
+and `PlayerLayerView` (UIKit) host the player's own layer, and `PlayerLayerView`'s
+`makePictureInPictureContentSource()` gives you a Picture in Picture content source.
 
 **Failures arrive on `player.errors`**, a Combine publisher, and `player.playerError` keeps the last
 one. On a player configured with `SuperPlayerResilience`, a failure nothing rescued is a
@@ -227,21 +227,22 @@ would put the library between the engine and the network — a local proxy in-pr
 system's HLS loading, and AirPlay's and the download API's view of the same URL, off the path.
 
 A field the shared value types carry and iOS ignores is **kept**, so that a policy written once
-compiles on both platforms, and its documentation says "ignored on iOS" at the field. These are the
-selection pace, the manifest and segment retry budgets, and tunneling.
+compiles on both platforms, and its documentation says how it is ignored at the field. These are the
+selection pace, the manifest retry budget, tunneling, and the segment retry budget, which no player
+spends and the download store does.
 
 ---
 
 ## What your app has to declare
 
 **The library declares nothing in your `Info.plist` and adds no entitlement** (ADR-0007 rule 4,
-restated on this platform). Everything below is yours, because each is a decision about your app
+restated for Apple platforms in `docs/ios-plan.md` §3.1's lifecycle row). Everything below is yours, because each is a decision about your app
 rather than about playback.
 
 | You want | Declare | Why it is yours |
 | --- | --- | --- |
 | Audio that keeps playing with the screen locked or the app in the background | `UIBackgroundModes` with `audio` (Xcode's *Audio, AirPlay, and Picture in Picture* background mode) | The library sets the audio session to `.playback` on every player, which is what lets audio continue, but only an app that declares the mode is allowed to. Without it, playback stops when the app is backgrounded, and the demo deliberately shows that |
-| Picture in Picture | The same `audio` background mode; then a content source from `PlayerView` or `PlayerLayerView` handed to `AVPictureInPictureController` | AVKit requires the mode for Picture in Picture to outlive the app's foreground |
+| Picture in Picture | The same `audio` background mode; then `PlayerLayerView.makePictureInPictureContentSource()` handed to `AVPictureInPictureController` | AVKit requires the mode for Picture in Picture to outlive the app's foreground |
 | AirPlay | Nothing to start a route; the same `audio` background mode for it to continue in the background | `AVPlayer` allows external playback by default, and the system owns the route picker |
 | Lock-screen and Control Center controls | Nothing beyond the `audio` background mode; create a `PlaybackSession` for the player you want published | A session is a choice, not a default: a feed of pooled players should not each claim the lock screen (ADR-0007) |
 | CarPlay | The CarPlay audio entitlement Apple grants, and your own templates | An entitlement is granted to an app; `MediaRequestResolver` is where the library meets it |
@@ -250,7 +251,6 @@ rather than about playback.
 | Plain `http://` streams | An App Transport Security exception, such as `NSAllowsArbitraryLoadsForMedia` | Whether to allow unencrypted media is a policy decision about your app |
 | tvOS display matching | Nothing in `Info.plist`. With `AVPlayerViewController`, set `appliesPreferredDisplayCriteriaAutomatically = false` so `TvOutput` is the one owner of the display's criteria | Whether the TV actually switches mode is the viewer's *Match Content* setting, which the request honours rather than overrides |
 | The debug HUD in a build | A Debug build, signed with a development profile | `isDebugHudAvailable()` needs both `#if DEBUG` and the profile's `get-task-allow`. In a Release build the overlay's rendering code is compiled out, but the `DebugHud` and `DebugHudTelemetry` types remain, so attach the telemetry sink under your own `#if DEBUG` too |
-| A MoQ relay on your local network | `NSLocalNetworkUsageDescription` | Local network access is a privacy permission the viewer grants to your app |
 
 ---
 

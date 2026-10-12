@@ -827,9 +827,11 @@ drift from without failing anything.
 | `docs/throughput-traces.md`'s format, `ios/Tests/Fixtures/throughput-traces/` | `superplayer-testkit`'s `ThroughputTraceFixturesTest` | `SuperPlayerTestkitTests`' `ThroughputTraceFixturesTests` |
 | #340's observed realtime bytes, `ios/Tests/Fixtures/realtime/observed-bytes.tsv` | `superplayer-realtime`'s tests, through `ObservedBytes.kt` | `SuperPlayerRealtimeTests`, through `ObservedBytes.swift` |
 
-**One row is shared in grammar and not in content: the bundle.** A trace golden from either platform
-is read by the other, but a bundle golden is not, since the `capability` lines differ by platform by
-design (`docs/session-bundle.md`). Each platform pins its own bundle golden instead.
+**The trace grammar is held in one direction.** The Kotlin trace goldens are read by iOS's
+`SessionTraceTests`, while no Kotlin test reads the iOS goldens, which are structural and so carry
+no times for a byte-identical reader to compare. A bundle golden is read by neither side, since its
+`capability` lines differ by platform by design (`docs/session-bundle.md`), so each platform pins its
+own.
 
 **What is not on the list, and why.** `docs/http-transport.md` and its `TransportDocumentTest` are
 Android's alone, because `HttpTransport` is not ported (ADR-0020 rule 6). `docs/ios.md` has no test

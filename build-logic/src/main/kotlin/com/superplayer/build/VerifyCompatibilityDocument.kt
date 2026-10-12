@@ -68,7 +68,7 @@ abstract class VerifyCompatibilityDocument : DefaultTask() {
 
     /**
      * `ios/MoQ/Package.swift`, whose product resolving this repository by URL never reaches: the
-     * SwiftPM analog of an unpublished module (`CONTRIBUTING.md`'s #364 amendment).
+     * SwiftPM analog of an unpublished module (ADR-0017 rule 1's #364 addendum).
      */
     @get:InputFile
     @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -277,7 +277,7 @@ internal fun findSwiftProductTableViolations(
 /**
  * The `.library` products a `Package.swift` declares, read as text for [swiftTargetsIn]'s reason:
  * evaluating a manifest needs a Swift toolchain the Linux job does not have. The shape is the one
- * SwiftPM documents, `.library(name: "X", targets: [...])`, and a commented-out line is no product.
+ * SwiftPM documents, `.library(name: "X", targets: [...])`, and a `//`-commented line is no product.
  */
 internal fun swiftLibraryProducts(manifest: String): Set<String> =
     manifest.lineSequence()

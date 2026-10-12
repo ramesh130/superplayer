@@ -8,9 +8,9 @@ one says so.
 
 | Document | For |
 | --- | --- |
-| [`media-source-doctor.md`](media-source-doctor.md) | Someone whose stream will not play: every defect `MediaSourceDoctor` can name, what it means, what produces it, what to change, and its specification citation |
+| [`media-source-doctor.md`](media-source-doctor.md) | Someone whose stream will not play: every defect `MediaSourceDoctor` can name, what it means, what produces it, what to change, its specification citation, and which platforms' doctors name it |
 | [`session-bundle.md`](session-bundle.md) | The session bundle **format**: every line, every field, and what is redacted |
-| [`reading-a-session-bundle.md`](reading-a-session-bundle.md) | A support or CDN engineer handed a bundle: which questions it settles, what the timings are measured between, and what to ask for where it is silent |
+| [`reading-a-session-bundle.md`](reading-a-session-bundle.md) | A support or CDN engineer handed a bundle: which questions it settles, what the timings are measured between, what to ask for where it is silent, and what a bundle from an iPhone, iPad or Apple TV says differently |
 | [`telemetry-schema.md`](telemetry-schema.md) | A data pipeline: what every metric means, with its CTA-2066 citation and every departure from it stated |
 
 ## If you are building an app on it

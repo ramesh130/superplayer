@@ -476,18 +476,28 @@ cmd_run_ios() {
     ios_build_demo
     ios_install_demo
 
-    [ "$TRACE_FROM" != launch ] || ios_trace_start
-    ios_launch_demo main "${SCENARIO_IOS_LAUNCH[@]}"
-    RUN_PLAYBACK_POSITION_MS="$(ios_wait_for_playback "${PLAYBACK_TIMEOUT:-90}")"
-    log "playing (position ${RUN_PLAYBACK_POSITION_MS} ms)"
-    if declare -F scenario_setup >/dev/null; then scenario_setup; fi
-    [ "$TRACE_FROM" != playing ] || ios_trace_start
+    if [ "${SCENARIO_IOS_RECORDED_LAUNCH:-0}" = 1 ]; then
+        # The recording launches the demo and the scenario drives itself (lib/ios.sh,
+        # `ios_record_launch`), so readiness is read back afterwards rather than waited on.
+        ios_record_launch "${SCENARIO_IOS_LAUNCH[@]}"
+        [ -n "$RUN_PLAYBACK_POSITION_MS" ] ||
+            die "the recording holds no advancing position: the demo did not play ($RUN_DIR/console-main.log)"
+        log "played (position ${RUN_PLAYBACK_POSITION_MS} ms)"
+        scenario_drive
+    else
+        [ "$TRACE_FROM" != launch ] || ios_trace_start
+        ios_launch_demo main "${SCENARIO_IOS_LAUNCH[@]}"
+        RUN_PLAYBACK_POSITION_MS="$(ios_wait_for_playback "${PLAYBACK_TIMEOUT:-90}")"
+        log "playing (position ${RUN_PLAYBACK_POSITION_MS} ms)"
+        if declare -F scenario_setup >/dev/null; then scenario_setup; fi
+        [ "$TRACE_FROM" != playing ] || ios_trace_start
 
-    log "driving scenario $SCENARIO"
-    scenario_drive
+        log "driving scenario $SCENARIO"
+        scenario_drive
 
-    ios_trace_stop
-    ios_stop_demo
+        ios_trace_stop
+        ios_stop_demo
+    fi
 
     RUN_FINISHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     ios_run_json >"$RUN_DIR/run.json"

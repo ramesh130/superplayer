@@ -202,7 +202,8 @@ ios_first_frames() {
 
 # Reads the export of an Activity Monitor recording's `activity-monitor-process-live` table on stdin
 # and prints "<ms since the recording started>\t<pid>\t<physical footprint bytes>" for every sample of
-# a process named `$1`.
+# a process named `$1`, or of every process the table holds when `$1` is `*` — a recording that
+# launched the demo holds the demo alone, under its display name rather than its executable's.
 #
 # The footprint is the kernel's `phys_footprint`, the number jetsam kills an app on and the one Xcode's
 # memory gauge shows. xctrace writes each distinct value once with an `id` and refers back to it with
@@ -236,7 +237,7 @@ for row in root.iter("row"):
     process = cells[at["process"]]
     label = process.get("fmt", "") if process is not None else ""
     named = re.match(r"^(.*) \((\d+)\)$", label)
-    if not named or named.group(1) != want:
+    if not named or (want != "*" and named.group(1) != want):
         continue
     footprint = cells[at["memory-physical-footprint"]]
     start = cells[at["start"]]
@@ -256,6 +257,51 @@ start = ET.parse(sys.stdin).getroot().findtext(".//run/info/summary/start-date")
 if start:
     print(int(datetime.datetime.fromisoformat(start).timestamp() * 1000))
 '
+}
+
+# Reads the export of a recording's `os-log` table on stdin and prints the demo's and the library's
+# lines as the console would have — "<local time> SuperPlayerDemo[<pid>:0] [<category>] <message>" —
+# with the recording's start `$1` (`ios_trace_start_ms`) added to each line's time, so every reader
+# above reads a recording as it reads a console.
+#
+# The message is rebuilt from its parts rather than read off the row's display text, which prints an
+# integer with a thousands separator ("position=2,000"): literal text and strings as written, numbers
+# as their raw value.
+ios_oslog_lines() {
+    python3 -I -c '
+import datetime, re, sys, xml.etree.ElementTree as ET
+start_ms = int(sys.argv[1])
+root = ET.parse(sys.stdin).getroot()
+schema = root.find(".//schema")
+if schema is None:
+    sys.exit()
+columns = [c.findtext("mnemonic") for c in schema.findall("col")]
+at = {name: i for i, name in enumerate(columns)}
+seen = {}
+def value(element):
+    for e in element.iter():
+        if "id" in e.attrib:
+            seen[e.get("id")] = e
+    return seen.get(element.get("ref")) if "ref" in element.attrib else element
+for row in root.iter("row"):
+    cells = [value(c) for c in row]
+    if len(cells) < len(columns):
+        continue
+    subsystem = cells[at["subsystem"]]
+    if subsystem is None or subsystem.get("fmt") not in ("com.superplayer.demo", "com.superplayer"):
+        continue
+    parts = []
+    for part in cells[at["message"]]:
+        part = value(part)
+        if part.tag in ("narrative-text", "string"):
+            parts.append(part.get("fmt", part.text or ""))
+        else:
+            parts.append(part.text if part.text is not None else part.get("fmt", ""))
+    process = re.match(r"^.* \((\d+)\)$", cells[at["process"]].get("fmt", ""))
+    moment = datetime.datetime.fromtimestamp((start_ms + int(cells[at["time"]].text) // 1000000) / 1000).astimezone()
+    print("%s SuperPlayerDemo[%s:0] [%s] %s" % (moment.strftime("%Y-%m-%d %H:%M:%S.%f%z"),
+          process.group(1) if process else 0, cells[at["category"]].get("fmt"), "".join(parts)))
+' "$1"
 }
 
 # --- Pure: the feed's verdict ------------------------------------------------------------------------
@@ -329,6 +375,8 @@ def rank(values, p):
 def pass_of(t):
     if started is None or t is None or t < started:
         return "before the scroll"
+    if finished is not None and t > finished:
+        return "after the scroll"
     return sum(1 for e in pass_ends if e is not None and e < t) + 1
 
 print("### Time to first frame\n")
@@ -344,7 +392,7 @@ for t, ms in ttff_at:
 if by_pass_ttff:
     print("| Pass | First frames from intent | Median | p90 | Max |")
     print("| --- | ---: | ---: | ---: | ---: |")
-    for n, values in sorted(by_pass_ttff.items(), key=lambda kv: (isinstance(kv[0], int), kv[0])):
+    for n, values in sorted(by_pass_ttff.items(), key=lambda kv: kv[0] if isinstance(kv[0], int) else (0 if kv[0].startswith("before") else 10**6)):
         q = sorted(values)
         print(f"| {n} | {len(q)} | {statistics.median(q):.0f} ms | {rank(q, 90)} ms | {q[-1]} ms |")
     print()
@@ -382,6 +430,8 @@ else:
     passes = [values for _, values in sorted(by_pass.items())]
     if ended_early:
         print("Verdict: **unknown** — the recording ended before the run did, so no pass's spread is whole.\n")
+    elif finished is None:
+        print("Verdict: **unknown** — the scroll did not finish inside the recording, so its last pass is not whole.\n")
     elif len(passes) >= 2 and all(len(v) >= MIN_SAMPLES for v in passes):
         baseline = sorted(passes[0])
         ceiling = rank(baseline, 90)
@@ -605,6 +655,46 @@ ios_trace_stop() {
         >"$RUN_WORK/process-live.xml" 2>/dev/null || die "xctrace could not export the process table"
     ios_footprint_series "$IOS_PROCESS" <"$RUN_WORK/process-live.xml" >"$RUN_DIR/footprint.tsv"
     log "xctrace ended: ${IOS_TRACE_END_REASON:-stopped}; $(grep -c . "$RUN_DIR/footprint.tsv" || true) footprint samples of the demo"
+}
+
+# The other way to record, for a scenario that needs the recording whole (`SCENARIO_IOS_RECORDED_LAUNCH`):
+# xctrace launches the demo itself, with `$@` as its arguments, and records Activity Monitor on it and
+# its own `os_log` lines (the `os_log` instrument) until `TRACE_MS` runs out. Over every process the
+# recording ends after about a second on the iPhone #435 ran on — wired or over the network, its table
+# of contents saying "Device disconnected" — while a recording of a launched process runs to its limit;
+# observed on iOS 27.0 with Xcode 27.1, cause unknown. What it costs is the live console, so nothing is
+# confirmed or waited on while it runs: the scenario must drive itself and know its own length, as the
+# feed's `-SPFeedScroll` does, and the log is read back out of the recording afterwards
+# (`ios_oslog_lines`) into `console-main.log`, where every reader finds it. Sets IOS_LOG and
+# RUN_PLAYBACK_POSITION_MS, which is empty when no position advanced.
+ios_record_launch() {
+    IOS_TRACE="$RUN_DIR/trace.trace"
+    IOS_LOG="$RUN_DIR/console-main.log"
+    log "recording xctrace (Activity Monitor and os_log, launching the demo, for ${TRACE_MS} ms)"
+    # Bounded beyond xctrace's own limit, for the time it takes to start and to write the trace.
+    with_timeout $((TRACE_MS / 1000 + 300)) xcrun xctrace record --template "Activity Monitor" --instrument os_log \
+        --device "$IOS_UDID" --no-prompt --time-limit "$((TRACE_MS / 1000))s" --output "$IOS_TRACE" \
+        --launch -- "$IOS_BUNDLE_ID" "$@" >"$RUN_DIR/xctrace.log" 2>&1 || true
+    [ -d "$IOS_TRACE" ] || die "xctrace wrote no trace ($RUN_DIR/xctrace.log)"
+    xcrun xctrace export --input "$IOS_TRACE" --toc >"$RUN_WORK/toc.xml" 2>/dev/null || die "xctrace could not read its own trace"
+    IOS_TRACE_END_REASON="$(sed -n 's:.*<end-reason>\(.*\)</end-reason>.*:\1:p' "$RUN_WORK/toc.xml" | head -1)"
+    IOS_TRACE_START_MS="$(ios_trace_start_ms <"$RUN_WORK/toc.xml")"
+    RUN_TRACE_ENDED_BY_BOUND=0
+    IOS_TRACE_ENDED_EARLY=1
+    # Here the limit is the plan rather than a bound hit: the run is as long as the recording.
+    case "$IOS_TRACE_END_REASON" in *"ime limit"*) IOS_TRACE_ENDED_EARLY=0 ;; esac
+    [ "$IOS_TRACE_ENDED_EARLY" = 0 ] ||
+        log "warning: xctrace stopped recording before its limit (${IOS_TRACE_END_REASON:-no reason given})"
+    xcrun xctrace export --input "$IOS_TRACE" \
+        --xpath '/trace-toc/run[@number="1"]/data/table[@schema="os-log"]' >"$RUN_WORK/os-log.xml" 2>/dev/null ||
+        die "xctrace could not export the log table"
+    ios_oslog_lines "$IOS_TRACE_START_MS" <"$RUN_WORK/os-log.xml" >"$IOS_LOG"
+    xcrun xctrace export --input "$IOS_TRACE" \
+        --xpath '/trace-toc/run[@number="1"]/data/table[@schema="activity-monitor-process-live"]' \
+        >"$RUN_WORK/process-live.xml" 2>/dev/null || die "xctrace could not export the process table"
+    ios_footprint_series '*' <"$RUN_WORK/process-live.xml" >"$RUN_DIR/footprint.tsv"
+    RUN_PLAYBACK_POSITION_MS="$(ios_advancing_position <"$IOS_LOG")"
+    log "xctrace ended: ${IOS_TRACE_END_REASON:-stopped}; $(grep -c . "$IOS_LOG" || true) log lines, $(grep -c . "$RUN_DIR/footprint.tsv" || true) footprint samples"
 }
 
 # On any exit: the recording and the console, so neither outlives a failed run.

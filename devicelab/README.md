@@ -285,9 +285,11 @@ would have shown over a stretch of playback are the content's frames between two
 and those can be counted from the times the output was handed without a layer at all. The demo's
 `FrameTally` (FrameOutputScreen.swift) does it: within a stretch of one picture size, an HLS variant's
 frame interval is constant (`FRAME-RATE`, one per variant), the shortest gap between two handed frames
-is that interval, and the stretch held `round((last − first) / shortest) + 1` frames; each one not handed
-is one the output never saw. The demo logs the tally beside its position every two seconds, and the
-scenario reads it after `FRAMES_SECONDS` (default 120).
+is that interval, so a gap between two handed frames held `round(gap / shortest) − 1` frames the output
+never saw — rounded, so timestamps that alternate between two tick counts count nothing. The demo logs
+the tally beside its position every two seconds, with the interval and the largest gap and where it
+ended, so a loss can be found and seen to be a whole number of frames; the scenario reads it after
+`FRAMES_SECONDS` (default 120).
 
 Two refinements are what make the number mean what the criterion says. **The verdict is taken over
 steady playback** (`ios_frame_steady`): two consecutive lines whose position advanced by exactly two
@@ -300,8 +302,10 @@ with AVFoundation's own count of the frames that layer dropped (`dropped=`, the 
 `numberOfDroppedVideoFrames`).
 
 What it cannot see: a frame lost exactly at a variant switch, since the gap across a switch is judged by
-nothing (the report counts the switches); whether the display layer then presented each frame **on
-time** against the item's timebase; and Picture in Picture. A frame the output was handed and the layer
+nothing (the report counts the switches); a loss before a stretch has shown its interval, which is
+judged against a longer one; whether the display layer then presented each frame **on time** against
+the item's timebase; and Picture in Picture. A frame rate that changes at one picture size would read
+as losses — a false *not met*, never a false pass, and the largest gap shows it. A frame the output was handed and the layer
 then failed to show is not a frame this count can miss — and not one it can find.
 
 ### The feed scenario

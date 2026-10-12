@@ -104,17 +104,23 @@ final class CountingPassThrough: FrameOutput {
 /// would have shown over a stretch of playback are the content's frames between two presentation
 /// times — and the times the output *was* handed are enough to count those without a layer. Within
 /// a stretch of one picture size the content's frame interval is constant, since an HLS variant
-/// declares one `FRAME-RATE`, and the shortest gap between two handed frames is that interval. A
-/// stretch from `first` to `last` therefore held `round((last − first) / shortest) + 1` frames, and
-/// each one not handed is one the output dropped. The count is taken over the whole stretch rather
-/// than gap by gap, so a gap that arrives before the interval is known is still counted once it is.
+/// declares one `FRAME-RATE`, and the shortest gap between two handed frames is that interval. A gap
+/// between two handed frames therefore held `round(gap / shortest) − 1` frames the output never
+/// saw. Rounded rather than divided, so a stream whose timestamps alternate between two tick counts
+/// — 59.94 frames a second on a timescale of 600 lands on gaps of 10 and 11 ticks — counts nothing:
+/// a gap 1.1 times the shortest is one interval, and only one of at least 1.5 counts a frame.
 ///
 /// A new stretch starts where the picture size changes — a variant switch, where the frame rate may
 /// change with it: Apple's BipBop example declares 30 frames a second on its lower variants and 60
-/// on the rest — and where time goes backwards, which no ordinary playback does. **The gap across a
-/// stretch boundary is judged by nothing**, so a frame lost exactly at a switch is not counted; and
-/// this counts what reached the output, not whether the display layer then presented each frame on
-/// time. `devicelab/README.md`'s *The frames scenario* carries both limits.
+/// on the rest — and where time goes backwards, which no ordinary playback does. Three things this
+/// cannot see, which `devicelab/README.md`'s *The frames scenario* carries: **the gap across a
+/// stretch boundary** is judged by nothing, so a frame lost exactly at a switch is not counted; a
+/// gap that arrives **before a stretch has shown its interval** is judged against a longer one, so a
+/// stretch that begins with a loss undercounts it; and a frame rate that changes **at one picture
+/// size** is not a new stretch, so the slower rate's gaps would count as losses — never a false
+/// pass, and the reason ``largestGapMs`` is logged, since a real loss is a gap near a whole multiple
+/// of the interval. And this counts what reached the output, not whether the display layer then
+/// presented each frame on time.
 ///
 /// ref: https://www.rfc-editor.org/rfc/rfc8216#section-4.3.4.2 (`FRAME-RATE`, one per variant)
 struct FrameTally: Sendable {
@@ -125,13 +131,17 @@ struct FrameTally: Sendable {
     private(set) var repeated = 0
     /// Stretches of one picture size over which ``missing`` was counted: one more than the switches.
     private(set) var runs = 0
+    /// Frames the content held between two handed frames of one stretch that the output never saw.
+    private(set) var missing = 0
+    /// The longest gap between two handed frames of one stretch, and the presentation time it ended
+    /// at, in milliseconds: where a loss happened, and whether it is a whole number of frames.
+    private(set) var largestGapMs = 0.0
+    private(set) var largestGapAtMs = 0.0
 
-    private var closedMissing = 0
     private var run: Run?
 
-    /// Frames the content held between the first and last handed frame of each stretch that the
-    /// output was never handed.
-    var missing: Int { closedMissing + (run?.missing ?? 0) }
+    /// The current stretch's frame interval in milliseconds, or 0 before it has two frames.
+    var intervalMs: Double { run.map { $0.shortest.isFinite ? $0.shortest * 1000 : 0 } ?? 0 }
 
     mutating func add(seconds: Double, width: Int, height: Int) {
         guard seconds.isFinite else { return }
@@ -140,15 +150,21 @@ struct FrameTally: Sendable {
         {
             if seconds == current.last {
                 repeated += 1
-            } else {
-                current.add(seconds)
-                run = current
-                frames += 1
+                return
+            }
+            let gap = seconds - current.last
+            current.shortest = min(current.shortest, gap)
+            current.last = seconds
+            run = current
+            frames += 1
+            missing += max(0, Int((gap / current.shortest).rounded()) - 1)
+            if gap * 1000 > largestGapMs {
+                largestGapMs = gap * 1000
+                largestGapAtMs = seconds * 1000
             }
             return
         }
-        closedMissing += run?.missing ?? 0
-        run = Run(width: width, height: height, first: seconds)
+        run = Run(width: width, height: height, last: seconds)
         runs += 1
         frames += 1
     }
@@ -157,29 +173,7 @@ struct FrameTally: Sendable {
     private struct Run: Sendable {
         let width: Int
         let height: Int
-        let first: Double
         var last: Double
-        var count = 1
         var shortest = Double.infinity
-
-        init(width: Int, height: Int, first: Double) {
-            self.width = width
-            self.height = height
-            self.first = first
-            self.last = first
-        }
-
-        mutating func add(_ seconds: Double) {
-            shortest = min(shortest, seconds - last)
-            last = seconds
-            count += 1
-        }
-
-        /// Never negative, and nothing until two frames have shown the interval.
-        var missing: Int {
-            guard count > 1, shortest.isFinite, shortest > 0 else { return 0 }
-            let held = Int(((last - first) / shortest).rounded()) + 1
-            return max(0, held - count)
-        }
     }
 }

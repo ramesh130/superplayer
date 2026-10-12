@@ -15,9 +15,14 @@
 # log, xctrace's exported XML — and `devicelab/test/selftest` holds them to fixtures. The second half
 # talks to a device, and only a run reaches it.
 #
-# Signing is never committed (CONTRIBUTING.md): a physical device needs SP_DEVELOPMENT_TEAM, passed to
-# xcodebuild on its command line with -allowProvisioningUpdates, and a run that finds the team written
-# into the project file afterwards fails rather than leave it there.
+# Signing is never committed — the demo's project sets no team (ios/Demo/README.md) — so a physical
+# device needs SP_DEVELOPMENT_TEAM, passed to xcodebuild on its command line with
+# -allowProvisioningUpdates, and a run that finds the team written into the project file afterwards
+# fails rather than leave it there.
+#
+# Every bound below is a ceiling and not an expectation, as `ios/hunt-leaks`' are: a listing answers
+# in a second or two and gets a minute, and a boot or an install over the network takes tens of seconds
+# and gets five, so only something broken outlasts one.
 
 IOS_BUNDLE_ID=com.superplayer.demo
 IOS_PROCESS=SuperPlayerDemo
@@ -28,7 +33,8 @@ IOS_SCHEME=SuperPlayerDemo
 
 # Reads `xcrun devicectl list devices --json-output` on stdin and prints one line per iOS device a run
 # could use, tab-separated: udid, reality (physical or simulated), name, marketing name, product type,
-# OS version, OS build. A physical device is usable when it is paired, booted and in Developer Mode —
+# OS version, OS build, and how it is reached (devicectl's `transportType`: `wired`, `localNetwork`,
+# `sameMachine` for a simulator). A physical device is usable when it is paired, booted and in Developer Mode —
 # devicectl lists a phone that is none of those, and installing to it fails minutes later, after the
 # build — and a simulator when it is booted.
 ios_usable_devices() {
@@ -49,7 +55,7 @@ for d in listing.get("result", {}).get("devices", []):
         usable = False
     if usable:
         print("\t".join(str(v or "") for v in (hw.get("udid"), reality, dp.get("name"), hw.get("marketingName"),
-              hw.get("productType"), dp.get("osVersionNumber"), dp.get("osBuildUpdate"))))
+              hw.get("productType"), dp.get("osVersionNumber"), dp.get("osBuildUpdate"), cp.get("transportType"))))
 '
 }
 
@@ -100,8 +106,9 @@ ios_advancing_position() {
 }
 
 # The frame-output screen's log on stdin → "<first position> <last position> <frames> <missing>
-# <runs> <repeated> <dropped>" from its first and last `frames=` lines, or nothing. The counts are the
-# last line's, and are the whole session's: `FrameTally` counts from the first frame.
+# <runs> <repeated> <dropped> <interval ms> <largest gap ms>@<ending at ms>" from its first and last
+# `frames=` lines, or nothing; a field the line does not carry reads `-`. The counts are the last
+# line's, and are the whole session's: `FrameTally` counts from the first frame.
 ios_frame_reading() {
     tr -d '\r' | awk '/ content=.* frames=[0-9]/ {
         for (i = 1; i <= NF; i++) {
@@ -112,11 +119,17 @@ ios_frame_reading() {
             else if (kv[1] == "runs") runs = kv[2]
             else if (kv[1] == "repeated") repeated = kv[2]
             else if (kv[1] == "dropped") dropped = kv[2]
+            else if (kv[1] == "intervalMs") interval = kv[2]
+            else if (kv[1] == "largestGapMs") gap = kv[2]
         }
         if (first == "") first = position
         last = position
     }
-    END { if (first != "") print first, last, frames, missing, runs, repeated, (dropped == "" ? -1 : dropped) }'
+    END {
+        if (first != "")
+            print first, last, frames, missing, runs, repeated, (dropped == "" ? -1 : dropped),
+                (interval == "" ? "-" : interval), (gap == "" ? "-" : gap)
+    }'
 }
 
 # The frame-output screen's log on stdin → "<steady ms> <steady frames> <steady missing> <other ms>
@@ -249,7 +262,9 @@ if start:
 
 # Prints the feed scenario's report from the demo's log `$1`, the footprint series `$2`
 # (`ios_footprint_series`' output) and the recording's start `$3` (`ios_trace_start_ms`), and writes
-# its verdict — `flat`, `growing` or `unknown` — to the file `$4`.
+# its verdict — `flat`, `growing` or `unknown` — to the file `$4`. `$5` is 1 when the recording ended
+# before the run did, which makes the verdict `unknown` whatever the samples it holds say: a pass the
+# recording left part-way is not a pass's spread.
 #
 # Memory is judged per pass, as `ios/hunt-leaks` and the Android leak hunt judge it: the first pass down
 # the feed and back is the baseline, holding whatever a first scroll builds once and keeps — the pool
@@ -257,12 +272,19 @@ if start:
 # inside the first pass's spread, at or under its 90th percentile, and **growing** when it sits above
 # it. A spread and never one sample, because the footprint at any moment is mostly how much the watched
 # row has buffered, which a sample's timing decides. Fewer than two passes, or a pass with fewer than
-# ten samples, is `unknown`, which is not a pass.
+# ten samples, is `unknown`, which is not a pass. Time to first frame is reported per pass the same
+# way, by when each first frame arrived, so a feed whose starts slow down as it scrolls shows it.
+#
+# Percentiles are nearest-rank throughout, so every one reported is a sample that was taken.
+# ref: https://en.wikipedia.org/wiki/Percentile#The_nearest-rank_method
 ios_feed_report() {
     python3 -I - "$@" <<'PY'
 import datetime, re, statistics, sys
 
 log_path, series_path, trace_start_ms, verdict_path = sys.argv[1], sys.argv[2], int(sys.argv[3] or 0), sys.argv[4]
+ended_early = len(sys.argv) > 5 and sys.argv[5] == "1"
+# Activity Monitor samples a process about once a second (observed on the iPhone #435 ran on), so ten
+# is ten seconds of a pass: fewer, and a pass's p90 is one sample.
 MIN_SAMPLES = 10
 mib = lambda n: n / 1048576
 
@@ -277,7 +299,7 @@ lines = open(log_path, errors="replace").read().splitlines()
 started = finished = None
 pass_ends = []
 pid = None
-ttff, watched, no_player = {}, set(), 0
+ttff, watched, no_player, ttff_at = {}, set(), 0, []
 for line in lines:
     if pid is None:
         process = re.search(r" SuperPlayerDemo\[(\d+):", line)
@@ -296,11 +318,18 @@ for line in lines:
     first = re.search(r'evt=first_frame .*?cid="([^"]*)".*?ttffMs=(\d+) from=(\w+)', line)
     if first:
         ttff.setdefault(first.group(1), []).append((int(first.group(2)), first.group(3)))
+        if first.group(3) == "USER_INTENT":
+            ttff_at.append((when(line), int(first.group(2))))
 
 from_intent = sorted(ms for frames in ttff.values() for ms, boundary in frames if boundary == "USER_INTENT")
 def rank(values, p):
     k = -(-p * len(values) // 100)
     return values[max(1, k) - 1]
+
+def pass_of(t):
+    if started is None or t is None or t < started:
+        return "before the scroll"
+    return sum(1 for e in pass_ends if e is not None and e < t) + 1
 
 print("### Time to first frame\n")
 print(f"- Rows that became the watched row: {len(watched)}")
@@ -309,6 +338,16 @@ if from_intent:
     print(f"- From declared intent: median **{statistics.median(from_intent):.0f} ms**, p90 {rank(from_intent, 90)} ms, "
           f"max {from_intent[-1]} ms, n={len(from_intent)} — real time over a real CDN, a reading and not a claim")
 print(f"- Watched rows that found the pool at its bound: {no_player}\n")
+by_pass_ttff = {}
+for t, ms in ttff_at:
+    by_pass_ttff.setdefault(pass_of(t), []).append(ms)
+if by_pass_ttff:
+    print("| Pass | First frames from intent | Median | p90 | Max |")
+    print("| --- | ---: | ---: | ---: | ---: |")
+    for n, values in sorted(by_pass_ttff.items(), key=lambda kv: (isinstance(kv[0], int), kv[0])):
+        q = sorted(values)
+        print(f"| {n} | {len(q)} | {statistics.median(q):.0f} ms | {rank(q, 90)} ms | {q[-1]} ms |")
+    print()
 
 samples = []
 for line in open(series_path).read().splitlines():
@@ -337,13 +376,15 @@ else:
         print("did not cover it, and `run.json`'s `xctrace.end_reason` says why.")
     for n, values in sorted(by_pass.items()):
         q = sorted(values)
-        print(f"| {n} | {len(q)} | {statistics.median(q):.1f} MiB | {q[len(q) // 10]:.1f} MiB | "
-              f"{q[9 * len(q) // 10]:.1f} MiB | {q[-1]:.1f} MiB |")
+        print(f"| {n} | {len(q)} | {statistics.median(q):.1f} MiB | {rank(q, 10):.1f} MiB | "
+              f"{rank(q, 90):.1f} MiB | {q[-1]:.1f} MiB |")
     print()
     passes = [values for _, values in sorted(by_pass.items())]
-    if len(passes) >= 2 and all(len(v) >= MIN_SAMPLES for v in passes):
+    if ended_early:
+        print("Verdict: **unknown** — the recording ended before the run did, so no pass's spread is whole.\n")
+    elif len(passes) >= 2 and all(len(v) >= MIN_SAMPLES for v in passes):
         baseline = sorted(passes[0])
-        ceiling = baseline[9 * len(baseline) // 10]
+        ceiling = rank(baseline, 90)
         above = [statistics.median(v) for v in passes[1:] if statistics.median(v) > ceiling]
         verdict = "growing" if above else "flat"
         last = statistics.median(passes[-1])
@@ -395,7 +436,10 @@ ios_ensure_device() {
         [ "$count" = 1 ] ||
             die "no usable iOS device: attach a phone in Developer Mode, boot a simulator, or name one with SP_SIMULATOR"
     fi
-    IFS=$'\t' read -r IOS_UDID IOS_REALITY DEVICE_NAME DEVICE_MODEL DEVICE_PRODUCT_TYPE DEVICE_OS_VERSION DEVICE_OS_BUILD <<<"$line"
+    IFS=$'\t' read -r IOS_UDID IOS_REALITY DEVICE_NAME DEVICE_MODEL DEVICE_PRODUCT_TYPE DEVICE_OS_VERSION DEVICE_OS_BUILD \
+        IOS_TRANSPORT <<<"$line"
+    [ "$IOS_TRANSPORT" != localNetwork ] ||
+        log "warning: the phone is reached over the network, where every xctrace recording ended after about a second (README.md, *iOS*); a cable is what a recording needs"
     SERIAL="$IOS_UDID"
     DEVICE_MANUFACTURER=Apple
     DEVICE_IS_EMULATOR=0
@@ -432,7 +476,7 @@ ios_build_demo() {
     log "xcodebuild $IOS_SCHEME, $configuration, for $IOS_UDID (log: $RUN_DIR/build.log)"
     if ! (cd "$REPO_ROOT" && xcodebuild build -quiet -project "$IOS_PROJECT" -scheme "$IOS_SCHEME" \
         -configuration "$configuration" -destination "id=$IOS_UDID" \
-        -derivedDataPath "$REPO_ROOT/.build/devicelab-ios" "${team_args[@]}") >>"$RUN_DIR/build.log" 2>&1; then
+        -derivedDataPath "$REPO_ROOT/.build/devicelab-ios" ${team_args[@]+"${team_args[@]}"}) >>"$RUN_DIR/build.log" 2>&1; then
         tail -40 "$RUN_DIR/build.log" >&2
         die "xcodebuild failed; the whole log is $RUN_DIR/build.log"
     fi

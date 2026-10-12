@@ -344,6 +344,11 @@ advancing by reading the demo's Now Playing state, and captures an `xctrace` rec
 Perfetto analog. The memory-guard note in `device-runs-and-host-memory` applies doubly, since a
 simulator and an emulator together will not fit.
 
+**Built for iOS by #435** (`devicelab/README.md`, *iOS*; tvOS is not reached yet). Two things differ
+from the sketch above: the readiness signal is the demo's own position lines rather than Now Playing,
+which a shell cannot read on a phone, and the recording is the Activity Monitor template over every
+process, because xctrace cannot attach to a process `devicectl`'s console launched.
+
 ## 7. Phases
 
 Effort assumes one engineer part-time, as `PRD.md` Part 4 does. Each phase ends on something

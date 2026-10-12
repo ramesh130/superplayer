@@ -1440,6 +1440,38 @@ request on a device, that the persisted key then plays the downloaded `.movpkg` 
 `invalidatePersistableContentKey` answers a proof a real key server accepts, and that `NWPathMonitor`'s
 reading is the moment a removal's release reaches the server.
 
+### A television on tvOS
+
+**No simulator switches a display mode** (ADR-0021 rule 5), and `xctest` has no `UIApplication` to
+find a window's `AVDisplayManager` through, so `SuperPlayerTV`'s output is tested over a display stood
+in at the one `package` protocol the product defines, `DisplayManaging`, reached through the `package`
+overload `TvOutput.standard(displays:)`. Everything above it is the shipped code: the binding core
+makes per player (`DisplayCriteriaMatching`), the item each replacement hands it, the end it hears from
+the real `AVPlayerItem` notification, and the reading it reports through `QoeCollector` to a sink.
+`DisplayCriteriaMatchingTests` and `DisplayModeTelemetryTests` hold it; one of them plays the synthetic
+stream to its real end over the loopback origin, the rest set items that never load, since the
+criteria are asked as an item becomes current. Core's `OutputPaysNothingTests` counts the slot (ADR-0014
+rule 14).
+
+**`ios/check` runs `SuperPlayerTVTests` on a tvOS simulator too**, beside the iOS run of every target,
+because this is the first product with tvOS-only code: the stand-in is the same on both platforms, and
+the tvOS run is what compiles and exercises the product as tvOS builds it. A host without a tvOS
+simulator runtime skips that run and says so, unless `SP_REQUIRE_TVOS=1` makes the absence a failure,
+which CI sets.
+
+**What only a device shows** — an Apple TV on a real panel, #437's run:
+
+- that `SystemDisplayManager`, the one implementation that touches `AVDisplayManager`, finds the key
+  window's manager, and that `AVAsset.load(.preferredDisplayCriteria)` answers criteria the display
+  acts on — no line of it runs under `check`;
+- whether the panel switched, to what, how long it was blank, and that the wait is inside time to
+  first frame, as `docs/telemetry-schema.md`'s *On a television* says;
+- that `AVDisplayManagerModeSwitchStart` and `…End` arrive around a real switch, and
+  `…SettingsChanged` when the viewer changes *Match Content*, so `DisplayModeChanged` brackets the
+  blank;
+- that `AVPlayerViewController` with `appliesPreferredDisplayCriteriaAutomatically` off leaves the
+  criteria to the output, as the demo's `TvScreen` sets it.
+
 ## The layers above the fakes
 
 Both harnesses put their fakes where the *transport* goes — the HTTP stack — and not in place of the

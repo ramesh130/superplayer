@@ -2,7 +2,7 @@
 Class PlaybackSession : Sendable
 Class PlayerLayerView : superclass UIKit.UIView
 Class PlayerPool : Sendable
-Class SuperPlayer : PlaybackEngine, ProtectionHost, Sendable
+Class SuperPlayer : PlaybackEngine, ProtectionHost, Sendable, VideoOutputHost
 Constructor BufferPolicy.init(maxBufferMs:waitsToMinimizeStalling:) : SuperPlayerCore.BufferPolicy, Swift.Int?, Swift.Bool
 Constructor DownloadSelectionPolicy.init(maxVideoBitrateBps:maxVideoHeightPx:) : SuperPlayerCore.DownloadSelectionPolicy, Swift.Int?, Swift.Int?
 Constructor EncodedFrame.init(timestampUs:payload:keyFrame:trackIndex:) : SuperPlayerCore.EncodedFrame, Swift.Int64, Foundation.Data, Swift.Bool, Swift.Int
@@ -34,6 +34,7 @@ Constructor SuperPlayer.Configuration.init() : SuperPlayerCore.SuperPlayer.Confi
 Constructor SuperPlayer.Configuration.init(profile:) : SuperPlayerCore.SuperPlayer.Configuration, SuperPlayerCore.PlaybackProfile
 Constructor SuperPlayer.init(configuration:) : SuperPlayerCore.SuperPlayer, SuperPlayerCore.SuperPlayer.Configuration
 Constructor TelemetryEvent.DecisionChanged.init(sessionId:contentId:timestampMs:monotonicTimeMs:decision:trigger:) : SuperPlayerCore.TelemetryEvent.DecisionChanged, Swift.String, Swift.String, Swift.Int64, Swift.Int64, SuperPlayerCore.PlaybackDecision, SuperPlayerCore.DecisionTrigger
+Constructor TelemetryEvent.DisplayModeChanged.init(sessionId:contentId:timestampMs:monotonicTimeMs:switchInProgress:criteriaMatchingEnabled:) : SuperPlayerCore.TelemetryEvent.DisplayModeChanged, Swift.String, Swift.String, Swift.Int64, Swift.Int64, Swift.Bool, Swift.Bool
 Constructor TelemetryEvent.FirstFrameRendered.init(sessionId:contentId:timestampMs:monotonicTimeMs:timeToFirstFrameMs:startBoundary:) : SuperPlayerCore.TelemetryEvent.FirstFrameRendered, Swift.String, Swift.String, Swift.Int64, Swift.Int64, Swift.Int64, SuperPlayerCore.TtffStartBoundary
 Constructor TelemetryEvent.LicenceAcquisitionEnded.init(sessionId:contentId:timestampMs:monotonicTimeMs:durationMs:outcome:securityLevel:) : SuperPlayerCore.TelemetryEvent.LicenceAcquisitionEnded, Swift.String, Swift.String, Swift.Int64, Swift.Int64, Swift.Int64, SuperPlayerCore.LicenceOutcome, Swift.String?
 Constructor TelemetryEvent.LiveLatencySampled.init(sessionId:contentId:timestampMs:monotonicTimeMs:liveLatencyMs:targetLiveLatencyMs:) : SuperPlayerCore.TelemetryEvent.LiveLatencySampled, Swift.String, Swift.String, Swift.Int64, Swift.Int64, Swift.Int64, Swift.Int64?
@@ -117,6 +118,7 @@ EnumElement StaleLivePlaylistError.LikelyCause.origin : (SuperPlayerCore.StaleLi
 EnumElement StreamType.live : (SuperPlayerCore.StreamType.Type) -> SuperPlayerCore.StreamType
 EnumElement StreamType.onDemand : (SuperPlayerCore.StreamType.Type) -> SuperPlayerCore.StreamType
 EnumElement TelemetryEvent.decisionChanged : (SuperPlayerCore.TelemetryEvent.Type) -> (SuperPlayerCore.TelemetryEvent.DecisionChanged) -> SuperPlayerCore.TelemetryEvent
+EnumElement TelemetryEvent.displayModeChanged : (SuperPlayerCore.TelemetryEvent.Type) -> (SuperPlayerCore.TelemetryEvent.DisplayModeChanged) -> SuperPlayerCore.TelemetryEvent
 EnumElement TelemetryEvent.firstFrameRendered : (SuperPlayerCore.TelemetryEvent.Type) -> (SuperPlayerCore.TelemetryEvent.FirstFrameRendered) -> SuperPlayerCore.TelemetryEvent
 EnumElement TelemetryEvent.licenceAcquisitionEnded : (SuperPlayerCore.TelemetryEvent.Type) -> (SuperPlayerCore.TelemetryEvent.LicenceAcquisitionEnded) -> SuperPlayerCore.TelemetryEvent
 EnumElement TelemetryEvent.liveLatencySampled : (SuperPlayerCore.TelemetryEvent.Type) -> (SuperPlayerCore.TelemetryEvent.LiveLatencySampled) -> SuperPlayerCore.TelemetryEvent
@@ -244,6 +246,8 @@ Func TelemetryCollector.contentReopened(after:) : (), SuperPlayerCore.SuperPlaye
 Func TelemetryCollector.decisionChanged(_:trigger:) : (), SuperPlayerCore.PlaybackDecision, SuperPlayerCore.DecisionTrigger where <Self where Self : SuperPlayerCore.TelemetryCollector>
 Func TelemetryCollector.declareIntent(monotonicTimeMs:) : (), Swift.Int64 where <Self where Self : SuperPlayerCore.TelemetryCollector>
 Func TelemetryCollector.detach() : () where <Self where Self : SuperPlayerCore.TelemetryCollector>
+Func TelemetryCollector.displayModeChanged(switchInProgress:criteriaMatchingEnabled:) : (), Swift.Bool, Swift.Bool where <Self where Self : SuperPlayerCore.TelemetryCollector>
+Func TelemetryCollector.displayModeChanged(switchInProgress:criteriaMatchingEnabled:) : (), Swift.Bool, Swift.Bool where <Self where Self : SuperPlayerCore.TelemetryCollector>
 Func TelemetryCollector.endSession() : () where <Self where Self : SuperPlayerCore.TelemetryCollector>
 Func TelemetryCollector.licenceAcquisitionEnded(durationMs:outcome:) : (), Swift.Int64, SuperPlayerCore.LicenceOutcome where <Self where Self : SuperPlayerCore.TelemetryCollector>
 Func TelemetryCollector.licenceAcquisitionEnded(durationMs:outcome:) : (), Swift.Int64, SuperPlayerCore.LicenceOutcome where <Self where Self : SuperPlayerCore.TelemetryCollector>
@@ -252,6 +256,8 @@ Func TelemetryCollector.sessionFailed(_:) : (), SuperPlayerCore.SuperPlayerError
 Func TelemetryCollector.startSession(contentId:sessionId:) : (), Swift.String, Swift.String where <Self where Self : SuperPlayerCore.TelemetryCollector>
 Func TelemetryEvent.DecisionChanged.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.TelemetryEvent.DecisionChanged, SuperPlayerCore.TelemetryEvent.DecisionChanged [static]
 Func TelemetryEvent.DecisionChanged.hash(into:) : (), Swift.Hasher
+Func TelemetryEvent.DisplayModeChanged.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.TelemetryEvent.DisplayModeChanged, SuperPlayerCore.TelemetryEvent.DisplayModeChanged [static]
+Func TelemetryEvent.DisplayModeChanged.hash(into:) : (), Swift.Hasher
 Func TelemetryEvent.FirstFrameRendered.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.TelemetryEvent.FirstFrameRendered, SuperPlayerCore.TelemetryEvent.FirstFrameRendered [static]
 Func TelemetryEvent.FirstFrameRendered.hash(into:) : (), Swift.Hasher
 Func TelemetryEvent.LicenceAcquisitionEnded.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerCore.TelemetryEvent.LicenceAcquisitionEnded, SuperPlayerCore.TelemetryEvent.LicenceAcquisitionEnded [static]
@@ -307,6 +313,7 @@ Protocol LicenceStore where <Self : AnyObject, Self : Swift.Sendable> : Sendable
 Protocol MediaRequestResolver
 Protocol OfflineContent where <Self : AnyObject, Self : Swift.Sendable> : Sendable
 Protocol PlaybackDrm where <Self : Swift.Sendable> : Sendable
+Protocol PlaybackOutput where <Self : Swift.Sendable> : Sendable
 Protocol PlaybackPolicy where <Self : Swift.Sendable> : Sendable
 Protocol PlaybackResilience where <Self : Swift.Sendable> : Sendable
 Protocol TelemetryCollector
@@ -342,6 +349,7 @@ Struct StallHistory : Equatable, Hashable, Sendable
 Struct SuperPlayer.Configuration : Sendable
 Struct SuperPlayerError : CustomNSError, CustomStringConvertible, Error, Sendable
 Struct TelemetryEvent.DecisionChanged : Equatable, Hashable, Sendable
+Struct TelemetryEvent.DisplayModeChanged : Equatable, Hashable, Sendable
 Struct TelemetryEvent.FirstFrameRendered : Equatable, Hashable, Sendable
 Struct TelemetryEvent.LicenceAcquisitionEnded : Equatable, Hashable, Sendable
 Struct TelemetryEvent.LiveLatencySampled : Equatable, Hashable, Sendable
@@ -529,6 +537,7 @@ Var SuperPlayer.Configuration.cmcdMode : SuperPlayerCore.CmcdMode? { get }
 Var SuperPlayer.Configuration.drm : (any SuperPlayerCore.PlaybackDrm)? { get set }
 Var SuperPlayer.Configuration.frameOutput : (any SuperPlayerCore.FrameOutput)? { get set }
 Var SuperPlayer.Configuration.offlineContent : (any SuperPlayerCore.OfflineContent)? { get set }
+Var SuperPlayer.Configuration.output : (any SuperPlayerCore.PlaybackOutput)? { get set }
 Var SuperPlayer.Configuration.policy : (any SuperPlayerCore.PlaybackPolicy)? { get set }
 Var SuperPlayer.Configuration.profile : SuperPlayerCore.PlaybackProfile { get set }
 Var SuperPlayer.Configuration.resilience : (any SuperPlayerCore.PlaybackResilience)? { get set }
@@ -562,6 +571,13 @@ Var TelemetryEvent.DecisionChanged.monotonicTimeMs : Swift.Int64 { get }
 Var TelemetryEvent.DecisionChanged.sessionId : Swift.String { get }
 Var TelemetryEvent.DecisionChanged.timestampMs : Swift.Int64 { get }
 Var TelemetryEvent.DecisionChanged.trigger : SuperPlayerCore.DecisionTrigger { get }
+Var TelemetryEvent.DisplayModeChanged.contentId : Swift.String { get }
+Var TelemetryEvent.DisplayModeChanged.criteriaMatchingEnabled : Swift.Bool { get }
+Var TelemetryEvent.DisplayModeChanged.hashValue : Swift.Int { get }
+Var TelemetryEvent.DisplayModeChanged.monotonicTimeMs : Swift.Int64 { get }
+Var TelemetryEvent.DisplayModeChanged.sessionId : Swift.String { get }
+Var TelemetryEvent.DisplayModeChanged.switchInProgress : Swift.Bool { get }
+Var TelemetryEvent.DisplayModeChanged.timestampMs : Swift.Int64 { get }
 Var TelemetryEvent.FirstFrameRendered.contentId : Swift.String { get }
 Var TelemetryEvent.FirstFrameRendered.hashValue : Swift.Int { get }
 Var TelemetryEvent.FirstFrameRendered.monotonicTimeMs : Swift.Int64 { get }

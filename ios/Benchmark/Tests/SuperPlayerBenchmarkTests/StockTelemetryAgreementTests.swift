@@ -299,6 +299,7 @@ extension TelemetryEvent {
         case .playbackStateSampled: "playbackStateSampled"
         case .videoFramesDropped: "videoFramesDropped"
         case .outputObscuredChanged: "outputObscuredChanged"
+        case .displayModeChanged: "displayModeChanged"
         }
     }
 

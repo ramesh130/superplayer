@@ -196,8 +196,9 @@ jobs:
     runs-on: macos-26
     # The empty package's run is a few minutes, most of it booting a simulator; 30 leaves room for a
     # cold runner and a first simulator creation, and stops a hung simulator well before macOS
-    # minutes add up. It grows when the products have tests worth the time.
-    timeout-minutes: 30
+    # minutes add up. It grows when the products have tests worth the time: 40 since #426, whose
+    # tvOS run boots a second simulator beside a run that was already twenty minutes.
+    timeout-minutes: 40
 
     steps:
       - name: Check out
@@ -213,6 +214,10 @@ jobs:
 
       - name: ios/check
         run: ios/check
+        # The tvOS run of SuperPlayerTVTests is required here, so an image without the runtime
+        # fails rather than skips it (ios/check's header).
+        env:
+          SP_REQUIRE_TVOS: "1"
 
       - name: Upload the test result bundle
         if: failure()

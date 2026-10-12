@@ -40,8 +40,8 @@ final class TelemetrySchemaDocumentTests: XCTestCase {
         // A guard on the parser rather than a second authority on the count: a table it read none of
         // would otherwise compare as "nothing documented" and fail less legibly.
         XCTAssertEqual(
-            documented.count, 16,
-            "the parser found \(documented.count) rows; the table has sixteen events")
+            documented.count, 17,
+            "the parser found \(documented.count) rows; the table has seventeen events")
 
         XCTAssertEqual(Self.differences(documented: documented, carried: carried()), [])
     }
@@ -125,7 +125,7 @@ final class TelemetrySchemaDocumentTests: XCTestCase {
         case sessionStarted, decisionChanged, sessionEnded, firstFrameRendered, rebufferStarted,
             rebufferEnded, startupFailed, midStreamFailed, trackSwitched, seekRequested,
             seekCompleted, licenceAcquisitionEnded, liveLatencySampled, playbackStateSampled,
-            videoFramesDropped, outputObscuredChanged
+            videoFramesDropped, outputObscuredChanged, displayModeChanged
     }
 
     /// The case and payload of `event`. Exhaustive on purpose: a new case does not compile here
@@ -148,6 +148,7 @@ final class TelemetrySchemaDocumentTests: XCTestCase {
         case .playbackStateSampled(let payload): (.playbackStateSampled, payload)
         case .videoFramesDropped(let payload): (.videoFramesDropped, payload)
         case .outputObscuredChanged(let payload): (.outputObscuredChanged, payload)
+        case .displayModeChanged(let payload): (.displayModeChanged, payload)
         }
     }
 
@@ -218,6 +219,10 @@ final class TelemetrySchemaDocumentTests: XCTestCase {
                 .init(
                     sessionId: s, contentId: c, timestampMs: t, monotonicTimeMs: m,
                     obscured: true)),
+            .displayModeChanged(
+                .init(
+                    sessionId: s, contentId: c, timestampMs: t, monotonicTimeMs: m,
+                    switchInProgress: false, criteriaMatchingEnabled: true)),
         ]
     }()
 }

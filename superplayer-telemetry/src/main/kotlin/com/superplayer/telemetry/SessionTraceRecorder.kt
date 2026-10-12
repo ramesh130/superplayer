@@ -373,6 +373,10 @@ public class SessionTraceRecorder : TelemetrySink {
 
         is TelemetryEvent.OutputObscuredChanged -> "obscured=${event.obscured}"
 
+        is TelemetryEvent.DisplayModeChanged ->
+            "switchInProgress=${event.switchInProgress} " +
+                "criteriaMatchingEnabled=${event.criteriaMatchingEnabled}"
+
         is TelemetryEvent.VideoFramesDropped ->
             "droppedFrames=${event.droppedFrames} repeatedFrames=${event.repeatedFrames} " +
                 "elapsedPlayingMs=${event.elapsedPlayingMs}"

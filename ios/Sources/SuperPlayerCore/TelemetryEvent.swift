@@ -64,6 +64,7 @@ public enum TelemetryEvent: Sendable, Hashable {
     case playbackStateSampled(PlaybackStateSampled)
     case videoFramesDropped(VideoFramesDropped)
     case outputObscuredChanged(OutputObscuredChanged)
+    case displayModeChanged(DisplayModeChanged)
 
     /// The session this event belongs to; the same value on every event between its start and end.
     public var sessionId: String { header.sessionId }
@@ -101,6 +102,7 @@ public enum TelemetryEvent: Sendable, Hashable {
         case .playbackStateSampled(let event): event.header
         case .videoFramesDropped(let event): event.header
         case .outputObscuredChanged(let event): event.header
+        case .displayModeChanged(let event): event.header
         }
     }
 
@@ -520,6 +522,38 @@ public enum TelemetryEvent: Sendable, Hashable {
             self.obscured = obscured
         }
     }
+
+    /// The display's mode reading on a television: whether a display mode switch is in progress —
+    /// the panel may be blank while the link resynchronises — and whether the viewer's *Match
+    /// Content* settings allow a switch at all. The first of a session is the reading as the display
+    /// was asked for the content's criteria; each later one a switch beginning or ending, or the
+    /// settings changing. **Reported and never acted on**: on Apple platforms the system re-selects
+    /// for a display change itself (`docs/ios-plan.md` §3.8). Emitted on a player configured with
+    /// `SuperPlayerTV`'s output on tvOS alone, from `AVDisplayManager`; the Kotlin twin is declared
+    /// and never emitted, since Android's display change re-selects through SuperPlayer's own gate
+    /// and appears as `TrackSwitched` (ADR-0014 rule 5).
+    public struct DisplayModeChanged: Sendable, Hashable {
+        public let sessionId: String
+        public let contentId: String
+        public let timestampMs: Int64
+        public let monotonicTimeMs: Int64
+        /// Whether a display mode switch is in progress from this moment on.
+        public let switchInProgress: Bool
+        /// Whether the viewer's settings allow the display to switch modes to match content.
+        public let criteriaMatchingEnabled: Bool
+
+        public init(
+            sessionId: String, contentId: String, timestampMs: Int64, monotonicTimeMs: Int64,
+            switchInProgress: Bool, criteriaMatchingEnabled: Bool
+        ) {
+            self.sessionId = sessionId
+            self.contentId = contentId
+            self.timestampMs = timestampMs
+            self.monotonicTimeMs = monotonicTimeMs
+            self.switchInProgress = switchInProgress
+            self.criteriaMatchingEnabled = criteriaMatchingEnabled
+        }
+    }
 }
 
 /// The four fields every payload carries, gathered for ``TelemetryEvent``'s accessors.
@@ -562,6 +596,7 @@ extension TelemetryEvent.LiveLatencySampled: HasEventHeader {}
 extension TelemetryEvent.PlaybackStateSampled: HasEventHeader {}
 extension TelemetryEvent.VideoFramesDropped: HasEventHeader {}
 extension TelemetryEvent.OutputObscuredChanged: HasEventHeader {}
+extension TelemetryEvent.DisplayModeChanged: HasEventHeader {}
 
 /// Where ``TelemetryEvent/FirstFrameRendered`` started counting from — the Kotlin
 /// `TtffStartBoundary`. The boundary is the whole argument of the metric, and the document's *Time

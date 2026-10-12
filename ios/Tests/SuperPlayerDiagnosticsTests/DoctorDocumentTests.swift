@@ -54,7 +54,8 @@ final class DoctorDocumentTests: XCTestCase {
         // One citation in two places, and neither may drift: a document citing a clause the code
         // does not is a reader sent to the wrong paragraph of the wrong specification.
         let sections = Dictionary(
-            try DoctorDocument.sections().map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }
+            try DoctorDocument.sections().map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
         )
         for pathology in Pathology.allCases {
             guard let section = sections[pathology.id] else {

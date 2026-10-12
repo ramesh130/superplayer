@@ -18,6 +18,7 @@ one says so.
 | Document | For |
 | --- | --- |
 | [`compatibility.md`](compatibility.md) | Someone deciding what they may depend on: the lockstep rule, what a major, minor and patch each mean here, the pre-1.0 position, every module's stability, the Media3 relationship and its one exception, the two format versions that are not this one, the deprecation policy, and what a release does not promise |
+| [`ios.md`](ios.md) | Someone building an iPhone, iPad or Apple TV app on it: installing by SwiftPM URL, the configuration value, the products (and why `SuperPlayerMoQ` is iOS only and unpublished), what ports, what differs and what is not ported by rule, what the app declares in its `Info.plist` and entitlements, and what a release does not promise there |
 | [`http-transport.md`](http-transport.md) | Someone putting their app's own HTTP client under the player: the worked adapter, the five obligations with what each costs to get wrong, what the library already does above the transport, and the conformance suite to run against your implementation |
 
 ## If you are changing the library
@@ -31,7 +32,7 @@ one says so.
 | [`api-surface.md`](api-surface.md) | How the public API of every published module is tracked and validated |
 | [`releasing.md`](releasing.md) | Cutting a release with `./gradlew release`: the order, the six refusals, where the artefacts go and where they do not, and how to undo one |
 | [`throughput-traces.md`](throughput-traces.md) | The network-trace format the test harness replays, and how a public dataset comes in |
-| [`ios-plan.md`](ios-plan.md) | The plan for an iOS and tvOS port over AVFoundation: what ports, what differs and what does not, the frame-output seam for effects, and the phases. Its decisions are accepted as ADR-0020 to ADR-0022; only the scaffold is built (`Package.swift`, `ios/`, `ios/check`), and every product is empty |
+| [`ios-plan.md`](ios-plan.md) | The plan for an iOS and tvOS port over AVFoundation: what ports, what differs and what does not, the frame-output seam for effects, and the phases. Its decisions are accepted as ADR-0020 to ADR-0022, and its phases i0 to i9 are built: every product carries its phase's code, while what needs a device is listed rather than claimed. For using the port rather than changing it, read [`ios.md`](ios.md) |
 | [`ios-cmcd-finding.md`](ios-cmcd-finding.md) | Whether AVFoundation emits CMCD and whether the schema's `sid` join holds on iOS: the SDK headers read, what the loopback origin saw with and without each candidate, and the decision — it ports from iOS 18 |
 
 The repository root carries seven more. [`README.md`](../README.md) is the front door and the only

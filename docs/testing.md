@@ -803,6 +803,40 @@ samples, with the all-zero payload as its control, and both generators now write
 playlist handed to it as a `file:` URL, and so it lives in `SuperPlayerTestkitTests` rather than
 beside the generator: testmedia is phase 1, and its tests may not reach the phase 2 harness.
 
+### Every shared document, on both platforms
+
+ADR-0020 rule 4 makes the documents and the fixtures, never the code, what the two platforms share,
+and ADR-0021 rule 6 holds each platform to them with a test of its own. This is the list. A shared
+document added without a row here, or a row with one side empty, is a document one platform can
+drift from without failing anything.
+
+**A check that reads only files runs in Gradle's `check`**, on Linux, for both platforms at once
+(ADR-0021 rule 7). **A check that needs a platform's own types runs on that platform**, Kotlin's in
+`check` and Swift's in `ios/check`, and the two read the same file.
+
+| Shared document or fixture | Android, in `./gradlew check` | iOS and tvOS, in `ios/check` |
+| --- | --- | --- |
+| `docs/telemetry-schema.md`: every event and field, and none it does not name | `superplayer-core`'s `TelemetrySchemaDocumentTest` | `SuperPlayerCoreTests`' `TelemetrySchemaDocumentTests` |
+| `docs/media-source-doctor.md`: a section per defect, naming its platforms and carrying its citation (#430) | `superplayer-diagnostics`' `DoctorDocumentTest`, over the sections naming Android | `SuperPlayerDiagnosticsTests`' `DoctorDocumentTests`, over the sections naming iOS and tvOS |
+| `docs/compatibility.md`: a stability row per module and per Swift product (#430) | `verifyCompatibilityDocument`, against `settings.gradle.kts` | the same task, against `Package.swift` and `ios/MoQ/Package.swift`: text, so on Linux |
+| `docs/modules.md`: the phase rule | `verifyModulePhaseRule`, against the module build files | the same task, against `Package.swift`'s targets: text, so on Linux |
+| The session trace grammar (`docs/session-bundle.md`'s lines) | `superplayer-telemetry`'s `GoldenTraceTest` and `superplayer-diagnostics`' `SessionBundleGoldenTraceTest`, byte-identical goldens | `SuperPlayerTelemetryTests`' `SessionTraceTests`, which parses every Kotlin trace golden and writes it back byte for byte, and the structural goldens under `ios/Tests/Fixtures/golden/` |
+| The synthetic HLS streams, `ios/Tests/Fixtures/synthetic/` | `superplayer-testmedia`'s `SyntheticHlsFixturesTest` | `SuperPlayerTestMediaTests`' `SyntheticHlsFixturesTests` |
+| The HLS half of the hostile corpus, `ios/Tests/Fixtures/hostile/` | `superplayer-testmedia`'s `HostileManifestsFixturesTest` | `SuperPlayerTestMediaTests`' `HostileManifestsFixturesTests` |
+| The corpus register: every pathology named at `SEVERE`, every `BENIGN` grade silent | `superplayer-diagnostics`' `CorpusRegisterTest` | `SuperPlayerDiagnosticsTests`' `CorpusRegisterTests`, over the HLS entries |
+| `docs/throughput-traces.md`'s format, `ios/Tests/Fixtures/throughput-traces/` | `superplayer-testkit`'s `ThroughputTraceFixturesTest` | `SuperPlayerTestkitTests`' `ThroughputTraceFixturesTests` |
+| #340's observed realtime bytes, `ios/Tests/Fixtures/realtime/observed-bytes.tsv` | `superplayer-realtime`'s tests, through `ObservedBytes.kt` | `SuperPlayerRealtimeTests`, through `ObservedBytes.swift` |
+
+**One row is shared in grammar and not in content: the bundle.** A trace golden from either platform
+is read by the other, but a bundle golden is not, since the `capability` lines differ by platform by
+design (`docs/session-bundle.md`). Each platform pins its own bundle golden instead.
+
+**What is not on the list, and why.** `docs/http-transport.md` and its `TransportDocumentTest` are
+Android's alone, because `HttpTransport` is not ported (ADR-0020 rule 6). `docs/ios.md` has no test
+of its own. What it names is held elsewhere: the products by `verifyCompatibilityDocument`, their
+API by `ios/check`'s digester, and the not-ported list by ADR-0020 rule 6. Its prose is review's, as
+every document's prose is.
+
 ### The iOS harness
 
 ADR-0021 rule 2's origin is `SuperPlayerTestkit`'s (#399). A test makes a `PlaybackHarness`, asks it
@@ -1271,7 +1305,9 @@ control. `PlaylistLintTests` imports the product `@testable`, arguing it in its 
 lint's three refusals and its attribute-list grammar reach the public API only as an unreadable
 finding with no reason, and nothing the origin serves carries a byte-order mark, a quoted comma or
 both kinds of tag. No duration is asserted anywhere in the target, and no device is needed for any of
-it.
+it. `DoctorDocumentTests` holds the vocabulary to `docs/media-source-doctor.md`, a section per
+pathology naming iOS and tvOS on its platform line, as the Kotlin `DoctorDocumentTest` does for
+Android (#430, *Every shared document, on both platforms* above).
 
 ### The bundle and the HUD on iOS
 

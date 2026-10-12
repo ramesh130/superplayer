@@ -154,10 +154,15 @@ public final class MoqFrameSource: FrameSource, @unchecked Sendable {
     /// condition, and a condition has no owner for the scheduler to lend the waiter's priority to.
     /// ref: https://developer.apple.com/library/archive/documentation/Performance/Conceptual/EnergyGuide-iOS/PrioritizeWorkWithQoS.html
     ///
-    /// The subscriber's, because a subscription made from the main actor is cancelled from it, and
-    /// a user-interactive caller would otherwise wait on user-initiated pumps. The floor, because the
-    /// canceller is the main actor whoever subscribed, so a background subscriber's quality says
-    /// nothing about who waits. Not user-interactive for everyone, because a pump draws no frame.
+    /// The subscriber's, because core subscribes and cancels on one actor, the main one, so the
+    /// subscriber's quality is the canceller's: user-interactive in an app, user-initiated in the
+    /// XCTest runner where #493 was seen. The floor covers a subscriber below that, a background
+    /// thread a direct consumer chose, and is not a guarantee for it: such a consumer cancelling from
+    /// an app's main thread still joins user-initiated pumps from a user-interactive one. Not
+    /// user-interactive for everyone, because a pump draws no frame. The elevation lasts the whole
+    /// session rather than only the join, since a `Thread`'s quality is fixed once it starts; what
+    /// that costs is scheduling priority and little CPU, because a pump spends its life parked in a
+    /// blocking ``MoqTrackStream/next()`` and the poller in a one-second wait.
     static func threadQuality(subscribedAt subscriber: QualityOfService) -> QualityOfService {
         subscriber == .userInteractive ? .userInteractive : .userInitiated
     }
@@ -315,8 +320,7 @@ public final class MoqFrameSource: FrameSource, @unchecked Sendable {
 
         var isFinished: Bool { condition.withLock { done } }
 
-        /// Records the quality of service the thread reports from inside its own body: what it ran
-        /// at, rather than what it was asked to.
+        /// Records the quality of service the thread is scheduled at, read from inside its own body.
         func markRunning(at quality: QualityOfService) { condition.withLock { ranAt = quality } }
 
         var quality: QualityOfService? { condition.withLock { ranAt } }
@@ -344,8 +348,9 @@ public final class MoqFrameSource: FrameSource, @unchecked Sendable {
         return started.isFinished
     }
 
-    /// The quality of service each thread this source started reported from inside its body, by
-    /// name: what a test reads to show that ``cancel()`` joins nothing below its caller (#493).
+    /// The quality of service each thread this source started was scheduled at, by name: what a test
+    /// reads to show that ``cancel()`` joins nothing below its caller (#493). A thread whose body has
+    /// not yet begun is absent rather than nil.
     var startedThreadQualities: [String: QualityOfService] {
         lifecycle.withLock { threads }.reduce(into: [:]) { $0[$1.name] = $1.quality }
     }
@@ -366,7 +371,12 @@ public final class MoqFrameSource: FrameSource, @unchecked Sendable {
         let started = Started(name: name, joinedOnCancel: joinedOnCancel)
         let thread = Thread { [self] in
             defer { started.markFinished() }
-            started.markRunning(at: Thread.current.qualityOfService)
+            // The kernel's class for this thread rather than `Thread.current.qualityOfService`,
+            // which reads back the property `start` set and would show a request the scheduler
+            // ignored as honoured. The two vocabularies share their raw values; the only class
+            // without a `QualityOfService` twin, `QOS_CLASS_DEFAULT`, is what `.default` means.
+            started.markRunning(
+                at: QualityOfService(rawValue: Int(qos_class_self().rawValue)) ?? .default)
             do {
                 try body()
             } catch {

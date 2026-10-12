@@ -1254,8 +1254,15 @@ way: every test examines content on a loopback origin of its own through the pub
 segment" is an equality on `networkRequests()`. `CorpusRegisterTests` is `CorpusRegisterTest`'s
 shape — per entry, the findings at `severe` as an equality, and every `benign` grade and every
 healthy stream silent **one at a time** — and is also what holds ADR-0020 rule 8's lint to the
-corpus: a lint that misread an entry fails that entry's row. The four delivery entries are rows that
-name nothing yet, each with its reason, for #428. Three pathologies have no corpus entry and are
+corpus: a lint that misread an entry fails that entry's row. The four delivery entries (#428) are
+scored like the rest, because the origin serves each entry's declared headers
+(`FaultScript.Builder.addDeclaredResponseHeaders(of:)`); `DeliveryPathologyTests` is the Kotlin
+`DeliveryPathologyTest` — each entry diagnosed with its headers served and withheld, a control per
+rule, and the one-segment probe counted at the origin as one `HEAD` that sent no body byte.
+`PostmortemTests` is the Kotlin four-combination table over real `SuperPlayer`s, the test target
+depending on `SuperPlayerResilience` for a real `classify(_:)` while the product does not; its
+failed-with-a-defect row is the cached live playlist, whose session ends only where iOS 18's
+playlist answers are readable, so that one row skips below 18. Three pathologies have no corpus entry and are
 forced by a named test instead: the two defects of the fetch, and `hls-short-live-window`, whose
 Kotlin twin is DASH's. Its stream is testkit's `TestContent.liveHls(windowSegmentCount:)`, a live
 window a test chooses, published as though the default window had already slid so its media sequence
@@ -1265,6 +1272,38 @@ lint's three refusals and its attribute-list grammar reach the public API only a
 finding with no reason, and nothing the origin serves carries a byte-order mark, a quoted comma or
 both kinds of tag. No duration is asserted anywhere in the target, and no device is needed for any of
 it.
+
+### The bundle and the HUD on iOS
+
+The same target holds the bundle and the debug HUD (#429), driven through the public API with the
+`package` seams each states.
+
+- **The device is stated for the golden and read for the redaction.** `hls-vod-bundle.trace` is a
+  structural golden in `ios/Tests/Fixtures/golden/`, written by `ios/check --update-golden` alone
+  through testkit's `GoldenFile` (moved there from the telemetry tests for this second caller), over
+  core's `package` `CapabilitySnapshot` initialiser — a snapshot read from the simulator that ran the
+  test would pin that host's OS version in a committed file, which is why the Kotlin golden states its
+  device too. Its trace half is `hls-vod.trace`'s session, so the two goldens differ by the capability
+  lines and the header alone. The redaction session below reads the real device.
+- **Every withheld thing is present first.** `SessionBundlePlaybackTests`' redaction session carries a
+  signed URL and a URL-shaped content id, an `Authorization` the app's `HeaderProvider` minted after the
+  origin expired the token at a segment, a licence the harness's key server issued through the player's
+  own exchange (a stand-in key session, since the simulator has no FairPlay), and a failure whose error
+  log names the host — the re-adopted media playlist refused 404 — and then the device's name, model,
+  vendor identifier, model identifier and OS build. Each is asserted present where it travelled or where
+  the platform holds it, then absent from the bundle.
+- **The HUD's rows are read off its model.** `HudFacts` is what the view draws, so `DebugHudTests`
+  asserts rows on a `SuperPlayer` with telemetry and on a stock `AVPlayer` that really played, a delivered
+  error on each, and the guard as a function of its three readings (Debug or not, simulator or not, the
+  profile's `get-task-allow`). The telemetry half is fed through `DebugHudTelemetry`'s own `onEvent`, the
+  Kotlin test's front door, because the estimate is the collector's ten-second sample. That the view
+  draws is `ImageRenderer`'s: the overlay renders to an image, and the guarded body to the same one on
+  a Debug simulator build.
+
+What needs a device: the `get-task-allow` reading against a real embedded profile, the display's short
+edge and the memory budget (an `xctest` runner has no window scene and is no app, so both read
+`unknown`), the hardware-decode answers (the
+simulator answers no even for H.264), and how the overlay reads over moving video.
 
 ### Rungs 4 and 5 on iOS
 
@@ -2704,7 +2743,7 @@ a startup that got slower, a stall that got longer, a load that now happens late
 of another kind, or a sample more or fewer — that class of regression is the benchmark's to find or
 nobody's (ADR-0021's *Consequences*).
 
-The goldens are `ios/Tests/Fixtures/golden/*.trace`, compared by the test target's `GoldenFile`, and
+The goldens are `ios/Tests/Fixtures/golden/*.trace`, compared by testkit's `GoldenFile`, and
 **`ios/check --update-golden` is the only writer**: it hands the test process `SP_UPDATE_GOLDEN=1`
 through `xcodebuild`'s `TEST_RUNNER_` prefix and sets it to `0` otherwise, so a value left in a shell
 cannot rewrite a golden behind a plain check. The first is `hls-vod.trace`, an on-demand session from

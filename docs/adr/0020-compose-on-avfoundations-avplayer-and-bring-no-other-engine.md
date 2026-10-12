@@ -13,6 +13,8 @@
   rule over schemes rather than a registry. Amended again (#420) at rule 6, recording the option the
   credential repair puts its headers on and why. Amended again (#427) at rule 8, recording what the
   lint refuses, the Android readings it keeps, and the live-window pathology it holds alone.
+  Amended again (#428) at rule 8, moving the cache-header judgement from the doctor to core's,
+  asked rather than restated, and recording the probe as a `HEAD`.
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
 - **Refines:** [ADR-0001](0001-compose-dont-fork.md), restated for Apple platforms rather than
@@ -278,6 +280,26 @@ that, and *What nothing enforces* sums them.
    records it with the test that forces it rather than against a row. The register is built and in
    `ios/check` (`CorpusRegisterTests`); the four delivery entries are recorded there as not yet
    named, for #428.
+
+   *Addendum (2026-10-12, #428): the cache-header judgement is asked of core, and the probe is a
+   `HEAD`.* The sentence above placing "the cache-header judgement" in the doctor alone predates
+   #421, which gave iOS core the judgement after all: its stale-playlist watch ports the Kotlin
+   `cachedPastTheUpdateBoundSeconds` as `StalePlaylistJudgement.cachedPastTheUpdateBoundSeconds`,
+   to name the likely cause a frozen session ends on. With a copy in core, a second in the doctor
+   would be exactly what ADR-0015 rule 6's *a threshold copied is a bug* forbids, so the doctor's
+   `hls-cached-live-playlist` rule **asks core's** — the function is `package`, the iOS analog of
+   ADR-0015 rule 3's fourth seam — and a playlist the doctor calls held too long is the one a
+   player configured with resilience ends a session on. The "doctor alone" sentence now holds for
+   the live-window judgement only, which core does not hold on this platform, and the four delivery
+   entries the addendum above records as not yet named are named and scored like every other row.
+   The one-segment probe
+   ADR-0015 rule 7's #289 addendum admits is spent under that addendum's conditions — only by the
+   cache rule, only once it has a defect to attribute, at most once per media playlist — but is a
+   **`HEAD`** where Android opens a one-byte range: Media3's `DataSource` has no `HEAD`, while
+   `URLSession` does, and a `HEAD` answer carries no body by definition and the header fields of a
+   `GET` (RFC 9110 §9.3.2), where a range costs the whole segment wherever an origin ignores `Range`
+   and answers 200 (§14.2). *Enforced by `DeliveryPathologyTests`, whose probe test counts one
+   `HEAD` and no body byte at the origin, and by the four delivery rows of `CorpusRegisterTests`.*
 
 ### Platforms, versions and the surface
 

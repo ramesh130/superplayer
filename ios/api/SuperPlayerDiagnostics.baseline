@@ -1,10 +1,15 @@
 // SuperPlayerDiagnostics: public API as ios/check reads it. Regenerate with ios/check --update-api.
+Class DebugHudTelemetry : Sendable, TelemetrySink
 Class MediaSourceDoctor : Sendable
 Constructor ChainLayer.init(rawValue:) : SuperPlayerDiagnostics.ChainLayer?, Swift.String
+Constructor DebugHud.init(player:telemetry:) : SuperPlayerDiagnostics.DebugHud, AVFoundation.AVPlayer, SuperPlayerDiagnostics.DebugHudTelemetry?
+Constructor DebugHud.init(player:telemetry:) : SuperPlayerDiagnostics.DebugHud, SuperPlayerCore.SuperPlayer, SuperPlayerDiagnostics.DebugHudTelemetry?
+Constructor DebugHudTelemetry.init() : SuperPlayerDiagnostics.DebugHudTelemetry
 Constructor FindingSeverity.init(rawValue:) : SuperPlayerDiagnostics.FindingSeverity?, Swift.String
 Constructor MediaSourceDoctor.Configuration.init(headers:) : SuperPlayerDiagnostics.MediaSourceDoctor.Configuration, (any SuperPlayerCore.HeaderProvider)?
 Constructor MediaSourceDoctor.init(configuration:) : SuperPlayerDiagnostics.MediaSourceDoctor, SuperPlayerDiagnostics.MediaSourceDoctor.Configuration
 Constructor Pathology.init(rawValue:) : SuperPlayerDiagnostics.Pathology?, Swift.String
+Constructor SessionBundle.init(trace:) : SuperPlayerDiagnostics.SessionBundle, SuperPlayerTelemetry.SessionTrace
 Enum ChainLayer : CaseIterable, Equatable, Hashable, RawRepresentable, Sendable
 Enum FindingSeverity : CaseIterable, Comparable, CustomStringConvertible, Equatable, Hashable, RawRepresentable, Sendable
 Enum Pathology : CaseIterable, CustomStringConvertible, Equatable, Hashable, Identifiable, RawRepresentable, Sendable
@@ -13,6 +18,8 @@ EnumElement FindingSeverity.advisory : (SuperPlayerDiagnostics.FindingSeverity.T
 EnumElement FindingSeverity.blocking : (SuperPlayerDiagnostics.FindingSeverity.Type) -> SuperPlayerDiagnostics.FindingSeverity
 EnumElement FindingSeverity.degraded : (SuperPlayerDiagnostics.FindingSeverity.Type) -> SuperPlayerDiagnostics.FindingSeverity
 EnumElement Pathology.hlsAudioGroupCodecMismatch : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
+EnumElement Pathology.hlsCachedLivePlaylist : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
+EnumElement Pathology.hlsCorsRefusesCredentials : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
 EnumElement Pathology.hlsDanglingAudioGroup : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
 EnumElement Pathology.hlsDiscontinuityWithoutTimeline : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
 EnumElement Pathology.hlsInconsistentSegmentDurations : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
@@ -20,19 +27,28 @@ EnumElement Pathology.hlsLadderGap : (SuperPlayerDiagnostics.Pathology.Type) -> 
 EnumElement Pathology.hlsMissingCodecs : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
 EnumElement Pathology.hlsOverstatedBitrate : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
 EnumElement Pathology.hlsShortLiveWindow : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
+EnumElement Pathology.hlsTokenExpiringInWindow : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
+EnumElement Pathology.hlsTokenScopedToManifest : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
 EnumElement Pathology.manifestUnreachable : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
 EnumElement Pathology.manifestUnreadable : (SuperPlayerDiagnostics.Pathology.Type) -> SuperPlayerDiagnostics.Pathology
-Func DiagnosticReport.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerDiagnostics.DiagnosticReport, SuperPlayerDiagnostics.DiagnosticReport [static]
-Func DiagnosticReport.hash(into:) : (), Swift.Hasher
+Func DebugHudTelemetry.onEvent(_:) : (), SuperPlayerCore.TelemetryEvent
 Func Finding.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerDiagnostics.Finding, SuperPlayerDiagnostics.Finding [static]
 Func Finding.hash(into:) : (), Swift.Hasher
 Func FindingSeverity.<(_:_:) : Swift.Bool, SuperPlayerDiagnostics.FindingSeverity, SuperPlayerDiagnostics.FindingSeverity [static]
-Func MediaSourceDoctor.examine(_:) : SuperPlayerDiagnostics.DiagnosticReport, SuperPlayerCore.MediaRequest
-Struct DiagnosticReport : CustomStringConvertible, Equatable, Hashable, Sendable
+Func MediaSourceDoctor.examine(_:classification:) : SuperPlayerDiagnostics.DiagnosticReport, SuperPlayerCore.MediaRequest, SuperPlayerCore.SuperPlayerError?
+Func SessionBundle.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerDiagnostics.SessionBundle, SuperPlayerDiagnostics.SessionBundle [static]
+Func SessionBundle.format() : Swift.String
+Func SessionBundle.hash(into:) : (), Swift.Hasher
+Func SessionBundle.structural() : SuperPlayerDiagnostics.SessionBundle
+Func isDebugHudAvailable() : Swift.Bool
+Struct DebugHud : Sendable, View
+Struct DiagnosticReport : CustomStringConvertible, Sendable
 Struct Finding : CustomStringConvertible, Equatable, Hashable, Sendable
 Struct MediaSourceDoctor.Configuration : Sendable
+Struct SessionBundle : CustomStringConvertible, Equatable, Hashable, Sendable
 TypeAlias ChainLayer.AllCases : [SuperPlayerDiagnostics.ChainLayer]
 TypeAlias ChainLayer.RawValue : Swift.String
+TypeAlias DebugHud.Body : some SwiftUI.View
 TypeAlias FindingSeverity.AllCases : [SuperPlayerDiagnostics.FindingSeverity]
 TypeAlias FindingSeverity.RawValue : Swift.String
 TypeAlias Pathology.AllCases : [SuperPlayerDiagnostics.Pathology]
@@ -40,11 +56,12 @@ TypeAlias Pathology.ID : Swift.String
 TypeAlias Pathology.RawValue : Swift.String
 Var ChainLayer.allCases : [SuperPlayerDiagnostics.ChainLayer] [static] { get }
 Var ChainLayer.rawValue : Swift.String { get }
+Var DebugHud.body : some SwiftUI.View { get }
 Var DiagnosticReport.chain : Swift.Set<SuperPlayerDiagnostics.ChainLayer> { get }
+Var DiagnosticReport.classification : SuperPlayerCore.SuperPlayerError? { get }
 Var DiagnosticReport.contentId : Swift.String { get }
 Var DiagnosticReport.description : Swift.String { get }
 Var DiagnosticReport.findings : [SuperPlayerDiagnostics.Finding] { get }
-Var DiagnosticReport.hashValue : Swift.Int { get }
 Var Finding.cause : Swift.String { get }
 Var Finding.description : Swift.String { get }
 Var Finding.hashValue : Swift.Int { get }
@@ -62,3 +79,9 @@ Var Pathology.description : Swift.String { get }
 Var Pathology.id : Swift.String { get }
 Var Pathology.rawValue : Swift.String { get }
 Var Pathology.specCitation : Swift.String { get }
+Var SessionBundle.description : Swift.String { get }
+Var SessionBundle.formatHeader : Swift.String [static] { get }
+Var SessionBundle.formatVersion : Swift.Int [static] { get }
+Var SessionBundle.hashValue : Swift.Int { get }
+Var SessionBundle.lines : [Swift.String] { get }
+Var SessionBundle.timed : Swift.Bool { get }

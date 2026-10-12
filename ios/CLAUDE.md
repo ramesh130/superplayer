@@ -285,8 +285,26 @@ segment. It reads them with **a lint of its own** (`PlaylistLint.swift`, ADR-002
 addendum): three refusals, the RFC's, and leniency everywhere else. The rules are the Kotlin ones with
 the Kotlin thresholds (`HlsPathologies.swift`, `LadderPathologies.swift`), plus `hls-short-live-window`,
 the HLS analog of core's `LiveWindowDepthCheck`, which lives in the doctor here. `CorpusRegisterTests`
-is the register, and the delivery rules and the postmortem are #428's, over the response headers each
-fetch already carries.
+is the register.
+#428 added the delivery rules and the postmortem. `DeliveryPathologies.swift` is the Kotlin file rule for rule — a live playlist held
+past its update bound, a token scoped to the manifest or dying inside the content, a wildcard origin
+beside allowed credentials — reading the lowercased headers every playlist arrived with. The cache
+rule **asks core's** `StalePlaylistJudgement.cachedPastTheUpdateBoundSeconds`, `package` for it, so
+the doctor and a resilient player's stale-playlist watch are one comparison (ADR-0020 rule 8's #428
+addendum), and only it may spend the one-segment probe, a `HEAD` carrying the credential. The
+postmortem is `examine(_:classification:)`: the `SuperPlayerError` read onto
+`DiagnosticReport.classification`, never re-derived, which made the report drop `Hashable` because the
+error carries the engine's `NSError`.
+#429 is i8's bundle and HUD. `SessionBundle(trace:)` is `docs/session-bundle.md`'s format and version
+over the recorder's trace, its `capability` lines read whole from core's `package` `CapabilitySnapshot`
+— platform and OS `major.minor`, `os_proc_available_memory()`, `VTIsHardwareDecodeSupported` per codec,
+the display's short edge and `AVPlayer.eligibleForHDRPlayback` — so the seventh rule holds by what that
+type carries (ADR-0015 rule 10's #429 addendum, which says the decoder and display fields pass the
+readership test only as "what AVFoundation decided against"); it reads no player, since FairPlay has no
+level for a protection line. `DebugHud(player:telemetry:)` is SwiftUI over a `SuperPlayer` or a stock
+`AVPlayer`, its rows `HudFacts` re-read twice a second, its telemetry half the `DebugHudTelemetry`
+sink, guarded by `#if DEBUG` and the profile's `get-task-allow` (`isDebugHudAvailable()`). `GoldenFile`
+moved into testkit, throwing rather than naming XCTest; the demo's `DebugHudScreen` is the recipe.
 
 **Dependencies point inward** under `docs/modules.md`'s phase rule, and the phase a product takes is
 the Android module's it ports: `docs/modules.md`'s *iOS products* table is the source, and

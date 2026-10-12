@@ -329,6 +329,12 @@ target duration (or `no-cache` with revalidation), and leave the segments held f
 like. Met from the other end, this defect is the `StaleLivePlaylistException` a SuperPlayer session
 fails with — the same comparison, asked before playback instead of during it.
 
+**On iOS and tvOS** the rule is the same and so is the comparison: the doctor asks core's
+`StalePlaylistJudgement`, which a resilient player's stale-playlist watch also asks, so the
+`StaleLivePlaylistError` that session ends on and this finding cannot disagree (ADR-0020 rule 8's
+#428 addendum). The probe is a `HEAD` rather than a one-byte range, so it carries no body on either
+kind of origin.
+
 #### `hls-token-scoped-to-manifest`
 
 - **Citation:** RFC 3986 §3.4, §5.3; RFC 9110 §15.5.4

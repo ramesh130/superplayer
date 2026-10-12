@@ -63,8 +63,9 @@ struct PlaylistAnswer: Equatable {
 
 /// The judgement itself, over values, so every bound is tested without playing anything
 /// (`StaleLivePlaylistJudgementTests`). One per item: a playlist's history belongs to the item
-/// following it.
-struct StalePlaylistJudgement {
+/// following it. `package` for its one static judgement alone, which `SuperPlayerDiagnostics` asks
+/// (``cachedPastTheUpdateBoundSeconds(_:targetDurationMs:)``); everything else about it is core's.
+package struct StalePlaylistJudgement {
 
     /// How many target durations a live playlist may go without a new segment before it is late —
     /// the Kotlin `UPDATE_BOUND_TARGET_DURATIONS`.
@@ -186,13 +187,16 @@ struct StalePlaylistJudgement {
     /// How long a shared cache may keep a playlist that is already late, in seconds — or nil where
     /// `cacheControl` keeps it no longer than the update bound allows. The Kotlin
     /// `cachedPastTheUpdateBoundSeconds`, the judgement ADR-0015 rule 3's fourth seam names, ported
-    /// with its rule, and internal until the doctor on this platform is built and has to ask it rather
-    /// than restate it (rule 6) — which is when it becomes `package`.
+    /// with its rule — and `package` since #428, because the doctor on this platform asks it before
+    /// a player exists rather than restating it (rule 6; ADR-0020 rule 8's #428 addendum), so a
+    /// frozen stream the doctor names and the `StaleLivePlaylistError` a player ends on are one
+    /// comparison. The lifetime comes back rather than a boolean because the doctor prints the
+    /// number it judged on.
     ///
     /// spec: RFC 9111 §5.2.2.10 — `s-maxage` overrides `max-age` for a shared cache, which is what a
     /// CDN is; §5.2.2.4 and §5.2.2.5 — `no-cache` and `no-store` mean nothing is served from a store
     /// unvalidated, whatever the lifetime says.
-    static func cachedPastTheUpdateBoundSeconds(
+    package static func cachedPastTheUpdateBoundSeconds(
         _ cacheControl: String?, targetDurationMs: Int64
     ) -> Int64? {
         guard let cacheControl else { return nil }

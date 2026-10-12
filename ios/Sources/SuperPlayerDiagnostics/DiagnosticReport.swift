@@ -12,17 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/// What a doctor found in one piece of content, and which chain it looked over — the Kotlin
-/// `DiagnosticReport`, whose KDoc argues the shape.
+import SuperPlayerCore
+
+/// What a doctor found in one piece of content, which chain it looked over, and — for a postmortem
+/// — what the session ended on: the Kotlin `DiagnosticReport`, whose KDoc argues the shape.
 ///
 /// **One report type, for preflight and for postmortem alike** (ADR-0015 rule 8). This is what
-/// ``MediaSourceDoctor/examine(_:)`` answers about a `MediaRequest` before a player is built; the
-/// postmortem — the same request examined beside what a failed session ended on — is #428's, and
-/// arrives as a field of this type rather than as a second one.
+/// ``MediaSourceDoctor/examine(_:classification:)`` answers about a `MediaRequest` before a player
+/// is built; examining the request a *failed* session was playing answers the same type, carrying
+/// the classification that session already ended on beside — never instead of — these findings.
 ///
 /// A report with no findings is the ordinary answer for healthy content and is not an absence of
 /// information: it is the doctor saying that nothing it can name is wrong with this manifest.
-public struct DiagnosticReport: Sendable, Hashable, CustomStringConvertible {
+///
+/// **Not `Equatable`**, as the Kotlin class defines no equality either: ``classification`` carries
+/// the engine's own `NSError`, whose equality is no statement about a session. A reader compares
+/// what it reads — the ``findings``, which are `Hashable`, and the classification's class.
+public struct DiagnosticReport: Sendable, CustomStringConvertible {
 
     /// The `MediaRequest.contentId` examined — the identity the app already speaks in, never a URL.
     public let contentId: String
@@ -38,8 +44,26 @@ public struct DiagnosticReport: Sendable, Hashable, CustomStringConvertible {
     /// rather than as a defect of the doctor. See ``ChainLayer``.
     public let chain: Set<ChainLayer>
 
+    /// What ended the session this report is the postmortem of, or nil where no session ended —
+    /// which is every preflight, and is also a session that failed on a player configured without
+    /// `SuperPlayerResilience`, whose `classify(_:)` answers nil (ADR-0011 rule 14).
+    ///
+    /// **Read, never re-derived** (ADR-0015 rule 5). It is exactly the `SuperPlayerError` handed to
+    /// ``MediaSourceDoctor/examine(_:classification:)``, which a consumer got from
+    /// `player.classify(error)` or off `player.errors`. The classifier stays the single place a
+    /// failure acquires a meaning (ADR-0011 rule 1), and this product depends on no classifier and
+    /// holds no taxonomy with which to recompute one.
+    ///
+    /// **It keeps its own vocabulary, and ``findings`` keep theirs.** A failure class says what to do
+    /// about a session that ended; a ``Pathology`` says what is wrong with a stream. Nothing maps one
+    /// onto the other: the two may disagree, and disagreement is the information a support engineer
+    /// wants. A stream whose failure was the network's answers a classification and no finding; a
+    /// stream that plays on while misconfigured answers findings and no classification at all.
+    public let classification: SuperPlayerError?
+
     public var description: String {
-        "DiagnosticReport(\(contentId), over \(chain.map(\.rawValue).sorted()), \(findings))"
+        "DiagnosticReport(\(contentId), over \(chain.map(\.rawValue).sorted()), \(findings)"
+            + (classification.map { ", ended on \($0.causeClass)" } ?? "") + ")"
     }
 }
 
@@ -121,7 +145,8 @@ public enum ChainLayer: String, Sendable, Hashable, CaseIterable {
 }
 
 /// Every defect the doctor can name on Apple platforms, with the citation and the cause it names it
-/// by — the HLS half of the Kotlin `Pathology`, its two defects of the fetch, and one of its own.
+/// by — the HLS half of the Kotlin `Pathology`, its four delivery defects, its two defects of the
+/// fetch, and one of its own.
 ///
 /// The raw value is the stable kebab-case ``id``: the corpus entry's id exactly, which is the join
 /// the register (ADR-0015 rule 12) scores against `SuperPlayerTestMedia`'s `HostileManifests`. The
@@ -129,10 +154,11 @@ public enum ChainLayer: String, Sendable, Hashable, CaseIterable {
 /// that product is test-only and a library cannot depend on it.
 ///
 /// **What is not here, and why.** The DASH pathologies, because DASH is not ported (ADR-0020 rule
-/// 6). The four *delivery* pathologies — `hls-cached-live-playlist`, the two token entries and
-/// `hls-cors-refuses-credentials` — are #428's, which adds them with the rules that read response
-/// headers. ``hlsShortLiveWindow`` is this platform's own: `LiveWindowDepthCheck` is a DASH
-/// judgement on Android, and its HLS analog moves here (`docs/ios-plan.md` §3.1).
+/// 6). ``hlsShortLiveWindow`` is this platform's own: `LiveWindowDepthCheck` is a DASH judgement on
+/// Android, and its HLS analog moves here (`docs/ios-plan.md` §3.1). The four *delivery*
+/// pathologies (#428) — ``hlsCachedLivePlaylist``, the two token defects and
+/// ``hlsCorsRefusesCredentials`` — are in no document at all, and are read off the responses the
+/// examination fetched (`DeliveryPathologies`).
 ///
 /// **On Apple platforms a finding reads a document as RFC 8216 describes it**, because the doctor's
 /// parser is its own rather than the engine's (ADR-0020 rule 8): AVFoundation exposes none.
@@ -168,6 +194,35 @@ public enum Pathology: String, Sendable, Hashable, CaseIterable, Identifiable,
     // the timeline after it (§4.3.2.6, §4.3.3.3) are optional.
     case hlsDiscontinuityWithoutTimeline = "hls-discontinuity-without-timeline"
 
+    // spec: RFC 8216 §6.2.1 — a server MUST publish a new version of a live Media Playlist, carrying
+    // at least one new segment, within 1.5 target durations — and RFC 9111 §5.2.2.1, which is what
+    // an intermediary obeys instead. A `max-age` longer than that bound lets a shared cache answer
+    // with a version of the playlist that is already late, and every actor conforms. The comparison
+    // is core's own (`StalePlaylistJudgement`), asked rather than restated (ADR-0015 rule 6, ADR-0020
+    // rule 8's #428 addendum), which is how the doctor's reading before playback and the
+    // `StaleLivePlaylistError` a player ends on cannot drift apart.
+    case hlsCachedLivePlaylist = "hls-cached-live-playlist"
+
+    // ref: RFC 3986 §3.4 — a signed URL carries its credential in the *query component*, so it
+    // belongs to that one URI; §5.3 — a relative reference is resolved against the base URI's path,
+    // and the query is not part of it, so a segment named relatively is addressed with no credential
+    // at all. That the CDN then refuses it is RFC 9110 §15.5.4 (403). A signing scheme is a CDN
+    // convention rather than a standard, and this is the part every scheme shares.
+    case hlsTokenScopedToManifest = "hls-token-scoped-to-manifest"
+
+    // ref: RFC 3986 §3.4 again — a signed URL states its own expiry in the clear, so an intermediary
+    // can refuse an expired request without asking the signer. A token whose expiry falls inside the
+    // content it was minted for is refused (RFC 9110 §15.5.4) part-way through, which no rung of the
+    // fallback ladder can repair: every source of one piece of content is signed by one service.
+    case hlsTokenExpiringInWindow = "hls-token-expiring-in-window"
+
+    // spec: WHATWG Fetch §3.3.5 — an `Access-Control-Allow-Origin` of `*` fails §4.10's CORS check
+    // whenever the request's credentials mode is "include", whatever
+    // `Access-Control-Allow-Credentials` says: a refusal by construction, and the one CORS
+    // configuration that can be called wrong without knowing which origin is asking. A native
+    // player never notices, which is why it needs a doctor to be seen at all.
+    case hlsCorsRefusesCredentials = "hls-cors-refuses-credentials"
+
     // spec: RFC 8216 §6.2.2 — "The server MUST NOT remove a Media Segment from a Playlist file
     // without an EXT-X-ENDLIST tag if that would produce a Playlist whose duration is less than three
     // times the target duration" — and §6.3.3, why: a client "SHOULD NOT choose a segment that starts
@@ -200,6 +255,10 @@ public enum Pathology: String, Sendable, Hashable, CaseIterable, Identifiable,
         case .hlsAudioGroupCodecMismatch: "RFC 8216 §4.3.4.1, §4.3.4.2"
         case .hlsInconsistentSegmentDurations: "RFC 8216 §4.3.2.1, §4.3.3.1"
         case .hlsDiscontinuityWithoutTimeline: "RFC 8216 §4.3.2.3"
+        case .hlsCachedLivePlaylist: "RFC 8216 §6.2.1, §6.3.4; RFC 9111 §5.2.2.1"
+        case .hlsTokenScopedToManifest: "RFC 3986 §3.4, §5.3; RFC 9110 §15.5.4"
+        case .hlsTokenExpiringInWindow: "RFC 3986 §3.4; RFC 9110 §15.5.4"
+        case .hlsCorsRefusesCredentials: "WHATWG Fetch §3.3.5, §4.10"
         case .hlsShortLiveWindow: "RFC 8216 §6.2.2, §6.3.3"
         case .manifestUnreachable: "RFC 9110 §15"
         case .manifestUnreadable: "RFC 8216 §4"
@@ -231,6 +290,24 @@ public enum Pathology: String, Sendable, Hashable, CaseIterable, Identifiable,
         case .hlsDiscontinuityWithoutTimeline:
             "Mid-roll ad insertion by a stitcher that marks the splice and emits neither a "
                 + "discontinuity sequence nor a program date time — the common case for server-side ads."
+        case .hlsCachedLivePlaylist:
+            "One CDN cache rule applied to the whole path. The live media playlist is then "
+                + "held for ten minutes while the segments are never held at all, so the client reloads "
+                + "a playlist that cannot change and the stream appears to freeze about thirty seconds "
+                + "in — a surprising share of \"live stream freezes\" tickets are this."
+        case .hlsTokenScopedToManifest:
+            "A signing step applied to the URL the app was handed and to nothing below it — "
+                + "the manifest is signed, its segments are addressed relatively and reach the CDN with "
+                + "no credential at all, so the stream opens and then serves nothing."
+        case .hlsTokenExpiringInWindow:
+            "A signing service whose lifetime was set from how long a request takes rather "
+                + "than from how long a viewing lasts — every URL is signed, and the signature dies "
+                + "part-way through the content, so playback stops where the token ran out."
+        case .hlsCorsRefusesCredentials:
+            "An origin configured to \"allow everyone\" — a wildcard allowed origin emitted "
+                + "beside allowed credentials — which is the one pair the CORS protocol refuses outright, "
+                + "so every credentialed player of this stream is turned away and the native app never "
+                + "notices."
         case .hlsShortLiveWindow:
             "A packager configured for the lowest possible latency, keeping a window of one or two "
                 + "segments — or a window counted in segments by a template written for shorter ones."

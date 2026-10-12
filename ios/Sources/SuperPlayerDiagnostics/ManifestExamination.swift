@@ -17,8 +17,9 @@ import SuperPlayerCore
 import os
 
 /// One stream's playlists, fetched and read for the defects the doctor can name — the Kotlin
-/// `ManifestExamination`. This type owns the *fetching*, and `HlsPathologies` the *judgement*, so
-/// that what goes on the wire is decided in one place (ADR-0015 rule 7).
+/// `ManifestExamination`. This type owns the *fetching*, and `HlsPathologies` and
+/// `DeliveryPathologies` the *judgement*, so that what goes on the wire is decided in one place
+/// (ADR-0015 rule 7).
 ///
 /// **What it fetches over.** On Android the fetch enters the chain a player would load through. On
 /// Apple platforms there is no such chain to enter — an `AVPlayer` loads inside the engine and
@@ -45,13 +46,30 @@ struct ManifestExamination {
         switch await fetch(source) {
         case .refused(let finding):
             return [finding]
-        case .read(.multivariant(let playlist), _):
-            return Self.worstPerPathology(await examine(playlist))
-        case .read(.media(let playlist), _):
+        case .read(.multivariant(let playlist), let headers):
+            let read = await examine(playlist)
+            let delivered = await delivery(
+                source, mediaPlaylists: read.mediaPlaylists,
+                responses: [headers] + read.mediaPlaylists.map(\.headers))
+            return Self.worstPerPathology(read.findings + delivered)
+        case .read(.media(let playlist), let headers):
             // A source that is itself a media playlist: legal HLS, and the shape a single-rendition
             // live stream is usually published in.
-            return Self.worstPerPathology(HlsPathologies.inMediaPlaylist(playlist))
+            let delivered = await delivery(
+                source, mediaPlaylists: [(playlist, headers)], responses: [headers])
+            return Self.worstPerPathology(HlsPathologies.inMediaPlaylist(playlist) + delivered)
         }
+    }
+
+    /// One media playlist as it was read, with the headers it arrived with, names lowercased.
+    typealias Delivered = (playlist: MediaPlaylist, headers: [String: String])
+
+    /// What a multivariant playlist's examination read: the findings of the documents, and every
+    /// media playlist it fetched with the headers it arrived with, which is what the delivery rules
+    /// read afterwards.
+    private struct Read {
+        var findings: [Finding]
+        var mediaPlaylists: [Delivered]
     }
 
     /// A multivariant playlist and **every media playlist it names**, variants and audio
@@ -59,9 +77,10 @@ struct ManifestExamination {
     /// rung nobody started on is one every viewer whose link climbs to it meets. All of it is
     /// playlists, so a preflight costs no media. One that cannot be fetched or read is its own
     /// finding and does not stop the others.
-    private func examine(_ multivariant: MultivariantPlaylist) async -> [Finding] {
+    private func examine(_ multivariant: MultivariantPlaylist) async -> Read {
         var findings = HlsPathologies.inMultivariant(multivariant)
         var mediaPlaylists: [URL: MediaPlaylist] = [:]
+        var read: [Delivered] = []
         var named: [URL] = []
         for url in multivariant.variants.map(\.url) + multivariant.audioRenditions.compactMap(\.url)
         where !named.contains(url) {
@@ -71,8 +90,9 @@ struct ManifestExamination {
             switch await fetch(url) {
             case .refused(let finding):
                 findings.append(finding)
-            case .read(.media(let playlist), _):
+            case .read(.media(let playlist), let headers):
                 mediaPlaylists[url] = playlist
+                read.append((playlist, headers))
                 findings += HlsPathologies.inMediaPlaylist(playlist)
             case .read(.multivariant, _):
                 // A multivariant playlist where a media playlist belongs: it parsed, so it is not
@@ -80,8 +100,25 @@ struct ManifestExamination {
                 findings.append(Self.unreadable)
             }
         }
+        findings += HlsPathologies.inAudioGroups(multivariant, mediaPlaylists: mediaPlaylists)
+        return Read(findings: findings, mediaPlaylists: read)
+    }
+
+    /// What the *delivery* of this stream got wrong, read after the documents rather than beside
+    /// them — the Kotlin `delivery`. After, because the rules need what the fetching produced: the
+    /// headers every playlist arrived with, and the media playlists, which are where the segments a
+    /// token has to cover are declared.
+    private func delivery(
+        _ source: URL, mediaPlaylists: [Delivered],
+        responses: [[String: String]]
+    ) async -> [Finding] {
+        var findings = DeliveryPathologies.inResponses(responses)
+        for (playlist, headers) in mediaPlaylists {
+            findings += await DeliveryPathologies.inDelivery(
+                source: source, playlist: playlist, playlistHeaders: headers,
+                segmentHeaders: probeSegment)
+        }
         return findings
-            + HlsPathologies.inAudioGroups(multivariant, mediaPlaylists: mediaPlaylists)
     }
 
     /// One finding per pathology, at the highest severity any playlist showed it at, in the order
@@ -101,54 +138,76 @@ struct ManifestExamination {
     }
 
     /// What one fetch came back with: a document to read rules over — with the headers it arrived
-    /// with, which is what the delivery rules (#428) read, since a delivery defect is a fact about a
-    /// response rather than a document — or the finding that replaces it.
+    /// with, names lowercased, which is what the delivery rules read, since a delivery defect is a
+    /// fact about a response rather than a document — or the finding that replaces it.
     enum Fetched {
         case read(PlaylistLint.Playlist, headers: [String: String])
         case refused(Finding)
     }
 
     /// `url`'s bytes, read — or the finding that says why they are not.
+    func fetch(_ url: URL) async -> Fetched {
+        guard let answer = await exchange(url, method: "GET") else {
+            // No host answered, or the transfer broke off: nothing to read and no status to print,
+            // and the error's own text may quote the URL and its token.
+            return .refused(Self.unreachable(nil))
+        }
+        // ref: RFC 9110 §15.3 — a 2xx is the request having succeeded.
+        guard (200..<300).contains(answer.response.statusCode) else {
+            return .refused(Self.unreachable(answer.response.statusCode))
+        }
+        switch PlaylistLint.read(answer.body, from: answer.response.url ?? url) {
+        case .success(let playlist):
+            return .read(playlist, headers: Self.headers(of: answer.response))
+        case .failure: return .refused(Self.unreadable)
+        }
+    }
+
+    /// The headers one segment is served with, read without reading a byte of it — or nil where
+    /// the request was refused, which is a fact the cache rule reports nothing about.
+    ///
+    /// **This is the one request a doctor makes that is not a playlist**, and ADR-0015 rule 7's
+    /// #289 addendum is what admits it: a `Cache-Control` disagreement is a disagreement between two
+    /// responses, so naming which is wrong needs the second one. It is called only by a rule that
+    /// already has a defect to attribute, and at most once per media playlist, so a correctly
+    /// delivered stream costs playlists alone.
+    ///
+    /// **A `HEAD` where Android asks for one byte.** Media3's `DataSource` has no `HEAD`, so the
+    /// Kotlin probe opens a one-byte range and closes it unread; `URLSession` has one, and a `HEAD`
+    /// answer carries no body by definition (RFC 9110 §9.3.2) while the server "SHOULD send the same
+    /// header fields" as for a `GET` — a caching directive above all, which is a property of the
+    /// resource. A range would cost a whole segment wherever an origin ignores `Range` and answers
+    /// 200, which RFC 9110 §14.2 permits it to do; a `HEAD` costs a round trip everywhere. It carries
+    /// the credential every other request carries, and is offered to the provider on a refusal as
+    /// they are, because a segment refused for want of a token says nothing about its caching.
+    private func probeSegment(_ segment: URL) async -> [String: String]? {
+        guard let answer = await exchange(segment, method: "HEAD"),
+            (200..<300).contains(answer.response.statusCode)
+        else { return nil }
+        return Self.headers(of: answer.response)
+    }
+
+    /// One request and its answer, the credential carried — or nil where nothing answered.
     ///
     /// A 401 or 403 is offered to the configured provider **once per request**, and asked again
     /// with what it returned unless that is what was already sent, which declines — the
     /// ``SuperPlayerCore/HeaderProvider`` contract, word for word. What it returned is then this
     /// doctor's for every later request, because a token is the session's.
-    func fetch(_ url: URL) async -> Fetched {
+    private func exchange(_ url: URL, method: String) async
+        -> (response: HTTPURLResponse, body: Data)?
+    {
         var asked = false
         while true {
             let sent = credentials.headers
             var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
+            request.httpMethod = method
             for (name, value) in sent { request.setValue(value, forHTTPHeaderField: name) }
 
-            let body: Data
-            let response: HTTPURLResponse
-            do {
-                let (data, answer) = try await session.data(for: request)
-                guard let http = answer as? HTTPURLResponse else {
-                    return .refused(Self.unreachable(nil))
-                }
-                body = data
-                response = http
-            } catch {
-                // No host answered, or the transfer broke off: nothing to read and no status to
-                // print, and the error's own text may quote the URL and its token.
-                return .refused(Self.unreachable(nil))
-            }
+            guard let answered = try? await session.data(for: request),
+                let response = answered.1 as? HTTPURLResponse
+            else { return nil }
+            let body = answered.0
 
-            // ref: RFC 9110 §15.3 — a 2xx is the request having succeeded.
-            if (200..<300).contains(response.statusCode) {
-                let headers = response.allHeaderFields.reduce(into: [String: String]()) {
-                    headers, field in
-                    if let name = field.key as? String, let value = field.value as? String {
-                        headers[name.lowercased()] = value
-                    }
-                }
-                switch PlaylistLint.read(body, from: response.url ?? url) {
-                case .success(let playlist): return .read(playlist, headers: headers)
-                case .failure: return .refused(Self.unreadable)
-                }
-            }
             if !asked, Self.credentialRefusals.contains(response.statusCode),
                 let provider = credentials.provider
             {
@@ -160,7 +219,17 @@ struct ManifestExamination {
                     continue
                 }
             }
-            return .refused(Self.unreachable(response.statusCode))
+            return (response, body)
+        }
+    }
+
+    /// `response`'s header fields with their names lowercased: a field name is case-insensitive
+    /// (RFC 9110 §5.1), so lowering it once is the whole of reading it so.
+    private static func headers(of response: HTTPURLResponse) -> [String: String] {
+        response.allHeaderFields.reduce(into: [String: String]()) { headers, field in
+            if let name = field.key as? String, let value = field.value as? String {
+                headers[name.lowercased()] = value
+            }
         }
     }
 

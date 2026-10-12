@@ -62,12 +62,21 @@ final class DemoPlayback {
 
     init(
         stream: DemoStream, profile: PlaybackProfile = .videoOnDemand,
-        frameOutput: CountingPassThrough? = nil, output: (any PlaybackOutput)? = nil
+        frameOutput: CountingPassThrough? = nil, output: (any PlaybackOutput)? = nil,
+        alsoTelling sink: (any TelemetrySink)? = nil
     ) {
         self.frameOutput = frameOutput
         var configuration = SuperPlayer.Configuration()
         configuration.profile = profile
-        configuration.telemetry = { QoeCollector(sink: OSLogSink()) }
+        // A second sink beside the log — the debug HUD's — composed rather than chained, so one
+        // collector feeds both and neither can cost the other its events.
+        configuration.telemetry = {
+            if let sink {
+                QoeCollector(sink: .composite(OSLogSink(), sink))
+            } else {
+                QoeCollector(sink: OSLogSink())
+            }
+        }
         configuration.frameOutput = frameOutput
         configuration.output = output
         player = SuperPlayer(configuration: configuration)

@@ -26,7 +26,10 @@
   that KDoc by #292 (rule 10). `PRD.md` §3.6 is *narrowed* in one place: it calls the bundle "one
   exportable JSON/Perfetto-compatible artifact", and rule 9 makes the session trace's own grammar the
   canonical format with a JSON or Perfetto rendering beside it, which is what `SessionTrace`'s KDoc
-  already anticipated. Nothing is superseded.
+  already anticipated. Nothing is superseded. Amended (#429) at rules 10 and 11 for Apple
+  platforms: what the iOS capability snapshot carries, with rule 10's readership test read more
+  widely there — as what AVFoundation, the engine, decided against — and the SwiftUI HUD's
+  two-reading guard.
 - **Summary:** Decides Phase 9's shape before any of its code lands (#284, #285).
   `superplayer-diagnostics` depends on `superplayer-core` and `superplayer-telemetry` and reaches
   core as its **ninth** Kotlin friend, mostly of the shape `superplayer-offline` already has: built
@@ -414,6 +417,30 @@ Thirteen rules follow, and they are binding.
       level the device reports**, which is `superplayer-drm`'s to ask and which rule 3 therefore keeps
       off the seam list, leaving the delivered level as the fact a bundle states. Either comes in with
       the first reader that branches on it, and no change to this rule is needed for that.
+    - **#429's addendum: the iOS snapshot, and how the readership test reads where the engine is
+      Apple's.** The iOS bundle (`SuperPlayerDiagnostics`' `SessionBundle`, the snapshot read whole
+      by core's `package` `CapabilitySnapshot`) carries the platform and the OS's `major.minor`;
+      `os_proc_available_memory()` in megabytes; `VTIsHardwareDecodeSupported` for H.264, HEVC, VP9
+      and AV1; and the display's active-mode short edge with `AVPlayer.eligibleForHDRPlayback`. The
+      memory and the version pass the test literally — the pool and the policy's heap observation
+      are made against the first, and the library branches on majors of the second. The decoder and
+      display readings **do not pass it literally**, and that is said here rather than left for a
+      reader to find: no iOS code of this library branches on them, because on Apple's platforms the
+      decisions the Kotlin gate makes against its decoder table and display — which rung the device
+      can play, whether HDR — are made by AVFoundation, the engine
+      [ADR-0020](0020-compose-on-avfoundations-avplayer-and-bring-no-other-engine.md) rule 1 composes
+      on, and rule 6 there ports no selection gate. So on iOS the test is read as *what the engine
+      the player composes on decided against*, which is the reading `docs/ios-plan.md` §3.9 records
+      as "rule 10 read the same way". It is wider than #292's, which declined the audio output's
+      encodings because Media3's own receiver reads them inside the engine; that decline stands on
+      Android and is not reopened. What keeps the widening bounded is the shape of each field: a
+      yes or a no per codec the library names and one yes or no for HDR, never a decoder's name,
+      profile list or instance count, and never a display's name or id. Everything rule 10 refuses
+      is refused on iOS by the same words read in Apple's vocabulary — no `UIDevice` name, model or
+      `identifierForVendor`, no model identifier, no OS build string or patch level — and
+      `SessionBundlePlaybackTests` asserts each present where the platform holds it before absent
+      from a bundle. An iOS bundle carries no `capability protection` line: FairPlay negotiates no
+      level (`docs/ios-plan.md` §3.6), and a line that could only ever say one thing says nothing.
 
 ### Compose in a second library module
 
@@ -450,6 +477,20 @@ Thirteen rules follow, and they are binding.
       to `TelemetryEvent` — shape, not meaning, so `SCHEMA_VERSION` stays where it is (ADR-0008
       rule 5) — rather than reaching a fourth seam, and rule 3 is amended by name if it turns out
       otherwise.
+    - **#429's addendum: on Apple platforms the HUD is SwiftUI and the guard is two readings.**
+      `SuperPlayerDiagnostics`' `DebugHud` is a SwiftUI view the app places, for this rule's reason
+      — a view the app composes is the only shape in which the library provides the overlay and the
+      app keeps the screen — and SwiftUI is a system framework, so no dependency question arises.
+      Its guard is `#if DEBUG` *and* the `get-task-allow` entitlement read from the embedded
+      provisioning profile (`docs/ios-plan.md` §3.9). The first is the app's own build
+      configuration, because SwiftPM compiles a package from source in the app's configuration — the
+      reverse of the AAR that ruled `BuildConfig.DEBUG` out on Android — and it removes the
+      overlay's rendering from a Release binary; the second keeps a Debug build signed for
+      distribution from showing it. `isDebugHudAvailable()`'s documentation carries the iOS "what
+      it does not guarantee", including that a library built ahead of time in Release never shows
+      the HUD. It takes a `SuperPlayer` or a stock `AVPlayer`, two initialisers where the Kotlin one
+      takes the `Player` supertype, because the facade subclasses nothing (ADR-0020 rule 2) and the
+      two share no type. It opens no seam and registers no observer of its own.
 
 ### Scoring
 

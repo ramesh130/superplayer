@@ -210,12 +210,18 @@ let package = Package(
             ],
             path: "ios/Tests/SuperPlayerTVTests"
         ),
-        // Testkit for the origin the doctor fetches from, testmedia for the corpus it is scored on.
+        // Testkit for the origin the doctor fetches from, testmedia for the corpus it is scored on,
+        // and resilience for the postmortem's classifications (#428): a real player's
+        // `classify(_:)` is what a postmortem reads, while the product itself stays off it.
+        // Telemetry and DRM too, for the bundle's redaction test (#429), which drives one
+        // session through a recorder, a credential repair and a licence — all phase 6 or below, as
+        // superplayer-diagnostics' own SessionBundleRedactionTest drives the Kotlin ones.
         .testTarget(
             name: "SuperPlayerDiagnosticsTests",
             dependencies: [
                 "SuperPlayerDiagnostics", "SuperPlayerCore", "SuperPlayerTestkit",
-                "SuperPlayerTestMedia",
+                "SuperPlayerTestMedia", "SuperPlayerTelemetry", "SuperPlayerResilience",
+                "SuperPlayerDRM",
             ],
             path: "ios/Tests/SuperPlayerDiagnosticsTests"
         ),

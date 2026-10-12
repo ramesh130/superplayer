@@ -11,8 +11,9 @@
 		5D0000000000000000000012 /* SuperPlayerTelemetry in Frameworks */ = {isa = PBXBuildFile; productRef = 5D0000000000000000000022 /* SuperPlayerTelemetry */; };
 		5D0000000000000000000013 /* SuperPlayerPreload in Frameworks */ = {isa = PBXBuildFile; productRef = 5D0000000000000000000023 /* SuperPlayerPreload */; };
 		5D0000000000000000000014 /* SuperPlayerTV in Frameworks */ = {isa = PBXBuildFile; productRef = 5D0000000000000000000024 /* SuperPlayerTV */; };
-		5D0000000000000000000015 /* SuperPlayerRealtime in Frameworks */ = {isa = PBXBuildFile; productRef = 5D0000000000000000000025 /* SuperPlayerRealtime */; };
-		5D0000000000000000000016 /* SuperPlayerMoQ in Frameworks */ = {isa = PBXBuildFile; platformFilters = (ios, ); productRef = 5D0000000000000000000026 /* SuperPlayerMoQ */; };
+		5D0000000000000000000015 /* SuperPlayerDiagnostics in Frameworks */ = {isa = PBXBuildFile; productRef = 5D0000000000000000000025 /* SuperPlayerDiagnostics */; };
+		5D0000000000000000000016 /* SuperPlayerRealtime in Frameworks */ = {isa = PBXBuildFile; productRef = 5D0000000000000000000026 /* SuperPlayerRealtime */; };
+		5D0000000000000000000017 /* SuperPlayerMoQ in Frameworks */ = {isa = PBXBuildFile; platformFilters = (ios, ); productRef = 5D0000000000000000000027 /* SuperPlayerMoQ */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -36,8 +37,9 @@
 				5D0000000000000000000012 /* SuperPlayerTelemetry in Frameworks */,
 				5D0000000000000000000013 /* SuperPlayerPreload in Frameworks */,
 				5D0000000000000000000014 /* SuperPlayerTV in Frameworks */,
-				5D0000000000000000000015 /* SuperPlayerRealtime in Frameworks */,
-				5D0000000000000000000016 /* SuperPlayerMoQ in Frameworks */,
+				5D0000000000000000000015 /* SuperPlayerDiagnostics in Frameworks */,
+				5D0000000000000000000016 /* SuperPlayerRealtime in Frameworks */,
+				5D0000000000000000000017 /* SuperPlayerMoQ in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -83,8 +85,9 @@
 				5D0000000000000000000022 /* SuperPlayerTelemetry */,
 				5D0000000000000000000023 /* SuperPlayerPreload */,
 				5D0000000000000000000024 /* SuperPlayerTV */,
-				5D0000000000000000000025 /* SuperPlayerRealtime */,
-				5D0000000000000000000026 /* SuperPlayerMoQ */,
+				5D0000000000000000000025 /* SuperPlayerDiagnostics */,
+				5D0000000000000000000026 /* SuperPlayerRealtime */,
+				5D0000000000000000000027 /* SuperPlayerMoQ */,
 			);
 			productName = SuperPlayerDemo;
 			productReference = 5D0000000000000000000031 /* SuperPlayerDemo.app */;
@@ -264,12 +267,17 @@
 			package = 5D0000000000000000000002 /* XCLocalSwiftPackageReference "../.." */;
 			productName = SuperPlayerTV;
 		};
-		5D0000000000000000000025 /* SuperPlayerRealtime */ = {
+		5D0000000000000000000025 /* SuperPlayerDiagnostics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5D0000000000000000000002 /* XCLocalSwiftPackageReference "../.." */;
+			productName = SuperPlayerDiagnostics;
+		};
+		5D0000000000000000000026 /* SuperPlayerRealtime */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 5D0000000000000000000002 /* XCLocalSwiftPackageReference "../.." */;
 			productName = SuperPlayerRealtime;
 		};
-		5D0000000000000000000026 /* SuperPlayerMoQ */ = {
+		5D0000000000000000000027 /* SuperPlayerMoQ */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 5D0000000000000000000003 /* XCLocalSwiftPackageReference "../MoQ" */;
 			productName = SuperPlayerMoQ;

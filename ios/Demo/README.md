@@ -50,17 +50,27 @@ for the TV screen, which is an Apple TV's (`docs/testing.md`, *A television on t
 
 `MoqScreen` (#434) is the Android `MoqScreen`'s twin and its doc comment the lifecycle to copy:
 `Realtime.transport(scheme: MoqFrameSource.scheme)`, a `MediaRequest` naming a `moq://` URL, play,
-and release with the screen. It plays a public relay's broadcast, `moq://cdn.moq.pro/anon/catshark.hang`
-by default, and `-SPMoqBroadcast moq://…` names another without a rebuild; a broadcast that is not
-there fails with MoQ's own words over the picture, `unroutable` for every reason at once.
+and release with the screen. It plays a public relay's broadcast, MoQ's own `moq://cdn.moq.dev/demo/bbb.hang`
+by default — the Android demo's `anon/catshark.hang` was no longer announced when #438 ran, and this one
+may go too — and `-SPMoqBroadcast moq://…` names another without a rebuild; a broadcast that is not
+there fails with MoQ's own words over the picture, `unroutable` for every reason at once. Every two
+seconds it logs `content=demo:moq-live position=<ms> rendering=<bool> received=<bytes> rtt=<ms>`,
+the line its overlay also carries as its accessibility value.
 
 The project resolves a **second local package** for it, `../MoQ` (`SuperPlayerMoQ` is not a product of
 the root manifest — `ios/MoQ/Package.swift` says why), and links that product **on iOS only**: its
 native library carries no tvOS slice (`third-party/moq/README.md`, *The Swift bindings*), so the
 dependency is platform-filtered and the screen compiles to nothing on tvOS. The library's simulator
 slice is arm64 alone, so the project excludes `x86_64` from its simulator builds, and the demo no
-longer builds for an Intel Mac's simulator. Whether a broadcast plays on a phone is the i9 device
-ticket's.
+longer builds for an Intel Mac's simulator.
+
+**`SuperPlayerDemoUITests`** is the project's one test target (#438), iOS only: the XCUITest
+`MoqLiveSessionSmokeTests`, which opens the transport in its runner and then has the demo play the
+same broadcast. It needs a phone and the internet, so `ios/check` builds it and never runs it;
+`devicelab/lab run moq-smoke --platform ios` runs it (`devicelab/README.md`, *The moq-smoke
+scenario*), and the phone needs *Settings > Developer > Enable UI Automation* on first. It links
+`MoqFFI` directly, through a third local package reference, for the relay probes it asks the
+bindings for.
 
 ## The television
 

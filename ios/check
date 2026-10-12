@@ -241,14 +241,21 @@ echo "$moq_passed tests passed in ios/MoQ"
 # its one target supports; whether it plays a real stream needs a network, which no check has
 # (ios/Demo/README.md). Its DerivedData is its own: the demo is a second workspace, and one writing
 # its products into the same DerivedData would overwrite the package modules the digester reads.
-step "Build: the demo, iOS and tvOS simulators"
-for platform in 'iOS Simulator' 'tvOS Simulator'; do
-    xcodebuild build -quiet \
-        -project ios/Demo/SuperPlayerDemo.xcodeproj \
-        -scheme SuperPlayerDemo \
-        -destination "generic/platform=$platform" \
-        -derivedDataPath "$derived_data-demo"
-done
+# On iOS it is built for testing, so the UI test target devicelab's moq-smoke runs on a phone
+# (SuperPlayerDemoUITests, #438) is compiled here too and cannot rot between device runs; it is
+# never run here, since it needs a relay on the internet. That target is iOS only, so tvOS builds
+# the app alone.
+step "Build: the demo and its UI tests for the iOS simulator, the demo for tvOS"
+xcodebuild build-for-testing -quiet \
+    -project ios/Demo/SuperPlayerDemo.xcodeproj \
+    -scheme SuperPlayerDemo \
+    -destination 'generic/platform=iOS Simulator' \
+    -derivedDataPath "$derived_data-demo"
+xcodebuild build -quiet \
+    -project ios/Demo/SuperPlayerDemo.xcodeproj \
+    -scheme SuperPlayerDemo \
+    -destination 'generic/platform=tvOS Simulator' \
+    -derivedDataPath "$derived_data-demo"
 
 # The digester reads the modules the simulator test build produced, against the iOS simulator SDK
 # and an iOS target at the floor, so the API recorded is the one an iOS adopter compiles against

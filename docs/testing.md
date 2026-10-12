@@ -1219,8 +1219,15 @@ way: every test examines content on a loopback origin of its own through the pub
 segment" is an equality on `networkRequests()`. `CorpusRegisterTests` is `CorpusRegisterTest`'s
 shape — per entry, the findings at `severe` as an equality, and every `benign` grade and every
 healthy stream silent **one at a time** — and is also what holds ADR-0020 rule 8's lint to the
-corpus: a lint that misread an entry fails that entry's row. The four delivery entries are rows that
-name nothing yet, each with its reason, for #428. Three pathologies have no corpus entry and are
+corpus: a lint that misread an entry fails that entry's row. The four delivery entries (#428) are
+scored like the rest, because the origin serves each entry's declared headers
+(`FaultScript.Builder.addDeclaredResponseHeaders(of:)`); `DeliveryPathologyTests` is the Kotlin
+`DeliveryPathologyTest` — each entry diagnosed with its headers served and withheld, a control per
+rule, and the one-segment probe counted at the origin as one `HEAD` that sent no body byte.
+`PostmortemTests` is the Kotlin four-combination table over real `SuperPlayer`s, the test target
+depending on `SuperPlayerResilience` for a real `classify(_:)` while the product does not; its
+failed-with-a-defect row is the cached live playlist, whose session ends only where iOS 18's
+playlist answers are readable, so that one row skips below 18. Three pathologies have no corpus entry and are
 forced by a named test instead: the two defects of the fetch, and `hls-short-live-window`, whose
 Kotlin twin is DASH's. Its stream is testkit's `TestContent.liveHls(windowSegmentCount:)`, a live
 window a test chooses, published as though the default window had already slid so its media sequence

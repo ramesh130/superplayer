@@ -80,7 +80,8 @@ final class DeliveryPathologyTests: XCTestCase {
         // The control the on-demand case cannot stand in for: a playlist with no EXT-X-ENDLIST,
         // where the rule *can* fire, served with a lifetime inside RFC 8216 §6.2.1's bound.
         let findings = try await examine(
-            HostileManifests.hlsCachedLivePlaylist(), served: ["Cache-Control": "public, max-age=1"])
+            HostileManifests.hlsCachedLivePlaylist(), served: ["Cache-Control": "public, max-age=1"]
+        )
 
         XCTAssertEqual(findings, [])
     }
@@ -167,9 +168,12 @@ final class DeliveryPathologyTests: XCTestCase {
             "\(severe)")
 
         // One and a half viewings: the content plays through and a viewer who pauses loses it —
-        // reported, and as the lesser reading.
+        // reported, and as the lesser reading. Minted *now*, not at the target's shared instant:
+        // twelve seconds of token is four past the content, and a test run that reached this line
+        // minutes after that instant was first read would be examining a token already spent.
         let borderline = try await findingFor(
-            HostileManifests.hlsTokenExpiringInWindow(.borderline, nowEpochSeconds: nowEpochSeconds),
+            HostileManifests.hlsTokenExpiringInWindow(
+                .borderline, nowEpochSeconds: Int64(Date().timeIntervalSince1970)),
             .hlsTokenExpiringInWindow)
         XCTAssertEqual(borderline.severity, .degraded)
     }
@@ -251,7 +255,8 @@ final class DeliveryPathologyTests: XCTestCase {
         -> [Finding]
     {
         let faults =
-            served.isEmpty ? FaultScript.none : FaultScript.Builder().addResponseHeaders(served).build()
+            served.isEmpty
+            ? FaultScript.none : FaultScript.Builder().addResponseHeaders(served).build()
         let origin = try await harness.serve(.hostile(entry), faults: faults)
         return await MediaSourceDoctor()
             .examine(MediaRequest(contentId: entry.id, sources: [origin.sourceURL])).findings

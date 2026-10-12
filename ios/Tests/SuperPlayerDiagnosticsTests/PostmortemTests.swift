@@ -120,8 +120,7 @@ final class PostmortemTests: XCTestCase {
         XCTAssertEqual(report.findings, [], "nothing is wrong with this manifest: \(report)")
     }
 
-    func testAStreamThatPlaysOnWhileMisconfiguredReportsFindingsAndNoClassification() async throws
-    {
+    func testAStreamThatPlaysOnWhileMisconfiguredReportsFindingsAndNoClassification() async throws {
         // The second disagreement, and the direction a preflight is for: a ladder with a step no
         // client climbs gracefully plays to the end in AVFoundation (`HostileManifestCorpusTests`),
         // so there is no failure to classify and the defect is still there to name.

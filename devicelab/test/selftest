@@ -515,7 +515,8 @@ done
 #
 # The fixtures under fixtures/ios are the tools' own output, with the identifiers of the phone they were
 # taken on replaced: devicectl's and simctl's listings, the demo's console from the iPhone 17 Pro Max
-# #435 ran on (iOS 27.0), and xctrace's export cut to the rows a parse needs. The feed's console is
+# #435 ran on (iOS 27.0), and xctrace's exports cut to the rows a parse needs — the os-log one rebuilt by
+# hand in the export's own shape, since a real one is the whole process's log. The feed's console is
 # written in the demo's own line shapes, shortened to three rows.
 
 # shellcheck source=../lib/ios.sh
@@ -583,6 +584,21 @@ assert_eq "the demo's footprint is read off the export by name and pid, a value 
     "0	766	20744032
 1000	766	20744032
 2000	812	31457280" "$(ios_footprint_series SuperPlayerDemo < "$ios_fixtures/xctrace-process-live.xml")"
+assert_eq "a recording of a launched process is read whole with '*', whatever the process is called" \
+    "0	0	146391040
+0	766	20744032
+0	900	4194304
+1000	766	20744032
+2000	812	31457280" "$(ios_footprint_series '*' < "$ios_fixtures/xctrace-process-live.xml")"
+
+# The os-log export of a recording that launched the demo: a system line, then two of the demo's,
+# the second carrying a number its display text writes with a thousands separator.
+rebuilt="$(TZ=UTC ios_oslog_lines 1791799150173 < "$ios_fixtures/xctrace-os-log.xml")"
+assert_eq "the demo's lines are rebuilt as the console prints them, a system subsystem's left out, a number as its raw value" \
+    "2026-10-12 09:59:11.697000+0000 SuperPlayerDemo[907:0] [Playback] content=demo:bipbop-advanced position=0 dropped=0
+2026-10-12 09:59:13.806000+0000 SuperPlayerDemo[907:0] [Playback] content=demo:bipbop-advanced position=2000 dropped=0" "$rebuilt"
+assert_eq "so a recording confirms playback as a console does" 2000 "$(printf '%s\n' "$rebuilt" | ios_advancing_position)"
+
 assert_eq "the recording's start is read off the table of contents, in ms since the epoch" \
     1791793978785 "$(ios_trace_start_ms < "$ios_fixtures/xctrace-toc.xml")"
 

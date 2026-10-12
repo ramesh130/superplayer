@@ -488,8 +488,6 @@ ios_ensure_device() {
     fi
     IFS=$'\t' read -r IOS_UDID IOS_REALITY DEVICE_NAME DEVICE_MODEL DEVICE_PRODUCT_TYPE DEVICE_OS_VERSION DEVICE_OS_BUILD \
         IOS_TRANSPORT <<<"$line"
-    [ "$IOS_TRANSPORT" != localNetwork ] ||
-        log "warning: the phone is reached over the network, where every xctrace recording ended after about a second (README.md, *iOS*); a cable is what a recording needs"
     SERIAL="$IOS_UDID"
     DEVICE_MANUFACTURER=Apple
     DEVICE_IS_EMULATOR=0
@@ -737,7 +735,8 @@ ios_run_json() {
     "model": $(json_str "$DEVICE_MODEL"),
     "product_type": $(json_str "$DEVICE_PRODUCT_TYPE"),
     "os_version": $(json_str "$DEVICE_OS_VERSION"),
-    "os_build": $(json_str "$DEVICE_OS_BUILD")
+    "os_build": $(json_str "$DEVICE_OS_BUILD"),
+    "transport": $(json_str "${IOS_TRANSPORT:-}")
   },
   "host": {
     "os": $(json_str "$HOST_OS"),

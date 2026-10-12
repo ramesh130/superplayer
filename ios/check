@@ -4,7 +4,7 @@
 #
 # ios/check: the whole definition of passing for the iOS half, as `./gradlew check` is for Android.
 #
-#   ios/check                 format, simulator tests, tvOS build, demo build, API baselines
+#   ios/check                 format, simulator tests (ios/MoQ's too), tvOS build, demo build, API baselines
 #   ios/check --update-api    the same, rewriting ios/api/<Product>.baseline instead of diffing it
 #   ios/check --update-golden the same, rewriting ios/Tests/Fixtures/golden/*.trace instead of
 #                             comparing them; the only writer of the iOS golden traces
@@ -37,6 +37,8 @@ cd "$root"
 
 simulator="${SP_SIMULATOR:-superplayer-check}"
 derived_data="${SP_DERIVED_DATA:-$root/.build/DerivedData}"
+# Absolute, because the ios/MoQ step runs from that directory.
+case "$derived_data" in /*) ;; *) derived_data="$root/$derived_data" ;; esac
 results="$root/.build/ios-check"
 # SwiftPM's scheme over every product and test target of a multi-product package.
 scheme=SuperPlayer-Package
@@ -211,6 +213,28 @@ case "$tv_udid" in
         echo "$tv_passed tests passed on tvOS"
         ;;
 esac
+
+# SuperPlayerMoQ is a package of its own under ios/MoQ rather than a product of the root manifest —
+# the SwiftPM analog of superplayer-moq's LOCAL_ONLY publication, which ios/MoQ/Package.swift
+# argues — so the root scheme above never reaches it and it is tested here, on the same simulator.
+# Its native half is the committed XCFramework under third-party/moq/swift, so no Rust toolchain is
+# needed. Like LOCAL_ONLY, it tracks no API baseline: nothing outside this repository can resolve it.
+step "Test: SuperPlayerMoQ (ios/MoQ) on the iOS simulator"
+if ! (cd ios/MoQ && xcodebuild test -quiet \
+    -scheme SuperPlayerMoQ \
+    -destination "id=$udid" \
+    -derivedDataPath "$derived_data-moq" \
+    -resultBundlePath "$results/test-moq.xcresult"); then
+    xcrun xcresulttool get test-results summary --path "$results/test-moq.xcresult" >&2 || true
+    fail "xcodebuild test of ios/MoQ failed"
+fi
+read -r moq_result moq_passed < <(
+    xcrun xcresulttool get test-results summary --path "$results/test-moq.xcresult" |
+        python3 -I -c 'import json, sys; s = json.load(sys.stdin); print(s["result"], s["passedTests"])'
+)
+[ "$moq_result" = "Passed" ] || fail "the ios/MoQ result bundle says \"$moq_result\", not Passed"
+[ "$moq_passed" -ge 1 ] || fail "no SuperPlayerMoQTests test passed"
+echo "$moq_passed tests passed in ios/MoQ"
 
 # The demo resolves the package by path, as an adopter's app does, so this is the build that fails
 # when a product's public API stops being enough for an app. Built and not run, for both platforms

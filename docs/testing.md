@@ -468,6 +468,41 @@ play — real H.264 and AAC, paced and on its own thread — through `verifyAll`
 as `avc1` at two-byte lengths, and holds the suite's codec families to `RealtimeFormats.mappedTokens`.
 No socket is opened by any of it. What a real transport delivers is a device's and #438's.
 
+#### The MoQ bindings on iOS
+
+`SuperPlayerMoQ` (#434) is tested the Kotlin module's way, in `ios/MoQ/`'s own test target, which
+`ios/check` runs in a step of its own because the package is not the root manifest's
+(`ios/MoQ/Package.swift` says why). `MoqFrameSourceConformanceTests` runs testkit's suite over
+`MoqFrameSource` in both of ADR-0018 rule 4's branches, behind `ScriptedMoqRelay` — the Kotlin fake
+ported: endless tracks by default, paced on a condition `close()` wakes, each track on an epoch of its
+own — with a control the suite refuses (an `avc1` rendition whose catalog declared no record), and
+`MoqFrameSourceTests`, `MoqCatalogTracksTests` and `MoqSessionStatisticsTests` are the Kotlin classes
+case for case. **That proves the bridge and nothing about MoQ**: no QUIC session is opened and no line
+of `UniffiMoqRelay` runs. Two things differ from the Kotlin half, each in the direction of more
+evidence rather than less.
+
+- **The FFI test runs everywhere `ios/check` does.** `MoqFfiLinkageTests` walks every checksum the
+  generated Swift holds against the library and allocates an origin in Rust, as `MoqFfiLinkageTest`
+  does — but where the JVM can only load a *host* build and skips on every other host, the simulator
+  links the XCFramework's own arm64 simulator slice, the library an app on the simulator links, so CI's
+  macOS job runs it too. What no check reaches is the device slice, which only a device runs; the demo
+  is built against it by hand (`xcodebuild … -destination 'generic/platform=iOS'`), never by `ios/check`.
+- **Nothing waits a while and then asserts an absence.** Where the Kotlin tests pause and see nothing
+  arrive, these read the threads: `cancel()` joins the pumps and the poller, so a test asserts they
+  have *finished* the moment it returns, and a poller giving up after a failed poll is its thread
+  returning, waited for as an event. Pacing is a count against a count — at an hour's interval, one
+  poll while sixty-four frames arrive — never against a clock (ADR-0021 rule 4).
+- **`cancel()` does not join the connect thread**, which the Kotlin `cancel` does: here it is called on
+  the main actor, and a handshake or the `unroutable` retry cannot be interrupted, so it would freeze
+  the screen being left. A delivery barrier stops that thread's callbacks instead, and
+  `testCancelDoesNotWaitForAConnectionStillBeingMade` holds a scripted connection open across the
+  cancel to show both halves.
+
+The fixtures follow `DeclaredCatalogs`' provenance rules, and the observed `avcC` is read from
+`ios/Tests/Fixtures/realtime/observed-bytes.tsv` rather than restated, since a package of its own can
+reach that file by path where it could not reach another target's sources. A real broadcast — a relay,
+the `unroutable` retry, the session-URL namespace #367 settled — is the i9 device ticket's.
+
 ### The MoQ bindings
 
 `superplayer-moq` links a native library, and everything unusual about testing it follows from where

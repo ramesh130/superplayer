@@ -153,14 +153,24 @@ runs. A target this table does not list fails, as a module the table above does 
 | `SuperPlayerTV` | 8 | `superplayer-tv` | i7 |
 | `SuperPlayerDiagnostics` | 9 | `superplayer-diagnostics` | i8 |
 | `SuperPlayerRealtime` | 13 | `superplayer-realtime` | i9 |
+| `SuperPlayerMoQ` | 14 | `superplayer-moq`, in `ios/MoQ/Package.swift` and not the root manifest | i9 |
 | `SuperPlayerBenchmark` | 3 | `benchmark/`, a separate build | i2 |
 
-Three Android modules have no row. `superplayer-cache` does not port as a product of its own, since
-its content is the offline store's (`docs/ios-plan.md` §4); `superplayer-moq`'s product,
-`SuperPlayerMoQ`, is a binary target that i9 declares together with its row; and
-`superplayer-whep` is contingent on both platforms. Kotlin friend modules have no Swift analog — a
-seam a later product reaches is `package`-scoped rather than `internal` — so nothing above the
-table's dependency column needs a Swift counterpart. Every product is empty until its phase.
+Two Android modules have no row. `superplayer-cache` does not port as a product of its own, since
+its content is the offline store's (`docs/ios-plan.md` §4); and `superplayer-whep` is contingent on
+both platforms.
+
+`SuperPlayerMoQ` has a row and is **not** a target of the root manifest (#434). It is a package of
+its own under `ios/MoQ/`, because a product of the root `Package.swift` is resolvable by anyone who
+names this repository's URL, and the Kotlin module it ports is deliberately unpublished
+(`ios/MoQ/Package.swift` and `CONTRIBUTING.md`'s #364 amendment argue it). So
+`verifyModulePhaseRule`, which reads the root manifest, does not read it, and the rule is held by
+what it can reach rather than by the check: it depends on the root package's `SuperPlayerCore`
+(phase 1), its tests on `SuperPlayerTestkit` (phase 2), and both on `third-party/moq/swift/`'s
+`MoqFFI` bindings, which are a third-party package rather than a phase.
+
+Kotlin friend modules have no Swift analog — a seam a later product reaches is `package`-scoped
+rather than `internal` — so nothing above the table's dependency column needs a Swift counterpart. Every product is empty until its phase.
 
 `SuperPlayerBenchmark` is a target and not a product — nothing ships it — porting `benchmark/`,
 which on Android is a build of its own and stands outside the phases. Here it is a target of the

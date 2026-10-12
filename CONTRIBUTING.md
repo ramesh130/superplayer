@@ -51,6 +51,15 @@ admit copyleft into a published module, and it does not survive the module being
 which would publish `superplayer-moq`, has to answer this first**, and the row it would have to
 clear is the one above rather than this one.
 
+**#434 reads the amendment for the Swift package, and adds no case.** SwiftPM has no publication
+step: a product of the root `Package.swift` is resolvable by anyone who names this repository's URL,
+so on iOS the unpublished module is a target **no product of the root manifest exposes**.
+`SuperPlayerMoQ` is that — a package of its own under `ios/MoQ/`, which SwiftPM never reads when it
+resolves this repository, and which `ios/Demo/` reaches by path as `demo/` reaches the Kotlin module
+from one machine's Maven local. Its native library links the same `uniffi_core`
+(`third-party/moq/CRATES.md`, *The iOS graph*), and the same condition binds it: moving
+`SuperPlayerMoQ` into the root manifest is publishing it.
+
 Adding a dependency means adding its entry to `THIRD_PARTY.md` in the same change, creating the
 file if it does not exist yet.
 

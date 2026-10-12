@@ -160,6 +160,9 @@ product's public API is `ios/api/<Product>.baseline`, `ios/check` diffs it on ev
 it, whose diff is committed with the change that caused it. A baseline with no product, and a
 product with no baseline, both fail. A product empty until its phase has a baseline that is its
 header line alone, which is a recorded fact about the API rather than a missing file.
+`SuperPlayerMoQ` (#434) has **no** baseline, deliberately: it is a package of its own under
+`ios/MoQ/` rather than a product of the root manifest, so nothing outside this repository can resolve
+it, and an API nobody can depend on has no compatibility to track — the Kotlin `LOCAL_ONLY` rule.
 
 ```bash
 ios/check                 # includes the API diff, after the simulator tests and the tvOS build

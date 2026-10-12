@@ -338,3 +338,24 @@ CC0-1.0 or CDLA-Permissive-2.0, all permissive and all without a field-of-use re
 | `zerovec` | Unicode-3.0 |
 | `zerovec-derive` | Unicode-3.0 |
 | `zmij` | MIT |
+
+## The iOS graph
+
+`swift/`'s libraries (#434) are the same crate at the same commit with the same features, built for
+`aarch64-apple-ios` and `aarch64-apple-ios-sim`. Over the same reading — `cargo tree -e normal
+--no-default-features --target aarch64-apple-ios` against `--target aarch64-linux-android` — the two
+graphs differ by platform crates alone, and **nothing that differs is copyleft**:
+
+| Only on iOS | License |
+| --- | --- |
+| `core-foundation` | MIT OR Apache-2.0 |
+| `core-foundation-sys` | MIT OR Apache-2.0 |
+| `kqueue` | MIT |
+| `kqueue-sys` | MIT |
+| `security-framework` | MIT OR Apache-2.0 |
+| `security-framework-sys` | MIT OR Apache-2.0 |
+
+Only on Android, and so absent from the iOS libraries: `combine`, `inotify`, `inotify-sys`, `jni`,
+`jni-macros`, `jni-sys`, `jni-sys-macros`, `linux-raw-sys`, `rustls-platform-verifier-android`,
+`simd_cesu8`, `simdutf8` and `webpki-roots` (whose CDLA-Permissive-2.0 row above therefore does not
+apply to iOS). UniFFI's MPL-2.0 family is in both graphs, and `uniffi_core` is linked into both.

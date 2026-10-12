@@ -11,6 +11,7 @@ plays a real stream over a real CDN needs a network, which no check here has (AD
 | `PlaybackScreen` | the player on SwiftUI's stock `VideoPlayer(player: player.avPlayer)`, with no adapter |
 | `FrameOutputScreen` | the same stream through a pass-through `FrameOutput` on the library's `PlayerView`, counting the frames it is handed |
 | `TvScreen` | `tvLeanback` through `TvOutput` on `AVPlayerViewController`'s system controls, with AVKit's own criteria matching off — what the app opens on under tvOS |
+| `MoqScreen` | a live broadcast over Media over QUIC on a `RealtimePlayer` and `MoqFrameSource`, the session's round trip and receive rate over the picture — **iOS only** (below) |
 | `FeedScreen` | 200 rows over a `PlayerPool` and a `PreloadCoordinator`, one row playing at a time, a header sampling the pool and the coordinator, and each row's time to first frame from `declarePlaybackIntent()` |
 | `DebugHudScreen` | the playback screen with `SuperPlayerDiagnostics`' `DebugHud` over it, fed by a `DebugHudTelemetry` composed beside the log sink — the recipe a consumer copies (#429); nothing shows in a Release build |
 
@@ -29,7 +30,7 @@ file, because its sources are a folder Xcode keeps in step with the disk (a
 xcodebuild build -project ios/Demo/SuperPlayerDemo.xcodeproj -scheme SuperPlayerDemo \
     -destination 'generic/platform=iOS Simulator' -derivedDataPath .build/DerivedData-demo
 xcrun simctl install booted .build/DerivedData-demo/Build/Products/Debug-iphonesimulator/SuperPlayerDemo.app
-xcrun simctl launch booted com.superplayer.demo -SPDemoScreen playback   # or frameOutput, feed, tv, debugHud, or nothing for the list (tv on tvOS)
+xcrun simctl launch booted com.superplayer.demo -SPDemoScreen playback   # or frameOutput, feed, tv, debugHud, moq, or nothing for the list (tv on tvOS)
 xcrun simctl spawn booted log show --last 1m --style compact --predicate 'subsystem == "com.superplayer.demo"'
 ```
 
@@ -41,6 +42,22 @@ Telemetry goes to the same log under the subsystem `com.superplayer`, category `
 Two things a simulator run does not show: whether the pass-through drops a frame an `AVPlayerLayer`
 would have shown, which is a device count (#435), and whether a television's panel switched modes
 for the TV screen, which is an Apple TV's (`docs/testing.md`, *A television on tvOS*).
+
+## MoQ
+
+`MoqScreen` (#434) is the Android `MoqScreen`'s twin and its doc comment the lifecycle to copy:
+`Realtime.transport(scheme: MoqFrameSource.scheme)`, a `MediaRequest` naming a `moq://` URL, play,
+and release with the screen. It plays a public relay's broadcast, `moq://cdn.moq.pro/anon/catshark.hang`
+by default, and `-SPMoqBroadcast moq://…` names another without a rebuild; a broadcast that is not
+there fails with MoQ's own words over the picture, `unroutable` for every reason at once.
+
+The project resolves a **second local package** for it, `../MoQ` (`SuperPlayerMoQ` is not a product of
+the root manifest — `ios/MoQ/Package.swift` says why), and links that product **on iOS only**: its
+native library carries no tvOS slice (`third-party/moq/README.md`, *The Swift bindings*), so the
+dependency is platform-filtered and the screen compiles to nothing on tvOS. The library's simulator
+slice is arm64 alone, so the project excludes `x86_64` from its simulator builds, and the demo no
+longer builds for an Intel Mac's simulator. Whether a broadcast plays on a phone is the i9 device
+ticket's.
 
 ## The television
 

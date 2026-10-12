@@ -36,6 +36,7 @@ of truth. This file records *what* is depended on and under *what license*.
 | `org.jetbrains.kotlinx:kotlinx-coroutines-android` | Apache-2.0 | all modules |
 | `dev.moq:moq-ffi` | MIT OR Apache-2.0 (the built binary also contains **MPL-2.0** — see below) | `superplayer-moq` — **built here, not resolved from Maven** |
 | `net.java.dev.jna:jna` | Apache-2.0 OR LGPL-2.1+ | `superplayer-moq` (transitive, via `moq-ffi`: the bindings' FFI bridge) |
+| `MoqFFI` (Swift package, `third-party/moq/swift/`) | MIT OR Apache-2.0 (the built library also contains **MPL-2.0** — see below) | `SuperPlayerMoQ` (`ios/MoQ/`, not a product of the root manifest) — **built here from the same `moq-ffi` commit, not resolved from upstream's `moq-swift-ffi`** |
 
 ## The MoQ bindings, and the native crates inside them
 
@@ -90,6 +91,16 @@ published artifact, which the amendment does not admit and the rule above refuse
 The other eight-crate half of that family — `uniffi_bindgen`, `uniffi_udl`, `uniffi_pipeline` and
 the macro crates — is build-time only in the plainest sense: they are in the graph because
 `moq-ffi` also builds a `uniffi-bindgen` binary, and nothing of them is linked into the cdylib.
+
+**The Swift bindings are the same crate, and carry the same fact.** `third-party/moq/swift/` (#434)
+is `moq-ffi` at the same commit with the same features off, as two static-library slices under a
+Swift package of UniFFI's generated code — not upstream's published `moq-swift-ffi`, whose
+XCFramework is built with the defaults on, for #351's reason. `CRATES.md`'s *The iOS graph* is the
+enumeration: six platform crates exchanged for twelve of Android's, all permissive, and UniFFI's
+MPL-2.0 family unchanged — `uniffi_core` is linked into the static library as it is into the `.so`.
+It is admitted the same way and for the same reason: `SuperPlayerMoQ` lives in a package of its own
+under `ios/MoQ/` that no product of the root `Package.swift` exposes, so an adopter resolving this
+repository by URL cannot depend on it — `CONTRIBUTING.md`'s #364 amendment states that reading.
 
 `net.java.dev.jna:jna` is the Kotlin side of the same bridge and is dual-licensed Apache-2.0 or
 LGPL-2.1-or-later. It is taken under **Apache-2.0**, which the dual licence permits and which

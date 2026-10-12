@@ -172,7 +172,8 @@ val verifyLicenseHeader =
         licenseFile.set(layout.projectDirectory.file("LICENSE"))
         swiftSources.from(
             fileTree(layout.projectDirectory) {
-                include("Package.swift", "ios/**/*.swift")
+                // MoQ's bindings package manifest is ours, unlike the generated Swift beside it (#434).
+                include("Package.swift", "ios/**/*.swift", "third-party/moq/swift/Package.swift")
                 exclude("**/.build/**")
             }
         )

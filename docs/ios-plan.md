@@ -293,9 +293,11 @@ Package.swift                   at the repository root; every target names `path
                                 products: SuperPlayerCore, SuperPlayerTelemetry, SuperPlayerABR,
                                 SuperPlayerPreload, SuperPlayerResilience, SuperPlayerDRM,
                                 SuperPlayerOffline, SuperPlayerTV, SuperPlayerDiagnostics,
-                                SuperPlayerRealtime, SuperPlayerMoQ (local binary target),
-                                SuperPlayerTestkit, SuperPlayerTestMedia
+                                SuperPlayerRealtime, SuperPlayerTestkit, SuperPlayerTestMedia
 ios/
+  MoQ/Package.swift             SuperPlayerMoQ, a package of its own and no product of the root
+                                manifest: the LOCAL_ONLY analog (#434), over the MoqFFI package and
+                                XCFramework in third-party/moq/swift/
   Sources/<Product>/
   Tests/<Product>Tests/
   api/<Product>.baseline        the digester baseline, `ios/check` regenerates and diffs

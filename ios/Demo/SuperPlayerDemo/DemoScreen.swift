@@ -33,6 +33,11 @@ enum DemoScreen: String, CaseIterable, Identifiable, Hashable {
 
     /// The playback screen with the debug HUD over it: what each row reads, live.
     case debugHud
+    #if canImport(SuperPlayerMoQ)
+        /// A MoQ broadcast through a `RealtimePlayer` and `MoqFrameSource` — iOS alone, because the
+        /// MoQ product's native library carries no tvOS slice.
+        case moq
+    #endif
 
     var id: String { rawValue }
 
@@ -43,6 +48,9 @@ enum DemoScreen: String, CaseIterable, Identifiable, Hashable {
         case .feed: "Feed"
         case .tv: "Television"
         case .debugHud: "Debug HUD"
+        #if canImport(SuperPlayerMoQ)
+            case .moq: "MoQ"
+        #endif
         }
     }
 
@@ -53,6 +61,9 @@ enum DemoScreen: String, CaseIterable, Identifiable, Hashable {
         case .feed: "200 rows over the pool and the preload coordinator"
         case .tv: "tvLeanback and the display's criteria on the system controls"
         case .debugHud: "The same stream under the six-row debug overlay"
+        #if canImport(SuperPlayerMoQ)
+            case .moq: "A live broadcast over Media over QUIC on a RealtimePlayer"
+        #endif
         }
     }
 
@@ -64,6 +75,9 @@ enum DemoScreen: String, CaseIterable, Identifiable, Hashable {
         case .feed: FeedScreen()
         case .tv: TvScreen(stream: .bipbopAdvanced)
         case .debugHud: DebugHudScreen(stream: .bipbopAdvanced)
+        #if canImport(SuperPlayerMoQ)
+            case .moq: MoqScreen()
+        #endif
         }
     }
 

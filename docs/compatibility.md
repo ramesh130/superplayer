@@ -218,7 +218,10 @@ The honest list. Each of these is a real gap rather than a disclaimer.
 `Package.swift` declares an iOS and tvOS Swift package (`docs/ios-plan.md`), and its products —
 `SuperPlayerCore` and the eleven beside it — are **empty**: they carry no public API, which their
 recorded baselines under `ios/api/` say in as many words. SwiftPM can resolve the package by its
-git URL today, and what that gets you is the scaffold and nothing to call.
+git URL today, and what that gets you is the scaffold and nothing to call. MoQ's iOS product,
+`SuperPlayerMoQ`, is not among them at all: it is a package of its own under `ios/MoQ/`, which
+resolving this repository by URL never reaches, for the reason `superplayer-moq` is **Not published**
+above.
 
 When it is released, the plan is that it follows the same version line as the Android modules,
 cut by the same `release` command under ADR-0017, with the same `vX.Y.Z` tag the one SwiftPM

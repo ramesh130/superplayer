@@ -18,6 +18,9 @@ devicelab/lab run smoke --device tv                       # the same run on the 
 devicelab/lab list                                        # scenarios, Perfetto data sources and plants
 devicelab/lab config --data-sources frametimeline         # the Perfetto config a run would use
 devicelab/lab device                                      # just a booted device; prints its serial
+devicelab/lab run smoke --platform ios                    # the same run on an iPhone, through Xcode's tools
+devicelab/lab run frames --platform ios                   # i1: frames the pass-through output never saw
+devicelab/lab run feed --platform ios                     # i4: the 200-row feed's TTFF and memory
 devicelab/test/selftest                                   # the device-free half, checked without one
 ```
 
@@ -189,6 +192,8 @@ A scenario is `scenarios/<name>.sh`, sourced into the run once the harness's fun
 | `scenario_setup` | no | Runs once playback is confirmed and before a `playing` trace starts: gets the demo to where the measurement begins, so that getting there is not in the trace. |
 | `scenario_verdict` | no | Runs once everything is written; returning non-zero makes the run exit 3. |
 | `scenario_cleanup` | no | Runs on every exit, success or failure: puts back what the scenario changed on the device. |
+| `SCENARIO_PLATFORMS` | no | `android` (default), `ios`, or both: which `--platform` may run it. A run on any other is refused before anything is built. |
+| `SCENARIO_IOS_LAUNCH` | no | On iOS, the demo's launch arguments, an array; `(-SPDemoScreen playback)` by default. |
 
 From inside `scenario_setup` and `scenario_drive` a scenario can use:
 
@@ -206,7 +211,10 @@ From inside `scenario_setup` and `scenario_drive` a scenario can use:
   `<name>.perfetto-trace` beside `<name>.perfetto-config.pbtxt`;
 - `trace_processor_query trace query.sql [NAME=value…]`, which runs the pinned trace processor;
 
-and the variables `SERIAL`, `DEMO_PACKAGE`, `RUN_DIR` and `RUN_PLAYBACK_POSITION_MS`.
+and the variables `SERIAL`, `DEMO_PACKAGE`, `RUN_DIR` and `RUN_PLAYBACK_POSITION_MS`. An iOS scenario
+has `wait_for_playback`, `RUN_DIR` and `RUN_PLAYBACK_POSITION_MS` too, and in place of the rest
+`ios_launch_demo name args…`, `ios_wait_for_log regex seconds`, `IOS_LOG` (the current launch's
+console) and lib/ios.sh's readers (*iOS*, below).
 
 There is no tap-by-text helper, on purpose. The tool for finding a button by its text is
 `uiautomator dump`, and it only reads a screen that goes idle. The demo never goes idle while it
@@ -223,6 +231,90 @@ demo reads three — the screen, the feed's length, and a content id to hand to 
 Scenarios belong to their consumers. `smoke` measures nothing; `leak-hunt` is the leak hunt's, and
 its analysis lives beside it in [`leak/`](leak/README.md); `startup` is the startup measurement's, beside
 it in [`startup/`](startup/README.md); and `jank` is the jank measurement's, beside it in [`jank/`](jank/README.md).
+
+## iOS
+
+`--platform ios` (or `DEVICELAB_PLATFORM=ios`) is the same run on an iPhone (#435, `docs/ios-plan.md`
+§6): a device, a fresh build, playback confirmed advancing, a trace, the scenario, and the same three
+outputs. [`lib/ios.sh`](lib/ios.sh) is all of it, and its pure half — the tools' listings, the demo's
+log, xctrace's export, the feed's verdict — is in `test/selftest` with fixtures from the phone it was
+first run on.
+
+```bash
+SP_DEVELOPMENT_TEAM=<team id> devicelab/lab run frames --platform ios     # a phone; the team signs the demo
+SP_DEVICE=<udid> SP_DEVELOPMENT_TEAM=<team id> devicelab/lab run feed --platform ios
+SP_SIMULATOR=sp-sim devicelab/lab run smoke --platform ios               # a simulator, booted if it is not
+```
+
+| Step | Android | iOS, and why it differs |
+| --- | --- | --- |
+| Device | `adb`, booting an AVD if none | `devicectl`'s listing: the one `--serial` or `SP_DEVICE` names by UDID; else `SP_SIMULATOR`'s, booted if it is not; else the one physical device that is paired, booted and in Developer Mode; else the one booted simulator. A phone is never booted or restarted |
+| Build | `publishToMavenLocal`, then the demo | one `xcodebuild` of `ios/Demo`, Release for `benchmark` and Debug for `debug`. The demo resolves the package **by path**, so the app is the tree and there is no published artifact to be stale; its executable's hash goes in `run.json` instead |
+| Signing | the debug key | `SP_DEVELOPMENT_TEAM`, passed with `-allowProvisioningUpdates` and **never committed**: a run that finds the project file changed after the build fails, so a team Xcode wrote into it is reverted rather than measured |
+| Playing | `dumpsys media_session` | the demo's own position lines, read off its console. iOS publishes no playback state a shell can read, so the demo logs it (`DemoPlayback`, `FeedPlayback`), and two lines of one content with the position risen is the same evidence |
+| Log | logcat | `devicectl device process launch --console` with `OS_ACTIVITY_DT_MODE`, which copies the app's own `os_log` lines to the console, because `log collect` from a phone needs root. One `console-<launch>.log` per launch |
+| Trace | Perfetto | xctrace's **Activity Monitor**, over every process, as `trace.trace`; the demo's footprint is exported from it as `footprint.tsv` |
+
+Five things cost time the first time round, and each is handled where it bites:
+
+- **devicectl reads the app's arguments as its own** unless they follow `--`: `-SPFeedScroll` reached it
+  as `-l`, a missing log path.
+- **The console session owns the app.** Ending it ends the process, which is how a run stops the demo;
+  and its lines end in a carriage return, which every reader drops first.
+- **xctrace cannot attach to a process the console launched** ("Cannot find process"), and a launch by
+  xctrace would take the console the log is read from. So the recording is Activity Monitor over
+  every process, and the demo's rows are found by name and pid.
+- **xctrace needs the phone on a cable.** With the phone reached over the network — devicectl's
+  `transportType` `localNetwork` — every recording ended after about a second, its table of contents
+  saying `Device disconnected`, while devicectl went on working. The run records the reason in
+  `run.json` (`xctrace.end_reason`, `trace_ended_early`) and says so at the top of the report, and a
+  scenario that needs the recording reads `unknown` rather than passing.
+- **A phone is not a device until it says so.** devicectl lists a phone that is unpaired, locked out
+  of Developer Mode or still booting, and an install to one fails minutes later; such a phone is not
+  adopted.
+
+There is no `screen.png` on iOS — nothing in Xcode's command-line tools takes a phone's screenshot — and
+no plants, data sources or AVDs: `--plant`, `--data-sources`, `--device tv`, `config` and `create-avd`
+are refused rather than ignored. tvOS is not reached yet.
+
+### The frames scenario
+
+i1's device exit: *the pass-through frame output drops no frame `AVPlayerLayer` would have shown,
+counted.* An `AVPlayerLayer` shows the content's frames at their presentation times, so the frames it
+would have shown over a stretch of playback are the content's frames between two presentation times,
+and those can be counted from the times the output was handed without a layer at all. The demo's
+`FrameTally` (FrameOutputScreen.swift) does it: within a stretch of one picture size, an HLS variant's
+frame interval is constant (`FRAME-RATE`, one per variant), the shortest gap between two handed frames
+is that interval, and the stretch held `round((last − first) / shortest) + 1` frames; each one not handed
+is one the output never saw. The demo logs the tally beside its position every two seconds, and the
+scenario reads it after `FRAMES_SECONDS` (default 120).
+
+Two refinements are what make the number mean what the criterion says. **The verdict is taken over
+steady playback** (`ios_frame_steady`): two consecutive lines whose position advanced by exactly two
+seconds with no rebuffer or seek of the collector's between them. A starved item hands over late frames
+by skipping them, and an `AVPlayerLayer` on the same starved item would have shown no more, so frames
+missing around a stall are the network's to explain; they are reported beside the verdict, not judged.
+A session with less than half its time steady is `unknown`. **And the control is measured, not assumed**:
+the same stream on the playback screen, whose `VideoPlayer` is an `AVPlayerLayer`, for the same time,
+with AVFoundation's own count of the frames that layer dropped (`dropped=`, the access log's
+`numberOfDroppedVideoFrames`).
+
+What it cannot see: a frame lost exactly at a variant switch, since the gap across a switch is judged by
+nothing (the report counts the switches); whether the display layer then presented each frame **on
+time** against the item's timebase; and Picture in Picture. A frame the output was handed and the layer
+then failed to show is not a frame this count can miss — and not one it can find.
+
+### The feed scenario
+
+i4's device exit: *TTFF in the feed measured; memory flat over 200 rows in xctrace.* The feed scrolls
+itself — `-SPFeedScroll`, as `ios/hunt-leaks` drives it, because nothing outside an iOS app can scroll a
+phone's screen — down `FEED_ROWS` (200) rows and back `FEED_PASSES` (2) times at `FEED_DWELL_MS` (1000) a
+row, after a `-SPFeedLeadInMs` of five seconds on the first row so that its position is logged twice
+and the run's readiness holds. Time to first frame is each row's `first_frame` event from declared
+intent, as median, p90 and max. Memory is the demo's physical footprint in the recording, judged per
+pass as the leak hunts judge it (`ios_feed_report`): the first pass is the baseline, and a later pass is
+**flat** when its median is at or under the first's p90, **growing** above it, and **unknown** with fewer
+than two passes of ten samples — which is not a pass.
 
 ## Plants
 
@@ -356,6 +448,10 @@ step is still running in the next, and that boot fits in the job's timeout on a 
   selection is in the self-test, but no run has booted it yet. A physical device takes the
   adoption path: it is never booted or restarted. The emulator-specific parts, such as the AVD name
   and `ro.boot.qemu`, then simply read empty.
+- On iOS it has been run on one iPhone 17 Pro Max on iOS 27.0, built by Xcode 27.1 (#435); the
+  simulator path is written and in the self-test's listing, and has not had a run of its own. An iOS
+  run needs Xcode, `python3` (which Xcode's command-line tools ship) for the JSON and XML it reads, and
+  a phone on a cable for its recording.
 - One device per run. Devices of the other kind are passed over, as is one that answers but never
   reports its features, or one that stopped answering and is not the harness's AVD. When several of
   the kind asked for are attached, the run fails and asks for `--serial` rather than

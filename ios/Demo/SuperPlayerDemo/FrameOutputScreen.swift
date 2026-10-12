@@ -74,17 +74,112 @@ struct FrameOutputScreen: View {
 /// pass-through included — out of what an app plays with; testkit's `PassThroughFrameOutput` is a
 /// test's for the same reason. Returning `frame` itself is the whole of passing through.
 ///
-/// Called on a serial queue of the player's own (`FrameOutput`'s contract), so the count sits
+/// Called on a serial queue of the player's own (`FrameOutput`'s contract), so the tally sits
 /// behind a lock that the screen and the position log read from the main actor.
+///
+/// It also counts the frames it was **not** handed, which is what devicelab's `frames` scenario
+/// reads off the position line (#435) — ``FrameTally`` says how, and what the count cannot see.
 final class CountingPassThrough: FrameOutput {
 
-    private let count = OSAllocatedUnfairLock(initialState: 0)
+    private let tally = OSAllocatedUnfairLock(initialState: FrameTally())
 
     func process(_ frame: CVPixelBuffer, presentationTime: CMTime) -> CVPixelBuffer {
-        count.withLock { $0 += 1 }
+        let width = CVPixelBufferGetWidth(frame)
+        let height = CVPixelBufferGetHeight(frame)
+        tally.withLock { $0.add(seconds: presentationTime.seconds, width: width, height: height) }
         return frame
     }
 
     /// How many frames have been handed over so far.
-    var framesProcessed: Int { count.withLock { $0 } }
+    var framesProcessed: Int { tally.withLock { $0.frames } }
+
+    /// The whole tally, read once, so its fields describe one moment.
+    var reading: FrameTally { tally.withLock { $0 } }
+}
+
+/// What ``CountingPassThrough`` has been handed, and the frames the content held between them that
+/// it was not.
+///
+/// An `AVPlayerLayer` shows the content's frames at their presentation times, so the frames it
+/// would have shown over a stretch of playback are the content's frames between two presentation
+/// times — and the times the output *was* handed are enough to count those without a layer. Within
+/// a stretch of one picture size the content's frame interval is constant, since an HLS variant
+/// declares one `FRAME-RATE`, and the shortest gap between two handed frames is that interval. A
+/// stretch from `first` to `last` therefore held `round((last − first) / shortest) + 1` frames, and
+/// each one not handed is one the output dropped. The count is taken over the whole stretch rather
+/// than gap by gap, so a gap that arrives before the interval is known is still counted once it is.
+///
+/// A new stretch starts where the picture size changes — a variant switch, where the frame rate may
+/// change with it: Apple's BipBop example declares 30 frames a second on its lower variants and 60
+/// on the rest — and where time goes backwards, which no ordinary playback does. **The gap across a
+/// stretch boundary is judged by nothing**, so a frame lost exactly at a switch is not counted; and
+/// this counts what reached the output, not whether the display layer then presented each frame on
+/// time. `devicelab/README.md`'s *The frames scenario* carries both limits.
+///
+/// ref: https://www.rfc-editor.org/rfc/rfc8216#section-4.3.4.2 (`FRAME-RATE`, one per variant)
+struct FrameTally: Sendable {
+
+    /// Frames handed to the output.
+    private(set) var frames = 0
+    /// Frames handed again at the time the last one carried; not frames, and not counted as such.
+    private(set) var repeated = 0
+    /// Stretches of one picture size over which ``missing`` was counted: one more than the switches.
+    private(set) var runs = 0
+
+    private var closedMissing = 0
+    private var run: Run?
+
+    /// Frames the content held between the first and last handed frame of each stretch that the
+    /// output was never handed.
+    var missing: Int { closedMissing + (run?.missing ?? 0) }
+
+    mutating func add(seconds: Double, width: Int, height: Int) {
+        guard seconds.isFinite else { return }
+        if var current = run, current.width == width, current.height == height,
+            seconds >= current.last
+        {
+            if seconds == current.last {
+                repeated += 1
+            } else {
+                current.add(seconds)
+                run = current
+                frames += 1
+            }
+            return
+        }
+        closedMissing += run?.missing ?? 0
+        run = Run(width: width, height: height, first: seconds)
+        runs += 1
+        frames += 1
+    }
+
+    /// One stretch of a single picture size.
+    private struct Run: Sendable {
+        let width: Int
+        let height: Int
+        let first: Double
+        var last: Double
+        var count = 1
+        var shortest = Double.infinity
+
+        init(width: Int, height: Int, first: Double) {
+            self.width = width
+            self.height = height
+            self.first = first
+            self.last = first
+        }
+
+        mutating func add(_ seconds: Double) {
+            shortest = min(shortest, seconds - last)
+            last = seconds
+            count += 1
+        }
+
+        /// Never negative, and nothing until two frames have shown the interval.
+        var missing: Int {
+            guard count > 1, shortest.isFinite, shortest > 0 else { return 0 }
+            let held = Int(((last - first) / shortest).rounded()) + 1
+            return max(0, held - count)
+        }
+    }
 }

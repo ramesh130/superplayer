@@ -4,8 +4,8 @@
 #
 # devicelab: drives the demo on a device and comes back with a trace, a report and the run metadata.
 #
-#   devicelab/lab run <scenario> [--device phone|tv] [--data-sources a,b] [--build-type benchmark|debug] [--serial S] [--plant P]
-#   devicelab/lab device        ensure a booted, answering device and print its serial
+#   devicelab/lab run <scenario> [--platform android|ios] [--device phone|tv] [--data-sources a,b] [--build-type benchmark|debug] [--serial S] [--plant P]
+#   devicelab/lab device        ensure a booted, answering device and print its serial (or, with --platform ios, its UDID)
 #   devicelab/lab create-avd    install the system image and create the AVD in device.properties (--device: which)
 #   devicelab/lab config        print the Perfetto config a run would use
 #   devicelab/lab list          list the scenarios, Perfetto data sources and plants
@@ -22,6 +22,7 @@ set -euo pipefail
 . "$DEVICELAB_HOME/lib/ui.sh"
 . "$DEVICELAB_HOME/lib/trace_processor.sh"
 . "$DEVICELAB_HOME/lib/plants.sh"
+. "$DEVICELAB_HOME/lib/ios.sh"
 
 DEMO_PACKAGE=com.superplayer.demo
 DEMO_ACTIVITY=.MainActivity
@@ -31,12 +32,16 @@ usage() {
     cat >&2 <<'USAGE'
 
 Options:
+  --platform P         android (default) or ios (also: DEVICELAB_PLATFORM). ios builds ios/Demo with
+                       xcodebuild, runs it on a phone devicectl lists (or a simulator) and records
+                       xctrace; lib/ios.sh, and README.md's *iOS*
   --device K           phone (default) or tv: which AVD in device.properties is booted, and
                        which kind of attached device is adopted (also: DEVICELAB_DEVICE)
   --data-sources a,b   Perfetto data sources beyond the base config (`lab list` names them);
                        empty or absent means the scenario's own SCENARIO_DATA_SOURCES
   --build-type T       benchmark (default) or debug
-  --serial S           use this device; it is never booted or restarted (also: ANDROID_SERIAL)
+  --serial S           use this device; it is never booted or restarted (also: ANDROID_SERIAL, or
+                       SP_DEVICE, a UDID, on iOS)
   --headless           boot the emulator without a window (the default when CI is set)
   --out DIR            where runs are written (default: devicelab/out)
   --trace-ms N         upper bound on the trace, overriding the scenario's
@@ -55,7 +60,8 @@ shift
 SCENARIO=""
 DATA_SOURCES=""
 BUILD_TYPE=benchmark
-SERIAL="${ANDROID_SERIAL:-}"
+SERIAL=""
+DEVICELAB_PLATFORM="${DEVICELAB_PLATFORM:-android}"
 DEVICELAB_DEVICE="${DEVICELAB_DEVICE:-phone}"
 HEADLESS=0
 [ -z "${CI:-}" ] || HEADLESS=1
@@ -68,6 +74,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --data-sources) DATA_SOURCES="${2:?--data-sources needs a value}"; shift 2 ;;
         --build-type) BUILD_TYPE="${2:?--build-type needs a value}"; shift 2 ;;
+        --platform) DEVICELAB_PLATFORM="${2:?--platform needs a value}"; shift 2 ;;
         --device) DEVICELAB_DEVICE="${2:?--device needs a value}"; shift 2 ;;
         --serial) SERIAL="${2:?--serial needs a value}"; shift 2 ;;
         --headless) HEADLESS=1; shift ;;
@@ -96,8 +103,24 @@ case "$DEVICELAB_DEVICE" in
     *) die "--device is phone or tv, not '$DEVICELAB_DEVICE'" ;;
 esac
 
-ADB="$(adb_bin)"
-export HEADLESS DEVICELAB_DEVICE
+case "$DEVICELAB_PLATFORM" in
+    android)
+        SERIAL="${SERIAL:-${ANDROID_SERIAL:-}}"
+        ADB="$(adb_bin)"
+        ;;
+    ios)
+        SERIAL="${SERIAL:-${SP_DEVICE:-}}"
+        # The Android-only options, refused rather than ignored: each would change a run that cannot
+        # honour it. A television is tvOS, which this platform does not reach yet.
+        [ "$DEVICELAB_DEVICE" = phone ] || die "--device tv is Android's; an iOS run is a phone"
+        [ -z "$PLANT_REQUESTED" ] || die "--plant patches the Android demo; an iOS run takes none"
+        [ -z "$DATA_SOURCES" ] || die "--data-sources are Perfetto's; an iOS run records xctrace's Activity Monitor"
+        # The Android scenarios' readiness probe, answered from the demo's own log instead (lib/ios.sh).
+        wait_for_playback() { ios_wait_for_playback "$@"; }
+        ;;
+    *) die "--platform is android or ios, not '$DEVICELAB_PLATFORM'" ;;
+esac
+export HEADLESS DEVICELAB_DEVICE DEVICELAB_PLATFORM
 
 load_scenario() {
     local file="$DEVICELAB_HOME/scenarios/$1.sh"
@@ -105,9 +128,15 @@ load_scenario() {
     SCENARIO_TRACE_FROM=launch
     SCENARIO_TRACE_MS=300000
     SCENARIO_DATA_SOURCES=""
+    SCENARIO_PLATFORMS=android
+    SCENARIO_IOS_LAUNCH=(-SPDemoScreen playback)
     # shellcheck source=/dev/null
     . "$file"
     declare -F scenario_drive >/dev/null || die "scenario '$1' defines no scenario_drive"
+    case " $SCENARIO_PLATFORMS " in
+        *" $DEVICELAB_PLATFORM "*) ;;
+        *) die "scenario '$1' runs on $SCENARIO_PLATFORMS, not $DEVICELAB_PLATFORM (--platform)" ;;
+    esac
     TRACE_FROM="${TRACE_FROM:-$SCENARIO_TRACE_FROM}"
     TRACE_MS="${TRACE_MS:-$SCENARIO_TRACE_MS}"
     # Empty as well as absent, so that a caller passing the option through unset — the device
@@ -284,7 +313,9 @@ cmd_list() {
     printf 'Scenarios:\n'
     for name in $(list_scenarios); do
         file="$DEVICELAB_HOME/scenarios/$name.sh"
-        printf '  %-16s %s\n' "$name" "$(sed -n 's/^SCENARIO_DESCRIPTION="\(.*\)"$/\1/p' "$file")"
+        printf '  %-16s %-12s %s\n' "$name" \
+            "$( (sed -n 's/^SCENARIO_PLATFORMS="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' "$file"; echo android) | head -1)" \
+            "$(sed -n 's/^SCENARIO_DESCRIPTION="\(.*\)"$/\1/p' "$file")"
     done
     printf '\nPerfetto data sources (the base config is always included):\n'
     for name in $(perfetto_sources); do
@@ -316,13 +347,24 @@ cmd_create_avd() {
 }
 
 cmd_device() {
-    ensure_device
+    if [ "$DEVICELAB_PLATFORM" = ios ]; then
+        mkdir -p "$OUT"
+        DEVICELAB_WORK="$(mktemp -d "$OUT/.device-XXXXXX")"
+        ios_ensure_device
+        rm -rf "$DEVICELAB_WORK"
+    else
+        ensure_device
+    fi
     printf '%s\n' "$SERIAL"
 }
 
 cmd_run() {
     [ -n "$SCENARIO" ] || die "run needs a scenario; available: $(list_scenarios | tr '\n' ' ')"
     load_scenario "$SCENARIO"
+    [ "$DEVICELAB_PLATFORM" = android ] || {
+        cmd_run_ios
+        return
+    }
 
     RUN_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-$SCENARIO"
@@ -407,6 +449,87 @@ cmd_run() {
     printf '%s\n' "$RUN_DIR"
 }
 
+# The same run as `cmd_run`, step for step, through lib/ios.sh: a device, a fresh build, playback
+# confirmed advancing, a trace, the scenario, and the same three outputs. README.md's *iOS* says where
+# a step differs and why.
+cmd_run_ios() {
+    RUN_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-$SCENARIO-ios"
+    RUN_DIR="$OUT/$RUN_ID"
+    RUN_WORK="$RUN_DIR/.work"
+    RUN_SCENARIO="$SCENARIO"
+    RUN_TRACE_FROM="$TRACE_FROM"
+    RUN_TRACE_MS="$TRACE_MS"
+    SP_VERSION="$(catalog_version superplayer)"
+    HOST_OS="$(uname -sr) $(uname -m)"
+    HOST_XCODE="$(xcodebuild -version 2>/dev/null | tr '\n' ' ' | sed 's/ *$//')"
+    HOST_CI=0
+    [ -z "${CI:-}" ] || HOST_CI=1
+    mkdir -p "$RUN_WORK"
+    export DEVICELAB_WORK="$RUN_WORK"
+    trap ios_on_exit EXIT
+    log "run $RUN_ID → $RUN_DIR"
+
+    if declare -F scenario_prepare >/dev/null; then scenario_prepare; fi
+    ios_ensure_device
+    log "device: $IOS_UDID ($DEVICE_MODEL, iOS $DEVICE_OS_VERSION ($DEVICE_OS_BUILD), $IOS_REALITY)"
+    ios_build_demo
+    ios_install_demo
+
+    [ "$TRACE_FROM" != launch ] || ios_trace_start
+    ios_launch_demo main "${SCENARIO_IOS_LAUNCH[@]}"
+    RUN_PLAYBACK_POSITION_MS="$(ios_wait_for_playback "${PLAYBACK_TIMEOUT:-90}")"
+    log "playing (position ${RUN_PLAYBACK_POSITION_MS} ms)"
+    if declare -F scenario_setup >/dev/null; then scenario_setup; fi
+    [ "$TRACE_FROM" != playing ] || ios_trace_start
+
+    log "driving scenario $SCENARIO"
+    scenario_drive
+
+    ios_trace_stop
+    ios_stop_demo
+
+    RUN_FINISHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    ios_run_json >"$RUN_DIR/run.json"
+    write_report_ios >"$RUN_DIR/report.md"
+    rm -rf "$RUN_WORK"
+
+    if declare -F scenario_verdict >/dev/null && ! scenario_verdict; then
+        log "done, and the scenario's verdict is a failure: $RUN_DIR/report.md"
+        printf '%s\n' "$RUN_DIR"
+        exit 3
+    fi
+    log "done: $RUN_DIR"
+    printf '%s\n' "$RUN_DIR"
+}
+
+write_report_ios() {
+    cat <<REPORT
+# devicelab run \`$RUN_ID\`
+
+Scenario **$RUN_SCENARIO** on $DEVICE_MODEL \`$DEVICE_PRODUCT_TYPE\` (iOS $DEVICE_OS_VERSION, build $DEVICE_OS_BUILD$([ "$DEVICE_IS_EMULATOR" = 1 ] && printf ', simulator')),
+against SuperPlayer \`$SP_COMMIT\`$([ -z "$SP_TREE_NOTE" ] || printf ' **%s**' "$SP_TREE_NOTE"),
+in the demo's $DEMO_CONFIGURATION build, built by $HOST_XCODE.
+
+- Playback confirmed advancing at ${RUN_PLAYBACK_POSITION_MS} ms, read off the demo's own log.
+- xctrace's Activity Monitor from **$RUN_TRACE_FROM**, every process; it ended: ${IOS_TRACE_END_REASON:-stopped by the run}.$([ "$RUN_TRACE_ENDED_BY_BOUND" = 1 ] && printf ' **The trace hit its %s ms bound before the scenario ended.**' "$RUN_TRACE_MS")$([ "$IOS_TRACE_ENDED_EARLY" = 0 ] || printf ' **The recording ended early, so it covers less of the run than the run did.**')
+- The package is resolved by path and built in the same \`xcodebuild\`, so the app is the tree; its executable's sha256 is in \`run.json\`.
+
+| File | What it is |
+| --- | --- |
+| \`trace.trace\` | the recording; open in Instruments, or \`xcrun xctrace export\` |
+| \`footprint.tsv\` | the demo's physical footprint from it: ms since the recording started, pid, bytes |
+| \`run.json\` | what was measured on what — \`lib/metadata.sh\`'s shape, with \`platform\` saying which |
+| \`console-*.log\` | each launch's console: the demo's os_log lines, telemetry included |
+| \`build.log\` | the build and the install |
+| \`xctrace.log\` | what xctrace said while it recorded |
+REPORT
+    if declare -F scenario_report >/dev/null; then
+        printf '\n## %s\n\n' "$RUN_SCENARIO"
+        scenario_report
+    fi
+}
+
 write_report() {
     cat <<REPORT
 # devicelab run \`$RUN_ID\`
@@ -435,6 +558,10 @@ REPORT
         scenario_report
     fi
 }
+
+case "$DEVICELAB_PLATFORM:$COMMAND" in
+    ios:create-avd | ios:config) die "$COMMAND is Android's: an AVD, and a Perfetto config" ;;
+esac
 
 case "$COMMAND" in
     run) cmd_run ;;

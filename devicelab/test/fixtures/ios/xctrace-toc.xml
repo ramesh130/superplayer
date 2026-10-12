@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+
+<trace-toc>
+    <run number="1">
+        <info>
+            <target>
+                <device platform="iOS" model="iPhone 17 Pro Max" memory-size="12263424000" name="A phone" os-version="27.0 (24A437)" uuid="00008150-000000000000AB01"/>
+                <all-processes/>
+            </target>
+            <summary>
+                <start-date>2026-10-12T19:32:58.785+11:00</start-date>
+                <end-date>2026-10-12T19:33:00.254+11:00</end-date>
+                <duration>1.468953</duration>
+                <end-reason>Device disconnected</end-reason>
+                <instruments-version>27.1 (27A9275)</instruments-version>
+                <template-name>Activity Monitor</template-name>
+                <recording-mode>Deferred</recording-mode>
+                <time-limit>10 seconds</time-limit>
+            </summary>
+        </info>
+        <processes>
+            <process name="kernel" pid="0" path="Unknown"/>
+        </processes>
+        <data>
+            <table schema="activity-monitor-process-live" target-pid="ALL" documentation="Tracks the most accurate totals of process activity at a given interval in time."/>
+        </data>
+    </run>
+</trace-toc>

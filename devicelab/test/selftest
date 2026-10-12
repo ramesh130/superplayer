@@ -333,8 +333,13 @@ for scenario in "$lab"/scenarios/*.sh; do
     name="$(basename "$scenario" .sh)"
     if loaded="$(DEVICELAB_HOME="$lab" bash -euo pipefail -c '
         SCENARIO_TRACE_FROM=launch SCENARIO_TRACE_MS=300000 SCENARIO_DATA_SOURCES=""
+        SCENARIO_PLATFORMS=android SCENARIO_IOS_LAUNCH=(-SPDemoScreen playback)
         . "$1"
         declare -F scenario_drive >/dev/null
+        # Every platform a scenario names is one `lab --platform` takes, so a misspelling is found here.
+        for platform in $SCENARIO_PLATFORMS; do
+            case "$platform" in android | ios) ;; *) echo "unknown platform $platform"; exit 1 ;; esac
+        done
         echo loaded
     ' load "$scenario" 2>&1)" && [ "$loaded" = loaded ]; then
         pass
@@ -505,6 +510,122 @@ for plant in $(plants_available); do
         fail "plant '$plant' applies to this repository's HEAD" "$checked"
     fi
 done
+
+# --- iOS: lib/ios.sh's pure half -------------------------------------------------------------------
+#
+# The fixtures under fixtures/ios are the tools' own output, with the identifiers of the phone they were
+# taken on replaced: devicectl's and simctl's listings, the demo's console from the iPhone 17 Pro Max
+# #435 ran on (iOS 27.0), and xctrace's export cut to the rows a parse needs. The feed's console is
+# written in the demo's own line shapes, shortened to three rows.
+
+# shellcheck source=../lib/ios.sh
+. "$lab/lib/ios.sh"
+ios_fixtures="$fixtures/ios"
+
+assert_eq "a paired, booted phone in Developer Mode and a booted simulator are usable; a phone not in Developer Mode, one nobody paired, a television and a shut-down simulator are not" \
+    "00008150-000000000000AB01	physical	A phone	iPhone 17 Pro Max	iPhone18,2	27.0	24A437
+E97F7811-0000-0000-0000-000000000006	simulated	sp-435	iPhone Duo	iPhone19,4	27.1	24A94232" \
+    "$(ios_usable_devices < "$ios_fixtures/devicectl-devices.json")"
+assert_eq "a simulator is found by name on an iOS runtime — not the tvOS one of the same name, nor an unavailable one" \
+    "E97F7811-0000-0000-0000-000000000012" "$(ios_simulator_named sp-435 < "$ios_fixtures/simctl-devices.json")"
+assert_eq "a name no simulator has is nothing" "" "$(ios_simulator_named sp-absent < "$ios_fixtures/simctl-devices.json")"
+
+assert_eq "the frame-output screen's position lines are read, the telemetry around them is not" \
+    "demo:bipbop-advanced 0
+demo:bipbop-advanced 0
+demo:bipbop-advanced 2000" "$(ios_positions < "$ios_fixtures/console-frame-output.log" | head -3)"
+assert_eq "playback is confirmed at the first position ahead of the line before it" \
+    2000 "$(ios_advancing_position < "$ios_fixtures/console-frame-output.log")"
+assert_eq "the feed's row lines are positions too, and a row that has advanced confirms it" \
+    1000 "$(ios_advancing_position < "$ios_fixtures/console-feed.log")"
+assert_eq "a position that stands still confirms nothing" "" \
+    "$(printf '[Playback] content=a position=4000\n[Playback] content=a position=4000\n' | ios_advancing_position)"
+assert_eq "nor does one that goes back" "" \
+    "$(printf '[Playback] content=a position=4000\n[Playback] content=a position=2000\n' | ios_advancing_position)"
+assert_eq "nor a later position of different content: a row that moved on is not the same playback" "" \
+    "$(printf '[Feed] row=0 contentId=a positionMs=0\n[Feed] row=1 contentId=b positionMs=900\n' | ios_advancing_position)"
+
+assert_eq "the frame reading is the span logged and the last line's counts" \
+    "0 30000 1791 12 2 0 0" "$(ios_frame_reading < "$ios_fixtures/console-frame-output.log")"
+assert_eq "a screen with no frame output has no frame reading" "" \
+    "$(ios_frame_reading < "$ios_fixtures/console-playback.log")"
+assert_eq "the control's reading is the span and AVFoundation's dropped count" \
+    "0 10000 0" "$(ios_dropped_reading < "$ios_fixtures/console-playback.log")"
+assert_eq "and a frame-output line is never read as the control's" "" \
+    "$(ios_dropped_reading < "$ios_fixtures/console-frame-output.log")"
+
+# The fixture's session stalled at 27.7 s: the item went short, AVFoundation reported a rebuffer and
+# jumped its own clock back, and twelve frames went missing in that stretch and none anywhere else.
+assert_eq "the frames missing around a stall are told apart from steady playback's" \
+    "26000 1560 0 4000 12" "$(ios_frame_steady 2000 < "$ios_fixtures/console-frame-output.log")"
+planted="$(printf '%s\n' \
+    '[Playback] content=a position=0 frames=1 missing=0 runs=1 repeated=0 dropped=0' \
+    '[Playback] content=a position=2000 frames=121 missing=0 runs=1 repeated=0 dropped=0' \
+    '[Playback] content=a position=4000 frames=239 missing=2 runs=1 repeated=0 dropped=0' \
+    '[Playback] content=a position=6000 frames=359 missing=2 runs=1 repeated=0 dropped=0')"
+assert_eq "a frame the output never saw in steady playback is counted there — the control that the split hides nothing" \
+    "6000 358 2 0 0" "$(printf '%s\n' "$planted" | ios_frame_steady 2000)"
+assert_eq "a stretch the collector saw a seek in is not steady, whatever its length" \
+    "4000 240 0 2000 2" \
+    "$(printf '%s\n' "$planted" | sed '2a\
+[SuperPlayerQoE] evt=seek_requested v=2 cid="a" fromMs=2000 toMs=2000' | ios_frame_steady 2000)"
+
+assert_eq "every first frame telemetry reported is read, with its boundary" \
+    "demo:feed-0	374	USER_INTENT
+demo:feed-1	693	USER_INTENT
+demo:feed-1	300	USER_INTENT
+demo:feed-0	910	CONTENT_ADOPTED
+demo:feed-1	250	USER_INTENT" "$(ios_first_frames < "$ios_fixtures/console-feed.log")"
+
+assert_eq "the demo's footprint is read off the export by name and pid, a value written once and referred back to included; a sample with no value, and a process whose name only begins the same, are not" \
+    "0	766	20744032
+1000	766	20744032
+2000	812	31457280" "$(ios_footprint_series SuperPlayerDemo < "$ios_fixtures/xctrace-process-live.xml")"
+assert_eq "the recording's start is read off the table of contents, in ms since the epoch" \
+    1791793978785 "$(ios_trace_start_ms < "$ios_fixtures/xctrace-toc.xml")"
+
+# The feed's verdict, over the fixture's two passes (19:40:05–15 and 15–25) and a recording that started
+# at 19:39:59.000+11:00: a sample every half second, from the demo's pid and, once, from another.
+feed_series() { # pass-two offset in MiB
+    awk -v extra="$1" 'BEGIN {
+        for (t = 0; t <= 30000; t += 500) {
+            mib = 100 + (t / 500) % 5
+            if (t > 16000) mib += extra
+            printf "%d\t753\t%d\n", t, mib * 1048576
+        }
+        printf "8000\t812\t%d\n", 900 * 1048576
+    }'
+}
+feed_series 0 > "$scratch/flat.tsv"
+feed_series 40 > "$scratch/growing.tsv"
+feed_report="$(ios_feed_report "$ios_fixtures/console-feed.log" "$scratch/flat.tsv" 1791794399000 "$scratch/verdict")"
+assert_eq "memory whose second pass sits inside the first's spread is flat" flat "$(cat "$scratch/verdict")"
+assert_contains "and the report says so with the numbers" "$feed_report" "Verdict: **flat**"
+assert_contains "it reads time to first frame from declared intent only, and says which rows reached one" "$feed_report" \
+    "Rows that reached a first frame: 2; first frames reported: 5"
+assert_contains "with the median and p90 of the four from intent" "$feed_report" "median **337 ms**, p90 693 ms"
+assert_contains "and counts the watched rows that found the pool at its bound" "$feed_report" "found the pool at its bound: 1"
+assert_not_contains "a sample of another process is not the demo's" "$feed_report" "900.0 MiB"
+ios_feed_report "$ios_fixtures/console-feed.log" "$scratch/growing.tsv" 1791794399000 "$scratch/verdict" >/dev/null
+assert_eq "a second pass above the first's p90 is growing" growing "$(cat "$scratch/verdict")"
+ios_feed_report "$ios_fixtures/console-feed.log" /dev/null 1791794399000 "$scratch/verdict" >/dev/null
+assert_eq "no samples at all is unknown, never flat" unknown "$(cat "$scratch/verdict")"
+grep -v "pass=1 ended" "$ios_fixtures/console-feed.log" > "$scratch/one-pass.log"
+ios_feed_report "$scratch/one-pass.log" "$scratch/flat.tsv" 1791794399000 "$scratch/verdict" >/dev/null
+assert_eq "one pass has no baseline to be flat against, so it is unknown" unknown "$(cat "$scratch/verdict")"
+
+ios_metadata="$(
+    RUN_METADATA_SCHEMA=1 RUN_ID=r RUN_STARTED_AT=a RUN_FINISHED_AT=b RUN_SCENARIO=frames SP_COMMIT=c SP_TREE_DIRTY=0 \
+        SP_VERSION=0.1.0-SNAPSHOT DEMO_CONFIGURATION=Release DEMO_APP_SHA256=h IOS_UDID=u DEVICE_IS_EMULATOR=0 \
+        DEVICE_NAME='A "phone"' DEVICE_MODEL=m DEVICE_PRODUCT_TYPE=p DEVICE_OS_VERSION=27.0 DEVICE_OS_BUILD=24A437 \
+        HOST_OS=o HOST_XCODE=x HOST_CI=0 RUN_TRACE_FROM=playing RUN_TRACE_MS=1000 RUN_TRACE_ENDED_BY_BOUND=0 \
+        IOS_TRACE_ENDED_EARLY=1 IOS_TRACE_END_REASON="Device disconnected" RUN_PLAYBACK_POSITION_MS=2000 ios_run_json
+)"
+assert_contains "an iOS run's metadata says which platform's shape it is" "$ios_metadata" '"platform": "ios"'
+assert_contains "and records a recording that ended before the run did" "$ios_metadata" '"trace_ended_early": true'
+if printf '%s' "$ios_metadata" | python3 -m json.tool >/dev/null 2>&1; then pass; else
+    fail "an iOS run's metadata is valid JSON" "$ios_metadata"
+fi
 
 # ---------------------------------------------------------------------------------------------------
 

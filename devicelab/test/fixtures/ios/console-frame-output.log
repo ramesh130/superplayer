@@ -1,0 +1,36 @@
+Launched application with com.superplayer.demo bundle identifier.
+Waiting for the application to terminate…
+2026-10-12 19:45:21.934402+1100 SuperPlayerDemo[796:34756] [] <<<< FigApplicationStateMonitor >>>> signalled err=-19431 at <>:489
+2026-10-12 19:45:21.934995+1100 SuperPlayerDemo[796:34784] [] <<<< FigApplicationStateMonitor >>>> signalled err=-19431 at <>:489
+2026-10-12 19:45:21.949075+1100 SuperPlayerDemo[796:34768] [SuperPlayerQoE] evt=session_started v=2 sid=F1E1A46E-53E9-4E55-A581-3351112E8D5B cid="demo:bipbop-advanced" t=1791794721949 mono=2078570 profile=VIDEO_ON_DEMAND maxBufferMs=null maxBitrateBps=null
+2026-10-12 19:45:23.759350+1100 SuperPlayerDemo[796:34766] [SuperPlayerQoE] evt=track_switched v=2 sid=F1E1A46E-53E9-4E55-A581-3351112E8D5B cid="demo:bipbop-advanced" t=1791794723759 mono=2080380 direction=INITIAL fromBps=null toBps=8223601
+2026-10-12 19:45:23.800388+1100 SuperPlayerDemo[796:34766] [SuperPlayerQoE] evt=first_frame v=2 sid=F1E1A46E-53E9-4E55-A581-3351112E8D5B cid="demo:bipbop-advanced" t=1791794723800 mono=2080421 ttffMs=1862 from=USER_INTENT
+2026-10-12 19:45:23.822662+1100 SuperPlayerDemo[796:34726] [Playback] content=demo:bipbop-advanced position=0 frames=1 missing=0 runs=1 repeated=0 dropped=0
+2026-10-12 19:45:23.822909+1100 SuperPlayerDemo[796:34726] [Playback] content=demo:bipbop-advanced position=0 frames=1 missing=0 runs=1 repeated=0 dropped=0
+2026-10-12 19:45:23.823070+1100 SuperPlayerDemo[796:34766] [SuperPlayerQoE] evt=seek_requested v=2 sid=F1E1A46E-53E9-4E55-A581-3351112E8D5B cid="demo:bipbop-advanced" t=1791794723823 mono=2080444 fromMs=0 toMs=0
+2026-10-12 19:45:24.419212+1100 SuperPlayerDemo[796:34766] [SuperPlayerQoE] evt=seek_completed v=2 sid=F1E1A46E-53E9-4E55-A581-3351112E8D5B cid="demo:bipbop-advanced" t=1791794724419 mono=2081040 toMs=500 latencyMs=596
+2026-10-12 19:45:25.919404+1100 SuperPlayerDemo[796:34726] [Playback] content=demo:bipbop-advanced position=2000 frames=121 missing=0 runs=1 repeated=0 dropped=0
+2026-10-12 19:45:27.920079+1100 SuperPlayerDemo[796:34726] [Playback] content=demo:bipbop-advanced position=4000 frames=241 missing=0 runs=1 repeated=0 dropped=0
+2026-10-12 19:45:29.919398+1100 SuperPlayerDemo[796:34726] [Playback] content=demo:bipbop-advanced position=6000 frames=361 missing=0 runs=1 repeated=0 dropped=0
+2026-10-12 19:45:31.919746+1100 SuperPlayerDemo[796:34726] [Playback] content=demo:bipbop-advanced position=8000 frames=481 missing=0 runs=1 repeated=0 dropped=0
+2026-10-12 19:45:33.920827+1100 SuperPlayerDemo[796:34726] [Playback] content=demo:bipbop-advanced position=10000 frames=601 missing=0 runs=1 repeated=0 dropped=0
+2026-10-12 19:45:35.920454+1100 SuperPlayerDemo[796:34726] [Playback] content=demo:bipbop-advanced position=12000 frames=721 missing=0 runs=1 repeated=0 dropped=0
+2026-10-12 19:45:37.919418+1100 SuperPlayerDemo[796:34726] [Playback] content=demo:bipbop-advanced position=14000 frames=841 missing=0 runs=1 repeated=0 dropped=0
+2026-10-12 19:45:39.920532+1100 SuperPlayerDemo[796:34726] [Playback] content=demo:bipbop-advanced position=16000 frames=961 missing=0 runs=1 repeated=0 dropped=0
+2026-10-12 19:45:41.919794+1100 SuperPlayerDemo[796:34726] [Playback] content=demo:bipbop-advanced position=18000 frames=1081 missing=0 runs=1 repeated=0 dropped=0
+2026-10-12 19:45:43.919237+1100 SuperPlayerDemo[796:34726] [Playback] content=demo:bipbop-advanced position=20000 frames=1201 missing=0 runs=1 repeated=0 dropped=0
+2026-10-12 19:45:45.920753+1100 SuperPlayerDemo[796:34726] [Playback] content=demo:bipbop-advanced position=22000 frames=1321 missing=0 runs=1 repeated=0 dropped=0
+2026-10-12 19:45:47.919506+1100 SuperPlayerDemo[796:34726] [Playback] content=demo:bipbop-advanced position=24000 frames=1441 missing=0 runs=1 repeated=0 dropped=0
+2026-10-12 19:45:49.919534+1100 SuperPlayerDemo[796:34726] [Playback] content=demo:bipbop-advanced position=26000 frames=1561 missing=0 runs=1 repeated=0 dropped=0
+2026-10-12 19:45:52.020910+1100 SuperPlayerDemo[796:34726] [Playback] content=demo:bipbop-advanced position=27763 frames=1655 missing=12 runs=1 repeated=0 dropped=0
+2026-10-12 19:45:54.024880+1100 SuperPlayerDemo[796:34759] [SuperPlayerQoE] evt=rebuffer_started v=2 sid=F1E1A46E-53E9-4E55-A581-3351112E8D5B cid="demo:bipbop-advanced" t=1791794754012 mono=2110633 seekInduced=false
+2026-10-12 19:45:54.469010+1100 SuperPlayerDemo[796:34758] [SuperPlayerQoE] evt=seek_requested v=2 sid=F1E1A46E-53E9-4E55-A581-3351112E8D5B cid="demo:bipbop-advanced" t=1791794754469 mono=2111090 fromMs=30545 toMs=27763
+2026-10-12 19:45:54.687734+1100 SuperPlayerDemo[796:34726] [Playback] content=demo:bipbop-advanced position=27763 frames=1656 missing=12 runs=2 repeated=0 dropped=0
+2026-10-12 19:45:54.699486+1100 SuperPlayerDemo[796:36036] [SuperPlayerQoE] evt=seek_requested v=2 sid=F1E1A46E-53E9-4E55-A581-3351112E8D5B cid="demo:bipbop-advanced" t=1791794754690 mono=2111311 fromMs=27834 toMs=27763
+2026-10-12 19:45:54.699517+1100 SuperPlayerDemo[796:36036] [SuperPlayerQoE] evt=rebuffer_ended v=2 sid=F1E1A46E-53E9-4E55-A581-3351112E8D5B cid="demo:bipbop-advanced" t=1791794754690 mono=2111311 durationMs=678 seekInduced=false
+2026-10-12 19:45:54.709093+1100 SuperPlayerDemo[796:34726] [Playback] content=demo:bipbop-advanced position=27763 frames=1656 missing=12 runs=2 repeated=0 dropped=0
+2026-10-12 19:45:54.709362+1100 SuperPlayerDemo[796:34726] [Playback] content=demo:bipbop-advanced position=27763 frames=1656 missing=12 runs=2 repeated=0 dropped=0
+2026-10-12 19:45:54.710458+1100 SuperPlayerDemo[796:36039] [SuperPlayerQoE] evt=seek_requested v=2 sid=F1E1A46E-53E9-4E55-A581-3351112E8D5B cid="demo:bipbop-advanced" t=1791794754709 mono=2111330 fromMs=27763 toMs=27763
+2026-10-12 19:45:55.050933+1100 SuperPlayerDemo[796:36036] [SuperPlayerQoE] evt=seek_completed v=2 sid=F1E1A46E-53E9-4E55-A581-3351112E8D5B cid="demo:bipbop-advanced" t=1791794755051 mono=2111672 toMs=28000 latencyMs=342
+2026-10-12 19:45:55.051602+1100 SuperPlayerDemo[796:34726] [Playback] content=demo:bipbop-advanced position=28000 frames=1671 missing=12 runs=2 repeated=0 dropped=0
+2026-10-12 19:45:57.051823+1100 SuperPlayerDemo[796:34726] [Playback] content=demo:bipbop-advanced position=30000 frames=1791 missing=12 runs=2 repeated=0 dropped=0

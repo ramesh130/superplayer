@@ -110,14 +110,24 @@ final class MediaServicesResetPlaybackTests: XCTestCase {
     /// request with no id counts as an item of its own, so a runtime that stopped sending the header
     /// fails these tests rather than passing them on a collapsed count.
     private func itemsBuilt(_ origin: LoopbackOrigin) -> Int {
-        let sessions = origin.networkRequests().filter { $0.path == "/master.m3u8" }
+        let sessions = playlistAsks(origin)
             .map { $0.headers["x-playback-session-id"] ?? UUID().uuidString }
         return Set(sessions).count
     }
 
-    /// Whether ``droppedFirstAsk`` fired: the origin dropped one ask for the playlist unanswered.
-    private func askedAgain(_ origin: LoopbackOrigin) -> Bool {
-        origin.responses().contains { $0.request.path == "/master.m3u8" && $0.status == nil }
+    /// Every ask the origin received for the multivariant playlist, retries included.
+    private func playlistAsks(_ origin: LoopbackOrigin) -> [NetworkRequest] {
+        origin.networkRequests().filter { $0.path == "/master.m3u8" }
+    }
+
+    /// That ``droppedFirstAsk`` fired and `AVPlayer` asked again for the same item, so the asks
+    /// outnumber the items and a count of asks would have failed where ``itemsBuilt(_:)`` held.
+    private func assertTheDroppedAskWasAskedAgain(_ origin: LoopbackOrigin) {
+        XCTAssertTrue(
+            origin.responses().contains { $0.faults.contains(.connectionReset) },
+            "the origin dropped no ask, so nothing was controlled")
+        XCTAssertGreaterThan(
+            playlistAsks(origin).count, itemsBuilt(origin), "\(playlistAsks(origin))")
     }
 
     private func postMediaServicesReset() {
@@ -158,8 +168,9 @@ final class MediaServicesResetPlaybackTests: XCTestCase {
         XCTAssertEqual(typed.underlyingError.code, AVError.Code.mediaServicesWereReset.rawValue)
         // What each rebuild cost: an item asking for the playlist again, once per rebuild (the
         // re-adoption's price), and nothing for the third, which rung 6 rebuilds nothing for.
-        XCTAssertEqual(itemsBuilt(origin), 1 + SuperPlayer.maxDecoderRecreations)
-        XCTAssertTrue(askedAgain(origin), "the origin dropped no ask, so nothing was controlled")
+        XCTAssertEqual(
+            itemsBuilt(origin), 1 + SuperPlayer.maxDecoderRecreations, "\(playlistAsks(origin))")
+        assertTheDroppedAskWasAskedAgain(origin)
         // One viewing, one session, however many items it took.
         XCTAssertEqual(sink.sessionsStarted.count, 1)
         XCTAssertEqual(sink.sessionsEnded, 0)
@@ -201,8 +212,8 @@ final class MediaServicesResetPlaybackTests: XCTestCase {
         }
 
         XCTAssertTrue(record.errors.isEmpty)
-        XCTAssertEqual(itemsBuilt(origin), 1)
-        XCTAssertTrue(askedAgain(origin), "the origin dropped no ask, so nothing was controlled")
+        XCTAssertEqual(itemsBuilt(origin), 1, "\(playlistAsks(origin))")
+        assertTheDroppedAskWasAskedAgain(origin)
     }
 
     private func milliseconds(_ time: CMTime) -> Int64 {

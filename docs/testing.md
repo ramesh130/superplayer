@@ -1472,8 +1472,9 @@ simulator answers no even for H.264), and how the overlay reads over moving vide
   starts the count over. A rebuild is seen as the multivariant playlist asked for under a new
   `X-Playback-Session-Id`, never as which item the facade made current, and never as a count of
   playlist requests: `AVPlayer` asks again on its own for an ask that went unanswered, which a
-  count reads as a rebuild (#505), and the origin drops the first ask in both counting tests to keep
-  that difference forced. The bound is read off `SuperPlayer.maxDecoderRecreations`.
+  count reads as a rebuild (#505), and the origin drops the first ask in the two tests that assert
+  the count, to keep that difference forced. The bound is read off
+  `SuperPlayer.maxDecoderRecreations`.
   That is a `package` constant, because it bounds no promise a consumer writes code against and a
   test in another target has to name it. It is the one `package` reading these tests make.
 

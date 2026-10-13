@@ -21,6 +21,8 @@
   the slow-link tests' stretches and positions.
   Amended again (#502) at rule 1, admitting a start position read off a ready item held paused
   beside the reading where the engine was first seen playing.
+  Amended again (#460) at rule 4, pinning the corpus record's starting rung to the one a fresh
+  process takes, since AVFoundation remembers throughput across sessions in one process.
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
 - **Refines:** [`docs/testing.md`](../testing.md)'s rule — *no device and no network, through the
@@ -269,6 +271,22 @@ rule names the ticket that brings its enforcement, and *What nothing enforces* s
    fail to start inside a stretch, which is the race #474 found and the reason the trace's clock now
    starts at the first segment (rule 3). Both read the same on consecutive runs before they were
    committed.
+
+   *Addendum (2026-10-13, #460).* One input to the corpus record is not the host's clock but state
+   that AVFoundation keeps for the life of the process. A multivariant playlist's starting variant
+   follows a throughput history that each earlier session on the loopback raises, and we found no
+   API that resets it. Under `xcodebuild -test-iterations`, the origin saw the first two or three
+   corpus runs in a process start every ladder entry on its first variant. From the third to the
+   fifth run, depending on the host, they started on the top rung instead. Weak references showed no
+   player, item or asset of an earlier run still alive, so this was not a teardown gap. Started on
+   its top rung, the severe ladder gap logged an audio-queue prime failure and stayed at zero, which
+   is the lost start #460 reported. So the record sets `startsOnFirstEligibleVariant` on every item.
+   That is the start a fresh process takes, and any climb afterwards is still AVFoundation's. It is a
+   public property of a stock item, so the table still records a stock player, and the same one on
+   every run in a process. Re-issuing `play()` was rejected because the player had refused the
+   media, not lost a request. A process per run was rejected because it buys the same start at the
+   cost of an `xcodebuild` invocation per run. A record valid for one run per process was rejected
+   because it would read differently depending on where the run fell, with nothing to say so.
 
    *Addendum (2026-10-11, #411).* What "kinds and order with every time masked" means in practice,
    decided where the first golden was written. Three readings, each forced by real time rather than

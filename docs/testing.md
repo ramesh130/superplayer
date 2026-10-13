@@ -1012,9 +1012,11 @@ see a request.
   a second loopback origin. What needs no origin — `MediaRequest` as a value, the remembered-position
   memory and the observed register (ADR-0020 rule 13) — stays in `SuperPlayerCoreTests`. Playback is
   driven through `player.avPlayer`, since that is where a consumer's transport controls are too, and
-  ADR-0021 rule 1's addendum bounds what a test may do there; a start is asserted as the position at
-  the first poll that finds the player playing, inside a window argued at
-  `SuperPlayerPlaybackTests.startTolerance` — a position, never a duration. Several core tests import
+  ADR-0021 rule 1's addendum bounds what a test may do there; a start is asserted as a position,
+  never a duration. `SuperPlayerPlaybackTests` reads it off a ready item held paused, within an AAC
+  frame, because a reading taken once the player is playing has a window a loaded host can outrun
+  (#502); the suites still reading at the first poll that finds the player playing argue their own
+  window beside their constants. Several core tests import
   core `@testable`, each arguing it in its own comment: `RememberedPositionsTests`, for the order
   rule a read-is-a-use that no playback can isolate, and `ObservedSignalRegisterTests`, for the
   register's live count, which no public reading can see until the notification it waits for

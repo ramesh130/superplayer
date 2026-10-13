@@ -293,9 +293,9 @@ class MoqCatalogTracksTest {
 
         assertEquals("one rendition per media kind", 2, tracks.size)
         assertEquals("the video rendition whose name sorts first", "a-low", tracks[0].trackName)
-        assertEquals(DeclaredCatalogs.OBSERVED_AVC3_CODEC, tracks[0].track.codec)
+        assertEquals("a-low's own codec", DeclaredCatalogs.OBSERVED_AVC3_CODEC, tracks[0].track.codec)
         assertEquals("the audio rendition whose name sorts first", "a-low", tracks[1].trackName)
-        assertEquals(DeclaredCatalogs.SYNTHESIZED_AAC_CODEC, tracks[1].track.codec)
+        assertEquals("a-low's own codec", DeclaredCatalogs.SYNTHESIZED_AAC_CODEC, tracks[1].track.codec)
     }
 
     /**

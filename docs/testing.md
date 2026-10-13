@@ -539,7 +539,13 @@ Wi-Fi, against `cdn.moq.dev`:
 **What it found that is not MoQ's.** The runner's Thread Performance Checker reports a priority
 inversion in `MoqFrameSource.cancel()`: the caller, at user-initiated quality of service, joins
 pump threads started at the default one. And the demo's process reports `AVAudioSession` activated
-synchronously on the main thread. Both are recorded here and changed nothing in this run. The second
+synchronously on the main thread. Both are recorded here and changed nothing in this run. The first
+is gone since #493, which starts every thread a subscription makes at the subscriber's quality of
+service and never below user-initiated (`MoqFrameSource.threadQuality(subscribedAt:)`), so the join
+waits on nothing below its caller: the checker's warning is line 7 of
+`devicelab/test/fixtures/ios/xcodebuild-test-moq-smoke.log`, #438's run, and the same scenario on
+the same iPhone (iOS 27.0, 2026-10-13) logged no warning at all, both tests passing, thirty frames
+delivered and none after `cancel()`. The second
 was the library's own call and is gone since #494, which performs the session's calls on a serial
 queue of the system platform's: `devicelab/lab run smoke --platform ios` on the same iPhone (iOS
 27.0, 2026-10-13) logged `[AVAudioSession Hang Risk] AVAudioSession_iOS.mm:978` once on the

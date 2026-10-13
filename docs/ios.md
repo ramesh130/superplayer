@@ -180,7 +180,13 @@ feature-by-feature table, and the record that binds it is ADR-0020.
 
 - **Realtime is a second player type.** An `AVPlayer` cannot take pushed frames, so a realtime
   stream plays on `RealtimePlayer`. A realtime source handed to `SuperPlayer` is refused with an
-  error naming `RealtimePlayer` (ADR-0020 rule 11).
+  error naming `RealtimePlayer` (ADR-0020 rule 11). The rest is shared. `PlayerView(player:)`
+  shows either player, and `PlaybackSession(player:)` publishes either; a realtime stream is
+  published as live, with no scrubber and no skip buttons. Its configuration's `telemetry` takes a
+  `QoeCollector`, measured from the stream's clock and renderers, and `telemetry-schema.md`'s
+  *Realtime sessions* says what that can and cannot report. The lifecycle's interruption and
+  headphone rules apply as to any player, and Picture in Picture works from its display layer.
+  `session.player` is nil on a session publishing a `RealtimePlayer`; read `session.realtimePlayer`.
 - **A refused credential is repaired by re-adopting the content**, at the held position, with the
   headers your `HeaderProvider` returns. That costs the playlists again, because nothing re-asks a
   single request. The headers ride `AVURLAssetHTTPHeaderFieldsKey`, an option AVFoundation reads and

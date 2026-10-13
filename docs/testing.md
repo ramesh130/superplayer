@@ -426,16 +426,27 @@ with the AudioSpecificConfig as a bare magic cookie — what #431 described AAC 
 converter given the description's cookie as the renderer's decoder is, the bare cookie as the control.
 `AVAudioConverter` is not the instrument: it decodes both.
 
-What is **not** covered yet, and whose it is: Picture in Picture from the
-realtime layer — which ADR-0022 rule 5 says the layer makes possible and for which no playback delegate
-answers a live, unseekable timeline yet — and **Opus**, whose description is made and whose cookie, an
-OpusHead, no test decodes. A `RealtimePlayer` is measured by no
-telemetry collector and published by no `PlaybackSession`, both of which take a `SuperPlayer` today,
-and its lifecycle is the shared audio session and idle timer count without `LifecycleBinding`'s
-interruption and route-change rules, which are an `AVPlayer`'s; the synchronizer stops itself for an
-interruption. #461 owns telemetry, sessions, those rules and Picture in Picture. ADR-0020 rule 11's other half — a realtime source handed to a `SuperPlayer` refused typed
-— waits for an error surface on that facade (the rule's #431 addendum). What a device alone shows is a
-real transport's frames on a screen, which is #438's.
+**What a `RealtimePlayer` shares with a `SuperPlayer`** (#461) is tested in two classes over the same
+fake. `RealtimeTelemetryTests` counts what `QoeCollector` emits for a realtime session at a recording
+sink: the start, a first frame from a declared intent, the ten-second samples with both bitrate fields
+`null`, and the video renderer's dropped frames, which the simulator reports. A **rebuffer** is forced
+by `ScriptedFrameSource.Stall`, a publisher going quiet for longer than its half-second preroll. That
+starves the renderers under a running clock, and the frames it then owes end the rebuffer. The healthy
+session is the control, with no rebuffer at all. A refusal before the first frame and a failure after
+it are told apart, and a consumer's own collector is shown to hear the edges and be attached to
+nothing. `RealtimeSharedPiecesTests` posts the real interruption and route-change notifications at a
+realtime player, as `LifecyclePlaybackTests` does at a `SuperPlayer`. It publishes a session to a
+recorder behind `NowPlayingPlatform`, which shows a live dictionary and no seek command, and swaps a
+`SuperPlayer` in behind it. It reads Picture in Picture as far as the simulator lets it: the content
+source over the display layer, and the playback delegate's answers for a timeline with no ends. That a
+window then appears, and that the dropped-frame count means what a screen shows, are a device's. One
+gap is shared with the frame output's delegate: the controller is the app's, so nothing here calls
+its `invalidatePlaybackState()`, and a pause made elsewhere — a remote command, an interruption —
+reaches the window's button only when AVKit next asks.
+**Opus**, whose description is made and whose cookie (an OpusHead) no test decodes, is still not
+covered. ADR-0020 rule 11's other half, a realtime source handed to a `SuperPlayer` refused typed, is
+#419's `UnplayableSourceSchemeError` (the rule's #419 addendum). What a device alone shows is a real
+transport's frames on a screen, which is #438's.
 
 #### The conformance suite on iOS
 
@@ -1153,7 +1164,11 @@ see a request.
   `RealtimeTracksTests`, for each track's enqueued presentation times and its renderer — the only
   reading of A/V sync and of a played audio track the simulator gives. #433 added one more,
   `ScriptedFrameSourceConformanceTests`, for the table's `mappedTokens` alone, which the suite's own
-  list of codec families is held to. Everything else there is the
+  list of codec families is held to. #461 added `RealtimeSharedPiecesTests`, for the Picture in
+  Picture playback delegate's type, which AVKit alone reads; it also reads the `package` seam a
+  session and the lifecycle use (`playbackState`, `hasVideo`, `perform`, `PlaybackSession(engine:)`),
+  which needs no `@testable`. `RealtimeTelemetryTests` imports nothing `@testable`, since a sink
+  is its reading. Everything else there is the
   public `RealtimePlayer`: its clock, `isRendering`, `failure` and the typed refusals. *A realtime
   transport on iOS* above says what the fake is.
 

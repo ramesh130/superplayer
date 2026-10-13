@@ -14,6 +14,7 @@
 
 import AVFoundation
 import AVKit
+import UIKit
 
 /// The one internal engine protocol both player types are reached through (ADR-0020 rule 11): what
 /// the library's own view and lifecycle need of a player, whichever engine is under it.
@@ -26,11 +27,12 @@ import AVKit
 /// ``PlayerLayerView`` and ``PlayerView`` host whatever layer an engine shows, and
 /// `SuperPlayerRealtime` adds the public initializers that take its player.
 ///
-/// What is shared today is the display and the process's lifecycle (``SharedLifecycle``, which
-/// `RealtimePlayer` states its needs to as a `SuperPlayer` does). The telemetry and session halves
-/// are not yet: ``TelemetryCollector/attach(to:)`` and ``PlaybackSession`` name ``SuperPlayer``, and
-/// what either would observe on a synchronizer is a derivation of its own — `docs/testing.md`'s
-/// *A realtime transport on iOS* names the gap.
+/// What is shared is the display, Picture in Picture, and a ``PlaybackSession`` (#461), each through
+/// a requirement below. Two more shared pieces are reached through narrower protocols of their own,
+/// because a `SuperPlayer` reaches them through something other than itself: the lifecycle's rules
+/// act on a ``LifecycleTarget``, which for a `SuperPlayer` is its `AVPlayer`; and a telemetry
+/// collector measures a `RealtimePlayer` through ``RealtimeMeasurable``, while it measures a
+/// `SuperPlayer` by observing its `AVPlayer` as it always has.
 @MainActor
 package protocol PlaybackEngine: AnyObject {
 
@@ -43,6 +45,34 @@ package protocol PlaybackEngine: AnyObject {
     /// nil where this engine offers none.
     func pictureInPictureContentSource(for layer: CALayer)
         -> AVPictureInPictureController.ContentSource?
+
+    // MARK: - What a PlaybackSession needs
+
+    /// The remote commands this engine can carry out, each a button the system draws while its
+    /// session holds Now Playing — so a command an engine cannot honour is one it does not list.
+    var remoteCommands: Set<RemoteCommand> { get }
+
+    /// Carries out `event`, one of ``remoteCommands``, answering whether it could be.
+    func perform(_ event: RemoteCommandEvent) -> Bool
+
+    /// The request playing now, or nil when nothing a request named is: whose identity, title and
+    /// artwork a session publishes.
+    var nowPlayingRequest: MediaRequest? { get }
+
+    /// The Now Playing dictionary for what this engine plays now with `artwork`, the request's
+    /// fetched image; nil with nothing playing.
+    func nowPlayingInfo(artwork: UIImage?) -> [String: Any]?
+
+    /// Registers `changed` for every change to what ``nowPlayingInfo(artwork:)`` would answer, called
+    /// a main-queue turn after the change; the registrations live as long as the array returned.
+    func observeNowPlaying(_ changed: @escaping @MainActor @Sendable () -> Void) -> [AnyObject]
+
+    /// Plays `request`, which a session's resolver answered for an id from outside the app, exactly
+    /// as the engine's own `setMediaRequest` would; false where the engine refused it.
+    func adopt(resolved request: MediaRequest) -> Bool
+
+    /// Ends what this engine is doing, for good: the player's own `release()`.
+    func release()
 }
 
 extension SuperPlayer: PlaybackEngine {
@@ -66,5 +96,47 @@ extension SuperPlayer: PlaybackEngine {
         default:
             return nil
         }
+    }
+
+    /// All six: an `AVPlayer` seeks, so the scrubber and both skips are buttons it honours.
+    package var remoteCommands: Set<RemoteCommand> { Set(RemoteCommand.allCases) }
+
+    package func perform(_ event: RemoteCommandEvent) -> Bool {
+        switch event {
+        case .play: avPlayer.play()
+        case .pause: avPlayer.pause()
+        case .togglePlayPause: avPlayer.rate == 0 ? avPlayer.play() : avPlayer.pause()
+        case .changePlaybackPosition(let seconds):
+            return seek(to: seconds)
+        case .skip(let seconds):
+            let now = avPlayer.currentTime()
+            return seek(to: (now.isNumeric ? now.seconds : 0) + seconds)
+        }
+        return true
+    }
+
+    package var nowPlayingRequest: MediaRequest? { currentRequestForCurrentItem }
+
+    package func nowPlayingInfo(artwork: UIImage?) -> [String: Any]? {
+        NowPlayingInfo.of(avPlayer, request: currentRequestForCurrentItem, artwork: artwork)
+    }
+
+    package func observeNowPlaying(_ changed: @escaping @MainActor @Sendable () -> Void)
+        -> [AnyObject]
+    {
+        SessionObservation.registerAll(on: avPlayer, changed)
+    }
+
+    package func adopt(resolved request: MediaRequest) -> Bool {
+        setMediaRequest(request)
+        return true
+    }
+
+    /// Seeks to `seconds`, never before the start; false with no item to seek in.
+    private func seek(to seconds: Double) -> Bool {
+        guard avPlayer.currentItem != nil else { return false }
+        avPlayer.seek(
+            to: CMTime(value: Int64((max(0, seconds) * 1_000).rounded()), timescale: 1_000))
+        return true
     }
 }

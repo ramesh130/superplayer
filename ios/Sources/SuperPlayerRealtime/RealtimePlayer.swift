@@ -16,6 +16,7 @@ import AVFoundation
 import AVKit
 import CoreMedia
 import SuperPlayerCore
+import UIKit
 
 /// A player of realtime streams: encoded frames pushed by a ``FrameSource``, decoded and shown by
 /// the platform's sample-buffer renderers under one clock.
@@ -46,11 +47,13 @@ import SuperPlayerCore
 /// refused typed (``RealtimeStreamNotSeekableError``, ADR-0018 rule 5), and the clock starts at the
 /// first frame delivered — its timestamp subtracted from every frame's — and is never sought.
 ///
-/// **What it does not have yet**, stated rather than discovered: a telemetry collector and a
-/// ``PlaybackSession`` take a `SuperPlayer` today, so a realtime stream is measured and published by
-/// neither; and the lifecycle's interruption, route-change and resume rules are an `AVPlayer`'s, so
-/// the synchronizer's own rule — it stops for an interruption by itself — is the one in force
-/// (`docs/testing.md`, *A realtime transport on iOS*).
+/// **What it shares with `SuperPlayer`** (#461), each through core's engine protocols: the library's
+/// view; the lifecycle's rules — the shared audio session and idle timer, an interruption that
+/// pauses and whose end resumes, headphones unplugged that pause; measurement, through
+/// ``Configuration/telemetry`` and ``declarePlaybackIntent()``, deriving what the schema can say of
+/// a realtime stream (`docs/telemetry-schema.md`, *Realtime sessions*); publishing, through
+/// `PlaybackSession(player:)`, as a live stream with no seek command; and Picture in Picture from
+/// its display layer, over a live, unseekable timeline.
 ///
 /// Isolated to the main actor, as ``SuperPlayer`` is and for its reason; the frames themselves are
 /// handled on a queue of the player's own.
@@ -63,8 +66,26 @@ public final class RealtimePlayer {
         /// The transports this player plays, and the schemes that reach them.
         public var sources: RealtimeSources
 
-        public init(sources: RealtimeSources) {
+        /// Makes the collector that measures this player, or nil — the default — for a player that
+        /// measures nothing and pays nothing for it (ADR-0008 rule 2), as
+        /// ``SuperPlayer/Configuration/telemetry`` is.
+        ///
+        /// ```swift
+        /// configuration.telemetry = { QoeCollector(sink: analyticsSink) }
+        /// ```
+        ///
+        /// `QoeCollector` derives the schema's events from the stream's clock and renderers. A
+        /// collector of your own is told each session's edges and the declared intent, and is
+        /// attached to nothing: its `attach(to:)` takes a `SuperPlayer`, and what there is to
+        /// observe on a realtime stream is a seam of this library's own.
+        public var telemetry: (@MainActor @Sendable () -> any TelemetryCollector)?
+
+        public init(
+            sources: RealtimeSources,
+            telemetry: (@MainActor @Sendable () -> any TelemetryCollector)? = nil
+        ) {
             self.sources = sources
+            self.telemetry = telemetry
         }
     }
 
@@ -105,13 +126,33 @@ public final class RealtimePlayer {
 
     let engine: RealtimeEngine
 
-    private let lifecycle: SharedLifecycle
-    private let lifecycleToken: UInt64
+    /// The lifecycle's rules over this player, made as the player is (``LifecycleTarget``).
+    private var lifecycle: LifecycleBinding?
     private var source: (any FrameSource)?
     private var subscription: UInt64 = 0
     private var wantsToPlay = false
-    private var hasVideo = false
+    package private(set) var hasVideo = false
     private var isReleased = false
+
+    /// The request playing, whose identity and title a ``PlaybackSession`` publishes.
+    private var currentRequest: MediaRequest?
+
+    /// Whether the current stream's first frame was enqueued, so the clock could start.
+    private var firstFrameEnqueued = false
+
+    /// Whether a renderer was last reported as run dry (``RealtimePlaybackState/starved``).
+    private var isStarved = false
+
+    /// The collector ``Configuration/telemetry`` made, or nil; with it, the id of the session it is
+    /// measuring.
+    private let collector: (any TelemetryCollector)?
+    private var measuredSessionId: String?
+
+    /// Who hears this player change: the collector's and a session's registrations.
+    private let changes = ChangeObservers()
+
+    /// Picture in Picture's playback questions, answered over this player.
+    private lazy var pictureInPicturePlayback = RealtimePictureInPicturePlayback(player: self)
 
     public convenience init(configuration: Configuration) {
         self.init(configuration: configuration, lifecycle: .system)
@@ -122,19 +163,18 @@ public final class RealtimePlayer {
     /// `UIApplication` whose idle timer a video could hold (ADR-0021 rule 5's #402 addendum).
     package init(configuration: Configuration, lifecycle: SharedLifecycle) {
         self.configuration = configuration
-        self.lifecycle = lifecycle
-        self.lifecycleToken = lifecycle.issueToken()
         let owner = Owner()
         self.engine = RealtimeEngine { subscription, event in
             MainActor.assumeIsolated { owner.player?.heard(event, of: subscription) }
         }
+        self.collector = configuration.telemetry?()
         owner.player = self
-    }
-
-    deinit {
-        // `deinit` is not isolated to the main actor on the iOS 17 floor, so the need is withdrawn
-        // one main-actor turn after it, as `LifecycleBinding`'s is.
-        Task { @MainActor [lifecycle, lifecycleToken] in lifecycle.withdraw(lifecycleToken) }
+        // The binding's own `deinit` withdraws what this player needed, one main-actor turn after
+        // this player is gone.
+        self.lifecycle = LifecycleBinding(target: self, shared: lifecycle)
+        if let measuring = collector as? any RealtimeMeasuringCollector {
+            measuring.attach(toRealtime: self)
+        }
     }
 
     /// Plays what `request` describes: its first source, opened through the transport its scheme
@@ -165,18 +205,36 @@ public final class RealtimePlayer {
                 scheme: scheme, startPosition: "resumeFromLastKnown")
         }
 
+        // Closed while the outgoing stream is still the player's, as `SuperPlayer` closes one
+        // before its item is replaced.
+        endMeasurement()
         cancelSource()
         failure = nil
         hasEnded = false
         hasVideo = false
+        firstFrameEnqueued = false
+        isStarved = false
         currentContentId = request.contentId
+        currentRequest = request
         let (sink, number) = engine.beginSubscription()
         subscription = number
         engine.setWantsToPlay(wantsToPlay)
         let opened = configuration.sources.factory.open(url)
         source = opened
         opened.subscribe(sink)
-        publishLifecycle()
+        beginMeasurement(of: request.contentId)
+        changed()
+    }
+
+    /// Says that a viewer just asked for playback — the start boundary of time to first frame, as
+    /// ``SuperPlayer/declarePlaybackIntent()`` says it: call it at the tap, before whatever turns
+    /// the tap into a ``MediaRequest``. Cheap and safe with no telemetry configured.
+    public func declarePlaybackIntent() {
+        guard !isReleased, let collector else { return }
+        // `CLOCK_MONOTONIC`, the clock every duration in the schema is on (`TelemetryEvent`'s
+        // *The clocks*), and the one the collector reads the other end of the span on.
+        collector.declareIntent(
+            monotonicTimeMs: Int64(clock_gettime_nsec_np(CLOCK_MONOTONIC) / 1_000_000))
     }
 
     /// Starts the clock — at the first frame, if none has arrived yet — and keeps it running.
@@ -194,11 +252,15 @@ public final class RealtimePlayer {
     /// nothing more is shown or held. Calling it again does nothing.
     public func release() {
         guard !isReleased else { return }
+        endMeasurement()
+        collector?.detach()
         isReleased = true
         cancelSource()
         currentContentId = nil
+        currentRequest = nil
         engine.stop()
-        lifecycle.withdraw(lifecycleToken)
+        lifecycle?.release()
+        changed()
     }
 
     // MARK: - Internal
@@ -207,7 +269,25 @@ public final class RealtimePlayer {
         guard !isReleased else { return }
         wantsToPlay = wants
         engine.setWantsToPlay(wants)
-        publishLifecycle()
+        changed()
+    }
+
+    /// Opens a measurement session for `contentId` and tells the collector. The id is minted here:
+    /// nothing on a realtime path sends one to a CDN (ADR-0018 rule 6), so there is no wire value
+    /// for it to follow, as `SuperPlayer`'s follows its asset's. A UUID, 36 characters, inside the
+    /// schema's 64.
+    private func beginMeasurement(of contentId: String) {
+        guard let collector else { return }
+        let sessionId = UUID().uuidString.lowercased()
+        measuredSessionId = sessionId
+        collector.startSession(contentId: contentId, sessionId: sessionId)
+    }
+
+    /// Closes the open measurement session, if there is one, and tells the collector.
+    private func endMeasurement() {
+        guard measuredSessionId != nil else { return }
+        measuredSessionId = nil
+        collector?.endSession()
     }
 
     /// Cancels the source, once — obligation 9's other half is the source's: no callback after this
@@ -223,22 +303,55 @@ public final class RealtimePlayer {
         case .tracksDeclared(let video):
             hasVideo = video
         case .firstFrameEnqueued:
-            break
+            firstFrameEnqueued = true
+        case .starvationChanged(let starved):
+            isStarved = starved
         case .ended:
             hasEnded = true
+            isStarved = false
         case .failed(let error):
             failure = error
+            isStarved = false
             cancelSource()
         }
-        publishLifecycle()
+        changed()
     }
 
-    /// What this player needs of the process's audio session and idle timer, stated to the count
-    /// `SuperPlayer`s state theirs to: the session while it wants to play a stream that has not
-    /// stopped, and the idle timer while that stream has a picture.
-    private func publishLifecycle() {
-        let playing = wantsToPlay && currentContentId != nil && failure == nil && !hasEnded
-        lifecycle.state(lifecycleToken, wantsToPlay: playing, showsVideo: playing && hasVideo)
+    /// Tells everyone who reads this player that it changed: the lifecycle's rules, which read what
+    /// it needs of the process's audio session and idle timer — the session while it wants to play
+    /// a stream that has not stopped, the idle timer while that stream has a picture — and the
+    /// collector's and a session's registrations.
+    private func changed() {
+        lifecycle?.targetChanged()
+        changes.notify()
+    }
+}
+
+extension RealtimePlayer: LifecycleTarget {
+
+    /// Asked to play a stream that has not stopped.
+    package var isAskedToPlay: Bool {
+        wantsToPlay && currentContentId != nil && failure == nil && !hasEnded && !isReleased
+    }
+
+    /// The stream declared a picture.
+    package var showsPicture: Bool { hasVideo }
+}
+
+extension RealtimePlayer: RealtimeMeasurable {
+
+    package var playbackState: RealtimePlaybackState {
+        guard isAskedToPlay else { return .paused }
+        guard firstFrameEnqueued else { return .waitingForFirstFrame }
+        return isStarved ? .starved : .playing
+    }
+
+    package var bufferedAheadMs: Int64 { engine.bufferedAheadUs / 1_000 }
+
+    package var videoRenderer: AVSampleBufferVideoRenderer { engine.videoRenderer }
+
+    package func observeMeasurement(_ changed: @escaping @MainActor () -> Void) -> AnyObject {
+        changes.add(changed)
     }
 }
 
@@ -247,12 +360,144 @@ extension RealtimePlayer: PlaybackEngine {
     /// The engine's display layer, the one a view hosts.
     package func makeHostedLayer() -> CALayer { engine.displayLayer }
 
-    /// None yet: Picture in Picture from a sample-buffer layer needs a playback delegate answering
-    /// for a live, unseekable timeline, which nothing here has built or a device has shown.
+    /// Picture in Picture from the display layer, over a live and unseekable timeline
+    /// (``RealtimePictureInPicturePlayback``) — ADR-0022 rule 5's reason for choosing that layer,
+    /// which the realtime path shares.
     package func pictureInPictureContentSource(for layer: CALayer)
         -> AVPictureInPictureController.ContentSource?
     {
-        nil
+        guard let layer = layer as? AVSampleBufferDisplayLayer, layer === engine.displayLayer
+        else { return nil }
+        return AVPictureInPictureController.ContentSource(
+            sampleBufferDisplayLayer: layer, playbackDelegate: pictureInPicturePlayback)
+    }
+
+    /// Play, pause and toggle, and no seek: a realtime timeline has no past to move to (ADR-0018
+    /// rule 5), so the scrubber and the skips are buttons the system is not asked to draw.
+    package var remoteCommands: Set<RemoteCommand> { [.play, .pause, .togglePlayPause] }
+
+    package func perform(_ event: RemoteCommandEvent) -> Bool {
+        guard !isReleased else { return false }
+        switch event {
+        case .play: play()
+        case .pause: pause()
+        case .togglePlayPause: wantsToPlay ? pause() : play()
+        case .changePlaybackPosition, .skip:
+            // Never targeted (``remoteCommands``), and refused rather than coerced if one arrives.
+            return false
+        }
+        return true
+    }
+
+    package var nowPlayingRequest: MediaRequest? { currentRequest }
+
+    /// Live, at one while the clock runs and zero while it does not — a starved stream reads as
+    /// playing, as a waiting `AVPlayer`'s rate does.
+    package func nowPlayingInfo(artwork: UIImage?) -> [String: Any]? {
+        let running = playbackState == .playing || playbackState == .starved
+        return NowPlayingInfo.live(request: currentRequest, rate: running ? 1 : 0, artwork: artwork)
+    }
+
+    package func observeNowPlaying(_ changed: @escaping @MainActor @Sendable () -> Void)
+        -> [AnyObject]
+    {
+        [changes.add(changed)]
+    }
+
+    package func adopt(resolved request: MediaRequest) -> Bool {
+        (try? setMediaRequest(request)) != nil
+    }
+}
+
+/// Picture in Picture's playback questions over a ``RealtimePlayer`` — `FramePath.swift`'s
+/// `PictureInPicturePlayback` for a timeline that is live and unseekable.
+///
+/// ref: https://developer.apple.com/documentation/avkit/avpictureinpicturesamplebufferplaybackdelegate
+///
+/// The time range is unbounded at both ends, which is how a live stream is described to Picture in
+/// Picture and how it is told to draw no scrubber; a skip completes having moved nothing, because
+/// there is nowhere to move to. On the main actor, as the player is; AVKit calls a playback delegate
+/// on the main thread, and the `@preconcurrency` conformance checks that it did.
+@MainActor
+final class RealtimePictureInPicturePlayback: NSObject,
+    @preconcurrency AVPictureInPictureSampleBufferPlaybackDelegate
+{
+
+    private weak var player: RealtimePlayer?
+
+    init(player: RealtimePlayer) {
+        self.player = player
+    }
+
+    func pictureInPictureController(
+        _ pictureInPictureController: AVPictureInPictureController, setPlaying playing: Bool
+    ) {
+        if playing { player?.play() } else { player?.pause() }
+    }
+
+    func pictureInPictureControllerTimeRangeForPlayback(
+        _ pictureInPictureController: AVPictureInPictureController
+    ) -> CMTimeRange {
+        CMTimeRange(start: .negativeInfinity, duration: .positiveInfinity)
+    }
+
+    func pictureInPictureControllerIsPlaybackPaused(
+        _ pictureInPictureController: AVPictureInPictureController
+    ) -> Bool {
+        player?.isAskedToPlay != true
+    }
+
+    func pictureInPictureController(
+        _ pictureInPictureController: AVPictureInPictureController,
+        didTransitionToRenderSize newRenderSize: CMVideoDimensions
+    ) {}
+
+    func pictureInPictureController(
+        _ pictureInPictureController: AVPictureInPictureController,
+        skipByInterval skipInterval: CMTime, completion completionHandler: @escaping () -> Void
+    ) {
+        completionHandler()
+    }
+}
+
+/// The registrations a ``RealtimePlayer`` tells of every change, in the order they were made.
+@MainActor
+private final class ChangeObservers {
+
+    private var handlers: [(id: UInt64, handler: @MainActor () -> Void)] = []
+    private var nextId: UInt64 = 0
+
+    /// Registers `handler` until the object returned is gone.
+    func add(_ handler: @escaping @MainActor () -> Void) -> AnyObject {
+        nextId += 1
+        let id = nextId
+        handlers.append((id, handler))
+        return ChangeRegistration { [weak self] in self?.handlers.removeAll { $0.id == id } }
+    }
+
+    func notify() {
+        for (_, handler) in handlers { handler() }
+    }
+}
+
+/// One ``ChangeObservers`` registration, removed as it goes.
+///
+/// `deinit` is not isolated to the main actor on the iOS 17 floor; a registration is held and let go
+/// by main-actor objects, so the removal runs there and then, and is queued there otherwise.
+private final class ChangeRegistration {
+    private let remove: @MainActor () -> Void
+
+    init(_ remove: @escaping @MainActor () -> Void) {
+        self.remove = remove
+    }
+
+    deinit {
+        let remove = self.remove
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { remove() }
+        } else {
+            Task { @MainActor in remove() }
+        }
     }
 }
 

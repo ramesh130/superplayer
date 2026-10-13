@@ -39,6 +39,9 @@ enum RealtimeEngineEvent: Sendable {
     case tracksDeclared(hasVideo: Bool)
     /// The first frame was enqueued: the clock may start.
     case firstFrameEnqueued
+    /// A renderer ran dry while the clock ran (`true`), or every renderer holds something again or
+    /// the clock stopped (`false`) — ``RealtimeEngine/readStarvation()``.
+    case starvationChanged(Bool)
     /// The transport said the stream ended.
     case ended
     /// The stream failed, and no further frame is taken.
@@ -84,6 +87,10 @@ final class RealtimeEngine: @unchecked Sendable {
     private var clockStarted = false
     private var firstFrameEnqueued = false
     private var firstPresentation: CMTime?
+    /// Whether a renderer was last read as run dry while the clock ran.
+    private var starved = false
+    /// The synchronizer's periodic observer reading starvation, from the declaration to the reset.
+    private var starvationReading: Any?
 
     /// One declared track: how its frames are framed and described, and who renders them.
     ///
@@ -101,9 +108,19 @@ final class RealtimeEngine: @unchecked Sendable {
         var firstUs: Int64?
         var largestUs: Int64?
 
+        /// How long this track's latest sample lasts: the gap between the two latest presentation
+        /// times, the track's own cadence — zero until it has two. A sample is enqueued with no
+        /// duration (``RealtimeEngine/sampleBuffer(_:keyFrame:description:presentationUs:codec:)``),
+        /// and a renderer presents it until the next one is due, so this is what it holds past it.
+        var lastIntervalUs: Int64 = 0
+
         /// How far this track has been written, on the stream's timeline: its start where it has
         /// written nothing, which is what "buffered nothing" means here, as on Android.
         var bufferedUs: Int64 { largestUs ?? 0 }
+
+        /// Where what this track's renderer holds runs out: its latest sample's presentation time
+        /// plus that sample's own duration.
+        var endUs: Int64 { bufferedUs + lastIntervalUs }
 
         /// Whether a sample of this track has reached its renderer — what the bounds read as
         /// "started", rather than ``offsetUs``, because a first frame carrying parameter sets alone
@@ -165,11 +182,24 @@ final class RealtimeEngine: @unchecked Sendable {
         queue.sync { (tracks ?? []).map(\.renderer) }
     }
 
+    /// Media microseconds the renderers hold past the clock: the least of the delivered tracks'
+    /// ``TrackState/endUs`` less the clock's time, never negative — the Kotlin period's
+    /// `getBufferedPositionUs`, the most conservative of the queues, with a track yet to deliver
+    /// left out of the minimum as there.
+    var bufferedAheadUs: Int64 {
+        queue.sync {
+            let nowUs = Self.microseconds(synchronizer.currentTime())
+            let ends = (tracks ?? []).filter(\.hasDelivered).map(\.endUs)
+            return max(0, (ends.min() ?? nowUs) - nowUs)
+        }
+    }
+
     /// Starts or stops the clock as the player is asked to play or pause.
     func setWantsToPlay(_ wants: Bool) {
         queue.async { [self] in
             wantsToPlay = wants
             applyRate()
+            readStarvation()
         }
     }
 
@@ -185,6 +215,9 @@ final class RealtimeEngine: @unchecked Sendable {
         subscription += 1
         finished = true
         synchronizer.rate = 0
+        if let starvationReading { synchronizer.removeTimeObserver(starvationReading) }
+        starvationReading = nil
+        starved = false
         for track in tracks ?? [] {
             track.renderer.flush()
             synchronizer.removeRenderer(track.renderer, at: .invalid, completionHandler: nil)
@@ -227,6 +260,12 @@ final class RealtimeEngine: @unchecked Sendable {
         }
         for state in states { synchronizer.addRenderer(state.renderer) }
         tracks = states
+        // On this queue, so a reading is confined where every other piece of state is.
+        let interval = CMTime(
+            value: Self.starvationReadingIntervalMs, timescale: Self.millisecondsPerSecond)
+        starvationReading = synchronizer.addPeriodicTimeObserver(
+            forInterval: interval, queue: queue
+        ) { [weak self] _ in self?.readStarvation() }
         let hasVideo = states.contains { $0.framing.kind == .video }
         deliver(.tracksDeclared(hasVideo: hasVideo))
     }
@@ -280,6 +319,9 @@ final class RealtimeEngine: @unchecked Sendable {
             return fail(error)
         }
         states[frame.trackIndex].firstUs = states[frame.trackIndex].firstUs ?? presentationUs
+        if let largestUs = states[frame.trackIndex].largestUs, presentationUs > largestUs {
+            states[frame.trackIndex].lastIntervalUs = presentationUs - largestUs
+        }
         states[frame.trackIndex].largestUs = max(
             states[frame.trackIndex].largestUs ?? presentationUs, presentationUs)
         tracks = states
@@ -290,11 +332,15 @@ final class RealtimeEngine: @unchecked Sendable {
             applyRate()
         }
         failIfATrackHasFallenBehind()
+        // A starved renderer is fed the moment its frame arrives, not at the next reading, so a
+        // rebuffer's end is as exact as the delivery that ends it.
+        if starved { readStarvation() }
     }
 
     fileprivate func onEnded() {
         guard !finished else { return }
         finished = true
+        starved = false
         deliver(.ended)
     }
 
@@ -394,6 +440,55 @@ final class RealtimeEngine: @unchecked Sendable {
     /// subscription rather than a slow one.
     static let stalledTrackBoundUs: Int64 = 3_000_000
 
+    /// Reads whether a renderer has run dry: the clock running, and past the end of what some track
+    /// that has delivered holds (``TrackState/endUs``) by more than one reading. Reported on a change
+    /// only.
+    ///
+    /// **A margin of one reading** (``starvationReadingIntervalMs``), because the clock starts at
+    /// the first frame: a transport delivering at real time with no preroll keeps about one frame
+    /// held, and ordinary arrival jitter puts the clock past a track's end for milliseconds at a time.
+    /// Without the margin, whether such a gap counted as a rebuffer would depend on where a reading
+    /// happened to land. With it, a renderer that is dry for less than a reading presents a frame
+    /// late rather than stalling, which its own dropped-frame count sees, and a gap a reading or more
+    /// long is a stall, which is what the schema's rebuffer is (`docs/telemetry-schema.md`,
+    /// *Rebuffering*). The margin also covers a track with one sample, whose duration is unknown. A
+    /// track yet to deliver is still connecting and is not starved — its bound is
+    /// ``lateTrackStartBoundUs``. The clock stopped — paused, never started, the stream over — is
+    /// never starved: there is nothing a renderer should be presenting.
+    ///
+    /// Read by the synchronizer's own periodic observer while the clock runs, and again as each
+    /// frame arrives for a starved stream, so a starvation is reported between one and two readings
+    /// after the renderer ran dry and ends at the frame that ends it.
+    private func readStarvation() {
+        let running = clockStarted && wantsToPlay && !finished
+        let nowUs = Self.microseconds(synchronizer.currentTime())
+        let marginUs = Self.starvationReadingIntervalMs * 1_000
+        let isStarved =
+            running
+            && (tracks ?? []).contains { $0.hasDelivered && nowUs > $0.endUs + marginUs }
+        guard isStarved != starved else { return }
+        starved = isStarved
+        deliver(.starvationChanged(isStarved))
+    }
+
+    /// How often the clock is read for starvation while it runs, and how far past a track's end it
+    /// must be to count: a tenth of a second. A sub-second-latency stream's buffer is a few frames,
+    /// so a stall is tenths of a second rather than the seconds an HLS reading could afford, and a
+    /// tenth is three frames at thirty a second — longer than the jitter a frame arriving late
+    /// carries, shorter than a freeze a viewer sees as one. The synchronizer calls a periodic
+    /// observer only while its time advances, so a paused stream is read not at all, and every
+    /// reading is on the engine's queue, never the main actor.
+    static let starvationReadingIntervalMs: Int64 = 100
+
+    /// Milliseconds as a `CMTime` timescale.
+    static let millisecondsPerSecond: CMTimeScale = 1_000
+
+    /// `time` in whole microseconds, the engine's unit; zero for a time that is not a number.
+    static func microseconds(_ time: CMTime) -> Int64 {
+        guard time.isNumeric else { return 0 }
+        return CMTimeConvertScale(time, timescale: microsecondsPerSecond, method: .default).value
+    }
+
     /// Starts the clock at the stream's zero the first time there is both a frame and a wish to
     /// play, and otherwise follows the wish. Never sought: a realtime timeline has no past.
     private func applyRate() {
@@ -411,6 +506,7 @@ final class RealtimeEngine: @unchecked Sendable {
     private func fail(_ error: any Error) {
         finished = true
         synchronizer.rate = 0
+        starved = false
         deliver(.failed(error))
     }
 

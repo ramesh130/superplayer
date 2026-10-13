@@ -14,7 +14,9 @@
   credential repair puts its headers on and why. Amended again (#427) at rule 8, recording what the
   lint refuses, the Android readings it keeps, and the live-window pathology it holds alone.
   Amended again (#428) at rule 8, moving the cache-header judgement from the doctor to core's,
-  asked rather than restated, and recording the probe as a `HEAD`.
+  asked rather than restated, and recording the probe as a `HEAD`. Amended again (#461) at rule 11,
+  recording that telemetry, the session, the lifecycle's rules and Picture in Picture now reach a
+  `RealtimePlayer`, and through which protocols.
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
 - **Refines:** [ADR-0001](0001-compose-dont-fork.md), restated for Apple platforms rather than
@@ -375,6 +377,27 @@ that, and *What nothing enforces* sums them.
     typo'd scheme is refused naming `RealtimePlayer` too, which the error's description makes
     readable by listing the three schemes expected. *Enforced by `SourceSchemeRefusalTests`, with
     `http`, `https` and `file` sources taken as its controls.*
+
+    *Addendum (2026-10-13, #461).* The rest of what the rule says the two types share is built, and
+    the #431 addendum's "neither is reached yet" no longer holds. It is not all one protocol.
+    `PlaybackEngine` carries what a `PlaybackSession` needs: the remote commands an engine honours,
+    its Now Playing dictionary and the request behind it, a registration for their changes, adoption
+    of a resolved request, and release. Two pieces go through narrower `package` protocols, because a
+    `SuperPlayer` reaches them through something other than itself. The lifecycle's rules act on a
+    `LifecycleTarget`, which for a `SuperPlayer` is its `AVPlayer` and for a `RealtimePlayer` the
+    player. A collector reads a realtime stream through `RealtimeMeasurable`, a state standing in for
+    `timeControlStatus` beside the buffer, the failure and the video renderer. It keeps observing a
+    `SuperPlayer`'s `AVPlayer` as before. Two public signatures widened, and each is argued where it
+    did. **`PlaybackSession.player` became optional**, nil on a session publishing a
+    `RealtimePlayer`, which `SuperPlayerRealtime`'s `realtimePlayer` reads; this is
+    `PlayerLayerView.player`'s precedent, and it is a removal the digester records, admitted under
+    ADR-0017 rule 7's `0.x`. **`TelemetryCollector` did not widen.** Measuring a realtime stream
+    is the `package` `RealtimeMeasuringCollector`, which `QoeCollector` adopts. A public requirement
+    could not name the seam, and publishing the seam would publish an engine's internals. So a
+    consumer's own collector hears a realtime session's edges and observes nothing. A realtime
+    session draws no seek command and reports Picture in Picture's timeline as unbounded, both
+    because ADR-0018 rule 5 gives a realtime stream no past. *Enforced by `RealtimeTelemetryTests` and
+    `RealtimeSharedPiecesTests`, and the widened signatures by the digester's baselines.*
 
 12. **The Swift products ride the Android modules' version line, and the API digester is their
     arbiter.** One `MAJOR.MINOR.PATCH`, cut by the one `release` command, tagged once with the

@@ -57,8 +57,19 @@ import SuperPlayerCore
 /// A collector measures the player it was attached to and the session currently open on it, which
 /// is why ``SuperPlayer/Configuration/telemetry`` is a factory: each player made from one
 /// configuration gets its own.
+///
+/// ## A realtime stream
+///
+/// The same collector measures a `RealtimePlayer` (#461), handed to its configuration's own
+/// `telemetry` factory, and derives what the schema can say of one from the stream's clock and its
+/// renderers rather than from an `AVPlayer` — core's `RealtimeMeasurable` is what it reads, a state
+/// standing in for `timeControlStatus`. A first frame is the clock starting; a rebuffer is a renderer
+/// run dry under a running clock, never seek-induced since nothing seeks; a failure is the stream's
+/// own, split at the first frame; the samples carry the buffer the renderers hold, and dropped frames
+/// are the video renderer's own count. No bitrate, no switch, no throughput, no seek and no live
+/// latency, each for the reason `docs/telemetry-schema.md`'s *Realtime sessions* gives.
 @MainActor
-public final class QoeCollector: TelemetryCollector {
+public final class QoeCollector: TelemetryCollector, RealtimeMeasuringCollector {
 
     /// The cadence the three periodic events share — the Kotlin `SAMPLING_INTERVAL_MS`, which
     /// `docs/telemetry-schema.md` states and argues. Every sample carries it as `samplingIntervalMs`,
@@ -91,6 +102,12 @@ public final class QoeCollector: TelemetryCollector {
     /// The player this collector was attached to. Weak, because the player holds its collector and
     /// the Kotlin collector's strong reference would be a cycle here.
     private weak var player: SuperPlayer?
+
+    /// The realtime player this collector was attached to instead, weak for the same reason.
+    private weak var realtime: (any RealtimeMeasurable)?
+
+    /// The realtime player's registration for the open session; nil between sessions.
+    private var realtimeObservation: AnyObject?
 
     /// The session currently open, or nil between an ``endSession()`` and the next
     /// ``startSession(contentId:sessionId:)``.
@@ -133,26 +150,32 @@ public final class QoeCollector: TelemetryCollector {
     // MARK: - TelemetryCollector
 
     public func attach(to player: SuperPlayer) {
-        precondition(self.player == nil, "A QoeCollector measures one player; make one per player")
+        precondition(
+            self.player == nil && realtime == nil,
+            "A QoeCollector measures one player; make one per player")
         self.player = player
+    }
+
+    package func attach(toRealtime engine: any RealtimeMeasurable) {
+        precondition(
+            player == nil && realtime == nil,
+            "A QoeCollector measures one player; make one per player")
+        realtime = engine
     }
 
     public func startSession(contentId: String, sessionId: String) {
         // Core always ends a session before the next begins; ending here as well keeps a collector
         // driven by anything else from merging two contents' events into one view.
         endSession()
+        if let realtime {
+            return startRealtimeSession(of: realtime, contentId: contentId, sessionId: sessionId)
+        }
         guard let player, let item = player.avPlayer.currentItem else { return }
         let startedAt = Self.now()
-        // The start boundary of time to first frame, resolved once here rather than at the frame:
-        // whether a declaration existed is a fact about this session's opening, and deciding it
-        // later would let a declaration made after the session began move its own start backwards.
-        // ref: CTA-2066 measures video start-up time from the viewer's request.
-        let intentMs = declaredIntentMonotonicMs
-        declaredIntentMonotonicMs = nil
+        let (intentMs, boundary) = spendIntent()
         let session = OpenSession(
             id: sessionId, contentId: contentId, item: item,
-            ttffStartMonotonicMs: intentMs ?? startedAt,
-            ttffStartBoundary: intentMs == nil ? .contentAdopted : .userIntent)
+            ttffStartMonotonicMs: intentMs ?? startedAt, ttffStartBoundary: boundary)
         openSession = session
         emit(
             .sessionStarted(
@@ -171,6 +194,18 @@ public final class QoeCollector: TelemetryCollector {
         // obscuring the picture is reported under the session it obscures.
         timeControlStatusChanged()
         if player.configuration.drm != nil { outputObscuredChanged() }
+    }
+
+    /// The start boundary of time to first frame, resolved once as a session opens rather than at
+    /// the frame: whether a declaration existed is a fact about this session's opening, and deciding
+    /// it later would let a declaration made after the session began move its own start backwards.
+    /// The declaration is spent either way, so no later session opens on a stale one.
+    ///
+    /// ref: CTA-2066 measures video start-up time from the viewer's request.
+    private func spendIntent() -> (intentMs: Int64?, boundary: TtffStartBoundary) {
+        let intentMs = declaredIntentMonotonicMs
+        declaredIntentMonotonicMs = nil
+        return (intentMs, intentMs == nil ? .contentAdopted : .userIntent)
     }
 
     public func decisionChanged(_ decision: PlaybackDecision, trigger: DecisionTrigger) {
@@ -272,6 +307,7 @@ public final class QoeCollector: TelemetryCollector {
     public func detach() {
         stopObserving()
         player = nil
+        realtime = nil
         // A declaration nobody spent belongs to no session.
         declaredIntentMonotonicMs = nil
     }
@@ -368,9 +404,9 @@ public final class QoeCollector: TelemetryCollector {
     }
 
     private func itemStatusChanged() {
-        guard let session = openSession else { return }
-        switch session.item.status {
-        case .failed: failed(with: session.item.error as NSError?)
+        guard let session = openSession, let item = session.item else { return }
+        switch item.status {
+        case .failed: failed(with: item.error as NSError?)
         // The item's tracks are known from here, so whether it has video — and so whether its
         // access log's bitrate is a video rendition's — can be answered.
         case .readyToPlay: reconcileVideoBitrate()
@@ -382,7 +418,7 @@ public final class QoeCollector: TelemetryCollector {
     /// `timeControlStatus` never moves, so this is the only signal that it could.
     private func likelyToKeepUpChanged() {
         guard let session = openSession, let player = player?.avPlayer,
-            player.timeControlStatus == .paused, session.item.isPlaybackLikelyToKeepUp
+            player.timeControlStatus == .paused, session.item?.isPlaybackLikelyToKeepUp == true
         else { return }
         completeSeek(session)
     }
@@ -397,10 +433,10 @@ public final class QoeCollector: TelemetryCollector {
     /// after the session opened; start-up time is what that interval already is.
     private func timeJumped() {
         guard let session = openSession, session.firstFrameAtMs != nil,
-            let player = player?.avPlayer
+            let player = player?.avPlayer, let item = session.item
         else { return }
         let now = Self.now()
-        let toMs = Self.milliseconds(session.item.currentTime())
+        let toMs = Self.milliseconds(item.currentTime())
         let fromMs = session.jumpedFromMs ?? session.reading?.predicted(at: now) ?? toMs
         session.jumpedFromMs = nil
         session.reading = PositionReading(mediaMs: toMs, monotonicMs: now, rate: player.rate)
@@ -414,7 +450,7 @@ public final class QoeCollector: TelemetryCollector {
                     fromPositionMs: fromMs, toPositionMs: toMs)))
         // A seek into what is already buffered, made while paused, changes nothing a key-value
         // observation could report: the Kotlin collector's "latency for that seek is zero".
-        if player.timeControlStatus == .paused, session.item.isPlaybackLikelyToKeepUp {
+        if player.timeControlStatus == .paused, item.isPlaybackLikelyToKeepUp {
             completeSeek(session)
         }
     }
@@ -456,7 +492,7 @@ public final class QoeCollector: TelemetryCollector {
         // player's answer for is no longer current.
         let classified = known ?? error.flatMap { player?.classify($0) }
         let failure = Self.playbackFailure(
-            error, errorLog: session.item.errorLog(), classified: classified)
+            error, errorLog: session.item?.errorLog(), classified: classified)
         if session.firstFrameAtMs == nil {
             emit(
                 .startupFailed(
@@ -469,7 +505,8 @@ public final class QoeCollector: TelemetryCollector {
                     .init(
                         sessionId: session.id, contentId: session.contentId,
                         timestampMs: Self.wallClock(), monotonicTimeMs: now, failure: failure,
-                        positionMs: Self.milliseconds(session.item.currentTime()))))
+                        positionMs: Self.milliseconds(
+                            session.item?.currentTime() ?? realtime?.currentTime ?? .zero))))
         }
         // This playback will not resume: the stall ends with it, and a seek in flight is given up
         // rather than left to make every later stall seek-induced (the Kotlin `abandonSeek`).
@@ -485,8 +522,8 @@ public final class QoeCollector: TelemetryCollector {
     /// variant change), and the item's readiness is read too, because the first entry can arrive
     /// before the tracks that say whether there is video at all.
     private func reconcileVideoBitrate() {
-        guard let session = openSession, Self.hasVideo(session.item),
-            let indicated = session.item.accessLog()?.events.last?.indicatedBitrate,
+        guard let session = openSession, let item = session.item, Self.hasVideo(item),
+            let indicated = item.accessLog()?.events.last?.indicatedBitrate,
             let bitrate = Self.bitrate(indicated)
         else { return }
         observeVideoBitrate(bitrate)
@@ -552,7 +589,7 @@ public final class QoeCollector: TelemetryCollector {
                 .init(
                     sessionId: session.id, contentId: session.contentId,
                     timestampMs: Self.wallClock(), monotonicTimeMs: now,
-                    toPositionMs: Self.milliseconds(session.item.currentTime()),
+                    toPositionMs: Self.milliseconds(session.item?.currentTime() ?? .zero),
                     seekLatencyMs: now - requestedAt)))
     }
 
@@ -574,9 +611,10 @@ public final class QoeCollector: TelemetryCollector {
     }
 
     private func sampleNow() {
-        guard let session = openSession, let player = player?.avPlayer else { return }
+        if realtime != nil { return sampleRealtimeNow() }
+        guard let session = openSession, let player = player?.avPlayer, let item = session.item
+        else { return }
         let now = Self.now()
-        let item = session.item
         let log = item.accessLog()?.events ?? []
         emit(
             .playbackStateSampled(
@@ -618,7 +656,7 @@ public final class QoeCollector: TelemetryCollector {
     private func sampleDroppedFrames(
         _ session: OpenSession, log: [AVPlayerItemAccessLogEvent], now: Int64
     ) {
-        guard Self.hasVideo(session.item) else { return }
+        guard let item = session.item, Self.hasVideo(item) else { return }
         let dropped = log.reduce(0) { $0 + max(0, $1.numberOfDroppedVideoFrames) }
         let watchedMs = log.reduce(Int64(0)) { $0 + Int64(max(0, $1.durationWatched) * 1_000) }
         let elapsed = watchedMs - session.watchedMsReported
@@ -642,11 +680,138 @@ public final class QoeCollector: TelemetryCollector {
         sampler = nil
         for observation in observations { observation.cancel() }
         observations = []
+        realtimeObservation = nil
     }
 
     /// Queues `event` for delivery and returns: the only work on the main actor is an append.
     private func emit(_ event: TelemetryEvent) {
         delivery.submit(event)
+    }
+}
+
+// MARK: - A realtime stream
+
+extension QoeCollector {
+
+    /// The profile a realtime session reports itself as: live, which is what the stream is. A
+    /// `RealtimePlayer` is configured with no profile — nothing on its path buffers or selects
+    /// (ADR-0018 rules 6 and 7) — and `SessionStarted` carries one, so the session is labelled with
+    /// the profile its content would be played under on an `AVPlayer`.
+    static let realtimeProfile = PlaybackProfile.liveLinear
+
+    /// Opens a session on the realtime player this collector is attached to — the half of
+    /// ``startSession(contentId:sessionId:)`` that reads a stream's clock and renderers rather than
+    /// an item. The decision reported is the profile's own for a live stream, which nothing on the
+    /// realtime path consults; `docs/telemetry-schema.md`'s *Realtime sessions* says so.
+    private func startRealtimeSession(
+        of engine: any RealtimeMeasurable, contentId: String, sessionId: String
+    ) {
+        let startedAt = Self.now()
+        let (intentMs, boundary) = spendIntent()
+        let session = OpenSession(
+            id: sessionId, contentId: contentId, item: nil,
+            ttffStartMonotonicMs: intentMs ?? startedAt, ttffStartBoundary: boundary)
+        openSession = session
+        emit(
+            .sessionStarted(
+                .init(
+                    sessionId: session.id, contentId: session.contentId,
+                    timestampMs: Self.wallClock(), monotonicTimeMs: startedAt,
+                    profile: Self.realtimeProfile,
+                    decision: Self.realtimeProfile.policy.decide(
+                        PlaybackConditions(streamType: .live)))))
+        realtimeObservation = engine.observeMeasurement { [weak self] in self?.realtimeChanged() }
+        scheduleSampling()
+        // The renderer's count is the display layer's, which outlives a subscription: what it had
+        // counted before this session is this session's baseline rather than its drops.
+        readRealtimeDroppedFrames { [weak self] dropped in
+            guard let self, self.openSession === session else { return }
+            session.droppedFramesReported = dropped
+        }
+        realtimeChanged()
+    }
+
+    /// The realtime player changed: the counterpart of ``timeControlStatusChanged()`` and of an
+    /// item's failure, read off its state.
+    private func realtimeChanged() {
+        guard let session = openSession, let engine = realtime else { return }
+        let now = Self.now()
+        let state = engine.playbackState
+        if state == .playing, session.playingSinceMs == nil {
+            session.playingSinceMs = now
+        } else if state != .playing, let since = session.playingSinceMs {
+            session.playedMs += now - since
+            session.playingSinceMs = nil
+        }
+        if let failure = engine.failure {
+            // Bucketed off the error alone, as a player with no classifier's failures are: nothing
+            // classifies a realtime stream's (ADR-0011 rule 14), and this names no class.
+            return failed(with: failure as NSError)
+        }
+        switch state {
+        case .playing:
+            // The first frame: the clock started at the stream's first frame and runs — the
+            // moment presentation began, read as `AVPlayer`'s `.playing` is.
+            if session.firstFrameAtMs == nil { firstFrame(session) }
+            closeRebuffer(session)
+        case .starved:
+            openRebuffer(session)
+        case .paused:
+            closeRebuffer(session)
+        case .waitingForFirstFrame:
+            break
+        }
+    }
+
+    /// The periodic samples of a realtime stream: the state, with the buffer the renderers hold,
+    /// and the video renderer's dropped frames. No bitrate and no estimate — a realtime track
+    /// declares no rendition and nothing here is a transfer — and no live latency, because the
+    /// transport's timestamps are on an epoch of its own and say nothing of the wall clock.
+    private func sampleRealtimeNow() {
+        guard let session = openSession, let engine = realtime else { return }
+        let now = Self.now()
+        emit(
+            .playbackStateSampled(
+                .init(
+                    sessionId: session.id, contentId: session.contentId,
+                    timestampMs: Self.wallClock(), monotonicTimeMs: now,
+                    samplingIntervalMs: Self.samplingIntervalMs, videoBitrateBps: nil,
+                    bufferedDurationMs: engine.bufferedAheadMs,
+                    playing: engine.playbackState == .playing, throughputEstimateBps: nil)))
+        guard engine.hasVideo else { return }
+        let playedMs = session.playedMs + (session.playingSinceMs.map { now - $0 } ?? 0)
+        readRealtimeDroppedFrames { [weak self] dropped in
+            guard let self, self.openSession === session else { return }
+            let elapsed = playedMs - session.watchedMsReported
+            guard elapsed > 0 else { return }
+            let droppedSince = max(0, dropped - session.droppedFramesReported)
+            session.watchedMsReported = playedMs
+            session.droppedFramesReported = dropped
+            self.emit(
+                .videoFramesDropped(
+                    .init(
+                        sessionId: session.id, contentId: session.contentId,
+                        timestampMs: Self.wallClock(), monotonicTimeMs: Self.now(),
+                        droppedFrames: droppedSince,
+                        // A sample-buffer renderer counts no frame shown twice either.
+                        repeatedFrames: 0, elapsedPlayingMs: elapsed)))
+        }
+    }
+
+    /// Reads the video renderer's dropped-frame count — frames it dropped before decoding or that
+    /// missed their display deadline — and hands it to `read` on the main actor. Nothing below iOS
+    /// and tvOS 17.4, which report no metrics, so a realtime session there reports no dropped
+    /// frames rather than zero.
+    ///
+    /// ref: https://developer.apple.com/documentation/avfoundation/avsamplebuffervideorenderer/loadvideoperformancemetrics(completionhandler:)
+    private func readRealtimeDroppedFrames(_ read: @escaping @MainActor (Int) -> Void) {
+        guard #available(iOS 17.4, tvOS 17.4, *), let renderer = realtime?.videoRenderer else {
+            return
+        }
+        renderer.loadVideoPerformanceMetrics { metrics in
+            guard let dropped = metrics?.numberOfDroppedFrames else { return }
+            Task { @MainActor in read(dropped) }
+        }
     }
 }
 
@@ -789,13 +954,14 @@ private final class OpenSession {
     let id: String
     let contentId: String
     /// The item the session is of: the one core made current before opening it, or the one a rung
-    /// re-adopted the content on since (`contentReopened(after:)`).
-    var item: AVPlayerItem
+    /// re-adopted the content on since (`contentReopened(after:)`) — nil on a realtime stream,
+    /// which has none.
+    var item: AVPlayerItem?
     let ttffStartMonotonicMs: Int64
     let ttffStartBoundary: TtffStartBoundary
 
     init(
-        id: String, contentId: String, item: AVPlayerItem, ttffStartMonotonicMs: Int64,
+        id: String, contentId: String, item: AVPlayerItem?, ttffStartMonotonicMs: Int64,
         ttffStartBoundary: TtffStartBoundary
     ) {
         self.id = id
@@ -819,9 +985,14 @@ private final class OpenSession {
     /// The position a jump came from, when the periodic observer saw the jump before the
     /// notification did.
     var jumpedFromMs: Int64?
-    /// The access log's totals already reported on a `VideoFramesDropped`.
+    /// The access log's totals already reported on a `VideoFramesDropped` — on a realtime stream,
+    /// the video renderer's dropped count and the playing time behind it.
     var droppedFramesReported = 0
     var watchedMsReported: Int64 = 0
+    /// On a realtime stream: the playing time accumulated before the current stretch of playing,
+    /// and when that stretch began — `elapsedPlayingMs`'s denominator, read off the state.
+    var playedMs: Int64 = 0
+    var playingSinceMs: Int64?
     /// The output's protection reading last reported: unobscured until a change says otherwise, so
     /// a session whose display never obscures it reports nothing.
     var outputObscured = false

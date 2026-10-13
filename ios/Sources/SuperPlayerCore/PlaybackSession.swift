@@ -16,8 +16,8 @@ import AVFoundation
 import MediaPlayer
 import UIKit
 
-/// A ``SuperPlayer`` published to the rest of the system: the lock screen, Control Centre, a
-/// headset's buttons, AirPods, the Siri remote, and CarPlay's Now Playing screen.
+/// A player published to the rest of the system: the lock screen, Control Centre, a headset's
+/// buttons, AirPods, the Siri remote, and CarPlay's Now Playing screen.
 ///
 /// ```swift
 /// let session = PlaybackSession(player: player, resolver: catalog)
@@ -49,6 +49,12 @@ import UIKit
 /// ``skipBackwardIntervalMs``. Each is applied to ``SuperPlayer/avPlayer``, where every other
 /// transport control acts.
 ///
+/// **A `RealtimePlayer` is published the same way** (#461), through `SuperPlayerRealtime`'s own
+/// initializer, since core cannot name that type (ADR-0020 rule 11): its stream is published as
+/// live, with no duration and no elapsed time, and it answers play, pause and toggle and **no seek
+/// command** — a realtime timeline has no past to move to (ADR-0018 rule 5), and a scrubber or a
+/// skip button that did nothing would be worse than none. ``player`` is nil on such a session.
+///
 /// **There is no service.** The Kotlin `PlaybackService` exists because Android ends a process
 /// that plays in the background without a foreground service holding a notification. iOS has no
 /// such thing: an app that declares the `audio` background mode keeps playing when backgrounded,
@@ -79,8 +85,13 @@ public final class PlaybackSession {
     /// ref: Media3 `androidx.media3.common.C.DEFAULT_SEEK_BACK_INCREMENT_MS`
     nonisolated public static let skipBackwardIntervalMs: Int64 = 5_000
 
-    /// The player this session publishes. Replaced by ``setPlayer(_:)``; released by ``release()``.
-    public private(set) var player: SuperPlayer
+    /// The player this session publishes, or nil on a session publishing a `RealtimePlayer` —
+    /// which `SuperPlayerRealtime` reads through its own property. Replaced by ``setPlayer(_:)``;
+    /// released by ``release()``.
+    public var player: SuperPlayer? { engine as? SuperPlayer }
+
+    /// The engine published, of either player type (``PlaybackEngine``, ADR-0020 rule 11).
+    package private(set) var engine: any PlaybackEngine
 
     private let resolver: (any MediaRequestResolver)?
     private let centre: NowPlayingCentre
@@ -88,8 +99,9 @@ public final class PlaybackSession {
     /// What ``NowPlayingCentre`` knows this session by; set once, as the session claims it.
     private var token: UInt64 = 0
 
-    /// The registrations of ``SessionSignal`` on ``player``, while the session publishes it.
-    private var observations: [SessionObservation] = []
+    /// What ``engine`` registered for this session (``PlaybackEngine/observeNowPlaying(_:)``),
+    /// while the session publishes it.
+    private var observations: [AnyObject] = []
 
     /// The artwork fetched for the URL it names, and the fetch in flight, if any.
     private var artwork: (url: URL, image: UIImage)?
@@ -103,19 +115,28 @@ public final class PlaybackSession {
     /// With no resolver — the default — ``setMediaRequest(forContentId:)`` declines every id, which
     /// is the honest answer for an app that has not said it understands ids from outside itself.
     public convenience init(player: SuperPlayer, resolver: (any MediaRequestResolver)? = nil) {
-        self.init(player: player, resolver: resolver, centre: .system)
+        self.init(engine: player, resolver: resolver, centre: .system)
     }
 
     /// A session publishing to `centre`'s platform rather than the system's — the seam a test
     /// reads the dictionary and fires a command through (ADR-0021 rule 5's #403 addendum).
-    package init(
+    package convenience init(
         player: SuperPlayer, resolver: (any MediaRequestResolver)? = nil, centre: NowPlayingCentre
     ) {
-        self.player = player
+        self.init(engine: player, resolver: resolver, centre: centre)
+    }
+
+    /// A session publishing `engine`, of either player type — what `SuperPlayerRealtime`'s public
+    /// initializer for a `RealtimePlayer` calls.
+    package init(
+        engine: any PlaybackEngine, resolver: (any MediaRequestResolver)? = nil,
+        centre: NowPlayingCentre = .system
+    ) {
+        self.engine = engine
         self.resolver = resolver
         self.centre = centre
-        self.token = centre.claim(self)
-        observe(player)
+        self.token = centre.claim(self, commands: engine.remoteCommands)
+        observe(engine)
         publish()
     }
 
@@ -134,11 +155,20 @@ public final class PlaybackSession {
     /// down for a settings change. Take a ``PlaybackSnapshot`` from ``player`` and restore it into
     /// the incoming one *before* calling this: the outgoing player is released here.
     public func setPlayer(_ player: SuperPlayer) {
-        guard !isReleased, player !== self.player else { return }
-        let outgoing = self.player
+        setEngine(player)
+    }
+
+    /// Swaps in `engine`, of either player type, behind the live session — ``setPlayer(_:)``, and
+    /// `SuperPlayerRealtime`'s for a `RealtimePlayer`. The buttons drawn follow the engine: a
+    /// realtime stream swapped in behind a session withdraws the seek commands, and the reverse
+    /// draws them again.
+    package func setEngine(_ engine: any PlaybackEngine) {
+        guard !isReleased, engine !== self.engine else { return }
+        let outgoing = self.engine
         observations = []
-        self.player = player
-        observe(player)
+        self.engine = engine
+        centre.offer(engine.remoteCommands, from: token)
+        observe(engine)
         publish()
         outgoing.release()
     }
@@ -156,14 +186,19 @@ public final class PlaybackSession {
     /// ``SuperPlayer/setMediaRequest(_:)``, it does not start playback: a handler that means "play
     /// this" calls `player.avPlayer.play()` after.
     ///
+    /// On a session publishing a `RealtimePlayer`, a request that player refuses — one that does not
+    /// start at the live edge, or names a scheme none of its transports answers — is declined too,
+    /// with the player left as it was.
+    ///
     /// - Returns: the request adopted, or nil — and the player untouched — when the resolver
-    ///   declined the id, there is no resolver, or the session is released.
+    ///   declined the id, there is no resolver, the player refused it, or the session is released.
     @discardableResult
     public func setMediaRequest(forContentId contentId: String) -> MediaRequest? {
-        guard !isReleased, let request = resolver?.resolve(contentId: contentId) else {
+        guard !isReleased, let request = resolver?.resolve(contentId: contentId),
+            engine.adopt(resolved: request)
+        else {
             return nil
         }
-        player.setMediaRequest(request)
         return request
     }
 
@@ -183,58 +218,37 @@ public final class PlaybackSession {
         artworkFetch?.task.cancel()
         artworkFetch = nil
         centre.relinquish(token)
-        player.release()
+        engine.release()
     }
 
     /// The registrations live on this session, per signal — what the session register's test
     /// counts. Internal and reached with `@testable`, as `SuperPlayer.liveObservations` is.
     var liveObservations: [SessionSignal: Int] {
         observations.reduce(into: [:]) { counts, observation in
+            guard let observation = observation as? SessionObservation else { return }
             counts[observation.signal, default: 0] += 1
         }
     }
 
-    /// Carries out a remote command on ``player``, answering whether it could be.
+    /// Carries out a remote command on ``engine``, answering whether it could be.
     func handle(_ event: RemoteCommandEvent) -> Bool {
         guard !isReleased else { return false }
-        let avPlayer = player.avPlayer
-        switch event {
-        case .play: avPlayer.play()
-        case .pause: avPlayer.pause()
-        case .togglePlayPause: avPlayer.rate == 0 ? avPlayer.play() : avPlayer.pause()
-        case .changePlaybackPosition(let seconds):
-            return seek(to: seconds)
-        case .skip(let seconds):
-            let now = avPlayer.currentTime()
-            return seek(to: (now.isNumeric ? now.seconds : 0) + seconds)
-        }
-        return true
+        return engine.perform(event)
     }
 
-    /// Seeks to `seconds`, never before the start; false with no item to seek in.
-    private func seek(to seconds: Double) -> Bool {
-        guard player.avPlayer.currentItem != nil else { return false }
-        player.avPlayer.seek(
-            to: CMTime(value: Int64((max(0, seconds) * 1_000).rounded()), timescale: 1_000))
-        return true
+    private func observe(_ engine: any PlaybackEngine) {
+        observations = engine.observeNowPlaying { [weak self] in self?.publish() }
     }
 
-    private func observe(_ player: SuperPlayer) {
-        observations = SessionObservation.registerAll(on: player.avPlayer) { [weak self] in
-            self?.publish()
-        }
-    }
-
-    /// Publishes what ``player`` is playing now, fetching its artwork first if it has some that
+    /// Publishes what ``engine`` is playing now, fetching its artwork first if it has some that
     /// has not been fetched.
     private func publish() {
         guard !isReleased else { return }
-        let request = player.currentRequestForCurrentItem
+        let request = engine.nowPlayingRequest
         fetchArtwork(request?.artworkURL)
         let image = request?.artworkURL.flatMap { url in artwork?.url == url ? artwork?.image : nil
         }
-        centre.publish(
-            NowPlayingInfo.of(player.avPlayer, request: request, artwork: image), from: token)
+        centre.publish(engine.nowPlayingInfo(artwork: image), from: token)
     }
 
     /// Fetches `url` unless it is already fetched or being fetched, and republishes once it has
@@ -293,7 +307,7 @@ extension SuperPlayer {
 }
 
 /// The Now Playing dictionary for what a player is playing, in MediaPlayer's keys.
-enum NowPlayingInfo {
+package enum NowPlayingInfo {
 
     /// Nil with no item, since there is nothing to show; otherwise the item's duration, elapsed time
     /// and rates, and — for content a request named — its identity, title, subtitle and artwork.
@@ -321,13 +335,42 @@ enum NowPlayingInfo {
         } else if item.status == .readyToPlay && item.duration.isIndefinite {
             info[MPNowPlayingInfoPropertyIsLiveStream] = true
         }
-        if let request {
-            info[MPNowPlayingInfoPropertyExternalContentIdentifier] = request.contentId
-            if let title = request.title { info[MPMediaItemPropertyTitle] = title }
-            if let subtitle = request.subtitle { info[MPMediaItemPropertyArtist] = subtitle }
-            if let artwork { info[MPMediaItemPropertyArtwork] = Self.artwork(artwork) }
-        }
+        identify(&info, request: request, artwork: artwork)
         return info
+    }
+
+    /// The dictionary for a realtime stream (#461): nil with no request playing; otherwise live,
+    /// at `rate` — one while playing, zero while not — and the request's identity, title, subtitle
+    /// and artwork, as for any content.
+    ///
+    /// **No duration and no elapsed time**, deliberately: a live stream has neither, and an elapsed
+    /// time is what the lock screen draws a scrubber from — one a viewer could drag on a timeline
+    /// with no past.
+    @MainActor
+    package static func live(request: MediaRequest?, rate: Double, artwork: UIImage?)
+        -> [String: Any]?
+    {
+        guard let request else { return nil }
+        var info: [String: Any] = [
+            MPNowPlayingInfoPropertyIsLiveStream: true,
+            MPNowPlayingInfoPropertyPlaybackRate: rate,
+            MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
+        ]
+        identify(&info, request: request, artwork: artwork)
+        return info
+    }
+
+    /// What every dictionary says about content a request named: its identity, title, subtitle and
+    /// artwork.
+    @MainActor
+    private static func identify(
+        _ info: inout [String: Any], request: MediaRequest?, artwork: UIImage?
+    ) {
+        guard let request else { return }
+        info[MPNowPlayingInfoPropertyExternalContentIdentifier] = request.contentId
+        if let title = request.title { info[MPMediaItemPropertyTitle] = title }
+        if let subtitle = request.subtitle { info[MPMediaItemPropertyArtist] = subtitle }
+        if let artwork { info[MPMediaItemPropertyArtwork] = Self.artwork(artwork) }
     }
 
     /// The artwork object, made outside the main actor on purpose: MediaPlayer calls its request

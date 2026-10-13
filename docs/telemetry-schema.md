@@ -495,6 +495,24 @@ declared on Android and emitted by nothing there, as `OutputObscuredChanged` is.
 | --- | --- | --- |
 | `DisplayModeChanged` | A new event, on tvOS sessions of a player configured with `TvOutput` only | A population Android never had: Android's display change re-selects and reaches a pipeline as `TrackSwitched`, and no Android API reports a mode switch back. A session's `switchInProgress = true` followed by `false` brackets the time the panel may have been blank, which on a sink whose switches are not seamless is inside `timeToFirstFrameMs` (*Time to first frame*, *On a television*) |
 
+**Version 2 still stands — realtime streams on iOS and tvOS (`#461`).** A `RealtimePlayer` configured
+with a collector now emits the schema's events for a realtime session, from the stream's clock and its
+renderers rather than from an `AVPlayer` ([Realtime sessions](#realtime-sessions) has the table). **`SCHEMA_VERSION` does
+not move**: no event or field was added, and every definition is the one above, read off a
+different engine — which is what `#409`'s note already said of the whole iOS derivation. One reading is
+worth knowing before a query mixes the two player types:
+
+| On a realtime stream on iOS | What a pipeline sees | Why the version does not move |
+| --- | --- | --- |
+| `SessionStarted.profile` and `decision` | `LIVE_LINEAR` and that profile's decision on every session | A `RealtimePlayer` has no profile, so the field carries the one its content is; the decision is consulted by nothing on that path, and was always "the decision in force at the start", which is the profile's own when nothing else decides |
+
+**One consequence of that row is worth stating outright.** Realtime sessions from iOS now sit in the
+`LIVE_LINEAR` population beside live HLS, and no field separates them. A query that wants live HLS
+alone has to separate realtime sessions as [Realtime sessions](#realtime-sessions) already says:
+by joining `contentId` against the app's own catalog. Android's realtime sessions have always carried
+whichever profile the app built the player with, so this was already true of a mixed population;
+what is new is that iOS fixes the value rather than leaving it to the app.
+
 **A sink must tolerate a new event type.** `TelemetryEvent` is sealed, so a `when` over it can be
 exhaustive without an `else` — and such a `when` fails to compile when a later version adds an event.
 An `else` branch is the forward-compatible spelling; take the exhaustive one only if being told about
@@ -526,7 +544,8 @@ additions is what you want.
 
 The *How derived on iOS* column says which AVFoundation API each event comes from on iOS and
 tvOS (`SuperPlayerTelemetry`'s `QoeCollector`, `#409`), and where iOS 17 and 18 derive one
-differently. It describes a derivation and changes no meaning: the definitions below bind both
+differently. It is a `SuperPlayer`'s derivation; a `RealtimePlayer`'s is
+[Realtime sessions](#realtime-sessions)' own table (`#461`). It describes a derivation and changes no meaning: the definitions below bind both
 platforms, which is why the schema version did not move when it was written. The first three
 columns bind both platforms, and a test on each holds its event types to them in both directions — `superplayer-core`'s types on Android and `TelemetrySchemaDocumentTests`
 in the Swift package — so an event or a field named here and missing from either, or carried by
@@ -1035,9 +1054,11 @@ against the app's own catalog, exactly as it would to separate live from on-dema
 added to make this easier, because adding one would be a change to the schema for a fact the app
 already holds.
 
-**What is unchanged.** Rebuffering, time to first frame, startup and mid-stream failure, seeks,
-dropped frames, session start and end — all of it. These are derived from playback state and from
-the decoder, and a realtime stream reaches both exactly as an HLS or DASH one does.
+**What is unchanged.** Rebuffering, time to first frame, startup and mid-stream failure, dropped
+frames, session start and end — all of it. These are derived from playback state and from the
+decoder, and a realtime stream reaches both exactly as an HLS or DASH one does. Seeks are absent
+rather than changed: a realtime stream refuses a start position anywhere but its edge and is never
+sought ([ADR-0018][adr18] rule 5), so `SeekRequested` and `SeekCompleted` have nothing to report.
 
 **What is empty, and why.** A realtime transport hands over encoded frames rather than loading
 objects, so nothing on this path crosses the layer every bandwidth number in this schema is measured
@@ -1070,6 +1091,32 @@ the connection's own packet-loss counters, which MoQ *does* export, are not this
 QUIC endpoint retransmits what it detects as lost ([RFC 9000][rfc9000] §13), so those count packets
 the transport recovered from rather than media a viewer missed. They are `superplayer-moq`'s own
 `MoqSessionStatistics.transportPacketsLost` and are deliberately **not** in this schema.
+
+**On iOS and tvOS** a realtime stream plays on a second player type, `RealtimePlayer`, and the same
+`QoeCollector` measures it when handed to that player's own `telemetry` factory (#461). There is no
+`AVPlayer` to observe, so each event comes from the stream's clock and its renderers instead, and the
+table says from what. Nothing here changes a definition, and `schemaVersion` is still **2**.
+
+| Event | How derived on a realtime stream on iOS |
+| --- | --- |
+| `SessionStarted` | As the player subscribes to a stream. `profile` is **`LIVE_LINEAR`** and `decision` is that profile's own for a live stream, because a `RealtimePlayer` is configured with no profile and consults no decision: nothing on its path buffers or selects. Read both as a label. The `sessionId` is minted by the player, because no CDN is sent one to follow |
+| `FirstFrameRendered` | The synchronizer's clock starting at the stream's first frame, which is when presentation began, for audio as for video |
+| `RebufferStarted` / `RebufferEnded` | A renderer **run dry** under a running clock: the clock more than 100 ms past the last sample a declared track that has delivered holds, plus that sample's own duration. Read every 100 ms while the clock runs, so a stall is reported between one and two readings after the renderer ran dry, and `durationMs` is short by that much; a gap shorter than the margin shows as dropped frames instead. Ended by the frame that feeds it. Never `seekInduced`, since nothing seeks |
+| `StartupFailed` / `MidStreamFailed` | The stream's own failure — the transport's error or a refusal of what it delivered — split at the first frame. `classification` is always `null`, because nothing classifies a realtime failure, and `category` is bucketed off the error alone |
+| `PlaybackStateSampled` | Every ten seconds. `bufferedDurationMs` is what the renderers hold past the clock, the least across tracks; the two bitrate fields are `null`, as above |
+| `VideoFramesDropped` | The video renderer's own dropped-frame count (`AVSampleBufferVideoRenderer`'s performance metrics), over the time the stream spent playing. **iOS and tvOS 17.4 and later only**: earlier versions report no metrics, and those sessions report no dropped frames rather than zero |
+| `SessionEnded` | As the stream is replaced or the player released |
+
+What a realtime session on iOS does **not** emit, and why:
+
+| Event | Why not |
+| --- | --- |
+| `TrackSwitched` | No declared bitrate to switch between, as above |
+| `SeekRequested`, `SeekCompleted` | Nothing seeks a realtime stream, as above |
+| `LiveLatencySampled` | A realtime transport stamps frames on an epoch of its own, which says nothing about the wall clock, so there is no live edge to measure from |
+| `DecisionChanged` | No policy is consulted on this path, so no decision changes |
+| `LicenceAcquisitionEnded`, `OutputObscuredChanged` | A `RealtimePlayer` plays no protected content |
+| `DisplayModeChanged` | A `RealtimePlayer` takes no `TvOutput` |
 
 **MoQ's own session statistics are not telemetry.** `MoqFrameSource.statistics()` answers a polled
 snapshot of the session — round trip time, the connection's send and receive rate estimates, byte and

@@ -1,13 +1,17 @@
 // SuperPlayerRealtime: public API as ios/check reads it. Regenerate with ios/check --update-api.
+Class PlaybackSession : Sendable
 Class PlayerLayerView : superclass UIKit.UIView
-Class RealtimePlayer : PlaybackEngine, Sendable
+Class RealtimePlayer : LifecycleTarget, PlaybackEngine, RealtimeMeasurable, Sendable
+Constructor PlaybackSession.init(player:resolver:) : SuperPlayerCore.PlaybackSession, SuperPlayerRealtime.RealtimePlayer, (any SuperPlayerCore.MediaRequestResolver)?
 Constructor PlayerLayerView.init(player:) : SuperPlayerCore.PlayerLayerView, SuperPlayerRealtime.RealtimePlayer
 Constructor PlayerView.init(player:videoGravity:) : SuperPlayerCore.PlayerView, SuperPlayerRealtime.RealtimePlayer, AVFoundation.AVLayerVideoGravity
-Constructor RealtimePlayer.Configuration.init(sources:) : SuperPlayerRealtime.RealtimePlayer.Configuration, SuperPlayerRealtime.RealtimeSources
+Constructor RealtimePlayer.Configuration.init(sources:telemetry:) : SuperPlayerRealtime.RealtimePlayer.Configuration, SuperPlayerRealtime.RealtimeSources, (() -> any SuperPlayerCore.TelemetryCollector)?
 Constructor RealtimePlayer.init(configuration:) : SuperPlayerRealtime.RealtimePlayer, SuperPlayerRealtime.RealtimePlayer.Configuration
 Enum Realtime
+Func PlaybackSession.setPlayer(_:) : (), SuperPlayerRealtime.RealtimePlayer
 Func Realtime.transport(scheme:_:) : SuperPlayerRealtime.RealtimeSources, Swift.String, (Foundation.URL) -> any SuperPlayerCore.FrameSource [static]
 Func Realtime.transport(scheme:factory:) : SuperPlayerRealtime.RealtimeSources, Swift.String, any SuperPlayerCore.FrameSourceFactory [static]
+Func RealtimePlayer.declarePlaybackIntent() : ()
 Func RealtimePlayer.pause() : ()
 Func RealtimePlayer.play() : ()
 Func RealtimePlayer.release() : ()
@@ -18,8 +22,10 @@ Struct PlayerView : Sendable, UIViewRepresentable, View
 Struct RealtimePlayer.Configuration : Sendable
 Struct RealtimeSources : Sendable
 Struct UnansweredRealtimeSchemeError : CustomStringConvertible, Equatable, Error, Hashable, Sendable
+Var PlaybackSession.realtimePlayer : SuperPlayerRealtime.RealtimePlayer? { get }
 Var PlayerLayerView.realtimePlayer : SuperPlayerRealtime.RealtimePlayer? { get set }
 Var RealtimePlayer.Configuration.sources : SuperPlayerRealtime.RealtimeSources { get set }
+Var RealtimePlayer.Configuration.telemetry : (() -> any SuperPlayerCore.TelemetryCollector)? { get set }
 Var RealtimePlayer.configuration : SuperPlayerRealtime.RealtimePlayer.Configuration { get }
 Var RealtimePlayer.currentContentId : Swift.String? { get }
 Var RealtimePlayer.currentTime : CoreMedia.CMTime { get }

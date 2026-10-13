@@ -254,6 +254,17 @@ them under `Added` would be worse than stating them here:
   build signed for development. `SuperPlayerTestkit` gains `GoldenFile` and `GoldenFileMismatchError`.
   Additive; `schemaVersion` and the trace's `formatVersion` stay where they were. No Android
   behaviour moved.
+- **A realtime stream measured, published and governed on iOS (#461).** `RealtimePlayer` gains
+  `Configuration.telemetry` and `declarePlaybackIntent()`, and `QoeCollector` measures it from the
+  stream's clock and renderers. That gives a first frame, a rebuffer when a renderer runs dry, a
+  failure split at the first frame, samples, and dropped frames from iOS 17.4, with
+  `SCHEMA_VERSION` still 2. `PlaybackSession(player:)` publishes a `RealtimePlayer` as live, with no
+  seek command. The lifecycle's interruption, route-change and resume rules reach it, and Picture in
+  Picture works from its display layer. **Breaking for Swift callers:** `PlaybackSession.player` is now
+  optional, nil on a session publishing a `RealtimePlayer` (`session.realtimePlayer`), which ADR-0017
+  rule 7 allows under `0.x`; and `RealtimePlayer.Configuration.init(sources:)` became
+  `init(sources:telemetry:)`, which a call naming `sources:` alone still compiles against but the
+  digester records as a removal. No Android behaviour moved.
 - **Phase 9 — Diagnostics and docs.** `MediaSourceDoctor`, which names twenty pathologies over the
   chain a player would load through; the postmortem reading; `SessionBundle`; the debug HUD; and
   the documents in `docs/`.

@@ -28,7 +28,9 @@ import XCTest
 /// and the corpus yet — no classifier, no revalidation, no doctor — so the honest baseline is
 /// AVFoundation's own. That is also why there is no `FAILS_TYPED` row: a typed failure is
 /// SuperPlayer's, and nothing here raises one. When the facade does, a second table taken through
-/// it is the one that differs, as the Kotlin ladder record differs from the core-only one.
+/// it is the one that differs, as the Kotlin ladder record differs from the core-only one. One public
+/// property of a stock item is set: every item starts on its first variant, as in a fresh process
+/// (`observe` says why).
 ///
 /// **Real time, structural outcomes.** Every entry is served by an origin of its own and played at
 /// once, all of them together, and watched for ``observationBudget`` — the Kotlin
@@ -107,11 +109,14 @@ final class HostileManifestCorpusTests: XCTestCase {
         // Flat across every level, as on Android and for a cousin of its reason: the stream is
         // audio-only, so AVFoundation picks a rendition and a ladder can be as wrong as it likes
         // without anything a structural outcome sees. A flat row is a cliff this harness cannot
-        // see, not the absence of one. One such cliff is known (#460): the severe gap's top rung,
-        // 48× the bottom's frames, puts more in each ADTS frame than AAC's bit reservoir allows
-        // (ISO/IEC 14496-3, 6144 bits a channel), the audio queue refuses to prime it, and a player
-        // started there stops at zero with no error and no reason. The row reads `.playsToEnd`
-        // because a session starts on the bottom rung (`observe` says why) and never climbs in 8 s.
+        // see, not the absence of one. One such cliff has been observed (#460). The severe gap's top
+        // rung has frames 48 times the bottom's, larger than AAC's bit reservoir allows. A player
+        // started on that rung fetched two segments, logged an audio-queue prime failure (-50) and
+        // stayed at zero, with no error and no reason given. These rows start on the first variant
+        // (`observe` says why), which is the bottom rung, and no run has climbed within the entry's
+        // 8 s. A climb inside the budget would move the severe row to a stall.
+        // spec: ISO/IEC 14496-3 — AAC's bit reservoir bounds a raw data block to 6144 bits per
+        // channel, 1536 bytes for this stereo stream, against the top rung's 3408-byte frame.
         "hls-ladder-gap (benign)": .playsToEnd,
         "hls-ladder-gap (borderline)": .playsToEnd,
         "hls-ladder-gap (severe)": .playsToEnd,
@@ -307,14 +312,12 @@ final class HostileManifestCorpusTests: XCTestCase {
                 .hostile(entry),
                 faults: FaultScript.Builder().addDeclaredResponseHeaders(of: entry).build())
             let item = AVPlayerItem(url: origin.sourceURL)
-            // The rung a session starts on, held to the one a fresh process starts on (#460).
-            // Unset, AVFoundation chooses it from a throughput history it keeps per process, which
-            // no API resets and every earlier session on this fast loopback raises: from the fourth
-            // corpus run in one process every ladder entry started on its top rung, and the severe
-            // ladder gap's top rung never starts (its row says why). A fresh process starts every
-            // ladder on the first variant listed, as the first three runs of each process did, so
-            // this is what a stock player does on its first run, read on every run; what it climbs
-            // to after the start is still AVFoundation's.
+            // The first variant listed, which is where a fresh process starts. Left unset, the
+            // starting variant follows a throughput history AVFoundation keeps for the process, so
+            // a later run in one process read a different row from the first (#460, ADR-0021
+            // rule 4's #460 addendum). Only a multi-iteration run shows the difference. Any climb
+            // after the start is still AVFoundation's.
+            // ref: Apple, `AVPlayerItem.startsOnFirstEligibleVariant` (iOS 14, tvOS 14).
             item.startsOnFirstEligibleVariant = true
             let player = AVPlayer(playerItem: item)
             sessions.append(Session(entry, player, EndObserver(item)))

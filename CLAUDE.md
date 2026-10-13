@@ -1300,13 +1300,16 @@ as received (`assertSame`, not equal bytes), absent is `InBand`. Two promises #3
 `subscribeMedia` takes and the **only** thing that container is for — the bindings strip framing
 below the FFI boundary, so it must not enter a decoding decision (#340). And the order is **video
 first, then audio**, because `EncodedFrame.trackIndex` is a position in that list. One rendition per
-kind is taken, and it is the *first* the catalog declared — not a preference but the absence of one,
-with `MoqVideo.stalled` read by nothing for exactly that reason (ADR-0018 rule 7 defers selection,
-and a phase adding it amends that record). `MoqCatalogTracksTest` drives all of it, and
-`DeclaredCatalogs` says per fixture what #340 observed and what was written here: the codec strings
-and the `avcC` prefix are observed, the `hvcC` is synthesized and labelled so, and no `MoqCatalog`
-anywhere was ever received from a broadcast, because that spike's caveat 4 says the catalog path was
-never exercised.
+kind is taken, and it is the one whose **track name sorts first** — not a preference but the absence
+of one, with `MoqVideo.stalled` read by nothing for exactly that reason (ADR-0018 rule 7 defers
+selection, and a phase adding it amends that record). Name order and not the catalog's declaration
+order, because that order does not survive the FFI: upstream's `convert_catalog` collects each kind
+into a Rust `HashMap`, so "first declared" was a hash order that could change between processes
+(#484), and the iOS port takes the same rendition for the same reason. `MoqCatalogTracksTest`
+drives all of it, and `DeclaredCatalogs` says per fixture what #340 observed and what was written
+here: the codec strings and the `avcC` prefix are observed, the `hvcC` is synthesized and labelled
+so, and no `MoqCatalog` anywhere was ever received from a broadcast, because that spike's caveat 4
+says the catalog path was never exercised.
 Since #366 the module has its substance, the bridge: `MoqFrameSource` is core's public `FrameSource`
 over MoQ, opened as `MoqFrameSource(uri)` and handed to a player through
 `Realtime.transport(MoqFrameSource.SCHEME) { … }`. **No signature in the module names a Media3

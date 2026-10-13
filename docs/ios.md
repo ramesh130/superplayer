@@ -201,7 +201,10 @@ feature-by-feature table, and the record that binds it is ADR-0020.
 - **A frame output** is pulled from an `AVPlayerItemVideoOutput` and shown on an
   `AVSampleBufferDisplayLayer`, so Picture in Picture survives while `AVPlayerViewController` cannot
   host it. On a player configured with protection it is **off for the player's lifetime**, and
-  `player.frameOutputOffReason` says why; the player still plays (ADR-0022).
+  `player.frameOutputOffReason` says why; the player still plays (ADR-0022). On an iPhone, an app
+  playing video above 30 frames a second through one sets `CADisableMinimumFrameDurationOnPhone` to
+  `YES` in its `Info.plist`: the output's display link asks for twice the content's rate, and without
+  the key the phone holds it at 60 Hz, which loses a frame of 60 fps content every minute or two (#491).
 
 ### Not ported, by rule
 

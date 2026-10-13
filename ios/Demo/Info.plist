@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The keys Xcode's generated Info.plist has no build setting for, merged into it
+  (GENERATE_INFOPLIST_FILE stays on). Outside SuperPlayerDemo/ because that folder is a synchronized
+  group, which would copy this file into the bundle a second time.
+
+  CADisableMinimumFrameDurationOnPhone: an iPhone holds every display link at 60 Hz without it, so
+  the frame output's link cannot tick faster than a 60 fps stream and loses a frame each time the
+  display's clock drifts across a frame boundary (#491; FramePath.swift's DisplayLinkPace). It is
+  the app's to declare, which is what docs/ios.md tells an adopter. The target is shared with tvOS,
+  where the key means nothing: a television's link runs at the display mode's rate.
+  ref: https://developer.apple.com/documentation/quartzcore/optimizing-promotion-refresh-rates-for-iphone-13-pro-and-ipad-pro
+-->
+<plist version="1.0">
+<dict>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+</dict>
+</plist>

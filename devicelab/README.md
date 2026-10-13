@@ -313,6 +313,11 @@ the same stream on the playback screen, whose `VideoPlayer` is an `AVPlayerLayer
 with AVFoundation's own count of the frames that layer dropped (`dropped=`, the access log's
 `numberOfDroppedVideoFrames`).
 
+**The demo declares `CADisableMinimumFrameDurationOnPhone`.** Without it an iPhone holds the output's
+display link at 60 Hz, and a 60 fps stream then loses a frame each time the display's clock drifts
+across a frame boundary (#491) — so a build of the demo without the key reads as a regression of the
+library when it is one of the app.
+
 What it cannot see: a frame lost exactly at a variant switch, since the gap across a switch is judged by
 nothing (the report counts the switches); a loss before a stretch has shown its interval, which is
 judged against a longer one; whether the display layer then presented each frame **on time** against

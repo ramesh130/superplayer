@@ -29,7 +29,7 @@ import os
 // | --- | --- | --- |
 // | `AVSampleBufferDisplayLayer` | with the player | what the frames are shown on, in place of `AVPlayerLayer`; a Picture in Picture content source, and the layer the realtime path renders through |
 // | `AVPlayerItemVideoOutput` | per item the facade plays | where a decoded frame is pulled from; `AVPlayerItem.videoComposition` is not supported for HLS (ref below) |
-// | `CADisplayLink` | while an item is attached | asks the output for the buffer due at each display refresh |
+// | `CADisplayLink` | while an item is attached | asks the output for the buffer due at each display refresh, at twice the content's frame rate (`DisplayLinkPace`) |
 // | a serial queue | with the player | where the consumer's `process` runs, off the main actor |
 // | the `frameOutputItemTimeJumped` observation | per item | flushes the layer on a seek (`ObservedSignals.swift`) |
 //
@@ -96,10 +96,15 @@ final class FramePath {
     private var videoOutput: AVPlayerItemVideoOutput?
     private var item: AVPlayerItem?
     private var displayLink: CADisplayLink?
+    private var pace = DisplayLinkPace()
 
     /// Whether this path holds a display link: the test seam the pays-nothing count reads, since a
     /// link is invisible to everything but its own target.
     var hasDisplayLink: Bool { displayLink != nil }
+
+    /// The rate the display link has been asked for: the test seam the pacing is read through, for
+    /// ``hasDisplayLink``'s reason.
+    var displayLinkFrameRateRange: CAFrameRateRange? { displayLink?.preferredFrameRateRange }
 
     /// The path for a player made with `configuration`, or nil where none is to run — no output
     /// configured, or one that is off (ADR-0022 rules 6 and 9). Nil makes nothing at all. The off
@@ -133,6 +138,7 @@ final class FramePath {
             target: DisplayLinkTarget(path: self), selector: #selector(DisplayLinkTarget.tick(_:)))
         link.add(to: .main, forMode: .common)
         displayLink = link
+        pace = DisplayLinkPace()
     }
 
     /// Lets go of the current item: its output removed, the display link stopped, its observation
@@ -172,6 +178,11 @@ final class FramePath {
             let frame = videoOutput.copyPixelBuffer(
                 forItemTime: itemTime, itemTimeForDisplay: &presentationTime)
         else { return processing.end() }
+        if presentationTime.isNumeric,
+            let range = pace.rangeAfterFrame(at: presentationTime.seconds)
+        {
+            link.preferredFrameRateRange = range
+        }
         processing.process(
             frame, at: presentationTime.isNumeric ? presentationTime : itemTime,
             generation: generation)
@@ -184,6 +195,66 @@ final class FramePath {
         kCVPixelBufferIOSurfacePropertiesKey as String: [String: Int](),
     ]
 
+}
+
+/// The rate the display link is asked to tick at, from the frames the output has been handed.
+///
+/// **Faster than the content, because a link at the content's own rate loses a frame on a clock it
+/// does not share.** Each tick asks for the frame due at the refresh it targets, so a link ticking
+/// once per frame interval samples each frame once only while the two clocks agree. They do not: the
+/// display refreshes on its own clock and the item's time advances on another, and on an iPhone
+/// 17 Pro Max the link's period measured 16.668 ms against a 60 fps stream's 16.667 — the point a
+/// tick lands within a frame walked by about 0.1 ms a second and, once it crossed a frame boundary,
+/// one tick skipped a frame (#491: one in about 7,200, a single gap of exactly two intervals). Asking
+/// for twice the content's rate puts two ticks inside every frame interval, so drift moves which tick
+/// sees a frame and never whether one does; `hasNewPixelBuffer` keeps the second tick's cost to one
+/// call.
+///
+/// The content's rate is the shortest gap between two handed presentation times: a variant declares
+/// one frame rate (RFC 8216 §4.3.4.2's `FRAME-RATE`), and a lost frame only lengthens a gap, so the
+/// shortest is the frame interval — and that needs no reading of the asset, which an HLS item does
+/// not reliably expose. Until two frames have arrived the link keeps the system's
+/// default. A display that cannot refresh faster than the content gets its maximum and the loss
+/// stays — there is no faster tick to ask for — and on an iPhone a link above 60 Hz needs the app's
+/// `CADisableMinimumFrameDurationOnPhone` (`docs/ios.md`), which is the app's Info.plist and not the
+/// library's.
+///
+/// ref: https://developer.apple.com/documentation/quartzcore/cadisplaylink/preferredframeraterange
+/// ref: https://developer.apple.com/documentation/quartzcore/optimizing-promotion-refresh-rates-for-iphone-13-pro-and-ipad-pro
+struct DisplayLinkPace {
+
+    /// Ticks per frame of content: two, so a tick lands in every frame interval whatever the phase
+    /// between the clocks, with a whole tick to spare for one that lands late.
+    static let ticksPerFrame: Float = 2
+
+    /// How much shorter a gap must be than the shortest so far to ask again: a hundredth. Two gaps
+    /// of one frame interval differ by floating-point rounding in the times' seconds, and asking the
+    /// link again for a rate a hundredth higher changes nothing a display offers, while a real
+    /// change of rate — a variant switch from 30 to 60 frames a second — halves the gap.
+    static let shorterBy = 0.01
+
+    private var lastPresentationTime: Double?
+    private var shortestInterval = Double.infinity
+
+    /// The range to ask for after a frame presented at `seconds`, or nil where it is unchanged —
+    /// before two frames, and while the shortest gap stays what it was.
+    mutating func rangeAfterFrame(at seconds: Double) -> CAFrameRateRange? {
+        defer { lastPresentationTime = seconds }
+        guard let last = lastPresentationTime else { return nil }
+        let interval = seconds - last
+        // A seek back, or the same frame handed again, says nothing about the rate.
+        guard interval > 0, interval < shortestInterval * (1 - Self.shorterBy) else { return nil }
+        shortestInterval = interval
+        return Self.range(forFrameInterval: interval)
+    }
+
+    /// Twice the rate a frame interval of `seconds` is, as the preferred and the most; the content's
+    /// own rate as the least, so a display that cannot reach twice it still ticks once per frame.
+    static func range(forFrameInterval seconds: Double) -> CAFrameRateRange {
+        let content = Float(1 / seconds)
+        let preferred = content * ticksPerFrame
+        return CAFrameRateRange(minimum: content, maximum: preferred, preferred: preferred)
+    }
 }
 
 /// The display link's target. `CADisplayLink` retains its target until invalidated, so the target

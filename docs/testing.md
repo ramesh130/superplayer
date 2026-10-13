@@ -539,7 +539,12 @@ Wi-Fi, against `cdn.moq.dev`:
 **What it found that is not MoQ's.** The runner's Thread Performance Checker reports a priority
 inversion in `MoqFrameSource.cancel()`: the caller, at user-initiated quality of service, joins
 pump threads started at the default one. And the demo's process reports `AVAudioSession` activated
-synchronously on the main thread. Both are recorded here and changed nothing in this run.
+synchronously on the main thread. Both are recorded here and changed nothing in this run. The second
+was the library's own call and is gone since #494, which performs the session's calls on a serial
+queue of the system platform's: `devicelab/lab run smoke --platform ios` on the same iPhone (iOS
+27.0, 2026-10-13) logged `[AVAudioSession Hang Risk] AVAudioSession_iOS.mm:978` once on the
+playback screen with the old binding, as the control, and not at all with the new one, both runs
+playing from 2 s to 16 s.
 
 **What it cannot show.** It takes no latency figure and no rate, for the Kotlin test's reason. It
 cannot list the source's threads after a cancel, as the Kotlin test does: Swift enumerates no other
@@ -999,7 +1004,13 @@ see a request.
   `SuperPlayerResilience` fills it. An eighth, `DrmPaysNothingTests` (#422), for the key session a
   player holds, which nothing reports until a key is asked for and no simulator asks for one; the
   seam it fills with a stand-in, `ContentProtecting`, is `package`, because `SuperPlayerDRM` fills
-  it. `TypedErrorPlaybackTests` reads a failed item's `error` and its
+  it. A ninth, `DisplayLinkPaceTests` (#491), for the frame output's display-link pacing, a pure
+  value whose answer is a `CADisplayLink`'s range and so no consumer's to ask for. And the one
+  reader in **testkit's** target, `FrameOutputPacingTests` (#491), for the range a playing player's
+  display link was asked for, visible to nothing but the link's target as the sixth's link is; it
+  reaches `framePath` `@testable` rather than through a `package` seam because no later product
+  fills or reads that path, and a `package` member would put a test's reading into every build. It
+  is a file of its own so `FrameOutputPlaybackTests` stays on the public API. `TypedErrorPlaybackTests` reads a failed item's `error` and its
   error log's last entry off `player.avPlayer`, under rule 1's #419 addendum.
   `ProfileTableTests` reads each profile's knobs off `player.avPlayer`, and `SnapshotPlaybackTests`
   an item's readiness, under rule 1's #401 addendum. `SlowLinkPlaybackTests` adds a video output and
@@ -1012,7 +1023,12 @@ see a request.
   the control is a route change for another reason, which goes on playing. What the binding asks of
   the platform — activating and deactivating the session, holding the idle timer — goes to a
   recording `LifecyclePlatform`, the one `package` protocol rule 5's #402 addendum allows the
-  feature, through the `package` initializer `SuperPlayer(configuration:lifecycle:)`. Three things only a device shows,
+  feature, through the `package` initializer `SuperPlayer(configuration:lifecycle:)`. The system
+  platform itself performs its session calls on a serial queue of its own (#494), and what
+  `LifecycleRulesTests` reads there — the order of the calls and that none runs on the main thread —
+  goes to a recorder handed to its internal initializer in place of the one function that calls
+  `AVAudioSession`: not a second protocol, but the implementation of the one under test, its
+  platform half still the device's. Three things only a device shows,
   and none is faked: that the system honours an activation and interrupts the session for a real
   call; that headphones pulled out post the route change; and the idle timer's video half, because
   every synthetic stream was audio when it was written — `LifecycleRulesTests` holds the rule over a
@@ -1944,13 +1960,21 @@ layer presents each frame on time against the item's timebase, that Picture in P
 sample-buffer layer, and that FairPlay content yields no pixel buffer at all (i6). The first of those
 is now **counted**, by `devicelab/lab run frames --platform ios` (`devicelab/README.md`, *The frames
 scenario*), and on an iPhone 17 Pro Max on iOS 27.0, over Apple's BipBop example at 60 frames a second,
-it is **not quite met**: in two runs of two minutes' steady playback, one frame of about 7,200 never
-reached the output each time — a single gap of exactly two intervals (33.33 ms against 16.67), once at
-63.6 s and once near 85 s — while an `AVPlayerLayer` on the same phone dropped 0 and 4 frames by its
-own access log over the same length of playback. A third run met a network stall, which the scenario
-reports apart: twelve frames went missing around it, none in steady playback. Why the frame path
-skips that one frame is not established; the display link's rate and the path's one-frame
-back-pressure are the two candidates. The other three remain a device's and unrun. Two things
+it is **met** since #491. Before it, two runs of two minutes' steady playback each lost one frame of
+about 7,200 — a single gap of exactly two intervals (33.33 ms against 16.67), once at 63.6 s and once
+near 85 s — while an `AVPlayerLayer` on the same phone dropped 0 and 4 frames by its own access log.
+#491 found why with instrumentation it did not keep: the display link ticked every 16.668 ms against
+the stream's 16.667 (an iPhone holds every link at 60 Hz, whatever the display's 120), so where in a
+frame each tick landed walked by about 0.1 ms a second and the tick that crossed a frame boundary
+skipped one — at 60.27 s in that run, the same mechanism at a different phase from the earlier two.
+No tick was late and the one-frame back-pressure refused none. `DisplayLinkPace` now asks the link for
+twice the content's rate, which on an iPhone takes the app's `CADisableMinimumFrameDurationOnPhone`
+(the demo declares it; `docs/ios.md` tells an adopter): the link then ticked every 8.334 ms, and on
+2026-10-13 two runs of the scenario counted **0** frames missing in 7,200 handed over 120 s of steady
+playback each, with the `AVPlayerLayer` control dropping 0 and 0. A run before #491 also
+met a network stall, which the scenario reports apart: twelve frames went missing around it, none in
+steady playback. Without the key the loss returns, at about one frame every two or three minutes of
+60 fps, and nothing but the device count can see that. The other three remain a device's and unrun. Two things
 the simulator could show and no test does: that the flush on a seek keeps an old frame off the
 screen — what the output is handed follows the new position with or without it, and what the layer
 shows is not readable here, so the flush is held only by its registration being counted — and that

@@ -320,11 +320,11 @@ final class DownloadsTests: XCTestCase {
         XCTAssertEqual(downloads.started.map(\.contentId), ["lost"])
     }
 
-    /// The index's order is the order of enqueue whichever manifest read finishes first (#425,
-    /// #507): the first item's multivariant playlist is held at its own origin, so the second item's
-    /// plan reaches the index before the first's does — and the next store still reads them in the
-    /// order they were enqueued. A store that took an item's place as its plan was written reads
-    /// them the other way round.
+    /// The index's order is the order of enqueue whichever manifest read finishes first — #425's
+    /// race, made to happen rather than waited for (#507): the first item's multivariant playlist is
+    /// held at its own origin, so the second item's plan reaches the index before the first's does,
+    /// and the next store still reads them in the order they were enqueued. A store that took an
+    /// item's ordinal as its plan was written reads them the other way round, every run.
     func testTheIndexKeepsTheOrderOfEnqueueWhenTheFirstManifestReadFinishesLast() async throws {
         // Each origin holds its fourth segment, so both items stay downloading until the release.
         let holdingASegment = FaultScript.Builder()
@@ -352,7 +352,8 @@ final class DownloadsTests: XCTestCase {
     /// An item keeps the place it was **first** enqueued in, in the next store as in this one: one
     /// whose manifest could not be read, so that nothing of it reached the index, and that is
     /// enqueued again after another, is first in both. A store that took a new place at every
-    /// enqueue answered first-enqueued order while it was open and the reverse once reopened.
+    /// enqueue answered first-enqueued order while it was open and the reverse once reopened, every
+    /// run.
     func testAnItemEnqueuedAgainAfterAFailedReadKeepsItsFirstPlaceInTheNextStore() async throws {
         let origin = try await harness.serve(
             .hls(),

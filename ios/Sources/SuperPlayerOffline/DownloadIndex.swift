@@ -88,12 +88,10 @@ final class DownloadIndex {
         }.first ?? 0
     }
 
-    /// Writes `plan` as a queued download at `ordinal`, the place the store gave its content when it
-    /// was first enqueued. Given rather than taken here, because plans are written as their
-    /// manifest reads finish, in whatever order that is (#425: a licence acquired between the read
-    /// and the write widened the window), and an item enqueued again after a failure that wrote no
-    /// row keeps its first place (#507) — so the store's place is the only one, and the index never
-    /// keeps or derives one of its own.
+    /// Writes `plan` as a queued download at `ordinal`, which the store gave its content when it was
+    /// first enqueued: given rather than taken here, because plans are written as their manifest
+    /// reads finish, in either order (#425), and one enqueued again after a failure that wrote no row
+    /// keeps its first ordinal (#507). The store's is the only ordinal; the index derives none.
     func insert(_ plan: DownloadPlan, ordinal: Int64) throws {
         try run(
             "INSERT OR REPLACE INTO \(Self.table) (content_id, ordinal, source, title, variant_bps, "

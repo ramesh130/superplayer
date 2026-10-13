@@ -191,19 +191,38 @@ package final class NowPlayingCentre {
         self.platform = platform
     }
 
-    /// Makes `session` the holder, adding the command targets if no session held them.
-    func claim(_ session: PlaybackSession) -> UInt64 {
+    /// The commands a target is added for, while a session holds Now Playing.
+    private var targeted: Set<RemoteCommand> = []
+
+    /// Makes `session` the holder, with a target for each of `commands` — the ones its engine can
+    /// carry out (``PlaybackEngine/remoteCommands``).
+    func claim(_ session: PlaybackSession, commands: Set<RemoteCommand>) -> UInt64 {
         nextToken += 1
-        if holder == nil {
-            for command in RemoteCommand.allCases {
-                platform.addTarget(command) { [weak self] event in
-                    self?.holderSession?.handle(event) ?? false
-                }
-            }
-        }
         holder = nextToken
         holderSession = session
+        offer(commands, from: nextToken)
         return nextToken
+    }
+
+    /// Draws the buttons for `commands` and no others, if `token` holds Now Playing: a target is
+    /// added for a command not yet targeted and removed from one no longer offered, in
+    /// ``RemoteCommand``'s order, so a holder whose commands did not change asks nothing of the
+    /// platform. What a session swapping a realtime stream in for a `SuperPlayer` calls, since the
+    /// one answers no seek and the other every one.
+    func offer(_ commands: Set<RemoteCommand>, from token: UInt64) {
+        guard holder == token else { return }
+        for command in RemoteCommand.allCases where targeted.contains(command) {
+            guard !commands.contains(command) else { continue }
+            platform.removeTargets(command)
+            targeted.remove(command)
+        }
+        for command in RemoteCommand.allCases where commands.contains(command) {
+            guard !targeted.contains(command) else { continue }
+            platform.addTarget(command) { [weak self] event in
+                self?.holderSession?.handle(event) ?? false
+            }
+            targeted.insert(command)
+        }
     }
 
     /// Publishes `info` if `token` holds Now Playing; a displaced session's is dropped.
@@ -218,6 +237,9 @@ package final class NowPlayingCentre {
         holder = nil
         holderSession = nil
         platform.setNowPlayingInfo(nil)
-        for command in RemoteCommand.allCases { platform.removeTargets(command) }
+        for command in RemoteCommand.allCases where targeted.contains(command) {
+            platform.removeTargets(command)
+        }
+        targeted = []
     }
 }

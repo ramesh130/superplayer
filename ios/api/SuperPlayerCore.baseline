@@ -461,7 +461,7 @@ Var PlaybackFailure.message : Swift.String? { get }
 Var PlaybackProfile.allCases : [SuperPlayerCore.PlaybackProfile] [static] { get }
 Var PlaybackProfile.hashValue : Swift.Int { get }
 Var PlaybackProfile.policy : any SuperPlayerCore.PlaybackPolicy { get }
-Var PlaybackSession.player : SuperPlayerCore.SuperPlayer { get }
+Var PlaybackSession.player : SuperPlayerCore.SuperPlayer? { get }
 Var PlaybackSession.skipBackwardIntervalMs : Swift.Int64 [static] { get }
 Var PlaybackSession.skipForwardIntervalMs : Swift.Int64 [static] { get }
 Var PlaybackSnapshot.hashValue : Swift.Int { get }

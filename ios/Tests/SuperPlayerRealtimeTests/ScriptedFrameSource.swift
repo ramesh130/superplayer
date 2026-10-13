@@ -54,8 +54,22 @@ final class ScriptedFrameSource: FrameSource, @unchecked Sendable {
     /// Half a second of video frames, the preroll counted in them.
     static let prerollFrames = SyntheticVideoHlsStream.framesPerSecond / 2
 
+    /// A pause in delivery, once, as script time reaches `atUs`: the publisher going quiet for
+    /// `seconds` of real time and then sending what it owes at once — the renderers' starvation
+    /// a rebuffer is read from (#461).
+    struct Stall: Sendable {
+        let atUs: Int64
+        let seconds: Double
+    }
+
+    /// What a source made with `failsAfterFrames:` reports.
+    struct ScriptedFailure: Error {}
+
     private let scripts: [ScriptedTrack]
     private let paced: Bool
+    private let stall: Stall?
+    private let failsAfterFrames: Int?
+    private let prerollUs: Int64
 
     private let lock = NSLock()
     private var cancelled = false
@@ -68,9 +82,20 @@ final class ScriptedFrameSource: FrameSource, @unchecked Sendable {
 
     /// A source declaring `tracks` — the synthetic `avc1` video, endless, unless told otherwise —
     /// and delivering their frames in script-time order, paced in real time when `paced`.
-    init(tracks: [ScriptedTrack] = [.video()], paced: Bool = true) {
+    ///
+    /// With a `stall`, delivery pauses once where it says; with `failsAfterFrames`, the source
+    /// reports ``ScriptedFailure`` through `onError` once it has delivered that many frames, and
+    /// delivers nothing more. `prerollUs` is how much is sent at once before pacing — zero is a
+    /// publisher delivering each frame just in time, as a live encoder does.
+    init(
+        tracks: [ScriptedTrack] = [.video()], paced: Bool = true, stall: Stall? = nil,
+        failsAfterFrames: Int? = nil, prerollUs: Int64 = ScriptedFrameSource.prerollUs
+    ) {
         self.scripts = tracks
         self.paced = paced
+        self.prerollUs = prerollUs
+        self.stall = stall
+        self.failsAfterFrames = failsAfterFrames
         self._lastTimestamps = Array(repeating: nil, count: tracks.count)
     }
 
@@ -98,6 +123,8 @@ final class ScriptedFrameSource: FrameSource, @unchecked Sendable {
             defer { finished.signal() }
             sink.onTracks(scripts.map(\.track))
             var next = Array(repeating: 0, count: scripts.count)
+            var stalled = false
+            var delivered = 0
             let start = Date()
             while !isCancelled {
                 // The track whose next frame is due soonest in script time, ties to the earlier
@@ -112,9 +139,18 @@ final class ScriptedFrameSource: FrameSource, @unchecked Sendable {
                 else { break }
                 let script = scripts[track]
                 let scriptTimeUs = script.scriptTimeUs(next[track])
-                if paced, scriptTimeUs > Self.prerollUs {
+                if let stall, !stalled, scriptTimeUs >= stall.atUs {
+                    stalled = true
+                    // In slices of 10 ms, so a cancellation during the stall is answered within
+                    // one — well inside any bound a test waits on, and short enough not to hold
+                    // `cancel()` noticeably.
+                    let resumesAt = Date().addingTimeInterval(stall.seconds)
+                    while Date() < resumesAt, !isCancelled { Thread.sleep(forTimeInterval: 0.01) }
+                    if isCancelled { break }
+                }
+                if paced, scriptTimeUs > prerollUs {
                     let wait =
-                        Double(scriptTimeUs - Self.prerollUs) / 1_000_000
+                        Double(scriptTimeUs - prerollUs) / 1_000_000
                         - Date().timeIntervalSince(start)
                     if wait > 0 { Thread.sleep(forTimeInterval: wait) }
                 }
@@ -129,6 +165,11 @@ final class ScriptedFrameSource: FrameSource, @unchecked Sendable {
                     _lastTimestamps[track] = timestampUs
                 }
                 next[track] += 1
+                delivered += 1
+                if let failsAfterFrames, delivered >= failsAfterFrames {
+                    sink.onError(ScriptedFailure())
+                    break
+                }
             }
         }
         thread.name = "ScriptedFrameSource"

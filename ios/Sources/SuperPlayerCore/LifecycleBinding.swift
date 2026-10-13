@@ -243,12 +243,70 @@ package final class SharedLifecycle {
     }
 }
 
+/// What a ``LifecycleBinding`` acts on and reads: the engine under a player, whichever it is
+/// (ADR-0020 rule 11). A `SuperPlayer`'s is its `AVPlayer`, read through a wrapper; a
+/// `RealtimePlayer` is its own, since what it plays is pushed to renderers of its own rather than to
+/// an `AVPlayer`.
+///
+/// The rules are the binding's and are the same for both — an interruption pauses and its end
+/// resumes where the system says so and the interruption paused a player that was playing; the old
+/// device becoming unavailable pauses — so a realtime stream is not a second set of them.
+@MainActor
+package protocol LifecycleTarget: AnyObject {
+
+    /// Whether the player was last asked to play — for a `RealtimePlayer`, asked to play a stream
+    /// that has not stopped: what the session and the idle timer are held for, and what an
+    /// interruption's end may resume.
+    var isAskedToPlay: Bool { get }
+
+    /// Whether what is playing carries a picture, false until that is known — the idle timer's
+    /// half (``LifecycleBinding/holdsIdleTimer(wantsToPlay:presentationSize:)``).
+    var showsPicture: Bool { get }
+
+    func play()
+    func pause()
+}
+
+/// A `SuperPlayer`'s `AVPlayer` read as a ``LifecycleTarget`` — a wrapper rather than a
+/// conformance of `AVPlayer` itself, because a conformance added to a system class is recorded in
+/// the tracked API surface as that class, and this is no part of the API.
+@MainActor
+private final class PlayerLifecycleTarget: LifecycleTarget {
+
+    let player: AVPlayer
+
+    init(_ player: AVPlayer) {
+        self.player = player
+    }
+
+    /// `AVPlayer.rate` is the rate *asked for* (`AVPlayer.h`: it stays non-zero while the player
+    /// waits for data), so a stall with intent to play keeps the session and the idle timer — the
+    /// Android wake lock's own rule, that a rebuffer needs the device awake in order to end.
+    var isAskedToPlay: Bool { player.rate != 0 }
+
+    /// "Video" is the item's presentation size, which `AVPlayerItem.h` documents as zero for an
+    /// item with no video — so audio-only content lets the screen lock, which is the point of the
+    /// distinction, and an item not yet ready (size unknown, so zero) holds nothing until it is.
+    var showsPicture: Bool {
+        LifecycleBinding.holdsIdleTimer(
+            wantsToPlay: true, presentationSize: player.currentItem?.presentationSize)
+    }
+
+    func play() { player.play() }
+    func pause() { player.pause() }
+}
+
 /// One player's lifecycle: hears the ``ObservedSignal/Scope/player`` signals, pauses and resumes the
 /// player, and tells ``SharedLifecycle`` what it needs.
 @MainActor
-final class LifecycleBinding {
+package final class LifecycleBinding {
 
-    private let player: AVPlayer
+    /// Weak, because a `RealtimePlayer` is its own target and holds this binding.
+    private weak var target: (any LifecycleTarget)?
+
+    /// The wrapper a `SuperPlayer`'s binding reads its `AVPlayer` through, held here because
+    /// nothing else holds it; nil for a target that holds this binding itself.
+    private let ownedTarget: (any LifecycleTarget)?
     private let shared: SharedLifecycle
     private let token: UInt64
 
@@ -257,10 +315,7 @@ final class LifecycleBinding {
 
     /// Whether the player was last asked to play, by anyone but an interruption.
     ///
-    /// `AVPlayer.rate` is the rate *asked for* (`AVPlayer.h`: it stays non-zero while the player
-    /// waits for data), so a stall with intent to play keeps the session and the idle timer — the
-    /// Android wake lock's own rule, that a rebuffer needs the device awake in order to end. A
-    /// change whose reason is an interruption is not counted, because AVPlayer zeroes the rate for
+    /// A change whose reason is an interruption is not counted, because AVPlayer zeroes the rate for
     /// an interruption itself and in no promised order with the notification: without the reason,
     /// the player that was playing could already read as paused when the interruption is heard.
     private var wantsToPlay = false
@@ -269,8 +324,16 @@ final class LifecycleBinding {
     /// resumes.
     private var resumeAfterInterruption = false
 
+    /// Whether ``release()`` has run: a released binding states nothing more under its withdrawn
+    /// token, whatever its target says after.
+    private var isReleased = false
+
+    /// The binding of a `SuperPlayer`'s `AVPlayer`: every ``ObservedSignal/Scope/player`` signal,
+    /// the rate and its reason among them, is heard on it.
     init(player: AVPlayer, shared: SharedLifecycle) {
-        self.player = player
+        let owned = PlayerLifecycleTarget(player)
+        self.ownedTarget = owned
+        self.target = owned
         self.shared = shared
         self.token = shared.issueToken()
         observations = ObservedSignal.allCases.filter { $0.scope == .player }.map { signal in
@@ -280,9 +343,33 @@ final class LifecycleBinding {
         }
     }
 
+    /// The binding of a target that posts no `AVPlayer` notification — a `RealtimePlayer`: the
+    /// process's own two, the interruption and the route change, are heard here, and the target says
+    /// itself when what it was asked or what it plays changed (``targetChanged()``), where an
+    /// `AVPlayer`'s rate and `timeControlStatus` say it for one.
+    package init(target: any LifecycleTarget, shared: SharedLifecycle) {
+        self.ownedTarget = nil
+        self.target = target
+        self.shared = shared
+        self.token = shared.issueToken()
+        observations = [ObservedSignal.audioSessionInterrupted, .audioRouteChanged].map { signal in
+            Observation.register(processSignal: signal) { [weak self] userInfo in
+                self?.heard(LifecycleEvent(signal, userInfo))
+            }
+        }
+    }
+
+    /// The target was asked to play or pause by anyone but this binding's rules, or what it plays
+    /// changed: read as an `AVPlayer` rate change whose reason is not an interruption.
+    package func targetChanged() {
+        guard !isReleased else { return }
+        heard(.rateChanged(byInterruption: false))
+    }
+
     /// Stops hearing the signals and withdraws what this player needed, so a released player holds
     /// neither the session nor the idle timer however it was left (`SuperPlayer.release()`).
-    func release() {
+    package func release() {
+        isReleased = true
         observations = []
         shared.withdraw(token)
     }
@@ -306,6 +393,7 @@ final class LifecycleBinding {
     }
 
     private func heard(_ event: LifecycleEvent) {
+        guard let target else { return }
         switch event {
         case .interruptionBegan:
             resumeAfterInterruption = wantsToPlay
@@ -313,14 +401,14 @@ final class LifecycleBinding {
             // the interruption first, that pause changes nothing and reports no change.
             wantsToPlay = false
             shared.sessionWasInterrupted()
-            player.pause()
+            target.pause()
         case .interruptionEnded(let shouldResume):
-            if shouldResume && resumeAfterInterruption { player.play() }
+            if shouldResume && resumeAfterInterruption { target.play() }
             resumeAfterInterruption = false
         case .routeChanged(let oldDeviceUnavailable):
-            if oldDeviceUnavailable { player.pause() }
+            if oldDeviceUnavailable { target.pause() }
         case .rateChanged(let byInterruption):
-            if !byInterruption { wantsToPlay = player.rate != 0 }
+            if !byInterruption { wantsToPlay = target.isAskedToPlay }
         case .timeControlStatusChanged, .unreadable:
             break
         }
@@ -334,15 +422,11 @@ final class LifecycleBinding {
     private func publish() {
         shared.state(
             token, wantsToPlay: wantsToPlay,
-            showsVideo: Self.holdsIdleTimer(
-                wantsToPlay: wantsToPlay, presentationSize: player.currentItem?.presentationSize))
+            showsVideo: wantsToPlay && (target?.showsPicture ?? false))
     }
 
-    /// Whether the idle timer is held: while the player wants to play an item with a picture.
-    ///
-    /// "Video" is the item's presentation size, which `AVPlayerItem.h` documents as zero for an
-    /// item with no video — so audio-only content lets the screen lock, which is the point of the
-    /// distinction, and an item not yet ready (size unknown, so zero) holds nothing until it is.
+    /// Whether the idle timer is held: while the player wants to play an item with a picture, which
+    /// is an item whose presentation size is not zero (`PlayerLifecycleTarget.showsPicture`).
     nonisolated static func holdsIdleTimer(wantsToPlay: Bool, presentationSize: CGSize?) -> Bool {
         guard wantsToPlay, let size = presentationSize else { return false }
         return size.width > 0 && size.height > 0

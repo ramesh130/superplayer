@@ -1,5 +1,5 @@
 // SuperPlayerTelemetry: public API as ios/check reads it. Regenerate with ios/check --update-api.
-Class QoeCollector : Sendable, TelemetryCollector
+Class QoeCollector : RealtimeMeasuringCollector, Sendable, TelemetryCollector
 Class SessionTraceRecorder : Sendable, TelemetrySink
 Constructor OSLogSink.init() : SuperPlayerTelemetry.OSLogSink
 Constructor QoeCollector.init(sink:) : SuperPlayerTelemetry.QoeCollector, any SuperPlayerCore.TelemetrySink

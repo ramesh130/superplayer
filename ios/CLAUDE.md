@@ -104,9 +104,15 @@ clock never sought. `Realtime.transport(scheme:)` makes its `RealtimeSources`; a
 on its first source's scheme, and `.at`/`.resumeFromLastKnown` are refused typed before any
 bookkeeping. `RealtimeFormats.swift` is the codec table, both spellings, answering a
 `CMFormatDescription` with a record passed through as its atom. What the two player types share is
-core's `package` protocol `PlaybackEngine` — the view hosts either, and `SharedLifecycle` counts both
-— and what they do not yet (telemetry, sessions, interruptions) is listed in `docs/testing.md`'s *A
-realtime transport on iOS*. #340's observed bytes are `ios/Tests/Fixtures/realtime/observed-bytes.tsv`,
+core's `package` protocol `PlaybackEngine` — the view hosts either, and `SharedLifecycle` counts both.
+Since #461 they share the rest. `PlaybackSession` holds an engine, so `session.player` is optional
+and `SuperPlayerRealtime` adds `PlaybackSession(player:)` for a realtime player. A realtime session
+publishes a live stream and draws no seek command. `LifecycleBinding` acts on a `LifecycleTarget`,
+which is a `SuperPlayer`'s `AVPlayer` or the realtime player itself. `QoeCollector` measures a stream
+through the `package` `RealtimeMeasurable`, handed by `RealtimePlayer.Configuration.telemetry`. There
+the engine reports a state (playing, starved, waiting, paused), reading starvation off the
+synchronizer's clock every 100 ms with a margin of one reading, and the collector derives the events. Picture in Picture from the
+display layer answers for a timeline with no ends. #340's observed bytes are `ios/Tests/Fixtures/realtime/observed-bytes.tsv`,
 read by both platforms' tests.
 #414 is the benchmark: `SessionMetrics` and `QoeScore` in `SuperPlayerTelemetry`, the matrix in
 `ios/Benchmark/` as a target of the manifest and not a product (phase 2 in `docs/modules.md`),

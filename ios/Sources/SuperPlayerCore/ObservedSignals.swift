@@ -311,9 +311,10 @@ final class Observation {
     /// queue with the notification's `userInfo`; the key-value observation hands over nil, and its
     /// handler reads the player instead.
     ///
-    /// The audio session's two notifications are registered as posted by
-    /// `AVAudioSession.sharedInstance()`, the object `AVAudioSession.h` says posts them, so a test
-    /// posts the real notification from the real object. AVFoundation promises no thread for a
+    /// The audio session's notifications are the process's rather than the player's and are
+    /// registered by ``register(processSignal:_:)``, as posted by `AVAudioSession.sharedInstance()`,
+    /// the object `AVAudioSession.h` says posts them, so a test posts the real notification from the
+    /// real object. AVFoundation promises no thread for a
     /// `timeControlStatus` change, so that handler is always queued onto the main queue rather than
     /// assumed to be on it.
     @MainActor
@@ -324,18 +325,8 @@ final class Observation {
         let name: Notification.Name
         let object: AnyObject
         switch signal {
-        case .audioSessionInterrupted:
-            (name, object) = (
-                AVAudioSession.interruptionNotification, AVAudioSession.sharedInstance()
-            )
-        case .audioRouteChanged:
-            (name, object) = (
-                AVAudioSession.routeChangeNotification, AVAudioSession.sharedInstance()
-            )
-        case .resilienceMediaServicesReset:
-            (name, object) = (
-                AVAudioSession.mediaServicesWereResetNotification, AVAudioSession.sharedInstance()
-            )
+        case .audioSessionInterrupted, .audioRouteChanged, .resilienceMediaServicesReset:
+            return register(processSignal: signal, handler)
         case .playerRateChanged, .decisionRateChanged, .resilienceRateChanged:
             (name, object) = (AVPlayer.rateDidChangeNotification, player)
         case .playerTimeControlStatus, .decisionTimeControlStatus:
@@ -359,6 +350,31 @@ final class Observation {
             // Unchecked, and safe: the observer was registered on the main queue, so this block is
             // already on the main thread, and `assumeIsolated` runs its closure there and then —
             // the dictionary is never touched from two threads, which is what the check is for.
+            nonisolated(unsafe) let userInfo = notification.userInfo
+            MainActor.assumeIsolated { handler(userInfo) }
+        }
+        return Observation(signal: signal, registration: .notification(token))
+    }
+
+    /// Registers `handler` for one of the three signals the process's audio session posts — the
+    /// interruption, the route change and the media services reset — which no player posts and so
+    /// need none: what a `RealtimePlayer`'s lifecycle registers, having no `AVPlayer` (#461).
+    @MainActor
+    static func register(
+        processSignal signal: ObservedSignal,
+        _ handler: @escaping @MainActor @Sendable ([AnyHashable: Any]?) -> Void
+    ) -> Observation {
+        let name: Notification.Name
+        switch signal {
+        case .audioSessionInterrupted: name = AVAudioSession.interruptionNotification
+        case .audioRouteChanged: name = AVAudioSession.routeChangeNotification
+        case .resilienceMediaServicesReset: name = AVAudioSession.mediaServicesWereResetNotification
+        default: preconditionFailure("\(signal) is posted by a player or an item, not the process")
+        }
+        let token = NotificationCenter.default.addObserver(
+            forName: name, object: AVAudioSession.sharedInstance(), queue: .main
+        ) { notification in
+            // Unchecked, and safe, for the reason `register(_:on:_:)` gives.
             nonisolated(unsafe) let userInfo = notification.userInfo
             MainActor.assumeIsolated { handler(userInfo) }
         }

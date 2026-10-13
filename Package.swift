@@ -227,11 +227,13 @@ let package = Package(
         ),
         // Core for the seam the fake implements, testmedia for the H.264 it delivers, and testkit
         // for the bounded wait every playback test uses (ADR-0021 rule 4); no origin is served.
+        // Telemetry for the collector a realtime session is measured by (#461), phase 2 and so
+        // below this one.
         .testTarget(
             name: "SuperPlayerRealtimeTests",
             dependencies: [
                 "SuperPlayerRealtime", "SuperPlayerCore", "SuperPlayerTestMedia",
-                "SuperPlayerTestkit",
+                "SuperPlayerTestkit", "SuperPlayerTelemetry",
             ],
             path: "ios/Tests/SuperPlayerRealtimeTests"
         ),

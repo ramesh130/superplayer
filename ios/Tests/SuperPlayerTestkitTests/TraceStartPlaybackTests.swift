@@ -92,18 +92,21 @@ final class TraceStartPlaybackTests: XCTestCase {
         player.play()
         defer { player.replaceCurrentItem(with: nil) }
 
+        let isFirstSegment = { (response: OriginResponse) in
+            response.request.path == VideoPlayback.firstSegmentPath
+        }
         try await harness.until("the first segment is answered", timeout: StockPlayback.bound) {
-            origin.responses().contains { $0.request.path == VideoPlayback.firstSegmentPath }
+            origin.responses().contains(where: isFirstSegment)
         }
         let responses = origin.responses()
-        let first = try XCTUnwrap(
-            responses.firstIndex { $0.request.path == VideoPlayback.firstSegmentPath })
+        let first = try XCTUnwrap(responses.firstIndex(where: isFirstSegment))
         for response in responses[...first] {
             XCTAssertEqual(response.transport, Self.fastTransport, response.request.path)
         }
         let segment = responses[first]
         XCTAssertEqual(segment.status, 200)
-        // Its first byte goes at the stretch's start, so its last is due this long into it.
+        // Its first byte goes at the stretch's start, the trace's round trip being zero, so its last
+        // is due this long into it: the origin's pacing, read as arithmetic and not as a duration.
         let deliveryMs = Int64(segment.bodyBytesSent) * 8 * 1_000 / Self.fastBandwidthBps
         XCTAssertLessThan(deliveryMs, Self.fastStretchMs)
         XCTAssertEqual(VideoPlayback.attempts(at: VideoPlayback.firstSegmentPath, origin), 1)
@@ -141,6 +144,7 @@ final class TraceStartPlaybackTests: XCTestCase {
                 durationMs: fastStretchMs, bandwidthBps: fastBandwidthBps, transport: fastTransport
             )
             .add(
+                // Not `fastTransport`, so the quick session's test can tell the stretches apart.
                 durationMs: 1_000, bandwidthBps: VideoPlayback.streamBitrateBps / 4,
                 transport: .cellular
             )

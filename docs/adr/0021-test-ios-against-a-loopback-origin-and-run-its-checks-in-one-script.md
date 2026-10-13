@@ -278,8 +278,9 @@ rule names the ticket that brings its enforcement, and *What nothing enforces* s
    No anchor moves that, so that test no longer waits for a start. It reads what the anchor decides
    off the origin instead: the slow stretch is on a transport of its own, every response up to and
    including the first segment is held to the fast stretch's, and the first segment's bytes are
-   held to arrive inside it at that stretch's rate — structure, which holds whatever the host's
-   speed. The slow-host session keeps its start and the margin above.
+   held to arrive inside it at that stretch's rate. That is structure, and it holds whatever the
+   host's speed, because the first segment is the anchor. The slow-host session keeps its start and
+   the margin above.
 
    *Addendum (2026-10-11, #411).* What "kinds and order with every time masked" means in practice,
    decided where the first golden was written. Three readings, each forced by real time rather than

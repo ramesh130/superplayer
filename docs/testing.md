@@ -1391,6 +1391,18 @@ which Media3 plays, fails in AVFoundation; and `hls-cached-live-playlist` freeze
 fails with, where core names the cache — its error log carries -12888, the playlist unchanged, which
 nothing surfaces.
 
+Every item the record plays starts on its multivariant playlist's **first** variant
+(`startsOnFirstEligibleVariant`, #460). Left unset, AVFoundation picks the starting variant from a
+throughput history it keeps for the whole process, and we found no API that resets it. After a few
+corpus runs on the loopback in one process, the origin saw every ladder entry ask for its top rung's
+playlist first. That happened from the third to the fifth `-test-iterations` run, depending on the
+host. The severe ladder gap's top rung has frames larger than AAC's bit reservoir allows. A stock
+player started on it stops at zero with no error and no reason, and that is the lost start #460
+reported. The pinned start is the one a fresh process takes, and the rung a player climbs to
+afterwards is still AVFoundation's. Re-issuing `play()` would not help, because the player refused
+the media rather than losing a request. A record that holds for one run per process would read
+differently depending on where the run sits in the process, with nothing saying so.
+
 ### The doctor on iOS
 
 `SuperPlayerDiagnosticsTests` scores the iOS doctor (#427) against the same corpus, served the same

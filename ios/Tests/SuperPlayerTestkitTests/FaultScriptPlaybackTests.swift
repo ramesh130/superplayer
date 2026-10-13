@@ -62,19 +62,34 @@ final class FaultScriptPlaybackTests: XCTestCase {
         }
     }
 
+    /// The player waits for the held segment: it asks for nothing past it until it has it. Whether
+    /// it waits out the first hold or gives up on it is the host's speed and not this test's
+    /// subject (#506). AVFoundation abandons a segment with no first byte within about a target
+    /// duration and asks again from byte zero (*The fault sweep on iOS*), and a hold of half that
+    /// on the origin's clock arrives later than that on a loaded host's player. So the hold is on
+    /// the first attempt alone, and a retry, where there is one, is served untouched rather than
+    /// held again for the host to overrun once more.
     func testALatencyHoldsTheAddressedSegmentAndThePlayerWaitsItOut() async throws {
         let origin = try await harness.serve(
             .hls(),
-            faults: FaultScript.Builder().addLatencyMs(1_000, kind: .mediaSegment, index: 1).build()
+            faults: FaultScript.Builder()
+                .addLatencyMs(1_000, kind: .mediaSegment, index: 1, firstAttempts: 1).build()
         )
         try await StockPlayback.playToEnd(origin, with: harness)
 
-        XCTAssertEqual(faults(origin, "/segment1.aac"), [[.latency]])
+        let held = faults(origin, "/segment1.aac")
+        XCTAssertEqual(held.first, [.latency], "\(held)")
+        XCTAssertTrue(held.dropFirst().allSatisfy(\.isEmpty), "\(held)")
         assertUntouched(origin, except: ["/segment1.aac"])
         // What every test here addressing `index: 1` rests on: a stock player asks for the segments
-        // in order, whole, so the second segment it asks for is `segment1.aac` at offset zero.
+        // in order, whole, so the second segment it asks for is `segment1.aac` at offset zero —
+        // and, should it give up on that one, asks for it again before anything after it.
         let segments = origin.networkRequests().filter { $0.kind == .mediaSegment }
-        XCTAssertEqual(segments.map(\.path).prefix(2), ["/segment0.aac", "/segment1.aac"])
+        let order = segments.map(\.path).reduce(into: [String]()) { order, path in
+            if order.last != path { order.append(path) }
+        }
+        XCTAssertEqual(
+            order.prefix(3), ["/segment0.aac", "/segment1.aac", "/segment2.aac"], "\(segments)")
         XCTAssertTrue(
             segments.allSatisfy { ($0.headers["range"] ?? "bytes=0-").hasPrefix("bytes=0-") },
             "\(segments)")

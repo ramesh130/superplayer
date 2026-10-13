@@ -107,7 +107,11 @@ final class HostileManifestCorpusTests: XCTestCase {
         // Flat across every level, as on Android and for a cousin of its reason: the stream is
         // audio-only, so AVFoundation picks a rendition and a ladder can be as wrong as it likes
         // without anything a structural outcome sees. A flat row is a cliff this harness cannot
-        // see, not the absence of one.
+        // see, not the absence of one. One such cliff is known (#460): the severe gap's top rung,
+        // 48× the bottom's frames, puts more in each ADTS frame than AAC's bit reservoir allows
+        // (ISO/IEC 14496-3, 6144 bits a channel), the audio queue refuses to prime it, and a player
+        // started there stops at zero with no error and no reason. The row reads `.playsToEnd`
+        // because a session starts on the bottom rung (`observe` says why) and never climbs in 8 s.
         "hls-ladder-gap (benign)": .playsToEnd,
         "hls-ladder-gap (borderline)": .playsToEnd,
         "hls-ladder-gap (severe)": .playsToEnd,
@@ -303,6 +307,15 @@ final class HostileManifestCorpusTests: XCTestCase {
                 .hostile(entry),
                 faults: FaultScript.Builder().addDeclaredResponseHeaders(of: entry).build())
             let item = AVPlayerItem(url: origin.sourceURL)
+            // The rung a session starts on, held to the one a fresh process starts on (#460).
+            // Unset, AVFoundation chooses it from a throughput history it keeps per process, which
+            // no API resets and every earlier session on this fast loopback raises: from the fourth
+            // corpus run in one process every ladder entry started on its top rung, and the severe
+            // ladder gap's top rung never starts (its row says why). A fresh process starts every
+            // ladder on the first variant listed, as the first three runs of each process did, so
+            // this is what a stock player does on its first run, read on every run; what it climbs
+            // to after the start is still AVFoundation's.
+            item.startsOnFirstEligibleVariant = true
             let player = AVPlayer(playerItem: item)
             sessions.append(Session(entry, player, EndObserver(item)))
         }

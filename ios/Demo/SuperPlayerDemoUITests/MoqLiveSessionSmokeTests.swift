@@ -217,6 +217,76 @@ final class MoqLiveSessionSmokeTests: XCTestCase {
                 + "second \(second?.line ?? "none")")
     }
 
+    /// Picture in Picture from a `RealtimePlayer`'s display layer (#461): the demo's button starts
+    /// it, the controller's delegate reports it started, and with the app sent home the stream plays
+    /// on in the window — its clock advanced across the time away, the display layer still rendering
+    /// and Picture in Picture still active when the app comes back. What the window *shows* is a
+    /// person's to see; this reads what the app can.
+    @MainActor
+    func testTheDemoPlaysOnInPictureInPicture() async throws {
+        let observations = Observations(test: "pip")
+        observations.record("broadcast", Self.broadcast)
+        let app = XCUIApplication()
+        app.launchArguments = ["-SPDemoScreen", "moq", "-SPMoqBroadcast", Self.broadcast]
+        app.launch()
+        defer { app.terminate() }
+
+        let overlay = app.staticTexts[Self.readingIdentifier]
+        guard overlay.waitForExistence(timeout: Self.connectBoundSeconds) else {
+            observations.record("failure", "the overlay never appeared: the screen did not open")
+            observations.emit()
+            return XCTFail("MoqScreen's overlay never appeared")
+        }
+        let rendering = await Self.reading(of: overlay, within: Self.connectBoundSeconds) {
+            $0.rendering || $0.failed != nil
+        }
+        observations.record("reading.before", rendering.line)
+        guard rendering.rendering else {
+            observations.emit()
+            return XCTFail("The broadcast never rendered: \(rendering.line)")
+        }
+
+        app.buttons[Self.pictureInPictureIdentifier].tap()
+        let started = await Self.reading(of: overlay, within: Self.pictureInPictureBoundSeconds) {
+            $0.pictureInPicture == "active" || $0.pictureInPicture.hasPrefix("failed")
+        }
+        observations.record("reading.started", started.line)
+
+        XCUIDevice.shared.press(.home)
+        // Away for longer than the advance wanted, so the clock moving by that much is the stream
+        // having played on while the app was not in front — the one stretch a sleep is the test.
+        try await Task.sleep(for: .seconds(Self.awaySeconds))
+        app.activate()
+        let back = await Self.reading(of: overlay, within: Self.connectBoundSeconds) { _ in true }
+        observations.record("reading.back", back.line)
+
+        let playedOn =
+            started.pictureInPicture == "active" && back.pictureInPicture == "active"
+            && back.rendering && back.positionMs >= started.positionMs + Self.advanceWantedMs
+        observations.record("played-on", playedOn ? "yes" : "no")
+        observations.emit()
+        app.buttons[Self.pictureInPictureIdentifier].tap()
+
+        XCTAssertTrue(
+            playedOn,
+            "Picture in Picture did not play on: started \(started.line), back \(back.line)")
+    }
+
+    /// Reads `overlay` every half second until `wanted` holds of a reading or `bound` passes,
+    /// answering the last reading either way.
+    @MainActor
+    private static func reading(
+        of overlay: XCUIElement, within bound: TimeInterval, _ wanted: (Reading) -> Bool
+    ) async -> Reading {
+        let deadline = Date(timeIntervalSinceNow: bound)
+        var reading = Reading(overlay.value as? String ?? "")
+        while !wanted(reading), Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(500))
+            reading = Reading(overlay.value as? String ?? "")
+        }
+        return reading
+    }
+
     // MARK: - The relay and the address mapping
 
     /// Asks the relay what it announces, and asks each candidate address split which one routes — the
@@ -342,6 +412,7 @@ final class MoqLiveSessionSmokeTests: XCTestCase {
         let positionMs: Int64
         let rendering: Bool
         let received: Int64
+        let pictureInPicture: String
         let failed: String?
 
         init(_ line: String) {
@@ -354,6 +425,7 @@ final class MoqLiveSessionSmokeTests: XCTestCase {
             positionMs = Int64(fields["position"] ?? "") ?? -1
             rendering = fields["rendering"] == "true"
             received = Int64(fields["received"] ?? "") ?? -1
+            pictureInPicture = fields["pip"] ?? "-"
             failed = line.range(of: " failed=").map { String(line[$0.upperBound...]) }
         }
     }
@@ -373,6 +445,17 @@ final class MoqLiveSessionSmokeTests: XCTestCase {
 
     /// `MoqDemoSession.readingIdentifier`, restated for the same reason.
     static let readingIdentifier = "moq.reading"
+
+    /// `MoqDemoSession.pictureInPictureIdentifier`, restated likewise.
+    static let pictureInPictureIdentifier = "moq.pip"
+
+    /// How long Picture in Picture may take to start once asked: **10 s**, a ceiling, since the
+    /// system animates the window out of the app before the delegate hears it started.
+    static let pictureInPictureBoundSeconds: TimeInterval = 10
+
+    /// How long the app is sent home for: **8 s**, two of the demo's reading intervals past
+    /// ``advanceWantedMs``, so a stream that played on clears the advance with room to spare.
+    static let awaySeconds: Double = 8
 
     /// A connect, a catalog and a declaration: **15 s**, the Kotlin bound, wide because the failure it
     /// produces — no tracks — is the ambiguous one this test exists to separate, and a phone on a

@@ -443,6 +443,21 @@ window then appears, and that the dropped-frame count means what a screen shows,
 gap is shared with the frame output's delegate: the controller is the app's, so nothing here calls
 its `invalidatePlaybackState()`, and a pause made elsewhere — a remote command, an interruption —
 reaches the window's button only when AVKit next asks.
+
+**On an iPhone** (iPhone 17 Pro Max, iOS 27.0, #461), Picture in Picture was run from the demo's MoQ
+screen. The first part is `MoqLiveSessionSmokeTests.testTheDemoPlaysOnInPictureInPicture`, an XCUITest.
+It taps the screen's button and reads that the controller's delegate heard the start. It then sends the
+app home for eight seconds and reads the clock, which had advanced 8.0 s across the time away, with the
+layer still rendering and Picture in Picture still active. A person then watched the window. The stream
+played, and its pause and play buttons paused and resumed it through the playback delegate. The window
+showed the LIVE badge and a bar with no thumb, as an unbounded time range asks. **It also drew both
+skip buttons.** The app's `requiresLinearPlayback` greys the forward one, and the back one stays,
+whatever start the range reports (a start at the playhead was tried and drew the same). No API hides
+it, so the delegate completes a skip having moved nothing. Two things the run taught the demo: a
+controller asked to start the moment it is made is ignored, because the system makes a start
+possible a moment later, so the demo makes it with the view; and the window needs the app's
+`audio` background mode. `demo/bbb.hang` stopped publishing on the relay mid-run, and
+`SP_MOQ_BROADCAST=moq://cdn.moq.dev/demo/boy/gb-run.hang` is what the test passed against.
 **Opus**, whose description is made and whose cookie (an OpusHead) no test decodes, is still not
 covered. ADR-0020 rule 11's other half, a realtime source handed to a `SuperPlayer` refused typed, is
 #419's `UnplayableSourceSchemeError` (the rule's #419 addendum). What a device alone shows is a real

@@ -415,8 +415,10 @@ extension RealtimePlayer: PlaybackEngine {
 /// ref: https://developer.apple.com/documentation/avkit/avpictureinpicturesamplebufferplaybackdelegate
 ///
 /// The time range is unbounded at both ends, which is how a live stream is described to Picture in
-/// Picture and how it is told to draw no scrubber; a skip completes having moved nothing, because
-/// there is nowhere to move to. On the main actor, as the player is; AVKit calls a playback delegate
+/// Picture: on an iPhone (#461) the window then draws its LIVE badge and a bar with no thumb. It
+/// still draws both skip buttons, whatever the range's start — the app's
+/// `requiresLinearPlayback` greys the forward one out and nothing reaches the back one — so a skip
+/// completes here having moved nothing, because there is nowhere to move to. On the main actor, as the player is; AVKit calls a playback delegate
 /// on the main thread, and the `@preconcurrency` conformance checks that it did.
 @MainActor
 final class RealtimePictureInPicturePlayback: NSObject,

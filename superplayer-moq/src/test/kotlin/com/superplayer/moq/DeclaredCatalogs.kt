@@ -147,7 +147,7 @@ internal object DeclaredCatalogs {
      * [coded] is a parameter rather than a constant because its absence is a case: a publisher may
      * declare no size, and what the mapping does with that is asserted rather than assumed
      * (#353). It defaults to 720p, an ordinary rendition. [bitrate] is a parameter for the ladder
-     * test alone, which needs one rendition plainly worse than another to show nothing prefers.
+     * test, which needs one rendition plainly worse than another to show nothing prefers.
      */
     fun video(
         codec: String,

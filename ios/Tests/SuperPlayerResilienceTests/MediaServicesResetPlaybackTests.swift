@@ -44,6 +44,13 @@ final class MediaServicesResetPlaybackTests: XCTestCase {
     /// than this is a different position rather than the same one read through a frame boundary.
     private let samePositionMs: Int64 = 50
 
+    /// The first ask for the multivariant playlist dropped with no answer, which `AVPlayer` repairs
+    /// by asking again for the same item, unseen by the facade (#505). It is the control that keeps
+    /// ``itemsBuilt(_:)`` honest: a count of playlist requests reads two items here, as it would
+    /// wherever a slow host leaves AVFoundation asking again.
+    private let droppedFirstAsk = FaultScript.Builder()
+        .resetConnection(kind: .manifest, index: 0, firstAttempts: 1).build()
+
     private let harness = PlaybackHarness()
     private var players: [SuperPlayer] = []
     private var subscriptions: Set<AnyCancellable> = []
@@ -82,22 +89,35 @@ final class MediaServicesResetPlaybackTests: XCTestCase {
     }
 
     /// Posts the reset and waits for the item to be rebuilt and ready. The rebuild is seen where a
-    /// consumer's CDN would see it, as the multivariant playlist asked for again, rather than by
-    /// reading which item the facade made current (ADR-0021 rule 1).
+    /// consumer's CDN would see it, as the multivariant playlist asked for under a new playback
+    /// session, rather than by reading which item the facade made current (ADR-0021 rule 1).
     private func resetAndAwaitRebuild(_ player: SuperPlayer, _ origin: LoopbackOrigin)
         async throws
     {
-        let before = playlistRequests(origin)
+        let before = itemsBuilt(origin)
         postMediaServicesReset()
         try await harness.until("the item is rebuilt and ready", timeout: bound) {
-            self.playlistRequests(origin) == before + 1
+            self.itemsBuilt(origin) == before + 1
                 && player.avPlayer.currentItem?.status == .readyToPlay
         }
     }
 
-    /// How many times the origin was asked for the multivariant playlist: once per item built.
-    private func playlistRequests(_ origin: LoopbackOrigin) -> Int {
-        origin.networkRequests().filter { $0.path == "/master.m3u8" }.count
+    /// How many items asked the origin for the multivariant playlist: the distinct
+    /// `X-Playback-Session-Id`s those requests carried. AVFoundation sends the asset's
+    /// `httpSessionIdentifier` there on every request and a rebuild is a fresh asset
+    /// (`PlayerStateRungs.swift`, `reopen`), so an item is one id however often it asked, where a
+    /// count of the requests reads `AVPlayer`'s own retry as a rebuild (``droppedFirstAsk``). A
+    /// request with no id counts as an item of its own, so a runtime that stopped sending the header
+    /// fails these tests rather than passing them on a collapsed count.
+    private func itemsBuilt(_ origin: LoopbackOrigin) -> Int {
+        let sessions = origin.networkRequests().filter { $0.path == "/master.m3u8" }
+            .map { $0.headers["x-playback-session-id"] ?? UUID().uuidString }
+        return Set(sessions).count
+    }
+
+    /// Whether ``droppedFirstAsk`` fired: the origin dropped one ask for the playlist unanswered.
+    private func askedAgain(_ origin: LoopbackOrigin) -> Bool {
+        origin.responses().contains { $0.request.path == "/master.m3u8" && $0.status == nil }
     }
 
     private func postMediaServicesReset() {
@@ -109,7 +129,7 @@ final class MediaServicesResetPlaybackTests: XCTestCase {
     // MARK: The acceptance
 
     func testAResetIsRepairedTwiceAtOnePositionAndTheThirdEndsOnRungSix() async throws {
-        let origin = try await harness.serve(.hls(segmentCount: 8))
+        let origin = try await harness.serve(.hls(segmentCount: 8), faults: droppedFirstAsk)
         let sink = RecordingSink()
         let (player, record) = player(resilient: true, sink: sink)
         player.setMediaRequest(MediaRequest(contentId: "a", sources: [origin.sourceURL]))
@@ -136,9 +156,10 @@ final class MediaServicesResetPlaybackTests: XCTestCase {
             Double(try XCTUnwrap(typed.positionMs)), Double(heldMs),
             accuracy: Double(samePositionMs))
         XCTAssertEqual(typed.underlyingError.code, AVError.Code.mediaServicesWereReset.rawValue)
-        // What each rebuild cost: the playlist again, once per rebuild (the re-adoption's price),
-        // and nothing for the third, which rung 6 rebuilds nothing for.
-        XCTAssertEqual(playlistRequests(origin), 1 + SuperPlayer.maxDecoderRecreations)
+        // What each rebuild cost: an item asking for the playlist again, once per rebuild (the
+        // re-adoption's price), and nothing for the third, which rung 6 rebuilds nothing for.
+        XCTAssertEqual(itemsBuilt(origin), 1 + SuperPlayer.maxDecoderRecreations)
+        XCTAssertTrue(askedAgain(origin), "the origin dropped no ask, so nothing was controlled")
         // One viewing, one session, however many items it took.
         XCTAssertEqual(sink.sessionsStarted.count, 1)
         XCTAssertEqual(sink.sessionsEnded, 0)
@@ -167,7 +188,7 @@ final class MediaServicesResetPlaybackTests: XCTestCase {
 
     /// ADR-0011 rule 14: without resilience nothing hears the reset, and nothing is rebuilt.
     func testAPlayerWithoutResilienceRebuildsNothing() async throws {
-        let origin = try await harness.serve(.hls(segmentCount: 8))
+        let origin = try await harness.serve(.hls(segmentCount: 8), faults: droppedFirstAsk)
         let (player, record) = player(resilient: false)
         player.setMediaRequest(MediaRequest(contentId: "a", sources: [origin.sourceURL]))
         _ = try await playPast(1.5, player)
@@ -180,7 +201,8 @@ final class MediaServicesResetPlaybackTests: XCTestCase {
         }
 
         XCTAssertTrue(record.errors.isEmpty)
-        XCTAssertEqual(origin.networkRequests().filter { $0.path == "/master.m3u8" }.count, 1)
+        XCTAssertEqual(itemsBuilt(origin), 1)
+        XCTAssertTrue(askedAgain(origin), "the origin dropped no ask, so nothing was controlled")
     }
 
     private func milliseconds(_ time: CMTime) -> Int64 {

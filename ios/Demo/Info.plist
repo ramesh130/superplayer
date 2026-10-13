@@ -11,10 +11,19 @@
   the app's to declare, which is what docs/ios.md tells an adopter. The target is shared with tvOS,
   where the key means nothing: a television's link runs at the display mode's rate.
   ref: https://developer.apple.com/documentation/quartzcore/optimizing-promotion-refresh-rates-for-iphone-13-pro-and-ipad-pro
+
+  UIBackgroundModes audio: what Picture in Picture needs before the system will start it, and what
+  keeps a stream playing with the screen locked (#461). The app's to declare, never the library's
+  (ADR-0007 rule 4's iOS reading in PlaybackSession.swift).
+  ref: https://developer.apple.com/documentation/avkit/configuring-your-app-for-media-playback
 -->
 <plist version="1.0">
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 </dict>
 </plist>

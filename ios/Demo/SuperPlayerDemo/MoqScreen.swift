@@ -17,6 +17,7 @@
 // nothing on tvOS (third-party/moq/README.md, *The Swift bindings*).
 #if canImport(SuperPlayerMoQ)
 
+    import AVKit
     import SuperPlayerCore
     import SuperPlayerMoQ
     import SuperPlayerRealtime
@@ -43,6 +44,11 @@
     /// The overlay is the transport's own reading, `MoqFrameSource.statistics()`, which deliberately
     /// reaches no telemetry sink.
     ///
+    /// **Picture in Picture** (#461) is the button beside it: the player's display layer handed to
+    /// `AVPictureInPictureController` through `PlayerLayerView.makePictureInPictureContentSource()`,
+    /// which for a `RealtimePlayer` answers for a live timeline with no ends. It needs the app's
+    /// `audio` background mode, which the demo's `Info.plist` declares.
+    ///
     /// **The broadcast is somebody else's.** ``MoqScreen/defaultBroadcast`` is on a public relay, and
     /// MoQ's refusal is `unroutable` for every reason at once, so a failure is shown verbatim rather
     /// than interpreted, and `-SPMoqBroadcast <moq://…>` names another one without a rebuild.
@@ -61,7 +67,7 @@
         var body: some View {
             ZStack(alignment: .topLeading) {
                 if let session {
-                    PlayerView(player: session.player)
+                    HostedLayerView(view: session.view)
                 } else {
                     Color.black
                 }
@@ -69,13 +75,21 @@
                 // rides the overlay as its accessibility value, which is how the device smoke's UI
                 // test reads it: nothing else in the app is readable from another process.
                 TimelineView(.periodic(from: .now, by: 1)) { _ in
-                    Text(session?.status ?? "connecting")
-                        .font(.footnote.monospacedDigit())
-                        .padding(8)
-                        .background(.black.opacity(0.6))
-                        .foregroundStyle(.white)
-                        .accessibilityIdentifier(MoqDemoSession.readingIdentifier)
-                        .accessibilityValue(session?.reading ?? "")
+                    HStack {
+                        Text(session?.status ?? "connecting")
+                            .font(.footnote.monospacedDigit())
+                            .padding(8)
+                            .background(.black.opacity(0.6))
+                            .foregroundStyle(.white)
+                            .accessibilityIdentifier(MoqDemoSession.readingIdentifier)
+                            .accessibilityValue(session?.reading ?? "")
+                        Button("Picture in Picture") { session?.togglePictureInPicture() }
+                            .font(.footnote)
+                            .padding(8)
+                            .background(.black.opacity(0.6))
+                            .foregroundStyle(.white)
+                            .accessibilityIdentifier(MoqDemoSession.pictureInPictureIdentifier)
+                    }
                 }
                 .padding()
             }
@@ -113,6 +127,9 @@
         /// The overlay's accessibility identifier, which the UI test finds it by.
         static let readingIdentifier = "moq.reading"
 
+        /// The Picture in Picture button's, likewise.
+        static let pictureInPictureIdentifier = "moq.pip"
+
         /// `DemoPlayback`'s interval and its reason: two lines within seconds of the first frame, and
         /// a run of minutes still a screenful.
         static let readingIntervalSeconds: Double = 2
@@ -120,6 +137,13 @@
         static let contentId = "demo:moq-live"
 
         let player: RealtimePlayer
+
+        /// The library's view of the player, owned here rather than made by SwiftUI so its Picture
+        /// in Picture content source has one view to be made from.
+        let view: PlayerLayerView
+
+        private var pictureInPicture: AVPictureInPictureController?
+        private let pictureInPictureEvents = PictureInPictureEvents()
         private let opened: OSAllocatedUnfairLock<MoqFrameSource?>
         private let log = Logger(subsystem: "com.superplayer.demo", category: "moq")
         private var logging: Task<Void, Never>?
@@ -135,6 +159,20 @@
                         opened.withLock { $0 = source }
                         return source
                     }))
+            view = PlayerLayerView(player: player)
+            // Made with the view rather than at the tap: the system makes a controller's start
+            // possible a moment after it is made, and a start asked before then is ignored (seen on
+            // an iPhone, #461), so the button must find one already made.
+            if let source = view.makePictureInPictureContentSource() {
+                let controller = AVPictureInPictureController(contentSource: source)
+                // A live stream has nothing to skip through: without this the window draws its
+                // skip buttons whatever the playback delegate says of the timeline (seen on an
+                // iPhone, #461), and the controller is the app's, so the app says it.
+                // ref: https://developer.apple.com/documentation/avkit/avpictureinpicturecontroller/requireslinearplayback
+                controller.requiresLinearPlayback = true
+                controller.delegate = pictureInPictureEvents
+                pictureInPicture = controller
+            }
             do {
                 // Step 2, and step 3.
                 try player.setMediaRequest(
@@ -165,7 +203,29 @@
             let failure = player.failure.map { " failed=\($0)" } ?? ""
             return
                 "content=\(Self.contentId) position=\(positionMs) rendering=\(player.isRendering)"
-                + " received=\(received) rtt=\(rtt)\(failure)"
+                + " received=\(received) rtt=\(rtt) pip=\(pictureInPictureState)\(failure)"
+        }
+
+        /// Where Picture in Picture is: `active`, `possible`, `impossible` before the system allows
+        /// it, or `failed:<error>` if starting it was refused — the last event the controller's
+        /// delegate heard, if any, else the controller's own reading.
+        var pictureInPictureState: String {
+            if let event = pictureInPictureEvents.last { return event }
+            guard let pictureInPicture else { return "none" }
+            if pictureInPicture.isPictureInPictureActive { return "active" }
+            return pictureInPicture.isPictureInPicturePossible ? "possible" : "impossible"
+        }
+
+        /// Starts Picture in Picture over the player's display layer, or stops it if it runs.
+        func togglePictureInPicture() {
+            guard let pictureInPicture else { return }
+            if pictureInPicture.isPictureInPictureActive {
+                pictureInPicture.stopPictureInPicture()
+            } else {
+                pictureInPictureEvents.last = nil
+                pictureInPicture.startPictureInPicture()
+            }
+            log.log("picture in picture asked: \(self.pictureInPictureState, privacy: .public)")
         }
 
         /// What a person reads over the picture: the failure verbatim if there was one, else the
@@ -181,8 +241,44 @@
         /// Step 4.
         func release() {
             logging?.cancel()
+            pictureInPicture?.stopPictureInPicture()
+            pictureInPicture = nil
             player.release()
         }
+    }
+
+    /// What Picture in Picture's controller last reported, as the reading's `pip=` word.
+    @MainActor
+    final class PictureInPictureEvents: NSObject, AVPictureInPictureControllerDelegate {
+        var last: String?
+
+        nonisolated func pictureInPictureControllerDidStartPictureInPicture(
+            _ controller: AVPictureInPictureController
+        ) {
+            MainActor.assumeIsolated { last = "active" }
+        }
+
+        nonisolated func pictureInPictureControllerDidStopPictureInPicture(
+            _ controller: AVPictureInPictureController
+        ) {
+            MainActor.assumeIsolated { last = "stopped" }
+        }
+
+        nonisolated func pictureInPictureController(
+            _ controller: AVPictureInPictureController,
+            failedToStartPictureInPictureWithError error: any Error
+        ) {
+            let text = "failed:\((error as NSError).domain):\((error as NSError).code)"
+            MainActor.assumeIsolated { last = text }
+        }
+    }
+
+    /// A view the session made, hosted as it is: SwiftUI neither makes nor replaces it, so the
+    /// Picture in Picture content source made from it stays the one on screen.
+    struct HostedLayerView: UIViewRepresentable {
+        let view: PlayerLayerView
+        func makeUIView(context: Context) -> PlayerLayerView { view }
+        func updateUIView(_ view: PlayerLayerView, context: Context) {}
     }
 
 #endif

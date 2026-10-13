@@ -26,10 +26,11 @@ import XCTest
 /// need the phase 2 harness, and `SuperPlayerCoreTests` takes core's phase 1 (`docs/modules.md`).
 /// The Kotlin core tests have a harness of core's own; an iOS one would be a second loopback origin.
 ///
-/// **Time is real, and what is asserted is a position, never a duration.** Each start is read at
-/// the first poll that finds the player playing, and held to a window argued once, at
-/// ``startTolerance``. Playback is started through `player.avPlayer`, because that is where
-/// transport controls are for a consumer too (`SuperPlayer`'s doc comment).
+/// **Time is real, and what is asserted is a position, never a duration.** Each start is read off
+/// the item once it is ready and before it is told to play, where nothing moves it however slow the
+/// host, and only then is it played and seen to go on from there (``startedPosition(_:)``, #502).
+/// Playback is started through `player.avPlayer`, because that is where transport controls are for
+/// a consumer too (`SuperPlayer`'s doc comment).
 @MainActor
 final class SuperPlayerPlaybackTests: XCTestCase {
 
@@ -37,18 +38,11 @@ final class SuperPlayerPlaybackTests: XCTestCase {
     /// only a ceiling, never approached by a pass.
     private let bound: Duration = .seconds(60)
 
-    /// How far past the position it should start at a player may first be *seen* playing.
-    ///
-    /// The start itself is exact — the seek is made with zero tolerance, and the packed audio's
-    /// frames are a few tens of milliseconds — so what this covers is the reading: a poll every
-    /// `PlaybackHarness.pollInterval`, and the main actor's turn between the player starting and
-    /// the poll seeing it. A second is many times both, and still less than half the distance
-    /// between any two outcomes a test here tells apart, which are a whole two-second segment or
-    /// more from one another.
-    private let startTolerance = 1.0
-
-    /// How far *before* its position a player may be seen: an AAC frame's length at the synthetic
-    /// stream's rate, rounded up, since a zero-tolerance seek lands on a frame boundary.
+    /// How far from its position a ready player may be held, either side: an AAC frame's length at
+    /// the synthetic stream's rate, rounded up, since a zero-tolerance seek lands on a frame
+    /// boundary. It is the whole window, because the start is read before playback can move it: a
+    /// window above it for a reading taken after `.playing` was a duration a loaded host could
+    /// outrun, and once did by 40 ms (#502).
     private let frameTolerance = 0.05
 
     /// Where a played item is left before it is replaced: past the first segment, so the beginning
@@ -93,7 +87,7 @@ final class SuperPlayerPlaybackTests: XCTestCase {
             MediaRequest(
                 contentId: "a", sources: [origin.sourceURL], startPosition: .at(positionMs: startMs)
             ))
-        let started = try await firstPositionPlaying(player)
+        let started = try await startedPosition(player)
 
         assertStarted(at: started, expected: Double(startMs) / 1_000)
         XCTAssertFalse(
@@ -117,7 +111,7 @@ final class SuperPlayerPlaybackTests: XCTestCase {
             MediaRequest(
                 contentId: "first", sources: [first.sourceURL], startPosition: .resumeFromLastKnown)
         )
-        let resumed = try await firstPositionPlaying(player)
+        let resumed = try await startedPosition(player)
 
         assertStarted(at: resumed, expected: leftAt)
     }
@@ -149,7 +143,7 @@ final class SuperPlayerPlaybackTests: XCTestCase {
         player.setMediaRequest(
             MediaRequest(
                 contentId: "a", sources: [origin.sourceURL], startPosition: .resumeFromLastKnown))
-        let resumed = try await firstPositionPlaying(player)
+        let resumed = try await startedPosition(player)
 
         assertStarted(at: resumed, expected: 0)
     }
@@ -192,13 +186,17 @@ final class SuperPlayerPlaybackTests: XCTestCase {
         player.setMediaRequest(
             MediaRequest(
                 contentId: "a", sources: [origin.sourceURL], startPosition: .resumeFromLastKnown))
-        let resumed = try await firstPositionPlaying(player)
+        // Replaced while playing, unlike the other tests' content, and paused on the same turn —
+        // before the new item can have loaded, let alone moved — so it is held at its start rather
+        // than inheriting the playing rate (``startedPosition(_:)``).
+        player.avPlayer.pause()
+        let resumed = try await startedPosition(player)
 
         assertStarted(at: resumed, expected: 0)
     }
 
     /// Plays `first`, sets `othersCount` other content ids in turn without playing them, then
-    /// resumes `first`: where it was left, and where it was first seen playing again.
+    /// resumes `first`: where it was left, and where it started again.
     private func resumeAfter(othersCount: Int) async throws -> (leftAt: Double, position: Double) {
         let origin = try await harness.serve(.hls())
         let player = SuperPlayer()
@@ -213,7 +211,7 @@ final class SuperPlayerPlaybackTests: XCTestCase {
             MediaRequest(
                 contentId: "first", sources: [origin.sourceURL], startPosition: .resumeFromLastKnown
             ))
-        return (leftAt, try await firstPositionPlaying(player))
+        return (leftAt, try await startedPosition(player))
     }
 
     /// Plays `request` past ``leaveAfter`` and pauses it, returning the position it was left at —
@@ -231,21 +229,46 @@ final class SuperPlayerPlaybackTests: XCTestCase {
         return player.avPlayer.currentTime().seconds
     }
 
-    /// Starts the current item and returns its position at the first poll that finds it playing.
-    private func firstPositionPlaying(_ player: SuperPlayer) async throws -> Double {
+    /// The position the current item starts at: read once it is ready and while it is still held
+    /// paused, so the reading is the start and not wherever playback had got to by the poll that
+    /// saw it (#502). It is then played, and seen playing on from there rather than from anywhere
+    /// earlier — no later bound, since how far it has got by then is the host's speed. A forward
+    /// jump on `play()` is therefore unbounded here; it would be AVFoundation's, since the seek
+    /// SuperPlayer makes is zero-tolerance and lands before the item is ready.
+    ///
+    /// The player must be paused when it is called — as ``playAndLeave(_:_:)`` leaves it — or the
+    /// new item inherits the playing rate and has no held start to read. Readiness and the paused
+    /// position are ADR-0021 rule 1's readings (its #400, #401 and #502 addenda). A player that
+    /// plays from earlier than its start fails the order assertion, and one that never plays
+    /// fails at the wait, as a `ConditionTimeout`.
+    private func startedPosition(
+        _ player: SuperPlayer, file: StaticString = #filePath, line: UInt = #line
+    ) async throws -> Double {
+        try await harness.until("the item is ready", timeout: bound) {
+            player.avPlayer.currentItem?.status == .readyToPlay
+        }
+        XCTAssertEqual(
+            player.avPlayer.timeControlStatus, .paused, "played before it was told to", file: file,
+            line: line)
+        let start = player.avPlayer.currentTime().seconds
+
         player.avPlayer.play()
         try await harness.until("the player is playing", timeout: bound) {
             player.avPlayer.timeControlStatus == .playing
         }
-        return player.avPlayer.currentTime().seconds
+        let playing = player.avPlayer.currentTime().seconds
+        XCTAssertGreaterThanOrEqual(
+            playing, start - frameTolerance,
+            "held at \(start) s, then seen playing at \(playing) s", file: file, line: line)
+        return start
     }
 
     private func assertStarted(
         at position: Double, expected: Double, file: StaticString = #filePath, line: UInt = #line
     ) {
-        XCTAssertTrue(
-            (expected - frameTolerance...expected + startTolerance).contains(position),
-            "first seen playing at \(position) s, expected \(expected) s", file: file, line: line)
+        XCTAssertEqual(
+            position, expected, accuracy: frameTolerance,
+            "started at \(position) s, expected \(expected) s", file: file, line: line)
     }
 }
 

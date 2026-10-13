@@ -48,9 +48,9 @@ final class PlaybackSessionPlaybackTests: XCTestCase {
     /// beginning and the resume position are a segment and more apart.
     private let leaveAfter = 2.5
 
-    /// How far past its position a player may first be *seen* playing, and how far before — the
-    /// windows `SuperPlayerPlaybackTests.startTolerance` and `frameTolerance` argue, for their
-    /// reasons: a poll's interval and a main-actor turn after, an AAC frame before.
+    /// How far past its position a player may first be *seen* playing, and how far before: a
+    /// poll's interval and a main-actor turn after, still less than half the two-second segment
+    /// between the outcomes told apart here, and an AAC frame before.
     private let startTolerance = 1.0
     private let frameTolerance = 0.05
 

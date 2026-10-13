@@ -19,6 +19,8 @@
   Amended again (#474) at rule 1, admitting a screen's stand-in and a short forward buffer written
   alike on a stock and a `SuperPlayer` item and a stalled item's error log, and at rule 4, admitting
   the slow-link tests' stretches and positions.
+  Amended again (#502) at rule 1, admitting a start position read off a ready item held paused
+  beside the reading where the engine was first seen playing.
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
 - **Refines:** [`docs/testing.md`](../testing.md)'s rule — *no device and no network, through the
@@ -151,6 +153,18 @@ rule names the ticket that brings its enforcement, and *What nothing enforces* s
    held to contain AVFoundation's -12889 for a segment it gave up on: the #419 addendum's reason, a
    platform fact pinned so a runtime that changes it fails a test, on an item that has not failed
    because the fact is that it never does. None lapses with a playback state.
+
+   *Addendum (2026-10-13, #502).* The #400 addendum asserts a start or resume position "as where the
+   engine was first seen playing", and that reading is a duration in disguise: it is wherever
+   playback had got to by the poll that saw it, held to a window a loaded host once outran by 40 ms.
+   A start is read instead off the item once it is ready (the #401 addendum's reading) and before it
+   is told to play, where nothing moves it, and is held to an AAC frame either side; the player is
+   then played and seen to go on from there, with no later bound. `SuperPlayerPlaybackTests` reads
+   its starts this way. The earlier reading is not withdrawn: a player that starts itself, such as a
+   snapshot restored playing, has no held start to read, and the suites that still take the first
+   poll — snapshot, pool and session — keep it with their window argued beside it, each a candidate
+   for this reading should it flake. No reading is added — readiness, `timeControlStatus` and
+   `currentTime()` are all admitted already — so it lapses with them.
 
 2. **The harness is a loopback HTTP origin, started per test, and the carve-out is widened to every
    iOS test.** `SuperPlayerTestkit` starts an HTTP/1.1 server on `127.0.0.1` at an ephemeral port

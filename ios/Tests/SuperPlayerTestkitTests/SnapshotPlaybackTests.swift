@@ -31,9 +31,10 @@ final class SnapshotPlaybackTests: XCTestCase {
     /// The ceiling on every wait, never approached by a pass.
     private let bound: Duration = .seconds(60)
 
-    /// `SuperPlayerPlaybackTests.startTolerance`, for its reason: a poll and a main-actor turn
+    /// How far past its position a player may first be seen playing: a poll and a main-actor turn
     /// between the player starting and the poll seeing it, still less than half the two-second
-    /// segment between any two outcomes told apart here.
+    /// segment between any two outcomes told apart here. `SuperPlayerPlaybackTests` reads a held
+    /// start instead and needs no such window (#502).
     private let startTolerance = 1.0
 
     /// An AAC frame at the synthetic stream's rate, rounded up: a zero-tolerance seek lands on a

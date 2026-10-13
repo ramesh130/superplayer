@@ -28,13 +28,15 @@ import XCTest
 /// never loads is enough to make a registration.
 ///
 /// Time is real and nothing here measures it; a start is a position read at the first poll that
-/// finds the player playing, held to the tolerances `SuperPlayerPlaybackTests` argues.
+/// finds the player playing, held to the two tolerances below.
 @MainActor
 final class PlayerPoolPlaybackTests: XCTestCase {
 
     private let bound: Duration = .seconds(60)
 
-    /// `SuperPlayerPlaybackTests.startTolerance` and `frameTolerance`, for their reasons.
+    /// How far past its position a player may first be *seen* playing, and how far before: a
+    /// poll's interval and a main-actor turn after, still less than half the two-second segment
+    /// between the outcomes told apart here, and an AAC frame before.
     private let startTolerance = 1.0
     private let frameTolerance = 0.05
 

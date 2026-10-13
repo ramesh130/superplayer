@@ -320,6 +320,63 @@ final class DownloadsTests: XCTestCase {
         XCTAssertEqual(downloads.started.map(\.contentId), ["lost"])
     }
 
+    /// The index's order is the order of enqueue whichever manifest read finishes first (#425,
+    /// #507): the first item's multivariant playlist is held at its own origin, so the second item's
+    /// plan reaches the index before the first's does — and the next store still reads them in the
+    /// order they were enqueued. A store that took an item's place as its plan was written reads
+    /// them the other way round.
+    func testTheIndexKeepsTheOrderOfEnqueueWhenTheFirstManifestReadFinishesLast() async throws {
+        // Each origin holds its fourth segment, so both items stay downloading until the release.
+        let holdingASegment = FaultScript.Builder()
+            .addLatencyMs(60_000, kind: .mediaSegment, index: 3)
+        // Five seconds of real time, against the milliseconds a loopback manifest read takes: long
+        // enough that the second read and its plan are written first on a loaded host too. A host
+        // slower than that weakens the test to the order that would pass anyway, never fails it.
+        let slow = try await harness.serve(
+            .hls(),
+            faults: holdingASegment.addLatencyMs(5_000, kind: .manifest, index: 0).build())
+        let quick = try await harness.serve(.hls(), faults: holdingASegment.build())
+        let (first, _) = try open(policy: Decided(PlaybackDecision()))
+        first.enqueue(MediaRequest(contentId: "slow", sources: [slow.sourceURL]))
+        first.enqueue(MediaRequest(contentId: "quick", sources: [quick.sourceURL]))
+        try await harness.until("both are downloading", timeout: .seconds(30)) {
+            first.downloads().count == 2
+                && first.downloads().allSatisfy { $0.state == .downloading }
+        }
+        first.release()
+
+        let (second, _) = try open(heldBySession: ["slow", "quick"])
+        XCTAssertEqual(second.downloads().map(\.contentId), ["slow", "quick"])
+    }
+
+    /// An item keeps the place it was **first** enqueued in, in the next store as in this one: one
+    /// whose manifest could not be read, so that nothing of it reached the index, and that is
+    /// enqueued again after another, is first in both. A store that took a new place at every
+    /// enqueue answered first-enqueued order while it was open and the reverse once reopened.
+    func testAnItemEnqueuedAgainAfterAFailedReadKeepsItsFirstPlaceInTheNextStore() async throws {
+        let origin = try await harness.serve(
+            .hls(),
+            faults: FaultScript.Builder().addLatencyMs(60_000, kind: .mediaSegment, index: 3)
+                .build())
+        let (first, _) = try open(policy: Decided(PlaybackDecision()))
+        first.enqueue(
+            MediaRequest(contentId: "retried", sources: [origin.url(path: "/absent.m3u8")]))
+        try await harness.until("the unreadable one fails", timeout: .seconds(30)) {
+            first.download("retried")?.state == .failed
+        }
+        first.enqueue(MediaRequest(contentId: "other", sources: [origin.sourceURL]))
+        first.enqueue(MediaRequest(contentId: "retried", sources: [origin.sourceURL]))
+        try await harness.until("both are downloading", timeout: .seconds(30)) {
+            first.downloads().count == 2
+                && first.downloads().allSatisfy { $0.state == .downloading }
+        }
+        XCTAssertEqual(first.downloads().map(\.contentId), ["retried", "other"])
+        first.release()
+
+        let (second, _) = try open(heldBySession: ["retried", "other"])
+        XCTAssertEqual(second.downloads().map(\.contentId), ["retried", "other"])
+    }
+
     /// The other half of reading the index: a completed download is completed in the next store, and
     /// plays from its package there with no request.
     func testACompletedDownloadSurvivesTheStoreAndPlaysFromTheNextOne() async throws {

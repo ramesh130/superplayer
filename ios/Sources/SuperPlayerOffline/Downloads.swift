@@ -136,7 +136,11 @@ public final class Downloads: OfflineContent, OfflineAssets {
     private let index: DownloadIndex
     private let events: AsyncStream<DownloadEvent>.Continuation
     private var consumer: Task<Void, Never>?
-    private var order: [String] = []
+    /// Each download's place in the order of first enqueue, which is also its row's `ordinal` in the
+    /// index: one number read by ``downloads()`` and written by the index, so the store's order and
+    /// the next store's cannot disagree (#507). Taken when the content is first enqueued, kept
+    /// through a failure and a re-enqueue, and given up only by ``remove(_:)``.
+    private var places: [String: Int64] = [:]
     private var items: [String: DownloadItem] = [:]
     private var plans: [String: DownloadPlan] = [:]
     private var packagePaths: [String: String] = [:]
@@ -159,7 +163,7 @@ public final class Downloads: OfflineContent, OfflineAssets {
     private var releasingLicences = false
     private var releaseAgain = false
     private var expiries: [String: SuperPlayerError] = [:]
-    private var lastOrdinal: Int64 = 0
+    private var lastPlace: Int64 = 0
 
     /// Opens the store in ``Configuration/directory``, reading its index and re-attaching to the
     /// background session by ``Configuration/sessionIdentifier``: a download an earlier process left
@@ -205,14 +209,15 @@ public final class Downloads: OfflineContent, OfflineAssets {
         index = DownloadIndex(directory: directory)
         decision = Self.decide(configuration)
         for row in try index.rows() {
-            order.append(row.plan.contentId)
+            places[row.plan.contentId] = row.ordinal
             plans[row.plan.contentId] = row.plan
             packagePaths[row.plan.contentId] = row.packagePath
             items[row.plan.contentId] = DownloadItem(
                 contentId: row.plan.contentId, state: row.state, bytesDownloaded: row.bytes,
                 percentDownloaded: row.percent)
         }
-        lastOrdinal = try index.maxOrdinal()
+        // Over every row, a row this build cannot read included, so no place is given twice.
+        lastPlace = try index.maxOrdinal()
         // One consumer, in order: the downloader's events reach the store as it observed them.
         consumer = Task { [weak self] in
             for await event in stream { self?.handle(event) }
@@ -245,6 +250,9 @@ public final class Downloads: OfflineContent, OfflineAssets {
     /// Every download, in the order it was first enqueued — each licence read now.
     public func downloads() -> [DownloadItem] { order.compactMap { items[$0] }.map(withLicence) }
 
+    /// The content ids by their places: the order of first enqueue.
+    private var order: [String] { places.sorted { $0.value < $1.value }.map(\.key) }
+
     public func addListener(_ listener: any DownloadsListener) {
         guard !listeners.contains(where: { $0 === listener }) else { return }
         listeners.append(listener)
@@ -273,13 +281,19 @@ public final class Downloads: OfflineContent, OfflineAssets {
         retries[id] = nil
         let generation = nextGeneration(of: id)
         decision = Self.decide(configuration)
-        if !order.contains(id) { order.append(id) }
+        // Its place, taken now if it has none: the plan is written once its manifest is read, and
+        // two reads finish in either order (#425); one enqueued again after a failure that wrote
+        // nothing keeps the place it was first given (#507).
+        let ordinal: Int64
+        if let place = places[id] {
+            ordinal = place
+        } else {
+            lastPlace += 1
+            ordinal = lastPlace
+            places[id] = ordinal
+        }
         report(DownloadItem(contentId: id, state: .queued))
         let ceiling = decision.download
-        // Its place in the index's order, taken now: the plan is written once its manifest is read,
-        // and two reads finish in either order.
-        lastOrdinal += 1
-        let ordinal = lastOrdinal
         Task {
             await self.plan(
                 request, generation: generation, ordinal: ordinal, ceiling: ceiling,
@@ -308,7 +322,7 @@ public final class Downloads: OfflineContent, OfflineAssets {
             try? FileManager.default.removeItem(at: resolved(path))
         }
         try? index.remove(contentId)
-        order.removeAll { $0 == contentId }
+        places[contentId] = nil
         items[contentId] = nil
         plans[contentId] = nil
         packagePaths[contentId] = nil

@@ -25,6 +25,7 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import uniffi.moq.MoqContainer
+import uniffi.moq.MoqDimensions
 import java.io.IOException
 
 /**
@@ -237,40 +238,64 @@ class MoqCatalogTracksTest {
     }
 
     /**
-     * A ladder is subscribed to one rendition per kind, and the choice is the catalog's declaration
-     * order rather than any judgement of this module's.
+     * A ladder is subscribed to one rendition per kind, and the one taken is the rendition whose
+     * **track name sorts first** — never the catalog's declaration order, and never a judgement of
+     * this module's.
      *
-     * ADR-0018 rule 7 defers selection and a phase adding it amends that record; until then the
-     * assertion is that nothing here prefers. The second rendition is the better one *and* the
-     * first is flagged `stalled` — the flag a publisher raises precisely so that a selecting player
-     * moves off it — so a mapping that had grown any preference at all would take the second and
-     * fail here rather than quietly become a selector.
+     * Declaration order is not asserted because it does not survive the FFI: `MoqCatalogTracks`'
+     * `// ref:` reads `convert_catalog` collecting each kind into a Rust `HashMap`, whose iteration
+     * order is seeded per process (#484). So each map here is built in an order that **differs**
+     * from name order — `b-high` declared before `a-low` — and an implementation still reading
+     * "first entry" takes the wrong one and fails, in both kinds.
      *
-     * What it cannot show is the other half of "first": the maps here are Kotlin's own, built on
-     * this side of the FFI, so this exercises the mapping's `entries.firstOrNull()` and never the
-     * generated converter whose insertion order `MoqCatalogTracks`' `// ref:` reads off the
-     * bindings rather than asserting.
+     * The control is that nothing prefers. ADR-0018 rule 7 defers selection and a phase adding it
+     * amends that record, so the rendition that sorts first is made the *worse* one on every axis
+     * a selector would read — a lower bitrate, a smaller picture, and for video the `stalled` flag a
+     * publisher raises precisely so that a selecting player moves off it. A mapping that had grown
+     * any preference would take `b-high` and fail here rather than quietly become a selector.
      */
     @Test
-    fun aLadderIsTakenAtItsFirstDeclaredRenditionAndNothingPrefers() {
+    fun aLadderIsTakenAtTheRenditionWhoseNameSortsFirstAndNothingPrefers() {
         val catalog = DeclaredCatalogs.catalog(
-            video = mapOf(
-                "video-low" to DeclaredCatalogs.video(
+            video = linkedMapOf(
+                "b-high" to DeclaredCatalogs.video(
+                    codec = DeclaredCatalogs.OBSERVED_AVC1_CODEC,
+                    description = DeclaredCatalogs.OBSERVED_AVCC_PREFIX,
+                    coded = MoqDimensions(width = 1920u, height = 1080u),
+                    bitrate = 6_000_000uL,
+                ),
+                "a-low" to DeclaredCatalogs.video(
                     codec = DeclaredCatalogs.OBSERVED_AVC3_CODEC,
                     description = null,
                     stalled = true,
+                    coded = MoqDimensions(width = 640u, height = 360u),
+                    bitrate = 500_000uL,
                 ),
-                "video-high" to DeclaredCatalogs.video(
-                    codec = DeclaredCatalogs.OBSERVED_AVC1_CODEC,
-                    description = DeclaredCatalogs.OBSERVED_AVCC_PREFIX,
+            ),
+            audio = linkedMapOf(
+                "b-high" to DeclaredCatalogs.audio(
+                    codec = DeclaredCatalogs.SYNTHESIZED_OPUS_CODEC,
+                    description = null,
+                    bitrate = 256_000uL,
+                ),
+                "a-low" to DeclaredCatalogs.audio(
+                    codec = DeclaredCatalogs.SYNTHESIZED_AAC_CODEC,
+                    description = null,
+                    bitrate = 64_000uL,
                 ),
             ),
         )
+        // The precondition, so that the fixture cannot drift into a map where the two orders agree.
+        assertEquals("video declared out of name order", listOf("b-high", "a-low"), catalog.video.keys.toList())
+        assertEquals("audio declared out of name order", listOf("b-high", "a-low"), catalog.audio.keys.toList())
 
         val tracks = MoqCatalogTracks.declaredTracksOf(catalog)
 
-        assertEquals("one rendition per media kind", 1, tracks.size)
-        assertEquals("the first rendition the catalog declared", "video-low", tracks.single().trackName)
+        assertEquals("one rendition per media kind", 2, tracks.size)
+        assertEquals("the video rendition whose name sorts first", "a-low", tracks[0].trackName)
+        assertEquals(DeclaredCatalogs.OBSERVED_AVC3_CODEC, tracks[0].track.codec)
+        assertEquals("the audio rendition whose name sorts first", "a-low", tracks[1].trackName)
+        assertEquals(DeclaredCatalogs.SYNTHESIZED_AAC_CODEC, tracks[1].track.codec)
     }
 
     /**

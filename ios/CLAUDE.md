@@ -433,5 +433,9 @@ Things worth knowing before the first run:
   after the tools-version line). `./gradlew verifyLicenseHeader` derives the expected text from
   that file rather than keeping a copy, and checks it on Linux, since swift-format has no header
   rule; `ios/check` does not, so run the Gradle task too before pushing a new Swift file.
+- **"Test crashed with signal term" can be the simulator restarting under the runner**, and #508's
+  was. It is never a hung test: no time allowance is set, so a test that hangs hangs (a probe that
+  slept 418 s passed). A failed test step on either simulator says so when its device restarted
+  during the step (`ios/check`, at `simulator_boots`).
 - **The `[MT] IDESchemeActionDeviceRecord ... invalidDigitCount` lines** an Xcode 27 `xcodebuild`
   prints against an iOS 27 runtime are Xcode's own noise and fail nothing.

@@ -39,6 +39,8 @@ final class DownloadIndex {
     /// A row as the store reads it back.
     struct Row {
         let plan: DownloadPlan
+        /// Its place in the order of first enqueue, which the store reads back as its own.
+        let ordinal: Int64
         let state: DownloadState
         let bytes: Int64
         let percent: Double?
@@ -56,7 +58,7 @@ final class DownloadIndex {
     func rows() throws -> [Row] {
         try query(
             "SELECT content_id, source, title, variant_bps, audio, subtitles, state, bytes, "
-                + "percent, package FROM \(Self.table) ORDER BY ordinal", []
+                + "percent, package, ordinal FROM \(Self.table) ORDER BY ordinal", []
         ) { row -> Row? in
             // A row this build cannot read — a source that is no URL, a state it does not know — is
             // left out rather than guessed at: guessing "queued" would start it again.
@@ -71,6 +73,7 @@ final class DownloadIndex {
                         ? nil : sqlite3_column_double(row, 3),
                     audioLanguages: Self.list(Self.text(row, 4)),
                     subtitleLanguages: Self.list(Self.text(row, 5))),
+                ordinal: sqlite3_column_int64(row, 10),
                 state: state,
                 bytes: sqlite3_column_int64(row, 7),
                 percent: Self.isNull(row, 8) ? nil : sqlite3_column_double(row, 8),
@@ -85,18 +88,19 @@ final class DownloadIndex {
         }.first ?? 0
     }
 
-    /// Writes `plan` as a queued download, keeping its place in the order if it had one and taking
-    /// `ordinal` — the place the store gave it as it was enqueued — if not. Given rather than taken
-    /// here, because plans are written as their manifest reads finish, in whatever order that is
-    /// (#425: a licence acquired between the read and the write widened the window).
+    /// Writes `plan` as a queued download at `ordinal`, the place the store gave its content when it
+    /// was first enqueued. Given rather than taken here, because plans are written as their
+    /// manifest reads finish, in whatever order that is (#425: a licence acquired between the read
+    /// and the write widened the window), and an item enqueued again after a failure that wrote no
+    /// row keeps its first place (#507) — so the store's place is the only one, and the index never
+    /// keeps or derives one of its own.
     func insert(_ plan: DownloadPlan, ordinal: Int64) throws {
         try run(
             "INSERT OR REPLACE INTO \(Self.table) (content_id, ordinal, source, title, variant_bps, "
-                + "audio, subtitles, state, bytes, percent, package) VALUES (?, COALESCE("
-                + "(SELECT ordinal FROM \(Self.table) WHERE content_id = ?), ?), "
+                + "audio, subtitles, state, bytes, percent, package) VALUES (?, ?, "
                 + "?, ?, ?, ?, ?, ?, 0, NULL, NULL)",
             [
-                .text(plan.contentId), .text(plan.contentId), .integer(ordinal),
+                .text(plan.contentId), .integer(ordinal),
                 .text(plan.source.absoluteString),
                 .text(plan.title), plan.variantPeakBitRateBps.map(Value.real) ?? .null,
                 .text(plan.audioLanguages.joined(separator: "\n")),

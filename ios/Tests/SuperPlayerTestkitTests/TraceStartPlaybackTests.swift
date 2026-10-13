@@ -74,7 +74,16 @@ final class TraceStartPlaybackTests: XCTestCase {
     }
 
     /// The same session with nothing held: it passed before the anchor too, and is here so that the
-    /// anchor is shown to cost a host that was quick nothing.
+    /// anchor is shown to cost a host that was quick nothing. What the anchor decides is where the
+    /// trace's clock stands as each request arrives, so that is what is read, off the origin: every
+    /// request up to and including the first segment answered on the fast stretch, and the first
+    /// segment whole inside it.
+    ///
+    /// Not a start (#503): `AVPlayer` asks for one segment at a time and is ready only with two, so
+    /// whether the second is asked for inside the fast stretch is how quickly the host turns the
+    /// first one round. A host at a load of 160 did not, and its session met the slow stretch and
+    /// never started. That is the host's, wherever the trace is anchored, and the sibling's start
+    /// keeps ADR-0021 rule 4's argued margin for it.
     func testASessionQuickToReachItsFirstSegmentMeetsTheSameStretch() async throws {
         let origin = try await harness.serve(
             .videoHls(segmentCount: 30), network: try Self.fastThenTooSlow())
@@ -83,9 +92,20 @@ final class TraceStartPlaybackTests: XCTestCase {
         player.play()
         defer { player.replaceCurrentItem(with: nil) }
 
-        try await harness.until("playback starts", timeout: StockPlayback.bound) {
-            player.timeControlStatus == .playing && player.currentTime().seconds > 0
+        try await harness.until("the first segment is answered", timeout: StockPlayback.bound) {
+            origin.responses().contains { $0.request.path == VideoPlayback.firstSegmentPath }
         }
+        let responses = origin.responses()
+        let first = try XCTUnwrap(
+            responses.firstIndex { $0.request.path == VideoPlayback.firstSegmentPath })
+        for response in responses[...first] {
+            XCTAssertEqual(response.transport, Self.fastTransport, response.request.path)
+        }
+        let segment = responses[first]
+        XCTAssertEqual(segment.status, 200)
+        // Its first byte goes at the stretch's start, so its last is due this long into it.
+        let deliveryMs = Int64(segment.bodyBytesSent) * 8 * 1_000 / Self.fastBandwidthBps
+        XCTAssertLessThan(deliveryMs, Self.fastStretchMs)
         XCTAssertEqual(VideoPlayback.attempts(at: VideoPlayback.firstSegmentPath, origin), 1)
     }
 
@@ -104,14 +124,25 @@ final class TraceStartPlaybackTests: XCTestCase {
     /// (ADR-0021 rule 4's #474 addendum).
     private static let fastStretchMs: Int64 = 4_000
 
-    /// 2 Mbit/s for ``fastStretchMs``, then a quarter of the stream's own bitrate for good — a rate
-    /// at which no segment of the stream arrives inside AVFoundation's wait.
+    /// The fast stretch's rate: enough that a segment of the stream is whole well inside the
+    /// stretch, which the quick session's test asserts rather than assumes.
+    private static let fastBandwidthBps: Int64 = 2_000_000
+
+    /// The fast stretch's transport, the slow one being on another, so that a response says which
+    /// stretch it arrived on. Reported and never switched (``NetworkTransport``), so no player sees
+    /// a handover.
+    private static let fastTransport: NetworkTransport = .wifi
+
+    /// ``fastBandwidthBps`` for ``fastStretchMs``, then a quarter of the stream's own bitrate for good
+    /// — a rate at which no segment of the stream arrives inside AVFoundation's wait.
     private static func fastThenTooSlow() throws -> ThroughputTrace {
         try ThroughputTrace.Builder()
-            .add(durationMs: fastStretchMs, bandwidthBps: 2_000_000, transport: .wifi)
+            .add(
+                durationMs: fastStretchMs, bandwidthBps: fastBandwidthBps, transport: fastTransport
+            )
             .add(
                 durationMs: 1_000, bandwidthBps: VideoPlayback.streamBitrateBps / 4,
-                transport: .wifi
+                transport: .cellular
             )
             .holdAtEnd()
             .build()

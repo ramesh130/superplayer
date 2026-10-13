@@ -21,6 +21,8 @@
   the slow-link tests' stretches and positions.
   Amended again (#502) at rule 1, admitting a start position read off a ready item held paused
   beside the reading where the engine was first seen playing.
+  Amended again (#503) at rule 4, reading the quick session's trace start off the origin rather than
+  as a start.
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
 - **Refines:** [`docs/testing.md`](../testing.md)'s rule — *no device and no network, through the
@@ -269,6 +271,15 @@ rule names the ticket that brings its enforcement, and *What nothing enforces* s
    fail to start inside a stretch, which is the race #474 found and the reason the trace's clock now
    starts at the first segment (rule 3). Both read the same on consecutive runs before they were
    committed.
+
+   *Addendum (2026-10-13, #503).* A host at a load of 160 spent the four seconds *after* the
+   anchor: `AVPlayer` asks for one segment at a time and is ready only with two, so the second was
+   asked for on the slow stretch and the quick session in `TraceStartPlaybackTests` never started.
+   No anchor moves that, so that test no longer waits for a start. It reads what the anchor decides
+   off the origin instead: the slow stretch is on a transport of its own, every response up to and
+   including the first segment is held to the fast stretch's, and the first segment's bytes are
+   held to arrive inside it at that stretch's rate — structure, which holds whatever the host's
+   speed. The slow-host session keeps its start and the margin above.
 
    *Addendum (2026-10-11, #411).* What "kinds and order with every time masked" means in practice,
    decided where the first golden was written. Three readings, each forced by real time rather than

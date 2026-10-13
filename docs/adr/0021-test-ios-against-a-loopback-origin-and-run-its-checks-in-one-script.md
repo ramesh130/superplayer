@@ -23,6 +23,8 @@
   beside the reading where the engine was first seen playing.
   Amended again (#460) at rule 4, pinning the corpus record's starting rung to the one a fresh
   process takes, since AVFoundation remembers throughput across sessions in one process.
+  Amended again (#503) at rule 4, reading the quick session's trace start off the origin rather than
+  as a start.
 - **Deciders:** SuperPlayer maintainers
 - **Supersedes:** None
 - **Refines:** [`docs/testing.md`](../testing.md)'s rule — *no device and no network, through the
@@ -287,6 +289,16 @@ rule names the ticket that brings its enforcement, and *What nothing enforces* s
    media, not lost a request. A process per run was rejected because it buys the same start at the
    cost of an `xcodebuild` invocation per run. A record valid for one run per process was rejected
    because it would read differently depending on where the run fell, with nothing to say so.
+
+   *Addendum (2026-10-13, #503).* A host at a load of 160 spent the four seconds *after* the
+   anchor: `AVPlayer` asks for one segment at a time and is ready only with two, so the second was
+   asked for on the slow stretch and the quick session in `TraceStartPlaybackTests` never started.
+   No anchor moves that, so that test no longer waits for a start. It reads what the anchor decides
+   off the origin instead: the slow stretch is on a transport of its own, every response up to and
+   including the first segment is held to the fast stretch's, and the first segment's bytes are
+   held to arrive inside it at that stretch's rate. That is structure, and it holds whatever the
+   host's speed, because the first segment is the anchor. The slow-host session keeps its start and
+   the margin above.
 
    *Addendum (2026-10-11, #411).* What "kinds and order with every time masked" means in practice,
    decided where the first golden was written. Three readings, each forced by real time rather than

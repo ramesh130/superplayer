@@ -81,23 +81,30 @@ internal class MoqDeclaredTrack(
  * fourcc: it is handed over as received and refused there with `MalformedRealtimeBitstreamException`
  * (ADR-0018 rule 4's #345 addendum).
  *
- * ## One rendition per kind, chosen in no way
+ * ## One rendition per kind, chosen in no way — in track-name order
  *
  * ADR-0018 rule 7 **defers** adaptive selection rather than excluding it: a MoQ catalog really does
- * list a ladder, and a phase that selects from it amends that record. Until then this takes the
- * *first* rendition each map declares — which is not a preference but the absence of one, the
- * catalog's own declaration order being the only ordering it carries. `MoqVideo.stalled`, the flag
- * a publisher raises so that players prefer another rendition, is read by nothing here for exactly
- * that reason.
+ * list a ladder, and a phase that selects from it amends that record. Until then this takes, per
+ * kind, the rendition whose **track name sorts first** — which is not a preference but the absence
+ * of one, made the same absence every time. `MoqVideo.stalled`, the flag a publisher raises so that
+ * players prefer another rendition, is read by nothing here for exactly that reason, and neither is
+ * a bitrate or a size.
  *
- * That order survives the FFI, and the claim is about generated third-party code rather than about
- * anything here, so it carries its reading:
+ * Name order rather than the catalog's own declaration order, because declaration order does not
+ * survive the FFI (#484). The generated Kotlin converter preserves the order it is handed — but by
+ * then there is no publisher's order left to hand it, so "first declared" was a hash order that
+ * could name a different rendition from one process to the next, which is the one thing a bug
+ * report cannot carry. The iOS port takes the same rendition for the same reason
+ * (`ios/MoQ/Sources/SuperPlayerMoQ/MoqCatalogTracks.swift`), so the two platforms agree.
  *
- * // ref: `uniffi.moq.FfiConverterMapStringTypeMoqVideo.read` at `dev.moq:moq-ffi:0.3.19-superplayer-local`
- * // builds its result through `kotlin.collections.MapsKt.createMapBuilder`, whose `MapBuilder`
- * // iterates in insertion order — so "first" is the first entry the publisher wrote and not a hash
- * // order. Nothing under `check` exercises that converter (`MoqCatalogTracksTest` builds its maps
- * // on this side), so this half is read off the bindings rather than asserted.
+ * // ref: `rs/moq-ffi/src/media.rs` `convert_catalog` at `moq-dev/moq@4e419f9` collects each kind's
+ * // renditions into a Rust `HashMap` (`MoqCatalog.video: HashMap<String, MoqVideo>`) before either
+ * // binding is reached, and std's `HashMap` iterates in an order seeded randomly per process
+ * // (`std::collections::hash_map::RandomState`). `uniffi.moq.FfiConverterMapStringTypeMoqVideo.read`
+ * // at `dev.moq:moq-ffi:0.3.19-superplayer-local` then builds an insertion-ordered `MapBuilder`,
+ * // which faithfully keeps that hash order. Nothing under `check` exercises either side
+ * // (`MoqCatalogTracksTest` builds its maps on this side), which is why the test declares its maps
+ * // out of name order rather than trusting any order to arrive.
  */
 internal object MoqCatalogTracks {
 
@@ -120,7 +127,7 @@ internal object MoqCatalogTracks {
      */
     fun declaredTracksOf(catalog: MoqCatalog): List<MoqDeclaredTrack> {
         val declared = buildList {
-            catalog.video.entries.firstOrNull()?.let { (trackName, video) ->
+            catalog.video.renditionNamedFirst()?.let { (trackName, video) ->
                 add(
                     MoqDeclaredTrack(
                         trackName,
@@ -150,7 +157,7 @@ internal object MoqCatalogTracks {
                     ),
                 )
             }
-            catalog.audio.entries.firstOrNull()?.let { (trackName, audio) ->
+            catalog.audio.renditionNamedFirst()?.let { (trackName, audio) ->
                 add(
                     MoqDeclaredTrack(
                         trackName,
@@ -167,6 +174,16 @@ internal object MoqCatalogTracks {
         }
         return declared
     }
+
+    /**
+     * The rendition whose track name sorts first, or null where the kind declares none.
+     *
+     * `String`'s natural order, which compares UTF-16 code units and never a locale — the same
+     * order in every process, which is all that is asked of it. Swift's `<` on `String` compares by
+     * Unicode canonical equivalence instead, so the two ports agree on ASCII names, which is every
+     * name #340 and #367 observed, and could disagree only on names beyond it.
+     */
+    private fun <R> Map<String, R>.renditionNamedFirst(): Map.Entry<String, R>? = entries.minByOrNull { it.key }
 
     /**
      * The shape the publisher declared its codec configuration in, which is [description]'s

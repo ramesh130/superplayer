@@ -146,7 +146,8 @@ internal object DeclaredCatalogs {
      *
      * [coded] is a parameter rather than a constant because its absence is a case: a publisher may
      * declare no size, and what the mapping does with that is asserted rather than assumed
-     * (#353). It defaults to 720p, an ordinary rendition.
+     * (#353). It defaults to 720p, an ordinary rendition. [bitrate] is a parameter for the ladder
+     * test alone, which needs one rendition plainly worse than another to show nothing prefers.
      */
     fun video(
         codec: String,
@@ -154,6 +155,7 @@ internal object DeclaredCatalogs {
         container: MoqContainer = MoqContainer.Loc,
         stalled: Boolean = false,
         coded: MoqDimensions? = MoqDimensions(width = 1280u, height = 720u),
+        bitrate: ULong = 2_000_000uL,
     ): MoqVideo = MoqVideo(
         codec = codec,
         description = description,
@@ -163,7 +165,7 @@ internal object DeclaredCatalogs {
         // Read by nothing here: `displayAspect` is presentation, and neither the bitrate nor the
         // frame rate reaches a decoder's configuration (ADR-0018 rule 1).
         displayAspect = null,
-        bitrate = 2_000_000uL,
+        bitrate = bitrate,
         framerate = 30.0,
     )
 
@@ -172,6 +174,7 @@ internal object DeclaredCatalogs {
         codec: String,
         description: ByteArray?,
         container: MoqContainer = MoqContainer.Loc,
+        bitrate: ULong = 128_000uL,
     ): MoqAudio = MoqAudio(
         codec = codec,
         description = description,
@@ -179,7 +182,7 @@ internal object DeclaredCatalogs {
         // Stereo at 48 kHz, the ordinary case, and read by nothing here for [video]'s reason.
         sampleRate = 48_000u,
         channelCount = 2u,
-        bitrate = 128_000uL,
+        bitrate = bitrate,
     )
 
     /** A hex dump as bytes, so a fixture can be pasted out of a bug report and read back in it. */

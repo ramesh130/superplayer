@@ -267,10 +267,10 @@ the one implementation touching the bindings (its `async` calls made blocking on
 threads), a connect thread and a pump thread per track, obligations 2, 3 and 9 made true, `cancel()`
 joining the pumps and the poller behind a delivery barrier but never the connect thread (the main actor
 calls it, and a handshake cannot be interrupted), and `statistics()` polled each second into `MoqSessionStatistics` beside
-`MoqUpstreamMediaLoss.notInstrumented`. One departure is forced: the bindings carry a catalog's
-renditions as a Swift `Dictionary` — and the Rust side already collects them into a `HashMap` — so
-there is no declaration order, and the rendition taken per kind is the one whose **name sorts
-first**. What `ios/check` runs is `FrameSourceConformance` in both of ADR-0018 rule 4's branches
+`MoqUpstreamMediaLoss.notInstrumented`. The rendition taken per kind is the one whose **name sorts
+first**, as on Android since #484: the Rust side collects a catalog's renditions into a `HashMap` and
+the bindings carry them as a Swift `Dictionary`, so there is no declaration order on either
+platform. What `ios/check` runs is `FrameSourceConformance` in both of ADR-0018 rule 4's branches
 over `ScriptedMoqRelay`, which proves the bridge and nothing about MoQ, and `MoqFfiLinkageTests`,
 which calls across the FFI into the simulator slice an app links. A broadcast on a device is #438's:
 `ios/Demo/SuperPlayerDemoUITests`' XCUITest, run by `devicelab/lab run moq-smoke --platform ios`,

@@ -55,15 +55,15 @@ struct MoqDeclaredTrack: Sendable, Equatable {
 /// refused there too. Dropping or correcting either here would play a partially understood catalog
 /// as a silently narrower stream.
 ///
-/// ## One rendition per kind, chosen in no way — and on this platform, in name order
+/// ## One rendition per kind, chosen in no way — in track-name order
 ///
 /// ADR-0018 rule 7 **defers** adaptive selection, so one rendition is taken per kind and none is
-/// preferred; `MoqVideo.stalled` is read by nothing, for that reason. The Kotlin port takes the
-/// *first* rendition each map declares. **That ordering does not exist here**, and the departure is
-/// forced rather than chosen: the bindings carry each map as a Swift `Dictionary`, whose iteration
-/// order is unspecified and changes from one process to the next, so "first" would be a different
+/// preferred; `MoqVideo.stalled` is read by nothing, for that reason. There is no declaration order
+/// to take "first" from: the bindings carry each map as a Swift `Dictionary`, whose iteration order
+/// is unspecified and changes from one process to the next, so "first" would be a different
 /// rendition on every launch. This takes the rendition whose **track name sorts first** instead —
-/// still a choice of nothing, but the same nothing every time, which is what a bug report needs.
+/// still a choice of nothing, but the same nothing every time, which is what a bug report needs. The
+/// Kotlin port takes the same rendition since #484, for the same reason.
 ///
 /// // ref: `rs/moq-ffi/src/media.rs` `convert_catalog` at `moq-dev/moq@4e419f9` collects each kind's
 /// // renditions into a Rust `HashMap` before either binding is reached, so the publisher's

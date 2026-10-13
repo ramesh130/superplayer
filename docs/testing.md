@@ -990,7 +990,9 @@ see a request.
   can move the host's interface, so the transport a stretch names is what `OriginResponse.transport`
   says a request arrived on and nothing a player observes. Time zero is the first media segment asked
   for; on Android it is the moment the player was built. The origin's own start counted a cold host's
-  start-up as link time (#474, `TraceStartPlaybackTests`).
+  start-up as link time (#474, `TraceStartPlaybackTests`). What a host does after the anchor is
+  still its own, so the quick session there is judged off the origin, as the stretch each response
+  arrived on, rather than by a start (#503).
 - **One test measures a duration, and argues its bound.** `NetworkShapingTests` holds a shaped
   transfer to the trace: never faster, which is exact — the origin sends a chunk no earlier than its
   last byte is due and the client's stopwatch starts first — and no more than a second slower on a

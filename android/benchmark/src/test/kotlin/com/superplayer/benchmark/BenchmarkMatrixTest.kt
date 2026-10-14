@@ -79,7 +79,7 @@ class BenchmarkMatrixTest {
         // graded against. So the run's own traces dirty the working tree, and conditions read
         // afterwards would report `treeDirty` on every baseline, disclaiming itself in prose at the
         // top of the document. `startedAt` means the start for the same reason.
-        val conditions = RunConditions.read(repoRoot(), runsPerCell)
+        val conditions = RunConditions.read(gradleRoot(), runsPerCell)
 
         val cells = mutableListOf<CellResult>()
         val traceDirectory = File(outputDirectory, "traces")
@@ -346,13 +346,13 @@ class BenchmarkMatrixTest {
         System.getProperty(name)?.toIntOrNull() ?: default
 
     /**
-     * The repository root, which this build sits one directory inside.
+     * The library's Gradle build, `android/`, which this build sits one directory inside.
      *
-     * Gradle runs a test with the module directory as its working directory, so the parent is the
-     * repository. Used to read the version catalog and to ask git what commit this is — see
+     * Gradle runs a test with the module directory as its working directory, so the parent is that
+     * build. Used to read the version catalog and to ask git what commit this is — see
      * [RunConditions], and note that neither failing stops a report being written.
      */
-    private fun repoRoot(): File = File(workingDirectory()).absoluteFile.parentFile
+    private fun gradleRoot(): File = File(workingDirectory()).absoluteFile.parentFile
 
     private companion object {
 

@@ -38,11 +38,11 @@ permissions:
   contents: read
 
 # Where the Gradle builds are, relative to the repository root: the root build with demo/ and benchmark/
-# beside it, and the version catalog. The one place this workflow learns it, so moving the builds
+# inside it, and the version catalog. The one place this workflow learns it, so moving the builds
 # changes this line rather than every step below. device-run.yml carries its own, and devicelab's
 # scripts theirs in devicelab/lib/common.sh.
 env:
-  GRADLE_DIR: .
+  GRADLE_DIR: android
 
 jobs:
   build:

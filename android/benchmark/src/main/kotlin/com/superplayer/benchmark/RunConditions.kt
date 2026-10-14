@@ -59,21 +59,23 @@ internal data class RunConditions(
         /**
          * Reads the conditions off the machine the run is happening on.
          *
-         * [repoRoot] is the repository, which the benchmark build sits one directory inside. The
+         * [gradleRoot] is the library's Gradle build, `android/`, which the benchmark build sits one
+         * directory inside. git is asked from there too, and answers for the whole repository from
+         * any directory in it, so the commit and the dirty tree are the repository's. The
          * version catalog is read from there rather than from this build's own resolved
          * dependencies, because the catalog is what `ADR-0001` rule 3 makes the single source of the
          * Media3 version and because a report should name the pin rather than whatever a resolution
          * happened to produce.
          */
-        fun read(repoRoot: File, runsPerCell: Int): RunConditions = RunConditions(
+        fun read(gradleRoot: File, runsPerCell: Int): RunConditions = RunConditions(
             startedAt = Instant.now().toString(),
-            commit = git(repoRoot, "rev-parse", "HEAD") ?: UNKNOWN,
+            commit = git(gradleRoot, "rev-parse", "HEAD") ?: UNKNOWN,
             // Empty output means a clean tree; null means git could not be asked, which is not the
             // same thing and must not be reported as "clean". An unknown commit with a clean tree
             // would be the most misleading pair of fields this class could produce.
-            treeDirty = git(repoRoot, "status", "--porcelain")?.isNotEmpty() ?: true,
-            superPlayerVersion = catalogVersion(repoRoot, "superplayer") ?: UNKNOWN,
-            media3Version = catalogVersion(repoRoot, "media3") ?: UNKNOWN,
+            treeDirty = git(gradleRoot, "status", "--porcelain")?.isNotEmpty() ?: true,
+            superPlayerVersion = catalogVersion(gradleRoot, "superplayer") ?: UNKNOWN,
+            media3Version = catalogVersion(gradleRoot, "media3") ?: UNKNOWN,
             runsPerCell = runsPerCell,
             robolectricSdk = System.getProperty("robolectric.sdk") ?: robolectricSdkFromProperties() ?: UNKNOWN,
             javaVersion = System.getProperty("java.version") ?: UNKNOWN,
@@ -82,8 +84,8 @@ internal data class RunConditions(
         )
 
         /** The value of `[versions] <key>` in the shared catalog, or null when it cannot be read. */
-        private fun catalogVersion(repoRoot: File, key: String): String? {
-            val catalog = File(repoRoot, "gradle/libs.versions.toml")
+        private fun catalogVersion(gradleRoot: File, key: String): String? {
+            val catalog = File(gradleRoot, "gradle/libs.versions.toml")
             if (!catalog.isFile) return null
             // The same anchored pattern devicelab's `catalog_version` uses, so a commented-out line
             // never wins and `media3` is never read out of `media3Foo`.
@@ -99,14 +101,14 @@ internal data class RunConditions(
                 ?.useLines { lines -> lines.firstNotNullOfOrNull { it.substringAfter("sdk=", "").ifEmpty { null } } }
 
         /**
-         * Runs git in [repoRoot] and returns its trimmed output, or null when it could not be run.
+         * Runs git in [gradleRoot] and returns its trimmed output, or null when it could not be run.
          *
          * Bounded, because a benchmark that hung on a git invocation would read as a hung benchmark:
          * the run takes minutes and nobody would look at git first.
          */
-        private fun git(repoRoot: File, vararg arguments: String): String? = try {
+        private fun git(gradleRoot: File, vararg arguments: String): String? = try {
             val process = ProcessBuilder(listOf("git") + arguments)
-                .directory(repoRoot)
+                .directory(gradleRoot)
                 .redirectErrorStream(true)
                 .start()
             // Read before waiting, not after. A pipe holds about 64 KB, and a child that fills it

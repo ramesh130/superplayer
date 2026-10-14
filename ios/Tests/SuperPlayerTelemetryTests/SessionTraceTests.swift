@@ -27,11 +27,11 @@ import XCTest
 /// keeps, and that it moves no line across a kind boundary.
 final class SessionTraceTests: XCTestCase {
 
-    /// The Kotlin goldens, `superplayer-telemetry/src/test/golden/`.
+    /// The Kotlin goldens, `android/superplayer-telemetry/src/test/golden/`.
     static let androidGoldens = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         .deletingLastPathComponent()
-        .appendingPathComponent("superplayer-telemetry/src/test/golden")
+        .appendingPathComponent("android/superplayer-telemetry/src/test/golden")
 
     private func androidGoldenFiles() throws -> [URL] {
         let files = try FileManager.default.contentsOfDirectory(

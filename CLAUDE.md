@@ -1457,22 +1457,22 @@ where the two disagree `PRD.md` is right.
 ## Commands
 
 ```bash
-./gradlew assemble check          # build, lint, tests, repo verification, tracked API surface, format
-./gradlew updateApiSurface        # regenerate api/<module>.api after a deliberate API change
-./gradlew updateGoldenTraces      # regenerate src/test/golden/*.trace after a deliberate behaviour change; run alone, then check
-./gradlew updateIosFixtures       # regenerate ios/Tests/Fixtures/synthetic/ and throughput-traces/ after a deliberate generator or trace-reader change; run alone, then check (docs/testing.md)
-./gradlew spotlessApply           # reformat and stamp the Apache-2.0 header on every .kt file
-./gradlew convertThroughputTrace --from=… --transport=… --input=… --output=…   # docs/throughput-traces.md
-./gradlew publishToMavenLocal     # required before the demo will build
-./gradlew release --release-version=x.y.z  # cut a release, or refuse; NOT in check — it commits (docs/releasing.md)
-./gradlew recordReleasedApiSurface # rewrite api/released/ by hand; the release command does it itself
-(cd demo && ./gradlew assembleDebug lintDebug spotlessCheck)
-benchmark/bench                   # PRD.md §6's matrix and its report; NOT in check (benchmark/README.md)
+(cd android && ./gradlew assemble check)          # build, lint, tests, repo verification, tracked API surface, format
+(cd android && ./gradlew updateApiSurface)        # regenerate android/<module>/api/<module>.api after a deliberate API change
+(cd android && ./gradlew updateGoldenTraces)      # regenerate src/test/golden/*.trace after a deliberate behaviour change; run alone, then check
+(cd android && ./gradlew updateIosFixtures)       # regenerate ios/Tests/Fixtures/synthetic/ and throughput-traces/ after a deliberate generator or trace-reader change; run alone, then check (docs/testing.md)
+(cd android && ./gradlew spotlessApply)           # reformat and stamp the Apache-2.0 header on every .kt file
+(cd android && ./gradlew convertThroughputTrace --from=… --transport=… --input=… --output=…)   # paths relative to the repository root; docs/throughput-traces.md
+(cd android && ./gradlew publishToMavenLocal)     # required before the demo will build
+(cd android && ./gradlew release --release-version=x.y.z)  # cut a release, or refuse; NOT in check — it commits (docs/releasing.md)
+(cd android && ./gradlew recordReleasedApiSurface) # rewrite android/api/released/ by hand; the release command does it itself
+(cd android/demo && ./gradlew assembleDebug lintDebug spotlessCheck)
+android/benchmark/bench           # PRD.md §6's matrix and its report; NOT in check (android/benchmark/README.md)
 devicelab/lab run smoke           # device run: trace, report, metadata (devicelab/README.md)
 devicelab/lab run startup [--plant P]  # twenty cold starts in one trace; a plant is a patch built in and reverted (devicelab/plants/README.md)
 devicelab/lab run jank [--plant P]     # the feed scrolled and tapped in one trace: frames, main thread, GC (devicelab/jank/README.md)
 devicelab/lab run frames|feed|smoke --platform ios  # an iPhone: SP_DEVELOPMENT_TEAM signs it, never committed (devicelab/README.md, *iOS*)
-./gradlew huntLeaks                # the leak hunt on a device; NOT in check (devicelab/leak/README.md)
+(cd android && ./gradlew huntLeaks)                # the leak hunt on a device; NOT in check (devicelab/leak/README.md)
 ios/check                         # the iOS package's whole check, on macOS: format, simulator tests, tvOS build, API baselines
 ios/check --update-api            # regenerate ios/api/<Product>.baseline after a deliberate API change (docs/api-surface.md)
 ios/check --update-golden         # regenerate ios/Tests/Fixtures/golden/*.trace after a deliberate behaviour change; the goldens' only writer
@@ -1535,8 +1535,8 @@ created (`emulator -list-avds`).
 ```bash
 emulator -avd superplayer_verify_36 -no-snapshot-load -no-boot-anim &
 until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 ]; do sleep 5; done
-./gradlew publishToMavenLocal && (cd demo && ./gradlew assembleDebug)
-adb install -r -t demo/build/outputs/apk/debug/superplayer-demo-debug.apk
+(cd android && ./gradlew publishToMavenLocal) && (cd android/demo && ./gradlew assembleDebug)
+adb install -r -t android/demo/build/outputs/apk/debug/superplayer-demo-debug.apk
 adb shell am start -n com.superplayer.demo/.MainActivity
 ```
 

@@ -84,7 +84,7 @@ way to write an example whose obligations are visible rather than hand-waved: ha
 is about what a real client does *on its own initiative*, and no invented client has any. Read it as
 the shape an adapter takes, and substitute your own client's spelling for each step.
 
-**It is not compiled by this repository, and nothing in `./gradlew check` runs it.** That is not an
+**It is not compiled by this repository, and nothing in `(cd android && ./gradlew check)` runs it.** That is not an
 oversight to be fixed later. ADR-0004 rule 2 keeps this repository's dependency graph Media3-only —
 no OkHttp, Cronet or Ktor artifact is ever resolved here — which is what keeps Cronet's licence and
 Ktor's alpha status out of every consumer's build, and compiling this file would mean taking the

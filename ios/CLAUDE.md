@@ -12,7 +12,7 @@ orientation — this file adds only what is different under `ios/`.
 | `Package.swift` (repository root) | the manifest — at the root rather than here because SwiftPM resolves a `.package(url:)` dependency by reading the manifest at the root (`docs/ios-plan.md` §2); every target names its path under `ios/` |
 | `ios/Sources/<Product>/` | one library product per Android module that ports, named `SuperPlayer<Thing>` |
 | `ios/Tests/<Product>Tests/` | its XCTest target, run on an iOS simulator |
-| `ios/api/<Product>.baseline` | the tracked public API, the `<module>/api/<module>.api` analog (`docs/api-surface.md`, *The iOS products*) |
+| `ios/api/<Product>.baseline` | the tracked public API, the `android/<module>/api/<module>.api` analog (`docs/api-surface.md`, *The iOS products*) |
 | `ios/scripts/api-surface.swift` | reduces the digester's JSON to that baseline |
 | `ios/check` | the whole definition of passing |
 | `ios/MoQ/` | `SuperPlayerMoQ` (#434), a package of its own rather than a root product, so it stays unpublished; over `third-party/moq/swift/`'s committed bindings |
@@ -329,7 +329,7 @@ platforms* lists each shared document with its test on each side.
 
 **Dependencies point inward** under `docs/modules.md`'s phase rule, and the phase a product takes is
 the Android module's it ports: `docs/modules.md`'s *iOS products* table is the source, and
-`./gradlew verifyModulePhaseRule` reads `Package.swift` as text against it, on Linux. So a target
+`(cd android && ./gradlew verifyModulePhaseRule)` reads `Package.swift` as text against it, on Linux. So a target
 keeps the documented `.target(name:dependencies:path:)` shape and is never assembled from a
 variable, and a new product arrives with its row in that table in the same change. Kotlin friend
 modules have no analog: a seam a later product reaches is `package`-scoped, not `internal`.
@@ -412,7 +412,7 @@ xcrun swift-format format --in-place --recursive --configuration ios/.swift-form
 `ios/check` is a script rather than a Gradle task (ADR-0021), and the macOS CI job runs it and
 nothing else, path-filtered to `ios/**`, `Package.swift`, `third-party/moq/swift/` and the shared
 documents. The Linux job's
-`./gradlew check` covers the two iOS readings that are text, because a check that can be a Gradle
+`(cd android && ./gradlew check)` covers the two iOS readings that are text, because a check that can be a Gradle
 task belongs in `check`: the phase rule above, and the licence header below.
 
 Things worth knowing before the first run:
@@ -430,7 +430,7 @@ Things worth knowing before the first run:
   `<SP_SIMULATOR>-tv` (`SP_TV_SIMULATOR`), made on the newest tvOS runtime. A host without one skips
   that run and says so; CI sets `SP_REQUIRE_TVOS=1`, so there an absence fails.
 - **Every `.swift` file opens with `config/license-header.txt` as `//` lines** (in `Package.swift`,
-  after the tools-version line). `./gradlew verifyLicenseHeader` derives the expected text from
+  after the tools-version line). `(cd android && ./gradlew verifyLicenseHeader)` derives the expected text from
   that file rather than keeping a copy, and checks it on Linux, since swift-format has no header
   rule; `ios/check` does not, so run the Gradle task too before pushing a new Swift file.
 - **"Test crashed with signal term" can be the simulator restarting under the runner**, and #508's

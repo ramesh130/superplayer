@@ -216,7 +216,7 @@ dashboard breaks on a changed *definition*, not on a new field it ignores.
 - a field or an event type is removed
 
 Because the event types are `superplayer-core` public API, every one of these changes also appears as
-a reviewed diff in `superplayer-core/api/superplayer-core.api` (`docs/api-surface.md`). A definition
+a reviewed diff in `android/superplayer-core/api/superplayer-core.api` (`docs/api-surface.md`). A definition
 cannot change quietly.
 
 ### Release notes

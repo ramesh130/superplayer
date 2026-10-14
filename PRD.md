@@ -69,7 +69,7 @@ symptom teams report, its actual root cause, and where SuperPlayer addresses it.
 ### 2.1 Module layout
 
 ```
-superplayer/
+superplayer/android/
 ├─ superplayer-core          # SuperPlayer facade, PlaybackSession, config profiles, player pool
 ├─ superplayer-abr           # AdaptiveLoadControl, NetworkAwareTrackSelection, BandwidthOracle
 ├─ superplayer-preload       # PreloadCoordinator: first-segment prefetch + decoder warm-up
@@ -481,7 +481,7 @@ The binding rules are in [`docs/testing.md`](docs/testing.md); this is what the 
 
 ## Part 6 — Benchmarks
 
-`benchmark/` runs a fixed matrix and emits a report. **Every number is generated here, from public
+`android/benchmark/` runs a fixed matrix and emits a report. **Every number is generated here, from public
 streams** (§0.2).
 
 - **Network profiles:** stable WiFi 20Mbps; congested WiFi 3Mbps ±50%; LTE 5Mbps with 2s dropouts;

@@ -5,9 +5,9 @@ takes Java heap dumps before and after, at the same point of the scenario, and p
 allocations in between. It writes a report naming what grew and, hop by hop, the fields that retain it.
 
 ```bash
-./gradlew huntLeaks                    # the documented entry point
-devicelab/lab run leak-hunt            # the same thing; this is what it runs
-LEAK_CYCLES=5 ./gradlew huntLeaks      # more lifecycle cycles (knobs below)
+(cd android && ./gradlew huntLeaks)                    # the documented entry point
+devicelab/lab run leak-hunt                            # the same thing; this is what it runs
+(cd android && LEAK_CYCLES=5 ./gradlew huntLeaks)      # more lifecycle cycles (knobs below)
 ```
 
 It needs a device or an emulator. With none attached it boots the harness's AVD
@@ -23,7 +23,7 @@ runs only when started by hand, once a phase is complete, to stay inside the Git
 
 [`docs/testing.md`](../../docs/testing.md) bars a device and the network from the test suite, and this
 needs both: a real app process to dump, and real streams to play. So it is not in the suite, and
-`./gradlew check` neither runs `huntLeaks` nor depends on it. `check` has to pass with no device
+`(cd android && ./gradlew check)` neither runs `huntLeaks` nor depends on it. `check` has to pass with no device
 attached. That is the same shape as the rest of devicelab (`../README.md`), and it is not an exception
 to the rule: nothing here gates a change. It is a measurement, judged, on a schedule.
 

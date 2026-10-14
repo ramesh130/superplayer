@@ -2,7 +2,7 @@
 
 An Xcode project that plays public HLS through `SuperPlayer`, resolving the package **by path**
 (`../..`, the repository root) so it compiles against the products as an adopter's app does — the
-iOS twin of the Android `demo/`, which resolves the library from published coordinates for the
+iOS twin of the Android `android/demo/`, which resolves the library from published coordinates for the
 same reason. `ios/check` builds it for the iOS and tvOS simulators and runs nothing; whether it
 plays a real stream over a real CDN needs a network, which no check here has (ADR-0021).
 
@@ -103,7 +103,7 @@ command, which `adb shell input swipe` is to the Android hunt. A step moves the 
 position, the same binding a finger moves, so a scripted row and a swiped one are handed their
 player by one function.
 
-`ios/hunt-leaks` is the iOS `./gradlew huntLeaks`. On a simulator of its own
+`ios/hunt-leaks` is the iOS `(cd android && ./gradlew huntLeaks)`. On a simulator of its own
 (`superplayer-leak-hunt`), it builds the demo in Release, launches the feed scrolling itself and
 attaches an `xctrace` recording with the Leaks template (the Leaks and Allocations instruments). It
 samples the process's footprint every two seconds and at the end of each pass, and writes

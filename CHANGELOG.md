@@ -6,11 +6,11 @@ The format is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the 
 [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html) as
 [ADR-0017](docs/adr/0017-version-the-library-by-semver-in-lockstep-with-the-tracked-api-surface-as-the-arbiter.md)
 reads it here: one version for all fifteen published modules, moved in lockstep (rule 1), with the
-tracked API surface in `<module>/api/<module>.api` as the arbiter of how far it moves (rule 2). A
+tracked API surface in `android/<module>/api/<module>.api` as the arbiter of how far it moves (rule 2). A
 behaviour change that moves no declaration still moves the version, and this file is where that
 judgement is written down rather than made silently (rule 3).
 
-`./gradlew verifyVersion` holds this file and `gradle/libs.versions.toml` to each other.
+`(cd android && ./gradlew verifyVersion)` holds this file and `android/gradle/libs.versions.toml` to each other.
 
 ## [Unreleased]
 
@@ -30,10 +30,10 @@ Two things this section does not say, because Keep a Changelog has no heading fo
 them under `Added` would be worse than stating them here:
 
 - Phase 11 — tuning — is open, and its three exit criteria stand in three different states.
-  `benchmark/phase3/`'s `ExitCriterion` measured the adaptive policy against the static profile and
+  `android/benchmark/phase3/`'s `ExitCriterion` measured the adaptive policy against the static profile and
   reports **not met**. The feed demo's p50 TTFF target is one `PRD.md` Part 4 has that phase *set
   and argue*, so there is no number yet to be met. Peak RSS and battery need the benchmark's device
-  arm, which is not built (`benchmark/README.md`), so those columns are dashes rather than
+  arm, which is not built (`android/benchmark/README.md`), so those columns are dashes rather than
   measurements.
 - The library is `0.x` and, under ADR-0017 rule 7, a minor release may remove or change public
   declarations. What takes it to `1.0.0` is listed in that rule.
@@ -83,7 +83,7 @@ them under `Added` would be worse than stating them here:
   AVFoundation's decoder refuses an all-zero payload, and nothing on Android decodes one, so no byte
   count and no Android behaviour moved. Its output is committed under `ios/Tests/Fixtures/synthetic/`,
   `check` holds it to those files and `ios/check` holds the Swift port to the same bytes
-  (`./gradlew updateIosFixtures` rewrites them).
+  (`(cd android && ./gradlew updateIosFixtures)` rewrites them).
 - **The iOS test harness (#399).** `SuperPlayerTestkit`'s `PlaybackHarness` serves a `TestContent`
   — the synthetic HLS stream, or `liveHls()`, which keeps publishing on real time — from a
   `LoopbackOrigin` of its own on `127.0.0.1`, counts every request by path and `ResourceKind`, and
@@ -99,7 +99,7 @@ them under `Added` would be worse than stating them here:
   clock, and `LoopbackOrigin.responses()` records how each request was answered. A trace's transport
   is reported on iOS, not switched. Every profile and a hand-written sample trace are committed under
   `ios/Tests/Fixtures/throughput-traces/` with what `superplayer-testkit`'s reader makes of each, so
-  both readers are held to one reading (`./gradlew updateIosFixtures` rewrites them); no Kotlin
+  both readers are held to one reading (`(cd android && ./gradlew updateIosFixtures)` rewrites them); no Kotlin
   behaviour moved.
 - **The iOS CMCD finding (#413).** `docs/ios-cmcd-finding.md`, which records that AVFoundation
   emits CMCD (CTA-5004) itself from iOS 18 once `AVAssetResourceLoader.sendsCommonMediaClientDataAsHTTPHeaders`
@@ -111,7 +111,7 @@ them under `Added` would be worse than stating them here:
   citation, cause, magnitude and declared response headers, and the DASH entries not ported
   (ADR-0020). The Kotlin generator's HLS entries are committed under `ios/Tests/Fixtures/hostile/`
   with an index of their fields and a table of their headers, and each platform's check holds its
-  generator to them (`./gradlew updateIosFixtures` rewrites them); the Kotlin token entries take the
+  generator to them (`(cd android && ./gradlew updateIosFixtures)` rewrites them); the Kotlin token entries take the
   instant they are minted at internally so a fixture of them is stable, and no Kotlin output moved.
   `SuperPlayerTestkit` serves an entry with `TestContent.hostile(_:)` and its headers with
   `FaultScript.Builder.addDeclaredResponseHeaders(of:)`, and `HostileManifestCorpusTests` records
@@ -148,7 +148,7 @@ them under `Added` would be worse than stating them here:
   declares, at the Kotlin `Rung.of` frame sizes. `PRD.md` §6's matrix runs on the simulator from
   `ios/Benchmark/bench`, outside `ios/check` — stock `AVPlayer`, stock with intuitive settings and
   the static profile, the adaptive arm an empty slot until i3 — with `StockTelemetryAgreementTests`
-  in `ios/check`, and the baseline is committed under `benchmark/ios-baseline/`. No Android
+  in `ios/check`, and the baseline is committed under `ios/Benchmark/baseline/`. No Android
   behaviour moved.
 - **Preload on iOS (#417).** `SuperPlayerPreload` gains `PreloadCoordinator(pool:)` —
   `setItems(_:)`, `setScrollPosition(index:velocity:)`, `release()` and `warmDecoderCount` —

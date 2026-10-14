@@ -29,7 +29,7 @@ media segment requested, and i2's predates it, when a trace started with the ori
 | `ios/Benchmark/Tests/SuperPlayerBenchmarkTests/` | `StockTelemetryAgreementTests` and `ReportHonestyTests`, which `ios/check` runs; `BenchmarkMatrixRun`, which it skips |
 | `ios/Benchmark/bench` | the runner: picks a simulator, passes the conditions in, runs `BenchmarkMatrixRun`, checks the result bundle |
 
-**Why a target of the root manifest and not a package of its own**, which is what `benchmark/` is
+**Why a target of the root manifest and not a package of its own**, which is what `android/benchmark/` is
 on Android: a `SuperPlayer` playing video in `xctest` has to be given a lifecycle platform that does
 nothing — its video holds the idle timer, and `xctest` has no `UIApplication` — and that seam,
 `SharedLifecycle(platform:)`, is `package`-scoped, which SwiftPM grants to targets of one package
@@ -37,7 +37,7 @@ only. So `SuperPlayerBenchmark` is a target of `Package.swift` and **not a produ
 it, it has no API baseline, and `docs/modules.md` gives it the phase of the latest product it measures
 with — 3, since arm (d) brought in `SuperPlayerABR` (#416) — with nothing depending on it.
 
-**Why the matrix is not in `ios/check`**, for `benchmark/README.md`'s reasons: it measures rather
+**Why the matrix is not in `ios/check`**, for `android/benchmark/README.md`'s reasons: it measures rather
 than checks, a change that made a number worse should produce a finding rather than a red build,
 and it takes nearly three hours of real time. It is hosted in an XCTest only because that is how a
 process reaches the simulator. `ios/check` passes `-skip-testing:SuperPlayerBenchmarkTests/BenchmarkMatrixRun`,
@@ -177,7 +177,7 @@ large one.
 
 ## The honesty rules, and where each one lives
 
-`benchmark/README.md`'s table, on iOS:
+`android/benchmark/README.md`'s table, on iOS:
 
 | Rule | Where it is enforced |
 | --- | --- |

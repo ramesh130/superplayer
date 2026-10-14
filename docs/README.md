@@ -30,7 +30,7 @@ one says so.
 | [`realtime-path.md`](realtime-path.md) | One table: when a `moq://` URI plays, which layer is MoQ's, which is this library's and which is Media3's — with what the path deliberately does not reach |
 | [`testing.md`](testing.md) | How this library is tested: Robolectric, Media3's own fakes, no device and no network, and what each stand-in cannot show |
 | [`api-surface.md`](api-surface.md) | How the public API of every published module is tracked and validated |
-| [`releasing.md`](releasing.md) | Cutting a release with `./gradlew release`: the order, the six refusals, where the artefacts go and where they do not, and how to undo one |
+| [`releasing.md`](releasing.md) | Cutting a release with `(cd android && ./gradlew release)`: the order, the six refusals, where the artefacts go and where they do not, and how to undo one |
 | [`throughput-traces.md`](throughput-traces.md) | The network-trace format the test harness replays, and how a public dataset comes in |
 | [`ios-plan.md`](ios-plan.md) | The plan for an iOS and tvOS port over AVFoundation: what ports, what differs and what does not, the frame-output seam for effects, and the phases. Its decisions are accepted as ADR-0020 to ADR-0022, and its phases i0 to i9 are built: every product carries its phase's code, while what needs a device is listed rather than claimed. For using the port rather than changing it, read [`ios.md`](ios.md) |
 | [`ios-cmcd-finding.md`](ios-cmcd-finding.md) | Whether AVFoundation emits CMCD and whether the schema's `sid` join holds on iOS: the SDK headers read, what the loopback origin saw with and without each candidate, and the decision — it ports from iOS 18 |
@@ -45,14 +45,14 @@ and `CLAUDE.md` is the orientation for someone — or something — about to cha
 `THIRD_PARTY.md` beside them as the dependency register. `CHANGELOG.md` is the last: what changed
 between two versions, in the shape
 [`adr/0017-version-the-library-by-semver-in-lockstep-with-the-tracked-api-surface-as-the-arbiter.md`](adr/0017-version-the-library-by-semver-in-lockstep-with-the-tracked-api-surface-as-the-arbiter.md)
-decides, held to the version catalog by `./gradlew verifyVersion`.
+decides, held to the version catalog by `(cd android && ./gradlew verifyVersion)`.
 
 ## Measurement outside `check`
 
-`benchmark/README.md` is the fixed comparison matrix and its report; `devicelab/README.md` is a run
+`android/benchmark/README.md` is the fixed comparison matrix and its report; `devicelab/README.md` is a run
 on a real device, `devicelab/leak/README.md` the leak hunt, `devicelab/startup/README.md` the cold-start
 measurement, `devicelab/jank/README.md` the scrolled and tapped feed, and `devicelab/plants/README.md` the known regressions a run can be built with. Neither
-benchmark nor devicelab is part of `./gradlew check`, and each says why.
+benchmark nor devicelab is part of `(cd android && ./gradlew check)`, and each says why.
 
 ## Built outside the build
 
@@ -60,7 +60,7 @@ benchmark nor devicelab is part of `./gradlew check`, and each says why.
 Kotlin bindings, compiled on one machine with the crate's codec features off, and committed as a
 Maven repository that `superplayer-moq` alone reads. It carries the rebuild recipe, the stated
 limits — one ABI, reproducible by nobody else — and `CRATES.md`, the licence of every crate in that
-build. Nothing in `./gradlew check` rebuilds it.
+build. Nothing in `(cd android && ./gradlew check)` rebuilds it.
 
 `ios/Demo/README.md` is the iOS and tvOS demo: an Xcode project resolving the Swift package by
 path, what each screen shows, how to run it on a simulator and read its position log, and how the

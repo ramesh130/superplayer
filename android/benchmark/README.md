@@ -1,19 +1,19 @@
 # benchmark
 
-Runs the fixed matrix of [`PRD.md`](../PRD.md) §6 and emits a report: four players, six network
+Runs the fixed matrix of [`PRD.md`](../../PRD.md) §6 and emits a report: four players, six network
 profiles, four content scenarios, twenty runs a cell, with the raw traces beside the summary.
 
 ```bash
-benchmark/bench                            # the full matrix, into benchmark/out
-benchmark/bench --baseline                 # into benchmark/phase3, the committed reference
-benchmark/bench --runs 5                   # faster; the report says it is not a baseline
-benchmark/bench --cells "VOD / 3G"         # a substring filter, for working on the harness
-(cd benchmark && ./gradlew test)           # the harness's own tests, and one run a cell
+android/benchmark/bench                            # the full matrix, into android/benchmark/out
+android/benchmark/bench --baseline                 # into android/benchmark/phase3, the committed reference
+android/benchmark/bench --runs 5                   # faster; the report says it is not a baseline
+android/benchmark/bench --cells "VOD / 3G"         # a substring filter, for working on the harness
+(cd android/benchmark && ./gradlew test)           # the harness's own tests, and one run a cell
 adb shell am start -n com.superplayer.benchmark/.BenchmarkActivity \
     --es arm SUPERPLAYER --es stream "VOD, HLS" --el durationMs 1800000
 ```
 
-The iOS half is [`ios/Benchmark/`](../ios/Benchmark/README.md): the same matrix and honesty rules on
+The iOS half is [`ios/Benchmark/`](../../ios/Benchmark/README.md): the same matrix and honesty rules on
 the simulator against `AVPlayer`, on real time, with its committed reports beside it.
 It is not comparable to these reports cell for cell, since the engine and the clock both differ.
 
@@ -25,14 +25,14 @@ stale artifact would measure the previous version and record a commit that did n
 
 ## Why this is not a test, and not in `check`
 
-[`docs/testing.md`](../docs/testing.md) is the binding rule that every test in this repository runs
-under Robolectric with **no device and no network**. `benchmark/` sits outside that rule rather than
-against it, for the same reason [`devicelab/`](../devicelab/README.md) does, and the distinction is
+[`docs/testing.md`](../../docs/testing.md) is the binding rule that every test in this repository runs
+under Robolectric with **no device and no network**. `android/benchmark/` sits outside that rule rather than
+against it, for the same reason [`devicelab/`](../../devicelab/README.md) does, and the distinction is
 worth stating because the next reader's first thought is that this file breaks the rule.
 
 Nothing here is a test of the kind that rule governs. It does not run in the suite, it does not gate
 a change, and a run of it fails only when it could not measure — never because of *what* it
-measured. It **measures**, and its output is a document somebody reads. `./gradlew check` does not
+measured. It **measures**, and its output is a document somebody reads. `(cd android && ./gradlew check)` does not
 run it, does not know it exists, and passes with no device attached.
 
 The two arms sit differently against the rule and it is worth being precise:
@@ -49,7 +49,7 @@ The two arms sit differently against the rule and it is worth being precise:
 The one part of this build that *is* in `check` is nothing at all today. If a device-free
 self-check ever grows here — the report generator's honesty rules, say — it belongs in `check`, by
 this repository's own rule that a check which can be a Gradle task should be one. Those rules are
-currently held by `ReportHonestyTest` under `(cd benchmark && ./gradlew test)`, which CI runs as a
+currently held by `ReportHonestyTest` under `(cd android/benchmark && ./gradlew test)`, which CI runs as a
 separate step.
 
 **The gate on the score is not here either, and does run in `check`.** `PRD.md` Part 5's QoE
@@ -114,7 +114,7 @@ Three things, none of which is care:
    `TelemetryEvent` vocabulary, and that function cannot tell which arm produced the events. The
    rebuffer denominator, the seek exclusion and the bitrate weighting are therefore shared by
    construction. The definitions are
-   [`docs/telemetry-schema.md`](../docs/telemetry-schema.md), and each one is cited where it is
+   [`docs/telemetry-schema.md`](../../docs/telemetry-schema.md), and each one is cited where it is
    implemented.
 3. **One derivation, checked.** What remains is *when* an event fires, and `StockTelemetry` mirrors
    `QoeCollector` callback for callback to produce it. `StockTelemetryAgreementTest` attaches both
@@ -159,8 +159,8 @@ compared to anything.
 
 | Directory | What it is | Status |
 | --- | --- | --- |
-| `benchmark/baseline/` | The Phase 1 baseline: arms (a) to (c), what Phase 3 was graded against | **Frozen.** Nothing writes here again |
-| `benchmark/phase3/` | The Phase 3 report (issue #103): all four arms, and the adaptive policy's exit criterion as its opening section. `PRD.md` Part 4 has since moved that criterion to Phase 11, tuning; the committed report predates the move and still calls it Phase 3's until it is next re-taken | **The current reference**, and where Phase 11 starts from |
+| `android/benchmark/baseline/` | The Phase 1 baseline: arms (a) to (c), what Phase 3 was graded against | **Frozen.** Nothing writes here again |
+| `android/benchmark/phase3/` | The Phase 3 report (issue #103): all four arms, and the adaptive policy's exit criterion as its opening section. `PRD.md` Part 4 has since moved that criterion to Phase 11, tuning; the committed report predates the move and still calls it Phase 3's until it is next re-taken | **The current reference**, and where Phase 11 starts from |
 
 **How the two are compared.** Not by copying numbers across. The Phase 3 run re-runs arms (a) to
 (c) under its own conditions, so "old beside new" is a column in one report measured by one Media3,
@@ -172,7 +172,7 @@ in its own right. The matrix (`Scenario.kt`, `PublicStreams.kt`, `NetworkProfile
 between them, which is what makes this a comparison at all. Changing any of it means re-taking the
 earlier report at its own commit first.
 
-Re-take the current reference with `benchmark/bench --baseline`, on a clean tree. A run with
+Re-take the current reference with `android/benchmark/bench --baseline`, on a clean tree. A run with
 uncommitted changes says so in prose at the top of its own report, because it describes a state of
 the repository that nobody can check out. When a later phase needs its own reference, it gets a
 sibling directory, `--baseline` moves to point at it, and this table gains a row. `phase3/` is then
@@ -196,8 +196,8 @@ itself, deliberately — an app that measured its own memory would be measuring 
 are read off the process from outside, by Perfetto's `process_memory` and `battery` data sources.
 
 ```bash
-(cd benchmark && ./gradlew assembleBenchmark)
-adb install -r -t benchmark/build/outputs/apk/benchmark/superplayer-benchmark-benchmark.apk
+(cd android/benchmark && ./gradlew assembleBenchmark)
+adb install -r -t android/benchmark/build/outputs/apk/benchmark/superplayer-benchmark-benchmark.apk
 adb logcat -c
 adb shell am start -n com.superplayer.benchmark/.BenchmarkActivity \
     --es arm STOCK_DEFAULTS --es stream "VOD, HLS" --el durationMs 1800000
@@ -205,7 +205,7 @@ adb logcat -d -t 2000 | grep SuperPlayerBench       # progress, then "run comple
 adb shell run-as com.superplayer.benchmark ls files  # the trace it wrote
 ```
 
-**What is not built: the harness around it.** [`devicelab/`](../devicelab/README.md) is this
+**What is not built: the harness around it.** [`devicelab/`](../../devicelab/README.md) is this
 repository's one entry point for measuring on a device — it boots or adopts a device, publishes,
 builds, refuses to measure a stale APK, and captures a Perfetto trace — and its README already names
 this benchmark as a future consumer. It is currently shaped around the demo: the package, the

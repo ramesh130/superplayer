@@ -21,7 +21,7 @@ is typed by hand is a plant nobody can repeat exactly.
 - **A clean tree only.** The run records the commit and the patch. Uncommitted changes as well would be
   a third thing it measured and did not name, so a dirty tree is refused before a device is found.
 - **Checked first.** `git apply --check` runs before the boot and the build, so a patch that no longer
-  applies costs a second. `devicelab/test/selftest`, which `./gradlew check` runs, checks every plant
+  applies costs a second. `devicelab/test/selftest`, which `(cd android && ./gradlew check)` runs, checks every plant
   here against `HEAD` for the same reason: a patch against the demo's sources rots as the demo changes,
   and CI is a better place to find that than a device run.
 - **Reverted however the run ends.** After the install on success, and by the run's exit trap when the

@@ -6,14 +6,17 @@ lifecycle. Not a fork of Media3 and not a new player. Apache-2.0, Kotlin, JDK 17
 ## Orientation
 
 Four Gradle builds and one Swift package, not one build. Mistaking them for a single build is the
-usual first wrong turn.
+usual first wrong turn. The four Gradle builds all live under `android/`, and the Swift package sits
+beside it at the root, as do `docs/`, `config/`, `devicelab/`, `third-party/` and the documents both
+platforms share. Gradle runs from inside `android/`, so every command below is spelled
+`(cd android && ./gradlew …)` from the root.
 
 | Build | What it is |
 | --- | --- |
-| root | the 15 `superplayer-*` library modules, listed in `settings.gradle.kts` — 14 published, and `superplayer-moq` deliberately not (ADR-0017 rule 1's #364 addendum) |
-| `build-logic/` | an **included build** holding the convention plugins every module applies |
-| `demo/` | a **separate** build resolving the library from published Maven coordinates |
-| `benchmark/` | a **separate** build, the same way, running `PRD.md` §6's matrix |
+| `android/` | the 15 `superplayer-*` library modules, listed in `android/settings.gradle.kts` — 14 published, and `superplayer-moq` deliberately not (ADR-0017 rule 1's #364 addendum) |
+| `android/build-logic/` | an **included build** holding the convention plugins every module applies |
+| `android/demo/` | a **separate** build resolving the library from published Maven coordinates |
+| `android/benchmark/` | a **separate** build, the same way, running `PRD.md` §6's matrix |
 | `Package.swift` + `ios/` | the **iOS and tvOS** Swift package (`docs/ios-plan.md`): manifest at the root so SwiftPM can resolve it by git URL, sources under `ios/`, every product carrying its phase's code, checked by `ios/check` on macOS rather than by Gradle. `ios/CLAUDE.md` is its orientation |
 
 A module's own build file holds only its dependencies; Android setup, SDK levels, Java and Kotlin
@@ -145,7 +148,7 @@ recipe across 200 rows, and its KDoc is the lifecycle a consumer copies: cache, 
 `setTelemetry { QoeCollector(sink) }` (a collector per player), then a `PreloadCoordinator` attached
 before the first player, released in reverse. Its header samples `inUseCount`, `size`,
 `PreloadCoordinator.warmDecoderCount` and `ContentKeyedCache.hitCount`, and each row shows its time
-to first frame from `declarePlaybackIntent()` — the scroll `./gradlew huntLeaks` measures.
+to first frame from `declarePlaybackIntent()` — the scroll `(cd android && ./gradlew huntLeaks)` measures.
 
 Everything below `MediaSource` loads through one `DataSource.Factory` chain, and `TransferChain` is
 the single internal place it and the `MediaSource.Factory` over it are assembled — reached from
@@ -388,15 +391,15 @@ the engine can see them: a finished `load` line carries its `durationMs`, and a 
 carries each transfer's own throughput — the *sample* and never Media3's smoothed estimate, which is
 measured on Media3's default clock and therefore reads how fast the host ran (`docs/testing.md` says
 what that cost). Both are additions of shape, so `SessionTrace.FORMAT_VERSION` stays **1**. Its purpose is the golden traces in
-`superplayer-telemetry/src/test/golden/`: a behaviour change appears in review as a readable diff
-rather than as a metric that moved, `./gradlew updateGoldenTraces` is the one command that
+`android/superplayer-telemetry/src/test/golden/`: a behaviour change appears in review as a readable diff
+rather than as a metric that moved, `(cd android && ./gradlew updateGoldenTraces)` is the one command that
 regenerates them on the same contract as `updateApiSurface`, and `docs/testing.md`'s *Golden traces*
 section says what a diff means and what may go into one. It also holds `SessionMetrics` and
 `QoeScore`, the reduction of a session's events to `PRD.md` §6's numbers and to the QoE objective.
 They were the benchmark's, and they moved here so the benchmark and the QoE regression gate share one
 implementation rather than two. The gate is `superplayer-abr`'s `QoeRegressionGateTest`, in
 `check`. It plays every `NetworkProfile` three times through `AdaptivePolicy` and judges the median
-against `superplayer-abr/src/test/qoe-floors.tsv`, and nothing writes that file: a floor moves only
+against `android/superplayer-abr/src/test/qoe-floors.tsv`, and nothing writes that file: a floor moves only
 in a commit that says why in the row. `docs/testing.md`'s *The QoE regression gate* argues the margin
 and the median. `superplayer-testkit` holds
 `PlaybackHarness` — the deterministic playback harness every module from phase 2 onward tests
@@ -454,7 +457,7 @@ of the fault injector so a trace and a `FaultScript` are one player. `NetworkPro
 Part 6's six profiles plus `ETHERNET` (#267, `STABLE_WIFI`'s rate on a wired transport), each constant
 with its public source; the benchmark's matrix keeps the six, and the QoE gate plays all seven. `docs/throughput-traces.md` is the
 format's specification and the replay's limits — notably that concurrent transfers each see the whole
-link — and says how a public dataset comes in: `./gradlew convertThroughputTrace`, whose conversions
+link — and says how a public dataset comes in: `(cd android && ./gradlew convertThroughputTrace)`, whose conversions
 live in `build-logic`, run locally, because no dataset is vendored. The harness owns the loading
 threads of the players it builds (`HarnessLoadThreads`, through core's internal engine seam) and
 advances its clock only once the engine has nothing left to do at the current time, which is what
@@ -1091,7 +1094,7 @@ seventh redaction rule is stated in `SessionTraceRecorder`'s KDoc beside the six
 credential in a header, a licence, a session id on the wire and a failure whose message names the host,
 every one asserted present before it is asserted absent, beside the `Build` strings and decoder component
 names a stated codec table makes leakable. `SessionBundleGoldenTraceTest` pins the format in this module's
-own `src/test/golden/`, regenerated by `./gradlew updateGoldenTraces` and by nothing else.
+own `src/test/golden/`, regenerated by `(cd android && ./gradlew updateGoldenTraces)` and by nothing else.
 Since #294 it also holds the **debug HUD**, which makes this the second library module with Compose
 (ADR-0015 rule 11): `DebugHud(player, telemetry)` is an overlay the *app* places over its own surface,
 six rows — the source of the numbers, the rendition, the buffer, the dropped frames, **the estimate
@@ -1275,7 +1278,7 @@ one import.
 
 `superplayer-moq` has the first of Phase 14. #364 was the prefactor — the module, MoQ's UniFFI
 bindings linked from `third-party/moq/m2`, and the one "not published" fact declared in
-`settings.gradle.kts`. Since #365 it has the half of the transport that `check` can test honestly:
+`android/settings.gradle.kts`. Since #365 it has the half of the transport that `check` can test honestly:
 `MoqCatalogTracks.declaredTracksOf(catalog)` turns what a publisher *declared* into a list of
 `MoqDeclaredTrack`, each carrying the `RealtimeTrack` the Phase 13 seam accepts, and this is where Phase 14's "both
 codec-description shapes are covered by a test" criterion is discharged, because a pure mapping
@@ -1348,13 +1351,13 @@ Since #353 the phase's **exit criterion** is met and it is the demo's: `MoqScree
 through a real `SuperPlayer` on a stock `PlayerView`, reached with
 `--es com.superplayer.demo.extra.SCREEN MOQ` and pointed elsewhere with `…extra.MOQ_BROADCAST`.
 What made that possible is a **third publication state** rather than a change of mind about
-publishing: `ModulePublication.LOCAL_ONLY`, declared in `settings.gradle.kts`'s
+publishing: `ModulePublication.LOCAL_ONLY`, declared in `android/settings.gradle.kts`'s
 `locallyPublishedModules`, registers a Maven publication so `publishToMavenLocal` produces an
-artifact `demo/` can resolve, and tracks no API surface, and still reads **Not published** in
+artifact `android/demo/` can resolve, and tracks no API surface, and still reads **Not published** in
 `docs/compatibility.md` — because what an adopter can resolve is unchanged and #369's licence and
 ABI questions are about *distribution*, which a coordinate in one machine's local repository does
 not do. The convention plugin now asks two questions where it asked one: *does an artifact exist*
-registers the publication, *can an adopter resolve it* tracks the surface. `demo/settings.gradle.kts`
+registers the publication, *can an adopter resolve it* tracks the surface. `android/demo/settings.gradle.kts`
 carries its own `exclusiveContent` copy of the `dev.moq` repository, which matters more there than
 in the root build: Maven Central carries that coordinate built **with** the codec features #351
 subtracted, and an ordinary repository would let it answer, silently installing the artifact #351
@@ -1421,7 +1424,7 @@ enforceable before code arrives. `superplayer-core`, `superplayer-telemetry`, `s
 `superplayer-realtime`, `superplayer-moq`, `superplayer-effects`, `superplayer-testmedia` and `build-logic` are the only modules with test sources. The roadmap is `PRD.md`: the problem inventory it numbers `F1`–`F8`, the module
 requirements, and the phase table are what the issues are cut from.
 
-`benchmark/` is the fourth build and the phases' exit criteria: `PRD.md` §6's fixed matrix — six
+`android/benchmark/` is the fourth build and the phases' exit criteria: `PRD.md` §6's fixed matrix — six
 network profiles × four scenarios × four players × twenty runs — emitting a report with the raw
 traces beside it. The four players are `Arm.kt`: stock `ExoPlayer` with defaults, stock plus the
 buffer config an app writes from intuition, a SuperPlayer profile, and the same profile under
@@ -1437,9 +1440,9 @@ the same events; delete that test and the benchmark's central claim goes with it
 honesty rules are enforced where the numbers are made rather than where the table is printed —
 `Distribution` has no mean without a spread, `ReportWriter` prints losses before wins and has no
 filter, and a difference inside two standard errors is neutral rather than a small win.
-`benchmark/README.md` is the manual, including why it sits outside `docs/testing.md`'s rules rather
-than against them. `benchmark/baseline/` is the frozen Phase 1 report Phase 3 was graded against, and
-`benchmark/phase3/` is the Phase 3 report (issue #103) — the current reference, the one
+`android/benchmark/README.md` is the manual, including why it sits outside `docs/testing.md`'s rules rather
+than against them. `android/benchmark/baseline/` is the frozen Phase 1 report Phase 3 was graded against, and
+`android/benchmark/phase3/` is the Phase 3 report (issue #103) — the current reference, the one
 `bench --baseline` writes, and where Phase 11 starts from. Its opening section is
 `ExitCriterion`'s verdict: adaptive against the static profile, a QoE win and no QoE loss on each
 shaped profile, and nothing worse on stable WiFi, by the two-standard-error rule. **That verdict is
@@ -1489,16 +1492,17 @@ build, its tasks are invisible to the root build's aggregate tasks — its tests
 `check` depends on them explicitly. A new check that can be a Gradle task belongs in `check`, not
 only in CI (`.github/workflows/ci.yml`), so local and CI agree on what passing means.
 
-`spotlessApply` at the root covers **all four Gradle builds** (the Swift package is `swift-format`'s). Spotless is configured by path rather than
-by project, so the root build's `**/*.kt` reaches `demo/` and `build-logic/` too, and one invocation
-formats the repository. The demo and the benchmark each apply Spotless a second time over their own
+`spotlessApply` in `android/` covers **all four Gradle builds** (the Swift package is `swift-format`'s). Spotless is configured by path rather than
+by project, so the library build's `**/*.kt`, read from `android/`, reaches `demo/`, `benchmark/` and
+`build-logic/` too, and one invocation formats every Kotlin file in the repository, since none lives
+outside `android/`. The demo and the benchmark each apply Spotless a second time over their own
 sources, which is why `spotlessCheck` is in their command lines: each has its own wrapper and CI
 builds it with the root build not running at all, so each has to be able to enforce the format by
 itself.
 
 The rules are ktlint's, and they live in `.editorconfig` — including every rule switched off to
 leave this codebase's style alone, each with the reason. The license header is
-`config/license-header.txt`, and `./gradlew check` verifies through `verifyLicenseHeader` that it
+`config/license-header.txt`, and `check` verifies through `verifyLicenseHeader` that it
 still says what `LICENSE` says.
 
 The demo build needs the library published first: it consumes
@@ -1506,23 +1510,23 @@ The demo build needs the library published first: it consumes
 adopter's first failures — a missing transitive dependency, a malformed POM, a wrong artifactId —
 happen here instead of in someone else's app.
 
-Building needs an Android SDK: set `ANDROID_HOME`, or write `sdk.dir` into `local.properties`
+Building needs an Android SDK: set `ANDROID_HOME`, or write `sdk.dir` into `android/local.properties`
 (gitignored). Gradle itself does not need installing; the checked-in wrapper fetches the pinned
 version.
 
 **The Gradle daemon runs on JDK 17**, the version CI uses and the catalog's `jvmTarget`, and the
 builds enforce it rather than asking for it. This matters more than it looks: the Robolectric
-runtime the tests load is pinned in `superplayer-core/src/test/resources/robolectric.properties`,
+runtime the tests load is pinned in `android/superplayer-core/src/test/resources/robolectric.properties`,
 and Robolectric's runtimes each require a minimum Java version, so a daemon on a newer JDK (Android
 Studio's bundled JBR, say) would run configurations that then fail in CI. The other half of that
-pairing is the daemon JVM criteria in `gradle/gradle-daemon-jvm.properties`: `toolchainVersion=17`.
-`demo/` and `benchmark/` carry a copy each, because each has its own wrapper. Whatever `JAVA_HOME`
+pairing is the daemon JVM criteria in `android/gradle/gradle-daemon-jvm.properties`: `toolchainVersion=17`.
+`android/demo/` and `android/benchmark/` carry a copy each, because each has its own wrapper. Whatever `JAVA_HOME`
 the launcher starts with, Gradle runs the daemon on a local JDK 17 it finds, and fails naming the
 requirement when there is none. It downloads nothing: no toolchain resolver is declared, so a
 missing JDK 17 is installed by hand. Any vendor will do. CI's is Temurin, set by `setup-java` in
 `.github/workflows/ci.yml` and `device-run.yml`. Moving the version means changing the three
 criteria files and those two workflows together. Edit the files by hand, because
-`./gradlew updateDaemonJvm` refuses to write one without a resolver. `./gradlew --version` prints
+`updateDaemonJvm` refuses to write one without a resolver. `(cd android && ./gradlew --version)` prints
 the criteria in force on its `Daemon JVM:` line.
 
 ### Running the demo on an emulator
@@ -1595,8 +1599,8 @@ repository.
 - **Clean-room discipline** — `CONTRIBUTING.md`. No proprietary material, no mirroring a commercial
   SDK's API shape, and a public `// spec:` or `// ref:` citation on every non-obvious algorithm.
 - **[ADR-0001](docs/adr/0001-compose-dont-fork.md)** — compose on Media3, do not fork it. Its rule 3
-  puts Media3's version in `gradle/libs.versions.toml` and nowhere else, enforced mechanically by
-  `./gradlew verifyNoHardcodedMedia3Versions`.
+  puts Media3's version in `android/gradle/libs.versions.toml` and nowhere else, enforced mechanically by
+  `(cd android && ./gradlew verifyNoHardcodedMedia3Versions)`.
 - **[ADR-0002](docs/adr/0002-no-local-http-proxy.md)** — no local HTTP proxy.
 - **[ADR-0003](docs/adr/0003-implement-player-by-delegation.md)** — the facade implements `Player`
   by Kotlin delegation and extends no Media3 class. Every Media3 `Player` base class is
@@ -1767,16 +1771,16 @@ repository.
   **cites ADR-0017's rules by number** and says what each means for an adopter without reproducing
   the record's reasoning — where the two ever read differently the ADR binds — and it says plainly
   that nothing is resolvable by anyone else today. Its stability table is held to
-  `settings.gradle.kts` by `./gradlew verifyCompatibilityDocument`, a root-only check in
+  `android/settings.gradle.kts` by `(cd android && ./gradlew verifyCompatibilityDocument)`, a root-only check in
   `build-logic` beside `verifyModulePhaseRule` — a **set** comparison and deliberately not an order,
   since the include list is in neither phase nor alphabetical order; everything else in that
   document is prose and says so. Rule 8 is #329's, and it is built:
-  `./gradlew release --release-version=<x.y.z>` is the one supported way to cut a release. It
+  `(cd android && ./gradlew release --release-version=<x.y.z>)` is the one supported way to cut a release. It
   depends on the root's `check` **and every module's**, since a dependency on the root's alone
   reaches none of the fifteen. It then refuses before it writes a byte: a dirty tree, a version
   that is not a successor of the last release or is smaller than the surface diff requires, an
   empty `Unreleased`, a tag that exists. Only then does it move the catalog, stamp `CHANGELOG.md`,
-  re-record `api/released/`, publish, tag and open the next snapshot. It **commits and tags
+  re-record `android/api/released/`, publish, tag and open the next snapshot. It **commits and tags
   locally and never pushes**, because the released version has to exist as a commit for a tag to
   name while the tree has to end on the next snapshot, and one working tree cannot be both.
   [`docs/releasing.md`](docs/releasing.md) is the manual and says plainly that a cut release lands
@@ -1842,8 +1846,8 @@ repository.
   protection or for realtime has its output off for its lifetime, reported as a typed reason and
   never as a playback failure; a player built without one pays nothing, which a test counts.
 - **[`docs/api-surface.md`](docs/api-surface.md)** — every published module's public API is tracked
-  in `<module>/api/<module>.api` and validated by `check`. Changing it means running
-  `./gradlew updateApiSurface` and committing the diff in the same change. A leaked `@UnstableApi`
+  in `android/<module>/api/<module>.api` and validated by `check`. Changing it means running
+  `(cd android && ./gradlew updateApiSurface)` and committing the diff in the same change. A leaked `@UnstableApi`
   Media3 type fails the build rather than merely showing up in a diff.
 - **[`docs/testing.md`](docs/testing.md)** — tests drive the library through its public API under
   Robolectric, against Media3's own fakes, with no device and no network. Nothing asserts past the
@@ -1853,7 +1857,7 @@ repository.
   socket on the **loopback** interface and reaches nothing off the host, because an HTTP client's
   obligations are claims about what it puts on a wire. The Swift products are held to ADR-0021's
   seam instead, which widens that carve-out to every iOS test.
-- Every dependency version lives in `gradle/libs.versions.toml`; the library and demo builds read
+- Every dependency version lives in `android/gradle/libs.versions.toml`; the library and demo builds read
   that one file.
 - A new dependency arrives with its `THIRD_PARTY.md` row in the same change.
 - A change contradicting an ADR says so explicitly and argues the case. Winning that argument

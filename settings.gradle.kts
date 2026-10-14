@@ -8,9 +8,13 @@ pluginManagement {
 }
 
 // The repository root (#519), which `third-party/` is under. Read here from `gradle.properties` rather
-// than through build-logic's `repositoryRoot`, which a settings script runs too early to reach;
-// `RepositoryRoot.kt` holds the same resolution and the reasons for it.
-val repositoryRoot: File = settingsDir.resolve(providers.gradleProperty("superplayer.repositoryRoot").get()).normalize()
+// than through build-logic's `repositoryRoot`, which a settings script runs too early to reach.
+// `RepositoryRoot.kt` argues the value; this copy resolves it without that file's containment check,
+// which runs as soon as the build's first task is configured and refuses a wrong value there.
+val repositoryRoot: File = settingsDir.resolve(
+    providers.gradleProperty("superplayer.repositoryRoot").orNull
+        ?: error("${settingsDir.resolve("gradle.properties")} declares no superplayer.repositoryRoot")
+).normalize()
 
 dependencyResolutionManagement {
     // Modules must not declare their own repositories; everything resolves through here.

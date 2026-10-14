@@ -21,7 +21,9 @@ pluginManagement {
 // the root build, whose `gradle.properties` says where the repository root is from there
 // (`superplayer.repositoryRoot`, argued in build-logic's `RepositoryRoot.kt`), so it is read from that
 // file — as the catalog is read from beside it — rather than restated, and moving the Gradle builds
-// stays one line in that file. `gradle.extra` hands it to the build script.
+// stays one line in that file. `gradle.extra` hands it to the build script. The block is a copy of
+// `demo/settings.gradle.kts`'s, for the reason the Spotless wiring is copied: each build has its own
+// wrapper and cannot load the other's scripts, so the two copies travel together.
 val repositoryRoot: File = run {
     val rootBuild = settingsDir.resolve("..")
     val properties = java.util.Properties()

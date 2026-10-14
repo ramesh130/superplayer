@@ -29,8 +29,9 @@ import java.util.Properties
  * The Gradle builds read and write files that belong to the whole repository rather than to them —
  * the Swift manifests, the iOS fixtures, `docs/`, `config/`, `LICENSE`, `CHANGELOG.md`,
  * `third-party/` and `devicelab/` — and once the Android builds move under `android/` (#521) those
- * files stay where they are. Every such path is resolved through this one value, so that move is a
- * change of `.` to `..` in the root `gradle.properties` and nothing else on the Gradle side, while
+ * files stay where they are. Every such path is resolved through this one value, so that move — the
+ * four builds moving together, so the links between them hold — is a change of `.` to `..` in the
+ * root `gradle.properties` and nothing else among the Gradle paths to shared files, while
  * what is the Gradle build's own (the catalog, the modules, `api/released/`, the settings) stays on
  * the Gradle root.
  *

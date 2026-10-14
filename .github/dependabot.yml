@@ -13,8 +13,8 @@ version: 2
 updates:
   # --- Gradle ---
   #
-  # Three directories, because the Android side is three Gradle builds, all under `android/` since
-  # #521. What each job actually picks up was checked against dependabot-core's Gradle file fetcher
+  # Three directories, for three of the four Gradle builds under `android/`; the benchmark's own
+  # wrapper is watched by none, as before the builds moved there. What each job actually picks up was checked against dependabot-core's Gradle file fetcher
   # rather than assumed, and it is not what the list suggests:
   #
   #   /android      Everything that has a version. Dependabot reads `gradle/libs.versions.toml` only

@@ -39,10 +39,8 @@ val licenseHeaderDelimiter = """(/\*\*|package |@file|import )"""
 // classes live in. Ten Kotlin files silently went unformatted and unheadered, and nothing said so.
 val gradleOutputDirectories = listOf("build/**", "*/build/**", ".gradle/**", "*/.gradle/**")
 
-// Nothing else needs leaving out. The agent worktrees under the repository's `.claude/worktrees/`,
-// which once put thousands of generated Kotlin files where `**/*.kt` reached them, sit beside this
-// directory rather than under it since the builds moved into `android/` (#521), so no target here
-// can reach them; and every Kotlin file the repository tracks is under this directory.
+// Nothing else needs leaving out: agent worktrees under the repository's `.claude/worktrees/` sit
+// beside this directory rather than under it, so no target here reaches their generated Kotlin.
 
 // The ktlint settings from `.editorconfig`, handed to ktlint through the channel it actually reads.
 //

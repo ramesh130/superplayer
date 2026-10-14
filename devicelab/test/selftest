@@ -252,6 +252,31 @@ if (catalog_version absent "$fixtures/libs.versions.toml") 2>/dev/null; then
     fail "an absent catalog key fails rather than reading as empty"
 else pass; fi
 
+# --- Where the Gradle build is ---------------------------------------------------------------------
+#
+# GRADLE_DIR is the one value that moves when the builds do. Checked as an invariant rather than as
+# today's value, so a move that flips it, and forgets nothing else, still passes here.
+
+assert_eq "the Gradle build is GRADLE_DIR under the repository root" \
+    "$REPO_ROOT${GRADLE_DIR:+/$GRADLE_DIR}" "$GRADLE_ROOT"
+if [ -x "$GRADLE_ROOT/gradlew" ]; then pass; else
+    fail "the Gradle build's wrapper is where GRADLE_DIR says" "$GRADLE_ROOT/gradlew"
+fi
+if [ -f "$GRADLE_ROOT/gradle/libs.versions.toml" ]; then pass; else
+    fail "and so is its version catalog" "$GRADLE_ROOT/gradle/libs.versions.toml"
+fi
+
+# A Gradle build one level down, the shape #521 moves the repository to, with the root's own catalog and
+# local.properties absent: whatever is read is read from the build, not from beside it.
+nested_build="$scratch/nested-build"
+mkdir -p "$nested_build/gradle" "$nested_build/sdk"
+cp "$fixtures/libs.versions.toml" "$nested_build/gradle/"
+printf 'sdk.dir=%s\n' "$nested_build/sdk" > "$nested_build/local.properties"
+assert_eq "the catalog is read from the Gradle build, wherever it is" \
+    "1.11.0" "$(GRADLE_ROOT="$nested_build" catalog_version media3)"
+assert_eq "and so is local.properties" \
+    "$nested_build/sdk" "$(unset ANDROID_HOME ANDROID_SDK_ROOT; GRADLE_ROOT="$nested_build" sdk_root)"
+
 # --- JSON ------------------------------------------------------------------------------------------
 
 assert_eq "escapes quotes, backslashes and control characters" \
@@ -502,11 +527,40 @@ else
     assert_contains "an unknown plant fails, naming the plants there are" "$unknown" "available: rotten slow"
 fi
 
+# A plant's paths are the Gradle build's (`a/demo/…`), so in a repository whose build is one level down
+# the same patch lands under GRADLE_DIR. The repository above is the control, with GRADLE_DIR empty.
+nested_repo="$scratch/plant-repo-nested"
+mkdir -p "$nested_repo/android/src"
+printf 'fun onCreate() {\n}\n' > "$nested_repo/android/src/App.kt"
+git -C "$nested_repo" init -q
+git -C "$nested_repo" add .
+git -C "$nested_repo" -c user.name=selftest -c user.email=selftest@invalid commit -q -m base
+nested="$(in_plant_lab bash -c '
+    . "$1/lib/common.sh"; . "$1/lib/plants.sh"; DEVICELAB_HOME="$2"; GRADLE_DIR=android
+    plant_apply slow "$3" 2>/dev/null
+    grep -c readEverything "$3/android/src/App.kt"
+    printf "added=%s\n" "$(ls "$3/android/src")"
+    plant_revert 2>/dev/null && printf "reverted=%s\n" "$PLANT_APPLIED"
+    printf "status=[%s]\n" "$(git -C "$3" status --porcelain)"
+' plant "$lab" "$plant_lab" "$nested_repo")"
+assert_contains "a plant applies under GRADLE_DIR when the Gradle build is not the repository root, adding its file there too" \
+    "$nested" "1
+added=App.kt
+Read.kt"
+assert_contains "and reverting it leaves that tree exactly clean" "$nested" "reverted=0
+status=[]"
+if unnested="$(in_plant_lab bash -c '. "$1/lib/common.sh"; . "$1/lib/plants.sh"; DEVICELAB_HOME="$2"; plant_check slow "$3"' \
+    plant "$lab" "$plant_lab" "$nested_repo")"; then
+    fail "with GRADLE_DIR empty the same plant does not apply to the nested tree"
+else
+    assert_contains "with GRADLE_DIR empty the same plant does not apply to the nested tree" "$unnested" "does not apply"
+fi
+
 # Every shipped plant still applies to this repository's HEAD: a patch against demo sources rots as the
 # demo changes, and this is where that is found, rather than after a boot. Checked against the index
 # (`--cached`), so a contributor's uncommitted edits cannot fail it.
 for plant in $(plants_available); do
-    if checked="$(git -C "$REPO_ROOT" apply --check --cached "$(plant_file "$plant")" 2>&1)"; then pass; else
+    if checked="$(plant_git_apply "$REPO_ROOT" --check --cached "$(plant_file "$plant")" 2>&1)"; then pass; else
         fail "plant '$plant' applies to this repository's HEAD" "$checked"
     fi
 done

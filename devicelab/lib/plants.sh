@@ -35,6 +35,14 @@ plant_file() {
     printf '%s\n' "$file"
 }
 
+# Runs `git apply` with arguments `$2…` on repository `$1`, a plant's paths rebased under GRADLE_DIR. A
+# plant is written against the Gradle build (`a/demo/…`), so the patches need no rewriting when it moves.
+plant_git_apply() {
+    local repo="$1"
+    shift
+    git -C "$repo" apply ${GRADLE_DIR:+"--directory=$GRADLE_DIR"} "$@"
+}
+
 # Fails unless plant `$1` would apply to repository `$2` as it stands, which is clean. Touches nothing:
 # a run calls it before a device is found or anything is built, so a patch that has rotted, or a dirty
 # tree, costs a second rather than a boot.
@@ -43,7 +51,7 @@ plant_check() {
     file="$(plant_file "$name")"
     [ -z "$(git -C "$repo" status --porcelain)" ] ||
         die "plant '$name' is applied only to a clean tree: the run records the commit and the patch, and uncommitted changes would be a third thing it measured and did not name"
-    output="$(git -C "$repo" apply --check "$file" 2>&1)" ||
+    output="$(plant_git_apply "$repo" --check "$file" 2>&1)" ||
         die "plant '$name' does not apply to $(git -C "$repo" rev-parse --short HEAD): $output"
 }
 
@@ -56,7 +64,7 @@ plant_apply() {
     PLANT_REPO="$repo"
     PLANT_BASE_COMMIT="$(git -C "$repo" rev-parse HEAD)"
     PLANT_PATCH_SHA256="$(sha256_of "$file")"
-    git -C "$repo" apply "$file" || die "plant '$name' passed its check and then failed to apply"
+    plant_git_apply "$repo" "$file" || die "plant '$name' passed its check and then failed to apply"
     PLANT_APPLIED=1
     log "planted '$name' (patch sha256 ${PLANT_PATCH_SHA256:0:12}…) on $PLANT_BASE_COMMIT"
 }
@@ -66,7 +74,7 @@ plant_apply() {
 # of its cleanup. A no-op when nothing is applied.
 plant_revert() {
     [ "$PLANT_APPLIED" = 1 ] || return 0
-    if ! git -C "$PLANT_REPO" apply -R "$(plant_file "$PLANT_NAME")"; then
+    if ! plant_git_apply "$PLANT_REPO" -R "$(plant_file "$PLANT_NAME")"; then
         log "error: could not revert plant '$PLANT_NAME'; \`git -C $PLANT_REPO status\` shows what is left of it"
         return 1
     fi

@@ -180,7 +180,7 @@ tree_state() {
 gradle() { # dir, log, tasks...
     local dir="$1" log_file="$2" where
     shift 2
-    where="${dir#"$REPO_ROOT"}"
+    where="${dir#"$GRADLE_ROOT"}"
     where="${where#/}"
     log "gradle $* (in ${where:-the root build}; log: $log_file)"
     if ! (cd "$dir" && ./gradlew --console=plain "$@") >> "$log_file" 2>&1; then
@@ -207,14 +207,14 @@ build_demo() {
     fi
     [ -z "$SP_TREE_NOTE" ] || log "the build is the commit $(printf '%s' "$SP_TREE_NOTE" | tr -d '`'); run.json records the tree as dirty"
 
-    gradle "$REPO_ROOT" "$RUN_DIR/build.log" publishToMavenLocal
+    gradle "$GRADLE_ROOT" "$RUN_DIR/build.log" publishToMavenLocal
     capitalised="$(printf '%s' "$BUILD_TYPE" | cut -c1 | tr '[:lower:]' '[:upper:]')${BUILD_TYPE#?}"
-    gradle "$REPO_ROOT/demo" "$RUN_DIR/build.log" "assemble$capitalised"
+    gradle "$GRADLE_ROOT/demo" "$RUN_DIR/build.log" "assemble$capitalised"
 
     [ "$(tree_state)" = "$before" ] ||
         die "the working tree changed during the build, so the published artifact matches no one state of it"
 
-    DEMO_APK="$REPO_ROOT/demo/build/outputs/apk/$BUILD_TYPE/superplayer-demo-$BUILD_TYPE.apk"
+    DEMO_APK="$GRADLE_ROOT/demo/build/outputs/apk/$BUILD_TYPE/superplayer-demo-$BUILD_TYPE.apk"
     [ -f "$DEMO_APK" ] || die "the build produced no $DEMO_APK"
     DEMO_APK_SHA256="$(sha256_of "$DEMO_APK")"
 }

@@ -37,6 +37,13 @@ concurrency:
 permissions:
   contents: read
 
+# Where the Gradle builds are, relative to the repository root: the root build with demo/ and benchmark/
+# beside it, and the version catalog. The one place this workflow learns it, so moving the builds
+# changes this line rather than every step below. device-run.yml carries its own, and devicelab's
+# scripts theirs in devicelab/lib/common.sh.
+env:
+  GRADLE_DIR: .
+
 jobs:
   build:
     name: Build, test, lint
@@ -65,6 +72,8 @@ jobs:
       # lookup lives with it.
       - name: Set up the Android SDK
         uses: ./.github/actions/setup-android-sdk
+        with:
+          gradle-dir: ${{ env.GRADLE_DIR }}
 
       # Caches the Gradle user home — the dependency cache and the local build cache — so a
       # run reuses the previous one's downloads and task outputs. Only default-branch runs
@@ -78,9 +87,11 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build every module
+        working-directory: ${{ env.GRADLE_DIR }}
         run: ./gradlew assemble
 
       - name: Unit tests
+        working-directory: ${{ env.GRADLE_DIR }}
         run: ./gradlew test
 
       # `check` runs Android Lint, the repo-wide Media3 version verification, the tracked
@@ -101,9 +112,11 @@ jobs:
       # A public API change that has not been regenerated with `./gradlew updateApiSurface`
       # fails here, as does an @UnstableApi Media3 type reaching public API.
       - name: Lint, API surface, and repo verification
+        working-directory: ${{ env.GRADLE_DIR }}
         run: ./gradlew check
 
       - name: Publish to the local Maven repository
+        working-directory: ${{ env.GRADLE_DIR }}
         run: ./gradlew publishToMavenLocal
 
       # The demo is a separate build that resolves SuperPlayer from published coordinates,
@@ -118,7 +131,7 @@ jobs:
       # demo applies Spotless itself, so its sources stay covered even when this step is the
       # only thing running.
       - name: Build and lint the demo against the published artifacts
-        working-directory: demo
+        working-directory: ${{ env.GRADLE_DIR }}/demo
         run: ./gradlew assembleDebug lintDebug spotlessCheck
 
       # The benchmark is a third separate build, and it resolves SuperPlayer from published
@@ -134,7 +147,7 @@ jobs:
       # `spotlessCheck` for the same reason as the demo's: this build applies Spotless itself and CI
       # runs it with none of the root build running.
       - name: Build and smoke-run the benchmark against the published artifacts
-        working-directory: benchmark
+        working-directory: ${{ env.GRADLE_DIR }}/benchmark
         run: ./gradlew assembleDebug test spotlessCheck
 
       - name: Upload reports
@@ -178,7 +191,10 @@ jobs:
             echo "ios=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          paths='^(ios/|Package\.swift$|third-party/moq/swift/|docs/|superplayer-testmedia/|\.github/workflows/ci\.yml$)'
+          # The corpus generators are in the Gradle build, wherever GRADLE_DIR puts it.
+          testmedia="$GRADLE_DIR/superplayer-testmedia/"
+          testmedia="${testmedia#./}"
+          paths="^(ios/|Package\\.swift\$|third-party/moq/swift/|docs/|$testmedia|\\.github/workflows/ci\\.yml\$)"
           if git diff --name-only "$BASE" HEAD | grep -qE "$paths"; then
             echo "ios=true" >> "$GITHUB_OUTPUT"
           else

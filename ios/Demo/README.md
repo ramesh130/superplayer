@@ -2,7 +2,7 @@
 
 An Xcode project that plays public HLS through `SuperPlayer`, resolving the package **by path**
 (`../..`, the repository root) so it compiles against the products as an adopter's app does — the
-iOS twin of the Android `android/demo/`, which resolves the library from published coordinates for the
+iOS twin of `android/demo/`, which resolves the library from published coordinates for the
 same reason. `ios/check` builds it for the iOS and tvOS simulators and runs nothing; whether it
 plays a real stream over a real CDN needs a network, which no check here has (ADR-0021).
 

@@ -21,7 +21,8 @@
 // Dependencies point inward toward SuperPlayerCore under docs/modules.md's phase rule, and
 // `verifyModulePhaseRule`, in `android/`, reads this file to hold them to that document's iOS
 // table. It reads the file as text, so a target keeps the documented
-// `.target(name:dependencies:path:)` shape and is never assembled from a variable — `ModulePhaseRuleTest` says what the reading sees.
+// `.target(name:dependencies:path:)` shape and is never assembled from a variable —
+// `ModulePhaseRuleTest` says what the reading sees.
 
 import PackageDescription
 

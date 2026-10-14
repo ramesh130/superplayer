@@ -66,8 +66,7 @@ internal object ReportWriter {
         appendLine()
         appendLine(
             "The fixed matrix of [`PRD.md`](../../../PRD.md) §6, run by `android/benchmark/`, with " +
-                "`superplayer-abr`'s " +
-                "adaptive policy as the arm under test and the Phase 1 baseline's three players re-run " +
+                "`superplayer-abr`'s adaptive policy as the arm under test and the Phase 1 baseline's three players re-run " +
                 "beside it. Every number here is produced by this harness against content this " +
                 "repository generates or public streams it names (§0.2); none is carried in from " +
                 "anywhere else, and none is copied from [the Phase 1 baseline](../baseline/baseline-report.md).",

@@ -1359,7 +1359,7 @@ ABI questions are about *distribution*, which a coordinate in one machine's loca
 not do. The convention plugin now asks two questions where it asked one: *does an artifact exist*
 registers the publication, *can an adopter resolve it* tracks the surface. `android/demo/settings.gradle.kts`
 carries its own `exclusiveContent` copy of the `dev.moq` repository, which matters more there than
-in the root build: Maven Central carries that coordinate built **with** the codec features #351
+in the library build: Maven Central carries that coordinate built **with** the codec features #351
 subtracted, and an ordinary repository would let it answer, silently installing the artifact #351
 exists to avoid.
 These tests load no native library, so unlike `MoqFfiLinkageTest` they run on every host.
@@ -1488,7 +1488,7 @@ are text and need no Swift toolchain: `verifyModulePhaseRule` reads `Package.swi
 `verifyLicenseHeader` holds every Swift file to `config/license-header.txt` written as `//` lines.
 
 `check` is the complete definition of the library's checks. Because `build-logic` is an included
-build, its tasks are invisible to the root build's aggregate tasks — its tests run only because
+build, its tasks are invisible to the library build's aggregate tasks — its tests run only because
 `check` depends on them explicitly. A new check that can be a Gradle task belongs in `check`, not
 only in CI (`.github/workflows/ci.yml`), so local and CI agree on what passing means.
 
@@ -1497,7 +1497,7 @@ by project, so the library build's `**/*.kt`, read from `android/`, reaches `dem
 `build-logic/` too, and one invocation formats every Kotlin file in the repository, since none lives
 outside `android/`. The demo and the benchmark each apply Spotless a second time over their own
 sources, which is why `spotlessCheck` is in their command lines: each has its own wrapper and CI
-builds it with the root build not running at all, so each has to be able to enforce the format by
+builds it with the library build not running at all, so each has to be able to enforce the format by
 itself.
 
 The rules are ktlint's, and they live in `.editorconfig` — including every rule switched off to

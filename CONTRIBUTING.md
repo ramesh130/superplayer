@@ -216,7 +216,7 @@ formatted by ktlint. Both are applied by Spotless, and both are verified by `che
 That one command covers all four Gradle builds. Spotless is configured by path rather than by
 project, so the library build in `android/` reaches `demo/`, `benchmark/` and `build-logic/` as well. The demo applies Spotless a
 second time over its own sources so that `(cd android/demo && ./gradlew ...)` enforces the same thing with
-the root build not running — hence the `spotlessCheck` in the command list above.
+the library build not running — hence the `spotlessCheck` in the command list above.
 
 The rules are in `.editorconfig`, which editors read too. A handful of ktlint rules are switched off
 there, each with a note saying which piece of this codebase it would have rewritten and why that

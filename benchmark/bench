@@ -26,9 +26,6 @@ die() {
     exit 1
 }
 
-REPO_ROOT="$(git -C "$BENCH_HOME" rev-parse --show-toplevel)" ||
-    die "benchmark/ is not inside a git checkout, and a report records the commit it measured"
-
 usage() {
     sed -n '4,14p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
@@ -56,6 +53,9 @@ while [ $# -gt 0 ]; do
 done
 
 case "$RUNS" in '' | *[!0-9]*) die "--runs takes a whole number, not '$RUNS'" ;; esac
+
+REPO_ROOT="$(git -C "$BENCH_HOME" rev-parse --show-toplevel)" ||
+    die "benchmark/ is not inside a git checkout, and a report records the commit it measured"
 
 # The library first, always. This build resolves SuperPlayer from Maven local exactly as `demo/`
 # does, so a matrix run against a stale artifact would measure the previous version, produce a

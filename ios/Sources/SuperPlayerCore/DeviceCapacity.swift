@@ -43,7 +43,7 @@ import os
 /// the reading "is only a snapshot at the time of the call. Caching the result is not advised." One
 /// reading per pool, and a pool is made once per screen.
 ///
-/// ref: `superplayer-core/src/main/kotlin/com/superplayer/core/DeviceCapacity.kt`
+/// ref: `android/superplayer-core/src/main/kotlin/com/superplayer/core/DeviceCapacity.kt`
 package enum DeviceCapacity {
 
     /// The platform's answer: the process's dirty-memory limit less its footprint, now. A function

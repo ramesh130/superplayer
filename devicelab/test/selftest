@@ -8,7 +8,7 @@
 # part this cannot reach.
 #
 # Then each consumer's own device-free half, `devicelab/<consumer>/test/selftest`, so that one command
-# — the one `./gradlew check` runs as `verifyDevicelab`, and the device workflow runs before every
+# — the one `(cd android && ./gradlew check)` runs as `verifyDevicelab`, and the device workflow runs before every
 # boot — covers the harness and everything built on it.
 #
 #   devicelab/test/selftest

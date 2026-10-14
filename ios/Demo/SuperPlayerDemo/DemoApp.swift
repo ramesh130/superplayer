@@ -19,7 +19,7 @@ import SwiftUI
 /// real CDN — which no test in this repository can show, since every one plays from the loopback
 /// origin (ADR-0021).
 ///
-/// The iOS twin of the Android `demo/`, and resolved the same way for the same reason: an Xcode
+/// The iOS twin of `android/demo/`, and resolved the same way for the same reason: an Xcode
 /// project that takes the package **by path** (`../..`, the repository root where `Package.swift`
 /// lives), so the demo compiles against the products as an adopter's app does — through their
 /// public API, never anything `package`-scoped — and an adopter's first compile failure happens here.

@@ -63,8 +63,8 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          # Matches `jvmTarget` in gradle/libs.versions.toml, build-logic's toolchain, and the daemon
-          # JVM criteria in gradle/gradle-daemon-jvm.properties (and demo/'s and benchmark/'s copies).
+          # Matches `jvmTarget` in android/gradle/libs.versions.toml, build-logic's toolchain, and the daemon
+          # JVM criteria in android/gradle/gradle-daemon-jvm.properties (and android/demo/'s and android/benchmark/'s).
           java-version: '17'
 
       # The SDK and the compileSdk platform, looked up from the version catalog. A composite
@@ -141,7 +141,7 @@ jobs:
       # `test` rather than a matrix run: it is the harness's own tests plus the matrix at one run per
       # cell, which is what keeps the runner working between baselines without costing CI the
       # three quarters of an hour a real baseline takes. A benchmark is a measurement somebody reads
-      # rather than a check a change must pass — `benchmark/README.md` says why — so nothing here
+      # rather than a check a change must pass — `android/benchmark/README.md` says why — so nothing here
       # gates on a number.
       #
       # `spotlessCheck` for the same reason as the demo's: this build applies Spotless itself and CI

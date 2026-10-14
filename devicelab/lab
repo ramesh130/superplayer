@@ -10,7 +10,7 @@
 #   devicelab/lab config        print the Perfetto config a run would use
 #   devicelab/lab list          list the scenarios, Perfetto data sources and plants
 #
-# Not a test, and not part of `./gradlew check`: `run` and `device` need a device. README.md says why that sits outside docs/testing.md's no-device rule rather than against it.
+# Not a test, and not part of `(cd android && ./gradlew check)`: `run` and `device` need a device. README.md says why that sits outside docs/testing.md's no-device rule rather than against it.
 set -euo pipefail
 
 . "$(cd "$(dirname "$0")" && pwd)/lib/common.sh"

@@ -19,9 +19,9 @@
 // (docs/ios-plan.md §2). Every target therefore names its path under `ios/`.
 //
 // Dependencies point inward toward SuperPlayerCore under docs/modules.md's phase rule, and
-// `./gradlew verifyModulePhaseRule` reads this file to hold them to that document's iOS table. It
-// reads the file as text, so a target keeps the documented `.target(name:dependencies:path:)`
-// shape and is never assembled from a variable — `ModulePhaseRuleTest` says what the reading sees.
+// `verifyModulePhaseRule`, in `android/`, reads this file to hold them to that document's iOS
+// table. It reads the file as text, so a target keeps the documented
+// `.target(name:dependencies:path:)` shape and is never assembled from a variable — `ModulePhaseRuleTest` says what the reading sees.
 
 import PackageDescription
 
@@ -123,7 +123,7 @@ let package = Package(
             name: "SuperPlayerTestMedia",
             path: "ios/Sources/SuperPlayerTestMedia"
         ),
-        // The benchmark (#414): benchmark/'s matrix on the simulator, its sources under
+        // The benchmark (#414): android/benchmark/'s matrix on the simulator, its sources under
         // ios/Benchmark/. A target and no product — nothing ships it — and in this manifest rather than
         // a package of its own because a SuperPlayer playing video in xctest needs core's `package`
         // lifecycle seam (ios/Benchmark/README.md). Phase 3 in docs/modules.md, the latest of what

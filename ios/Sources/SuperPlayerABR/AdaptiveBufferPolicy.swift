@@ -58,7 +58,7 @@ import SuperPlayerCore
 ///
 /// Every constant is the Kotlin constant, and its reason is the Kotlin KDoc's, cited rather than
 /// restated where nothing about it changes on iOS.
-/// ref: `superplayer-abr/src/main/kotlin/com/superplayer/abr/AdaptiveBufferPolicy.kt`
+/// ref: `android/superplayer-abr/src/main/kotlin/com/superplayer/abr/AdaptiveBufferPolicy.kt`
 public struct AdaptiveBufferPolicy: PlaybackPolicy {
 
     /// The profile whose static decision every branch departs from.

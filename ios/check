@@ -2,7 +2,7 @@
 # Copyright 2026 The SuperPlayer Authors
 # SPDX-License-Identifier: Apache-2.0
 #
-# ios/check: the whole definition of passing for the iOS half, as `./gradlew check` is for Android.
+# ios/check: the whole definition of passing for the iOS half, as `(cd android && ./gradlew check)` is for Android.
 #
 #   ios/check                 format, simulator tests (ios/MoQ's too), tvOS build, demo build, API baselines
 #   ios/check --update-api    the same, rewriting ios/api/<Product>.baseline instead of diffing it
@@ -65,7 +65,7 @@ while IFS= read -r file; do swift_files+=("$file"); done < <(
 
 step "Format: swift-format lint over ios/ and Package.swift"
 xcrun swift-format lint --strict --configuration ios/.swift-format "${swift_files[@]}"
-# The licence header on every .swift file is not checked here: `./gradlew verifyLicenseHeader`
+# The licence header on every .swift file is not checked here: `(cd android && ./gradlew verifyLicenseHeader)`
 # checks it, on the Linux job every change runs, because it is a reading of text and a check that
 # can be a Gradle task belongs in `check` (CLAUDE.md, Commands).
 

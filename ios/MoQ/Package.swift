@@ -18,9 +18,10 @@
 // product of the root manifest. That is the SwiftPM analog of the Kotlin module's `LOCAL_ONLY`
 // publication (ADR-0017 rule 1's #364 addendum, docs/ios-plan.md §3.10): an adopter resolves this
 // repository by URL, and SwiftPM reads only the root `Package.swift`, so nothing declared here can be
-// depended on from outside — while `ios/Demo/` resolves it by path, as `demo/` resolves the Kotlin
-// module from one machine's Maven local. The native half it links is built on one machine and
-// carries MPL-2.0 code (third-party/moq/README.md, THIRD_PARTY.md), which is why that line matters.
+// depended on from outside — while `ios/Demo/` resolves it by path, as `android/demo/` resolves
+// the Kotlin module from one machine's Maven local. The native half it links is built on one
+// machine and carries MPL-2.0 code (third-party/moq/README.md, THIRD_PARTY.md), which is why that
+// line matters.
 //
 // It depends on the root package by path, for the core product's `FrameSource` it implements and the
 // harness its tests use; ios/check tests and builds it in a step of its own.

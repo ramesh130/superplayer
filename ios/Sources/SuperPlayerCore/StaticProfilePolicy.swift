@@ -47,7 +47,7 @@ import Foundation
 /// ... the playback buffer becomes empty and playback stalls while
 /// automaticallyWaitsToMinimizeStalling is NO."
 ///
-/// ref: `superplayer-core/src/main/kotlin/com/superplayer/core/StaticProfilePolicy.kt`
+/// ref: `android/superplayer-core/src/main/kotlin/com/superplayer/core/StaticProfilePolicy.kt`
 /// ref: https://developer.apple.com/documentation/avfoundation/avplayeritem/preferredforwardbufferduration
 /// ref: https://developer.apple.com/documentation/avfoundation/avplayeritem/preferredpeakbitrate
 /// ref: https://developer.apple.com/documentation/avfoundation/avplayeritem/preferredmaximumresolution

@@ -48,11 +48,11 @@ import java.util.UUID
  * failure.
  *
  * ```bash
- * benchmark/bench                       # the full matrix, 20 runs a cell, into benchmark/out
- * (cd benchmark && ./gradlew test)      # one run a cell: the runner still works
+ * android/benchmark/bench                       # the full matrix, 20 runs a cell, into android/benchmark/out
+ * (cd android/benchmark && ./gradlew test)      # one run a cell: the runner still works
  * ```
  *
- * `benchmark/README.md` is the manual, including why this build sits outside `docs/testing.md`'s
+ * `android/benchmark/README.md` is the manual, including why this build sits outside `docs/testing.md`'s
  * no-device, no-network rule rather than against it.
  */
 @RunWith(AndroidJUnit4::class)

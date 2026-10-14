@@ -9,6 +9,7 @@ import com.superplayer.build.UpdateApiSurface
 import com.superplayer.build.VerifyNoUnstableMedia3InPublicApi
 import com.superplayer.build.isResolvableByAnAdopter
 import com.superplayer.build.modulePublicationOf
+import com.superplayer.build.repositoryRoot
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.gradle.api.tasks.testing.logging.TestLogEvent
@@ -129,6 +130,7 @@ extensions.configure<LibraryExtension> {
 // unit tests from the module directory, so the property carries nothing machine-specific into the
 // task's inputs.
 val goldenTracesDirectory = layout.projectDirectory.dir("src/test/golden")
+val repositoryRootFromModule = repositoryRoot.asFile.relativeTo(projectDir).invariantSeparatorsPath
 val updatingGoldenTraces = gradle.startParameter.taskNames.any { it.substringAfterLast(':') == "updateGoldenTraces" }
 
 tasks.withType<Test>().configureEach {
@@ -141,6 +143,10 @@ tasks.withType<Test>().configureEach {
         exceptionFormat = TestExceptionFormat.FULL
     }
     systemProperty("superplayer.golden.dir", "src/test/golden")
+    // Where a test reading one of the repository's documents finds `docs/` (#519): the repository
+    // root, which is not necessarily the Gradle root, relative to the module for the golden
+    // directory's reason.
+    systemProperty("superplayer.repository.dir", repositoryRootFromModule)
     systemProperty("superplayer.golden.mode", if (updatingGoldenTraces) "update" else "check")
     // A golden edited by hand re-runs the tests that hold it to the file.
     inputs.files(fileTree(goldenTracesDirectory))

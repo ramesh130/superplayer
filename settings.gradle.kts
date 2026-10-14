@@ -7,6 +7,11 @@ pluginManagement {
     }
 }
 
+// The repository root (#519), which `third-party/` is under. Read here from `gradle.properties` rather
+// than through build-logic's `repositoryRoot`, which a settings script runs too early to reach;
+// `RepositoryRoot.kt` holds the same resolution and the reasons for it.
+val repositoryRoot: File = settingsDir.resolve(providers.gradleProperty("superplayer.repositoryRoot").get()).normalize()
+
 dependencyResolutionManagement {
     // Modules must not declare their own repositories; everything resolves through here.
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
@@ -29,7 +34,7 @@ dependencyResolutionManagement {
             forRepository {
                 maven {
                     name = "moqLocal"
-                    url = settingsDir.resolve("third-party/moq/m2").toURI()
+                    url = repositoryRoot.resolve("third-party/moq/m2").toURI()
                 }
             }
             filter { includeGroup("dev.moq") }

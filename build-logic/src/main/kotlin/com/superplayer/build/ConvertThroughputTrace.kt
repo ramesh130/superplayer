@@ -69,9 +69,17 @@ abstract class ConvertThroughputTrace : DefaultTask() {
     @get:Option(option = "bin-ms", description = "mahimahi only: the length of one stretch, in ms (default 1000).")
     abstract val binMs: Property<String>
 
-    /** What a relative `--input` or `--output` is relative to: the root project's directory. */
+    /**
+     * What a relative `--input` or `--output` is relative to: the repository root (#519).
+     *
+     * Not the invoking shell's directory, which Gradle does not expose — the nearest it has,
+     * `StartParameter.currentDir`, is moved by `-p` — and not the Gradle root, which stops being the
+     * top of the tree once the Android builds sit under `android/` (#521). The repository root is the
+     * one directory a command line in `docs/` is written from, and it is the same directory however
+     * the wrapper is reached, so a documented relative path means one file before the move and after.
+     */
     @get:Internal
-    abstract val projectRoot: DirectoryProperty
+    abstract val repositoryRoot: DirectoryProperty
 
     @TaskAction
     fun convert() {
@@ -102,7 +110,7 @@ abstract class ConvertThroughputTrace : DefaultTask() {
     }
 
     private fun resolve(path: String): File =
-        File(path).let { if (it.isAbsolute) it else projectRoot.get().asFile.resolve(path) }
+        File(path).let { if (it.isAbsolute) it else repositoryRoot.get().asFile.resolve(path) }
 }
 
 /** One mahimahi stretch unless told otherwise: the one-second granularity the bandwidth logs have. */

@@ -9,6 +9,7 @@ import com.superplayer.build.VerifyModulePhaseRule
 import com.superplayer.build.VerifyNoHardcodedMedia3Versions
 import com.superplayer.build.VerifyVersion
 import com.superplayer.build.VerifyVersionBump
+import com.superplayer.build.repositoryRoot
 
 plugins {
     // For the lifecycle `check` task alone. This used to be `tasks.register("check")`, which
@@ -20,6 +21,14 @@ plugins {
 }
 
 // Repo-wide verification, applied to the root project only.
+
+// The repository root, which is not necessarily this build's directory (#519, `RepositoryRoot.kt`):
+// what the checks below read from `docs/`, `config/`, `LICENSE`, `CHANGELOG.md`, the Swift package and
+// `devicelab/` is resolved from here, while the catalog, the settings, the modules and `api/released/`
+// stay on `layout.projectDirectory`, which is the Gradle build's. Named `repository` rather than
+// `repositoryRoot` because two of the task types configured below carry a property of that name, and
+// inside their configuration blocks the task's would win.
+val repository = repositoryRoot
 
 val verifyNoHardcodedMedia3Versions =
     tasks.register<VerifyNoHardcodedMedia3Versions>("verifyNoHardcodedMedia3Versions") {
@@ -43,13 +52,13 @@ val verifyModulePhaseRule =
     tasks.register<VerifyModulePhaseRule>("verifyModulePhaseRule") {
         group = "verification"
         description = "Fails if a module or a Swift target depends on one from a later phase."
-        modulesDocument.set(layout.projectDirectory.file("docs/modules.md"))
+        modulesDocument.set(repository.file("docs/modules.md"))
         moduleBuildScripts.from(
             fileTree(layout.projectDirectory) {
                 include("superplayer-*/build.gradle.kts")
             }
         )
-        swiftPackageManifest.set(layout.projectDirectory.file("Package.swift"))
+        swiftPackageManifest.set(repository.file("Package.swift"))
         stampFile.set(layout.buildDirectory.file("verification/module-phase-rule.txt"))
     }
 
@@ -61,7 +70,7 @@ val verifyMedia3SupportedVersion =
         group = "verification"
         description = "Fails if the catalog's Media3 is not the version docs/modules.md supports."
         versionCatalog.set(layout.projectDirectory.file("gradle/libs.versions.toml"))
-        modulesDocument.set(layout.projectDirectory.file("docs/modules.md"))
+        modulesDocument.set(repository.file("docs/modules.md"))
         stampFile.set(layout.buildDirectory.file("verification/media3-supported-version.txt"))
     }
 
@@ -78,9 +87,9 @@ val verifyCompatibilityDocument =
         group = "verification"
         description = "Fails if docs/compatibility.md's stability tables and the published modules or Swift products disagree."
         settingsScript.set(layout.projectDirectory.file("settings.gradle.kts"))
-        compatibilityDocument.set(layout.projectDirectory.file("docs/compatibility.md"))
-        swiftPackageManifest.set(layout.projectDirectory.file("Package.swift"))
-        unpublishedSwiftPackageManifest.set(layout.projectDirectory.file("ios/MoQ/Package.swift"))
+        compatibilityDocument.set(repository.file("docs/compatibility.md"))
+        swiftPackageManifest.set(repository.file("Package.swift"))
+        unpublishedSwiftPackageManifest.set(repository.file("ios/MoQ/Package.swift"))
         stampFile.set(layout.buildDirectory.file("verification/compatibility-document.txt"))
     }
 
@@ -93,7 +102,7 @@ val verifyVersion =
         group = "verification"
         description = "Fails if the published version is malformed or CHANGELOG.md disagrees with it."
         versionCatalog.set(layout.projectDirectory.file("gradle/libs.versions.toml"))
-        changelog.set(layout.projectDirectory.file("CHANGELOG.md"))
+        changelog.set(repository.file("CHANGELOG.md"))
         stampFile.set(layout.buildDirectory.file("verification/version.txt"))
     }
 
@@ -141,8 +150,9 @@ tasks.register<CutRelease>("release") {
     group = "publishing"
     description = "Cuts a release: --release-version=<x.y.z>, or refuses. See docs/releasing.md."
     projectRoot.set(layout.projectDirectory)
+    repositoryRoot.set(repository)
     versionCatalog.set(layout.projectDirectory.file("gradle/libs.versions.toml"))
-    changelog.set(layout.projectDirectory.file("CHANGELOG.md"))
+    changelog.set(repository.file("CHANGELOG.md"))
     recordDirectory.set(releasedApiSurfaces)
     trackedApiFiles.from(trackedApiSurfaces)
 
@@ -172,16 +182,16 @@ val verifyLicenseHeader =
     tasks.register<VerifyLicenseHeader>("verifyLicenseHeader") {
         group = "verification"
         description = "Fails if the license header does not match LICENSE, or a Swift file lacks it."
-        headerFile.set(layout.projectDirectory.file("config/license-header.txt"))
-        licenseFile.set(layout.projectDirectory.file("LICENSE"))
+        headerFile.set(repository.file("config/license-header.txt"))
+        licenseFile.set(repository.file("LICENSE"))
         swiftSources.from(
-            fileTree(layout.projectDirectory) {
+            fileTree(repository) {
                 // MoQ's bindings package manifest is ours, unlike the generated Swift beside it (#434).
                 include("Package.swift", "ios/**/*.swift", "third-party/moq/swift/Package.swift")
                 exclude("**/.build/**")
             }
         )
-        projectRoot.set(layout.projectDirectory)
+        repositoryRoot.set(repository)
         stampFile.set(layout.buildDirectory.file("verification/license-header.txt"))
     }
 
@@ -196,13 +206,13 @@ val verifyDevicelab =
     tasks.register<Exec>("verifyDevicelab") {
         group = "verification"
         description = "Runs devicelab's device-free self-test."
-        val devicelab = layout.projectDirectory.dir("devicelab")
+        val devicelab = repository.dir("devicelab")
         val stamp = layout.buildDirectory.file("verification/devicelab-selftest.txt")
         inputs.files(fileTree(devicelab) { exclude("out/**", "**/*.md") })
             .withPropertyName("devicelab")
             .withPathSensitivity(PathSensitivity.RELATIVE)
         outputs.file(stamp)
-        workingDir(layout.projectDirectory)
+        workingDir(repository)
         commandLine(devicelab.file("test/selftest").asFile.absolutePath)
         doLast { stamp.get().asFile.writeText("passed\n") }
     }

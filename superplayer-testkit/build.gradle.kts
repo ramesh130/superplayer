@@ -1,4 +1,5 @@
 import com.superplayer.build.declareKotlinFriendModule
+import com.superplayer.build.repositoryRoot
 
 plugins {
     id("superplayer.android.library")
@@ -64,7 +65,7 @@ dependencies {
 // produces now, and `updateIosFixtures` — the task `superplayer-testmedia` registers for its streams,
 // registered here under the same name so one command rewrites every iOS fixture — is the one thing
 // that rewrites them, run alone, then `check`. The wiring is that module's, for its reasons.
-val traceFixtures = rootProject.layout.projectDirectory.dir("ios/Tests/Fixtures/throughput-traces")
+val traceFixtures = repositoryRoot.dir("ios/Tests/Fixtures/throughput-traces")
 val traceFixturesFromModule = traceFixtures.asFile.relativeTo(projectDir).invariantSeparatorsPath
 val updatingIosFixtures = gradle.startParameter.taskNames.any { it.substringAfterLast(':') == "updateIosFixtures" }
 

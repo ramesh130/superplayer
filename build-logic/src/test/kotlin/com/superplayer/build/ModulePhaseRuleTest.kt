@@ -17,7 +17,6 @@
 package com.superplayer.build
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -232,19 +231,18 @@ class ModulePhaseRuleTest {
     @Test
     fun `the tree as it stands satisfies the rule`() {
         // The check has to pass on the real repository, or it is a check nobody can land.
-        // The test runs from build-logic's directory; the repository is whichever ancestor
-        // holds the document.
-        val repoRoot = generateSequence(File(".").canonicalFile) { it.parentFile }
-            .firstOrNull { File(it, "docs/modules.md").isFile }
-        assertNotNull("no ancestor of ${File(".").canonicalFile} holds docs/modules.md", repoRoot)
-        repoRoot!!
-        val scripts = repoRoot.listFiles()
+        // The test runs from build-logic's directory, so the Gradle root is one level up: the
+        // modules are listed there, and the documents read under the repository root that build
+        // declares (#519).
+        val gradleRoot = File("..").canonicalFile
+        val repoRoot = repositoryRootOf(gradleRoot)
+        val scripts = gradleRoot.listFiles()
             .orEmpty()
             .filter { it.isDirectory && it.name.startsWith("superplayer-") }
             .map { File(it, "build.gradle.kts") }
             .filter { it.isFile }
 
-        assertTrue("no module build scripts found under $repoRoot", scripts.isNotEmpty())
+        assertTrue("no module build scripts found under $gradleRoot", scripts.isNotEmpty())
         assertEquals(
             emptyList<String>(),
             findModulePhaseViolations(File(repoRoot, "docs/modules.md"), scripts)

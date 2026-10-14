@@ -35,10 +35,11 @@ class LicenseHeaderTest {
     @Test
     fun `the repository's real header and LICENSE agree`() {
         // The one case that is not a fixture. Gradle runs these tests with `build-logic` as the
-        // working directory, so the repository root is one level up. If this fails, the header
-        // Spotless is stamping onto every source file is not the licence the project ships under.
-        val header = File("../config/license-header.txt")
-        val license = File("../LICENSE")
+        // working directory, so the Gradle root is one level up and the repository root is whatever
+        // that build declares (#519). If this fails, the header Spotless is stamping onto every
+        // source file is not the licence the project ships under.
+        val header = File(REPOSITORY_ROOT, "config/license-header.txt")
+        val license = File(REPOSITORY_ROOT, "LICENSE")
         assertTrue("expected ${header.absolutePath} to exist", header.isFile)
         assertTrue("expected ${license.absolutePath} to exist", license.isFile)
 
@@ -166,7 +167,7 @@ class LicenseHeaderTest {
 
     @Test
     fun `the repository's Swift files carry the header`() {
-        val root = File("..")
+        val root = REPOSITORY_ROOT
         val swift = root.resolve("ios").walkTopDown()
             .filter { it.isFile && it.extension == "swift" && "/.build/" !in it.path }
             .plus(root.resolve("Package.swift"))
@@ -175,11 +176,14 @@ class LicenseHeaderTest {
 
         assertEquals(
             emptyList<String>(),
-            findSwiftFilesWithoutHeader(File("../config/license-header.txt").readText(), swift)
+            findSwiftFilesWithoutHeader(File(REPOSITORY_ROOT, "config/license-header.txt").readText(), swift)
         )
     }
 
     private companion object {
+
+        /** The repository this build-logic belongs to, as its Gradle build declares it. */
+        val REPOSITORY_ROOT: File = repositoryRootOf(File(".."))
 
         /** Exactly the text of `config/license-header.txt`. */
         val APACHE_HEADER = """

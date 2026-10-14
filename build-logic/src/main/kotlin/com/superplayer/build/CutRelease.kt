@@ -99,8 +99,17 @@ abstract class CutRelease : DefaultTask() {
     @get:Option(option = "release-version", description = "The version to release, as MAJOR.MINOR.PATCH.")
     abstract val version: Property<String>
 
+    /** The Gradle root: where `gradlew` is, and so where the publishing child runs. */
     @get:Internal
     abstract val projectRoot: DirectoryProperty
+
+    /**
+     * The repository root, which is where `git` runs: the one directory every written path is inside
+     * when the two roots differ (#519), since the changelog is the repository's while the catalog and
+     * the recorded surfaces are the Gradle build's.
+     */
+    @get:Internal
+    abstract val repositoryRoot: DirectoryProperty
 
     @get:Internal
     abstract val versionCatalog: RegularFileProperty
@@ -117,9 +126,11 @@ abstract class CutRelease : DefaultTask() {
 
     @TaskAction
     fun cut() {
-        val root = projectRoot.get().asFile
+        val root = repositoryRoot.get().asFile
         val catalogFile = versionCatalog.get().asFile
         val changelogFile = changelog.get().asFile
+        val writtenPaths =
+            releaseWrittenPaths(root, catalogFile, changelogFile, recordDirectory.get().asFile).toTypedArray()
 
         val planning = planRelease(
             asked = version.get(),
@@ -166,11 +177,11 @@ abstract class CutRelease : DefaultTask() {
             // The paths the plan named rather than everything: the tree was clean when the
             // refusals read it, but `check` ran between that reading and this line, and anything
             // it wrote outside `.gitignore` would otherwise be swept into a release commit.
-            git(root, "add", *WRITTEN_PATHS)
+            git(root, "add", *writtenPaths)
             git(root, "commit", "--message", "Release ${plan.release}")
             logger.lifecycle("  committed.")
 
-            publishToMavenLocal(root)
+            publishToMavenLocal(projectRoot.get().asFile)
             logger.lifecycle("  published ${plan.release} to the local Maven repository.")
 
             // Annotated rather than lightweight: a release tag carries who cut it and when, and
@@ -180,7 +191,7 @@ abstract class CutRelease : DefaultTask() {
 
             // ADR-0017 rule 8's other half: the tree may not be left on the version just published.
             catalogFile.writeText(plan.nextSnapshotCatalog)
-            git(root, "add", *WRITTEN_PATHS)
+            git(root, "add", *writtenPaths)
             git(root, "commit", "--message", "Open ${plan.nextSnapshot}")
             logger.lifecycle("  catalog opened on ${plan.nextSnapshot}.")
         } catch (failure: Exception) {
@@ -235,9 +246,18 @@ abstract class CutRelease : DefaultTask() {
  * Everything a cut writes, as the paths `git add` is handed: the catalog, the changelog and the
  * recorded surfaces, which are the three the plan decides. Naming them is what makes the release
  * commit exactly the plan, rather than the plan plus whatever else was in the tree at that moment.
+ *
+ * Each is written from [repositoryRoot], where `git` runs, rather than spelled as a constant: once
+ * the Gradle build sits below the repository root (#521) the catalog is `android/gradle/…` while the
+ * changelog is still at the top, and a fixed list would hand `git add` a path that is not there.
  */
-private val WRITTEN_PATHS =
-    arrayOf("gradle/libs.versions.toml", "CHANGELOG.md", RECORDED_SURFACE_DIRECTORY)
+internal fun releaseWrittenPaths(
+    repositoryRoot: File,
+    catalog: File,
+    changelog: File,
+    recordDirectory: File
+): List<String> = listOf(catalog, changelog, recordDirectory)
+    .map { it.canonicalFile.relativeTo(repositoryRoot.canonicalFile).invariantSeparatorsPath }
 
 /**
  * Where the publishing child keeps its own `.gradle`. Under `build/`, which is already ignored and

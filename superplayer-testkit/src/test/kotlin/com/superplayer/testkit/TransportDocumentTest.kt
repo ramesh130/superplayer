@@ -171,10 +171,17 @@ class TransportDocumentTest {
 
     private companion object {
 
-        /** Relative to this module's directory, which is where Gradle runs a test from. */
-        const val DOCUMENT = "../docs/http-transport.md"
+        /**
+         * Under the repository root the build hands every test, relative to this module's directory —
+         * which is where Gradle runs a test from — and not necessarily one level up (#519).
+         */
+        val REPOSITORY: String = checkNotNull(System.getProperty("superplayer.repository.dir")) {
+            "superplayer.repository.dir is unset; the convention plugin sets it on every unit test"
+        }
 
-        const val INDEX = "../docs/README.md"
+        val DOCUMENT = "$REPOSITORY/docs/http-transport.md"
+
+        val INDEX = "$REPOSITORY/docs/README.md"
 
         const val SOURCE = "src/main/kotlin/com/superplayer/testkit/HttpTransportConformance.kt"
 

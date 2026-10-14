@@ -8,7 +8,7 @@
 #   ios/Benchmark/bench --runs 1            fewer runs, for working on the harness
 #   ios/Benchmark/bench --out DIR           somewhere other than ios/Benchmark/out
 #   ios/Benchmark/bench --cells "VOD / 3G"  a substring filter, for working on the harness
-#   ios/Benchmark/bench --baseline          write into benchmark/ios-phase3, the committed reference
+#   ios/Benchmark/bench --baseline          write into ios/Benchmark/phase3, the committed reference
 #
 #   SP_SIMULATOR      the simulator to run on, by name (default superplayer-bench); made if absent
 #   SP_DERIVED_DATA   xcodebuild's DerivedData (default .build/DerivedData, ios/check's)
@@ -40,11 +40,11 @@ while [ $# -gt 0 ]; do
         --runs) runs="${2:?--runs needs a value}"; shift 2 ;;
         --out) out="${2:?--out needs a value}"; shift 2 ;;
         --cells) cells="${2:?--cells needs a value}"; shift 2 ;;
-        # In the repository, because a number nobody can find is not a baseline; beside the Android
-        # reports rather than among them, since the two measure different engines. ios-baseline/ is
-        # i2's report, frozen, with no adaptive arm; ios-phase3/ is i3's and the current reference,
-        # as benchmark/bench --baseline moved to benchmark/phase3 when Phase 3 measured.
-        --baseline) out="$root/benchmark/ios-phase3"; shift ;;
+        # In the repository, because a number nobody can find is not a baseline; beside this runner
+        # rather than among the Android reports, since the two measure different engines. baseline/
+        # is i2's report, frozen, with no adaptive arm; phase3/ is i3's and the current reference,
+        # as android/benchmark/bench --baseline moved to its phase3/ when Phase 3 measured.
+        --baseline) out="$root/ios/Benchmark/phase3"; shift ;;
         -h | --help) usage ;;
         *) die "unknown option $1" ;;
     esac

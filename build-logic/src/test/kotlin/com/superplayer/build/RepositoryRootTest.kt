@@ -32,6 +32,9 @@ import java.io.File
  * (#521), so the case that matters is the one this repository does not have yet: a Gradle build one
  * level below the repository it belongs to. Each test that states it has a control with the two
  * roots equal, because a resolution that ignored the declared value would pass the equal case alone.
+ *
+ * The release's written paths are here rather than beside `CutRelease`'s other tests because what
+ * they test is this split: the one place a Gradle task hands `git` paths from both roots at once.
  */
 class RepositoryRootTest {
 

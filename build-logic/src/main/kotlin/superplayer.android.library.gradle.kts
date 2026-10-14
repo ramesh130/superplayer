@@ -144,8 +144,8 @@ tasks.withType<Test>().configureEach {
     }
     systemProperty("superplayer.golden.dir", "src/test/golden")
     // Where a test reading one of the repository's documents finds `docs/` (#519): the repository
-    // root, which is not necessarily the Gradle root, relative to the module for the golden
-    // directory's reason.
+    // root — the `superplayer.repositoryRoot` Gradle property, which is not necessarily the Gradle
+    // root — relative to the module for the golden directory's reason.
     systemProperty("superplayer.repository.dir", repositoryRootFromModule)
     systemProperty("superplayer.golden.mode", if (updatingGoldenTraces) "update" else "check")
     // A golden edited by hand re-runs the tests that hold it to the file.

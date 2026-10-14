@@ -117,8 +117,15 @@ class TelemetrySchemaDocumentTest {
 
     private companion object {
 
-        /** Relative to this module's directory, which is where Gradle runs a test from. */
-        const val DOCUMENT = "../docs/telemetry-schema.md"
+        /**
+         * Under the repository root the build hands every test, relative to this module's directory —
+         * which is where Gradle runs a test from — and not necessarily one level up (#519).
+         */
+        val REPOSITORY: String = checkNotNull(System.getProperty("superplayer.repository.dir")) {
+            "superplayer.repository.dir is unset; the convention plugin sets it on every unit test"
+        }
+
+        val DOCUMENT = "$REPOSITORY/docs/telemetry-schema.md"
 
         /** The four fields every event carries, which the table leaves out of each row. */
         val COMMON = setOf("sessionId", "contentId", "timestampMs", "monotonicTimeMs")

@@ -1,3 +1,5 @@
+import com.superplayer.build.repositoryRoot
+
 // Device measurement, applied to the root project only. devicelab/README.md is the manual.
 //
 // These need a device, so none of them is part of `check`, and nothing `check` runs depends on them:
@@ -14,7 +16,7 @@ tasks.register<Exec>("huntLeaks") {
     description =
         "Drives the demo through the leak hunt on a device and reports what grew and what retains it " +
         "(devicelab/leak/README.md). Needs a device or an emulator; not part of check."
-    workingDir(layout.projectDirectory)
-    commandLine(layout.projectDirectory.file("devicelab/lab").asFile.absolutePath, "run", "leak-hunt")
+    workingDir(repositoryRoot)
+    commandLine(repositoryRoot.file("devicelab/lab").asFile.absolutePath, "run", "leak-hunt")
     outputs.upToDateWhen { false }
 }

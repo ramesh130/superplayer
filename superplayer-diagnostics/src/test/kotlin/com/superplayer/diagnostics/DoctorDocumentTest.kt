@@ -134,8 +134,15 @@ class DoctorDocumentTest {
 
     private companion object {
 
-        /** Relative to this module's directory, which is where Gradle runs a test from. */
-        const val DOCUMENT = "../docs/media-source-doctor.md"
+        /**
+         * Under the repository root the build hands every test, relative to this module's directory —
+         * which is where Gradle runs a test from — and not necessarily one level up (#519).
+         */
+        val REPOSITORY: String = checkNotNull(System.getProperty("superplayer.repository.dir")) {
+            "superplayer.repository.dir is unset; the convention plugin sets it on every unit test"
+        }
+
+        val DOCUMENT = "$REPOSITORY/docs/media-source-doctor.md"
 
         /** One defect's heading: a fourth-level heading whose whole text is the defect's id. */
         val SECTION = Regex("""#### `([a-z0-9-]+)`""")

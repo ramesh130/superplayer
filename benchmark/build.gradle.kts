@@ -21,6 +21,10 @@ plugins {
 // The block below is a copy of the root `build.gradle.kts`, which is where it is explained. What the
 // copies read is shared — `config/license-header.txt` and `.editorconfig` are one file each — so the
 // header text and the ktlint rules cannot come to disagree. Only the wiring is written three times.
+//
+// Both files are the repository's rather than this build's, so they are read under the repository
+// root `settings.gradle.kts` derived (#519).
+val repositoryRoot = gradle.extra["superplayer.repositoryRoot"] as File
 val licenseHeaderDelimiter = """(/\*\*|package |@file|import )"""
 
 fun readEditorConfigSettings(editorConfig: File, sections: List<String>): Map<String, String> {
@@ -42,13 +46,13 @@ fun readEditorConfigSettings(editorConfig: File, sections: List<String>): Map<St
     return sections.fold(emptyMap()) { merged, name -> merged + bySection.getValue(name) }
 }
 
-val ktlintSettings = readEditorConfigSettings(file("../.editorconfig"), listOf("[*]", "[*.{kt,kts}]"))
+val ktlintSettings = readEditorConfigSettings(repositoryRoot.resolve(".editorconfig"), listOf("[*]", "[*.{kt,kts}]"))
 
 spotless {
     kotlin {
         target("src/**/*.kt")
         ktlint(libs.versions.ktlint.get()).editorConfigOverride(ktlintSettings)
-        licenseHeaderFile(file("../config/license-header.txt"), licenseHeaderDelimiter)
+        licenseHeaderFile(repositoryRoot.resolve("config/license-header.txt"), licenseHeaderDelimiter)
     }
     kotlinGradle {
         target("*.gradle.kts")

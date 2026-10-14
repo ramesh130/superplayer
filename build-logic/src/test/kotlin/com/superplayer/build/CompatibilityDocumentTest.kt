@@ -17,7 +17,6 @@
 package com.superplayer.build
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -359,17 +358,16 @@ class CompatibilityDocumentTest {
     @Test
     fun `the tree as it stands satisfies the check`() {
         // The check has to pass on the real repository, or it is a check nobody can land. The test
-        // runs from build-logic's directory; the repository is whichever ancestor holds the
-        // document — the same way ModulePhaseRuleTest finds it.
-        val repoRoot = generateSequence(File(".").canonicalFile) { it.parentFile }
-            .firstOrNull { File(it, "docs/compatibility.md").isFile }
-        assertNotNull("no ancestor of ${File(".").canonicalFile} holds docs/compatibility.md", repoRoot)
-        repoRoot!!
+        // runs from build-logic's directory, so the Gradle root is one level up: the settings are
+        // read there, and the documents and the Swift manifests under the repository root that
+        // build declares (#519) — the same way ModulePhaseRuleTest finds them.
+        val gradleRoot = File("..").canonicalFile
+        val repoRoot = repositoryRootOf(gradleRoot)
 
         assertEquals(
             emptyList<String>(),
             findCompatibilityDocumentViolations(
-                File(repoRoot, "settings.gradle.kts").readText(),
+                File(gradleRoot, "settings.gradle.kts").readText(),
                 File(repoRoot, "docs/compatibility.md").readText()
             )
         )

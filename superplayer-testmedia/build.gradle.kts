@@ -1,3 +1,5 @@
+import com.superplayer.build.repositoryRoot
+
 plugins {
     id("superplayer.android.library")
 }
@@ -41,9 +43,9 @@ dependencies {
 // The HLS half of `HostileManifests` (#412) is held the same way, under `ios/Tests/Fixtures/hostile/`,
 // by `HostileManifestsFixturesTest`: a directory of its own with an index of its own, because an entry
 // carries a citation, a cause and declared headers that a good stream's index has no column for.
-val iosFixtures = rootProject.layout.projectDirectory.dir("ios/Tests/Fixtures/synthetic")
+val iosFixtures = repositoryRoot.dir("ios/Tests/Fixtures/synthetic")
 val iosFixturesFromModule = iosFixtures.asFile.relativeTo(projectDir).invariantSeparatorsPath
-val hostileFixtures = rootProject.layout.projectDirectory.dir("ios/Tests/Fixtures/hostile")
+val hostileFixtures = repositoryRoot.dir("ios/Tests/Fixtures/hostile")
 val hostileFixturesFromModule = hostileFixtures.asFile.relativeTo(projectDir).invariantSeparatorsPath
 val updatingIosFixtures = gradle.startParameter.taskNames.any { it.substringAfterLast(':') == "updateIosFixtures" }
 

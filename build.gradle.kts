@@ -1,3 +1,5 @@
+import com.superplayer.build.repositoryRoot
+
 plugins {
     // Applied `apply false` so the versions resolve once, from the catalog, for all modules.
     alias(libs.plugins.android.library) apply false
@@ -88,7 +90,7 @@ fun readEditorConfigSettings(editorConfig: File, sections: List<String>): Map<St
     return sections.fold(emptyMap()) { merged, name -> merged + bySection.getValue(name) }
 }
 
-val ktlintSettings = readEditorConfigSettings(file(".editorconfig"), listOf("[*]", "[*.{kt,kts}]"))
+val ktlintSettings = readEditorConfigSettings(repositoryRoot.file(".editorconfig").asFile, listOf("[*]", "[*.{kt,kts}]"))
 
 // Formatting and license headers, for all three Gradle builds.
 //
@@ -105,7 +107,7 @@ spotless {
         target("**/*.kt")
         targetExclude(gradleOutputDirectories + agentWorktrees)
         ktlint(libs.versions.ktlint.get()).editorConfigOverride(ktlintSettings)
-        licenseHeaderFile(file("config/license-header.txt"), licenseHeaderDelimiter)
+        licenseHeaderFile(repositoryRoot.file("config/license-header.txt").asFile, licenseHeaderDelimiter)
 
         // The one exemption that cannot be expressed as a rule setting at all.
         // `standard:no-empty-file` counts a file whose only content is a `package` line and

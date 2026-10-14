@@ -65,7 +65,7 @@ abstract class VerifyLicenseHeader : DefaultTask() {
 
     /** Only used to render readable relative paths in the failure message. */
     @get:Internal
-    abstract val projectRoot: DirectoryProperty
+    abstract val repositoryRoot: DirectoryProperty
 
     /**
      * A stamp file written on success. A verification task has no real product, but declaring
@@ -125,7 +125,7 @@ abstract class VerifyLicenseHeader : DefaultTask() {
     }
 
     private fun relative(file: File): String =
-        file.relativeTo(projectRoot.get().asFile).path
+        file.relativeTo(repositoryRoot.get().asFile).path
 }
 
 /**

@@ -17,6 +17,22 @@ pluginManagement {
     }
 }
 
+// The repository root (#519), which `.editorconfig` and `config/` are under. This build sits inside
+// the root build, whose `gradle.properties` says where the repository root is from there
+// (`superplayer.repositoryRoot`, argued in build-logic's `RepositoryRoot.kt`), so it is read from that
+// file — as the catalog is read from beside it — rather than restated, and moving the Gradle builds
+// stays one line in that file. `gradle.extra` hands it to the build script.
+val repositoryRoot: File = run {
+    val rootBuild = settingsDir.resolve("..")
+    val properties = java.util.Properties()
+    providers.fileContents(layout.settingsDirectory.file("../gradle.properties"))
+        .asText.get().reader().use(properties::load)
+    val declared = properties.getProperty("superplayer.repositoryRoot")
+        ?: error("${rootBuild.resolve("gradle.properties")} declares no superplayer.repositoryRoot")
+    rootBuild.resolve(declared).normalize()
+}
+gradle.extra["superplayer.repositoryRoot"] = repositoryRoot
+
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {

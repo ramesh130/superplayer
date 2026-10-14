@@ -1,13 +1,24 @@
 # SuperPlayer
 
-A production playback layer on top of [AndroidX Media3](https://github.com/androidx/media) —
-policy, resilience, observability, and lifecycle.
+A production playback layer on top of [AndroidX Media3](https://github.com/androidx/media) on
+Android, and on AVFoundation's `AVPlayer` on iOS and tvOS — policy, resilience, observability, and
+lifecycle.
 
-It is **not** a fork of Media3 and **not** a new player. `SuperPlayer` *is* a Media3 `Player`, so
-existing `PlayerView`, `MediaSession` and Compose surfaces take it unchanged, and
-`player.exoPlayer` is there for everything this library does not cover.
+It is **not** a fork of either engine and **not** a new player. On Android `SuperPlayer` *is* a
+Media3 `Player`, so existing `PlayerView`, `MediaSession` and Compose surfaces take it unchanged, and
+`player.exoPlayer` is there for everything this library does not cover. On Apple platforms it owns
+an `AVPlayer` and hands it out as `player.avPlayer`, so `AVPlayerViewController`, Picture in Picture
+and AirPlay keep working. The two share the vocabulary, the documents and the test fixtures, never
+the code.
 
-Apache-2.0 · Kotlin · JDK 17 · `minSdk` 24 · Media3 1.11.0
+| | Android | iOS and tvOS |
+| --- | --- | --- |
+| Engine | Media3 1.11.0 | AVFoundation (`AVPlayer`) |
+| Language | Kotlin, JDK 17 | Swift 6, strict concurrency |
+| Floor | `minSdk` 24 | iOS 17, tvOS 17 |
+| Where | [`android/`](android/) — four Gradle builds | [`Package.swift`](Package.swift) and [`ios/`](ios/) |
+
+Apache-2.0.
 
 ---
 
@@ -17,7 +28,9 @@ Read this before the feature list, because the feature list is longer than the g
 
 - **Nothing is published.** There is no remote repository and no credentials anywhere in this
   build. `(cd android && ./gradlew publishToMavenLocal)` writes to your own `~/.m2`, which is how the demo
-  resolves it and the only way anyone resolves it. A cut release is a commit and a local tag.
+  resolves it and the only way anyone resolves it. A cut release is a commit and a local tag. The
+  Swift package resolves by this repository's URL, but with no tag cut it resolves at a branch or a
+  revision, which gets you whatever is on it ([`docs/ios.md`](docs/ios.md)).
 - **`0.x`, and under `0.x` a minor may break you.** What counts as breaking is the tracked API
   surface rather than anyone's judgement —
   [`docs/adr/0017`](docs/adr/0017-version-the-library-by-semver-in-lockstep-with-the-tracked-api-surface-as-the-arbiter.md)
@@ -25,18 +38,21 @@ Read this before the feature list, because the feature list is longer than the g
 - **It is verified under Robolectric to an unusual depth and on real hardware barely at all.**
   Most phases' device exit criteria are still open — DRM on L1/L3 hardware, the TV path, download
   survival across a reboot, the feed's time-to-first-frame, and the diagnostics bundle from a
-  device. Everything the test suite *cannot* show is written down in
+  device. On iOS every test runs on a simulator, so FairPlay, tvOS display-mode switching and a
+  background download across a process's death are listed as a device's rather than faked.
+  Everything the test suite *cannot* show is written down in
   [`docs/testing.md`](docs/testing.md) rather than left to be assumed.
 - **The benchmark's Phase 3 verdict is a committed finding, not a win.** `android/benchmark/phase3/`
   reports what the adaptive policy did against three other arms on a fixed matrix, including
   where it lost. Moving those numbers is Phase 11 and is open.
-- **`superplayer-moq` is local-only on purpose.** It links a native library built on one machine
-  for one ABI. It is excluded from any release and from the tracked API surface, and
+- **`superplayer-moq` and `SuperPlayerMoQ` are local-only on purpose.** Each links a native
+  library built on one machine. They are excluded from any release and from the tracked API
+  surface, and
   [#369](https://github.com/ramesh130/superplayer/issues/369) is what publishing it would have to
   answer first.
 
 If you want something to depend on today, this is not it. If you want to read how a playback layer
-gets argued into shape, the [18 decision records](docs/adr/README.md) are the point.
+gets argued into shape, the [21 decision records](docs/adr/README.md) are the point.
 
 ---
 
@@ -77,6 +93,21 @@ player.playWhenReady = true
 player.prepare()
 ```
 
+The same request on iOS, where a player is configured by a value rather than built:
+
+```swift
+var configuration = SuperPlayer.Configuration(profile: .videoOnDemand)
+configuration.telemetry = { QoeCollector(sink: OSLogSink()) }
+
+let player = SuperPlayer(configuration: configuration)
+player.setMediaRequest(
+    MediaRequest(
+        contentId: "catalog:sintel",
+        sources: [URL(string: "https://cdn.example/sintel.m3u8")!],
+        startPosition: .resumeFromLastKnown))
+player.avPlayer.play()              // AVPlayerViewController and SwiftUI's VideoPlayer take it as is
+```
+
 `MediaRequest` is the shape of the idea: content has a **stable id** rather than a URL, an ordered
 list of sources the fallback ladder climbs through, and a start position that can say *resume*
 without the app tracking where. The id is what a cache key, a CMCD session, a telemetry row and a
@@ -87,6 +118,8 @@ policy, resilience, DRM or telemetry registers nothing and allocates nothing for
 a test counting that for each.
 
 ## Modules
+
+### Android
 
 `superplayer-core` is the only one an app needs. Dependencies point inward, and no module may
 depend on one from a later phase ([`docs/modules.md`](docs/modules.md)).
@@ -109,7 +142,33 @@ depend on one from a later phase ([`docs/modules.md`](docs/modules.md)).
 | `superplayer-testkit` | The deterministic harness: shaped networks, fault injection, golden traces |
 | `superplayer-testmedia` | Synthetic HLS and DASH streams, and a corpus of deliberately broken ones |
 
+### iOS and tvOS
+
+`SuperPlayerCore` is the only product an app needs; the rest are additive and depend inward on it.
+Installing, the configuration value, what ports and what is not ported by rule are
+[`docs/ios.md`](docs/ios.md).
+
+| Product | What it adds | Platforms |
+| --- | --- | --- |
+| `SuperPlayerCore` | `SuperPlayer`, `MediaRequest`, profiles, snapshots, `PlaybackSession`, `PlayerPool`, the policy boundary, `PlayerView`/`PlayerLayerView` | iOS, tvOS |
+| `SuperPlayerTelemetry` | CTA-2066 QoE collection, an `os_log` sink, session traces | iOS, tvOS |
+| `SuperPlayerABR` | Adaptive buffering and selection over a per-network throughput memory | iOS, tvOS |
+| `SuperPlayerPreload` | Feed prefetch over a `PlayerPool` | iOS, tvOS |
+| `SuperPlayerResilience` | The same failure taxonomy, and the rungs of the fallback ladder that port | iOS, tvOS |
+| `SuperPlayerDRM` | FairPlay, and an offline licence store | iOS, tvOS; offline licences iOS only |
+| `SuperPlayerOffline` | HLS downloads into a directory you name | iOS only |
+| `SuperPlayerTV` | The display matched to the content | tvOS |
+| `SuperPlayerDiagnostics` | The manifest doctor, the trace bundle, a debug HUD | iOS, tvOS |
+| `SuperPlayerRealtime` | `RealtimePlayer`: encoded frames from a transport you supply | iOS, tvOS |
+| `SuperPlayerTestkit` | A loopback-origin harness, fault scripts, throughput traces, `FrameSourceConformance` | iOS, tvOS |
+| `SuperPlayerTestMedia` | Synthetic HLS streams and the hostile-manifest corpus | iOS, tvOS |
+
+`SuperPlayerMoQ` (Media over QUIC through `RealtimePlayer`) is a separate, unpublished package under
+`ios/MoQ/`, iOS only — see Status.
+
 ## Building it
+
+### Android
 
 Needs JDK 17 and an Android SDK (`ANDROID_HOME`, or `sdk.dir` in `android/local.properties`). The Gradle
 wrapper fetches everything else.
@@ -129,6 +188,19 @@ fails here instead of in someone else's app:
 (cd android/demo && ./gradlew assembleDebug lintDebug spotlessCheck)
 ```
 
+### iOS and tvOS
+
+Needs macOS and Xcode with an iOS simulator runtime; a tvOS runtime for the tvOS build.
+
+```bash
+ios/check                                   # format, simulator tests, tvOS build, API baselines
+```
+
+`ios/check` is the Swift package's whole definition of passing, and the macOS CI job runs it alone
+([ADR-0021](docs/adr/0021-test-ios-against-a-loopback-origin-and-run-its-checks-in-one-script.md)
+says why it is a script rather than a Gradle task). The demo is an Xcode project under
+[`ios/Demo/`](ios/Demo/README.md) that resolves the package by path.
+
 ## How it is tested
 
 This is the part worth copying even if the library is not for you.
@@ -144,6 +216,14 @@ faked. And **behaviour changes appear in review as a readable diff**: golden ses
 committed, so a change that moves a metric shows up as a line, not as a number someone notices
 later.
 
+On iOS the same rules hold with one honest difference: `AVPlayer` takes no fake transport, so the
+tests are XCTest on a simulator against an HTTP origin **on the loopback interface**, with faults
+and shaping applied at that server in the Android harness's vocabulary. Time there is real, so no
+test asserts a duration and the golden traces are structural
+([ADR-0021](docs/adr/0021-test-ios-against-a-loopback-origin-and-run-its-checks-in-one-script.md)).
+The synthetic streams and the hostile corpus are the same fixtures on both platforms, generated
+from the Android build and committed under `ios/Tests/Fixtures/`.
+
 Two suites are written to run **outside** this repository, against code we did not write:
 `HttpTransportConformance` and `FrameSourceConformance`, each naming the rule a failure broke.
 
@@ -152,8 +232,11 @@ Two suites are written to run **outside** this repository, against code we did n
 [`docs/README.md`](docs/README.md) indexes every document and says which reader each is for. The
 ones to start from:
 
-- [**`docs/adr/README.md`**](docs/adr/README.md) — the 18 decision records, `ADR-0001` through `ADR-0018`, all Accepted. Why the library is
-  shaped as it is, and the rules a change is held to.
+- [**`docs/adr/README.md`**](docs/adr/README.md) — the 21 decision records, `ADR-0001` through
+  `ADR-0022`. Why the library is shaped as it is on both platforms, and the rules a change is held
+  to.
+- [**`docs/ios.md`**](docs/ios.md) — SuperPlayer on iOS and tvOS for an app author: installing by
+  SwiftPM, the products, what ports and what is not ported by rule, and what your app declares.
 - [**`docs/compatibility.md`**](docs/compatibility.md) — what you may depend on, and what a
   release does not promise.
 - [**`docs/testing.md`**](docs/testing.md) — the testing strategy and every stand-in's limits.
@@ -172,8 +255,10 @@ Read [`CONTRIBUTING.md`](CONTRIBUTING.md) first — it is short and two of its r
 - **A change that contradicts an ADR says so and argues the case.** Winning that argument produces
   a superseding record, not an undocumented exception.
 
-`(cd android && ./gradlew assemble check)` must pass, `(cd android && ./gradlew spotlessApply)` formats, and a public API change
-is committed together with its regenerated `api/` diff.
+On Android, `(cd android && ./gradlew assemble check)` must pass, `(cd android && ./gradlew
+spotlessApply)` formats, and a public API change is committed together with its regenerated `api/`
+diff. On iOS, `ios/check` must pass, and a public API change is committed with its regenerated
+baseline (`ios/check --update-api`).
 
 ## Licence
 

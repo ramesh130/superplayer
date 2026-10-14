@@ -40,7 +40,7 @@ the narrowest carve-out that does. It does not extend to anything that ships to 
 **#364's amendment, and it widens that carve-out by exactly one case.** The rule's reason is *never
 distributed in a published artifact*, and it named two kinds of dependency that satisfy it. A third
 does: a dependency of a module the build carries and **does not publish**, declared as such in
-`settings.gradle.kts`'s `unpublishedModules` list (ADR-0017 rule 1, `build-logic`'s
+`android/settings.gradle.kts`'s `unpublishedModules` list (ADR-0017 rule 1, `build-logic`'s
 `ModulePublication`). Such a module has no coordinate at any version, so nothing of it reaches an
 adopter's APK, which is the same fact the original two rest on rather than a new allowance.
 
@@ -50,6 +50,15 @@ whose `uniffi_core` is MPL-2.0 and *is* linked into the native library
 admit copyleft into a published module, and it does not survive the module being published. **#369,
 which would publish `superplayer-moq`, has to answer this first**, and the row it would have to
 clear is the one above rather than this one.
+
+**#434 reads the amendment for the Swift package, and adds no case.** SwiftPM has no publication
+step: a product of the root `Package.swift` is resolvable by anyone who names this repository's URL,
+so on iOS the unpublished module is a target **no product of the root manifest exposes**.
+`SuperPlayerMoQ` is that — a package of its own under `ios/MoQ/`, which SwiftPM never reads when it
+resolves this repository, and which `ios/Demo/` reaches by path as `android/demo/` reaches the Kotlin module
+from one machine's Maven local. Its native library links the same `uniffi_core`
+(`third-party/moq/CRATES.md`, *The iOS graph*), and the same condition binds it: moving
+`SuperPlayerMoQ` into the root manifest is publishing it.
 
 Adding a dependency means adding its entry to `THIRD_PARTY.md` in the same change, creating the
 file if it does not exist yet.
@@ -84,6 +93,11 @@ Where an API design question arises, the answer is Media3's own convention: `Bui
 committed to, and `Player`-compatible types wherever a `Player`-shaped concept exists. This is
 idiomatic for the ecosystem and it is independently derived from Apache-2.0 code the project already
 builds on.
+
+On Apple platforms the tie-breaker is AVFoundation's conventions and the Swift API Design Guidelines
+instead — a configuration value rather than a builder, for one — as
+[ADR-0020](docs/adr/0020-compose-on-avfoundations-avplayer-and-bring-no-other-engine.md) rule 5
+decides. Every other clean-room rule binds the Swift code unchanged.
 
 ### 4. Cite a public source for every non-obvious algorithm
 
@@ -172,14 +186,14 @@ status check on that pull request.
 Run the same thing before pushing:
 
 ```
-./gradlew assemble check
-./gradlew publishToMavenLocal
-(cd demo && ./gradlew assembleDebug lintDebug spotlessCheck)
+(cd android && ./gradlew assemble check)
+(cd android && ./gradlew publishToMavenLocal)
+(cd android/demo && ./gradlew assembleDebug lintDebug spotlessCheck)
 ```
 
 `check` is the complete definition of the library's checks — lint, the repo verification, the
 tracked API surface, the Kotlin format and Apache-2.0 file headers, the module tests, and the
-`build-logic` test suite (an included build, so a plain `./gradlew test` misses it). A new check
+`build-logic` test suite (an included build, so a plain `test` misses it). A new check
 that can be a Gradle task belongs in `check`, not only in the workflow, so local and CI cannot
 disagree about what passing means.
 
@@ -196,13 +210,13 @@ Every `.kt` file in this repository carries the Apache-2.0 boilerplate header, a
 formatted by ktlint. Both are applied by Spotless, and both are verified by `check`:
 
 ```
-./gradlew spotlessApply
+(cd android && ./gradlew spotlessApply)
 ```
 
-That one command covers all three Gradle builds. Spotless is configured by path rather than by
-project, so the root build reaches `demo/` and `build-logic/` as well. The demo applies Spotless a
-second time over its own sources so that `(cd demo && ./gradlew ...)` enforces the same thing with
-the root build not running — hence the `spotlessCheck` in the command list above.
+That one command covers all four Gradle builds. Spotless is configured by path rather than by
+project, so the library build in `android/` reaches `demo/`, `benchmark/` and `build-logic/` as well. The demo applies Spotless a
+second time over its own sources so that `(cd android/demo && ./gradlew ...)` enforces the same thing with
+the library build not running — hence the `spotlessCheck` in the command list above.
 
 The rules are in `.editorconfig`, which editors read too. A handful of ktlint rules are switched off
 there, each with a note saying which piece of this codebase it would have rewritten and why that
@@ -211,6 +225,11 @@ piece is deliberate; where a rule and the existing house style disagree, the hou
 The header text is `config/license-header.txt`. It is not free-form: `check` runs
 `verifyLicenseHeader`, which compares it against the boilerplate in `LICENSE`'s own appendix, so the
 header and the license cannot drift apart. Changing one means changing the other.
+
+The iOS package's `.swift` files carry the same header written as `//` lines, which nothing stamps:
+`verifyLicenseHeader` derives the expected text from `config/license-header.txt` and fails on any
+Swift file that does not open with it. Swift is formatted by `swift-format` with
+`ios/.swift-format`, and `ios/check` lints it; `ios/CLAUDE.md` has the command that fixes it.
 
 The demo is linted as well as built, and that is not incidental: it is the only place
 `UnsafeOptInUsageError` is enabled, so it is where ADR-0001 rule 2 is proved from a consumer's side
@@ -222,13 +241,13 @@ task can reach it.
 
 ## The public API surface
 
-Every published module's public API is checked into the repository as `<module>/api/<module>.api`,
+Every published module's public API is checked into the repository as `android/<module>/api/<module>.api`,
 and `check` fails when what the module builds no longer matches it. Regenerating it is a deliberate
 step, never automatic:
 
 ```
-./gradlew updateApiSurface                     # every module
-./gradlew :superplayer-core:updateApiSurface   # one module
+(cd android && ./gradlew updateApiSurface)                     # every module
+(cd android && ./gradlew :superplayer-core:updateApiSurface)   # one module
 ```
 
 Commit the regenerated file in the same change as the API edit that caused it. The diff is the

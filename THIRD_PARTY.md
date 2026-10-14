@@ -4,7 +4,7 @@ Every third-party dependency SuperPlayer resolves, with its license. `CONTRIBUTI
 policy: permissive licenses only, no copyleft, no field-of-use restriction, and no dependency whose
 license cannot be identified. Adding a dependency means adding its row here in the same change.
 
-Versions are not listed here — they live in `gradle/libs.versions.toml`, which is the single source
+Versions are not listed here — they live in `android/gradle/libs.versions.toml`, which is the single source
 of truth. This file records *what* is depended on and under *what license*.
 
 ## Runtime and compile dependencies
@@ -15,6 +15,7 @@ of truth. This file records *what* is depended on and under *what license*.
 | `androidx.media3:media3-exoplayer` | Apache-2.0 | `superplayer-core` (api), `superplayer-preload`, `benchmark` |
 | `androidx.media3:media3-exoplayer-hls` | Apache-2.0 | `superplayer-core`, `superplayer-testkit`, `superplayer-diagnostics` |
 | `androidx.media3:media3-exoplayer-dash` | Apache-2.0 | `superplayer-core`, `superplayer-testkit`, `superplayer-diagnostics` |
+| `androidx.media3:media3-effect` | Apache-2.0 | `superplayer-effects` (the GL effect pipeline `setVideoEffects` loads by name; kept out of core so an app with no frame output carries none of it, ADR-0022 rule 9) |
 | `androidx.media3:media3-datasource` | Apache-2.0 | `superplayer-core`, `superplayer-testkit`, `superplayer-cache` |
 | `androidx.media3:media3-database` | Apache-2.0 | `superplayer-cache` (the `DatabaseProvider` interface its cache index is kept through) |
 | `androidx.media3:media3-session` | Apache-2.0 | `superplayer-core` (api), `demo` |
@@ -35,6 +36,7 @@ of truth. This file records *what* is depended on and under *what license*.
 | `org.jetbrains.kotlinx:kotlinx-coroutines-android` | Apache-2.0 | all modules |
 | `dev.moq:moq-ffi` | MIT OR Apache-2.0 (the built binary also contains **MPL-2.0** — see below) | `superplayer-moq` — **built here, not resolved from Maven** |
 | `net.java.dev.jna:jna` | Apache-2.0 OR LGPL-2.1+ | `superplayer-moq` (transitive, via `moq-ffi`: the bindings' FFI bridge) |
+| `MoqFFI` (Swift package, `third-party/moq/swift/`) | MIT OR Apache-2.0 (the built library also contains **MPL-2.0** — see below) | `SuperPlayerMoQ` (`ios/MoQ/`, not a product of the root manifest) — **built here from the same `moq-ffi` commit, not resolved from upstream's `moq-swift-ffi`** |
 
 ## The MoQ bindings, and the native crates inside them
 
@@ -42,7 +44,7 @@ of truth. This file records *what* is depended on and under *what license*.
 names on Maven Central**. It is built from `moq-dev/moq` at commit `4e419f9` with
 `--no-default-features` and committed to `third-party/moq/m2`, because the published build carries
 MPL-2.0 code this project's policy does not accept. `third-party/moq/README.md` is the recipe, the
-evidence and the list of what publishing it would need (#369); `settings.gradle.kts` scopes the
+evidence and the list of what publishing it would need (#369); `android/settings.gradle.kts` scopes the
 whole `dev.moq` group to that directory so Central cannot answer for it.
 
 The crates in that build are enumerated **one row per crate** in
@@ -76,7 +78,7 @@ in #351's reasoning about `symphonia`; it is a second fact that ticket's enumera
 It is admitted by **`CONTRIBUTING.md`'s #364 amendment**, and by that amendment alone. The weak
 copyleft carve-out always rested on *never distributed in a published artifact*, and it named
 test-only and build-time dependencies as the two kinds that satisfy it. A dependency of a module in
-`settings.gradle.kts`'s `unpublishedModules` list is a third, and it is written into the policy
+`android/settings.gradle.kts`'s `unpublishedModules` list is a third, and it is written into the policy
 rather than read into it — the literal wording covered test-only and build-time dependencies and
 this is neither, and stretching it in prose here would have been an undocumented exception.
 
@@ -90,6 +92,16 @@ The other eight-crate half of that family — `uniffi_bindgen`, `uniffi_udl`, `u
 the macro crates — is build-time only in the plainest sense: they are in the graph because
 `moq-ffi` also builds a `uniffi-bindgen` binary, and nothing of them is linked into the cdylib.
 
+**The Swift bindings are the same crate, and carry the same fact.** `third-party/moq/swift/` (#434)
+is `moq-ffi` at the same commit with the same features off, as two static-library slices under a
+Swift package of UniFFI's generated code — not upstream's published `moq-swift-ffi`, whose
+XCFramework is built with the defaults on, for #351's reason. `CRATES.md`'s *The iOS graph* is the
+enumeration: six platform crates exchanged for twelve of Android's, all permissive, and UniFFI's
+MPL-2.0 family unchanged — `uniffi_core` is linked into the static library as it is into the `.so`.
+It is admitted the same way and for the same reason: `SuperPlayerMoQ` lives in a package of its own
+under `ios/MoQ/` that no product of the root `Package.swift` exposes, so an adopter resolving this
+repository by URL cannot depend on it — `CONTRIBUTING.md`'s #364 amendment states that reading.
+
 `net.java.dev.jna:jna` is the Kotlin side of the same bridge and is dual-licensed Apache-2.0 or
 LGPL-2.1-or-later. It is taken under **Apache-2.0**, which the dual licence permits and which
 `CONTRIBUTING.md` accepts without qualification.
@@ -100,11 +112,11 @@ LGPL-2.1-or-later. It is taken under **Apache-2.0**, which the dual licence perm
 | --- | --- | --- |
 | `junit:junit` | Eclipse Public License 1.0 | all modules (test), `build-logic` (test), `benchmark` (test) |
 | `androidx.media3:media3-test-utils` | Apache-2.0 | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`, `superplayer-abr`, `superplayer-cache`, `superplayer-preload`, `benchmark` (test) |
-| `androidx.media3:media3-test-utils-robolectric` | Apache-2.0 | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`, `superplayer-abr`, `superplayer-cache`, `superplayer-preload`, `superplayer-tv`, `benchmark` (test) |
+| `androidx.media3:media3-test-utils-robolectric` | Apache-2.0 | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`, `superplayer-abr`, `superplayer-cache`, `superplayer-preload`, `superplayer-tv`, `superplayer-effects`, `benchmark` (test) |
 | `androidx.compose.ui:ui-test-junit4` | Apache-2.0 | `superplayer-tv` (test), `superplayer-diagnostics` (test) |
 | `androidx.compose.ui:ui-test-manifest` | Apache-2.0 | `superplayer-tv` (test), `superplayer-diagnostics` (test) |
 | `androidx.work:work-testing` | Apache-2.0 | `superplayer-testkit` (compile only, and its own tests), `superplayer-offline` (test) |
-| `org.robolectric:robolectric` | MIT | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`, `superplayer-abr`, `superplayer-cache`, `superplayer-preload`, `superplayer-tv`, `superplayer-moq`, `benchmark` (test) |
+| `org.robolectric:robolectric` | MIT | `superplayer-core`, `superplayer-telemetry`, `superplayer-testkit`, `superplayer-abr`, `superplayer-cache`, `superplayer-preload`, `superplayer-tv`, `superplayer-effects`, `superplayer-moq`, `benchmark` (test) |
 | `com.google.truth:truth` | Apache-2.0 | transitive, via `media3-test-utils` |
 | `org.mockito:mockito-core` | MIT | transitive, via `media3-test-utils` |
 | `androidx.test:core`, `androidx.test.ext:junit` | Apache-2.0 | transitive, via `media3-test-utils` |
@@ -141,8 +153,8 @@ admits weak copyleft for test-only and build-time dependencies specifically: JUn
 distributed in any published artifact, and its copyleft reaches only modifications to JUnit's own
 files, which this project does not make. No EPL-licensed code ships to consumers.
 
-`benchmark/` appears in the rows above because it is a separate build that resolves SuperPlayer from
-published Maven coordinates and declares its own dependencies, exactly as `demo/` does. It brings no
+`android/benchmark/` appears in the rows above because it is a separate build that resolves SuperPlayer from
+published Maven coordinates and declares its own dependencies, exactly as `android/demo/` does. It brings no
 third-party dependency this project did not already have: its arms are Media3's own `ExoPlayer` and
 `DefaultLoadControl`, its metrics come off Media3's `AnalyticsListener`, and its Robolectric arm runs
 on the same test infrastructure the library's own tests do. Its report generator writes JSON by hand

@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # The startup scenario's device-free half: reading `am start -W`, the percentiles, and the report's
-# Markdown. Pure functions over text, run by devicelab/test/selftest and therefore by `./gradlew check`.
+# Markdown. Pure functions over text, run by devicelab/test/selftest and therefore by `(cd android && ./gradlew check)`.
 # The query needs a trace and the trace processor, so it is exercised by a run, not here.
 set -euo pipefail
 

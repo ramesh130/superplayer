@@ -1,0 +1,4 @@
+# name	generator	segmentCount	variantCount
+hls-vod	SyntheticHlsStream.files	3	1
+hls-ladder	SyntheticHlsStream.files	3	2
+hls-live	SyntheticHlsStream.liveResources	8	1

@@ -1,0 +1,1372 @@
+public final class com/superplayer/core/BufferPolicy {
+	public fun <init> (IIIIIZ)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()I
+	public final fun component6 ()Z
+	public final fun copy (IIIIIZ)Lcom/superplayer/core/BufferPolicy;
+	public static synthetic fun copy$default (Lcom/superplayer/core/BufferPolicy;IIIIIZILjava/lang/Object;)Lcom/superplayer/core/BufferPolicy;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBackBufferMs ()I
+	public final fun getBufferForPlaybackAfterRebufferMs ()I
+	public final fun getBufferForPlaybackMs ()I
+	public final fun getMaxBufferMs ()I
+	public final fun getMinBufferMs ()I
+	public final fun getRetainBackBufferFromKeyframe ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/CellularGeneration : java/lang/Enum {
+	public static final field LTE Lcom/superplayer/core/CellularGeneration;
+	public static final field NR Lcom/superplayer/core/CellularGeneration;
+	public static final field OLDER Lcom/superplayer/core/CellularGeneration;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/core/CellularGeneration;
+	public static fun values ()[Lcom/superplayer/core/CellularGeneration;
+}
+
+public final class com/superplayer/core/CmcdMode : java/lang/Enum {
+	public static final field DISABLED Lcom/superplayer/core/CmcdMode;
+	public static final field QUERY_PARAMETER Lcom/superplayer/core/CmcdMode;
+	public static final field REQUEST_HEADERS Lcom/superplayer/core/CmcdMode;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/core/CmcdMode;
+	public static fun values ()[Lcom/superplayer/core/CmcdMode;
+}
+
+public abstract class com/superplayer/core/ContentCache {
+}
+
+public final class com/superplayer/core/DecisionTrigger : java/lang/Enum {
+	public static final field PLAYBACK_SPEED_CHANGED Lcom/superplayer/core/DecisionTrigger;
+	public static final field REBUFFER_ENDED Lcom/superplayer/core/DecisionTrigger;
+	public static final field STREAM_TYPE_CHANGED Lcom/superplayer/core/DecisionTrigger;
+	public static final field THROUGHPUT_CHANGED Lcom/superplayer/core/DecisionTrigger;
+	public static final field TRANSPORT_CHANGED Lcom/superplayer/core/DecisionTrigger;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/core/DecisionTrigger;
+	public static fun values ()[Lcom/superplayer/core/DecisionTrigger;
+}
+
+public abstract class com/superplayer/core/DiagnosticEnvironment {
+}
+
+public abstract class com/superplayer/core/DownloadEnvironment {
+}
+
+public final class com/superplayer/core/DownloadSelectionPolicy {
+	public static final field Companion Lcom/superplayer/core/DownloadSelectionPolicy$Companion;
+	public static final field UNLIMITED Lcom/superplayer/core/DownloadSelectionPolicy;
+	public fun <init> (II)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun copy (II)Lcom/superplayer/core/DownloadSelectionPolicy;
+	public static synthetic fun copy$default (Lcom/superplayer/core/DownloadSelectionPolicy;IIILjava/lang/Object;)Lcom/superplayer/core/DownloadSelectionPolicy;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMaxVideoBitrateBps ()I
+	public final fun getMaxVideoHeightPx ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/DownloadSelectionPolicy$Companion {
+}
+
+public final class com/superplayer/core/EncodedFrame {
+	public fun <init> (J[BZI)V
+	public synthetic fun <init> (J[BZIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getKeyFrame ()Z
+	public final fun getPayload ()[B
+	public final fun getTimestampUs ()J
+	public final fun getTrackIndex ()I
+}
+
+public final class com/superplayer/core/FailureCategory : java/lang/Enum {
+	public static final field DECODER Lcom/superplayer/core/FailureCategory;
+	public static final field DRM Lcom/superplayer/core/FailureCategory;
+	public static final field NETWORK Lcom/superplayer/core/FailureCategory;
+	public static final field RENDERER Lcom/superplayer/core/FailureCategory;
+	public static final field SOURCE Lcom/superplayer/core/FailureCategory;
+	public static final field STORAGE Lcom/superplayer/core/FailureCategory;
+	public static final field UNKNOWN Lcom/superplayer/core/FailureCategory;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/core/FailureCategory;
+	public static fun values ()[Lcom/superplayer/core/FailureCategory;
+}
+
+public abstract interface class com/superplayer/core/FrameOutput {
+	public abstract fun process (Lcom/superplayer/core/VideoFrame;J)Lcom/superplayer/core/VideoFrame;
+}
+
+public final class com/superplayer/core/FrameOutputOffReason : java/lang/Enum {
+	public static final field PROTECTED_CONTENT Lcom/superplayer/core/FrameOutputOffReason;
+	public static final field REALTIME Lcom/superplayer/core/FrameOutputOffReason;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/core/FrameOutputOffReason;
+	public static fun values ()[Lcom/superplayer/core/FrameOutputOffReason;
+}
+
+public abstract interface class com/superplayer/core/FrameSink {
+	public abstract fun onEnded ()V
+	public abstract fun onError (Ljava/lang/Throwable;)V
+	public abstract fun onFrame (Lcom/superplayer/core/EncodedFrame;)V
+	public abstract fun onTracks (Ljava/util/List;)V
+}
+
+public abstract interface class com/superplayer/core/FrameSource {
+	public abstract fun cancel ()V
+	public abstract fun subscribe (Lcom/superplayer/core/FrameSink;)V
+}
+
+public abstract interface class com/superplayer/core/FrameSourceFactory {
+	public abstract fun open (Landroid/net/Uri;)Lcom/superplayer/core/FrameSource;
+}
+
+public final class com/superplayer/core/HttpMethod : java/lang/Enum {
+	public static final field GET Lcom/superplayer/core/HttpMethod;
+	public static final field HEAD Lcom/superplayer/core/HttpMethod;
+	public static final field POST Lcom/superplayer/core/HttpMethod;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/core/HttpMethod;
+	public static fun values ()[Lcom/superplayer/core/HttpMethod;
+}
+
+public final class com/superplayer/core/HttpRange {
+	public fun <init> (JLjava/lang/Long;)V
+	public final fun getLength ()Ljava/lang/Long;
+	public final fun getOffset ()J
+	public final fun headerValue ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/HttpRequest {
+	public fun <init> (Landroid/net/Uri;Lcom/superplayer/core/HttpMethod;Ljava/util/Map;[BLcom/superplayer/core/HttpRange;)V
+	public final fun getBody ()[B
+	public final fun getHeaders ()Ljava/util/Map;
+	public final fun getMethod ()Lcom/superplayer/core/HttpMethod;
+	public final fun getRange ()Lcom/superplayer/core/HttpRange;
+	public final fun getUri ()Landroid/net/Uri;
+}
+
+public final class com/superplayer/core/HttpResponse {
+	public fun <init> (ILjava/util/Map;Ljava/io/InputStream;Landroid/net/Uri;)V
+	public synthetic fun <init> (ILjava/util/Map;Ljava/io/InputStream;Landroid/net/Uri;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getBody ()Ljava/io/InputStream;
+	public final fun getHeaders ()Ljava/util/Map;
+	public final fun getStatus ()I
+	public final fun getUri ()Landroid/net/Uri;
+}
+
+public abstract class com/superplayer/core/HttpStack {
+	public static final field Companion Lcom/superplayer/core/HttpStack$Companion;
+	public static final field HTTP_ENGINE_MIN_API_LEVEL I
+	public static final fun defaultStack ()Lcom/superplayer/core/HttpStack;
+	public static final fun httpEngine ()Lcom/superplayer/core/HttpStack;
+	public static final fun of (Lcom/superplayer/core/HttpTransport;)Lcom/superplayer/core/HttpStack;
+}
+
+public final class com/superplayer/core/HttpStack$Companion {
+	public final fun defaultStack ()Lcom/superplayer/core/HttpStack;
+	public final fun httpEngine ()Lcom/superplayer/core/HttpStack;
+	public final fun of (Lcom/superplayer/core/HttpTransport;)Lcom/superplayer/core/HttpStack;
+}
+
+public final class com/superplayer/core/HttpStackUnsupportedException : java/lang/UnsupportedOperationException {
+	public final fun getDeviceApiLevel ()I
+	public final fun getRequiredApiLevel ()I
+	public final fun getStack ()Ljava/lang/String;
+}
+
+public abstract interface class com/superplayer/core/HttpTransport {
+	public abstract fun open (Lcom/superplayer/core/HttpRequest;)Lcom/superplayer/core/HttpResponse;
+}
+
+public final class com/superplayer/core/LicenceOutcome : java/lang/Enum {
+	public static final field ACQUIRED_FROM_SERVER Lcom/superplayer/core/LicenceOutcome;
+	public static final field REFUSED Lcom/superplayer/core/LicenceOutcome;
+	public static final field SERVED_FROM_OFFLINE_STORE Lcom/superplayer/core/LicenceOutcome;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/core/LicenceOutcome;
+	public static fun values ()[Lcom/superplayer/core/LicenceOutcome;
+}
+
+public abstract class com/superplayer/core/LicenceStore {
+}
+
+public final class com/superplayer/core/LiveLatencyPolicy {
+	public fun <init> (FF)V
+	public final fun component1 ()F
+	public final fun component2 ()F
+	public final fun copy (FF)Lcom/superplayer/core/LiveLatencyPolicy;
+	public static synthetic fun copy$default (Lcom/superplayer/core/LiveLatencyPolicy;FFILjava/lang/Object;)Lcom/superplayer/core/LiveLatencyPolicy;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMaxPlaybackSpeed ()F
+	public final fun getMinPlaybackSpeed ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/LiveWindowTooShortException : java/io/IOException {
+	public final fun getAvailabilityLagMs ()J
+	public final fun getAvailabilityTimeOffsetMs ()J
+	public final fun getManifestUri ()Ljava/lang/String;
+	public final fun getSegmentDurationMs ()J
+	public final fun getTimeShiftBufferDepthMs ()J
+}
+
+public final class com/superplayer/core/MalformedRealtimeBitstreamException : java/io/IOException {
+	public final fun getCodec ()Ljava/lang/String;
+	public final fun getReason ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/MediaRequest {
+	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;Lcom/superplayer/core/MediaRequest$StartPosition;Ljava/lang/String;Ljava/lang/String;Landroid/net/Uri;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getArtworkUri ()Landroid/net/Uri;
+	public final fun getContentId ()Ljava/lang/String;
+	public final fun getSources ()Ljava/util/List;
+	public final fun getStartPosition ()Lcom/superplayer/core/MediaRequest$StartPosition;
+	public final fun getSubtitle ()Ljava/lang/String;
+	public final fun getTitle ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/MediaRequest$Builder {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun addSource (Landroid/net/Uri;)Lcom/superplayer/core/MediaRequest$Builder;
+	public final fun addSource (Ljava/lang/String;)Lcom/superplayer/core/MediaRequest$Builder;
+	public final fun build ()Lcom/superplayer/core/MediaRequest;
+	public final fun setArtworkUri (Landroid/net/Uri;)Lcom/superplayer/core/MediaRequest$Builder;
+	public final fun setArtworkUri (Ljava/lang/String;)Lcom/superplayer/core/MediaRequest$Builder;
+	public final fun setStartPosition (Lcom/superplayer/core/MediaRequest$StartPosition;)Lcom/superplayer/core/MediaRequest$Builder;
+	public final fun setSubtitle (Ljava/lang/String;)Lcom/superplayer/core/MediaRequest$Builder;
+	public final fun setTitle (Ljava/lang/String;)Lcom/superplayer/core/MediaRequest$Builder;
+}
+
+public abstract class com/superplayer/core/MediaRequest$StartPosition {
+}
+
+public final class com/superplayer/core/MediaRequest$StartPosition$At : com/superplayer/core/MediaRequest$StartPosition {
+	public fun <init> (J)V
+	public final fun component1 ()J
+	public final fun copy (J)Lcom/superplayer/core/MediaRequest$StartPosition$At;
+	public static synthetic fun copy$default (Lcom/superplayer/core/MediaRequest$StartPosition$At;JILjava/lang/Object;)Lcom/superplayer/core/MediaRequest$StartPosition$At;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPositionMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/MediaRequest$StartPosition$Beginning : com/superplayer/core/MediaRequest$StartPosition {
+	public static final field INSTANCE Lcom/superplayer/core/MediaRequest$StartPosition$Beginning;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/MediaRequest$StartPosition$ResumeFromLastKnown : com/superplayer/core/MediaRequest$StartPosition {
+	public static final field INSTANCE Lcom/superplayer/core/MediaRequest$StartPosition$ResumeFromLastKnown;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class com/superplayer/core/MediaRequestResolver {
+	public abstract fun resolve (Ljava/lang/String;)Lcom/superplayer/core/MediaRequest;
+}
+
+public abstract class com/superplayer/core/NetworkTransport {
+}
+
+public final class com/superplayer/core/NetworkTransport$Cellular : com/superplayer/core/NetworkTransport {
+	public fun <init> (Lcom/superplayer/core/CellularGeneration;)V
+	public final fun component1 ()Lcom/superplayer/core/CellularGeneration;
+	public final fun copy (Lcom/superplayer/core/CellularGeneration;)Lcom/superplayer/core/NetworkTransport$Cellular;
+	public static synthetic fun copy$default (Lcom/superplayer/core/NetworkTransport$Cellular;Lcom/superplayer/core/CellularGeneration;ILjava/lang/Object;)Lcom/superplayer/core/NetworkTransport$Cellular;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getGeneration ()Lcom/superplayer/core/CellularGeneration;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/NetworkTransport$Ethernet : com/superplayer/core/NetworkTransport {
+	public static final field INSTANCE Lcom/superplayer/core/NetworkTransport$Ethernet;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/NetworkTransport$Unknown : com/superplayer/core/NetworkTransport {
+	public static final field INSTANCE Lcom/superplayer/core/NetworkTransport$Unknown;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/NetworkTransport$Wifi : com/superplayer/core/NetworkTransport {
+	public static final field INSTANCE Lcom/superplayer/core/NetworkTransport$Wifi;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/OfflineLicenceExpiredException : java/io/IOException {
+	public final fun getContentId ()Ljava/lang/String;
+	public final fun getLicenceDurationRemainingMs ()J
+	public final fun getPlaybackDurationRemainingMs ()J
+}
+
+public final class com/superplayer/core/OutputPolicy {
+	public static final field Companion Lcom/superplayer/core/OutputPolicy$Companion;
+	public static final field NONE Lcom/superplayer/core/OutputPolicy;
+	public fun <init> (Z)V
+	public final fun component1 ()Z
+	public final fun copy (Z)Lcom/superplayer/core/OutputPolicy;
+	public static synthetic fun copy$default (Lcom/superplayer/core/OutputPolicy;ZILjava/lang/Object;)Lcom/superplayer/core/OutputPolicy;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getTunneling ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/OutputPolicy$Companion {
+}
+
+public final class com/superplayer/core/PlaybackConditions {
+	public fun <init> ()V
+	public fun <init> (Lcom/superplayer/core/NetworkTransport;Lcom/superplayer/core/ThroughputEstimate;Lcom/superplayer/core/StallHistory;Lcom/superplayer/core/StreamType;Ljava/lang/Long;Ljava/lang/Float;)V
+	public synthetic fun <init> (Lcom/superplayer/core/NetworkTransport;Lcom/superplayer/core/ThroughputEstimate;Lcom/superplayer/core/StallHistory;Lcom/superplayer/core/StreamType;Ljava/lang/Long;Ljava/lang/Float;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lcom/superplayer/core/NetworkTransport;
+	public final fun component2 ()Lcom/superplayer/core/ThroughputEstimate;
+	public final fun component3 ()Lcom/superplayer/core/StallHistory;
+	public final fun component4 ()Lcom/superplayer/core/StreamType;
+	public final fun component5 ()Ljava/lang/Long;
+	public final fun component6 ()Ljava/lang/Float;
+	public final fun copy (Lcom/superplayer/core/NetworkTransport;Lcom/superplayer/core/ThroughputEstimate;Lcom/superplayer/core/StallHistory;Lcom/superplayer/core/StreamType;Ljava/lang/Long;Ljava/lang/Float;)Lcom/superplayer/core/PlaybackConditions;
+	public static synthetic fun copy$default (Lcom/superplayer/core/PlaybackConditions;Lcom/superplayer/core/NetworkTransport;Lcom/superplayer/core/ThroughputEstimate;Lcom/superplayer/core/StallHistory;Lcom/superplayer/core/StreamType;Ljava/lang/Long;Ljava/lang/Float;ILjava/lang/Object;)Lcom/superplayer/core/PlaybackConditions;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHeapBudgetBytes ()Ljava/lang/Long;
+	public final fun getPlaybackSpeed ()Ljava/lang/Float;
+	public final fun getStallHistory ()Lcom/superplayer/core/StallHistory;
+	public final fun getStreamType ()Lcom/superplayer/core/StreamType;
+	public final fun getThroughput ()Lcom/superplayer/core/ThroughputEstimate;
+	public final fun getTransport ()Lcom/superplayer/core/NetworkTransport;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/PlaybackDecision {
+	public fun <init> (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;)V
+	public fun <init> (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;)V
+	public fun <init> (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;Lcom/superplayer/core/PreloadPolicy;)V
+	public fun <init> (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;Lcom/superplayer/core/PreloadPolicy;Lcom/superplayer/core/RetryPolicy;)V
+	public fun <init> (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;Lcom/superplayer/core/PreloadPolicy;Lcom/superplayer/core/RetryPolicy;Lcom/superplayer/core/DownloadSelectionPolicy;)V
+	public fun <init> (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;Lcom/superplayer/core/PreloadPolicy;Lcom/superplayer/core/RetryPolicy;Lcom/superplayer/core/DownloadSelectionPolicy;Lcom/superplayer/core/OutputPolicy;)V
+	public synthetic fun <init> (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;Lcom/superplayer/core/PreloadPolicy;Lcom/superplayer/core/RetryPolicy;Lcom/superplayer/core/DownloadSelectionPolicy;Lcom/superplayer/core/OutputPolicy;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lcom/superplayer/core/BufferPolicy;
+	public final fun component2 ()Lcom/superplayer/core/TrackSelectionPolicy;
+	public final fun component3 ()Lcom/superplayer/core/LiveLatencyPolicy;
+	public final fun component4 ()Lcom/superplayer/core/PreloadPolicy;
+	public final fun component5 ()Lcom/superplayer/core/RetryPolicy;
+	public final fun component6 ()Lcom/superplayer/core/DownloadSelectionPolicy;
+	public final fun component7 ()Lcom/superplayer/core/OutputPolicy;
+	public final fun copy (Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;Lcom/superplayer/core/PreloadPolicy;Lcom/superplayer/core/RetryPolicy;Lcom/superplayer/core/DownloadSelectionPolicy;Lcom/superplayer/core/OutputPolicy;)Lcom/superplayer/core/PlaybackDecision;
+	public static synthetic fun copy$default (Lcom/superplayer/core/PlaybackDecision;Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/core/TrackSelectionPolicy;Lcom/superplayer/core/LiveLatencyPolicy;Lcom/superplayer/core/PreloadPolicy;Lcom/superplayer/core/RetryPolicy;Lcom/superplayer/core/DownloadSelectionPolicy;Lcom/superplayer/core/OutputPolicy;ILjava/lang/Object;)Lcom/superplayer/core/PlaybackDecision;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBuffer ()Lcom/superplayer/core/BufferPolicy;
+	public final fun getDownload ()Lcom/superplayer/core/DownloadSelectionPolicy;
+	public final fun getLiveLatency ()Lcom/superplayer/core/LiveLatencyPolicy;
+	public final fun getOutput ()Lcom/superplayer/core/OutputPolicy;
+	public final fun getPreload ()Lcom/superplayer/core/PreloadPolicy;
+	public final fun getRetry ()Lcom/superplayer/core/RetryPolicy;
+	public final fun getTrackSelection ()Lcom/superplayer/core/TrackSelectionPolicy;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class com/superplayer/core/PlaybackDrm {
+}
+
+public final class com/superplayer/core/PlaybackFailure {
+	public fun <init> (Lcom/superplayer/core/FailureCategory;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Lcom/superplayer/core/FailureCategory;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lcom/superplayer/core/FailureCategory;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (Lcom/superplayer/core/FailureCategory;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/superplayer/core/PlaybackFailure;
+	public static synthetic fun copy$default (Lcom/superplayer/core/PlaybackFailure;Lcom/superplayer/core/FailureCategory;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/superplayer/core/PlaybackFailure;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCategory ()Lcom/superplayer/core/FailureCategory;
+	public final fun getClassification ()Ljava/lang/String;
+	public final fun getCode ()Ljava/lang/String;
+	public final fun getMessage ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class com/superplayer/core/PlaybackFrameOutput {
+}
+
+public abstract interface class com/superplayer/core/PlaybackOutput {
+}
+
+public abstract interface class com/superplayer/core/PlaybackPolicy {
+	public static final field Companion Lcom/superplayer/core/PlaybackPolicy$Companion;
+	public abstract fun decide (Lcom/superplayer/core/PlaybackConditions;)Lcom/superplayer/core/PlaybackDecision;
+}
+
+public final class com/superplayer/core/PlaybackPolicy$Companion {
+	public final fun forProfile (Lcom/superplayer/core/PlaybackProfile;)Lcom/superplayer/core/PlaybackPolicy;
+}
+
+public final class com/superplayer/core/PlaybackProfile : java/lang/Enum {
+	public static final field DATA_SAVER Lcom/superplayer/core/PlaybackProfile;
+	public static final field LIVE_LINEAR Lcom/superplayer/core/PlaybackProfile;
+	public static final field SHORT_FORM Lcom/superplayer/core/PlaybackProfile;
+	public static final field TV_LEANBACK Lcom/superplayer/core/PlaybackProfile;
+	public static final field VIDEO_ON_DEMAND Lcom/superplayer/core/PlaybackProfile;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/core/PlaybackProfile;
+	public static fun values ()[Lcom/superplayer/core/PlaybackProfile;
+}
+
+public abstract interface class com/superplayer/core/PlaybackResilience {
+}
+
+public abstract class com/superplayer/core/PlaybackService : androidx/media3/session/MediaSessionService {
+	public fun <init> ()V
+	protected final fun getPlaybackSession ()Lcom/superplayer/core/PlaybackSession;
+	public fun onCreate ()V
+	protected abstract fun onCreatePlayer ()Lcom/superplayer/core/SuperPlayer;
+	protected fun onCreateSession (Lcom/superplayer/core/SuperPlayer;)Lcom/superplayer/core/PlaybackSession;
+	public fun onDestroy ()V
+	public fun onGetSession (Landroidx/media3/session/MediaSession$ControllerInfo;)Landroidx/media3/session/MediaSession;
+	protected fun onResolveContent (Ljava/lang/String;)Lcom/superplayer/core/MediaRequest;
+}
+
+public final class com/superplayer/core/PlaybackSession {
+	public synthetic fun <init> (Landroidx/media3/session/MediaSession;Lcom/superplayer/core/SuperPlayer;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getPlayer ()Lcom/superplayer/core/SuperPlayer;
+	public final fun getToken ()Landroidx/media3/session/SessionToken;
+	public final fun release ()V
+	public final fun setPlayer (Lcom/superplayer/core/SuperPlayer;)V
+}
+
+public final class com/superplayer/core/PlaybackSession$Builder {
+	public fun <init> (Landroid/content/Context;Lcom/superplayer/core/SuperPlayer;)V
+	public final fun build ()Lcom/superplayer/core/PlaybackSession;
+	public final fun setId (Ljava/lang/String;)Lcom/superplayer/core/PlaybackSession$Builder;
+	public final fun setMediaRequestResolver (Lcom/superplayer/core/MediaRequestResolver;)Lcom/superplayer/core/PlaybackSession$Builder;
+	public final fun setSessionActivity (Landroid/app/PendingIntent;)Lcom/superplayer/core/PlaybackSession$Builder;
+}
+
+public final class com/superplayer/core/PlaybackSnapshot {
+	public static final field Companion Lcom/superplayer/core/PlaybackSnapshot$Companion;
+	public final fun getPlayWhenReady ()Z
+	public final fun getPositionMs ()J
+	public final fun getRequest ()Lcom/superplayer/core/MediaRequest;
+	public final fun toBundle ()Landroid/os/Bundle;
+}
+
+public final class com/superplayer/core/PlaybackSnapshot$Companion {
+	public final fun fromBundle (Landroid/os/Bundle;)Lcom/superplayer/core/PlaybackSnapshot;
+}
+
+public final class com/superplayer/core/PlayerPool {
+	public synthetic fun <init> (ILkotlin/jvm/functions/Function1;ZLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun acquire ()Lcom/superplayer/core/SuperPlayer;
+	public final fun getInUseCount ()I
+	public final fun getMaxSize ()I
+	public final fun getSize ()I
+	public final fun recycle (Lcom/superplayer/core/SuperPlayer;)V
+	public final fun release ()V
+}
+
+public final class com/superplayer/core/PlayerPool$Builder {
+	public fun <init> (Landroid/content/Context;)V
+	public final fun build ()Lcom/superplayer/core/PlayerPool;
+	public final fun setCache (Lcom/superplayer/core/ContentCache;)Lcom/superplayer/core/PlayerPool$Builder;
+	public final fun setDrm (Lcom/superplayer/core/PlaybackDrm;)Lcom/superplayer/core/PlayerPool$Builder;
+	public final fun setFeedCodecs ([Lcom/superplayer/core/VideoCodec;)Lcom/superplayer/core/PlayerPool$Builder;
+	public final fun setFrameOutput (Lcom/superplayer/core/PlaybackFrameOutput;)Lcom/superplayer/core/PlayerPool$Builder;
+	public final fun setHttpStack (Lcom/superplayer/core/HttpStack;)Lcom/superplayer/core/PlayerPool$Builder;
+	public final fun setMaxSize (I)Lcom/superplayer/core/PlayerPool$Builder;
+	public final fun setOutput (Lcom/superplayer/core/PlaybackOutput;)Lcom/superplayer/core/PlayerPool$Builder;
+	public final fun setPolicy (Lcom/superplayer/core/PlaybackPolicy;)Lcom/superplayer/core/PlayerPool$Builder;
+	public final fun setProfile (Lcom/superplayer/core/PlaybackProfile;)Lcom/superplayer/core/PlayerPool$Builder;
+	public final fun setResilience (Lcom/superplayer/core/PlaybackResilience;)Lcom/superplayer/core/PlayerPool$Builder;
+	public final fun setTelemetry (Lkotlin/jvm/functions/Function0;)Lcom/superplayer/core/PlayerPool$Builder;
+}
+
+public abstract class com/superplayer/core/PreloadDepth {
+}
+
+public final class com/superplayer/core/PreloadDepth$DecoderWarmed : com/superplayer/core/PreloadDepth {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lcom/superplayer/core/PreloadDepth$DecoderWarmed;
+	public static synthetic fun copy$default (Lcom/superplayer/core/PreloadDepth$DecoderWarmed;IILjava/lang/Object;)Lcom/superplayer/core/PreloadDepth$DecoderWarmed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDurationMs ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/PreloadDepth$Loaded : com/superplayer/core/PreloadDepth {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lcom/superplayer/core/PreloadDepth$Loaded;
+	public static synthetic fun copy$default (Lcom/superplayer/core/PreloadDepth$Loaded;IILjava/lang/Object;)Lcom/superplayer/core/PreloadDepth$Loaded;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDurationMs ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/PreloadDepth$SourcePrepared : com/superplayer/core/PreloadDepth {
+	public static final field INSTANCE Lcom/superplayer/core/PreloadDepth$SourcePrepared;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/PreloadDepth$TracksSelected : com/superplayer/core/PreloadDepth {
+	public static final field INSTANCE Lcom/superplayer/core/PreloadDepth$TracksSelected;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/PreloadPolicy {
+	public static final field Companion Lcom/superplayer/core/PreloadPolicy$Companion;
+	public static final field NONE Lcom/superplayer/core/PreloadPolicy;
+	public fun <init> (IILcom/superplayer/core/PreloadDepth;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()Lcom/superplayer/core/PreloadDepth;
+	public final fun copy (IILcom/superplayer/core/PreloadDepth;)Lcom/superplayer/core/PreloadPolicy;
+	public static synthetic fun copy$default (Lcom/superplayer/core/PreloadPolicy;IILcom/superplayer/core/PreloadDepth;ILjava/lang/Object;)Lcom/superplayer/core/PreloadPolicy;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDepth ()Lcom/superplayer/core/PreloadDepth;
+	public final fun getItemsAhead ()I
+	public final fun getItemsBehind ()I
+	public fun hashCode ()I
+	public final fun isNone ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/PreloadPolicy$Companion {
+}
+
+public abstract class com/superplayer/core/RealtimeSources {
+}
+
+public final class com/superplayer/core/RealtimeStreamNotSeekableException : java/lang/UnsupportedOperationException {
+	public final fun getScheme ()Ljava/lang/String;
+	public final fun getStartPosition ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/RealtimeTrack {
+	public fun <init> (Ljava/lang/String;Lcom/superplayer/core/RealtimeTrack$CodecConfiguration;Lcom/superplayer/core/RealtimeTrack$CodedSize;)V
+	public synthetic fun <init> (Ljava/lang/String;Lcom/superplayer/core/RealtimeTrack$CodecConfiguration;Lcom/superplayer/core/RealtimeTrack$CodedSize;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getCodec ()Ljava/lang/String;
+	public final fun getCodecConfiguration ()Lcom/superplayer/core/RealtimeTrack$CodecConfiguration;
+	public final fun getCodedSize ()Lcom/superplayer/core/RealtimeTrack$CodedSize;
+}
+
+public abstract class com/superplayer/core/RealtimeTrack$CodecConfiguration {
+}
+
+public final class com/superplayer/core/RealtimeTrack$CodecConfiguration$InBand : com/superplayer/core/RealtimeTrack$CodecConfiguration {
+	public static final field INSTANCE Lcom/superplayer/core/RealtimeTrack$CodecConfiguration$InBand;
+}
+
+public final class com/superplayer/core/RealtimeTrack$CodecConfiguration$Record : com/superplayer/core/RealtimeTrack$CodecConfiguration {
+	public fun <init> ([B)V
+	public final fun getBytes ()[B
+}
+
+public final class com/superplayer/core/RealtimeTrack$CodedSize {
+	public fun <init> (II)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHeight ()I
+	public final fun getWidth ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/RealtimeTrackStalledException : java/io/IOException {
+	public final fun getBehindByMs ()J
+	public final fun getBoundMs ()J
+	public final fun getCodec ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/RetryBudget {
+	public static final field Companion Lcom/superplayer/core/RetryBudget$Companion;
+	public static final field MEDIA3_DEFAULT Lcom/superplayer/core/RetryBudget;
+	public fun <init> (IJJ)V
+	public final fun component1 ()I
+	public final fun component2 ()J
+	public final fun component3 ()J
+	public final fun copy (IJJ)Lcom/superplayer/core/RetryBudget;
+	public static synthetic fun copy$default (Lcom/superplayer/core/RetryBudget;IJJILjava/lang/Object;)Lcom/superplayer/core/RetryBudget;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getInitialBackoffMs ()J
+	public final fun getMaxBackoffMs ()J
+	public final fun getMaxRetries ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/RetryBudget$Companion {
+}
+
+public final class com/superplayer/core/RetryPolicy {
+	public static final field Companion Lcom/superplayer/core/RetryPolicy$Companion;
+	public static final field MEDIA3_DEFAULT Lcom/superplayer/core/RetryPolicy;
+	public fun <init> ()V
+	public fun <init> (Lcom/superplayer/core/RetryBudget;)V
+	public fun <init> (Lcom/superplayer/core/RetryBudget;Lcom/superplayer/core/RetryBudget;)V
+	public fun <init> (Lcom/superplayer/core/RetryBudget;Lcom/superplayer/core/RetryBudget;Lcom/superplayer/core/RetryBudget;)V
+	public synthetic fun <init> (Lcom/superplayer/core/RetryBudget;Lcom/superplayer/core/RetryBudget;Lcom/superplayer/core/RetryBudget;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lcom/superplayer/core/RetryBudget;
+	public final fun component2 ()Lcom/superplayer/core/RetryBudget;
+	public final fun component3 ()Lcom/superplayer/core/RetryBudget;
+	public final fun copy (Lcom/superplayer/core/RetryBudget;Lcom/superplayer/core/RetryBudget;Lcom/superplayer/core/RetryBudget;)Lcom/superplayer/core/RetryPolicy;
+	public static synthetic fun copy$default (Lcom/superplayer/core/RetryPolicy;Lcom/superplayer/core/RetryBudget;Lcom/superplayer/core/RetryBudget;Lcom/superplayer/core/RetryBudget;ILjava/lang/Object;)Lcom/superplayer/core/RetryPolicy;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLicence ()Lcom/superplayer/core/RetryBudget;
+	public final fun getManifest ()Lcom/superplayer/core/RetryBudget;
+	public final fun getSegment ()Lcom/superplayer/core/RetryBudget;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/RetryPolicy$Companion {
+}
+
+public final class com/superplayer/core/SecurityDowngradeRefusedException : java/io/IOException {
+	public final fun getDeviceSecurityLevel ()Ljava/lang/String;
+	public final fun getPermittedLevels ()Ljava/util/Set;
+	public final fun getRefusedLevel ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/SelectionPace {
+	public static final field Companion Lcom/superplayer/core/SelectionPace$Companion;
+	public static final field ENGINE_DEFAULT Lcom/superplayer/core/SelectionPace;
+	public fun <init> (IIIF)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()F
+	public final fun copy (IIIF)Lcom/superplayer/core/SelectionPace;
+	public static synthetic fun copy$default (Lcom/superplayer/core/SelectionPace;IIIFILjava/lang/Object;)Lcom/superplayer/core/SelectionPace;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBandwidthFraction ()F
+	public final fun getClimbAfterBufferedMs ()I
+	public final fun getDescendBelowBufferedMs ()I
+	public final fun getRetainAfterDiscardMs ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/SelectionPace$Companion {
+}
+
+public final class com/superplayer/core/StaleLivePlaylistException : java/io/IOException {
+	public final fun getCacheBypassingReloads ()I
+	public final fun getLikelyCause ()Lcom/superplayer/core/StaleLivePlaylistException$LikelyCause;
+	public final fun getPlaylistUri ()Ljava/lang/String;
+	public final fun getServedCacheControl ()Ljava/lang/String;
+	public final fun getTargetDurationMs ()J
+	public final fun getUnchangedForMs ()J
+}
+
+public final class com/superplayer/core/StaleLivePlaylistException$LikelyCause : java/lang/Enum {
+	public static final field INTERMEDIARY_CACHE Lcom/superplayer/core/StaleLivePlaylistException$LikelyCause;
+	public static final field ORIGIN Lcom/superplayer/core/StaleLivePlaylistException$LikelyCause;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/core/StaleLivePlaylistException$LikelyCause;
+	public static fun values ()[Lcom/superplayer/core/StaleLivePlaylistException$LikelyCause;
+}
+
+public final class com/superplayer/core/StallHistory {
+	public static final field Companion Lcom/superplayer/core/StallHistory$Companion;
+	public fun <init> (ILjava/lang/Long;Ljava/lang/Long;)V
+	public final fun component1 ()I
+	public final fun component2 ()Ljava/lang/Long;
+	public final fun component3 ()Ljava/lang/Long;
+	public final fun copy (ILjava/lang/Long;Ljava/lang/Long;)Lcom/superplayer/core/StallHistory;
+	public static synthetic fun copy$default (Lcom/superplayer/core/StallHistory;ILjava/lang/Long;Ljava/lang/Long;ILjava/lang/Object;)Lcom/superplayer/core/StallHistory;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLastRebufferDurationMs ()Ljava/lang/Long;
+	public final fun getMsSinceLastRebufferEnded ()Ljava/lang/Long;
+	public final fun getRebufferCount ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/StallHistory$Companion {
+	public final fun getNONE ()Lcom/superplayer/core/StallHistory;
+}
+
+public final class com/superplayer/core/StorageFullException : java/io/IOException {
+	public final fun getBytesAvailable ()J
+	public final fun getBytesToWrite ()J
+}
+
+public final class com/superplayer/core/StreamType : java/lang/Enum {
+	public static final field LIVE Lcom/superplayer/core/StreamType;
+	public static final field ON_DEMAND Lcom/superplayer/core/StreamType;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/core/StreamType;
+	public static fun values ()[Lcom/superplayer/core/StreamType;
+}
+
+public final class com/superplayer/core/SuperPlayer : androidx/media3/common/Player {
+	public static final field Companion Lcom/superplayer/core/SuperPlayer$Companion;
+	public static final field MAX_REMEMBERED_POSITIONS I
+	public fun addListener (Landroidx/media3/common/Player$Listener;)V
+	public fun addMediaItem (ILandroidx/media3/common/MediaItem;)V
+	public fun addMediaItem (Landroidx/media3/common/MediaItem;)V
+	public fun addMediaItems (ILjava/util/List;)V
+	public fun addMediaItems (Ljava/util/List;)V
+	public fun canAdvertiseSession ()Z
+	public final fun classify (Landroidx/media3/common/PlaybackException;)Lcom/superplayer/core/SuperPlayerError;
+	public fun clearMediaItems ()V
+	public fun clearVideoSurface ()V
+	public fun clearVideoSurface (Landroid/view/Surface;)V
+	public fun clearVideoSurfaceHolder (Landroid/view/SurfaceHolder;)V
+	public fun clearVideoSurfaceView (Landroid/view/SurfaceView;)V
+	public fun clearVideoTextureView (Landroid/view/TextureView;)V
+	public final fun declarePlaybackIntent ()V
+	public fun decreaseDeviceVolume ()V
+	public fun decreaseDeviceVolume (I)V
+	public fun getApplicationLooper ()Landroid/os/Looper;
+	public fun getAudioAttributes ()Landroidx/media3/common/AudioAttributes;
+	public fun getAudioSessionId ()I
+	public fun getAvailableCommands ()Landroidx/media3/common/Player$Commands;
+	public fun getBufferedPercentage ()I
+	public fun getBufferedPosition ()J
+	public fun getContentBufferedPosition ()J
+	public fun getContentDuration ()J
+	public fun getContentPosition ()J
+	public fun getCurrentAdGroupIndex ()I
+	public fun getCurrentAdIndexInAdGroup ()I
+	public fun getCurrentCues ()Landroidx/media3/common/text/CueGroup;
+	public fun getCurrentLiveOffset ()J
+	public fun getCurrentManifest ()Ljava/lang/Object;
+	public fun getCurrentMediaItem ()Landroidx/media3/common/MediaItem;
+	public fun getCurrentMediaItemIndex ()I
+	public fun getCurrentPeriodIndex ()I
+	public fun getCurrentPosition ()J
+	public fun getCurrentTimeline ()Landroidx/media3/common/Timeline;
+	public fun getCurrentTracks ()Landroidx/media3/common/Tracks;
+	public fun getCurrentWindowIndex ()I
+	public final fun getDeliveredSecurityLevel ()Ljava/lang/String;
+	public fun getDeviceInfo ()Landroidx/media3/common/DeviceInfo;
+	public fun getDeviceVolume ()I
+	public fun getDuration ()J
+	public final fun getExoPlayer ()Landroidx/media3/exoplayer/ExoPlayer;
+	public final fun getFrameOutputOffReason ()Lcom/superplayer/core/FrameOutputOffReason;
+	public fun getMaxSeekToPreviousPosition ()J
+	public fun getMediaItemAt (I)Landroidx/media3/common/MediaItem;
+	public fun getMediaItemCount ()I
+	public fun getMediaMetadata ()Landroidx/media3/common/MediaMetadata;
+	public fun getNextMediaItemIndex ()I
+	public fun getNextWindowIndex ()I
+	public fun getPlayWhenReady ()Z
+	public final fun getPlaybackDecision ()Lcom/superplayer/core/PlaybackDecision;
+	public fun getPlaybackParameters ()Landroidx/media3/common/PlaybackParameters;
+	public fun getPlaybackState ()I
+	public fun getPlaybackSuppressionReason ()I
+	public fun getPlayerError ()Landroidx/media3/common/PlaybackException;
+	public fun getPlaylistMetadata ()Landroidx/media3/common/MediaMetadata;
+	public fun getPreviousMediaItemIndex ()I
+	public fun getPreviousWindowIndex ()I
+	public final fun getProfile ()Lcom/superplayer/core/PlaybackProfile;
+	public fun getRepeatMode ()I
+	public fun getSeekBackIncrement ()J
+	public fun getSeekForwardIncrement ()J
+	public fun getShuffleModeEnabled ()Z
+	public fun getSurfaceSize ()Landroidx/media3/common/util/Size;
+	public fun getTotalBufferedDuration ()J
+	public fun getTrackSelectionParameters ()Landroidx/media3/common/TrackSelectionParameters;
+	public fun getVideoSize ()Landroidx/media3/common/VideoSize;
+	public fun getVolume ()F
+	public fun hasNextMediaItem ()Z
+	public fun hasPreviousMediaItem ()Z
+	public fun increaseDeviceVolume ()V
+	public fun increaseDeviceVolume (I)V
+	public fun isCommandAvailable (I)Z
+	public fun isCurrentMediaItemDynamic ()Z
+	public fun isCurrentMediaItemLive ()Z
+	public fun isCurrentMediaItemSeekable ()Z
+	public fun isCurrentWindowDynamic ()Z
+	public fun isCurrentWindowLive ()Z
+	public fun isCurrentWindowSeekable ()Z
+	public fun isDeviceMuted ()Z
+	public fun isLoading ()Z
+	public fun isPlaying ()Z
+	public fun isPlayingAd ()Z
+	public fun moveMediaItem (II)V
+	public fun moveMediaItems (III)V
+	public fun mute ()V
+	public fun pause ()V
+	public fun play ()V
+	public fun prepare ()V
+	public fun release ()V
+	public fun removeListener (Landroidx/media3/common/Player$Listener;)V
+	public fun removeMediaItem (I)V
+	public fun removeMediaItems (II)V
+	public fun replaceMediaItem (ILandroidx/media3/common/MediaItem;)V
+	public fun replaceMediaItems (IILjava/util/List;)V
+	public final fun restoreSnapshot (Lcom/superplayer/core/PlaybackSnapshot;)V
+	public final fun saveSnapshot ()Lcom/superplayer/core/PlaybackSnapshot;
+	public fun seekBack ()V
+	public fun seekForward ()V
+	public fun seekTo (IJ)V
+	public fun seekTo (J)V
+	public fun seekToDefaultPosition ()V
+	public fun seekToDefaultPosition (I)V
+	public fun seekToNext ()V
+	public fun seekToNextMediaItem ()V
+	public fun seekToPrevious ()V
+	public fun seekToPreviousMediaItem ()V
+	public fun setAudioAttributes (Landroidx/media3/common/AudioAttributes;Z)V
+	public fun setDeviceMuted (Z)V
+	public fun setDeviceMuted (ZI)V
+	public fun setDeviceVolume (I)V
+	public fun setDeviceVolume (II)V
+	public fun setMediaItem (Landroidx/media3/common/MediaItem;)V
+	public fun setMediaItem (Landroidx/media3/common/MediaItem;J)V
+	public fun setMediaItem (Landroidx/media3/common/MediaItem;Z)V
+	public fun setMediaItems (Ljava/util/List;)V
+	public fun setMediaItems (Ljava/util/List;IJ)V
+	public fun setMediaItems (Ljava/util/List;Z)V
+	public final fun setMediaRequest (Lcom/superplayer/core/MediaRequest;)V
+	public fun setPlayWhenReady (Z)V
+	public fun setPlaybackParameters (Landroidx/media3/common/PlaybackParameters;)V
+	public fun setPlaybackSpeed (F)V
+	public fun setPlaylistMetadata (Landroidx/media3/common/MediaMetadata;)V
+	public fun setRepeatMode (I)V
+	public fun setShuffleModeEnabled (Z)V
+	public fun setTrackSelectionParameters (Landroidx/media3/common/TrackSelectionParameters;)V
+	public fun setVideoSurface (Landroid/view/Surface;)V
+	public fun setVideoSurfaceHolder (Landroid/view/SurfaceHolder;)V
+	public fun setVideoSurfaceView (Landroid/view/SurfaceView;)V
+	public fun setVideoTextureView (Landroid/view/TextureView;)V
+	public fun setVolume (F)V
+	public fun stop ()V
+	public fun unmute ()V
+}
+
+public final class com/superplayer/core/SuperPlayer$Builder {
+	public fun <init> (Landroid/content/Context;)V
+	public final fun build ()Lcom/superplayer/core/SuperPlayer;
+	public final fun setCache (Lcom/superplayer/core/ContentCache;)Lcom/superplayer/core/SuperPlayer$Builder;
+	public final fun setCmcdMode (Lcom/superplayer/core/CmcdMode;)Lcom/superplayer/core/SuperPlayer$Builder;
+	public final fun setDrm (Lcom/superplayer/core/PlaybackDrm;)Lcom/superplayer/core/SuperPlayer$Builder;
+	public final fun setFrameOutput (Lcom/superplayer/core/PlaybackFrameOutput;)Lcom/superplayer/core/SuperPlayer$Builder;
+	public final fun setHttpStack (Lcom/superplayer/core/HttpStack;)Lcom/superplayer/core/SuperPlayer$Builder;
+	public final fun setOutput (Lcom/superplayer/core/PlaybackOutput;)Lcom/superplayer/core/SuperPlayer$Builder;
+	public final fun setPolicy (Lcom/superplayer/core/PlaybackPolicy;)Lcom/superplayer/core/SuperPlayer$Builder;
+	public final fun setProfile (Lcom/superplayer/core/PlaybackProfile;)Lcom/superplayer/core/SuperPlayer$Builder;
+	public final fun setRealtime (Lcom/superplayer/core/RealtimeSources;)Lcom/superplayer/core/SuperPlayer$Builder;
+	public final fun setResilience (Lcom/superplayer/core/PlaybackResilience;)Lcom/superplayer/core/SuperPlayer$Builder;
+	public final fun setTelemetry (Lcom/superplayer/core/TelemetryCollector;)Lcom/superplayer/core/SuperPlayer$Builder;
+}
+
+public final class com/superplayer/core/SuperPlayer$Companion {
+}
+
+public final class com/superplayer/core/SuperPlayerError : java/lang/Exception {
+	public final fun getCategory ()Lcom/superplayer/core/FailureCategory;
+	public final fun getCauseClass ()Ljava/lang/String;
+	public final fun getLikelyCause ()Lcom/superplayer/core/StaleLivePlaylistException$LikelyCause;
+	public final fun getLowerSecurityLevelMayHelp ()Z
+	public final fun getPositionMs ()J
+	public final fun getRungsTried ()Ljava/util/List;
+	public final fun getUserMessageKey ()Ljava/lang/String;
+	public final fun isRetryable ()Z
+}
+
+public abstract interface class com/superplayer/core/TelemetryCollector {
+	public abstract fun attach (Lcom/superplayer/core/SuperPlayer;)V
+	public abstract fun decisionChanged (Lcom/superplayer/core/PlaybackDecision;Lcom/superplayer/core/DecisionTrigger;)V
+	public abstract fun declareIntent (J)V
+	public abstract fun detach ()V
+	public abstract fun endSession ()V
+	public fun onMemoryPressure ()V
+	public abstract fun startSession (Ljava/lang/String;Ljava/lang/String;)V
+}
+
+public final class com/superplayer/core/TelemetryCollector$DefaultImpls {
+	public static fun onMemoryPressure (Lcom/superplayer/core/TelemetryCollector;)V
+}
+
+public abstract class com/superplayer/core/TelemetryEvent {
+	public static final field Companion Lcom/superplayer/core/TelemetryEvent$Companion;
+	public static final field SCHEMA_VERSION I
+	public abstract fun getContentId ()Ljava/lang/String;
+	public abstract fun getMonotonicTimeMs ()J
+	public final fun getSchemaVersion ()I
+	public abstract fun getSessionId ()Ljava/lang/String;
+	public abstract fun getTimestampMs ()J
+}
+
+public final class com/superplayer/core/TelemetryEvent$Companion {
+}
+
+public final class com/superplayer/core/TelemetryEvent$DecisionChanged : com/superplayer/core/TelemetryEvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JJLcom/superplayer/core/PlaybackDecision;Lcom/superplayer/core/DecisionTrigger;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()J
+	public final fun component5 ()Lcom/superplayer/core/PlaybackDecision;
+	public final fun component6 ()Lcom/superplayer/core/DecisionTrigger;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JJLcom/superplayer/core/PlaybackDecision;Lcom/superplayer/core/DecisionTrigger;)Lcom/superplayer/core/TelemetryEvent$DecisionChanged;
+	public static synthetic fun copy$default (Lcom/superplayer/core/TelemetryEvent$DecisionChanged;Ljava/lang/String;Ljava/lang/String;JJLcom/superplayer/core/PlaybackDecision;Lcom/superplayer/core/DecisionTrigger;ILjava/lang/Object;)Lcom/superplayer/core/TelemetryEvent$DecisionChanged;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getContentId ()Ljava/lang/String;
+	public final fun getDecision ()Lcom/superplayer/core/PlaybackDecision;
+	public fun getMonotonicTimeMs ()J
+	public fun getSessionId ()Ljava/lang/String;
+	public fun getTimestampMs ()J
+	public final fun getTrigger ()Lcom/superplayer/core/DecisionTrigger;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/TelemetryEvent$DisplayModeChanged : com/superplayer/core/TelemetryEvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JJZZ)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()J
+	public final fun component5 ()Z
+	public final fun component6 ()Z
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JJZZ)Lcom/superplayer/core/TelemetryEvent$DisplayModeChanged;
+	public static synthetic fun copy$default (Lcom/superplayer/core/TelemetryEvent$DisplayModeChanged;Ljava/lang/String;Ljava/lang/String;JJZZILjava/lang/Object;)Lcom/superplayer/core/TelemetryEvent$DisplayModeChanged;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getContentId ()Ljava/lang/String;
+	public final fun getCriteriaMatchingEnabled ()Z
+	public fun getMonotonicTimeMs ()J
+	public fun getSessionId ()Ljava/lang/String;
+	public final fun getSwitchInProgress ()Z
+	public fun getTimestampMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/TelemetryEvent$FirstFrameRendered : com/superplayer/core/TelemetryEvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JJJLcom/superplayer/core/TtffStartBoundary;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()J
+	public final fun component5 ()J
+	public final fun component6 ()Lcom/superplayer/core/TtffStartBoundary;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JJJLcom/superplayer/core/TtffStartBoundary;)Lcom/superplayer/core/TelemetryEvent$FirstFrameRendered;
+	public static synthetic fun copy$default (Lcom/superplayer/core/TelemetryEvent$FirstFrameRendered;Ljava/lang/String;Ljava/lang/String;JJJLcom/superplayer/core/TtffStartBoundary;ILjava/lang/Object;)Lcom/superplayer/core/TelemetryEvent$FirstFrameRendered;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getContentId ()Ljava/lang/String;
+	public fun getMonotonicTimeMs ()J
+	public fun getSessionId ()Ljava/lang/String;
+	public final fun getStartBoundary ()Lcom/superplayer/core/TtffStartBoundary;
+	public final fun getTimeToFirstFrameMs ()J
+	public fun getTimestampMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/TelemetryEvent$LicenceAcquisitionEnded : com/superplayer/core/TelemetryEvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JJJLcom/superplayer/core/LicenceOutcome;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JJJLcom/superplayer/core/LicenceOutcome;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()J
+	public final fun component5 ()J
+	public final fun component6 ()Lcom/superplayer/core/LicenceOutcome;
+	public final fun component7 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JJJLcom/superplayer/core/LicenceOutcome;Ljava/lang/String;)Lcom/superplayer/core/TelemetryEvent$LicenceAcquisitionEnded;
+	public static synthetic fun copy$default (Lcom/superplayer/core/TelemetryEvent$LicenceAcquisitionEnded;Ljava/lang/String;Ljava/lang/String;JJJLcom/superplayer/core/LicenceOutcome;Ljava/lang/String;ILjava/lang/Object;)Lcom/superplayer/core/TelemetryEvent$LicenceAcquisitionEnded;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getContentId ()Ljava/lang/String;
+	public final fun getDurationMs ()J
+	public fun getMonotonicTimeMs ()J
+	public final fun getOutcome ()Lcom/superplayer/core/LicenceOutcome;
+	public final fun getSecurityLevel ()Ljava/lang/String;
+	public fun getSessionId ()Ljava/lang/String;
+	public fun getTimestampMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/TelemetryEvent$LiveLatencySampled : com/superplayer/core/TelemetryEvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JJJLjava/lang/Long;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()J
+	public final fun component5 ()J
+	public final fun component6 ()Ljava/lang/Long;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JJJLjava/lang/Long;)Lcom/superplayer/core/TelemetryEvent$LiveLatencySampled;
+	public static synthetic fun copy$default (Lcom/superplayer/core/TelemetryEvent$LiveLatencySampled;Ljava/lang/String;Ljava/lang/String;JJJLjava/lang/Long;ILjava/lang/Object;)Lcom/superplayer/core/TelemetryEvent$LiveLatencySampled;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getContentId ()Ljava/lang/String;
+	public final fun getLiveLatencyMs ()J
+	public fun getMonotonicTimeMs ()J
+	public fun getSessionId ()Ljava/lang/String;
+	public final fun getTargetLiveLatencyMs ()Ljava/lang/Long;
+	public fun getTimestampMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/TelemetryEvent$MidStreamFailed : com/superplayer/core/TelemetryEvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JJLcom/superplayer/core/PlaybackFailure;J)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()J
+	public final fun component5 ()Lcom/superplayer/core/PlaybackFailure;
+	public final fun component6 ()J
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JJLcom/superplayer/core/PlaybackFailure;J)Lcom/superplayer/core/TelemetryEvent$MidStreamFailed;
+	public static synthetic fun copy$default (Lcom/superplayer/core/TelemetryEvent$MidStreamFailed;Ljava/lang/String;Ljava/lang/String;JJLcom/superplayer/core/PlaybackFailure;JILjava/lang/Object;)Lcom/superplayer/core/TelemetryEvent$MidStreamFailed;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getContentId ()Ljava/lang/String;
+	public final fun getFailure ()Lcom/superplayer/core/PlaybackFailure;
+	public fun getMonotonicTimeMs ()J
+	public final fun getPositionMs ()J
+	public fun getSessionId ()Ljava/lang/String;
+	public fun getTimestampMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/TelemetryEvent$OutputObscuredChanged : com/superplayer/core/TelemetryEvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JJZ)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()J
+	public final fun component5 ()Z
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JJZ)Lcom/superplayer/core/TelemetryEvent$OutputObscuredChanged;
+	public static synthetic fun copy$default (Lcom/superplayer/core/TelemetryEvent$OutputObscuredChanged;Ljava/lang/String;Ljava/lang/String;JJZILjava/lang/Object;)Lcom/superplayer/core/TelemetryEvent$OutputObscuredChanged;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getContentId ()Ljava/lang/String;
+	public fun getMonotonicTimeMs ()J
+	public final fun getObscured ()Z
+	public fun getSessionId ()Ljava/lang/String;
+	public fun getTimestampMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/TelemetryEvent$PlaybackStateSampled : com/superplayer/core/TelemetryEvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JJJLjava/lang/Integer;JZLjava/lang/Integer;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JJJLjava/lang/Integer;JZLjava/lang/Integer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()J
+	public final fun component5 ()J
+	public final fun component6 ()Ljava/lang/Integer;
+	public final fun component7 ()J
+	public final fun component8 ()Z
+	public final fun component9 ()Ljava/lang/Integer;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JJJLjava/lang/Integer;JZLjava/lang/Integer;)Lcom/superplayer/core/TelemetryEvent$PlaybackStateSampled;
+	public static synthetic fun copy$default (Lcom/superplayer/core/TelemetryEvent$PlaybackStateSampled;Ljava/lang/String;Ljava/lang/String;JJJLjava/lang/Integer;JZLjava/lang/Integer;ILjava/lang/Object;)Lcom/superplayer/core/TelemetryEvent$PlaybackStateSampled;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBufferedDurationMs ()J
+	public fun getContentId ()Ljava/lang/String;
+	public fun getMonotonicTimeMs ()J
+	public final fun getPlaying ()Z
+	public final fun getSamplingIntervalMs ()J
+	public fun getSessionId ()Ljava/lang/String;
+	public final fun getThroughputEstimateBps ()Ljava/lang/Integer;
+	public fun getTimestampMs ()J
+	public final fun getVideoBitrateBps ()Ljava/lang/Integer;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/TelemetryEvent$RebufferEnded : com/superplayer/core/TelemetryEvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JJJZ)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()J
+	public final fun component5 ()J
+	public final fun component6 ()Z
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JJJZ)Lcom/superplayer/core/TelemetryEvent$RebufferEnded;
+	public static synthetic fun copy$default (Lcom/superplayer/core/TelemetryEvent$RebufferEnded;Ljava/lang/String;Ljava/lang/String;JJJZILjava/lang/Object;)Lcom/superplayer/core/TelemetryEvent$RebufferEnded;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getContentId ()Ljava/lang/String;
+	public final fun getDurationMs ()J
+	public fun getMonotonicTimeMs ()J
+	public final fun getSeekInduced ()Z
+	public fun getSessionId ()Ljava/lang/String;
+	public fun getTimestampMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/TelemetryEvent$RebufferStarted : com/superplayer/core/TelemetryEvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JJZ)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()J
+	public final fun component5 ()Z
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JJZ)Lcom/superplayer/core/TelemetryEvent$RebufferStarted;
+	public static synthetic fun copy$default (Lcom/superplayer/core/TelemetryEvent$RebufferStarted;Ljava/lang/String;Ljava/lang/String;JJZILjava/lang/Object;)Lcom/superplayer/core/TelemetryEvent$RebufferStarted;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getContentId ()Ljava/lang/String;
+	public fun getMonotonicTimeMs ()J
+	public final fun getSeekInduced ()Z
+	public fun getSessionId ()Ljava/lang/String;
+	public fun getTimestampMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/TelemetryEvent$SeekCompleted : com/superplayer/core/TelemetryEvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JJJJ)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()J
+	public final fun component5 ()J
+	public final fun component6 ()J
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JJJJ)Lcom/superplayer/core/TelemetryEvent$SeekCompleted;
+	public static synthetic fun copy$default (Lcom/superplayer/core/TelemetryEvent$SeekCompleted;Ljava/lang/String;Ljava/lang/String;JJJJILjava/lang/Object;)Lcom/superplayer/core/TelemetryEvent$SeekCompleted;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getContentId ()Ljava/lang/String;
+	public fun getMonotonicTimeMs ()J
+	public final fun getSeekLatencyMs ()J
+	public fun getSessionId ()Ljava/lang/String;
+	public fun getTimestampMs ()J
+	public final fun getToPositionMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/TelemetryEvent$SeekRequested : com/superplayer/core/TelemetryEvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JJJJ)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()J
+	public final fun component5 ()J
+	public final fun component6 ()J
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JJJJ)Lcom/superplayer/core/TelemetryEvent$SeekRequested;
+	public static synthetic fun copy$default (Lcom/superplayer/core/TelemetryEvent$SeekRequested;Ljava/lang/String;Ljava/lang/String;JJJJILjava/lang/Object;)Lcom/superplayer/core/TelemetryEvent$SeekRequested;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getContentId ()Ljava/lang/String;
+	public final fun getFromPositionMs ()J
+	public fun getMonotonicTimeMs ()J
+	public fun getSessionId ()Ljava/lang/String;
+	public fun getTimestampMs ()J
+	public final fun getToPositionMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/TelemetryEvent$SessionEnded : com/superplayer/core/TelemetryEvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JJILjava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JJILjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()J
+	public final fun component5 ()I
+	public final fun component6 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JJILjava/lang/String;)Lcom/superplayer/core/TelemetryEvent$SessionEnded;
+	public static synthetic fun copy$default (Lcom/superplayer/core/TelemetryEvent$SessionEnded;Ljava/lang/String;Ljava/lang/String;JJILjava/lang/String;ILjava/lang/Object;)Lcom/superplayer/core/TelemetryEvent$SessionEnded;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getContentId ()Ljava/lang/String;
+	public final fun getDroppedEventCount ()I
+	public fun getMonotonicTimeMs ()J
+	public final fun getSecurityLevel ()Ljava/lang/String;
+	public fun getSessionId ()Ljava/lang/String;
+	public fun getTimestampMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/TelemetryEvent$SessionStarted : com/superplayer/core/TelemetryEvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JJLcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/PlaybackDecision;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()J
+	public final fun component5 ()Lcom/superplayer/core/PlaybackProfile;
+	public final fun component6 ()Lcom/superplayer/core/PlaybackDecision;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JJLcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/PlaybackDecision;)Lcom/superplayer/core/TelemetryEvent$SessionStarted;
+	public static synthetic fun copy$default (Lcom/superplayer/core/TelemetryEvent$SessionStarted;Ljava/lang/String;Ljava/lang/String;JJLcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/PlaybackDecision;ILjava/lang/Object;)Lcom/superplayer/core/TelemetryEvent$SessionStarted;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getContentId ()Ljava/lang/String;
+	public final fun getDecision ()Lcom/superplayer/core/PlaybackDecision;
+	public fun getMonotonicTimeMs ()J
+	public final fun getProfile ()Lcom/superplayer/core/PlaybackProfile;
+	public fun getSessionId ()Ljava/lang/String;
+	public fun getTimestampMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/TelemetryEvent$StartupFailed : com/superplayer/core/TelemetryEvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JJLcom/superplayer/core/PlaybackFailure;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()J
+	public final fun component5 ()Lcom/superplayer/core/PlaybackFailure;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JJLcom/superplayer/core/PlaybackFailure;)Lcom/superplayer/core/TelemetryEvent$StartupFailed;
+	public static synthetic fun copy$default (Lcom/superplayer/core/TelemetryEvent$StartupFailed;Ljava/lang/String;Ljava/lang/String;JJLcom/superplayer/core/PlaybackFailure;ILjava/lang/Object;)Lcom/superplayer/core/TelemetryEvent$StartupFailed;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getContentId ()Ljava/lang/String;
+	public final fun getFailure ()Lcom/superplayer/core/PlaybackFailure;
+	public fun getMonotonicTimeMs ()J
+	public fun getSessionId ()Ljava/lang/String;
+	public fun getTimestampMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/TelemetryEvent$TrackSwitched : com/superplayer/core/TelemetryEvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JJLjava/lang/Integer;ILcom/superplayer/core/TrackSwitchDirection;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()J
+	public final fun component5 ()Ljava/lang/Integer;
+	public final fun component6 ()I
+	public final fun component7 ()Lcom/superplayer/core/TrackSwitchDirection;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JJLjava/lang/Integer;ILcom/superplayer/core/TrackSwitchDirection;)Lcom/superplayer/core/TelemetryEvent$TrackSwitched;
+	public static synthetic fun copy$default (Lcom/superplayer/core/TelemetryEvent$TrackSwitched;Ljava/lang/String;Ljava/lang/String;JJLjava/lang/Integer;ILcom/superplayer/core/TrackSwitchDirection;ILjava/lang/Object;)Lcom/superplayer/core/TelemetryEvent$TrackSwitched;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getContentId ()Ljava/lang/String;
+	public final fun getDirection ()Lcom/superplayer/core/TrackSwitchDirection;
+	public final fun getFromBitrateBps ()Ljava/lang/Integer;
+	public fun getMonotonicTimeMs ()J
+	public fun getSessionId ()Ljava/lang/String;
+	public fun getTimestampMs ()J
+	public final fun getToBitrateBps ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/TelemetryEvent$VideoFramesDropped : com/superplayer/core/TelemetryEvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JJIIJ)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()J
+	public final fun component5 ()I
+	public final fun component6 ()I
+	public final fun component7 ()J
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JJIIJ)Lcom/superplayer/core/TelemetryEvent$VideoFramesDropped;
+	public static synthetic fun copy$default (Lcom/superplayer/core/TelemetryEvent$VideoFramesDropped;Ljava/lang/String;Ljava/lang/String;JJIIJILjava/lang/Object;)Lcom/superplayer/core/TelemetryEvent$VideoFramesDropped;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getContentId ()Ljava/lang/String;
+	public final fun getDroppedFrames ()I
+	public final fun getElapsedPlayingMs ()J
+	public fun getMonotonicTimeMs ()J
+	public final fun getRepeatedFrames ()I
+	public fun getSessionId ()Ljava/lang/String;
+	public fun getTimestampMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class com/superplayer/core/TelemetrySink {
+	public static final field Companion Lcom/superplayer/core/TelemetrySink$Companion;
+	public static fun composite ([Lcom/superplayer/core/TelemetrySink;)Lcom/superplayer/core/TelemetrySink;
+	public abstract fun onEvent (Lcom/superplayer/core/TelemetryEvent;)V
+}
+
+public final class com/superplayer/core/TelemetrySink$Companion {
+	public final fun composite ([Lcom/superplayer/core/TelemetrySink;)Lcom/superplayer/core/TelemetrySink;
+}
+
+public final class com/superplayer/core/ThroughputEstimate {
+	public fun <init> (JLjava/lang/Long;Ljava/lang/Long;IJ)V
+	public final fun component1 ()J
+	public final fun component2 ()Ljava/lang/Long;
+	public final fun component3 ()Ljava/lang/Long;
+	public final fun component4 ()I
+	public final fun component5 ()J
+	public final fun copy (JLjava/lang/Long;Ljava/lang/Long;IJ)Lcom/superplayer/core/ThroughputEstimate;
+	public static synthetic fun copy$default (Lcom/superplayer/core/ThroughputEstimate;JLjava/lang/Long;Ljava/lang/Long;IJILjava/lang/Object;)Lcom/superplayer/core/ThroughputEstimate;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getConservativeBps ()Ljava/lang/Long;
+	public final fun getMeanBps ()J
+	public final fun getNewestSampleAgeMs ()J
+	public final fun getSampleCount ()I
+	public final fun getSpreadBps ()Ljava/lang/Long;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/TrackSelectionPolicy {
+	public static final field Companion Lcom/superplayer/core/TrackSelectionPolicy$Companion;
+	public static final field UNLIMITED I
+	public fun <init> (II)V
+	public fun <init> (IILcom/superplayer/core/SelectionPace;)V
+	public synthetic fun <init> (IILcom/superplayer/core/SelectionPace;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()Lcom/superplayer/core/SelectionPace;
+	public final fun copy (IILcom/superplayer/core/SelectionPace;)Lcom/superplayer/core/TrackSelectionPolicy;
+	public static synthetic fun copy$default (Lcom/superplayer/core/TrackSelectionPolicy;IILcom/superplayer/core/SelectionPace;ILjava/lang/Object;)Lcom/superplayer/core/TrackSelectionPolicy;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMaxVideoBitrateBps ()I
+	public final fun getMaxVideoHeightPx ()I
+	public final fun getPace ()Lcom/superplayer/core/SelectionPace;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/TrackSelectionPolicy$Companion {
+}
+
+public final class com/superplayer/core/TrackSwitchDirection : java/lang/Enum {
+	public static final field DOWN Lcom/superplayer/core/TrackSwitchDirection;
+	public static final field INITIAL Lcom/superplayer/core/TrackSwitchDirection;
+	public static final field UP Lcom/superplayer/core/TrackSwitchDirection;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/core/TrackSwitchDirection;
+	public static fun values ()[Lcom/superplayer/core/TrackSwitchDirection;
+}
+
+public final class com/superplayer/core/TtffStartBoundary : java/lang/Enum {
+	public static final field CONTENT_ADOPTED Lcom/superplayer/core/TtffStartBoundary;
+	public static final field USER_INTENT Lcom/superplayer/core/TtffStartBoundary;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/core/TtffStartBoundary;
+	public static fun values ()[Lcom/superplayer/core/TtffStartBoundary;
+}
+
+public final class com/superplayer/core/UnsupportedRealtimeCodecException : java/io/IOException {
+	public final fun getCodec ()Ljava/lang/String;
+}
+
+public final class com/superplayer/core/VideoCodec : java/lang/Enum {
+	public static final field AV1 Lcom/superplayer/core/VideoCodec;
+	public static final field H264 Lcom/superplayer/core/VideoCodec;
+	public static final field HEVC Lcom/superplayer/core/VideoCodec;
+	public static final field VP9 Lcom/superplayer/core/VideoCodec;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/core/VideoCodec;
+	public static fun values ()[Lcom/superplayer/core/VideoCodec;
+}
+
+public final class com/superplayer/core/VideoFrame {
+	public fun <init> (III)V
+	public final fun getHeight ()I
+	public final fun getTextureId ()I
+	public final fun getWidth ()I
+}
+

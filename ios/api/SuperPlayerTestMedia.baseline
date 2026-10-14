@@ -1,0 +1,98 @@
+// SuperPlayerTestMedia: public API as ios/check reads it. Regenerate with ios/check --update-api.
+Constructor HostileStream.Severity.init(rawValue:) : SuperPlayerTestMedia.HostileStream.Severity?, Swift.String
+Enum HostileManifests
+Enum HostileStream.Severity : CaseIterable, Equatable, Hashable, RawRepresentable, Sendable
+Enum HostileStream.Validity : CaseIterable, Equatable, Hashable, Sendable
+Enum SyntheticHlsStream
+Enum SyntheticVideoHlsStream
+Enum SyntheticVideoLadder
+EnumElement HostileStream.Severity.benign : (SuperPlayerTestMedia.HostileStream.Severity.Type) -> SuperPlayerTestMedia.HostileStream.Severity
+EnumElement HostileStream.Severity.borderline : (SuperPlayerTestMedia.HostileStream.Severity.Type) -> SuperPlayerTestMedia.HostileStream.Severity
+EnumElement HostileStream.Severity.severe : (SuperPlayerTestMedia.HostileStream.Severity.Type) -> SuperPlayerTestMedia.HostileStream.Severity
+EnumElement HostileStream.Validity.healthy : (SuperPlayerTestMedia.HostileStream.Validity.Type) -> SuperPlayerTestMedia.HostileStream.Validity
+EnumElement HostileStream.Validity.malformed : (SuperPlayerTestMedia.HostileStream.Validity.Type) -> SuperPlayerTestMedia.HostileStream.Validity
+EnumElement HostileStream.Validity.validButHostile : (SuperPlayerTestMedia.HostileStream.Validity.Type) -> SuperPlayerTestMedia.HostileStream.Validity
+Func HostileManifests.all(nowEpochSeconds:) : [SuperPlayerTestMedia.HostileStream], Swift.Int64 [static]
+Func HostileManifests.graded(nowEpochSeconds:) : [SuperPlayerTestMedia.HostileStream], Swift.Int64 [static]
+Func HostileManifests.hlsAudioGroupCodecMismatch() : SuperPlayerTestMedia.HostileStream [static]
+Func HostileManifests.hlsCachedLivePlaylist() : SuperPlayerTestMedia.HostileStream [static]
+Func HostileManifests.hlsCorsRefusesCredentials() : SuperPlayerTestMedia.HostileStream [static]
+Func HostileManifests.hlsDanglingAudioGroup() : SuperPlayerTestMedia.HostileStream [static]
+Func HostileManifests.hlsDiscontinuityWithoutTimeline() : SuperPlayerTestMedia.HostileStream [static]
+Func HostileManifests.hlsInconsistentSegmentDurations(_:) : SuperPlayerTestMedia.HostileStream, SuperPlayerTestMedia.HostileManifests.Severity [static]
+Func HostileManifests.hlsLadderGap(_:) : SuperPlayerTestMedia.HostileStream, SuperPlayerTestMedia.HostileManifests.Severity [static]
+Func HostileManifests.hlsMissingCodecs() : SuperPlayerTestMedia.HostileStream [static]
+Func HostileManifests.hlsOverstatedBitrate(_:) : SuperPlayerTestMedia.HostileStream, SuperPlayerTestMedia.HostileManifests.Severity [static]
+Func HostileManifests.hlsTokenExpiringInWindow(_:nowEpochSeconds:) : SuperPlayerTestMedia.HostileStream, SuperPlayerTestMedia.HostileManifests.Severity, Swift.Int64 [static]
+Func HostileManifests.hlsTokenScopedToManifest(nowEpochSeconds:) : SuperPlayerTestMedia.HostileStream, Swift.Int64 [static]
+Func HostileStream.Validity.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerTestMedia.HostileStream.Validity, SuperPlayerTestMedia.HostileStream.Validity [static]
+Func HostileStream.Validity.hash(into:) : (), Swift.Hasher
+Func HostileStream.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerTestMedia.HostileStream, SuperPlayerTestMedia.HostileStream [static]
+Func HostileStream.hash(into:) : (), Swift.Hasher
+Func SyntheticHlsStream.audioSpecificConfig() : [Swift.UInt8] [static]
+Func SyntheticHlsStream.durationMs(segmentCount:) : Swift.Int64, Swift.Int [static]
+Func SyntheticHlsStream.elementaryAudioFrame() : [Swift.UInt8] [static]
+Func SyntheticHlsStream.files(segmentCount:variantCount:) : [Swift.String : [Swift.UInt8]], Swift.Int, Swift.Int [static]
+Func SyntheticHlsStream.liveFiles(publishedSegmentCount:) : [Swift.String : [Swift.UInt8]], Swift.Int [static]
+Func SyntheticHlsStream.liveFiles(publishedSegmentCount:windowSegmentCount:) : [Swift.String : [Swift.UInt8]], Swift.Int, Swift.Int [static]
+Func SyntheticHlsStream.segmentName(_:) : Swift.String, Swift.Int [static]
+Func SyntheticVideoHlsStream.avcDecoderConfigurationRecord() : [Swift.UInt8] [static]
+Func SyntheticVideoHlsStream.durationMs(segmentCount:) : Swift.Int64, Swift.Int [static]
+Func SyntheticVideoHlsStream.elementaryFrame(_:) : (sample: [Swift.UInt8], isKeyFrame: Swift.Bool), Swift.Int [static]
+Func SyntheticVideoHlsStream.files(segmentCount:) : [Swift.String : [Swift.UInt8]], Swift.Int [static]
+Func SyntheticVideoHlsStream.segmentName(_:) : Swift.String, Swift.Int [static]
+Func SyntheticVideoLadder.declaredHeightPx(bitrateBps:) : Swift.Int, Swift.Int [static]
+Func SyntheticVideoLadder.declaredWidthPx(bitrateBps:) : Swift.Int, Swift.Int [static]
+Func SyntheticVideoLadder.file(_:bitratesBps:segmentCount:) : [Swift.UInt8]?, Swift.String, [Swift.Int], Swift.Int [static]
+Func SyntheticVideoLadder.liveFile(_:bitratesBps:publishedSegmentCount:) : [Swift.UInt8]?, Swift.String, [Swift.Int], Swift.Int [static]
+Func SyntheticVideoLadder.mediaPlaylistName(rung:) : Swift.String, Swift.Int [static]
+Func SyntheticVideoLadder.segmentBytes(bitrateBps:) : Swift.Int, Swift.Int [static]
+Func SyntheticVideoLadder.segmentName(rung:index:) : Swift.String, Swift.Int, Swift.Int [static]
+Struct HostileStream : CustomStringConvertible, Equatable, Hashable, Sendable
+TypeAlias HostileManifests.Severity : SuperPlayerTestMedia.HostileStream.Severity
+TypeAlias HostileStream.Severity.AllCases : [SuperPlayerTestMedia.HostileStream.Severity]
+TypeAlias HostileStream.Severity.RawValue : Swift.String
+TypeAlias HostileStream.Validity.AllCases : [SuperPlayerTestMedia.HostileStream.Validity]
+Var HostileManifests.segmentCount : Swift.Int [static] { get }
+Var HostileStream.Severity.allCases : [SuperPlayerTestMedia.HostileStream.Severity] [static] { get }
+Var HostileStream.Severity.rawValue : Swift.String { get }
+Var HostileStream.Validity.allCases : [SuperPlayerTestMedia.HostileStream.Validity] [static] { get }
+Var HostileStream.Validity.hashValue : Swift.Int { get }
+Var HostileStream.cause : Swift.String { get }
+Var HostileStream.declaredResponseHeaders : [Swift.String : [Swift.String : Swift.String]] { get }
+Var HostileStream.description : Swift.String { get }
+Var HostileStream.durationMs : Swift.Int64 { get }
+Var HostileStream.files : [Swift.String : [Swift.UInt8]] { get }
+Var HostileStream.hashValue : Swift.Int { get }
+Var HostileStream.id : Swift.String { get }
+Var HostileStream.magnitude : Swift.String? { get }
+Var HostileStream.severity : SuperPlayerTestMedia.HostileStream.Severity { get }
+Var HostileStream.sourcePath : Swift.String { get }
+Var HostileStream.spec : Swift.String { get }
+Var HostileStream.validity : SuperPlayerTestMedia.HostileStream.Validity { get }
+Var SyntheticHlsStream.declaredBitrateBps : Swift.Int [static] { get }
+Var SyntheticHlsStream.declaredCodecs : Swift.String [static] { get }
+Var SyntheticHlsStream.durationMs : Swift.Int64 [static] { get }
+Var SyntheticHlsStream.higherDeclaredBitrateBps : Swift.Int [static] { get }
+Var SyntheticHlsStream.liveWindowSegmentCount : Swift.Int [static] { get }
+Var SyntheticHlsStream.mediaPlaylistName : Swift.String [static] { get }
+Var SyntheticHlsStream.multivariantPlaylistName : Swift.String [static] { get }
+Var SyntheticHlsStream.samplesPerFrame : Swift.Int [static] { get }
+Var SyntheticHlsStream.samplingFrequencyHz : Swift.Int [static] { get }
+Var SyntheticHlsStream.secondMediaPlaylistName : Swift.String [static] { get }
+Var SyntheticHlsStream.segmentDurationMs : Swift.Int64 [static] { get }
+Var SyntheticHlsStream.segmentSuffix : Swift.String [static] { get }
+Var SyntheticVideoHlsStream.declaredCodecs : Swift.String [static] { get }
+Var SyntheticVideoHlsStream.framesPerSecond : Swift.Int [static] { get }
+Var SyntheticVideoHlsStream.framesPerSegment : Swift.Int [static] { get }
+Var SyntheticVideoHlsStream.height : Swift.Int [static] { get }
+Var SyntheticVideoHlsStream.initializationSegmentName : Swift.String [static] { get }
+Var SyntheticVideoHlsStream.mediaPlaylistName : Swift.String [static] { get }
+Var SyntheticVideoHlsStream.multivariantPlaylistName : Swift.String [static] { get }
+Var SyntheticVideoHlsStream.segmentDurationMs : Swift.Int64 [static] { get }
+Var SyntheticVideoHlsStream.segmentSuffix : Swift.String [static] { get }
+Var SyntheticVideoHlsStream.width : Swift.Int [static] { get }
+Var SyntheticVideoLadder.initializationSegmentName : Swift.String [static] { get }
+Var SyntheticVideoLadder.liveWindowSegmentCount : Swift.Int [static] { get }
+Var SyntheticVideoLadder.multivariantPlaylistName : Swift.String [static] { get }
+Var SyntheticVideoLadder.segmentDurationMs : Swift.Int64 [static] { get }

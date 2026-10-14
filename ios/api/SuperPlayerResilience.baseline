@@ -1,0 +1,104 @@
+// SuperPlayerResilience: public API as ios/check reads it. Regenerate with ios/check --update-api.
+Constructor FallbackRung.init(rawValue:) : SuperPlayerResilience.FallbackRung?, Swift.Int
+Constructor LoggedFailure.init(uri:errorStatusCode:errorDomain:) : SuperPlayerResilience.LoggedFailure, Foundation.URL?, Swift.Int, Swift.String
+Enum ErrorClassifier
+Enum FailureClass : CustomStringConvertible, Equatable, Hashable, Sendable
+Enum FailureClass.Content : CaseIterable, Equatable, Hashable, Sendable
+Enum FailureClass.Device : CaseIterable, Equatable, Hashable, Sendable
+Enum FailureClass.Drm : CaseIterable, Equatable, Hashable, Sendable
+Enum FailureClass.Fatal : CaseIterable, Equatable, Hashable, Sendable
+Enum FailureClass.Storage : CaseIterable, Equatable, Hashable, Sendable
+Enum FailureClass.Transient : CaseIterable, Equatable, Hashable, Sendable
+Enum FallbackRung : CaseIterable, Comparable, Equatable, Hashable, RawRepresentable, Sendable
+Enum Resilience
+EnumElement FailureClass.Content.manifestInvalid : (SuperPlayerResilience.FailureClass.Content.Type) -> SuperPlayerResilience.FailureClass.Content
+EnumElement FailureClass.Content.segmentGap : (SuperPlayerResilience.FailureClass.Content.Type) -> SuperPlayerResilience.FailureClass.Content
+EnumElement FailureClass.Device.decoderInit : (SuperPlayerResilience.FailureClass.Device.Type) -> SuperPlayerResilience.FailureClass.Device
+EnumElement FailureClass.Device.decoderTransient : (SuperPlayerResilience.FailureClass.Device.Type) -> SuperPlayerResilience.FailureClass.Device
+EnumElement FailureClass.Device.secureDecoderInit : (SuperPlayerResilience.FailureClass.Device.Type) -> SuperPlayerResilience.FailureClass.Device
+EnumElement FailureClass.Drm.downgradeRefused : (SuperPlayerResilience.FailureClass.Drm.Type) -> SuperPlayerResilience.FailureClass.Drm
+EnumElement FailureClass.Drm.licenceAcquisition : (SuperPlayerResilience.FailureClass.Drm.Type) -> SuperPlayerResilience.FailureClass.Drm
+EnumElement FailureClass.Drm.licenceExpired : (SuperPlayerResilience.FailureClass.Drm.Type) -> SuperPlayerResilience.FailureClass.Drm
+EnumElement FailureClass.Drm.provisioning : (SuperPlayerResilience.FailureClass.Drm.Type) -> SuperPlayerResilience.FailureClass.Drm
+EnumElement FailureClass.Drm.systemError : (SuperPlayerResilience.FailureClass.Drm.Type) -> SuperPlayerResilience.FailureClass.Drm
+EnumElement FailureClass.Drm.unsupported : (SuperPlayerResilience.FailureClass.Drm.Type) -> SuperPlayerResilience.FailureClass.Drm
+EnumElement FailureClass.Fatal.unsupported : (SuperPlayerResilience.FailureClass.Fatal.Type) -> SuperPlayerResilience.FailureClass.Fatal
+EnumElement FailureClass.Storage.full : (SuperPlayerResilience.FailureClass.Storage.Type) -> SuperPlayerResilience.FailureClass.Storage
+EnumElement FailureClass.Transient.cdnEdge : (SuperPlayerResilience.FailureClass.Transient.Type) -> SuperPlayerResilience.FailureClass.Transient
+EnumElement FailureClass.Transient.network : (SuperPlayerResilience.FailureClass.Transient.Type) -> SuperPlayerResilience.FailureClass.Transient
+EnumElement FailureClass.content : (SuperPlayerResilience.FailureClass.Type) -> (SuperPlayerResilience.FailureClass.Content) -> SuperPlayerResilience.FailureClass
+EnumElement FailureClass.device : (SuperPlayerResilience.FailureClass.Type) -> (SuperPlayerResilience.FailureClass.Device) -> SuperPlayerResilience.FailureClass
+EnumElement FailureClass.drm : (SuperPlayerResilience.FailureClass.Type) -> (SuperPlayerResilience.FailureClass.Drm) -> SuperPlayerResilience.FailureClass
+EnumElement FailureClass.fatal : (SuperPlayerResilience.FailureClass.Type) -> (SuperPlayerResilience.FailureClass.Fatal) -> SuperPlayerResilience.FailureClass
+EnumElement FailureClass.storage : (SuperPlayerResilience.FailureClass.Type) -> (SuperPlayerResilience.FailureClass.Storage) -> SuperPlayerResilience.FailureClass
+EnumElement FailureClass.transient : (SuperPlayerResilience.FailureClass.Type) -> (SuperPlayerResilience.FailureClass.Transient) -> SuperPlayerResilience.FailureClass
+EnumElement FallbackRung.excludeVariant : (SuperPlayerResilience.FallbackRung.Type) -> SuperPlayerResilience.FallbackRung
+EnumElement FallbackRung.nextHost : (SuperPlayerResilience.FallbackRung.Type) -> SuperPlayerResilience.FallbackRung
+EnumElement FallbackRung.nextSource : (SuperPlayerResilience.FallbackRung.Type) -> SuperPlayerResilience.FallbackRung
+EnumElement FallbackRung.recreateDecoder : (SuperPlayerResilience.FallbackRung.Type) -> SuperPlayerResilience.FallbackRung
+EnumElement FallbackRung.retrySameUrl : (SuperPlayerResilience.FallbackRung.Type) -> SuperPlayerResilience.FallbackRung
+EnumElement FallbackRung.typedError : (SuperPlayerResilience.FallbackRung.Type) -> SuperPlayerResilience.FallbackRung
+Func ErrorClassifier.classify(_:loggedFailure:playlistURL:) : SuperPlayerResilience.FailureClass, any Swift.Error, SuperPlayerResilience.LoggedFailure?, Foundation.URL? [static]
+Func FailureClass.Content.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerResilience.FailureClass.Content, SuperPlayerResilience.FailureClass.Content [static]
+Func FailureClass.Content.hash(into:) : (), Swift.Hasher
+Func FailureClass.Device.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerResilience.FailureClass.Device, SuperPlayerResilience.FailureClass.Device [static]
+Func FailureClass.Device.hash(into:) : (), Swift.Hasher
+Func FailureClass.Drm.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerResilience.FailureClass.Drm, SuperPlayerResilience.FailureClass.Drm [static]
+Func FailureClass.Drm.hash(into:) : (), Swift.Hasher
+Func FailureClass.Fatal.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerResilience.FailureClass.Fatal, SuperPlayerResilience.FailureClass.Fatal [static]
+Func FailureClass.Fatal.hash(into:) : (), Swift.Hasher
+Func FailureClass.Storage.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerResilience.FailureClass.Storage, SuperPlayerResilience.FailureClass.Storage [static]
+Func FailureClass.Storage.hash(into:) : (), Swift.Hasher
+Func FailureClass.Transient.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerResilience.FailureClass.Transient, SuperPlayerResilience.FailureClass.Transient [static]
+Func FailureClass.Transient.hash(into:) : (), Swift.Hasher
+Func FailureClass.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerResilience.FailureClass, SuperPlayerResilience.FailureClass [static]
+Func FailureClass.hash(into:) : (), Swift.Hasher
+Func FallbackRung.<(_:_:) : Swift.Bool, SuperPlayerResilience.FallbackRung, SuperPlayerResilience.FallbackRung [static]
+Func LoggedFailure.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerResilience.LoggedFailure, SuperPlayerResilience.LoggedFailure [static]
+Func LoggedFailure.hash(into:) : (), Swift.Hasher
+Func Resilience.standard(headers:) : any SuperPlayerCore.PlaybackResilience, (any SuperPlayerCore.HeaderProvider)? [static]
+Struct LoggedFailure : Equatable, Hashable, Sendable
+TypeAlias FailureClass.Content.AllCases : [SuperPlayerResilience.FailureClass.Content]
+TypeAlias FailureClass.Device.AllCases : [SuperPlayerResilience.FailureClass.Device]
+TypeAlias FailureClass.Drm.AllCases : [SuperPlayerResilience.FailureClass.Drm]
+TypeAlias FailureClass.Fatal.AllCases : [SuperPlayerResilience.FailureClass.Fatal]
+TypeAlias FailureClass.Storage.AllCases : [SuperPlayerResilience.FailureClass.Storage]
+TypeAlias FailureClass.Transient.AllCases : [SuperPlayerResilience.FailureClass.Transient]
+TypeAlias FallbackRung.AllCases : [SuperPlayerResilience.FallbackRung]
+TypeAlias FallbackRung.RawValue : Swift.Int
+Var FailureClass.Content.allCases : [SuperPlayerResilience.FailureClass.Content] [static] { get }
+Var FailureClass.Content.hashValue : Swift.Int { get }
+Var FailureClass.Device.allCases : [SuperPlayerResilience.FailureClass.Device] [static] { get }
+Var FailureClass.Device.hashValue : Swift.Int { get }
+Var FailureClass.Drm.allCases : [SuperPlayerResilience.FailureClass.Drm] [static] { get }
+Var FailureClass.Drm.hashValue : Swift.Int { get }
+Var FailureClass.Fatal.allCases : [SuperPlayerResilience.FailureClass.Fatal] [static] { get }
+Var FailureClass.Fatal.hashValue : Swift.Int { get }
+Var FailureClass.Storage.allCases : [SuperPlayerResilience.FailureClass.Storage] [static] { get }
+Var FailureClass.Storage.hashValue : Swift.Int { get }
+Var FailureClass.Transient.allCases : [SuperPlayerResilience.FailureClass.Transient] [static] { get }
+Var FailureClass.Transient.hashValue : Swift.Int { get }
+Var FailureClass.allCases : [SuperPlayerResilience.FailureClass] [static] { get }
+Var FailureClass.category : SuperPlayerCore.FailureCategory { get }
+Var FailureClass.contentMessageKey : Swift.String [static] { get }
+Var FailureClass.description : Swift.String { get }
+Var FailureClass.deviceMessageKey : Swift.String [static] { get }
+Var FailureClass.drmMessageKey : Swift.String [static] { get }
+Var FailureClass.hashValue : Swift.Int { get }
+Var FailureClass.isRetryable : Swift.Bool { get }
+Var FailureClass.licenceExpiredMessageKey : Swift.String [static] { get }
+Var FailureClass.lowerSecurityLevelMayHelp : Swift.Bool { get }
+Var FailureClass.networkMessageKey : Swift.String [static] { get }
+Var FailureClass.protectionUnavailableMessageKey : Swift.String [static] { get }
+Var FailureClass.rungCeiling : SuperPlayerResilience.FallbackRung { get }
+Var FailureClass.stableName : Swift.String { get }
+Var FailureClass.storageFullMessageKey : Swift.String [static] { get }
+Var FailureClass.unsupportedMessageKey : Swift.String [static] { get }
+Var FailureClass.userMessageKey : Swift.String { get }
+Var FallbackRung.allCases : [SuperPlayerResilience.FallbackRung] [static] { get }
+Var FallbackRung.rawValue : Swift.Int { get }
+Var FallbackRung.stableName : Swift.String { get }
+Var LoggedFailure.errorDomain : Swift.String { get }
+Var LoggedFailure.errorStatusCode : Swift.Int { get }
+Var LoggedFailure.hashValue : Swift.Int { get }
+Var LoggedFailure.uri : Foundation.URL? { get }

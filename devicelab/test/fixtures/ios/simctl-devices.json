@@ -1,0 +1,11 @@
+{
+  "devices" : {
+    "com.apple.CoreSimulator.SimRuntime.tvOS-27-0" : [
+      { "isAvailable" : true, "name" : "sp-435", "state" : "Shutdown", "udid" : "3EAE0F8E-0000-0000-0000-000000000010" }
+    ],
+    "com.apple.CoreSimulator.SimRuntime.iOS-27-1" : [
+      { "isAvailable" : false, "name" : "sp-old", "state" : "Shutdown", "udid" : "E97F7811-0000-0000-0000-000000000011" },
+      { "isAvailable" : true, "name" : "sp-435", "state" : "Shutdown", "udid" : "E97F7811-0000-0000-0000-000000000012" }
+    ]
+  }
+}

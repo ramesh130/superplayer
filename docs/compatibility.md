@@ -25,7 +25,7 @@ The group is `com.superplayer` and the artifact id is the module's own directory
 other module is additive, and an APK does not grow for a module the app does not depend on
 ([`modules.md`](modules.md)).
 
-**Every module carries the same version, and they all move together.** A release moves all fourteen
+**Every module carries the same version, and they all move together.** A release moves all fifteen
 to one number, including the modules nothing changed in (ADR-0017 rule 1). The consequence for you
 is the part worth acting on:
 
@@ -33,11 +33,11 @@ is the part worth acting on:
 > `superplayer-core:0.3.0` is not a combination that was ever built, tested or benchmarked, and
 > nothing in the library will tell you at runtime that you assembled one.
 
-That is stronger than the usual multi-module caution, and the reason is mechanical. **Ten** of the
-fourteen reach into `superplayer-core` through Kotlin *friend* compilation — a compiler flag, not a
+That is stronger than the usual multi-module caution, and the reason is mechanical. **Eleven** of the
+fifteen reach into `superplayer-core` through Kotlin *friend* compilation — a compiler flag, not a
 Gradle dependency, carrying no binary-compatibility guarantee at all — so a change core is entitled
 to make under rule 2 can break a module compiled against the previous core without any check seeing
-it (ADR-0017 rule 1; [`modules.md`](modules.md) lists the ten). Pin one version for all of them, in
+it (ADR-0017 rule 1; [`modules.md`](modules.md) lists the eleven). Pin one version for all of them, in
 one place.
 
 **A `-SNAPSHOT` version is not a release and carries none of this.** An artefact resolved from a
@@ -48,9 +48,9 @@ snapshot coordinate may change under that same coordinate without notice (ADR-00
 
 SuperPlayer is versioned `MAJOR.MINOR.PATCH` by [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 What decides the bump is not a judgement call: it is the diff of the tracked public API surface — one
-checked-in file per module, `<module>/api/<module>.api`, described in
+checked-in file per module, `android/<module>/api/<module>.api`, described in
 [`api-surface.md`](api-surface.md) — against the surface recorded at the last release (ADR-0017
-rule 2, gated by `./gradlew verifyVersionBump`).
+rule 2, gated by `(cd android && ./gradlew verifyVersionBump)`).
 
 | Bump | What moved in the tracked API surface | What it means for your build |
 | --- | --- | --- |
@@ -97,9 +97,10 @@ cannot resolve is worth being told about rather than left to be discovered.
 | `superplayer-drm` | **Public** | `Drm.widevine`, `WidevineConfig`, and the offline licence store |
 | `superplayer-offline` | **Public** | `Downloads`, `DownloadItem`, `DownloadsListener`, and the `DownloadsService` your app subclasses |
 | `superplayer-tv` | **Public** | `TvOutput` and `TvPlaybackControls` |
+| `superplayer-effects` | **Public** | `VideoEffects.frameOutput`, the handle a player hands its decoded frames to an effect through. The `FrameOutput` you implement is `superplayer-core`'s, so that the iOS half shares it ([ADR-0022](adr/0022-give-an-effect-the-decoded-frame-through-a-second-output-slot.md)). A player built with protection or for realtime has the output off and reports why rather than failing (rule 6) |
 | `superplayer-diagnostics` | **Public** | `MediaSourceDoctor` ([`media-source-doctor.md`](media-source-doctor.md)), `SessionBundle` ([`session-bundle.md`](session-bundle.md)) and `DebugHud` |
 | `superplayer-realtime` | **Public** | `Realtime.transport`. The `FrameSource` a realtime transport implements is `superplayer-core`'s ([ADR-0018](adr/0018-push-encoded-frames-through-one-framesource-into-media3s-own-sample-queues.md) rule 2's #356 addendum), so a transport module depends on core for the seam and on this one for `Realtime.transport`. What a realtime stream does **not** get is a rule rather than an omission — no cache, no CMCD, no downloads, no bandwidth estimate and none of the fallback ladder's load-error rungs ([ADR-0018](adr/0018-push-encoded-frames-through-one-framesource-into-media3s-own-sample-queues.md) rule 6) |
-| `superplayer-moq` | **Not published** | Nothing. Phase 14's prototype links Media over QUIC's Kotlin bindings from a native library built on one machine, for `arm64-v8a` alone ([ADR-0018](adr/0018-push-encoded-frames-through-one-framesource-into-media3s-own-sample-queues.md), `third-party/moq/README.md`). It is in the build, out of the release, and at no version you can resolve. `./gradlew publishToMavenLocal` does write it into the *local* repository of the machine that built its native half, which is how this repository's own `demo/` plays a broadcast; that is a development arrangement on one machine and not a coordinate, and nothing about it is covered by any promise here |
+| `superplayer-moq` | **Not published** | Nothing. Phase 14's prototype links Media over QUIC's Kotlin bindings from a native library built on one machine, for `arm64-v8a` alone ([ADR-0018](adr/0018-push-encoded-frames-through-one-framesource-into-media3s-own-sample-queues.md), `third-party/moq/README.md`). It is in the build, out of the release, and at no version you can resolve. `(cd android && ./gradlew publishToMavenLocal)` does write it into the *local* repository of the machine that built its native half, which is how this repository's own `android/demo/` plays a broadcast; that is a development arrangement on one machine and not a coordinate, and nothing about it is covered by any promise here |
 
 The four statuses are the four answers there are: **Public** is a module whose API you build
 your app on, **Public (for your tests)** is one whose API belongs in a test source set, **Empty**
@@ -107,17 +108,17 @@ is one that publishes nothing to depend on yet, and **Not published** is one tha
 repository's build and is *not released with the others* — so there is no coordinate for it at
 any version, and ADR-0017 rule 1's "every module at one version" reads over the first three.
 The last exists because a module can carry something that is nobody else's to resolve: today
-that is a natively built dependency, and `settings.gradle.kts` is where the exclusion is
+that is a natively built dependency, and `android/settings.gradle.kts` is where the exclusion is
 declared, in the same lines the build's check and the publishing plugin both read.
 
 That file distinguishes two kinds of unresolvable module which this table deliberately does
 **not**: one that publishes no artifact at all, and one that publishes to the local Maven
-repository of the machine that built it so that this repository's `demo/` can resolve it. The
+repository of the machine that built it so that this repository's `android/demo/` can resolve it. The
 difference is a fact about developing the library, and from outside it there is none — neither is
 released, neither has a tracked API surface, and neither may be depended on. They share this row on
 purpose, so that arranging for the demo to play something can never quietly read here as a promise.
 
-`./gradlew verifyCompatibilityDocument` holds that table to `settings.gradle.kts`, so a module the
+`(cd android && ./gradlew verifyCompatibilityDocument)` holds that table to `android/settings.gradle.kts`, so a module the
 build publishes cannot be left out of this document, a row cannot outlive its module, and a status
 cannot disagree with what that file declares about publishing. It compares the two as *sets*: the rows are ordered by the phase each module was built in, which is a choice
 about reading rather than a fact the check enforces. Everything in the third column is **prose** —
@@ -128,11 +129,11 @@ it describes each module, and nothing verifies it.
 SuperPlayer composes on AndroidX Media3 and does not fork it. Every module here supports
 **one** Media3 minor version, stated under *Supported Media3 versions* in
 [`modules.md`](modules.md) and enforced against the build's own pin by
-`./gradlew verifyMedia3SupportedVersion`. Read it there; it is the one copy.
+`(cd android && ./gradlew verifyMedia3SupportedVersion)`. Read it there; it is the one copy.
 
 **A Media3 upgrade is not automatically a SuperPlayer major** (ADR-0017 rule 4). No Media3 type marked
 `@UnstableApi` crosses SuperPlayer's public boundary — that is
-[ADR-0001](adr/0001-compose-dont-fork.md) rule 2, and `./gradlew verifyNoUnstableMedia3InPublicApi`
+[ADR-0001](adr/0001-compose-dont-fork.md) rule 2, and `(cd android && ./gradlew verifyNoUnstableMedia3InPublicApi)`
 fails the build on a breach rather than merely showing it in a diff — so a Media3 release that
 rearranges its buffering, selection or analytics interfaces moves no declaration in any tracked
 surface file. Absorbing that is the library's job, not yours. What a Media3 bump *does* move is the
@@ -204,12 +205,74 @@ The honest list. Each of these is a real gap rather than a disclaimer.
   consumer runs*). A release is not evidence that a particular CDN, packager or middlebox behaves.
 - **Performance numbers.** Nothing in a version number promises a startup time, a rebuffer rate, a
   peak RSS or a battery figure. What exists is a fixed benchmark matrix and its published report
-  (`benchmark/README.md`), measured on the machine that ran it.
+  (`android/benchmark/README.md`), measured on the machine that ran it.
 - **A behaviour you depended on but the API never named.** ADR-0017 rule 3 says such a change moves
   the major; it cannot say that every such change was noticed. The changelog is where the ones that
   were are written down.
 - **Compatibility of a mixed set of versions**, and of anything resolved from a `-SNAPSHOT`
   coordinate (ADR-0017 rules 1 and 8).
+
+## What about iOS and tvOS?
+
+The repository's root `Package.swift` is an iOS and tvOS Swift package, and its products carry the
+same vocabulary over AVFoundation's `AVPlayer` ([`ios.md`](ios.md) is the adopter's guide).
+**The rules above bind it too**, by
+[ADR-0020](adr/0020-compose-on-avfoundations-avplayer-and-bring-no-other-engine.md) rule 12, which
+carries ADR-0017 rules 1 and 2's addendum:
+
+- **One version line.** The Swift products ride the Android modules' `MAJOR.MINOR.PATCH`, cut by the
+  same `release` command and tagged once with the `vX.Y.Z` tag SwiftPM resolves. Under `0.x` a change
+  that touches one platform bumps both. Every product of the package is at that one version, so
+  mixing two is not even expressible: SwiftPM resolves one revision of one package.
+- **The surface is the arbiter.** Each product's public API is recorded in
+  `ios/api/<Product>.baseline` and checked by `ios/check` with the Swift API digester
+  ([`api-surface.md`](api-surface.md), *The iOS products*), so "a declaration removed is a major"
+  reads the same on both platforms. **The release command does not run the digester yet**, which
+  ADR-0021's *Consequences* names as a gap.
+- **Nothing is resolvable at a version.** No release has been cut, so there is no tag to resolve.
+  SwiftPM will resolve this repository's URL at a branch or a revision, and what that gets you is
+  whatever was on it — the `-SNAPSHOT` caveat above in SwiftPM's terms.
+- **`player.avPlayer` is the escape hatch, and outside the promise**, as `player.exoPlayer` is
+  (ADR-0020 rule 3). Code written against it is code written against AVFoundation.
+
+### Which Swift products are stable?
+
+The statuses mean what they mean in the Android table above. `SuperPlayerCore` is the only product
+an app needs, and the rest are additive. The **Not published** row is a product this repository
+builds that resolving it by URL never reaches: a package of its own under `ios/MoQ/`, for the reason
+`superplayer-moq` is not published.
+
+| Product | Status | What you may depend on |
+| --- | --- | --- |
+| `SuperPlayerCore` | **Public** | `SuperPlayer(configuration:)` and `player.avPlayer`, `MediaRequest`, `PlaybackProfile`, `PlaybackSnapshot`, `PlaybackSession`, `PlayerPool`, the telemetry sink and event types, `PlaybackPolicy`, `FrameOutput`, `FrameSource`, and `PlayerView`/`PlayerLayerView`. The only product an app needs |
+| `SuperPlayerTestMedia` | **Public (for your tests)** | Synthetic HLS streams and the HLS half of the hostile-manifest corpus, the Kotlin generators' output byte for byte |
+| `SuperPlayerTelemetry` | **Public** | `QoeCollector`, `OSLogSink`, `SessionTraceRecorder`, and the session reduction (`SessionMetrics`, `QoeScore`) |
+| `SuperPlayerTestkit` | **Public (for your tests)** | `PlaybackHarness` and its loopback origin, `FaultScript`, `ThroughputTrace`, and `FrameSourceConformance` — the suite to run against your own `FrameSource` |
+| `SuperPlayerABR` | **Public** | `AdaptivePolicy` and `BandwidthOracle`. The adaptive behaviour behind them is tuning work and is expected to move; the types are not |
+| `SuperPlayerPreload` | **Public** | `PreloadCoordinator`, attached to a `PlayerPool` |
+| `SuperPlayerResilience` | **Public** | `Resilience.standard(headers:)`, `FailureClass` and `ErrorClassifier` — the failure taxonomy a log line and a warehouse row share, the Android one leaf for leaf |
+| `SuperPlayerDRM` | **Public** | `Drm.fairPlay`, `FairPlayConfig`, and the offline licence store. Offline licences are iOS only: tvOS has no persistable keys and refuses typed |
+| `SuperPlayerOffline` | **Public** | `Downloads`, `DownloadItem`, `DownloadsListener`. iOS only: tvOS has no asset download session and the store refuses to open, typed |
+| `SuperPlayerTV` | **Public** | `TvOutput.standard()`, which matches the display on tvOS and does nothing on iOS |
+| `SuperPlayerDiagnostics` | **Public** | `MediaSourceDoctor` over HLS ([`media-source-doctor.md`](media-source-doctor.md)), `SessionBundle` ([`session-bundle.md`](session-bundle.md)) and `DebugHud` |
+| `SuperPlayerRealtime` | **Public** | `RealtimePlayer` and `Realtime.transport`, the second player type, because an `AVPlayer` cannot take pushed frames (ADR-0020 rule 11) |
+| `SuperPlayerMoQ` | **Not published** | Nothing. The Swift twin of `superplayer-moq`, over MoQ's bindings compiled into a committed XCFramework with two iOS slices and no tvOS one (`third-party/moq/README.md`, *The Swift bindings*). This repository's own `ios/Demo/` resolves it by path; nothing about it is covered by any promise here |
+
+`(cd android && ./gradlew verifyCompatibilityDocument)` holds this table to the two Swift manifests as it holds the
+one above to `android/settings.gradle.kts`: every `.library` product of the root `Package.swift` needs a row,
+every product of `ios/MoQ/Package.swift` a row reading **Not published**, and no row may name a
+product neither declares. It reads the manifests as text, so it runs on Linux with no Swift toolchain
+(ADR-0021 rule 7). The third column is prose, as it is above.
+
+**What a release does not promise on iOS and tvOS** is the list above read in Apple's terms, and
+[`ios.md`](ios.md)'s *What a release does not promise* is the long form: anything reached through
+`player.avPlayer`; behaviour on a device, since every test runs on a simulator and FairPlay,
+background downloads across a process's death, display-mode switching, HDCP and a real MoQ session
+are listed as a device's rather than faked ([`testing.md`](testing.md)); behaviour on a real network,
+since every test plays from a loopback origin on the host; and performance numbers.
+
+The Android table above and this one are read separately, so a module on one platform and a product
+on the other are never mistaken for each other.
 
 ## Where to look next
 
@@ -217,7 +280,8 @@ The honest list. Each of these is a real gap rather than a disclaimer.
 | --- | --- |
 | Why is it versioned this way? | [ADR-0017](adr/0017-version-the-library-by-semver-in-lockstep-with-the-tracked-api-surface-as-the-arbiter.md) — the nine rules and the alternatives rejected |
 | What changed between two versions? | [`CHANGELOG.md`](../CHANGELOG.md) |
-| What exactly is the public API? | [`api-surface.md`](api-surface.md), and `<module>/api/<module>.api` |
+| What exactly is the public API? | [`api-surface.md`](api-surface.md), and `android/<module>/api/<module>.api` |
 | Which modules exist and how do they depend on each other? | [`modules.md`](modules.md) |
 | What does a telemetry field mean? | [`telemetry-schema.md`](telemetry-schema.md) |
+| How do I use it on iOS or tvOS? | [`ios.md`](ios.md) — install, configuration, what ports and what does not, and what the app declares |
 | How is a release cut? | [`releasing.md`](releasing.md) — for a maintainer, not an adopter |

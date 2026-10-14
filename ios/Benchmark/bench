@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+# Copyright 2026 The SuperPlayer Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# ios/Benchmark/bench: runs PRD.md §6's matrix on the iOS simulator and writes the report.
+#
+#   ios/Benchmark/bench                     the full matrix, 3 runs a cell, into ios/Benchmark/out
+#   ios/Benchmark/bench --runs 1            fewer runs, for working on the harness
+#   ios/Benchmark/bench --out DIR           somewhere other than ios/Benchmark/out
+#   ios/Benchmark/bench --cells "VOD / 3G"  a substring filter, for working on the harness
+#   ios/Benchmark/bench --baseline          write into ios/Benchmark/phase3, the committed reference
+#
+#   SP_SIMULATOR      the simulator to run on, by name (default superplayer-bench); made if absent
+#   SP_DERIVED_DATA   xcodebuild's DerivedData (default .build/DerivedData, ios/check's)
+#
+# Not a test and not part of ios/check: a measurement someone reads, which takes nearly three hours
+# of real time at the default. ios/Benchmark/README.md says why, and argues the run count.
+set -euo pipefail
+
+usage() {
+    sed -n '4,15p' "$0" | sed 's/^# \{0,1\}//' >&2
+    exit 2
+}
+log() { printf '[bench] %s\n' "$*" >&2; }
+die() {
+    printf '[bench] error: %s\n' "$*" >&2
+    exit 1
+}
+
+root="$(cd "$(dirname "$0")/../.." && pwd)"
+cd "$root"
+
+# MatrixRun.defaultRunsPerCell, whose reason is written there and argued in the README's *The run
+# count*: the fewest that estimates a cell's spread on more than one degree of freedom.
+runs=3
+out="$root/ios/Benchmark/out"
+cells=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --runs) runs="${2:?--runs needs a value}"; shift 2 ;;
+        --out) out="${2:?--out needs a value}"; shift 2 ;;
+        --cells) cells="${2:?--cells needs a value}"; shift 2 ;;
+        # In the repository, because a number nobody can find is not a baseline; beside this runner
+        # rather than among the Android reports, since the two measure different engines. baseline/
+        # is i2's report, frozen, with no adaptive arm; phase3/ is i3's and the current reference,
+        # as android/benchmark/bench --baseline moved to its phase3/ when Phase 3 measured.
+        --baseline) out="$root/ios/Benchmark/phase3"; shift ;;
+        -h | --help) usage ;;
+        *) die "unknown option $1" ;;
+    esac
+done
+case "$runs" in '' | *[!0-9]* | 0) die "--runs takes a whole number above zero, not '$runs'" ;; esac
+mkdir -p "$out"
+out="$(cd "$out" && pwd)"
+
+simulator="${SP_SIMULATOR:-superplayer-bench}"
+derived_data="${SP_DERIVED_DATA:-$root/.build/DerivedData}"
+results="$root/.build/ios-bench"
+
+# The simulator, made as ios/check makes its own: on the newest iOS runtime, as the first iPhone it
+# supports. A name of its own by default, so a run never shares a booted device with a check.
+udid="$(xcrun simctl list -j | python3 -I -c '
+import json, sys
+name = sys.argv[1]
+listing = json.load(sys.stdin)
+ios = [r for r in listing["runtimes"] if r["platform"] == "iOS" and r["isAvailable"]]
+for runtime in ios:
+    for device in listing["devices"].get(runtime["identifier"], []):
+        if device["name"] == name and device["isAvailable"]:
+            print(device["udid"])
+            sys.exit()
+if not ios:
+    sys.exit("no iOS simulator runtime is installed")
+newest = max(ios, key=lambda r: [int(p) for p in r["version"].split(".")])
+iphones = [t for t in newest["supportedDeviceTypes"] if t.get("productFamily") == "iPhone"]
+if not iphones:
+    sys.exit("iOS " + newest["version"] + " supports no iPhone device type")
+print("create", newest["identifier"], iphones[0]["identifier"])
+' "$simulator")"
+case "$udid" in
+    create\ *)
+        read -r _ runtime device_type <<<"$udid"
+        udid="$(xcrun simctl create "$simulator" "$device_type" "$runtime")"
+        log "created simulator $simulator ($udid)"
+        ;;
+esac
+if xcrun simctl list devices | grep -q "$udid) (Shutdown)"; then
+    trap 'xcrun simctl shutdown "$udid" >/dev/null 2>&1 || true' EXIT
+fi
+
+# What the report records about where it ran, which a process on the simulator cannot read: no git
+# and no host toolchain reach it. They travel as TEST_RUNNER_ variables, which xcodebuild hands the
+# test process with the prefix taken off (ios/check does the same for the golden traces).
+dirty=0
+if [ -n "$(git status --porcelain)" ]; then
+    dirty=1
+    # A warning, not a refusal: running the matrix on work in progress is how it is developed. The
+    # report says in prose at its top that such a run is not a baseline.
+    log "warning: the working tree has uncommitted changes; the report will say it is not a baseline"
+fi
+export TEST_RUNNER_SP_BENCH_OUT="$out"
+export TEST_RUNNER_SP_BENCH_RUNS="$runs"
+export TEST_RUNNER_SP_BENCH_CELLS="$cells"
+export TEST_RUNNER_SP_BENCH_COMMIT="$(git rev-parse HEAD)"
+export TEST_RUNNER_SP_BENCH_DIRTY="$dirty"
+export TEST_RUNNER_SP_BENCH_XCODE="$(xcodebuild -version | tr '\n' ' ' | sed 's/ *$//')"
+export TEST_RUNNER_SP_BENCH_HOST="$(sysctl -n machdep.cpu.brand_string), $(sysctl -n hw.ncpu) cores, macOS $(sw_vers -productVersion)"
+
+rm -rf "$out/traces" "$out/baseline-report.md" "$results"
+mkdir -p "$results"
+log "running the matrix: $runs run(s) per cell on $simulator → $out"
+[ -z "$cells" ] || log "cells filtered to '$cells' — this is not a baseline"
+# Not -quiet, which would hide the runner's one line a session; everything else xcodebuild says is
+# in the result bundle, so only those lines are shown. The pipeline's status is xcodebuild's.
+if ! xcodebuild test \
+    -scheme SuperPlayer-Package \
+    -destination "id=$udid" \
+    -derivedDataPath "$derived_data" \
+    -resultBundlePath "$results/bench.xcresult" \
+    -only-testing:SuperPlayerBenchmarkTests/BenchmarkMatrixRun 2>&1 |
+    { grep --line-buffered '^run [0-9]' || true; }; then
+    xcrun xcresulttool get test-results summary --path "$results/bench.xcresult" >&2 || true
+    die "the matrix failed; read $results/bench.xcresult before anything under $out"
+fi
+# A quiet exit is not evidence: the run must have passed and must not have skipped, which is what a
+# missing SP_BENCH_OUT would make it do.
+read -r result passed < <(
+    xcrun xcresulttool get test-results summary --path "$results/bench.xcresult" |
+        python3 -I -c 'import json, sys; s = json.load(sys.stdin); print(s["result"], s["passedTests"])'
+)
+[ "$result" = "Passed" ] && [ "$passed" -ge 1 ] || die "the run says $result with $passed passed"
+[ -f "$out/baseline-report.md" ] || die "no report was written to $out"
+log "done: $out/baseline-report.md"
+printf '%s\n' "$out/baseline-report.md"

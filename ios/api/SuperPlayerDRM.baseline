@@ -1,0 +1,38 @@
+// SuperPlayerDRM: public API as ios/check reads it. Regenerate with ios/check --update-api.
+Class OfflineLicenceExchange : Sendable
+Class OfflineLicenceStore : LicenceStore, Sendable, StoredLicences
+Constructor FairPlayConfig.init(certificateURL:licenceURL:) : SuperPlayerDRM.FairPlayConfig, Foundation.URL, Foundation.URL
+Enum Drm
+Enum OfflineLicenceStoreError : Equatable, Error, Sendable
+Enum OfflineLicences
+EnumElement OfflineLicenceStoreError.database : (SuperPlayerDRM.OfflineLicenceStoreError.Type) -> (Swift.Int, Swift.String) -> SuperPlayerDRM.OfflineLicenceStoreError
+EnumElement OfflineLicenceStoreError.noKeyRequested : (SuperPlayerDRM.OfflineLicenceStoreError.Type) -> SuperPlayerDRM.OfflineLicenceStoreError
+EnumElement OfflineLicenceStoreError.noLicenceHeld : (SuperPlayerDRM.OfflineLicenceStoreError.Type) -> (Swift.String) -> SuperPlayerDRM.OfflineLicenceStoreError
+EnumElement OfflineLicenceStoreError.notADirectory : (SuperPlayerDRM.OfflineLicenceStoreError.Type) -> (Foundation.URL) -> SuperPlayerDRM.OfflineLicenceStoreError
+EnumElement OfflineLicenceStoreError.notFairPlay : (SuperPlayerDRM.OfflineLicenceStoreError.Type) -> SuperPlayerDRM.OfflineLicenceStoreError
+Func Drm.fairPlay(_:) : any SuperPlayerCore.PlaybackDrm, SuperPlayerDRM.FairPlayConfig [static]
+Func Drm.fairPlay(_:licence:) : any SuperPlayerCore.PlaybackDrm, SuperPlayerDRM.FairPlayConfig, SuperPlayerDRM.OfflineLicence [static]
+Func FairPlayConfig.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerDRM.FairPlayConfig, SuperPlayerDRM.FairPlayConfig [static]
+Func FairPlayConfig.hash(into:) : (), Swift.Hasher
+Func OfflineLicenceExchange.acquire(_:licenceDuration:playbackDuration:) : SuperPlayerDRM.OfflineLicence, Swift.String, Swift.Duration, Swift.Duration [throwing]
+Func OfflineLicenceExchange.release(_:) : (), Swift.String [throwing]
+Func OfflineLicenceExchange.renew(_:licenceDuration:playbackDuration:) : SuperPlayerDRM.OfflineLicence, Swift.String, Swift.Duration, Swift.Duration [throwing]
+Func OfflineLicenceStore.close() : ()
+Func OfflineLicenceStore.contentIds() : Swift.Set<Swift.String> [throwing]
+Func OfflineLicenceStore.contentIdsAwaitingRelease() : Swift.Set<Swift.String> [throwing]
+Func OfflineLicenceStore.licence(for:) : SuperPlayerDRM.OfflineLicence?, Swift.String [throwing]
+Func OfflineLicenceStore.over(_:) : SuperPlayerDRM.OfflineLicenceExchange, SuperPlayerCore.SuperPlayer [throwing]
+Func OfflineLicenceStoreError.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerDRM.OfflineLicenceStoreError, SuperPlayerDRM.OfflineLicenceStoreError [static]
+Func OfflineLicences.store(directory:) : SuperPlayerDRM.OfflineLicenceStore, Foundation.URL [static] [throwing]
+Struct FairPlayConfig : Equatable, Hashable, Sendable
+Struct OfflineLicence : CustomStringConvertible, Sendable
+Var FairPlayConfig.certificateURL : Foundation.URL { get }
+Var FairPlayConfig.hashValue : Swift.Int { get }
+Var FairPlayConfig.licenceURL : Foundation.URL { get }
+Var OfflineLicence.contentId : Swift.String { get }
+Var OfflineLicence.description : Swift.String { get }
+Var OfflineLicence.isExpired : Swift.Bool { get }
+Var OfflineLicence.licenceDurationRemainingMs : Swift.Int64 { get }
+Var OfflineLicence.playbackDurationRemainingMs : Swift.Int64 { get }
+Var OfflineLicence.renewalDue : Swift.Bool { get }
+Var OfflineLicence.renewalDueWithinMs : Swift.Int64 [static] { get }

@@ -1,12 +1,12 @@
 # The tracked public API surface
 
 Every published module's consumer-facing API is checked into this repository, as
-`<module>/api/<module>.api`, and validated on every build. Widening the surface is therefore an
+`android/<module>/api/<module>.api`, and validated on every build. Widening the surface is therefore an
 explicit, reviewed edit rather than something noticed after a release.
 
 **"Every published module" is the whole of the rule, and since #364 it excludes one.**
 `superplayer-moq` is in the build and is deliberately not released with the others
-(`settings.gradle.kts`'s `unpublishedModules` list, ADR-0017 rule 1), so it has **no** tracked file
+(`android/settings.gradle.kts`'s `unpublishedModules` list, ADR-0017 rule 1), so it has **no** tracked file
 and neither `checkApiSurface` nor `verifyNoUnstableMedia3InPublicApi` runs for it. That is the same
 declaration deciding all three things rather than three switches that happen to agree — the
 convention plugin reads it once, and a module that file accounts for in neither list fails the build
@@ -17,14 +17,14 @@ can resolve this module. An empty file here would be a promise to a consumer who
 ## The commands
 
 ```bash
-./gradlew check                                # includes checkApiSurface for every module,
-                                               # and verifyVersionBump once at the root
-./gradlew updateApiSurface                     # regenerate every module's tracked surface
-./gradlew :superplayer-core:updateApiSurface   # regenerate one
-./gradlew release --release-version=x.y.z      # cuts a release, and re-records api/released/ as
-                                               # one of its steps (docs/releasing.md)
-./gradlew recordReleasedApiSurface             # that step alone, for a record that has to be
-                                               # retaken by hand; not a contributor's step
+(cd android && ./gradlew check)                                # includes checkApiSurface for every module,
+                                                               # and verifyVersionBump once at the root
+(cd android && ./gradlew updateApiSurface)                     # regenerate every module's tracked surface
+(cd android && ./gradlew :superplayer-core:updateApiSurface)   # regenerate one
+(cd android && ./gradlew release --release-version=x.y.z)      # cuts a release, and re-records android/api/released/
+                                                               # as one of its steps (docs/releasing.md)
+(cd android && ./gradlew recordReleasedApiSurface)             # that step alone, for a record that has to be
+                                                               # retaken by hand; not a contributor's step
 ```
 
 `updateApiSurface` is the deliberate step. Nothing regenerates the tracked file implicitly, because
@@ -72,13 +72,13 @@ lambda that lost its capture.
 **`verifyVersionBump`** is the third task, and it is the *root*'s rather than a module's. It
 answers a different question from the other two: not "does the tracked file match the code" but
 "does the version match the difference between two tracked files". What it compares each module's
-tracked surface against is `api/released/`, the surface recorded at the last release, and it fails
-when `gradle/libs.versions.toml`'s `superplayer` version is too small for that difference —
+tracked surface against is `android/api/released/`, the surface recorded at the last release, and it fails
+when `android/gradle/libs.versions.toml`'s `superplayer` version is too small for that difference —
 [ADR-0017](adr/0017-version-the-library-by-semver-in-lockstep-with-the-tracked-api-surface-as-the-arbiter.md)
 rule 2's arbitration, made mechanical. It reads no compiled class at all. It is the root's because
-rule 1 releases all fourteen modules at one number, so the verdict is fourteen surfaces against one
-catalog entry rather than fourteen independent answers, and
-[`api/released/README.md`](../api/released/README.md) says what writes that record (the release
+rule 1 releases all fifteen modules at one number, so the verdict is fifteen surfaces against one
+catalog entry rather than fifteen independent answers, and
+[`android/api/released/README.md`](../android/api/released/README.md) says what writes that record (the release
 command, issue #329) and why an absent one — today's state, nothing having been released — passes
 rather than fails.
 
@@ -108,7 +108,7 @@ signature that can only change where someone wrote a type is a signature `api/<m
 trusted to track.
 
 It is a library-authoring switch and applies where library code is: main source sets of the modules
-using the convention plugin. Test source sets are exempt by Kotlin's own rule, and `demo/` — a
+using the convention plugin. Test source sets are exempt by Kotlin's own rule, and `android/demo/` — a
 consumer, in a separate build — does not apply the plugin and is unaffected.
 
 ## Two things the unstable check permits, and why
@@ -151,3 +151,61 @@ convention plugin is the one place to revisit.
 The generated format is unchanged from `binary-compatibility-validator`'s own, so the files are the
 ones any Kotlin developer already knows how to read, and switching back to the plugin later would
 not churn them.
+
+## The iOS products
+
+The Swift package at the repository root is held to the same rule by a different tool: each
+product's public API is `ios/api/<Product>.baseline`, `ios/check` diffs it on every run, and
+`ios/check --update-api` is the `updateApiSurface` analog — the one deliberate step that rewrites
+it, whose diff is committed with the change that caused it. A baseline with no product, and a
+product with no baseline, both fail. A product empty until its phase has a baseline that is its
+header line alone, which is a recorded fact about the API rather than a missing file.
+`SuperPlayerMoQ` (#434) has **no** baseline, deliberately: it is a package of its own under
+`ios/MoQ/` rather than a product of the root manifest, so nothing outside this repository can resolve
+it, and an API nobody can depend on has no compatibility to track — the Kotlin `LOCAL_ONLY` rule.
+
+```bash
+ios/check                 # includes the API diff, after the simulator tests and the tvOS build
+ios/check --update-api    # rewrite every baseline
+```
+
+**What is read is the iOS SDK's view, not the host's.** `ios/check` runs
+`xcrun swift-api-digester -dump-sdk` over the `.swiftmodule`s the simulator test build has just
+produced, with `-sdk` the iPhone simulator SDK and `-target` the host's architecture at the iOS 17
+floor. A digester run without those reads the module as a macOS client would, and this package
+declares no macOS platform; reading at the floor is reading what an adopter at the floor compiles
+against. The simulator build rather than a device build because it is the one `ios/check` has
+already made, and a module's public declarations do not differ between the two.
+
+**`swift package diagnose-api-breaking-changes` was the plan's first choice and is not used.** It
+compares the working tree against a git revision rather than a committed file, so there is no
+reviewable record of the surface — the property `<module>.api` exists for — and it builds the
+package for the host, which here is macOS and not a platform the package declares.
+
+**The digester's JSON is reduced before it is committed**, by `ios/scripts/api-surface.swift`, to
+one sorted line per public declaration: its kind, its path, its signature's types, its generic
+signature, the flags a call site depends on (static, throwing, open, mutating, a default argument,
+the accessors) and a type's declared conformances. The raw dump is not committed for two reasons.
+It is not readable in review, which is the point of the file. And it moves with the compiler rather
+than with the package — mangled names, USRs, the dump's own format version and the tool's
+arguments, and the marker conformances (`Copyable`, `Escapable`, `SendableMetatype`) each newer
+Swift infers on every type — so a baseline recorded under one Xcode would fail under another for
+nothing an adopter can see. Sorting is for the same reason: the order is the digester's. And a
+**subclass of a platform class** is recorded by its superclass rather than its conformances (#405's
+`PlayerLayerView`, a `UIView`): the digester lists every conformance a class inherits, and those are
+the SDK's — iOS 27 gave `UIView` two that iOS 26 does not have, so CI's SDK and a newer local one
+disagreed about a class whose declaration had not moved.
+
+**A `package` declaration is left out.** The digester dumps it beside the public ones, marked
+`isInternal`, and the reduction drops it: a `package` seam is what another product of this package
+reaches (`ios/CLAUDE.md`, *Dependencies point inward*), the Swift analog of a Kotlin friend's
+`internal`, which the Android `.api` files do not track either, and no adopter can name one. The
+first were #402's `LifecyclePlatform`, `SharedLifecycle` and `SuperPlayer.init(configuration:lifecycle:)`.
+
+What the reduction cannot promise is that two Xcode versions print a *type* the same way, since a
+printed name is the compiler's. CI pins its Xcode (`.github/workflows/ci.yml`), and a baseline diff
+that appears only under a newer local Xcode is that, to be read as such before it is committed.
+
+The Android half's `verifyNoUnstableMedia3InPublicApi` has no counterpart: AVFoundation has no
+`@UnstableApi`, and what `player.avPlayer` exposes is the iOS plan's one named escape hatch
+(`docs/ios-plan.md` §2), which i1 records in its baseline like any other declaration.

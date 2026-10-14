@@ -35,7 +35,9 @@ into a `PlayerPool`, or given different content.
 - `sessionId` is opaque, unique, and the same on every event of one session. **It is also CMCD's
   `sid`** — the same string, sent to the CDN on every request of the session, which is what makes the
   join below possible. Minted by `superplayer-core`, not by the collector, precisely so that the two
-  seams cannot drift apart.
+  seams cannot drift apart. On iOS and tvOS it is *read* by core rather than minted — the SDK fills
+  CMCD's `sid` itself and cannot be told what to put there — for the same reason; see
+  [On iOS and tvOS](#on-ios-and-tvos).
 - `contentId` is the app's own `MediaRequest.contentId`. **Never a URL.** The same content behind two
   CDNs is one `contentId`, which is what makes a per-title metric a per-title metric.
 - A session begins with exactly one `SessionStarted` and ends with exactly one `SessionEnded`.
@@ -46,7 +48,9 @@ sessions. The `sessionId` is what separates them; nothing else does.
 **One gap, stated plainly.** A consumer that drives a player with Media3's own `setMediaItem` instead
 of `setMediaRequest` moves it to content that has no identity, so no session can be opened for it and
 what follows is reported under the previous content's id. A player driven through `setMediaRequest`
-throughout cannot produce this. Mixing the two APIs on one player is what does.
+throughout cannot produce this. Mixing the two APIs on one player is what does. On iOS and tvOS the
+counterpart, `setMediaURL`, is the facade's own method, so it ends the open session and opens none;
+the gap there is an item handed to `player.avPlayer` directly, which the facade never sees.
 
 ### Joining to the CDN's log
 
@@ -84,6 +88,41 @@ Three things a data engineer needs before writing that query.
 
 `cid` is the same `contentId` these events carry, so a per-title question can be asked of the CDN's
 log directly, without joining at all.
+
+#### On iOS and tvOS
+
+The join holds on Apple platforms too, from iOS 18 and tvOS 18, and the promise above is not
+Android-only. What differs is where the string comes from and which keys arrive with it; the
+evidence is [`ios-cmcd-finding.md`](ios-cmcd-finding.md), and `SuperPlayerCore`'s
+`CmcdBinding.swift` is the implementation (`#446`), held by `CmcdPlaybackTests` at the loopback
+origin.
+
+- **The SDK sends CMCD itself**, once core sets `AVAssetResourceLoader.sendsCommonMediaClientDataAsHTTPHeaders`
+  on the asset, and its `sid` is the asset's `httpSessionIdentifier` — which core reads and uses as
+  `sessionId`, so the equality is the same equality. One asset is one session, because copies of an
+  asset share the identifier, so core builds a fresh `AVURLAsset` for every `setMediaRequest` and
+  restore — the same content adopted twice is two sessions under two `sid`s. The value is an
+  uppercase UUID string. It is on for every profile, as on Android, and `setCmcdMode(.disabled)`
+  turns it off.
+- **Headers only.** The SDK has no query-parameter mode, so `CmcdMode.queryParameter` is refused at
+  configuration with `CmcdModeUnsupportedError` rather than quietly sent as headers, and a CDN that
+  logs query strings alone sees no CMCD from an iOS device.
+- **Only content with an identity.** An item from `setMediaURL` opens no session, so it is built
+  without CMCD: its `sid` would join to nothing. AVFoundation still sends it an
+  `X-Playback-Session-Id` of its own.
+- **A rung changes the `sid` and not the session** (`#420`). A rung that re-adopts the content — the
+  next source, the item rebuilt after a media services reset, a refreshed credential — builds a new
+  asset, and a new asset has a new `httpSessionIdentifier`, which nothing can set. The telemetry
+  session goes on under the id it opened with, because one viewing rescued is one session, so a
+  CDN's requests after the rung join to no `session_id`. On Android the re-adoption keeps the `sid`.
+- **No `cid`.** A per-title question asked of the CDN's log alone needs the join on iOS.
+- **Below iOS 18 and tvOS 18 no CMCD is sent.** The same string still reaches the CDN on every
+  request as the `X-Playback-Session-Id` header, which AVFoundation documents from iOS 16, so a CDN
+  that logs that header can join an iOS 17 session on `x_playback_session_id = session_id`
+  instead. That rests on the header's documentation: the spike observed the header on a later
+  runtime only.
+- **The keys are the SDK's.** Which CTA-5004 keys arrive, and how each is computed, is AVFoundation's
+  choice rather than this library's; the finding lists the ones observed.
 
 ### The stream is lossy, and it says so
 
@@ -177,7 +216,7 @@ dashboard breaks on a changed *definition*, not on a new field it ignores.
 - a field or an event type is removed
 
 Because the event types are `superplayer-core` public API, every one of these changes also appears as
-a reviewed diff in `superplayer-core/api/superplayer-core.api` (`docs/api-surface.md`). A definition
+a reviewed diff in `android/superplayer-core/api/superplayer-core.api` (`docs/api-surface.md`). A definition
 cannot change quietly.
 
 ### Release notes
@@ -405,6 +444,75 @@ so short objects over a fast link produce samples with a null estimate. That is 
 working, not a gap. `superplayer-abr`'s meter samples every transfer and reports each one, so a player
 built with `AdaptivePolicy` fills the field from its first segment.
 
+**Version 2 stands — `classification` on iOS and tvOS (`#419`).** A player configured with
+`SuperPlayerResilience` now reports `classification`, and `category` is derived from it there as it is
+on Android. **`SCHEMA_VERSION` does not move**: the taxonomy, its stable names and its one-to-one
+category table are the Kotlin ones string for string, so a class means the same thing on both
+platforms and the version-2 note above already says what deriving `category` from it changes. What
+differs is only the evidence the class is read from, which *Video start failure and mid-stream
+failure* states.
+
+**Version 2 stands — the iOS and tvOS derivation (`#409`).** The events table gained its *How
+derived on iOS* column, filled from `SuperPlayerTelemetry`'s `QoeCollector`. **`SCHEMA_VERSION` does
+not move**: every definition in this document binds the Swift collector as written, and the column
+says only which AVFoundation API each one is read from. Three readings are worth knowing before
+putting both platforms in one query, and none of them is a changed definition:
+
+| On iOS | What a pipeline sees | Why the version does not move |
+| --- | --- | --- |
+| `FirstFrameRendered` for audio-only content | An event, where Android reports none for content with no video track | The boundary is the same — presentation beginning — and the event is a population an Android pipeline never had rather than a different measurement of one it had; group by `contentId` or by platform to keep the two apart |
+| `PlaybackStateSampled.throughputEstimateBps` | AVFoundation's `observedBitrate` | The field was always "the engine's estimate, saying whose"; on iOS the engine is AVFoundation |
+| `SeekCompleted.seekLatencyMs` | Resolved to a 500 ms reading of the playhead | The boundary is the same — playback resuming at the target — read as often as iOS lets a collector read it |
+
+**Version 2 stands — FairPlay on iOS and tvOS (`#422`).** `LicenceAcquisitionEnded` is now emitted on
+Apple platforms, from the library's own FairPlay exchange, with the boundaries *Licence acquisition*
+defines; and the vocabulary gained one event, **`OutputObscuredChanged`**, which an iOS or tvOS player
+configured for FairPlay emits when an external display without HDCP obscures the picture and again when
+it stops. **`SCHEMA_VERSION` does not move**: a new event type is an addition of shape, no existing
+field's definition changes, and the event is declared on Android and emitted by nothing there, as
+`SERVED_FROM_OFFLINE_STORE` was before `#210`. Two readings worth knowing before putting both platforms
+in one query:
+
+| On iOS | What a pipeline sees | Why the version does not move |
+| --- | --- | --- |
+| `SessionEnded.securityLevel`, `LicenceAcquisitionEnded.securityLevel` | Null on every session, protected or not | The field was always "the level in force, or null where none was negotiated"; FairPlay negotiates none |
+| `OutputObscuredChanged` | A new event, on protected iOS and tvOS sessions only | A population Android never had, measured by nothing else; a session with `obscured = true` and no later `false` ended with the picture still hidden |
+
+**Version 2 still stands — the offline outcome on iOS (`#423`).** `SuperPlayerDRM`'s offline store
+lets a player be configured with a stored licence, which answers every key itself and reports
+`SERVED_FROM_OFFLINE_STORE`. As with `#210` on Android, that is a value this document already
+declared appearing in a population that had none, so **`SCHEMA_VERSION` does not move**. Its
+`durationMs` reads zero: no round trip is made, and the key session is answered as it asks.
+
+**Version 2 still stands — the display's mode on tvOS (`#426`).** The vocabulary gained one event,
+**`DisplayModeChanged`**, which a tvOS player configured with `SuperPlayerTV`'s output emits: the
+reading as each session's content asks the display for its criteria, then each display mode switch
+beginning and ending, and each change of the viewer's *Match Content* settings. **`SCHEMA_VERSION` does
+not move**: a new event type is shape, no existing field's definition changes, and the event is
+declared on Android and emitted by nothing there, as `OutputObscuredChanged` is.
+
+| On tvOS | What a pipeline sees | Why the version does not move |
+| --- | --- | --- |
+| `DisplayModeChanged` | A new event, on tvOS sessions of a player configured with `TvOutput` only | A population Android never had: Android's display change re-selects and reaches a pipeline as `TrackSwitched`, and no Android API reports a mode switch back. A session's `switchInProgress = true` followed by `false` brackets the time the panel may have been blank, which on a sink whose switches are not seamless is inside `timeToFirstFrameMs` (*Time to first frame*, *On a television*) |
+
+**Version 2 still stands — realtime streams on iOS and tvOS (`#461`).** A `RealtimePlayer` configured
+with a collector now emits the schema's events for a realtime session, from the stream's clock and its
+renderers rather than from an `AVPlayer` ([Realtime sessions](#realtime-sessions) has the table). **`SCHEMA_VERSION` does
+not move**: no event or field was added, and every definition is the one above, read off a
+different engine — which is what `#409`'s note already said of the whole iOS derivation. One reading is
+worth knowing before a query mixes the two player types:
+
+| On a realtime stream on iOS | What a pipeline sees | Why the version does not move |
+| --- | --- | --- |
+| `SessionStarted.profile` and `decision` | `LIVE_LINEAR` and that profile's decision on every session | A `RealtimePlayer` has no profile, so the field carries the one its content is; the decision is consulted by nothing on that path, and was always "the decision in force at the start", which is the profile's own when nothing else decides |
+
+**One consequence of that row is worth stating outright.** Realtime sessions from iOS now sit in the
+`LIVE_LINEAR` population beside live HLS, and no field separates them. A query that wants live HLS
+alone has to separate realtime sessions as [Realtime sessions](#realtime-sessions) already says:
+by joining `contentId` against the app's own catalog. Android's realtime sessions have always carried
+whichever profile the app built the player with, so this was already true of a mixed population;
+what is new is that iOS fixes the value rather than leaving it to the app.
+
 **A sink must tolerate a new event type.** `TelemetryEvent` is sealed, so a `when` over it can be
 exhaustive without an `else` — and such a `when` fails to compile when a later version adds an event.
 An `else` branch is the forward-compatible spelling; take the exhaustive one only if being told about
@@ -414,23 +522,34 @@ additions is what you want.
 
 ## The events
 
-| Event | Fired when | Carries |
-| --- | --- | --- |
-| `SessionStarted` | A player takes content on | `profile`, `decision` |
-| `DecisionChanged` | The policy answered differently on a named trigger | `decision`, `trigger` |
-| `SessionEnded` | Released, recycled, or moved to other content | `droppedEventCount`, `securityLevel` |
-| `FirstFrameRendered` | The first video frame reaches the display | `timeToFirstFrameMs`, `startBoundary` |
-| `RebufferStarted` | Playback stalls for data after it started | `seekInduced` |
-| `RebufferEnded` | Playback resumes from that stall | `durationMs`, `seekInduced` |
-| `StartupFailed` | Playback fails before the first frame | `failure` |
-| `MidStreamFailed` | Playback fails after the first frame | `failure`, `positionMs` |
-| `TrackSwitched` | The video rendition changes | `fromBitrateBps`, `toBitrateBps`, `direction` |
-| `SeekRequested` | A seek is issued | `fromPositionMs`, `toPositionMs` |
-| `SeekCompleted` | Playback resumes at the target | `toPositionMs`, `seekLatencyMs` |
-| `LicenceAcquisitionEnded` | A DRM licence acquisition finishes | `durationMs`, `outcome`, `securityLevel` |
-| `LiveLatencySampled` | Every 10 s, live content only | `liveLatencyMs`, `targetLiveLatencyMs` |
-| `PlaybackStateSampled` | Every 10 s | `samplingIntervalMs`, `videoBitrateBps`, `bufferedDurationMs`, `playing`, `throughputEstimateBps` |
-| `VideoFramesDropped` | Every 10 s, while video renders | `droppedFrames`, `repeatedFrames`, `elapsedPlayingMs` |
+| Event | Fired when | Carries | How derived on iOS |
+| --- | --- | --- | --- |
+| `SessionStarted` | A player takes content on | `profile`, `decision` | Core's adoption edge (`setMediaRequest`, `restoreSnapshot`; `SessionEdges.swift`). `profile` is `Configuration.profile`; `decision` is `player.playbackDecision` as the session opens. An iOS decision carries the halves an iOS player has knobs for — `buffer.maxBufferMs` is `preferredForwardBufferDuration`, its live half an offset rather than a speed range (`PlaybackDecision.swift`) — so it is the same decision in Android's vocabulary and not field for field |
+| `DecisionChanged` | The policy answered differently on a named trigger | `decision`, `trigger` | Core's `DecisionReapplication.swift`, on the same five triggers from `ConditionsBinding.swift`'s readings: `NWPathMonitor`'s path, the item's `duration` and access log, `timeControlStatus`, and `AVPlayer.rate`. **Every player whose `Configuration.policy` is not its profile's static one emits it**, a consumer's own policy included, because every knob a decision reaches is live-settable on the item (ADR-0009 rule 5 met by the platform); on Android only `superplayer-abr`'s policy is re-consulted. A static player emits none |
+| `SessionEnded` | Released, recycled, or moved to other content | `droppedEventCount`, `securityLevel` | Core's edges: a replacement, `setMediaURL`, `release()`. `droppedEventCount` is stamped by `TelemetryDelivery` as the event leaves the queue, as on Android; **`securityLevel` is null on every iOS session**, protected or not, because FairPlay has no security levels to negotiate (`docs/ios-plan.md` §3.6) — the output's protection is `OutputObscuredChanged` instead |
+| `FirstFrameRendered` | The first video frame reaches the display | `timeToFirstFrameMs`, `startBoundary` | The session's first `AVPlayer.timeControlStatus` of `.playing` (key-value observed): presentation beginning. Not `AVPlayerLayer.isReadyForDisplay`, which is the consumer's layer and invisible to a collector. For video that is the clock starting with its first frame due, which can be a display refresh before the frame is on screen, so it can read slightly lower than a layer's reading; **for audio-only content it is the first audio presented, where Android reports no event**. The boundary is `declarePlaybackIntent()` on `CLOCK_MONOTONIC`, else the session's start, as on Android |
+| `RebufferStarted` | Playback stalls for data after it started | `seekInduced` | After the first frame: `timeControlStatus` becoming `.waitingToPlayAtSpecifiedRate` with `reasonForWaitingToPlay` of `.toMinimizeStalls`, or `AVPlayerItemPlaybackStalled` on a player that does not wait to minimise stalls. **iOS 18 and later** also open one on `AVMetricPlayerItemStallEvent`; iOS 17 has the first two alone. `seekInduced` as on Android |
+| `RebufferEnded` | Playback resumes from that stall | `durationMs`, `seekInduced` | `timeControlStatus` becoming `.playing` (resumed) or `.paused` (stopped stalling); a failure or the session's end closes an open one |
+| `StartupFailed` | Playback fails before the first frame | `failure` | `AVPlayerItem.status` of `.failed` (key-value observed) or `AVPlayerItemFailedToPlayToEndTime`, before the first frame, once per session. `code` is the `NSError`'s `domain:code`; `category` comes from `NSURLErrorDomain`, the `AVError.Code`, or the error log's last HTTP status read at the failure — unless the player is configured with `SuperPlayerResilience`, when `classification` is the name `player.classify(_:)` answers and `category` its row (*Video start failure and mid-stream failure*) |
+| `MidStreamFailed` | Playback fails after the first frame | `failure`, `positionMs` | The same, after the first frame; `positionMs` is the item's `currentTime()` |
+| `TrackSwitched` | The video rendition changes | `fromBitrateBps`, `toBitrateBps`, `direction` | Items with an enabled video track only, as on Android: the access log's last `indicatedBitrate` (the variant's `BANDWIDTH`), read at `AVPlayerItemNewAccessLogEntry` and at `.readyToPlay`. **On iOS 18 and later** the initial rendition can arrive first, from the variant of `AVMetricPlayerItemInitialLikelyToKeepUpEvent` |
+| `SeekRequested` | A seek is issued | `fromPositionMs`, `toPositionMs` | `AVPlayerItemTimeJumped` after the first frame. `toPositionMs` is `currentTime()` at the notification, which AVFoundation posts on the main thread with no position, so a main thread busy as the time jumped reads the target plus what played meanwhile (#459); `fromPositionMs` is the collector's last periodic reading (every 500 ms) carried forward at its rate, because the notification carries neither position. It does not say who moved the time, so a jump AVFoundation makes itself, back inside a live window, is counted too |
+| `SeekCompleted` | Playback resumes at the target | `toPositionMs`, `seekLatencyMs` | The first periodic reading past the target while `timeControlStatus` is `.playing`, so the latency is resolved to that 500 ms reading; a seek made while paused completes on `isPlaybackLikelyToKeepUp`, at once if it landed in what is buffered |
+| `LicenceAcquisitionEnded` | A DRM licence acquisition finishes | `durationMs`, `outcome`, `securityLevel` | Core signals it from `SuperPlayerDRM`'s FairPlay exchange (`#422`), since the key session's delegate is the library's and no AVFoundation interface reports a licence: opened as the `AVContentKeySession` hands over a key request for content that holds no key yet, closed as the licence is handed back (`ACQUIRED_FROM_SERVER`) or refused with the budget spent (`REFUSED`). A rotation to a later key and a renewal emit nothing, as on Android. `securityLevel` is null: FairPlay has none. `SERVED_FROM_OFFLINE_STORE` (`#423`) closes as a key is answered from the stored licence a player was configured with, with no request made; a stored licence refused as expired, or the offline store's own acquisitions and renewals, emit nothing, as `OfflineLicenseHelper`'s do on Android |
+| `LiveLatencySampled` | Every 10 s, live content only | `liveLatencyMs`, `targetLiveLatencyMs` | On the sampling timer, for an item whose `duration` is indefinite: the end of the last `seekableTimeRanges` entry less `currentTime()` — AVFoundation's own live edge, where Android reads the program clock. The target is `configuredTimeOffsetFromLive` where the profile set one, else `recommendedTimeOffsetFromLive` |
+| `PlaybackStateSampled` | Every 10 s | `samplingIntervalMs`, `videoBitrateBps`, `bufferedDurationMs`, `playing`, `throughputEstimateBps` | On the sampling timer. `bufferedDurationMs` from the `loadedTimeRanges` entry holding `currentTime()`; `playing` is `timeControlStatus` of `.playing`; `throughputEstimateBps` is the access log's last `observedBitrate` — **Apple's own figure**, smoothed over everything the item downloaded and not a sample, where Android's is Media3's meter |
+| `OutputObscuredChanged` | The picture began or stopped being obscured for want of output protection | `obscured` | Key-value observation of `AVPlayer.isOutputObscuredDueToInsufficientExternalProtection` — HDCP on an external display — on a player configured with `drm` alone, and read once as each session opens. **Reported and never acted on**: what an output may show is the licence's policy, which the platform enforces ([ADR-0012][adr12] rule 11). **Android emits none**: it has no such reading, and an output that cannot be secured fails as `Device.SecureDecoderInit` there |
+| `DisplayModeChanged` | A television's display mode reading: as content asks for its criteria, then a mode switch beginning or ending, or the viewer's settings changing | `switchInProgress`, `criteriaMatchingEnabled` | `AVDisplayManager`'s `isDisplayModeSwitchInProgress` and `isDisplayCriteriaMatchingEnabled`, read by `SuperPlayerTV`'s output binding as it asks the key window's display for the item's `preferredDisplayCriteria` and at `AVDisplayManagerModeSwitchStart`, `…End` and `…SettingsChanged`, on tvOS on a player configured with `TvOutput` alone (`#426`); a reading the session already reported is not reported again. **Reported and never acted on**: the system re-selects for a display change on Apple platforms. **Android emits none**: core's display watch re-selects there, through SuperPlayer's own selection gate, and a pipeline sees `TrackSwitched` ([ADR-0014][adr14] rule 5) |
+| `VideoFramesDropped` | Every 10 s, while video renders | `droppedFrames`, `repeatedFrames`, `elapsedPlayingMs` | On the sampling timer, video items only: the change since the last sample in the access log's summed `numberOfDroppedVideoFrames` and `durationWatched`. `repeatedFrames` is 0, unobservable as on Android |
+
+The *How derived on iOS* column says which AVFoundation API each event comes from on iOS and
+tvOS (`SuperPlayerTelemetry`'s `QoeCollector`, `#409`), and where iOS 17 and 18 derive one
+differently. It is a `SuperPlayer`'s derivation; a `RealtimePlayer`'s is
+[Realtime sessions](#realtime-sessions)' own table (`#461`). It describes a derivation and changes no meaning: the definitions below bind both
+platforms, which is why the schema version did not move when it was written. The first three
+columns bind both platforms, and a test on each holds its event types to them in both directions — `superplayer-core`'s types on Android and `TelemetrySchemaDocumentTests`
+in the Swift package — so an event or a field named here and missing from either, or carried by
+either and missing here, fails a build.
 
 **The sampling interval is 10 seconds**, and the three periodic events share it. It is stated here
 because a time-weighted quantity cannot be computed from samples whose cadence a consumer has to
@@ -471,7 +590,23 @@ Which players emit it is a property of how they were built, and it is stated rat
 discovered: a player whose engine can honour a changed decision whole — one built with
 `superplayer-abr`'s policy — is consulted again on the triggers; every other player, whatever policy
 it was given, is consulted once at construction and emits no `DecisionChanged` at all
-(ADR-0009 rule 5). A session with none is therefore not evidence that conditions were stable.
+(ADR-0009 rule 5). A session with none is therefore not evidence that conditions were stable. On
+iOS and tvOS the line falls elsewhere, for the platform's reason rather than a different rule: every
+knob a decision reaches is live-settable on the playing item, so every player except one under its
+profile's static policy is consulted again, a consumer's own policy included (`DecisionChanged`'s
+*How derived on iOS* cell).
+
+**The throughput a decision was made on is a different input on iOS**, and a `THROUGHPUT_CHANGED`
+row reads accordingly. Android's estimate is `superplayer-abr`'s `BandwidthOracle` over sampled
+transfers, each timed by the engine, with a read a cache answered excluded from it. AVFoundation
+reports no transfer to an app, so on iOS every sample is **one access-log entry's
+`observedBitrate`** — Apple's own measure of what was fetched while that entry was current, which
+spans a variant, a seek or a stall rather than one segment — and the cache-hit exclusion has nothing
+to exclude. `SuperPlayerABR`'s `AdaptivePolicy` keeps those samples per transport for the process,
+with Android's cold defaults and aging (ADR-0009 rules 8 and 9); any other iOS policy is handed the
+playing item's own entries alone. Either way the trigger's threshold — a fifth of the last estimate
+announced — is Android's, and nothing in this schema's fields changed for it: `SCHEMA_VERSION` stays
+2.
 
 **A display change is not a decision change.** On a player built with `superplayer-tv`, an HDMI hotplug
 re-selects renditions under the new display without consulting the policy, so it appears as
@@ -537,7 +672,9 @@ rate* to *Always*, a switch that is not seamless blanks the panel while the HDMI
 and the first frame waits for it. That wait is **inside** `timeToFirstFrameMs`, and on some sinks it is
 seconds rather than milliseconds. The meaning does not change, because the viewer waited for it, so
 the schema version does not move. A report comparing a television arm with a phone arm will still show
-the difference, and should say which device each ran on.
+the difference, and should say which device each ran on. On tvOS the same wait is bracketed by
+`DisplayModeChanged`'s `switchInProgress` going `true` and then `false`, so a pipeline can say how much
+of a session's start-up the display took.
 
 *Agreement with CMCD:* CMCD v2's `msd` (media start delay) uses the same boundary — the viewer's
 request to the first frame — so the two routes report the same number rather than two numbers with
@@ -595,6 +732,18 @@ full disk under a bucket whose definition it contradicts; a new leaf that fits a
 takes it, as every leaf since version 2 has. Where a classification is present the bucket is derived from it rather than from the
 error-code band, which is the change of meaning behind schema version 2 — see *Release notes* above
 for the failures where the two disagree.
+
+**On iOS and tvOS the classification is read from AVFoundation's evidence (`#419`).** The collector
+asks `player.classify(_:)` with the item's error, as the Kotlin collector asks `player.classify(error)`,
+and keeps no table of its own. The classifier (`SuperPlayerResilience`'s `ErrorClassifier`) reads three
+things: the error's own chain — the `NSURLErrorDomain`, `AVFoundationErrorDomain`, `CoreMediaErrorDomain`
+and POSIX codes, cause first; the HTTP status, which AVFoundation reports as a `CoreMediaErrorDomain`
+code per status (`-12938` for a 404); and the error log's last entry, which is the only place
+AVFoundation says *which* request failed, and so what tells a refused segment
+(`Transient.CdnEdge`) from a refused playlist (`Transient.Network`) where Android reads a `LoadKind`
+stamp. A player configured without resilience reports `classification` null and buckets `category` from
+the error's domain and code and the log's status, exactly as before `#419`. `code` is the `NSError`'s
+`domain:code` either way — the engine's word, kept apart from the class as on Android.
 
 The rates are computed by the pipeline, per the standard's shape: start failures over sessions that
 attempted playback; mid-stream failures over sessions that started playing.
@@ -755,6 +904,15 @@ negotiated no level, and it is per-acquisition rather than per-session because
 [ADR-0012][adr12] rule 11's ladder settles a level after a refusal: a session's first acquisition and
 its second need not have run at the same one.
 
+**On iOS and tvOS** the span is the library's own FairPlay exchange (`#422`) rather than an engine's
+callbacks: it opens as the `AVContentKeySession` hands over a key request for content that holds no key
+yet, and closes as the licence is handed back or the exchange gives up. It includes the certificate
+fetch where this request was the one that fetched it, the composing of the key request, the
+`RetryPolicy.licence` retries with their jittered waits, and the one credential repair — the same
+contents as the Android span. "Content" moves with each asset the player plays, so a rung's re-adoption,
+which asks for its keys again, is a second acquisition. Each later key the session asks for, and each
+renewal, is a rotation and emits nothing.
+
 **Redaction.** Nothing about the licence itself is in this event: no licence URI, no key id, no key
 request or response, no device identifier. That is not a property of this event alone — the trace
 recorder's rule 6 already renders a licence load as `load … drm` and nothing more — but it is the
@@ -896,9 +1054,11 @@ against the app's own catalog, exactly as it would to separate live from on-dema
 added to make this easier, because adding one would be a change to the schema for a fact the app
 already holds.
 
-**What is unchanged.** Rebuffering, time to first frame, startup and mid-stream failure, seeks,
-dropped frames, session start and end — all of it. These are derived from playback state and from
-the decoder, and a realtime stream reaches both exactly as an HLS or DASH one does.
+**What is unchanged.** Rebuffering, time to first frame, startup and mid-stream failure, dropped
+frames, session start and end — all of it. These are derived from playback state and from the
+decoder, and a realtime stream reaches both exactly as an HLS or DASH one does. Seeks are absent
+rather than changed: a realtime stream refuses a start position anywhere but its edge and is never
+sought ([ADR-0018][adr18] rule 5), so `SeekRequested` and `SeekCompleted` have nothing to report.
 
 **What is empty, and why.** A realtime transport hands over encoded frames rather than loading
 objects, so nothing on this path crosses the layer every bandwidth number in this schema is measured
@@ -931,6 +1091,32 @@ the connection's own packet-loss counters, which MoQ *does* export, are not this
 QUIC endpoint retransmits what it detects as lost ([RFC 9000][rfc9000] §13), so those count packets
 the transport recovered from rather than media a viewer missed. They are `superplayer-moq`'s own
 `MoqSessionStatistics.transportPacketsLost` and are deliberately **not** in this schema.
+
+**On iOS and tvOS** a realtime stream plays on a second player type, `RealtimePlayer`, and the same
+`QoeCollector` measures it when handed to that player's own `telemetry` factory (#461). There is no
+`AVPlayer` to observe, so each event comes from the stream's clock and its renderers instead, and the
+table says from what. Nothing here changes a definition, and `schemaVersion` is still **2**.
+
+| Event | How derived on a realtime stream on iOS |
+| --- | --- |
+| `SessionStarted` | As the player subscribes to a stream. `profile` is **`LIVE_LINEAR`** and `decision` is that profile's own for a live stream, because a `RealtimePlayer` is configured with no profile and consults no decision: nothing on its path buffers or selects. Read both as a label. The `sessionId` is minted by the player, because no CDN is sent one to follow |
+| `FirstFrameRendered` | The synchronizer's clock starting at the stream's first frame, which is when presentation began, for audio as for video |
+| `RebufferStarted` / `RebufferEnded` | A renderer **run dry** under a running clock: the clock more than 100 ms past the last sample a declared track that has delivered holds, plus that sample's own duration. Read every 100 ms while the clock runs, so a stall is reported between one and two readings after the renderer ran dry, and `durationMs` is short by that much; a gap shorter than the margin shows as dropped frames instead. Ended by the frame that feeds it. Never `seekInduced`, since nothing seeks |
+| `StartupFailed` / `MidStreamFailed` | The stream's own failure — the transport's error or a refusal of what it delivered — split at the first frame. `classification` is always `null`, because nothing classifies a realtime failure, and `category` is bucketed off the error alone |
+| `PlaybackStateSampled` | Every ten seconds. `bufferedDurationMs` is what the renderers hold past the clock, the least across tracks; the two bitrate fields are `null`, as above |
+| `VideoFramesDropped` | The video renderer's own dropped-frame count (`AVSampleBufferVideoRenderer`'s performance metrics), over the time the stream spent playing. **iOS and tvOS 17.4 and later only**: earlier versions report no metrics, and those sessions report no dropped frames rather than zero |
+| `SessionEnded` | As the stream is replaced or the player released |
+
+What a realtime session on iOS does **not** emit, and why:
+
+| Event | Why not |
+| --- | --- |
+| `TrackSwitched` | No declared bitrate to switch between, as above |
+| `SeekRequested`, `SeekCompleted` | Nothing seeks a realtime stream, as above |
+| `LiveLatencySampled` | A realtime transport stamps frames on an epoch of its own, which says nothing about the wall clock, so there is no live edge to measure from |
+| `DecisionChanged` | No policy is consulted on this path, so no decision changes |
+| `LicenceAcquisitionEnded`, `OutputObscuredChanged` | A `RealtimePlayer` plays no protected content |
+| `DisplayModeChanged` | A `RealtimePlayer` takes no `TvOutput` |
 
 **MoQ's own session statistics are not telemetry.** `MoqFrameSource.statistics()` answers a polled
 snapshot of the session — round trip time, the connection's send and receive rate estimates, byte and
@@ -988,6 +1174,27 @@ was built with, which is substitutable, while time to first frame is measured fr
 `declarePlaybackIntent`, which is not. Subtracting one from the other would make the headline metric
 a difference between two clocks: correct whenever they happen to agree, and silently wrong when they
 do not.
+
+### On iOS and tvOS
+
+The same rule, in AVFoundation's terms. Every metric comes from the SDK reporting what happened —
+key-value observation of `AVPlayer` and `AVPlayerItem`, their notifications, the access and error
+logs, and on iOS 18 and later the `AVMetrics` event streams — and the column above names each one.
+The three periodic events ride the same 10-second timer, and the one other clock is a periodic time
+observer every 500 ms of playback, which places a seek: `AVPlayerItemTimeJumped` says that the
+time moved and neither where from nor whether playback has resumed.
+
+**The access log's own aggregates are not used, for `PlaybackStatsListener`'s reason.**
+`AVPlayerItemAccessLogEvent` carries `numberOfStalls` and `startupTime` per entry, and iOS 18's
+`AVMetricPlayerItemPlaybackSummaryEvent` carries a stall count, time spent recovering and a
+time-weighted bitrate. Their boundaries are AVFoundation's — when a stall begins, what start-up is
+measured from — and not CTA-2066's, and renaming them would be the shortcut the Android collector
+declines. Two log fields are used as they are, because their definitions agree:
+`numberOfDroppedVideoFrames` over `durationWatched`, and `observedBitrate` as an estimate that says
+whose it is.
+
+**One clock**: `CLOCK_MONOTONIC`, which `declarePlaybackIntent()` and every reading the collector
+takes are on, never a `CMTime` from AVFoundation's own clock — for the reason above.
 
 [adr6]: adr/0006-own-the-platform-rules-and-hand-back-the-state.md
 [adr18]: adr/0018-push-encoded-frames-through-one-framesource-into-media3s-own-sample-queues.md

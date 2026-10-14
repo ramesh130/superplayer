@@ -1,0 +1,418 @@
+/*
+ * Copyright 2026 The SuperPlayer Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.superplayer.moq
+
+import com.superplayer.core.RealtimeTrack
+import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import uniffi.moq.MoqContainer
+import uniffi.moq.MoqDimensions
+import java.io.IOException
+
+/**
+ * A MoQ catalog becomes the tracks the Phase 13 seam accepts.
+ *
+ * This is where Phase 14's "**both codec-description shapes are covered by a test**" criterion
+ * (`PRD.md` Part 4) is discharged, and it can be discharged honestly because the subject is a pure
+ * mapping: no QUIC, no session and no frames, so nothing here is skipped on a host without the
+ * native library the way `MoqFfiLinkageTest` is. A `MoqCatalog` is a plain record on the Kotlin
+ * side of the FFI, constructed here and read here.
+ *
+ * `DeclaredCatalogs` says which fields were observed against a real MoQ pipeline and which were
+ * written for these tests, which is the criterion "every fixture states whether it was observed or
+ * synthesized".
+ *
+ * **What the refusals here deliberately do not do.** A codec string nothing maps and a record that
+ * contradicts its own fourcc are both refused by `RealtimeMediaPeriod.onTracks`, which calls
+ * `RealtimeFormats` and `CodecConfigurationRecords` — both `internal` to `superplayer-realtime`,
+ * which this module is not a friend of (ADR-0018 rule 11), so neither the refusal nor the table
+ * behind it is reachable from here to assert. That is the seam working rather than a gap: what is
+ * asserted below is the half this module owns, which is that such a track reaches the seam at all
+ * instead of being quietly dropped. `RealtimePlaybackTest` owns the other half.
+ */
+class MoqCatalogTracksTest {
+
+    /**
+     * The out-of-band shape, on #340's observed `avc1` string and `avcC` bytes: a
+     * `CodecConfiguration.Record` whose bytes are the catalog's, unmodified.
+     *
+     * `assertSame` on the array is the strong form of "exactly as received" (obligation 7): not
+     * merely equal content but the same array, so no copy, reorder or unwrap can have happened on
+     * the way.
+     */
+    @Test
+    fun anAvc1RenditionCarriesItsRecordToTheSeamExactlyAsReceived() {
+        val description = DeclaredCatalogs.OBSERVED_AVCC_PREFIX
+        val catalog = DeclaredCatalogs.videoOnly(
+            codec = DeclaredCatalogs.OBSERVED_AVC1_CODEC,
+            description = description,
+        )
+
+        val tracks = MoqCatalogTracks.declaredTracksOf(catalog)
+
+        assertEquals("one declared track", 1, tracks.size)
+        assertEquals(
+            "the codec string, verbatim",
+            DeclaredCatalogs.OBSERVED_AVC1_CODEC,
+            tracks.single().track.codec,
+        )
+        val configuration = tracks.single().track.codecConfiguration
+        assertTrue(
+            "an out-of-band record, not $configuration",
+            configuration is RealtimeTrack.CodecConfiguration.Record,
+        )
+        assertSame(
+            "the record the catalog declared, not a copy of it",
+            description,
+            (configuration as RealtimeTrack.CodecConfiguration.Record).bytes,
+        )
+        assertArrayEquals(
+            "the observed avcC prefix, unmodified",
+            DeclaredCatalogs.OBSERVED_AVCC_PREFIX,
+            configuration.bytes,
+        )
+    }
+
+    /**
+     * The in-band shape, on #340's observed `avc3` string and its observed *absence* of a
+     * `description`: `CodecConfiguration.InBand` and no record.
+     *
+     * Asserted rather than assumed, which the acceptance criterion asks for in those words: the
+     * seam defaults to `InBand`, so a mapping that read the description field wrongly — or never
+     * read it — would produce the same answer here by accident. The `avc1` test above is what
+     * turns this one into evidence, because between them only a mapping that actually branches on
+     * the field passes both.
+     */
+    @Test
+    fun anAvc3RenditionCarriesNoRecordAtAll() {
+        val catalog = DeclaredCatalogs.videoOnly(
+            codec = DeclaredCatalogs.OBSERVED_AVC3_CODEC,
+            description = null,
+        )
+
+        val tracks = MoqCatalogTracks.declaredTracksOf(catalog)
+
+        assertEquals(
+            "the codec string, verbatim",
+            DeclaredCatalogs.OBSERVED_AVC3_CODEC,
+            tracks.single().track.codec,
+        )
+        assertSame(
+            "parameter sets in band, so no record",
+            RealtimeTrack.CodecConfiguration.InBand,
+            tracks.single().track.codecConfiguration,
+        )
+    }
+
+    /**
+     * The record shape again for a codec that is not H.264, on a **synthesized** `hvcC`.
+     *
+     * It is here because this module's rule is that the shape follows what arrived and not what a
+     * fourcc table here says — there is no such table — so a second codec carrying a record is the
+     * control that the `avc1` case above was not an `avc1` special case.
+     */
+    @Test
+    fun anHvc1RenditionCarriesItsRecordTheSameWay() {
+        val catalog = DeclaredCatalogs.videoOnly(
+            codec = DeclaredCatalogs.SYNTHESIZED_HVC1_CODEC,
+            description = DeclaredCatalogs.SYNTHESIZED_HVCC,
+        )
+
+        val configuration = MoqCatalogTracks.declaredTracksOf(catalog).single().track.codecConfiguration
+
+        assertArrayEquals(
+            "the synthesized hvcC, unmodified",
+            DeclaredCatalogs.SYNTHESIZED_HVCC,
+            (configuration as RealtimeTrack.CodecConfiguration.Record).bytes,
+        )
+    }
+
+    /**
+     * A catalog listing audio beside video maps to both, in one list, video first.
+     *
+     * The order is the promise `EncodedFrame.trackIndex` rests on and the one #366's frame pump
+     * will rely on, so it is asserted as an order rather than as a set.
+     */
+    @Test
+    fun audioBesideVideoMapsToOneListWithVideoFirst() {
+        val catalog = DeclaredCatalogs.catalog(
+            video = mapOf(
+                "video" to DeclaredCatalogs.video(
+                    codec = DeclaredCatalogs.OBSERVED_AVC1_CODEC,
+                    description = DeclaredCatalogs.OBSERVED_AVCC_PREFIX,
+                ),
+            ),
+            audio = mapOf(
+                "audio" to DeclaredCatalogs.audio(codec = DeclaredCatalogs.SYNTHESIZED_AAC_CODEC, description = null),
+            ),
+        )
+
+        val tracks = MoqCatalogTracks.declaredTracksOf(catalog)
+
+        assertEquals(
+            "video at index 0 and audio at index 1",
+            listOf(DeclaredCatalogs.OBSERVED_AVC1_CODEC, DeclaredCatalogs.SYNTHESIZED_AAC_CODEC),
+            tracks.map { it.track.codec },
+        )
+        assertEquals("the catalog's own track names", listOf("video", "audio"), tracks.map { it.trackName })
+    }
+
+    /**
+     * Audio alone is one element at index 0, not an audio track at index 1 with a hole before it.
+     *
+     * A legitimate MoQ configuration (#346 widened the seam for it), and the control that "video
+     * first" is an ordering of what is there rather than a fixed pair of slots.
+     */
+    @Test
+    fun audioAloneIsTheOnlyTrackAndIsIndexedFirst() {
+        val catalog = DeclaredCatalogs.audioOnly(codec = DeclaredCatalogs.SYNTHESIZED_OPUS_CODEC, description = null)
+
+        val tracks = MoqCatalogTracks.declaredTracksOf(catalog)
+
+        assertEquals("one declared track", 1, tracks.size)
+        assertEquals(DeclaredCatalogs.SYNTHESIZED_OPUS_CODEC, tracks.single().track.codec)
+    }
+
+    /**
+     * A codec string nothing maps survives into the list, verbatim.
+     *
+     * This is the criterion "refused **by name** rather than dropped from the list", and the point
+     * of it is where the refusal happens: `RealtimeMediaPeriod.onTracks` refuses the whole
+     * subscription with `UnsupportedRealtimeCodecException` naming the string, and one track
+     * dropped here instead would have a partially understood catalog play as a silently narrower
+     * stream. VP8 is the fixture because it is a codec a publisher plausibly sends and the seam's
+     * table plausibly does not carry, rather than a string invented to fail.
+     */
+    @Test
+    fun aCodecStringNothingMapsSurvivesIntoTheListVerbatim() {
+        val catalog = DeclaredCatalogs.catalog(
+            video = mapOf("video" to DeclaredCatalogs.video(codec = DeclaredCatalogs.SYNTHESIZED_UNMAPPED_CODEC, description = null)),
+            audio = mapOf("audio" to DeclaredCatalogs.audio(codec = DeclaredCatalogs.SYNTHESIZED_AAC_CODEC, description = null)),
+        )
+
+        val tracks = MoqCatalogTracks.declaredTracksOf(catalog)
+
+        assertEquals(
+            "the unmappable track is still declared, beside the one that maps",
+            listOf(DeclaredCatalogs.SYNTHESIZED_UNMAPPED_CODEC, DeclaredCatalogs.SYNTHESIZED_AAC_CODEC),
+            tracks.map { it.track.codec },
+        )
+    }
+
+    /**
+     * A catalog declaring neither kind is refused, rather than answered with an empty list.
+     *
+     * The control on every test above: a mapping that returned an empty list for a catalog it did
+     * not understand would pass all of them and leave a player buffering for ever on a subscription
+     * with nothing in it.
+     */
+    @Test
+    fun aCatalogDeclaringNeitherKindIsRefused() {
+        val refusal = assertThrows(IOException::class.java) {
+            MoqCatalogTracks.declaredTracksOf(DeclaredCatalogs.catalog())
+        }
+
+        assertTrue(
+            "a message naming what was empty, was: ${refusal.message}",
+            refusal.message.orEmpty().contains("no video track and no audio track"),
+        )
+    }
+
+    /**
+     * A ladder is subscribed to one rendition per kind, and the one taken is the rendition whose
+     * **track name sorts first** — never the catalog's declaration order, and never a judgement of
+     * this module's.
+     *
+     * Declaration order is not asserted because it does not survive the FFI: `MoqCatalogTracks`'
+     * `// ref:` reads `convert_catalog` collecting each kind into a Rust `HashMap`, whose iteration
+     * order is seeded per process (#484). So each map here is built in an order that **differs**
+     * from name order — `b-high` declared before `a-low` — and an implementation still reading
+     * "first entry" takes the wrong one and fails, in both kinds.
+     *
+     * The control is that nothing prefers. ADR-0018 rule 7 defers selection and a phase adding it
+     * amends that record, so the rendition that sorts first is made the *worse* one on every axis
+     * a selector would read — a lower bitrate, a smaller picture, and for video the `stalled` flag a
+     * publisher raises precisely so that a selecting player moves off it. A mapping that had grown
+     * any preference would take `b-high` and fail here rather than quietly become a selector.
+     */
+    @Test
+    fun aLadderIsTakenAtTheRenditionWhoseNameSortsFirstAndNothingPrefers() {
+        val catalog = DeclaredCatalogs.catalog(
+            video = linkedMapOf(
+                "b-high" to DeclaredCatalogs.video(
+                    codec = DeclaredCatalogs.OBSERVED_AVC1_CODEC,
+                    description = DeclaredCatalogs.OBSERVED_AVCC_PREFIX,
+                    coded = MoqDimensions(width = 1920u, height = 1080u),
+                    bitrate = 6_000_000uL,
+                ),
+                "a-low" to DeclaredCatalogs.video(
+                    codec = DeclaredCatalogs.OBSERVED_AVC3_CODEC,
+                    description = null,
+                    stalled = true,
+                    coded = MoqDimensions(width = 640u, height = 360u),
+                    bitrate = 500_000uL,
+                ),
+            ),
+            audio = linkedMapOf(
+                "b-high" to DeclaredCatalogs.audio(
+                    codec = DeclaredCatalogs.SYNTHESIZED_OPUS_CODEC,
+                    description = null,
+                    bitrate = 256_000uL,
+                ),
+                "a-low" to DeclaredCatalogs.audio(
+                    codec = DeclaredCatalogs.SYNTHESIZED_AAC_CODEC,
+                    description = null,
+                    bitrate = 64_000uL,
+                ),
+            ),
+        )
+        // The precondition, so that the fixture cannot drift into a map where the two orders agree.
+        assertEquals("video declared out of name order", listOf("b-high", "a-low"), catalog.video.keys.toList())
+        assertEquals("audio declared out of name order", listOf("b-high", "a-low"), catalog.audio.keys.toList())
+
+        val tracks = MoqCatalogTracks.declaredTracksOf(catalog)
+
+        assertEquals("one rendition per media kind", 2, tracks.size)
+        assertEquals("the video rendition whose name sorts first", "a-low", tracks[0].trackName)
+        assertEquals("a-low's own codec", DeclaredCatalogs.OBSERVED_AVC3_CODEC, tracks[0].track.codec)
+        assertEquals("the audio rendition whose name sorts first", "a-low", tracks[1].trackName)
+        assertEquals("a-low's own codec", DeclaredCatalogs.SYNTHESIZED_AAC_CODEC, tracks[1].track.codec)
+    }
+
+    /**
+     * The track name and the container reach the subscription, which is what #366 opens one with.
+     *
+     * The container is carried and is deliberately *not* read for anything else: the bindings strip
+     * container framing below the FFI boundary, so it must not enter a decoding decision (#340's
+     * second correction, ADR-0018 rule 3). Carrying it beside the seam's own track rather than
+     * inside it is what keeps it out of one.
+     */
+    @Test
+    fun theTrackNameAndContainerAreCarriedForTheSubscription() {
+        val catalog = DeclaredCatalogs.videoOnly(
+            trackName = "video/1",
+            codec = DeclaredCatalogs.OBSERVED_AVC3_CODEC,
+            description = null,
+            container = MoqContainer.Legacy,
+        )
+
+        val declared = MoqCatalogTracks.declaredTracksOf(catalog).single()
+
+        assertEquals("the catalog's own key, which subscribeMedia takes", "video/1", declared.trackName)
+        assertSame("the container the publisher declared", MoqContainer.Legacy, declared.container)
+    }
+
+    /**
+     * The coded size crosses the seam, because a decoder cannot be configured without it.
+     *
+     * This is the assertion #353 was missing, and its absence was not a gap in coverage but a
+     * defect that no unit test could have caught on its own: the mapping compiled, the conformance
+     * suite passed, frames arrived, and playback then died at the first keyframe with
+     * `MediaCodec.configure` refusing a format sized `-1 x -1` and an error naming the decoder
+     * rather than the omission. It took a live broadcast to see it, so what is pinned here is the
+     * fact that made it possible to fix once.
+     */
+    @Test
+    fun theCodedSizeIsCarriedSoADecoderCanBeConfigured() {
+        val catalog = DeclaredCatalogs.videoOnly(
+            trackName = "video/1",
+            codec = DeclaredCatalogs.OBSERVED_AVC3_CODEC,
+            description = null,
+            coded = uniffi.moq.MoqDimensions(width = 3520u, height = 3520u),
+        )
+
+        val track = MoqCatalogTracks.declaredTracksOf(catalog).single().track
+
+        // The observed broadcast's own square size, which is what a fisheye publisher sends and a
+        // reminder that a rendition is not obliged to be 16:9.
+        assertEquals("the size the publisher declared", RealtimeTrack.CodedSize(3520, 3520), track.codedSize)
+    }
+
+    /**
+     * A publisher that declared no size says nothing, rather than saying zero.
+     *
+     * `DIMENSION_UNKNOWN` and not `0`, because the two reach a decoder differently: an unset pair
+     * is what `Format` already carries and lets an in-band stream configure from its own parameter
+     * sets where the device tolerates it, while a zero is a positive claim that the picture has no
+     * area and is refused everywhere. The seam has a value for "not stated" for this reason.
+     */
+    @Test
+    fun aRenditionDeclaringNoSizeCarriesTheUnknownRatherThanAZero() {
+        val catalog = DeclaredCatalogs.videoOnly(
+            trackName = "video/1",
+            codec = DeclaredCatalogs.OBSERVED_AVC3_CODEC,
+            description = null,
+            coded = null,
+        )
+
+        val track = MoqCatalogTracks.declaredTracksOf(catalog).single().track
+
+        assertNull("a publisher that declared no size says nothing", track.codedSize)
+    }
+
+    /**
+     * A dimension a decoder cannot use is refused with the track named, rather than narrowed.
+     *
+     * The bindings carry these unsigned, so a declaration past `Int.MAX_VALUE` would wrap to a
+     * negative if it were simply converted — and a publisher may declare a plain zero. Both would
+     * otherwise reach `MediaCodec.configure` as a claim about the picture and fail there, naming
+     * the device's decoder rather than the catalog that was wrong. This is #345's "refused rather
+     * than read past" applied to a number.
+     */
+    @Test
+    fun aDimensionNoDecoderCouldUseIsRefusedWithTheTrackNamed() {
+        listOf(
+            "a zero" to uniffi.moq.MoqDimensions(width = 0u, height = 720u),
+            "a height of zero" to uniffi.moq.MoqDimensions(width = 1280u, height = 0u),
+            "a width past Int.MAX_VALUE" to uniffi.moq.MoqDimensions(width = 4_294_967_295u, height = 720u),
+        ).forEach { (what, dimensions) ->
+            val catalog = DeclaredCatalogs.videoOnly(
+                trackName = "video/1",
+                codec = DeclaredCatalogs.OBSERVED_AVC3_CODEC,
+                description = null,
+                coded = dimensions,
+            )
+
+            val refusal = assertThrows(what, IOException::class.java) {
+                MoqCatalogTracks.declaredTracksOf(catalog)
+            }
+            assertTrue(
+                "$what names the track it was declared on: ${refusal.message}",
+                refusal.message.orEmpty().contains("video/1"),
+            )
+        }
+    }
+
+    /** An audio track carries no size, which is the honest answer rather than a defaulted one. */
+    @Test
+    fun anAudioTrackCarriesNoCodedSize() {
+        val catalog = DeclaredCatalogs.audioOnly(
+            trackName = "audio",
+            codec = DeclaredCatalogs.SYNTHESIZED_AAC_CODEC,
+            description = null,
+        )
+
+        val track = MoqCatalogTracks.declaredTracksOf(catalog).single().track
+
+        assertNull("audio has no picture to measure", track.codedSize)
+    }
+}

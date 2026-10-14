@@ -1,0 +1,336 @@
+#!/usr/bin/env bash
+# Copyright 2026 The SuperPlayer Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# ios/check: the whole definition of passing for the iOS half, as `(cd android && ./gradlew check)` is for Android.
+#
+#   ios/check                 format, simulator tests (ios/MoQ's too), tvOS build, demo build, API baselines
+#   ios/check --update-api    the same, rewriting ios/api/<Product>.baseline instead of diffing it
+#   ios/check --update-golden the same, rewriting ios/Tests/Fixtures/golden/*.trace instead of
+#                             comparing them; the only writer of the iOS golden traces
+#
+#   SP_SIMULATOR      the simulator to test on, by name (default superplayer-check); made if absent
+#   SP_TV_SIMULATOR   the tvOS simulator SuperPlayerTVTests runs on (default <SP_SIMULATOR>-tv)
+#   SP_REQUIRE_TVOS   1 to fail, rather than skip the tvOS test run, where no tvOS runtime is installed
+#   SP_DERIVED_DATA   xcodebuild's DerivedData (default .build/DerivedData, gitignored)
+#
+# The macOS CI job runs exactly this, so a contributor sees what CI sees. A script rather than a
+# Gradle task, as ADR-0021 decides; ios/CLAUDE.md is the orientation.
+set -euo pipefail
+
+usage() {
+    sed -n '5,15p' "$0" | sed 's/^# \{0,1\}//' >&2
+}
+
+update_api=false
+update_golden=false
+case "${1:-}" in
+    "") ;;
+    --update-api) update_api=true ;;
+    --update-golden) update_golden=true ;;
+    -h | --help) usage; exit 0 ;;
+    *) usage; exit 2 ;;
+esac
+
+root="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$root"
+
+simulator="${SP_SIMULATOR:-superplayer-check}"
+derived_data="${SP_DERIVED_DATA:-$root/.build/DerivedData}"
+# Absolute, because the ios/MoQ step runs from that directory.
+case "$derived_data" in /*) ;; *) derived_data="$root/$derived_data" ;; esac
+results="$root/.build/ios-check"
+# SwiftPM's scheme over every product and test target of a multi-product package.
+scheme=SuperPlayer-Package
+# The deployment floor, read off Package.swift's `.iOS(.vN)` rather than restated: the API is read
+# as an adopter at the floor compiles against it.
+ios_floor="$(sed -n 's/.*\.iOS(\.v\([0-9]*\)).*/\1/p' Package.swift | head -n 1).0"
+step() { printf '\n== %s\n' "$*"; }
+fail() {
+    printf 'ios/check: %s\n' "$*" >&2
+    exit 1
+}
+
+products=()
+while IFS= read -r product; do products+=("$product"); done < <(
+    sed -n 's/^ *\.library(name: "\([A-Za-z]*\)".*/\1/p' Package.swift
+)
+[ ${#products[@]} -gt 0 ] || fail "Package.swift declares no library products"
+[ "$ios_floor" != ".0" ] || fail "Package.swift declares no .iOS(.vN) platform"
+
+swift_files=(Package.swift)
+while IFS= read -r file; do swift_files+=("$file"); done < <(
+    find ios -name '*.swift' -not -path '*/.build/*' | sort
+)
+
+step "Format: swift-format lint over ios/ and Package.swift"
+xcrun swift-format lint --strict --configuration ios/.swift-format "${swift_files[@]}"
+# The licence header on every .swift file is not checked here: `(cd android && ./gradlew verifyLicenseHeader)`
+# checks it, on the Linux job every change runs, because it is a reading of text and a check that
+# can be a Gradle task belongs in `check` (CLAUDE.md, Commands).
+
+# Named by this script rather than by the caller's machine, so the device is one nobody else is
+# using; created on first use, on the newest iOS runtime installed, as the first iPhone that
+# runtime supports. A device type is not portable across runtimes, which is why it is not named.
+step "Simulator: $simulator"
+udid="$(xcrun simctl list -j | python3 -I -c '
+import json, sys
+name = sys.argv[1]
+listing = json.load(sys.stdin)
+ios = [r for r in listing["runtimes"] if r["platform"] == "iOS" and r["isAvailable"]]
+for runtime in ios:
+    for device in listing["devices"].get(runtime["identifier"], []):
+        if device["name"] == name and device["isAvailable"]:
+            print(device["udid"])
+            sys.exit()
+if not ios:
+    sys.exit("no iOS simulator runtime is installed")
+newest = max(ios, key=lambda r: [int(p) for p in r["version"].split(".")])
+iphones = [t for t in newest["supportedDeviceTypes"] if t.get("productFamily") == "iPhone"]
+if not iphones:
+    sys.exit("iOS " + newest["version"] + " supports no iPhone device type")
+print("create", newest["identifier"], iphones[0]["identifier"])
+' "$simulator")"
+case "$udid" in
+    create\ *)
+        read -r _ runtime device_type <<<"$udid"
+        udid="$(xcrun simctl create "$simulator" "$device_type" "$runtime")"
+        echo "created $udid ($device_type, $runtime)"
+        ;;
+    *) echo "using $udid" ;;
+esac
+# Shut down afterwards only a device this run booted: a simulator holds gigabytes, and leaving one
+# up per run is how a host runs out of memory, while one somebody booted on purpose stays theirs.
+if xcrun simctl list devices | grep -q "$udid) (Shutdown)"; then
+    trap 'xcrun simctl shutdown "$udid" >/dev/null 2>&1 || true' EXIT
+fi
+
+# A simulator that restarts while tests run ends every process in it, and xcodebuild then reports
+# whichever test was running as "Test crashed with signal term", a crash with no cause in the test
+# (#508: the device restarted five seconds into an eight-second test, which then passed every time).
+# xcodebuild says nothing of the restart, so a failed test step checks for one and says so.
+# Every boot starts a syslogd of its own in the device's system log, which CoreSimulator keeps on
+# the host, so the distinct syslogd process ids there count the boots: a device xcodebuild finds
+# shut down it boots once, and anything past that is a restart. Its one gap is a restarted syslogd
+# given a process id an earlier boot had, which needs the host's ids to wrap. Read only after a
+# failure, and only to explain it: a restart still fails the step.
+simulator_boots() {
+    { grep -o 'syslogd\[[0-9]*\]' "$HOME/Library/Logs/CoreSimulator/$1/system.log" 2>/dev/null ||
+        true; } | sort -u | wc -l | tr -d ' '
+}
+# The boots a test step on device $1 is expected to end with: those so far, and xcodebuild's own.
+boot_baseline() {
+    local boots
+    boots="$(simulator_boots "$1")"
+    if xcrun simctl list devices | grep -q "$1) (Shutdown)"; then boots=$((boots + 1)); fi
+    echo "$boots"
+}
+explain_a_restart() {
+    local restarts
+    restarts=$(($(simulator_boots "$1") - $2))
+    [ "$restarts" -gt 0 ] || return 0
+    printf 'ios/check: the simulator %s restarted %d time(s) during this step; a test that\n' \
+        "$1" "$restarts" >&2
+    printf '  "crashed with signal term" here was ended by the restart, not by its own code.\n' >&2
+}
+
+rm -rf "$results"
+mkdir -p "$results/api"
+
+# The golden traces' mode reaches the test process as SP_UPDATE_GOLDEN: xcodebuild hands a variable
+# named TEST_RUNNER_<NAME> to the test runner as <NAME>. Set either way, so a value left in the
+# caller's environment cannot rewrite a golden behind a plain check (docs/testing.md, *Golden traces
+# on iOS*).
+if $update_golden; then
+    export TEST_RUNNER_SP_UPDATE_GOLDEN=1
+else
+    export TEST_RUNNER_SP_UPDATE_GOLDEN=0
+fi
+
+# Every test but the benchmark's matrix run, which is a measurement of two hours' real time and
+# ios/Benchmark/bench's alone; the benchmark's agreement and honesty tests run here like any other.
+step "Test: every test target on the iOS simulator"
+baseline_boots="$(boot_baseline "$udid")"
+if ! xcodebuild test -quiet \
+    -scheme "$scheme" \
+    -destination "id=$udid" \
+    -derivedDataPath "$derived_data" \
+    -resultBundlePath "$results/test.xcresult" \
+    -skip-testing:SuperPlayerBenchmarkTests/BenchmarkMatrixRun; then
+    xcrun xcresulttool get test-results summary --path "$results/test.xcresult" >&2 || true
+    explain_a_restart "$udid" "$baseline_boots"
+    fail "xcodebuild test failed"
+fi
+# A quiet exit is not evidence that anything ran, so the result bundle is read: the run passed, and
+# at least one test passed per product, since each product has a test target of its own.
+read -r result passed < <(
+    xcrun xcresulttool get test-results summary --path "$results/test.xcresult" |
+        python3 -I -c 'import json, sys; s = json.load(sys.stdin); print(s["result"], s["passedTests"])'
+)
+[ "$result" = "Passed" ] || fail "the result bundle says \"$result\", not Passed"
+[ "$passed" -ge ${#products[@]} ] ||
+    fail "$passed tests passed, fewer than the ${#products[@]} products"
+echo "$passed tests passed"
+if $update_golden; then
+    echo "rewrote the golden traces under ios/Tests/Fixtures/golden; review and commit the diff"
+fi
+
+# tvOS is built whole, and SuperPlayerTVTests — the one product with tvOS-only code (#426) — runs
+# on a tvOS simulator as well as the iOS one: the stand-in display is the same on both, and this run
+# is what exercises the product as tvOS compiles it. A host with no tvOS runtime skips it and says
+# so; CI sets SP_REQUIRE_TVOS so that a runner image losing the runtime fails rather than passes.
+step "Build: tvOS"
+xcodebuild build -quiet \
+    -scheme "$scheme" \
+    -destination 'generic/platform=tvOS Simulator' \
+    -derivedDataPath "$derived_data"
+
+tv_simulator="${SP_TV_SIMULATOR:-$simulator-tv}"
+step "Test: SuperPlayerTVTests on the tvOS simulator $tv_simulator"
+tv_udid="$(xcrun simctl list -j | python3 -I -c '
+import json, sys
+name = sys.argv[1]
+listing = json.load(sys.stdin)
+tvos = [r for r in listing["runtimes"] if r["platform"] == "tvOS" and r["isAvailable"]]
+for runtime in tvos:
+    for device in listing["devices"].get(runtime["identifier"], []):
+        if device["name"] == name and device["isAvailable"]:
+            print(device["udid"])
+            sys.exit()
+if not tvos:
+    print("none")
+    sys.exit()
+newest = max(tvos, key=lambda r: [int(p) for p in r["version"].split(".")])
+tvs = [t for t in newest["supportedDeviceTypes"] if t.get("productFamily") == "Apple TV"]
+if not tvs:
+    sys.exit("tvOS " + newest["version"] + " supports no Apple TV device type")
+print("create", newest["identifier"], tvs[0]["identifier"])
+' "$tv_simulator")"
+case "$tv_udid" in
+    none)
+        [ "${SP_REQUIRE_TVOS:-0}" != 1 ] || fail "no tvOS simulator runtime is installed"
+        echo "skipped: no tvOS simulator runtime is installed (SuperPlayerTVTests ran on iOS only)"
+        ;;
+    *)
+        case "$tv_udid" in
+            create\ *)
+                read -r _ runtime device_type <<<"$tv_udid"
+                tv_udid="$(xcrun simctl create "$tv_simulator" "$device_type" "$runtime")"
+                echo "created $tv_udid ($device_type, $runtime)"
+                ;;
+            *) echo "using $tv_udid" ;;
+        esac
+        tv_booted_here=false
+        if xcrun simctl list devices | grep -q "$tv_udid) (Shutdown)"; then tv_booted_here=true; fi
+        tv_status=0
+        tv_baseline_boots="$(boot_baseline "$tv_udid")"
+        xcodebuild test -quiet \
+            -scheme "$scheme" \
+            -destination "id=$tv_udid" \
+            -derivedDataPath "$derived_data" \
+            -resultBundlePath "$results/test-tvos.xcresult" \
+            -only-testing:SuperPlayerTVTests || tv_status=$?
+        if $tv_booted_here; then xcrun simctl shutdown "$tv_udid" >/dev/null 2>&1 || true; fi
+        if [ "$tv_status" -ne 0 ]; then
+            xcrun xcresulttool get test-results summary \
+                --path "$results/test-tvos.xcresult" >&2 || true
+            explain_a_restart "$tv_udid" "$tv_baseline_boots"
+            fail "xcodebuild test on tvOS failed"
+        fi
+        read -r tv_result tv_passed < <(
+            xcrun xcresulttool get test-results summary --path "$results/test-tvos.xcresult" |
+                python3 -I -c 'import json, sys; s = json.load(sys.stdin); print(s["result"], s["passedTests"])'
+        )
+        [ "$tv_result" = "Passed" ] || fail "the tvOS result bundle says \"$tv_result\", not Passed"
+        [ "$tv_passed" -ge 1 ] || fail "no SuperPlayerTVTests test passed on tvOS"
+        echo "$tv_passed tests passed on tvOS"
+        ;;
+esac
+
+# SuperPlayerMoQ is a package of its own under ios/MoQ rather than a product of the root manifest —
+# the SwiftPM analog of superplayer-moq's LOCAL_ONLY publication, which ios/MoQ/Package.swift
+# argues — so the root scheme above never reaches it and it is tested here, on the same simulator.
+# Its native half is the committed XCFramework under third-party/moq/swift, so no Rust toolchain is
+# needed. Like LOCAL_ONLY, it tracks no API baseline: nothing outside this repository can resolve it.
+step "Test: SuperPlayerMoQ (ios/MoQ) on the iOS simulator"
+baseline_boots="$(boot_baseline "$udid")"
+if ! (cd ios/MoQ && xcodebuild test -quiet \
+    -scheme SuperPlayerMoQ \
+    -destination "id=$udid" \
+    -derivedDataPath "$derived_data-moq" \
+    -resultBundlePath "$results/test-moq.xcresult"); then
+    xcrun xcresulttool get test-results summary --path "$results/test-moq.xcresult" >&2 || true
+    explain_a_restart "$udid" "$baseline_boots"
+    fail "xcodebuild test of ios/MoQ failed"
+fi
+read -r moq_result moq_passed < <(
+    xcrun xcresulttool get test-results summary --path "$results/test-moq.xcresult" |
+        python3 -I -c 'import json, sys; s = json.load(sys.stdin); print(s["result"], s["passedTests"])'
+)
+[ "$moq_result" = "Passed" ] || fail "the ios/MoQ result bundle says \"$moq_result\", not Passed"
+[ "$moq_passed" -ge 1 ] || fail "no SuperPlayerMoQTests test passed"
+echo "$moq_passed tests passed in ios/MoQ"
+
+# The demo resolves the package by path, as an adopter's app does, so this is the build that fails
+# when a product's public API stops being enough for an app. Built and not run, for both platforms
+# its one target supports; whether it plays a real stream needs a network, which no check has
+# (ios/Demo/README.md). Its DerivedData is its own: the demo is a second workspace, and one writing
+# its products into the same DerivedData would overwrite the package modules the digester reads.
+# On iOS it is built for testing, so the UI test target devicelab's moq-smoke runs on a phone
+# (SuperPlayerDemoUITests, #438) is compiled here too and cannot rot between device runs; it is
+# never run here, since it needs a relay on the internet. That target is iOS only, so tvOS builds
+# the app alone.
+step "Build: the demo and its UI tests for the iOS simulator, the demo for tvOS"
+xcodebuild build-for-testing -quiet \
+    -project ios/Demo/SuperPlayerDemo.xcodeproj \
+    -scheme SuperPlayerDemo \
+    -destination 'generic/platform=iOS Simulator' \
+    -derivedDataPath "$derived_data-demo"
+xcodebuild build -quiet \
+    -project ios/Demo/SuperPlayerDemo.xcodeproj \
+    -scheme SuperPlayerDemo \
+    -destination 'generic/platform=tvOS Simulator' \
+    -derivedDataPath "$derived_data-demo"
+
+# The digester reads the modules the simulator test build produced, against the iOS simulator SDK
+# and an iOS target at the floor, so the API recorded is the one an iOS adopter compiles against
+# and not the host's macOS reading of it. Its JSON is reduced to text by ios/scripts/api-surface.swift;
+# docs/api-surface.md's iOS section says why.
+step "API: ios/api/<Product>.baseline"
+modules="$derived_data/Build/Products/Debug-iphonesimulator"
+sdk="$(xcrun --sdk iphonesimulator --show-sdk-path)"
+target="$(uname -m)-apple-ios$ios_floor-simulator"
+for product in "${products[@]}"; do
+    xcrun swift-api-digester -dump-sdk -module "$product" -I "$modules" -sdk "$sdk" \
+        -target "$target" -o "$results/api/$product.json"
+done
+xcrun swift ios/scripts/api-surface.swift "$results/api" "${products[@]}"
+
+if $update_api; then
+    rm -f ios/api/*.baseline
+    mkdir -p ios/api
+    for product in "${products[@]}"; do cp "$results/api/$product.baseline" ios/api/; done
+    echo "rewrote ${#products[@]} baselines under ios/api; commit the diff with the change"
+    exit 0
+fi
+
+drifted=()
+for product in "${products[@]}"; do
+    if [ ! -f "ios/api/$product.baseline" ]; then
+        drifted+=("$product (no baseline)")
+    elif ! diff -u "ios/api/$product.baseline" "$results/api/$product.baseline"; then
+        drifted+=("$product")
+    fi
+done
+for baseline in ios/api/*.baseline; do
+    [ -e "$baseline" ] || continue
+    product="$(basename "$baseline" .baseline)"
+    printf '%s\n' "${products[@]}" | grep -qx "$product" || drifted+=("$product (not a product)")
+done
+if [ ${#drifted[@]} -gt 0 ]; then
+    printf '  %s\n' "${drifted[@]}" >&2
+    fail "the public API moved from ios/api; run ios/check --update-api and commit the diff"
+fi
+
+echo
+echo "ios/check: passed"

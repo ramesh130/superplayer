@@ -8,7 +8,7 @@
 # part this cannot reach.
 #
 # Then each consumer's own device-free half, `devicelab/<consumer>/test/selftest`, so that one command
-# — the one `./gradlew check` runs as `verifyDevicelab`, and the device workflow runs before every
+# — the one `(cd android && ./gradlew check)` runs as `verifyDevicelab`, and the device workflow runs before every
 # boot — covers the harness and everything built on it.
 #
 #   devicelab/test/selftest
@@ -252,6 +252,31 @@ if (catalog_version absent "$fixtures/libs.versions.toml") 2>/dev/null; then
     fail "an absent catalog key fails rather than reading as empty"
 else pass; fi
 
+# --- Where the Gradle build is ---------------------------------------------------------------------
+#
+# GRADLE_DIR is the one value that moves when the builds do. Checked as an invariant rather than as
+# today's value, so a move that flips it, and forgets nothing else, still passes here.
+
+assert_eq "the Gradle build is GRADLE_DIR under the repository root" \
+    "$REPO_ROOT${GRADLE_DIR:+/$GRADLE_DIR}" "$GRADLE_ROOT"
+if [ -x "$GRADLE_ROOT/gradlew" ]; then pass; else
+    fail "the Gradle build's wrapper is where GRADLE_DIR says" "$GRADLE_ROOT/gradlew"
+fi
+if [ -f "$GRADLE_ROOT/gradle/libs.versions.toml" ]; then pass; else
+    fail "and so is its version catalog" "$GRADLE_ROOT/gradle/libs.versions.toml"
+fi
+
+# A Gradle build one level down, the shape #521 moves the repository to, with the root's own catalog and
+# local.properties absent: whatever is read is read from the build, not from beside it.
+nested_build="$scratch/nested-build"
+mkdir -p "$nested_build/gradle" "$nested_build/sdk"
+cp "$fixtures/libs.versions.toml" "$nested_build/gradle/"
+printf 'sdk.dir=%s\n' "$nested_build/sdk" > "$nested_build/local.properties"
+assert_eq "the catalog is read from the Gradle build, wherever it is" \
+    "1.11.0" "$(GRADLE_ROOT="$nested_build" catalog_version media3)"
+assert_eq "and so is local.properties" \
+    "$nested_build/sdk" "$(unset ANDROID_HOME ANDROID_SDK_ROOT; GRADLE_ROOT="$nested_build" sdk_root)"
+
 # --- JSON ------------------------------------------------------------------------------------------
 
 assert_eq "escapes quotes, backslashes and control characters" \
@@ -333,8 +358,13 @@ for scenario in "$lab"/scenarios/*.sh; do
     name="$(basename "$scenario" .sh)"
     if loaded="$(DEVICELAB_HOME="$lab" bash -euo pipefail -c '
         SCENARIO_TRACE_FROM=launch SCENARIO_TRACE_MS=300000 SCENARIO_DATA_SOURCES=""
+        SCENARIO_PLATFORMS=android SCENARIO_IOS_LAUNCH=(-SPDemoScreen playback)
         . "$1"
         declare -F scenario_drive >/dev/null
+        # Every platform a scenario names is one `lab --platform` takes, so a misspelling is found here.
+        for platform in $SCENARIO_PLATFORMS; do
+            case "$platform" in android | ios) ;; *) echo "unknown platform $platform"; exit 1 ;; esac
+        done
         echo loaded
     ' load "$scenario" 2>&1)" && [ "$loaded" = loaded ]; then
         pass
@@ -417,7 +447,8 @@ fi
 #
 # Against a scratch repository with a plants directory of its own, so that applying and reverting is
 # exercised for real — `git apply` on a tree — without touching this one. Each case runs in a subshell,
-# since `die` exits.
+# since `die` exits. The scratch repository is its own Gradle build, so the cases against it set
+# GRADLE_DIR empty over the `android` common.sh names; the nested case below is this repository's shape.
 
 plant_lab="$scratch/plant-lab"
 plant_repo="$scratch/plant-repo"
@@ -446,7 +477,7 @@ assert_eq "plants are listed by name, from the plants directory" "rotten slow" \
     "$(in_plant_lab plants_available | tr '\n' ' ' | sed 's/ $//')"
 
 planted="$(in_plant_lab bash -c '
-    . "$1/lib/common.sh"; . "$1/lib/plants.sh"; DEVICELAB_HOME="$2"
+    . "$1/lib/common.sh"; . "$1/lib/plants.sh"; DEVICELAB_HOME="$2"; GRADLE_DIR=
     plant_apply slow "$3" 2>/dev/null
     printf "applied=%s base=%s sha=%s\n" "$PLANT_APPLIED" "$PLANT_BASE_COMMIT" "$PLANT_PATCH_SHA256"
     grep -c readEverything "$3/src/App.kt"
@@ -474,7 +505,7 @@ null" "$reverted_nothing"
 assert_eq "and leaves the tree as clean as it found it" "" "$(git -C "$plant_repo" status --porcelain)"
 
 printf 'uncommitted\n' >> "$plant_repo/src/App.kt"
-if dirty="$(in_plant_lab bash -c '. "$1/lib/common.sh"; . "$1/lib/plants.sh"; DEVICELAB_HOME="$2"; plant_apply slow "$3"' \
+if dirty="$(in_plant_lab bash -c '. "$1/lib/common.sh"; . "$1/lib/plants.sh"; DEVICELAB_HOME="$2"; GRADLE_DIR=; plant_apply slow "$3"' \
     plant "$lab" "$plant_lab" "$plant_repo")"; then
     fail "a plant is refused on a dirty tree"
 else
@@ -482,7 +513,7 @@ else
 fi
 git -C "$plant_repo" checkout -q -- .
 
-if rotten="$(in_plant_lab bash -c '. "$1/lib/common.sh"; . "$1/lib/plants.sh"; DEVICELAB_HOME="$2"; plant_apply rotten "$3"' \
+if rotten="$(in_plant_lab bash -c '. "$1/lib/common.sh"; . "$1/lib/plants.sh"; DEVICELAB_HOME="$2"; GRADLE_DIR=; plant_apply rotten "$3"' \
     plant "$lab" "$plant_lab" "$plant_repo")"; then
     fail "a patch that does not apply fails the check"
 else
@@ -497,14 +528,208 @@ else
     assert_contains "an unknown plant fails, naming the plants there are" "$unknown" "available: rotten slow"
 fi
 
+# A plant's paths are the Gradle build's (`a/demo/…`), so in a repository whose build is one level down
+# the same patch lands under GRADLE_DIR. The repository above is the control, with GRADLE_DIR empty.
+nested_repo="$scratch/plant-repo-nested"
+mkdir -p "$nested_repo/android/src"
+printf 'fun onCreate() {\n}\n' > "$nested_repo/android/src/App.kt"
+git -C "$nested_repo" init -q
+git -C "$nested_repo" add .
+git -C "$nested_repo" -c user.name=selftest -c user.email=selftest@invalid commit -q -m base
+nested="$(in_plant_lab bash -c '
+    . "$1/lib/common.sh"; . "$1/lib/plants.sh"; DEVICELAB_HOME="$2"; GRADLE_DIR=android
+    plant_apply slow "$3" 2>/dev/null
+    grep -c readEverything "$3/android/src/App.kt"
+    printf "added=%s\n" "$(ls "$3/android/src")"
+    plant_revert 2>/dev/null && printf "reverted=%s\n" "$PLANT_APPLIED"
+    printf "status=[%s]\n" "$(git -C "$3" status --porcelain)"
+' plant "$lab" "$plant_lab" "$nested_repo")"
+assert_contains "a plant applies under GRADLE_DIR when the Gradle build is not the repository root, adding its file there too" \
+    "$nested" "1
+added=App.kt
+Read.kt"
+assert_contains "and reverting it leaves that tree exactly clean" "$nested" "reverted=0
+status=[]"
+if unnested="$(in_plant_lab bash -c '. "$1/lib/common.sh"; . "$1/lib/plants.sh"; DEVICELAB_HOME="$2"; GRADLE_DIR=; plant_check slow "$3"' \
+    plant "$lab" "$plant_lab" "$nested_repo")"; then
+    fail "with GRADLE_DIR empty the same plant does not apply to the nested tree"
+else
+    assert_contains "with GRADLE_DIR empty the same plant does not apply to the nested tree" "$unnested" "does not apply"
+fi
+
 # Every shipped plant still applies to this repository's HEAD: a patch against demo sources rots as the
 # demo changes, and this is where that is found, rather than after a boot. Checked against the index
 # (`--cached`), so a contributor's uncommitted edits cannot fail it.
 for plant in $(plants_available); do
-    if checked="$(git -C "$REPO_ROOT" apply --check --cached "$(plant_file "$plant")" 2>&1)"; then pass; else
+    if checked="$(plant_git_apply "$REPO_ROOT" --check --cached "$(plant_file "$plant")" 2>&1)"; then pass; else
         fail "plant '$plant' applies to this repository's HEAD" "$checked"
     fi
 done
+
+# --- iOS: lib/ios.sh's pure half -------------------------------------------------------------------
+#
+# The fixtures under fixtures/ios are the tools' own output, with the identifiers of the phone they were
+# taken on replaced: devicectl's and simctl's listings, the demo's console from the iPhone 17 Pro Max
+# #435 ran on (iOS 27.0), and xctrace's exports cut to the rows a parse needs — the os-log one rebuilt by
+# hand in the export's own shape, since a real one is the whole process's log. The feed's console is
+# written in the demo's own line shapes, shortened to three rows.
+
+# shellcheck source=../lib/ios.sh
+. "$lab/lib/ios.sh"
+ios_fixtures="$fixtures/ios"
+
+assert_eq "a paired, booted phone in Developer Mode and a booted simulator are usable; a phone not in Developer Mode, one nobody paired, a television and a shut-down simulator are not" \
+    "00008150-000000000000AB01	physical	A phone	iPhone 17 Pro Max	iPhone18,2	27.0	24A437	localNetwork
+E97F7811-0000-0000-0000-000000000006	simulated	sp-435	iPhone Duo	iPhone19,4	27.1	24A94232	sameMachine" \
+    "$(ios_usable_devices < "$ios_fixtures/devicectl-devices.json")"
+assert_eq "a simulator is found by name on an iOS runtime — not the tvOS one of the same name, nor an unavailable one" \
+    "E97F7811-0000-0000-0000-000000000012" "$(ios_simulator_named sp-435 < "$ios_fixtures/simctl-devices.json")"
+assert_eq "a name no simulator has is nothing" "" "$(ios_simulator_named sp-absent < "$ios_fixtures/simctl-devices.json")"
+
+assert_eq "the frame-output screen's position lines are read, the telemetry around them is not" \
+    "demo:bipbop-advanced 0
+demo:bipbop-advanced 0
+demo:bipbop-advanced 2000" "$(ios_positions < "$ios_fixtures/console-frame-output.log" | head -3)"
+assert_eq "playback is confirmed at the first position ahead of the line before it" \
+    2000 "$(ios_advancing_position < "$ios_fixtures/console-frame-output.log")"
+assert_eq "the feed's row lines are positions too, and a row that has advanced confirms it" \
+    1000 "$(ios_advancing_position < "$ios_fixtures/console-feed.log")"
+assert_eq "a position that stands still confirms nothing" "" \
+    "$(printf '[Playback] content=a position=4000\n[Playback] content=a position=4000\n' | ios_advancing_position)"
+assert_eq "nor does one that goes back" "" \
+    "$(printf '[Playback] content=a position=4000\n[Playback] content=a position=2000\n' | ios_advancing_position)"
+assert_eq "nor a later position of different content: a row that moved on is not the same playback" "" \
+    "$(printf '[Feed] row=0 contentId=a positionMs=0\n[Feed] row=1 contentId=b positionMs=900\n' | ios_advancing_position)"
+
+assert_eq "the frame reading is the span logged and the last line's counts" \
+    "0 30000 1791 12 2 0 0 - -" "$(ios_frame_reading < "$ios_fixtures/console-frame-output.log")"
+assert_eq "and the interval and largest gap where the line carries them" "2000 2000 121 1 1 0 0 16.67 33.33@1500" \
+    "$(printf '[Playback] content=a position=2000 frames=121 missing=1 runs=1 repeated=0 intervalMs=16.67 largestGapMs=33.33@1500 dropped=0\n' | ios_frame_reading)"
+assert_eq "a screen with no frame output has no frame reading" "" \
+    "$(ios_frame_reading < "$ios_fixtures/console-playback.log")"
+assert_eq "the control's reading is the span and AVFoundation's dropped count" \
+    "0 10000 0" "$(ios_dropped_reading < "$ios_fixtures/console-playback.log")"
+assert_eq "and a frame-output line is never read as the control's" "" \
+    "$(ios_dropped_reading < "$ios_fixtures/console-frame-output.log")"
+
+# The fixture's session stalled at 27.7 s: the item went short, AVFoundation reported a rebuffer and
+# jumped its own clock back, and twelve frames went missing in that stretch and none anywhere else.
+assert_eq "the frames missing around a stall are told apart from steady playback's" \
+    "26000 1560 0 4000 12" "$(ios_frame_steady 2000 < "$ios_fixtures/console-frame-output.log")"
+planted="$(printf '%s\n' \
+    '[Playback] content=a position=0 frames=1 missing=0 runs=1 repeated=0 dropped=0' \
+    '[Playback] content=a position=2000 frames=121 missing=0 runs=1 repeated=0 dropped=0' \
+    '[Playback] content=a position=4000 frames=239 missing=2 runs=1 repeated=0 dropped=0' \
+    '[Playback] content=a position=6000 frames=359 missing=2 runs=1 repeated=0 dropped=0')"
+assert_eq "a frame the output never saw in steady playback is counted there — the control that the split hides nothing" \
+    "6000 358 2 0 0" "$(printf '%s\n' "$planted" | ios_frame_steady 2000)"
+assert_eq "a stretch the collector saw a seek in is not steady, whatever its length" \
+    "4000 240 0 2000 2" \
+    "$(printf '%s\n' "$planted" | sed '2a\
+[SuperPlayerQoE] evt=seek_requested v=2 cid="a" fromMs=2000 toMs=2000' | ios_frame_steady 2000)"
+
+assert_eq "every first frame telemetry reported is read, with its boundary" \
+    "demo:feed-0	374	USER_INTENT
+demo:feed-1	693	USER_INTENT
+demo:feed-1	300	USER_INTENT
+demo:feed-0	910	CONTENT_ADOPTED
+demo:feed-1	250	USER_INTENT" "$(ios_first_frames < "$ios_fixtures/console-feed.log")"
+
+assert_eq "the demo's footprint is read off the export by name and pid, a value written once and referred back to included; a sample with no value, and a process whose name only begins the same, are not" \
+    "0	766	20744032
+1000	766	20744032
+2000	812	31457280" "$(ios_footprint_series SuperPlayerDemo < "$ios_fixtures/xctrace-process-live.xml")"
+assert_eq "a recording of a launched process is read whole with '*', whatever the process is called" \
+    "0	0	146391040
+0	766	20744032
+0	900	4194304
+1000	766	20744032
+2000	812	31457280" "$(ios_footprint_series '*' < "$ios_fixtures/xctrace-process-live.xml")"
+
+# The os-log export of a recording that launched the demo: a system line, then two of the demo's,
+# the second carrying a number its display text writes with a thousands separator.
+rebuilt="$(TZ=UTC ios_oslog_lines 1791799150173 < "$ios_fixtures/xctrace-os-log.xml")"
+assert_eq "the demo's lines are rebuilt as the console prints them, a system subsystem's left out, a number as its raw value" \
+    "2026-10-12 09:59:11.697000+0000 SuperPlayerDemo[907:0] [Playback] content=demo:bipbop-advanced position=0 dropped=0
+2026-10-12 09:59:13.806000+0000 SuperPlayerDemo[907:0] [Playback] content=demo:bipbop-advanced position=2000 dropped=0" "$rebuilt"
+assert_eq "so a recording confirms playback as a console does" 2000 "$(printf '%s\n' "$rebuilt" | ios_advancing_position)"
+
+assert_eq "the recording's start is read off the table of contents, in ms since the epoch" \
+    1791793978785 "$(ios_trace_start_ms < "$ios_fixtures/xctrace-toc.xml")"
+
+# The feed's verdict, over the fixture's two passes (19:40:05–15 and 15–25) and a recording that started
+# at 19:39:59.000+11:00: a sample every half second, from the demo's pid and, once, from another.
+feed_series() { # pass-two offset in MiB
+    awk -v extra="$1" 'BEGIN {
+        for (t = 0; t <= 30000; t += 500) {
+            mib = 100 + (t / 500) % 5
+            if (t > 16000) mib += extra
+            printf "%d\t753\t%d\n", t, mib * 1048576
+        }
+        printf "8000\t812\t%d\n", 900 * 1048576
+    }'
+}
+feed_series 0 > "$scratch/flat.tsv"
+feed_series 40 > "$scratch/growing.tsv"
+feed_report="$(ios_feed_report "$ios_fixtures/console-feed.log" "$scratch/flat.tsv" 1791794399000 "$scratch/verdict")"
+assert_eq "memory whose second pass sits inside the first's spread is flat" flat "$(cat "$scratch/verdict")"
+assert_contains "and the report says so with the numbers" "$feed_report" "Verdict: **flat**"
+assert_contains "it reads time to first frame from declared intent only, and says which rows reached one" "$feed_report" \
+    "Rows that reached a first frame: 2; first frames reported: 5"
+assert_contains "with the median and p90 of the four from intent" "$feed_report" "median **337 ms**, p90 693 ms"
+assert_contains "and counts the watched rows that found the pool at its bound" "$feed_report" "found the pool at its bound: 1"
+assert_not_contains "a sample of another process is not the demo's" "$feed_report" "900.0 MiB"
+assert_contains "and gives time to first frame per pass, the rows played before the scroll apart" "$feed_report" \
+    "| before the scroll | 1 | 374 ms | 374 ms | 374 ms |"
+assert_contains "each first frame in the pass it arrived in" "$feed_report" "| 1 | 2 | 496 ms | 693 ms | 693 ms |"
+ios_feed_report "$ios_fixtures/console-feed.log" "$scratch/flat.tsv" 1791794399000 "$scratch/verdict" 1 >/dev/null
+assert_eq "a recording that ended before the run did is unknown, however flat what it holds" unknown "$(cat "$scratch/verdict")"
+ios_feed_report "$ios_fixtures/console-feed.log" "$scratch/growing.tsv" 1791794399000 "$scratch/verdict" >/dev/null
+assert_eq "a second pass above the first's p90 is growing" growing "$(cat "$scratch/verdict")"
+ios_feed_report "$ios_fixtures/console-feed.log" /dev/null 1791794399000 "$scratch/verdict" >/dev/null
+assert_eq "no samples at all is unknown, never flat" unknown "$(cat "$scratch/verdict")"
+grep -v "pass=1 ended" "$ios_fixtures/console-feed.log" > "$scratch/one-pass.log"
+ios_feed_report "$scratch/one-pass.log" "$scratch/flat.tsv" 1791794399000 "$scratch/verdict" >/dev/null
+assert_eq "one pass has no baseline to be flat against, so it is unknown" unknown "$(cat "$scratch/verdict")"
+
+# A UI test's log (`ios_test_demo`): the moq-smoke scenario's outcomes and observations. The runner
+# that never ran a test is the first run's own log, on a phone whose UI automation was not yet enabled.
+assert_eq "a runner that never started a test is one outcome naming why" \
+    "runner	The test runner failed to initialize for UI testing. (Underlying Error: Timed out while enabling automation mode.)" \
+    "$(ios_test_outcomes < "$ios_fixtures/xcodebuild-test-runner-failed.log")"
+assert_eq "and holds no observation" "" "$(ios_observation_blocks < "$ios_fixtures/xcodebuild-test-runner-failed.log")"
+# The passing run is #438's own on the iPhone (iOS 27.0), its backtrace noise cut.
+assert_eq "each finished test case is one outcome, named Class.method" \
+    "MoqLiveSessionSmokeTests.testALiveBroadcastDeclaresTracksDeliversFramesAndStopsWhenCancelled	passed
+MoqLiveSessionSmokeTests.testTheDemoPlaysTheBroadcast	passed" \
+    "$(ios_test_outcomes < "$ios_fixtures/xcodebuild-test-moq-smoke.log")"
+assert_eq "a Swift Testing-shaped line is read the same way, and a failure and a skip are outcomes too" \
+    "A.b	failed
+A.c	skipped" \
+    "$(printf "Test case 'M.A.b()' failed on 'iPhone' (1.0 seconds)\nTest Case '-[M.A c]' skipped (0.1 seconds).\nTest Case '-[M.A d]' started.\n" | ios_test_outcomes)"
+moq_blocks="$(ios_observation_blocks < "$ios_fixtures/xcodebuild-test-moq-smoke.log")"
+assert_eq "the observations are both tests' blocks, markers kept and nothing between them" \
+    "2 2 0" \
+    "$(printf '%s\n' "$moq_blocks" | grep -c 'moq-smoke begin') $(printf '%s\n' "$moq_blocks" | grep -c 'moq-smoke end') $(printf '%s\n' "$moq_blocks" | grep -c '^ *t = ')"
+assert_eq "an observation is read from its own test's block" 5233 \
+    "$(printf '%s\n' "$moq_blocks" | ios_observation demo demo.position)"
+assert_eq "and from no other's" "" "$(printf '%s\n' "$moq_blocks" | ios_observation transport demo.position)"
+assert_eq "a value keeps what follows its first ' = '" \
+    "broadcast=bbb.hang -> catalog read: 2 video, 1 audio (video=0.avc3|1.avc3 audio=2.aac)" \
+    "$(printf '%s\n' "$moq_blocks" | ios_observation transport 'mapping[authority-plus-first-segment].requested(settling)')"
+
+ios_metadata="$(
+    RUN_METADATA_SCHEMA=1 RUN_ID=r RUN_STARTED_AT=a RUN_FINISHED_AT=b RUN_SCENARIO=frames SP_COMMIT=c SP_TREE_DIRTY=0 \
+        SP_VERSION=0.1.0-SNAPSHOT DEMO_CONFIGURATION=Release DEMO_APP_SHA256=h IOS_UDID=u DEVICE_IS_EMULATOR=0 \
+        DEVICE_NAME='A "phone"' DEVICE_MODEL=m DEVICE_PRODUCT_TYPE=p DEVICE_OS_VERSION=27.0 DEVICE_OS_BUILD=24A437 \
+        HOST_OS=o HOST_XCODE=x HOST_CI=0 RUN_TRACE_FROM=playing RUN_TRACE_MS=1000 RUN_TRACE_ENDED_BY_BOUND=0 \
+        IOS_TRACE_ENDED_EARLY=1 IOS_TRACE_END_REASON="Device disconnected" RUN_PLAYBACK_POSITION_MS=2000 ios_run_json
+)"
+assert_contains "an iOS run's metadata says which platform's shape it is" "$ios_metadata" '"platform": "ios"'
+assert_contains "and records a recording that ended before the run did" "$ios_metadata" '"trace_ended_early": true'
+if printf '%s' "$ios_metadata" | python3 -m json.tool >/dev/null 2>&1; then pass; else
+    fail "an iOS run's metadata is valid JSON" "$ios_metadata"
+fi
 
 # ---------------------------------------------------------------------------------------------------
 

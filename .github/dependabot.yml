@@ -13,29 +13,31 @@ version: 2
 updates:
   # --- Gradle ---
   #
-  # Three directories, because this repository is three Gradle builds. What each job actually picks
-  # up was checked against dependabot-core's Gradle file fetcher rather than assumed, and it is not
-  # what the list suggests:
+  # Three directories, for three of the four Gradle builds under `android/`; the benchmark's own
+  # wrapper is watched by none, as before the builds moved there. What each job actually picks up was checked against dependabot-core's Gradle file fetcher
+  # rather than assumed, and it is not what the list suggests:
   #
-  #   /             Everything that has a version. Dependabot reads `gradle/libs.versions.toml` only
+  #   /android      Everything that has a version. Dependabot reads `gradle/libs.versions.toml` only
   #                 for the build rooted at the job's own directory, so this job is the one that
   #                 sees the catalog every build shares. It also follows `includeBuild("build-logic")`
   #                 in the root settings, so build-logic's build script is scanned here too. And it
   #                 updates the root Gradle wrapper.
-  #   /demo         The demo's own Gradle wrapper, and nothing else. The demo is not an included
-  #                 build, so `/` never reaches it, and its settings load the catalog through
+  #   /android/demo The demo's own Gradle wrapper, and nothing else. The demo is not an included
+  #                 build, so `/android` never reaches it, and its settings load the catalog through
   #                 `from(files("../gradle/libs.versions.toml"))`, which Dependabot does not follow.
-  #                 Its dependencies are therefore updated through `/` — the same file, one PR.
+  #                 Its dependencies are therefore updated through `/android` — the same file, one PR.
   #                 Its `superplayer-core` coordinate interpolates the catalog's version, so
   #                 Dependabot skips it, which is right: that artifact is this repository's own.
-  #   /build-logic  Nothing today. It has no wrapper of its own and names no version directly — every
-  #                 one is a catalog reference — and `/` already scans its build script. It is
+  #   /android/build-logic
+  #                 Nothing today. It has no wrapper of its own and names no version directly — every
+  #                 one is a catalog reference — and `/android` already scans its build script. It is
   #                 listed so that coverage of the included build does not rest solely on
   #                 Dependabot parsing `includeBuild` out of a `pluginManagement` block.
   #
-  # The catalog is the only file a dependency PR edits (a wrapper PR edits `gradle/wrapper/`). No
-  # build script in any of the three builds carries a version literal (ADR-0001 rule 3 for Media3,
-  # the catalog's own header for the rest), so there is nothing else for Dependabot to rewrite.
+  # The catalog is the only file a dependency PR edits (a wrapper PR edits
+  # `android/gradle/wrapper/`). No build script in any of the three builds carries a version literal
+  # (ADR-0001 rule 3 for Media3, the catalog's own header for the rest), so there is nothing else for
+  # Dependabot to rewrite.
   # Catalog entries it does NOT update:
   #
   #   ktlint        A bare `[versions]` entry, read by Spotless as `libs.versions.ktlint`. Dependabot
@@ -47,9 +49,9 @@ updates:
   #   Compose       The individual libraries carry no version. The BOM is updated and moves them.
   - package-ecosystem: gradle
     directories:
-      - /
-      - /build-logic
-      - /demo
+      - /android
+      - /android/build-logic
+      - /android/demo
     # Weekly: soon enough that a release is a PR within days, rarely enough that the PRs get read.
     # A bot whose PRs are routinely ignored is worse than none, because it trains people to ignore
     # the one that matters.

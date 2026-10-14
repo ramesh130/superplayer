@@ -1,0 +1,21 @@
+Launched application with com.superplayer.demo bundle identifier.
+Waiting for the application to terminate…
+2026-10-12 19:40:00.100000+1100 SuperPlayerDemo[753:22437] [] <<<< FigApplicationStateMonitor >>>> signalled err=-19431 at <>:489
+2026-10-12 19:40:00.200000+1100 SuperPlayerDemo[753:22437] [Feed] row=0 contentId=demo:feed-0 positionMs=0
+2026-10-12 19:40:00.574000+1100 SuperPlayerDemo[753:22480] [SuperPlayerQoE] evt=first_frame v=2 sid=68707A78-235E-433D-B66E-1DF1343D0D54 cid="demo:feed-0" t=1791794400574 mono=1318413 ttffMs=374 from=USER_INTENT
+2026-10-12 19:40:01.200000+1100 SuperPlayerDemo[753:22437] [Feed] row=0 contentId=demo:feed-0 positionMs=0
+2026-10-12 19:40:02.200000+1100 SuperPlayerDemo[753:22437] [Feed] row=0 contentId=demo:feed-0 positionMs=1000
+2026-10-12 19:40:03.200000+1100 SuperPlayerDemo[753:22437] [Feed] row=0 contentId=demo:feed-0 positionMs=2000
+2026-10-12 19:40:05.000000+1100 SuperPlayerDemo[753:22437] [FeedScroll] scroll started passes=2 rows=3
+2026-10-12 19:40:06.000000+1100 SuperPlayerDemo[753:22437] [Feed] row=1 contentId=demo:feed-1 positionMs=0
+2026-10-12 19:40:06.693000+1100 SuperPlayerDemo[753:22490] [SuperPlayerQoE] evt=first_frame v=2 sid=FFC40A3D-5FE1-47CD-B234-119994500F57 cid="demo:feed-1" t=1791794406693 mono=1320947 ttffMs=693 from=USER_INTENT
+2026-10-12 19:40:08.000000+1100 SuperPlayerDemo[753:22437] [Feed] row=2 no player: the pool is at its bound
+2026-10-12 19:40:10.000000+1100 SuperPlayerDemo[753:22437] [Feed] row=1 contentId=demo:feed-1 positionMs=0
+2026-10-12 19:40:10.300000+1100 SuperPlayerDemo[753:22486] [SuperPlayerQoE] evt=first_frame v=2 sid=3F869607-C7AB-4157-9D19-A1E1889AAF52 cid="demo:feed-1" t=1791794410300 mono=1322187 ttffMs=300 from=USER_INTENT
+2026-10-12 19:40:12.000000+1100 SuperPlayerDemo[753:22437] [Feed] row=0 contentId=demo:feed-0 positionMs=0
+2026-10-12 19:40:12.910000+1100 SuperPlayerDemo[753:22486] [SuperPlayerQoE] evt=first_frame v=2 sid=6A1B9F07-C7AB-4157-9D19-A1E1889AAF52 cid="demo:feed-0" t=1791794412910 mono=1324797 ttffMs=910 from=CONTENT_ADOPTED
+2026-10-12 19:40:15.000000+1100 SuperPlayerDemo[753:22437] [FeedScroll] scroll pass=1 ended at row=0
+2026-10-12 19:40:16.000000+1100 SuperPlayerDemo[753:22437] [Feed] row=1 contentId=demo:feed-1 positionMs=0
+2026-10-12 19:40:16.250000+1100 SuperPlayerDemo[753:22486] [SuperPlayerQoE] evt=first_frame v=2 sid=7B2CA018-C7AB-4157-9D19-A1E1889AAF52 cid="demo:feed-1" t=1791794416250 mono=1328137 ttffMs=250 from=USER_INTENT
+2026-10-12 19:40:25.000000+1100 SuperPlayerDemo[753:22437] [FeedScroll] scroll pass=2 ended at row=0
+2026-10-12 19:40:25.000500+1100 SuperPlayerDemo[753:22437] [FeedScroll] scroll finished passes=2 rows=3

@@ -1,0 +1,5 @@
+public final class com/superplayer/effects/VideoEffects {
+	public static final field INSTANCE Lcom/superplayer/effects/VideoEffects;
+	public static final fun frameOutput (Lcom/superplayer/core/FrameOutput;)Lcom/superplayer/core/PlaybackFrameOutput;
+}
+

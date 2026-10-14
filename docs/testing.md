@@ -11,6 +11,13 @@ reason *The conformance test a consumer runs* gives — an HTTP client's obligat
 puts on a wire, and there is no wire in any other fake here. The eighth is #364's and departs on a
 different axis: `MoqFfiLinkageTest` drives **no SuperPlayer API at all** and loads a real native
 library into the test JVM, because what it checks is whether a natively built dependency links.
+
+**The Swift products are held to a different seam**, decided in
+[ADR-0021](adr/0021-test-ios-against-a-loopback-origin-and-run-its-checks-in-one-script.md): AVFoundation
+ships no fakes and `AVPlayer` takes no fake transport, so every iOS test plays from a loopback HTTP
+origin started per test — the seventh exception's carve-out widened to all of them — on real time,
+with structural goldens; *The iOS harness* below is that origin. Everything else in this document
+binds the Kotlin modules as written.
 *The MoQ bindings* argues it, and states what no automated run can show.
 
 `SuperPlayerTransferChainTest` keeps the HTTP stack `SuperPlayer.Builder` puts at the bottom of its
@@ -87,7 +94,7 @@ release of an owed licence runs on the store's own thread, and a test that goes 
 given up proves nothing about what stays owed. It waits and asserts nothing, and is `internal` for the reason
 above.
 
-`superplayer-core/src/test/kotlin/com/superplayer/core/` is the worked example.
+`android/superplayer-core/src/test/kotlin/com/superplayer/core/` is the worked example.
 
 ## What the seam is
 
@@ -206,7 +213,7 @@ engine was genuinely asked for, because a stack quietly exchanged for `DefaultHt
 have produced a working player and said nothing at all.
 
 That class is also **the repository's first user of `@Config(sdk = [...])`**, which
-`superplayer-core/src/test/resources/robolectric.properties` has pointed at since it was written.
+`android/superplayer-core/src/test/resources/robolectric.properties` has pointed at since it was written.
 An API level is deliberately not a `DeviceStatement`: that type states what a device *can do* —
 decoders, display, heap, protection — while a platform level is `Build.VERSION.SDK_INT`, which
 Robolectric's own annotation already sets, and a second way to say it would be a second thing to keep
@@ -367,12 +374,223 @@ through `verifyAll` in both branches, so the implementation an adopter reads is 
 defines. That test also holds the suite's list of codec families to `RealtimeFormats`' table, which is
 written down twice because the table is `internal` to a phase 13 module and the suite is phase 2's.
 
+### A realtime transport on iOS
+
+On Apple platforms a realtime stream has a player of its own, `SuperPlayerRealtime`'s `RealtimePlayer`
+(ADR-0020 rule 11, #431), and **the simulator decodes what it is pushed**: the player wraps each frame
+in a `CMSampleBuffer` and enqueues it to an `AVSampleBufferDisplayLayer` under an
+`AVSampleBufferRenderSynchronizer`, and those decode it. So where Android's fake carries H.264 of the
+right shape and no picture, the iOS fake, `ScriptedFrameSource` in `SuperPlayerRealtimeTests`, carries
+`SyntheticVideoHlsStream`'s hand-written bitstream without its container — an `avc1` track with that
+stream's `avcC` and four-byte length-prefixed samples, CoreMedia's own framing — at thirty frames a
+second in real time, on an epoch two hours in so a missing subtraction would hold every frame two hours
+ahead of the clock. `RealtimePlayerTests` reads "rendering" three ways: the synchronizer's clock
+advancing, the layer's renderer `rendering` with no error, and **no decode failure** — the renderer's
+own `didFailToDecodeNotification` — on a stream whose control, the same framing with noise for slices,
+fails frame by frame. That control is what shows the layer decodes rather than ignores, and it is why
+the synthetic stream is used rather than #340's bytes, which have no slice in them. The simulator
+decodes with no window but composites nothing offscreen, so `copyDisplayedPixelBuffer()` answers nil
+with or without one and the picture itself is not read. **A synchronizer with only a video renderer
+advances in an `xctest` host**, where #405 found a video-only `AVPlayerItem` never does.
+
+#340's observed bytes are committed once, under `ios/Tests/Fixtures/realtime/observed-bytes.tsv`, and
+**both platforms read that file**: `superplayer-realtime`'s `ObservedBytes` and the Swift tests' twin.
+Nothing generates them, so unlike the synthetic corpus above there is no update task: the file is edited
+by hand, each row says whether it was observed or synthesized, and the Kotlin build declares it an input
+of every test task so an edit re-runs what reads it. On iOS they are the format table's fixtures — an
+observed `avcC` passes into a format description's atom byte for byte — and the mirrored codec
+configuration's (#432, `CodecConfigurationRecordsTests`): the `avcC` dump as the truncation case, the
+`avc3` keyframe as in-band parameter sets that stop before their PPS, the `avc1` keyframe dump as a
+length field running past its frame. Where CoreMedia holds the answer — the parameter sets and NAL
+length width a description carries — it is read back from CoreMedia, so "the record passes through"
+and "in band makes the description the record would" are CoreMedia's readings and not only ours. The
+`hvcC` is synthesized and labelled so, and there is **no in-band HEVC description** anywhere here:
+CoreMedia parses an SPS to make one and no real HEVC SPS exists in this repository.
+
+**More than one track** (#432) plays from the same fake, which now scripts tracks — the video in each
+of ADR-0018 rule 4's shapes, `SyntheticHlsStream`'s silent AAC beside it, each track on the shared
+epoch or one of its own — interleaved as one publisher would send them. `RealtimeTracksTests` asserts
+A/V sync over **the presentation times each renderer was handed**, read in the engine: both render
+against one synchronizer clock, so a stamp is when a sample renders, and the simulator gives no
+per-sample reading of a render (the video composites nothing offscreen, an audio renderer reports no
+sample at all). A publisher's 40 ms skew arrives as exactly 40 ms; tracks an hour apart in either
+direction are placed within a frame of each other. The late and stalled bounds are media time against
+the leading track, so those tests deliver **unpaced** and wait for the engine to have taken every frame,
+never for a clock; each has a control — inside the late bound, and every track going quiet together.
+
+**An audio renderer goes quiet rather than failing**, which #432 found by enqueuing the first audio:
+with the AudioSpecificConfig as a bare magic cookie — what #431 described AAC with —
+`AVSampleBufferAudioRenderer` reports `rendering` with no error while its decoder logs
+"AudioCodecInitialize failed", #398's silent decoder through a different door. The cookie is now the
+`ES_Descriptor` an `esds` carries, and `RealtimeAudioDecodingTests` holds it with an AudioToolbox
+converter given the description's cookie as the renderer's decoder is, the bare cookie as the control.
+`AVAudioConverter` is not the instrument: it decodes both.
+
+**What a `RealtimePlayer` shares with a `SuperPlayer`** (#461) is tested in two classes over the same
+fake. `RealtimeTelemetryTests` counts what `QoeCollector` emits for a realtime session at a recording
+sink: the start, a first frame from a declared intent, the ten-second samples with both bitrate fields
+`null`, and the video renderer's dropped frames, which the simulator reports. A **rebuffer** is forced
+by `ScriptedFrameSource.Stall`, a publisher going quiet for longer than its half-second preroll. That
+starves the renderers under a running clock, and the frames it then owes end the rebuffer. The healthy
+session is the control, with no rebuffer at all. A refusal before the first frame and a failure after
+it are told apart, and a consumer's own collector is shown to hear the edges and be attached to
+nothing. `RealtimeSharedPiecesTests` posts the real interruption and route-change notifications at a
+realtime player, as `LifecyclePlaybackTests` does at a `SuperPlayer`. It publishes a session to a
+recorder behind `NowPlayingPlatform`, which shows a live dictionary and no seek command, and swaps a
+`SuperPlayer` in behind it. It reads Picture in Picture as far as the simulator lets it: the content
+source over the display layer, and the playback delegate's answers for a timeline with no ends. That a
+window then appears, and that the dropped-frame count means what a screen shows, are a device's. One
+gap is shared with the frame output's delegate: the controller is the app's, so nothing here calls
+its `invalidatePlaybackState()`, and a pause made elsewhere — a remote command, an interruption —
+reaches the window's button only when AVKit next asks.
+
+**On an iPhone** (iPhone 17 Pro Max, iOS 27.0, #461), Picture in Picture was run from the demo's MoQ
+screen. The first part is `MoqLiveSessionSmokeTests.testTheDemoPlaysOnInPictureInPicture`, an XCUITest.
+It taps the screen's button and reads that the controller's delegate heard the start. It then sends the
+app home for eight seconds and reads the clock, which had advanced 8.0 s across the time away, with the
+layer still rendering and Picture in Picture still active. A person then watched the window. The stream
+played, and its pause and play buttons paused and resumed it through the playback delegate. The window
+showed the LIVE badge and a bar with no thumb, as an unbounded time range asks. **It also drew both
+skip buttons.** The app's `requiresLinearPlayback` greys the forward one, and the back one stays,
+whatever start the range reports (a start at the playhead was tried and drew the same). No API hides
+it, so the delegate completes a skip having moved nothing. Two things the run taught the demo: a
+controller asked to start the moment it is made is ignored, because the system makes a start
+possible a moment later, so the demo makes it with the view; and the window needs the app's
+`audio` background mode. `demo/bbb.hang` stopped publishing on the relay mid-run, and
+`SP_MOQ_BROADCAST=moq://cdn.moq.dev/demo/boy/gb-run.hang` is what the test passed against.
+**Opus**, whose description is made and whose cookie (an OpusHead) no test decodes, is still not
+covered. ADR-0020 rule 11's other half, a realtime source handed to a `SuperPlayer` refused typed, is
+#419's `UnplayableSourceSchemeError` (the rule's #419 addendum). What a device alone shows is a real
+transport's frames on a screen, which is #438's.
+
+#### The conformance suite on iOS
+
+`FrameSourceConformance` is `SuperPlayerTestkit`'s public API too (#433), and it is the Kotlin suite
+ported check for check — the section above is its argument on both platforms, and what follows is
+only where this one differs. **Eleven checks, the same eleven**: the seam's documentation now numbers
+ten obligations where the Kotlin suite's counted nine, and the tenth, the coded size, is unenforceable
+for obligation 5's reason, so it adds a line to what the suite cannot check and no check. **A failure
+is a thrown `FrameSourceConformanceError`**, a plain `Error` — `SuperPlayerTestkit` links no XCTest,
+so XCTest, Swift Testing and a consumer's own runner all report it as the failure — and each message
+keeps the Kotlin shape: the rule, what the source did, what the rule requires. **The checks are a
+`CaseIterable` enumeration** behind `verify(_:)`'s exhaustive `switch`, because Swift has no
+reflection over methods: `FrameSourceConformanceTests`' register compares itself to `allCases`, as
+`FaultSweepTests` holds `FaultScript.Kind`. **Obligation 8 is read off memory rather than identity**:
+`Data` is a value, so a pooled array refilled after it was handed over cannot happen through the
+type, and what is left is a `Data` made with `bytesNoCopy` over memory the transport goes on writing.
+Two frames over one address whose bytes differed when each arrived is a buffer rewritten between
+deliveries — a value could not have changed, so one `Data` sent twice is refused by nothing — and a
+payload whose bytes differ from the copy taken on arrival is memory written afterwards. Both are read
+before the source is cancelled, since a transport may free its buffers once it has been. And the
+Kotlin suite's rule for a throw out of `subscribe` has nothing to check here: `subscribe` does not
+throw, so `onError` is a failure's only route by the type.
+
+What scores it is the Kotlin pair. `FrameSourceConformanceTests` drives `PublishingFrameSource`, a
+wrong publisher per obligation — its two obligation 8 defects by `bytesNoCopy`, one pooled buffer and
+memory of its own written after delivery — with the correct one through `verifyAll` in both of
+obligation 7's branches and asynchronously, joining its thread in `cancel`. And
+`ScriptedFrameSourceConformanceTests`, in `SuperPlayerRealtimeTests`, runs the fake the realtime tests
+play — real H.264 and AAC, paced and on its own thread — through `verifyAll` as `avc1`, as `avc3` and
+as `avc1` at two-byte lengths, and holds the suite's codec families to `RealtimeFormats.mappedTokens`.
+No socket is opened by any of it. What a real transport delivers is a device's and #438's.
+
+#### The MoQ bindings on iOS
+
+`SuperPlayerMoQ` (#434) is tested the Kotlin module's way, in `ios/MoQ/`'s own test target, which
+`ios/check` runs in a step of its own because the package is not the root manifest's
+(`ios/MoQ/Package.swift` says why). `MoqFrameSourceConformanceTests` runs testkit's suite over
+`MoqFrameSource` in both of ADR-0018 rule 4's branches, behind `ScriptedMoqRelay` — the Kotlin fake
+ported: endless tracks by default, paced on a condition `close()` wakes, each track on an epoch of its
+own — with a control the suite refuses (an `avc1` rendition whose catalog declared no record), and
+`MoqFrameSourceTests`, `MoqCatalogTracksTests` and `MoqSessionStatisticsTests` are the Kotlin classes
+case for case. **That proves the bridge and nothing about MoQ**: no QUIC session is opened and no line
+of `UniffiMoqRelay` runs. Two things differ from the Kotlin half, each in the direction of more
+evidence rather than less.
+
+- **The FFI test runs everywhere `ios/check` does.** `MoqFfiLinkageTests` walks every checksum the
+  generated Swift holds against the library and allocates an origin in Rust, as `MoqFfiLinkageTest`
+  does — but where the JVM can only load a *host* build and skips on every other host, the simulator
+  links the XCFramework's own arm64 simulator slice, the library an app on the simulator links, so CI's
+  macOS job runs it too. What no check reaches is the device slice, which only a device runs; the demo
+  is built against it by hand (`xcodebuild … -destination 'generic/platform=iOS'`), never by `ios/check`.
+- **Nothing waits a while and then asserts an absence.** Where the Kotlin tests pause and see nothing
+  arrive, these read the threads: `cancel()` joins the pumps and the poller, so a test asserts they
+  have *finished* the moment it returns, and a poller giving up after a failed poll is its thread
+  returning, waited for as an event. Pacing is a count against a count — at an hour's interval, one
+  poll while sixty-four frames arrive — never against a clock (ADR-0021 rule 4).
+- **`cancel()` does not join the connect thread**, which the Kotlin `cancel` does: here it is called on
+  the main actor, and a handshake or the `unroutable` retry cannot be interrupted, so it would freeze
+  the screen being left. A delivery barrier stops that thread's callbacks instead, and
+  `testCancelDoesNotWaitForAConnectionStillBeingMade` holds a scripted connection open across the
+  cancel to show both halves.
+
+The fixtures follow `DeclaredCatalogs`' provenance rules, and the observed `avcC` is read from
+`ios/Tests/Fixtures/realtime/observed-bytes.tsv` rather than restated, since a package of its own can
+reach that file by path where it could not reach another target's sources. A real broadcast — a relay,
+the `unroutable` retry, the session-URL namespace #367 settled — is the device run's, below.
+
+#### The first real MoQ session on an iPhone
+
+The iOS twin of *The first real MoQ session* (below) and the same carve-out from the no-network
+rule, admitted by name: `SuperPlayerDemoUITests`' `MoqLiveSessionSmokeTests`, an **XCUITest** run by
+`devicelab/lab run moq-smoke --platform ios` (`devicelab/README.md`, *The moq-smoke scenario*) and by
+nothing under `ios/check`, which only compiles it. A UI test because it holds both halves: its runner
+is a process of its own that opens `MoqFrameSource` with no player, as the Kotlin instrumented test
+does, and it can launch the demo and read what `MoqScreen` shows, which no other process on a phone
+can. The same three outcomes are encoded the same way — pass, skip for a relay that announces
+nothing, fail — and every observation is printed before any assertion runs.
+
+**What the run found** (#438), on an iPhone 17 Pro Max, iOS 27.0, wired to the Mac and on house
+Wi-Fi, against `cdn.moq.dev`:
+
+- **The device slice links and QUIC works from it.** Against the old default,
+  `cdn.moq.pro/anon/catshark.hang`, the session connected and was refused `unroutable` — not a
+  defect: the relay no longer announced that name, and listed two others under `anon`.
+- **Both of #367's defects reproduce on iOS exactly as on Android**, which is what makes the fixes
+  ported into `UniffiMoqRelay` evidence rather than assumption. Connecting to the bare authority
+  lists nothing and every request is refused, in all three arms; connecting with the namespace in
+  the session URL lists the broadcasts, and then the **immediate** request is refused `unroutable`
+  while the **settling** and **listening** arms both read the catalog — waiting is what matters, not
+  listening, as #367's third arm found.
+- **MoQ's own demonstration broadcast plays**, `demo/bbb.hang`, now the iOS demo's default: two
+  tracks, `avc3.64001f` 1280×720 with its configuration **in band** and `mp4a.40.2` with a two-byte
+  AudioSpecificConfig **record** (`12 10`) — the first live `avc3` and the first live AAC record either
+  platform has seen, so ADR-0018 rule 4's two branches were exercised by one real publisher at once.
+  Thirty frames arrived inside the window, and none after `cancel()` returned. The session's round
+  trip read 5–8 ms, which says the relay has an edge near the house and nothing about the library.
+- **The demo played it** on a `RealtimePlayer`: two readings of `MoqScreen`, both
+  rendering, the clock risen from about 0.2 s to 5.2 s and the session's received bytes from 8 kB to
+  about 1 MB.
+
+**What it found that is not MoQ's.** The runner's Thread Performance Checker reports a priority
+inversion in `MoqFrameSource.cancel()`: the caller, at user-initiated quality of service, joins
+pump threads started at the default one. And the demo's process reports `AVAudioSession` activated
+synchronously on the main thread. Both are recorded here and changed nothing in this run. The first
+is gone since #493, which starts every thread a subscription makes at the subscriber's quality of
+service and never below user-initiated (`MoqFrameSource.threadQuality(subscribedAt:)`), so the join
+waits on nothing below its caller: the checker's warning is line 7 of
+`devicelab/test/fixtures/ios/xcodebuild-test-moq-smoke.log`, #438's run, and the same scenario on
+the same iPhone (iOS 27.0, 2026-10-13) logged no warning at all, both tests passing, thirty frames
+delivered and none after `cancel()`. The second
+was the library's own call and is gone since #494, which performs the session's calls on a serial
+queue of the system platform's: `devicelab/lab run smoke --platform ios` on the same iPhone (iOS
+27.0, 2026-10-13) logged `[AVAudioSession Hang Risk] AVAudioSession_iOS.mm:978` once on the
+playback screen with the old binding, as the control, and not at all with the new one, both runs
+playing from 2 s to 16 s.
+
+**What it cannot show.** It takes no latency figure and no rate, for the Kotlin test's reason. It
+cannot list the source's threads after a cancel, as the Kotlin test does: Swift enumerates no other
+module's threads and `MoqFrameSource.joinedThreadsHaveFinished` is `internal`, so that half stays
+`MoqFrameSourceTests`' under `ios/check`. "Rendering" is the display layer accepting the stream with
+the clock running; whether each frame was shown on time is not read. And it is one relay on one
+evening — dated, relay-specific readings go on #438, not here.
+
 ### The MoQ bindings
 
 `superplayer-moq` links a native library, and everything unusual about testing it follows from where
 that library comes from: it is **built on this machine** and committed to `third-party/moq/m2`,
 rather than resolved from Maven (issue #364, and `third-party/moq/README.md` is the recipe and the
-licence evidence). So the module is not published at all — `settings.gradle.kts`'s
+licence evidence). So the module is not published at all — `android/settings.gradle.kts`'s
 `unpublishedModules` list, ADR-0017 rule 1 — and what a test here can show is bounded by that.
 
 `MoqFfiLinkageTest` calls across the FFI boundary for real, and the library it loads is the **host**
@@ -620,6 +838,363 @@ and cannot be a cycle. `SyntheticHlsStream.writeTo(directory)` is the same strea
 one test that plays through the real transfer chain.
 
 
+### One corpus on both platforms
+
+The Swift products play the same streams, and ADR-0021 rule 6 makes that **one corpus** rather than
+two generators that agree today. `SuperPlayerTestMedia`'s `SyntheticHlsStream` is a port of the
+Kotlin one, and the two are held to one set of committed files under `ios/Tests/Fixtures/synthetic/`:
+
+- **The Kotlin generator writes them.** `(cd android && ./gradlew updateIosFixtures)` runs
+  `superplayer-testmedia`'s `SyntheticHlsFixturesTest` in update mode and rewrites the directory,
+  on the golden traces' contract: run it alone, then `check`, and commit the diff with the change
+  that caused it. Nothing else writes there.
+- **Gradle's `check` holds Kotlin to them.** The same test in check mode fails when a committed file
+  differs, is missing, or is not one the generators produce, naming each file and the update
+  command. It is a JVM test and needs no Swift toolchain, which is why it is in `check`.
+- **`ios/check` holds Swift to them.** `SyntheticHlsFixturesTests` generates every fixture with the
+  Swift port and compares it file for file and byte for byte. It needs no JVM.
+
+So a change to either generator fails its own side's build: Kotlin's until the fixtures are
+regenerated, and then Swift's until the port follows. `index.tsv` in that directory is the table —
+each fixture's name, generator and arguments — and the Kotlin test writes it, so the Swift test reads
+which fixtures exist rather than keeping a second list; a row naming a generator Swift has not ported
+fails rather than skips, and a directory the index does not list fails too.
+
+What is committed is the **relative** form of the stream — the Kotlin generator's `files`, the form
+`writeTo` uses — because every reference inside it is relative and it therefore names no `fake://`
+host. The `fake://` keys of `resources` are a Media3 `FakeDataSet`'s addresses and nothing on iOS can
+serve them; an iOS test serves the files by path from a loopback origin. Nothing about the Android
+streams changed to make that true. Three fixtures are committed today: `hls-vod` and `hls-ladder`,
+each three segments long so the one thing that varies between segments, the ID3 timestamp tag, is in
+the comparison, and `hls-live` (#399), the live window once eight segments are published, so the
+window has slid and `EXT-X-MEDIA-SEQUENCE` is not zero. The second-host variant and the Widevine forms
+are not ported: a second host is the harness's second listener (#410) and iOS protection is FairPlay.
+The HLS half of the hostile corpus is held the same way, in a directory of its own beside this one
+(#412, *The hostile corpus on iOS* below).
+
+**A synthetic stream plays in `AVPlayer`.** On Android the ADTS payload is never decoded —
+Robolectric's shadow codec passes bytes through — so "it plays" was never a claim about the bytes.
+`SyntheticHlsPlaybackTests` makes it one on the simulator: both forms committed as fixtures play to their end in a stock
+`AVPlayer` with an audio track presented and nothing in the error log, and a control with one segment
+withheld does not. Playing to the end is necessary and not sufficient, which is how #398 found the
+payload wrong: an all-zero ADTS payload, what both generators wrote until then, also plays to its end
+— on time, with no error any API reports — while AVFoundation's decoder refuses every frame. So
+`SyntheticAacDecodingTests` decompresses a segment to PCM with an `AVAssetReader` and counts the
+samples, with the all-zero payload as its control, and both generators now write a silent
+`raw_data_block`. It plays over HTTP from the harness's origin, because `AVPlayer` never loads an HLS
+playlist handed to it as a `file:` URL, and so it lives in `SuperPlayerTestkitTests` rather than
+beside the generator: testmedia is phase 1, and its tests may not reach the phase 2 harness.
+
+### Every shared document, on both platforms
+
+ADR-0020 rule 4 makes the documents and the fixtures, never the code, what the two platforms share,
+and ADR-0021 rule 6 holds each platform to them with a test of its own. This is the list. A shared
+document added without a row here, or a row with one side empty, is a document one platform can
+drift from without failing anything.
+
+**A check that reads only files runs in Gradle's `check`**, on Linux, for both platforms at once
+(ADR-0021 rule 7). **A check that needs a platform's own types runs on that platform**, Kotlin's in
+`check` and Swift's in `ios/check`, and the two read the same file.
+
+| Shared document or fixture | Android, in `(cd android && ./gradlew check)` | iOS and tvOS, in `ios/check` |
+| --- | --- | --- |
+| `docs/telemetry-schema.md`: every event and field, and none it does not name | `superplayer-core`'s `TelemetrySchemaDocumentTest` | `SuperPlayerCoreTests`' `TelemetrySchemaDocumentTests` |
+| `docs/media-source-doctor.md`: a section per defect, naming its platforms and carrying its citation (#430) | `superplayer-diagnostics`' `DoctorDocumentTest`, over the sections naming Android | `SuperPlayerDiagnosticsTests`' `DoctorDocumentTests`, over the sections naming iOS and tvOS |
+| `docs/compatibility.md`: a stability row per module and per Swift product (#430) | `verifyCompatibilityDocument`, against `android/settings.gradle.kts` | the same task, against `Package.swift` and `ios/MoQ/Package.swift`: text, so on Linux |
+| `docs/modules.md`: the phase rule | `verifyModulePhaseRule`, against the module build files | the same task, against `Package.swift`'s targets: text, so on Linux |
+| The session trace grammar (`docs/session-bundle.md`'s lines) | `superplayer-telemetry`'s `GoldenTraceTest` and `superplayer-diagnostics`' `SessionBundleGoldenTraceTest`, byte-identical goldens | `SuperPlayerTelemetryTests`' `SessionTraceTests`, which parses every Kotlin trace golden and writes it back byte for byte, and the structural goldens under `ios/Tests/Fixtures/golden/` |
+| The synthetic HLS streams, `ios/Tests/Fixtures/synthetic/` | `superplayer-testmedia`'s `SyntheticHlsFixturesTest` | `SuperPlayerTestMediaTests`' `SyntheticHlsFixturesTests` |
+| The HLS half of the hostile corpus, `ios/Tests/Fixtures/hostile/` | `superplayer-testmedia`'s `HostileManifestsFixturesTest` | `SuperPlayerTestMediaTests`' `HostileManifestsFixturesTests` |
+| The corpus register: every pathology named at `SEVERE`, every `BENIGN` grade silent | `superplayer-diagnostics`' `CorpusRegisterTest` | `SuperPlayerDiagnosticsTests`' `CorpusRegisterTests`, over the HLS entries |
+| `docs/throughput-traces.md`'s format, `ios/Tests/Fixtures/throughput-traces/` | `superplayer-testkit`'s `ThroughputTraceFixturesTest` | `SuperPlayerTestkitTests`' `ThroughputTraceFixturesTests` |
+| #340's observed realtime bytes, `ios/Tests/Fixtures/realtime/observed-bytes.tsv` | `superplayer-realtime`'s tests, through `ObservedBytes.kt` | `SuperPlayerRealtimeTests`, through `ObservedBytes.swift` |
+
+**The trace grammar is held in one direction.** The Kotlin trace goldens are read by iOS's
+`SessionTraceTests`, while no Kotlin test reads the iOS goldens, which are structural and so carry
+no times for a byte-identical reader to compare. A bundle golden is read by neither side, since its
+`capability` lines differ by platform by design (`docs/session-bundle.md`), so each platform pins its
+own.
+
+**What is not on the list, and why.** `docs/http-transport.md` and its `TransportDocumentTest` are
+Android's alone, because `HttpTransport` is not ported (ADR-0020 rule 6). `docs/ios.md` has no test
+of its own. What it names is held elsewhere: the products by `verifyCompatibilityDocument`, their
+API by `ios/check`'s digester, and the not-ported list by ADR-0020 rule 6. Its prose is review's, as
+every document's prose is.
+
+### The iOS harness
+
+ADR-0021 rule 2's origin is `SuperPlayerTestkit`'s (#399). A test makes a `PlaybackHarness`, asks it
+to `serve` a `TestContent` — `.hls(segmentCount:variantCount:)` or `.liveHls()` — and points a player
+at the `LoopbackOrigin`'s `sourceURL`; the harness's `stop()` in `tearDown` closes every origin it
+started. What a test then reads is what the origin received, `networkRequests()`: method, path,
+`ResourceKind` by the Kotlin harness's own rule (`manifest`, `initialization`, `mediaSegment`),
+headers, and the ordinal of the connection it arrived on. That is the `networkRequests` of the
+Android harness counted at the server, because on iOS nothing between the engine and the server can
+see a request.
+
+- **One origin per `serve`, on `127.0.0.1` at a port the system chose.** `NWListener` binds the
+  loopback address alone, so nothing off the host is reachable, and two tests in one process never
+  share a port or a count — `LoopbackOriginTests` runs two harnesses at once to show it.
+- **The HTTP is a real origin's, as little of it as a player needs:** `GET` and `HEAD` (and a `POST`,
+  to `.licenceServer()` alone, *FairPlay on iOS*), persistent
+  HTTP/1.1 connections with requests answered in order, single byte ranges with a 416 past the end
+  (a set of ranges is answered whole, as RFC 9110 §14.2 allows), and RFC 8216's content types.
+- **The live stream publishes on real time.** `.liveHls()` is the Kotlin `TestContent.liveHls()`'s
+  six-segment window, sliding one two-second segment per two seconds since the origin started; a
+  segment that has slid out is a 404. The Android harness times it on its own clock, this one on the
+  host's, so a live test waits for a *segment published after it started* to be fetched rather than
+  advancing to it.
+- **Every wait is `harness.until(description, timeout:)`** — a condition polled every twentieth of a
+  second, read on the caller's actor for a player's state or awaited for a fetch, and a typed
+  `ConditionTimeout` naming the condition if the bound passes. The bound is a ceiling a pass never
+  approaches. No test sleeps and then asserts, and none asserts how long anything took.
+- **App Transport Security allows the origin's plain HTTP in the test host, not in this
+  repository.** ATS is the host process's, and a SwiftPM test bundle on the simulator runs in
+  Xcode's `xctest`, whose embedded `Info.plist` sets `NSAllowsArbitraryLoads`; the bundle has no
+  `Info.plist` of its own to set a key in, and none is set anywhere here.
+  `LoopbackOriginTests.testTheTestHostAllowsPlainHttpToTheOrigin` asserts the host's setting, so an
+  Xcode that drops it fails there by name rather than as every playback test timing out. A test
+  hosted in an app — the demo's, later — needs `NSAllowsLocalNetworking` in that app's `Info.plist`,
+  which is the narrow key and the one to choose.
+- **`AVPlayer`'s loads do not pass through a registered `URLProtocol`.** ADR-0021's *Context* left
+  this an observation for #399 to confirm; `StockPlayerOriginTests` registers one that sees a
+  `URLSession` load of the same origin and none of the player's.
+- **Faults and shaping are applied at the server** (#410, ADR-0021 rule 3). `serve(_:faults:network:)`
+  takes the Kotlin harness's two arguments: a `FaultScript`, addressed by kind, index, attempt and
+  host as the Kotlin builder is — a resource its path without the query at the offset read from,
+  indices one sequence per kind across hosts, latencies adding and the smallest truncation and cap
+  governing, as the Kotlin injector does — and a `ThroughputTrace` — a `NetworkProfile`'s, or one read
+  from `docs/throughput-traces.md`'s format. An origin records a request, *answers* it — the script
+  applied to its address, the published bytes resolved where no fault replaces them — and sends it,
+  held for the trace's round trip and any latency, then paced chunk by chunk. The script carries
+  every fault a server produces: a status (with `firstAttempts` and `afterAttempts`), a latency, a
+  throughput cap, a truncation that still declares the full length, a dropped connection, a token
+  that expires at a segment (refreshable by a new credential), a shared cache in front of the origin,
+  and a header set. `FaultScript.Kind` is `CaseIterable` because Swift has no reflection over the
+  builder for an iOS `FaultSweepTest` to read, and `FaultScriptPlaybackTests` forces every kind on a
+  stock `AVPlayer`, with a register of which test forces which, checked against `allCases`.
+- **A fault is shown at the origin.** `origin.responses()` records how each request was answered —
+  status, or none for a dropped connection; the fault kinds that acted; the body bytes sent; whether
+  it came from the script's cache; and the trace's transport. On Android the injector's exception is
+  the evidence; here the server is the only party a test can read a fault from.
+- **What a server cannot produce is not in the script**, and is said rather than approximated: the
+  Kotlin `failDnsResolution` and `failTlsHandshake` are failures inside the client, and
+  `timeOutConnection` is the client giving up — a server can only be silent, which a latency is.
+- **A second host is a second listener of one origin.** `.hls(hosts: 2)` and `.liveHls(hosts: 2)`
+  serve the same files from two ports on one publication clock, the multivariant playlist listing
+  each variant again on the second host as a redundant stream; a fault's `host:` is the listener's
+  number, since every host is `127.0.0.1`. `MultiHostOriginTests` refuses the first host's media
+  playlist and watches a stock player move to the second, with the unrefused stream as the control.
+- **The replay is per connection, and a trace's transport is reported, not switched.** Each
+  connection sees the whole link, the limit the Android replay states; and nothing in the simulator
+  can move the host's interface, so the transport a stretch names is what `OriginResponse.transport`
+  says a request arrived on and nothing a player observes. Time zero is the first media segment asked
+  for; on Android it is the moment the player was built. The origin's own start counted a cold host's
+  start-up as link time (#474, `TraceStartPlaybackTests`). What a host does after the anchor is
+  still its own, so the quick session there is judged off the origin, as the stretch each response
+  arrived on, rather than by a start (#503).
+- **One test measures a duration, and argues its bound.** `NetworkShapingTests` holds a shaped
+  transfer to the trace: never faster, which is exact — the origin sends a chunk no earlier than its
+  last byte is due and the client's stopwatch starts first — and no more than a second slower on a
+  two-and-a-half-second transfer, because a late wake is not carried into the next chunk's schedule,
+  so what a loaded host adds is one wake and a loopback connection. It is the one exception to rule
+  4, recorded at that rule's #410 addendum, and the acceptance asked for it by name.
+- **The trace grammar is one reading on both platforms.** `ios/Tests/Fixtures/throughput-traces/`
+  holds every profile as the Kotlin `format()` writes it and a hand-written `sample.trace`, each with
+  a `.readings` file `superplayer-testkit`'s `ThroughputTraceFixturesTest` writes — the trace written
+  back, its conditions at fixed times, and when fixed transfers arrive. The Swift
+  `ThroughputTraceFixturesTests` computes the same lines and compares them as text, so the grammar,
+  the profiles (`CONGESTED_WIFI` draws `java.util.Random`'s specified sequence, ported) and the
+  replay's integer arithmetic are held to each other. `(cd android && ./gradlew updateIosFixtures)` rewrites them, as
+  it does the streams.
+- **Core's playback tests are in testkit's target.** `SuperPlayerPlaybackTests` (#400) plays a
+  `SuperPlayer` from the origin, and lives in `SuperPlayerTestkitTests` for the reason
+  `SyntheticHlsPlaybackTests` does: a test target takes its product's phase, and core's is phase 1,
+  below the harness. The Kotlin core tests have a harness of core's own instead; an iOS one would be
+  a second loopback origin. What needs no origin — `MediaRequest` as a value, the remembered-position
+  memory and the observed register (ADR-0020 rule 13) — stays in `SuperPlayerCoreTests`. Playback is
+  driven through `player.avPlayer`, since that is where a consumer's transport controls are too, and
+  ADR-0021 rule 1's addendum bounds what a test may do there; a start is asserted as a position,
+  never a duration. `SuperPlayerPlaybackTests` reads it off a ready item held paused, within an AAC
+  frame, because a reading taken once the player is playing has a window a loaded host can outrun
+  (#502); the suites still reading at the first poll that finds the player playing argue their own
+  window beside their constants. Several core tests import
+  core `@testable`, each arguing it in its own comment: `RememberedPositionsTests`, for the order
+  rule a read-is-a-use that no playback can isolate, and `ObservedSignalRegisterTests`, for the
+  register's live count, which no public reading can see until the notification it waits for
+  arrives. A third, `PlaybackSnapshotTests` (#401), for the snapshot's internal memberwise
+  initializer — so the stored JSON is pinned for a value with every field set, which no public
+  call produces without playing — and for its internal remembered-position list, whose order is
+  what a restored memory evicts by and which `.resumeFromLastKnown` can show only one id at a time.
+  None of those three seams is `package`, because no later product reaches it. A fourth,
+  `LifecycleRulesTests` (#402), for the lifecycle's reading of each notification and its
+  process-wide count of who needs the session and the idle timer, which playback shows one player
+  at a time and on audio alone; the count's constructor and its platform protocol are `package`,
+  because `LifecyclePlaybackTests` in testkit's target reaches them too. A fifth,
+  `TelemetryPaysNothingTests` (#408), for the collector and measurement session a player holds,
+  which nothing reports on a player without a collector. A sixth, `FrameOutputPaysNothingTests`
+  (#405), for whether a player holds a display link, which is visible to nothing but the link's
+  target (*A frame output*). A seventh, `ResiliencePaysNothingTests` (#419), for the item-failure
+  observations a player registers, which no public reading can see until an item fails; the
+  classifying seam it fills with a stand-in, `FailureClassifying`, is `package`, because
+  `SuperPlayerResilience` fills it. An eighth, `DrmPaysNothingTests` (#422), for the key session a
+  player holds, which nothing reports until a key is asked for and no simulator asks for one; the
+  seam it fills with a stand-in, `ContentProtecting`, is `package`, because `SuperPlayerDRM` fills
+  it. A ninth, `DisplayLinkPaceTests` (#491), for the frame output's display-link pacing, a pure
+  value whose answer is a `CADisplayLink`'s range and so no consumer's to ask for. And the one
+  reader in **testkit's** target, `FrameOutputPacingTests` (#491), for the range a playing player's
+  display link was asked for, visible to nothing but the link's target as the sixth's link is; it
+  reaches `framePath` `@testable` rather than through a `package` seam because no later product
+  fills or reads that path, and a `package` member would put a test's reading into every build. It
+  is a file of its own so `FrameOutputPlaybackTests` stays on the public API. `TypedErrorPlaybackTests` reads a failed item's `error` and its
+  error log's last entry off `player.avPlayer`, under rule 1's #419 addendum.
+  `ProfileTableTests` reads each profile's knobs off `player.avPlayer`, and `SnapshotPlaybackTests`
+  an item's readiness, under rule 1's #401 addendum. `SlowLinkPlaybackTests` adds a video output and
+  a short forward buffer to a `SuperPlayer`'s item as to a stock one's, and reads a stalled item's
+  error log, under rule 1's #474 addendum.
+- **The lifecycle is driven by the platform's own notifications** (#402). `LifecyclePlaybackTests`
+  posts `AVAudioSession.interruptionNotification` and `routeChangeNotification` from
+  `AVAudioSession.sharedInstance()` with the `userInfo` keys `AVAudioSession.h` declares, as the
+  system posts them, and reads play and pause off `player.avPlayer` under rule 1's #402 addendum;
+  the control is a route change for another reason, which goes on playing. What the binding asks of
+  the platform — activating and deactivating the session, holding the idle timer — goes to a
+  recording `LifecyclePlatform`, the one `package` protocol rule 5's #402 addendum allows the
+  feature, through the `package` initializer `SuperPlayer(configuration:lifecycle:)`. The system
+  platform itself performs its session calls on a serial queue of its own (#494), and what
+  `LifecycleRulesTests` reads there — the order of the calls and that none runs on the main thread —
+  goes to a recorder handed to its internal initializer in place of the one function that calls
+  `AVAudioSession`: not a second protocol, but the implementation of the one under test, its
+  platform half still the device's. Three things only a device shows,
+  and none is faked: that the system honours an activation and interrupts the session for a real
+  call; that headphones pulled out post the route change; and the idle timer's video half, because
+  every synthetic stream was audio when it was written — `LifecycleRulesTests` holds the rule over a
+  presentation size, and that a video item's is non-zero by the time it plays is AVFoundation's
+  documented behaviour. #405's synthetic video could now show it on the simulator; no test does yet,
+  and `FrameOutputPlaybackTests` plays that video under a platform that does nothing, because an
+  `xctest` host has no `UIApplication` to hold the idle timer on.
+- **The collector's playback tests are in its own target** (#409). `SuperPlayerTelemetryTests`
+  depends on the harness, which telemetry may, both being phase 2, as `superplayer-telemetry`'s tests
+  drive the Kotlin harness. `QoeCollectorPlaybackTests` asserts the first frame and both of its start
+  boundaries, a rebuffer the origin causes by holding a segment back, a seek and the session's end,
+  as counts, flags and an order of readings on the monotonic clock — never a duration. The synthetic
+  streams are audio, so **nothing here can show a video track switch, dropped frames, or a first
+  frame that is a video frame**; those derivations rest on the schema document's citations until a
+  video fixture or a device run shows them — #405's `.videoHls()` is such a fixture, and no
+  collector test plays it yet. `CollectorSignalRegisterTests` is the collector's own
+  observed register, held as core's is: it reads `liveObservations` and `isSampling` through
+  `@testable`, the same seam argued the same way. Two more telemetry tests import the product
+  `@testable`, each arguing it in its own comment: `QoeCollectorPlaybackTests`, for
+  `QoeCollector.now()`, the monotonic reading taken before declaring intent so the boundary's place
+  is asserted as an order on the clock the collector measures with; and `OSLogSinkTests`, for
+  `OSLogSink.line(for:)`, because what the unified log keeps of a private value depends on whether a
+  debugger is attached, so the format is asserted where it is made. None is `package`, since no later
+  product reaches it. The seek test seeks through `player.avPlayer`, a consumer's transport control
+  like `play()` and `pause()` and reached where a consumer reaches it (ADR-0021 rule 1's addendum).
+- **The session trace recorder's goldens are structural** (#411), and *Golden traces on iOS* below
+  says what that reading can and cannot show. Its register, `RecorderSignals.swift`, is held by
+  `RecorderSignalRegisterTests` through `@testable` for the collector's reason, and the product's
+  "nowhere else" scan admits it beside `CollectorSignals.swift`. `SessionTraceTests` imports the
+  product `@testable` too, for the grammar's kinds in their rank and the content-id rule, which a
+  played session shows only one id of. The `load` and `bandwidth` kinds come from iOS 18's request
+  events and no runtime here is below 18, so their absence below it is asserted only by the
+  register's test, as CMCD's is.
+- **A session's platform is a protocol, and one test reads the real one** (#403). `PlaybackSession`
+  publishes to `MPNowPlayingInfoCenter.default()` and `MPRemoteCommandCenter.shared()` through the
+  one `package` protocol rule 5's #403 addendum allows the feature, `NowPlayingPlatform`, reached
+  through the `package` initialiser `PlaybackSession(player:resolver:centre:)`: the dictionary is
+  handed over in MediaPlayer's own keys, so a recording platform holds exactly what the system would
+  have, and fires a command at the targets it was given — which no test can do to the real centre,
+  since `MPRemoteCommand` has no public way to invoke a target. `PlaybackSessionTests` holds the
+  shape with nothing playing — the targets, the order `release()` keeps, a swap, the process's one
+  Now Playing between two sessions, the resolver declining — and reads the session's own observed
+  register, `SessionSignals.swift`, through `@testable`, one more core test importing core so, for
+  `ObservedSignalRegisterTests`' reason; that test admits the session's file as the one other place
+  in core a registration may be written. `PlaybackSessionPlaybackTests` plays: the dictionary's
+  title, subtitle, artwork (a `file:` PNG, since the origin serves streams), duration, elapsed time
+  and rate, a remote pause read off `player.avPlayer` under rule 1's #403 addendum, a swap that
+  carries commands to the incoming player, and an id resolved from outside resuming where it was
+  left. One test there sets and clears the **system's** dictionary for real, beside a player with no
+  session that leaves it nil. **That a button press reaches the target, and that the lock screen
+  draws what was published, are a device's** — the i1 demo's on an iPhone.
+- **CMCD's join is asserted at the origin** (#446). `CmcdPlaybackTests`, in the collector's target
+  because the claim is about every event, compares the `sid` and `X-Playback-Session-Id` each
+  request carried with the `sessionId` the sink was handed — one session, two adoptions of one
+  content, and `.disabled` as the control that sends no `CMCD-*` header. It skips below iOS 18,
+  as `CmcdFindingTests` does. **No runtime here is below 18**, so the branch that sends nothing
+  there is reached in `CmcdConfigurationTests` instead, through `@testable` and an argument the
+  binding takes for exactly that, on a later runtime: what it covers is the absence of a call, and
+  that an iOS 17 device sends no CMCD and still sends the header is the header's documentation,
+  confirmed by no run. Nor can it show `br`, which needs a video ladder the harness does not serve.
+- **A pool's device is stated, as on Android** (#404). `PlayerPool`'s bound is
+  `DeviceCapacity.swift`'s reading of `os_proc_available_memory()`, which an `xctest` runner — not an
+  app — reads as zero; so a test states the memory left through the pool's `package` initialiser,
+  `PlayerPool(configuration:availableMemory:)` — the memory half of what `TestDevice` states — and `PlayerPoolTests` holds the
+  bound to stated figures through `DeviceCapacity.concurrentPlayers(availableMemoryBytes:)`. Being
+  `package`, it needs no `@testable`; `PlayerPoolTests` imports core `@testable` for the
+  register's count alone, `ObservedSignalRegisterTests`' seam. What a recycled player no longer carries after
+  its content really played is `PlayerPoolPlaybackTests`', read through `.resumeFromLastKnown`.
+  **What a pooled player costs and how many decoders a device sustains are a device's** — the
+  per-player budget and the ceiling are argued, not measured, and i10 (#439) measures both on the
+  device matrix.
+- **A feed's prefetch is counted per row** (#417). `PreloadCoordinatorPlaybackTests` serves every
+  row of a feed from an origin of its own, so what was fetched for a row is that origin's count: a
+  row prefetched ahead fetched its playlists once and not again when it played, a pool with no
+  coordinator fetched nothing ahead, the row the feed moved to was handed the player holding it —
+  the very item kept by `setMediaRequest` — a memory warning made the row fetch again, and a
+  constrained path fetched nothing until it changed. The device is stated through the
+  coordinator's `package` initialiser — the memory left, and no real path watched — with
+  `pathChanged(isConstrained:)` the reading a test states Low Data Mode with, since no simulator
+  setting turns it on; the memory warning is the real notification, posted. `PreloadSignalRegisterTests`
+  counts ADR-0010 rule 13 as live registrations of the coordinator's own register, process-wide,
+  because a pool with no coordinator has nothing to ask. **That a prerolled player reaches its first
+  frame sooner, and that memory stays flat over a long scroll, are a device's** — real time cannot
+  show "sooner" (ADR-0021 rule 4), and the feed demo under `xctrace` is i4's exit (`docs/ios-plan.md`
+  §7). `ios/hunt-leaks` (#418) records that feed on a **simulator**, outside every check, and says
+  whether the app keeps what a scroll made; the same scroll on an iPhone, memory flat over 200 rows
+  and TTFF there, is #435's, and `devicelab/lab run feed --platform ios` measured it on an iPhone 17
+  Pro Max on iOS 27.0 over a cable (`devicelab/README.md`, *The feed scenario*): 200 rows down and
+  back twice at a second a row, 602 first frames from declared intent at a median of 258 ms, p90
+  289 ms and max 780 ms — 259 ms in the first pass and 257 ms in the second — and the app's physical
+  footprint **flat**, a median of 15.9 MiB over the first pass's 393 samples (p90 16.4) and 16.3 MiB
+  over the second's, half a megabyte more and inside the first's spread. That footprint is the app's
+  own: AVFoundation decodes in system processes, so it says the app keeps nothing per row, not that
+  the device's memory stayed flat. What it still cannot show is a prerolled row's first frame
+  arriving sooner than a cold one's, which needs the same scroll with preload off beside it.
+- **The adaptive policy's seams are `package`, and no ABR test is `@testable`** (#416).
+  `SuperPlayerABRTests` reads the product's pure halves through their public API and the oracle
+  through core's `package` `ThroughputSource`, the methods core itself calls, on an `EstimateMemory`
+  of the test's own and a clock it states — so aging between two and fifteen minutes is asserted on
+  stated times rather than waited for. `AdaptivePolicyPlaybackTests` shortens the hysteresis cooldown
+  through `AdaptivePolicy.forProfile(_:rebufferCooldownMs:memory:)`, a `package` seam its comment
+  argues: the real half-minute is a constant the pure tests hold, and what the harness shows is the
+  mechanism — a stall holding the ceiling on the playing item, and the first trigger after the
+  cooldown lifting it. It plays the audio stream, not the video ladder, because of #474. **That a
+  held ceiling changes which rung is played, and that the cellular cap binds on a cellular path,
+  are a device's**: the simulator's path is its host's, and testkit reports a trace's transport
+  rather than switching it.
+- **A realtime player's engine is read where no public reading exists** (#431).
+  `SuperPlayerRealtimeTests` imports the realtime product `@testable`, each file arguing it:
+  `RealtimeFormatsTests`, because the codec table answers CoreMedia vocabulary and is internal, as
+  the Kotlin table is; and `RealtimePlayerTests`, for the display layer's renderer — its decode-failure
+  notification and its error, the only reading of a decode the simulator gives — and for the
+  presentation time the first frame was stamped with, which is what shows the first timestamp was
+  subtracted. #432 added three: `CodecConfigurationRecordsTests` and `RealtimeAudioDecodingTests`,
+  because the framing and the description are internal as the Kotlin object is; and
+  `RealtimeTracksTests`, for each track's enqueued presentation times and its renderer — the only
+  reading of A/V sync and of a played audio track the simulator gives. #433 added one more,
+  `ScriptedFrameSourceConformanceTests`, for the table's `mappedTokens` alone, which the suite's own
+  list of codec families is held to. #461 added `RealtimeSharedPiecesTests`, for the Picture in
+  Picture playback delegate's type, which AVKit alone reads; it also reads the `package` seam a
+  session and the lifecycle use (`playbackState`, `hasVideo`, `perform`, `PlaybackSession(engine:)`),
+  which needs no `@testable`. `RealtimeTelemetryTests` imports nothing `@testable`, since a sink
+  is its reading. Everything else there is the
+  public `RealtimePlayer`: its clock, `isRendering`, `failure` and the typed refusals. *A realtime
+  transport on iOS* above says what the fake is.
+
+What it cannot show is what real time cannot: a test here is evidence that something happened and in
+what order, never that it happened sooner, and a device is still the only place a FairPlay key, a
+display mode or a QUIC session is real (ADR-0021 rule 5).
+
 ### The hostile manifest corpus
 
 `HostileManifests`, also in `superplayer-testmedia`, is the other half of synthetic media:
@@ -735,6 +1310,10 @@ corpus, and the test checks that it plays on, which is what makes a failing live
    defect means, what produces it and what to change. `DoctorDocumentTest` fails without it. This
    step is owed for **every** entry of the doctor's vocabulary and not only for a corpus one: the two
    defects of the *fetch* that no corpus can carry each have a section too.
+9. For an **HLS** entry, its iOS half (#412, *The hostile corpus on iOS*): `(cd android && ./gradlew
+   updateIosFixtures)` to commit its fixtures, the same entry in `HostileManifests.swift` until
+   `HostileManifestsFixturesTests` passes, and its row in `HostileManifestCorpusTests.recorded`.
+   `ios/check` names the entry until all three are done.
 
 A defect that lives outside the manifest cannot be applied by `FakeDataSet`, which serves bytes and
 reports no response headers. That covers the `Cache-Control` mismatch and the CORS one. Such an entry
@@ -761,6 +1340,386 @@ cannot be carried by fixed bytes at all. It is played instead by `LivePlaylistRe
 `FaultScript.Builder.serveThroughCache` (a cache that holds responses for a `max-age` and serves them
 with the headers that say so). That is the one place a recovery from this defect can be shown,
 because recovering needs something newer to exist.
+
+### The hostile corpus on iOS
+
+The HLS half of the corpus is ported to `SuperPlayerTestMedia` (#412) as `HostileManifests` and
+`HostileStream`, every entry at every severity, with its id, citation, cause, magnitude and declared
+headers; the DASH entries are not, because DASH is not (ADR-0020). It is **one corpus** by the rule
+*One corpus on both platforms* states, in a directory of its own, `ios/Tests/Fixtures/hostile/`:
+
+- **`<id>/<severity>/<name>`** holds each entry's files, the Kotlin URIs with
+  `fake://superplayer.test/hostile/` taken off. A token entry's names carry their query
+  (`?expires=…&signature=corpus`), because the signed address is the defect.
+- **`index.tsv`** is one row per entry in `graded()`'s order — id, severity, validity, the instant its
+  tokens were minted at, duration, source, magnitude (`-` for none), citation and cause — and
+  **`headers.tsv`** one row per declared header, against the file it is declared on.
+
+`superplayer-testmedia`'s `HostileManifestsFixturesTest` writes them under `(cd android && ./gradlew
+updateIosFixtures)` and holds the Kotlin generator to them in `check`; `HostileManifestsFixturesTests`
+holds the Swift generator to the same files, fields and headers, reading which entries exist from the
+index, so an entry on one side and not the other fails **naming it**. The token entries are why the
+Kotlin generator gained an internal overload taking the minting instant: a token's `expires` is in
+the bytes, so a corpus minted at the wall clock is a different corpus every second. The Swift
+generator takes that instant as an argument everywhere, since `SuperPlayerTestMedia` names no clock.
+
+An iOS test serves an entry with `TestContent.hostile(_:)` — by path, query excluded, as a CDN looks
+a file up before checking a signature — and its headers with
+`FaultScript.Builder.addDeclaredResponseHeaders(of:)`, #410's header sets addressed by kind and index:
+one set per kind, or for manifests one on the multivariant playlist (index 0, what the player asks for
+first) and another on every playlist it names. Those are the only shapes the corpus declares, and a
+declaration of any other stops the test naming the entry rather than being served approximately.
+
+`SuperPlayerTestkit`'s `HostileManifestCorpusTests` **records** what a stock `AVPlayer` does with each
+entry, in `HostileManifestCorpusTest`'s shape: one table for the graded corpus, outcomes as coarse as
+the Kotlin ones and structural — failed with which error domain and code, ended, still playing,
+stalled, never started — and no duration asserted; the budget and the two-second window that
+classify an unfinished session are the ones ADR-0021 rule 4's #412 addendum admits. A stock player rather than a SuperPlayer,
+because the iOS facade adds nothing between `AVPlayer` and the corpus yet, so there is no typed
+failure to record. Every entry plays at once, from an origin of its own, inside one forty-second
+budget, so the table costs one budget rather than nineteen; it read the same on consecutive runs
+before it was committed, and one row has since been shown to depend on the host's clock (#459): a
+live entry is judged against the wall clock, so `hls-cached-live-playlist` stalls at the live edge on
+a fast host, or rejoins the unchanged window later on the live timeline and replays it — a position
+past the media, read as degraded — if it waits long enough, and fails with -12889 or never starts on
+a host whose responses arrive a target duration late. That row accepts the four, listed in
+`timingDependent` with each mechanism traced, and any other outcome still fails. The table is a
+Swift literal edited **by hand**, as the Kotlin record is: a moved row fails with the whole
+observation printed as that literal, and the change that moves it writes the reason beside the row.
+Two rows differ from Android's, and both are findings rather than gaps: `hls-dangling-audio-group`,
+which Media3 plays, fails in AVFoundation; and `hls-cached-live-playlist` freezes with no error it
+fails with, where core names the cache — its error log carries -12888, the playlist unchanged, which
+nothing surfaces.
+
+Every item the record plays starts on its multivariant playlist's **first** variant
+(`startsOnFirstEligibleVariant`, #460). Left unset, AVFoundation picks the starting variant from a
+throughput history it keeps for the whole process, and we found no API that resets it. After a few
+corpus runs on the loopback in one process, the origin saw every ladder entry ask for its top rung's
+playlist first. That happened from the third to the fifth `-test-iterations` run, depending on the
+host. The severe ladder gap's top rung has frames larger than AAC's bit reservoir allows. A stock
+player started on it stops at zero with no error and no reason, and that is the lost start #460
+reported. The pinned start is the one a fresh process takes, and the rung a player climbs to
+afterwards is still AVFoundation's. Re-issuing `play()` would not help, because the player refused
+the media rather than losing a request. A record that holds for one run per process would read
+differently depending on where the run sits in the process, with nothing saying so.
+
+### The doctor on iOS
+
+`SuperPlayerDiagnosticsTests` scores the iOS doctor (#427) against the same corpus, served the same
+way: every test examines content on a loopback origin of its own through the public
+`MediaSourceDoctor`, and what the doctor fetched is the origin's record, so "playlists and never a
+segment" is an equality on `networkRequests()`. `CorpusRegisterTests` is `CorpusRegisterTest`'s
+shape — per entry, the findings at `severe` as an equality, and every `benign` grade and every
+healthy stream silent **one at a time** — and is also what holds ADR-0020 rule 8's lint to the
+corpus: a lint that misread an entry fails that entry's row. The four delivery entries (#428) are
+scored like the rest, because the origin serves each entry's declared headers
+(`FaultScript.Builder.addDeclaredResponseHeaders(of:)`); `DeliveryPathologyTests` is the Kotlin
+`DeliveryPathologyTest` — each entry diagnosed with its headers served and withheld, a control per
+rule, and the one-segment probe counted at the origin as one `HEAD` that sent no body byte.
+`PostmortemTests` is the Kotlin four-combination table over real `SuperPlayer`s, the test target
+depending on `SuperPlayerResilience` for a real `classify(_:)` while the product does not; its
+failed-with-a-defect row is the cached live playlist, whose session ends only where iOS 18's
+playlist answers are readable, so that one row skips below 18. Three pathologies have no corpus entry and are
+forced by a named test instead: the two defects of the fetch, and `hls-short-live-window`, whose
+Kotlin twin is DASH's. Its stream is testkit's `TestContent.liveHls(windowSegmentCount:)`, a live
+window a test chooses, published as though the default window had already slid so its media sequence
+is above zero; two segments is the defect and three, exactly at RFC 8216 §6.2.2's bound, the
+control. `PlaylistLintTests` imports the product `@testable`, arguing it in its own comment: the
+lint's three refusals and its attribute-list grammar reach the public API only as an unreadable
+finding with no reason, and nothing the origin serves carries a byte-order mark, a quoted comma or
+both kinds of tag. No duration is asserted anywhere in the target, and no device is needed for any of
+it. `DoctorDocumentTests` holds the vocabulary to `docs/media-source-doctor.md`, a section per
+pathology naming iOS and tvOS on its platform line, as the Kotlin `DoctorDocumentTest` does for
+Android (#430, *Every shared document, on both platforms* above).
+
+### The bundle and the HUD on iOS
+
+The same target holds the bundle and the debug HUD (#429), driven through the public API with the
+`package` seams each states.
+
+- **The device is stated for the golden and read for the redaction.** `hls-vod-bundle.trace` is a
+  structural golden in `ios/Tests/Fixtures/golden/`, written by `ios/check --update-golden` alone
+  through testkit's `GoldenFile` (moved there from the telemetry tests for this second caller), over
+  core's `package` `CapabilitySnapshot` initialiser — a snapshot read from the simulator that ran the
+  test would pin that host's OS version in a committed file, which is why the Kotlin golden states its
+  device too. Its trace half is `hls-vod.trace`'s session, so the two goldens differ by the capability
+  lines and the header alone. The redaction session below reads the real device.
+- **Every withheld thing is present first.** `SessionBundlePlaybackTests`' redaction session carries a
+  signed URL and a URL-shaped content id, an `Authorization` the app's `HeaderProvider` minted after the
+  origin expired the token at a segment, a licence the harness's key server issued through the player's
+  own exchange (a stand-in key session, since the simulator has no FairPlay), and a failure whose error
+  log names the host — the re-adopted media playlist refused 404 — and then the device's name, model,
+  vendor identifier, model identifier and OS build. Each is asserted present where it travelled or where
+  the platform holds it, then absent from the bundle.
+- **The HUD's rows are read off its model.** `HudFacts` is what the view draws, so `DebugHudTests`
+  asserts rows on a `SuperPlayer` with telemetry and on a stock `AVPlayer` that really played, a delivered
+  error on each, and the guard as a function of its three readings (Debug or not, simulator or not, the
+  profile's `get-task-allow`). The telemetry half is fed through `DebugHudTelemetry`'s own `onEvent`, the
+  Kotlin test's front door, because the estimate is the collector's ten-second sample. That the view
+  draws is `ImageRenderer`'s: the overlay renders to an image, and the guarded body to the same one on
+  a Debug simulator build.
+
+What needs a device: the `get-task-allow` reading against a real embedded profile, the display's short
+edge and the memory budget (an `xctest` runner has no window scene and is no app, so both read
+`unknown`), the hardware-decode answers (the
+simulator answers no even for H.264), and how the overlay reads over moving video.
+
+### Rungs 4 and 5 on iOS
+
+#420's three repairs are driven through a real `SuperPlayer` at the loopback origin, in
+`SuperPlayerResilienceTests`, each beside the control that keeps it from being "always repair":
+
+- **Rung 4** (`NextSourcePlaybackTests`): two sources are two origins, so which one served a
+  request is which origin recorded it. The request starts at five seconds, so "at the held
+  position" is the second origin's first segment, never a reading of a clock. The controls are a
+  request with one source, which ends on rung 6 as it always did, and a player without resilience,
+  whose second origin is asked for nothing.
+- **The credential repair** (`CredentialRepairPlaybackTests`): `FaultScript`'s
+  `expireTokenAtSegment(_:refreshable:)` refuses with 403 until a request bears a different
+  `Authorization`. The test counts what the repair costs, the multivariant playlist fetched a second
+  time and carrying the new credential, and that count is also what holds
+  `AVURLAssetHTTPHeaderFieldsKey`, an option no SDK header declares, to reaching the wire. The
+  controls are an expiry no credential lifts, which asks the provider once and ends classified, and
+  a provider that returns what was refused or throws, which declines.
+- **Rung 5** (`MediaServicesResetPlaybackTests`): `AVAudioSession.mediaServicesWereResetNotification`
+  is posted from `AVAudioSession.sharedInstance()`, as `LifecyclePlaybackTests` posts an
+  interruption, with the player paused so the held position is one the test read. Two resets at one
+  position are rebuilt and the third ends on rung 6. The control is playback that advanced, which
+  starts the count over. A rebuild is seen as the multivariant playlist asked for under a new
+  `X-Playback-Session-Id`, never as which item the facade made current, and never as a count of
+  playlist requests: `AVPlayer` asks again on its own for an ask that went unanswered, which a
+  count reads as a rebuild (#505), and the origin drops the first ask in the two tests that assert
+  the count, to keep that difference forced. The bound is read off
+  `SuperPlayer.maxDecoderRecreations`.
+  That is a `package` constant, because it bounds no promise a consumer writes code against and a
+  test in another target has to name it. It is the one `package` reading these tests make.
+
+**What only a device shows**, and none of it is faked. The post resets nothing on the simulator, so
+what a real reset does to the decoders under an item is unobserved. So is whether the item rebuilt
+on the kept `AVPlayer` is enough, or whether the engine itself must be rebuilt, which would break
+`player.avPlayer` as the escape hatch every view holds. The same goes for `AVError.mediaServicesWereReset`
+failing an item, which the classifier maps to rung 5 but which no test can raise. A real CDN's
+token scheme is the last: the origin's refusal is the one `FaultScript` writes.
+
+**One gap is not a device's.** An asset `SuperPlayerPreload` prefetched for a pooled player is made
+before any refusal, so it carries no refreshed credential. A refusal it then meets reaches a ladder
+that already holds the credential, and a provider handed that credential as the one sent may
+decline. No test covers a feed whose token expires.
+
+### The fault sweep on iOS
+
+#421 is i5's exit criterion, and it ports the Kotlin pair beside a detector:
+
+- **`FaultSweepTests`** plays every `FaultScript.Kind` once, through a player configured with
+  `Resilience.standard()` and nothing else, and records how each ended in `swept`: recovered, or
+  ended on a named class. All eight cells play at once, one origin each, so the sweep costs one
+  ceiling of real time rather than eight. HLS is the only column, because `AVPlayer` plays no DASH.
+  There are eight kinds rather than the Kotlin ten, because the script holds only what a server can
+  produce. **Without reflection, a new kind is made visible by the type**: `Kind` is `CaseIterable`,
+  `script(for:)` is an exhaustive `switch` over it, so an added kind does not compile until it is
+  swept, and the table's keys are held to `allCases`.
+- **`FallbackRungCoverageTests`** names, per `FallbackRung`, the test that forces it and the test
+  that counts its absence, checked against the source tree through `#filePath`. Rungs 1 to 3 have a
+  row that says why they have no test here: they are AVFoundation's own (ADR-0020 rule 6).
+- **`StaleLivePlaylistPlaybackTests`** plays the corpus's frozen live playlist twice. Served with its
+  ten-minute cache rule, it ends on `Transient.CdnEdge` naming the intermediary. With the rule
+  withheld, it ends on `Content.SegmentGap` naming the origin. Either way telemetry hears the ending
+  through `TelemetryCollector.sessionFailed(_:)`, since no item failed. The controls are a live stream that
+  keeps publishing, which plays on, and a player without resilience, which waits as a stock one does.
+  `StalePlaylistJudgementTests` holds the bounds over values, at the millisecond, through
+  `@testable`.
+
+**One gap the sweep found, not filled.**
+
+- **A segment that never answers in time stalls an `AVPlayer` for good.** AVFoundation gives up on a
+  segment after about one target duration and logs a -12889. It then asks again. If every attempt is
+  held as long, it waits at that segment with no error and no end. This was observed for seventy
+  seconds of a two-second-target stream. So the latency row is half a target duration, which keeps
+  the Kotlin row's meaning ("a delay, not a failure"), and not the Kotlin twenty seconds. Nothing
+  detects the never-answering segment yet, so it is the one origin fault left that neither recovers
+  nor ends named.
+- **So does a link too slow for the stream** (#474). Bytes flowing steadily do not extend that
+  wait: a segment not whole within it ("No response for media file in 2s") is abandoned and asked
+  for again from its first byte. On a link slower than a segment's bytes over a target duration —
+  for a segment as long as its target, slower than the stream — no segment ever arrives, so a player
+  that has not started never does, and on 27.1 one that has stalls for good at the first segment it
+  fetches there. CI's 26.5 was seen not to ask a started session's segment again within a minute, which
+  reads as a wait that grows with what is buffered, so the started half is a 27.1 reading.
+  `SlowLinkPlaybackTests` holds a stock player and a `SuperPlayer` to the same outcome, with a
+  link fast enough as the control. A session scripted to stall on a slow stretch therefore asserts
+  that the stall began, never that it ended.
+
+**What only another runtime or a device shows.** The coarser judgement below iOS 18 counts
+AVFoundation's -12888 entries. It is held over values and never played, because nothing here runs
+a runtime older than 18. The live edge is the item's, not one playlist's, so an audio rendition's
+playlist that froze while the video's advanced would not be judged stale; the request events name a
+playlist but carry no body to tell it was unchanged. A real CDN's cache, and a packager that publishes segments in bursts under
+a target far above their length, are also unobserved.
+
+### FairPlay on iOS
+
+**The simulator has no FairPlay** (ADR-0021 rule 5): an `AVContentKeySession` there never composes
+a key request, so no test here plays protected content. What `check` holds is everything around a
+key request, with the key session stood in at the one `package` protocol `SuperPlayerDRM` defines,
+`FairPlayKeySession`, reached through the `package` overload `Drm.fairPlay(_:keySession:)`. A test
+makes the key request a device's session would — an `skd://` identifier, and a key request composed
+from the certificate — and everything after it is the shipped code: the certificate fetch, the `POST`,
+`RetryPolicy.licence` and `Backoff`, the credential repair, the classifier and the collector.
+
+The licence server is `TestContent.licenceServer()`, the Kotlin `FakeLicenceServer`: an origin of its
+own on the loopback interface, answering a `GET` of its certificate and a `POST` of a key request with
+a licence derived from the request's bytes, so a test can tell which request a licence answered. Its
+requests are `ResourceKind.licence`, refusable and relenting through `FaultScript` like any other, and
+the origin records a request's body, which is how the key request posted is compared with the one
+composed. `LicenceExchangeTests` (`SuperPlayerDRMTests`, reaching the stand-in's protocol as `package`
+and nothing internal) drives it through a real `SuperPlayer` configured
+as a consumer configures one, `drm` beside `resilience`, each claim beside its control: a budget that
+relents within it and one that never does, counted at the server; one 401 repaired with the budget at
+nothing, and a provider that declines; a key request the device will not compose, which asks no
+server; a rotation and a renewal counted at the server and measured as nothing; a failed renewal that
+ends nothing; and a player without resilience, which refuses the request and names nothing.
+`BackoffTests` holds the jitter as a spread — in core's target since #424 moved `Backoff` to core as
+`package`, because the download store re-enqueues on it too — since no public reading shows a wait's
+spread. `DrmPaysNothingTests`, in core's target, counts ADR-0012
+rule 13 as the session a player holds — the **set**, never the answer, as `SuperPlayerDrmSeamTest`
+counts it — and `CollectorSignalRegisterTests` the output reading a protected player's session alone
+registers.
+
+The offline store (#423) is held the same way. `OfflineLicenceTests` opens `OfflineLicences.store`
+on a fresh temporary directory inside a parent of its own, and drives the four verbs through the
+stand-in's persistable half: a request asked for by identifier and delivered persistable at once,
+a licence turned into a "persistable key" by a prefix, and a key turned into a "proof of deletion" the
+same way, so a test can tell which bytes travelled where. Each claim is counted at the licence server:
+an acquisition and a renewal are one `POST` per key, a release is one `POST` carrying the proof, and a
+player configured with a stored licence — on a licence server of its own — makes **no** request at
+all. Beside them: a reopened store reading what another wrote, an expired licence readable before
+playback and refused as `Drm.LicenceExpired` after, renewed on the player that refused it, a
+release the server refused waiting for its release — no longer playable, since its key is gone —
+and retried with the proof the device gave the first time, and a device that will not make a request
+persistable refusing the acquisition typed rather than leaving it waiting. "Nothing outside the directory" is read as the parent
+holding the directory alone and the directory holding the store's file and SQLite's companions of it.
+The store's file is real SQLite on the simulator; nothing about it is stood in.
+
+**What only a device shows of the store**: that `respondByRequestingPersistableContentKeyRequest`
+yields a persistable request for an identifier asked with `processContentKeyRequest(withIdentifier:)`
+and for every request of a player playing offline; that `persistableContentKey(fromKeyVendorResponse:)`
+makes a key that plays with no network; that `invalidatePersistableContentKey` answers a proof a real
+key server accepts as a release, and whether a proof re-sent after a refusal is accepted as one;
+that an offline player's expired licence is refused as its first key is asked for, which is where
+`check` refuses it; and what a dual-expiry licence does on first playback — the session hands the app an updated key
+(`didUpdatePersistableContentKey`), which the store does not yet write back, so a rental replayed
+after its window began may need its key renewed.
+
+**What only a device shows**, and none of it is faked — the i6 device ticket's run:
+
+- that a FairPlay item reaches a key request at all, and that `SystemFairPlayKeySession`, the one
+  implementation that touches AVFoundation, composes it and plays with the licence it is handed —
+  no line of it runs under `check`;
+- that a real key server accepts the request as `POST`ed — the raw SPC, `application/octet-stream`,
+  with the `skd://` URI's host as the content identifier — rather than a wrapping of its own;
+- which error a FairPlay item fails with after `processContentKeyResponseError`, and so whether
+  `player.classify(_:)` of that item error agrees with the typed error core already delivered for the
+  exchange: the exchange's failure is offered to the ladder first, so the item's own is not climbed
+  again, but a collector asking about the item's error is answered from that error alone;
+- that a rotation in a real stream is one `didProvide` request per new key, and a renewal one
+  `didProvideRenewingContentKeyRequest`;
+- that `isOutputObscuredDueToInsufficientExternalProtection` moves on a display without HDCP, and that
+  the frame output under FairPlay yields no pixel buffer (#405's claim).
+
+**Two gaps are not a device's.** An `AVContentKeySession` names a key and never the asset that asked
+for it, so a licence still in flight when its content is replaced fails the content that replaced it.
+And an asset `SuperPlayerPreload` prefetched for a pooled player is handed to the key session at
+adoption, not as it was prefetched, so a key its prefetch would have asked for waits for the adoption.
+No test covers either.
+
+### Downloads on iOS
+
+**The simulator test host cannot run an `AVAssetDownloadTask`**, which #424 forced rather than
+assumed, on the iOS 27.1 simulator under Xcode 27: an `AVAssetDownloadURLSession` refuses any
+configuration but a background one, and a task on a background session made inside `xctest`
+completes at once with `NSURLErrorDomain` -1, "unknown error", having sent the loopback origin no
+request at all — the background transfer daemon serves an app, and `xctest` is not one. So the
+transfer is stood in at the one `package` protocol `SuperPlayerOffline` defines, `AssetDownloading`,
+reached through the `package` overload `Downloads(configuration:downloader:)`, as `FairPlayKeySession`
+is for FairPlay. **No test here runs a real download task**; every one of `DownloadsTests` runs the
+stand-in, `StandInDownloads`.
+
+What runs as shipped is everything the store decides: the manifest read by a real `AVURLAsset` against
+the loopback origin, the live refusal off its indefinite duration, the variant chosen under
+`PlaybackDecision.download` and the languages off its media selection groups, the session's
+constraints, the SQLite index and what a reopened store does with it, the re-enqueue on
+`RetryPolicy.segment` with `Backoff`, the naming of a failure by `SuperPlayerResilience`, and what a
+player configured with the store opens. The stand-in does what a task configured with the store's plan
+is documented to do — fetches the one variant the plan names by `BANDWIDTH` and each rendition it names
+by language — so a count at the origin is a count of what the plan asked for, on
+`TestContent.hlsWithChoice(audioLanguages:)`, whose every rendition is a directory of its own. What it
+lands is the variant's segments concatenated into one ADTS file, which `AVPlayer` plays from a `file:`
+URL, so "a downloaded request plays with no request" is asserted on a real `SuperPlayer` with the
+origin counting. A failure it reports is the error AVFoundation is documented or was observed (#419) to
+report — a `CoreMediaErrorDomain` code per HTTP status, and `AVError.diskFull` — so the classification
+read is the shipped classifier's of that error.
+
+**What only a device shows**, and none of it is faked — the i6 device ticket's (#436):
+
+- that `SystemAssetDownloads`, the one implementation that touches `AVAssetDownloadURLSession`, runs
+  at all — no line of it runs under `check`: that a task downloads exactly the variant its
+  `AVAssetVariantQualifier` names and the renditions its media selections name, that its progress
+  arrives as the time ranges it reports, and that its finished `.movpkg`, moved into the consumer's
+  directory, plays offline;
+- that a download survives process death and a network lost and regained, re-attached by the
+  session's identifier when the store opens, and that the app's `handleEventsForBackgroundURLSession`
+  hand-off is called back;
+- which error a real task fails with on a refused segment and on a full disk, and so whether the
+  classification the stand-in's errors read is the one a device's reach;
+- what the session's constraints do: that a task waits on cellular and in Low Data Mode, and what
+  `isDiscretionary` holds it for — coarser than Android's battery-not-low, and reported to nobody.
+
+**A protected download's licence (#425)** is three stand-ins at once in `DownloadLicenceTests`, each at
+its own `package` seam: the transfer as above, the key session at `FairPlayKeySession` for *FairPlay on
+iOS*'s reason, and the network at `SuperPlayerOffline`'s second seam, `NetworkWatching`, because a test
+cannot take the simulator's network away and a deferred release is a claim about there being none.
+What runs as shipped is the `EXT-X-SESSION-KEY` read of the multivariant playlist, the store's order —
+the licence acquired after the manifest and before the downloader is handed anything, which the
+stand-in's `onStart` reads off both origins at that moment — the exchange against
+`TestContent.licenceServer()` on the store's licence budget, the licence store's SQLite file and its
+owed releases, and the classifier's name for a refusal or an expiry. `TestContent.protectedHls` declares
+the keys and encrypts nothing. What only a device shows, beside the list above: that
+`processContentKeyRequest(withIdentifier:)` on a session with no recipient delivers a persistable
+request on a device, that the persisted key then plays the downloaded `.movpkg` with no request, that
+`invalidatePersistableContentKey` answers a proof a real key server accepts, and that `NWPathMonitor`'s
+reading is the moment a removal's release reaches the server.
+
+### A television on tvOS
+
+**No simulator switches a display mode** (ADR-0021 rule 5), and `xctest` has no `UIApplication` to
+find a window's `AVDisplayManager` through, so `SuperPlayerTV`'s output is tested over a display stood
+in at the one `package` protocol the product defines, `DisplayManaging`, reached through the `package`
+overload `TvOutput.standard(displays:)`. Everything above it is the shipped code: the binding core
+makes per player (`DisplayCriteriaMatching`), the item each replacement hands it, the end it hears from
+the real `AVPlayerItem` notification, and the reading it reports through `QoeCollector` to a sink.
+`DisplayCriteriaMatchingTests` and `DisplayModeTelemetryTests` hold it; one of them plays the synthetic
+stream to its real end over the loopback origin, the rest set items that never load, since the
+criteria are asked as an item becomes current. Core's `OutputPaysNothingTests` counts the slot (ADR-0014
+rule 14).
+
+**`ios/check` runs `SuperPlayerTVTests` on a tvOS simulator too**, beside the iOS run of every target,
+because this is the first product with tvOS-only code: the stand-in is the same on both platforms, and
+the tvOS run is what compiles and exercises the product as tvOS builds it. A host without a tvOS
+simulator runtime skips that run and says so, unless `SP_REQUIRE_TVOS=1` makes the absence a failure,
+which CI sets.
+
+**What only a device shows** — an Apple TV on a real panel, #437's run:
+
+- that `SystemDisplayManager`, the one implementation that touches `AVDisplayManager`, finds the key
+  window's manager, and that `AVAsset.load(.preferredDisplayCriteria)` answers criteria the display
+  acts on — no line of it runs under `check`;
+- whether the panel switched, to what, how long it was blank, and that the wait is inside time to
+  first frame, as `docs/telemetry-schema.md`'s *On a television* says;
+- that `AVDisplayManagerModeSwitchStart` and `…End` arrive around a real switch, and
+  `…SettingsChanged` when the viewer changes *Match Content*, so `DisplayModeChanged` brackets the
+  blank;
+- that `AVPlayerViewController` with `appliesPreferredDisplayCriteriaAutomatically` off leaves the
+  criteria to the output, as the demo's `TvScreen` sets it.
 
 ## The layers above the fakes
 
@@ -1009,6 +1968,74 @@ What each stand-in cannot show:
   distance does not depend on the rate is `ScrubTest`'s. That test reads past the facade, into the internal
   `Scrub`, because no key injection can vary a repeat rate. Nothing is drawn to a
   screen, so how the focus indication looks from across a room is a device's (#274).
+
+## A frame output
+
+`superplayer-effects` lays a consumer's `FrameOutput` on Media3's GL effect pipeline (ADR-0022), and
+**nothing under `check` runs that pipeline**: Robolectric has no GPU and no EGL, and the harness's video
+renderer is Media3's fake, which decodes nothing and sets no pipeline up. So what is observed is the list
+*reaching the engine*. `PlaybackHarness.videoEffectsDeliveries(player)` records each
+`MSG_SET_VIDEO_EFFECTS` message at the video renderer, the place Media3 delivers `setVideoEffects` to and
+where its own `MediaCodecVideoRenderer` would build the pipeline, with the effect count and whether it
+arrived before the renderer was first enabled — which is Media3's "before `prepare()`" limit, observed
+rather than assumed. `FrameOutputPlaybackTest` reads it on clear video, on protected content played to
+the end over the harness's licence server, and on a player built without the output, its control. What
+a device alone shows: that `FrameOutput.process` is called once per frame and on time, that the copy
+shader compiles and what it draws is what the surface shows, and the frames an effect costs. ADR-0022
+rule 4's tunneling half and rule 6's realtime half are core's `SuperPlayerFrameOutputSeamTest`, the
+first because it is a selector parameter on content that plays untunneled either way, the second because
+a phase 8 module's tests cannot reach phase 13's.
+
+**On iOS the pipeline is core's own and the simulator runs it** (#405, ADR-0022 rule 5): an
+`AVPlayerItemVideoOutput` on each item, a display link, the consumer's `FrameOutput` on a queue of the
+player's, and an `AVSampleBufferDisplayLayer`. What it needs that nothing else here has is *pictures*:
+every synthetic stream is audio, and Android's described video is a `Format` Media3's fakes synthesize
+without a byte. So `SuperPlayerTestMedia`'s `SyntheticVideoHlsStream` writes real H.264 by hand — an
+IDR whose macroblocks are all `I_PCM`, raw samples needing no encoder, then fifty-nine P pictures
+whose every macroblock is skipped — in fragmented MP4 under an HLS playlist, thirty frames a second
+at 64×64, a few kilobytes a segment, generated rather than committed for *Synthetic media, not
+fixtures*' reasons. A silent AAC track is muxed beside it, because a video-only item in an `xctest`
+host never advances without a video output on it — no layer there is ever in a window — so the
+control, a player with no frame output, could not otherwise play it at all. It has **no Kotlin twin and no committed fixture**, because ADR-0021 rule 6 holds
+two generators to one corpus and there is one generator; `SyntheticVideoDecodingTests` holds it to
+decoding instead, counting every frame an `AVAssetReader` decompresses and reading each segment's grey
+level back off the pixels. `TestContent.videoHls()` serves it. `FrameOutputPlaybackTests` plays it
+with testkit's `PassThroughFrameOutput` — the pass-through ADR-0022 rule 8 keeps out of the library —
+and asserts the frames handed over in presentation order, off the main thread, none twice, each a
+frame of the stream, and at least half of those that played, which is a bound and not a rate
+(ADR-0021 rule 4; the class comment argues the half); that the layer's renderer took them; that
+after a seek back the frames follow the new position; and that a player configured for protected
+content plays to its end with the output never called. The test sets `Configuration.drm` to a
+value conforming to `PlaybackDrm` alone, which acquires nothing and is still declared protection
+(ADR-0012 rule 13), so no key session is needed to show it. `FrameOutputPaysNothingTests`
+is rule 9's count, in core's own target: no output, link or sample-buffer layer on a player without a
+frame output and an `AVPlayerLayer` in the view, each of them once with a stand-in, none on a protected
+player, and a Picture in Picture content source made from either layer. What only a device shows, and
+#435 is the ticket: that a pass-through drops no frame `AVPlayerLayer` would have shown, that the
+layer presents each frame on time against the item's timebase, that Picture in Picture runs from the
+sample-buffer layer, and that FairPlay content yields no pixel buffer at all (i6). The first of those
+is now **counted**, by `devicelab/lab run frames --platform ios` (`devicelab/README.md`, *The frames
+scenario*), and on an iPhone 17 Pro Max on iOS 27.0, over Apple's BipBop example at 60 frames a second,
+it is **met** since #491. Before it, two runs of two minutes' steady playback each lost one frame of
+about 7,200 — a single gap of exactly two intervals (33.33 ms against 16.67), once at 63.6 s and once
+near 85 s — while an `AVPlayerLayer` on the same phone dropped 0 and 4 frames by its own access log.
+#491 found why with instrumentation it did not keep: the display link ticked every 16.668 ms against
+the stream's 16.667 (an iPhone holds every link at 60 Hz, whatever the display's 120), so where in a
+frame each tick landed walked by about 0.1 ms a second and the tick that crossed a frame boundary
+skipped one — at 60.27 s in that run, the same mechanism at a different phase from the earlier two.
+No tick was late and the one-frame back-pressure refused none. `DisplayLinkPace` now asks the link for
+twice the content's rate, which on an iPhone takes the app's `CADisableMinimumFrameDurationOnPhone`
+(the demo declares it; `docs/ios.md` tells an adopter): the link then ticked every 8.334 ms, and on
+2026-10-13 two runs of the scenario counted **0** frames missing in 7,200 handed over 120 s of steady
+playback each, with the `AVPlayerLayer` control dropping 0 and 0. A run before #491 also
+met a network stall, which the scenario reports apart: twelve frames went missing around it, none in
+steady playback. Without the key the loss returns, at about one frame every two or three minutes of
+60 fps, and nothing but the device count can see that. The other three remain a device's and unrun. Two things
+the simulator could show and no test does: that the flush on a seek keeps an old frame off the
+screen — what the output is handed follows the new position with or without it, and what the layer
+shows is not readable here, so the flush is held only by its registration being counted — and that
+the layer goes on presenting across an item replacement, when its control timebase moves to the next
+item's.
 
 ## The debug HUD
 
@@ -1557,6 +2584,13 @@ asks for tunneling only on a player with an output. Core's tests play no video b
 playback shows it. `superplayer-tv`'s `TunneledPlaybackTest` shows it applied at the renderer, its controls
 included.
 
+`superplayer-effects` is the eleventh friend, of the first shape, and its slot is ADR-0022 rule 3's second
+output slot, `EngineConfiguration.frameOutput`. Core's `SuperPlayerFrameOutputSeamTest` reads past the facade
+the same two ways: the filled configuration, counted with a profile alone and with a hand-written stand-in
+so that filling the second slot is shown not to fill `videoOutput` (rule 9), and the selector's
+`tunnelingEnabled`, which yields on a player whose frame output runs (rule 4). The effect reaching the engine
+is read at the renderer instead, through the harness (*A frame output*, above).
+
 `superplayer-diagnostics` is the ninth friend, and the first bounded by a **closed list** rather than by
 a slot (ADR-0015 rule 3): a doctor fills nothing, and what it reaches is `TransferChain.diagnosticChain`
 — ADR-0013 rule 4's second shape unchanged — plus, when #288 and #292 land, `LiveWindowDepthCheck`'s
@@ -1779,9 +2813,9 @@ state transition, track selection, load by kind and media time, error and teleme
 line in a fixed order — and holds it to a committed file, so a change in behaviour that no assertion
 names still appears in review, as a diff. "This change also moves the first segment load a step
 later on 3G" is a sentence a diff can say and a test suite cannot. The goldens live in
-`superplayer-telemetry/src/test/golden/`, one whole session each, played by `GoldenTraceTest` through
+`android/superplayer-telemetry/src/test/golden/`, one whole session each, played by `GoldenTraceTest` through
 the harness: each protocol on demand, and each over a shaped network. Since #292 there are goldens in
-a second module — `superplayer-diagnostics/src/test/golden/`, played by `SessionBundleGoldenTraceTest`
+a second module — `android/superplayer-diagnostics/src/test/golden/`, played by `SessionBundleGoldenTraceTest`
 — which pin the *bundle* that trace becomes one layer out, header lines and capability snapshot
 included. One command regenerates both, because the task is wired into every module.
 
@@ -1814,12 +2848,12 @@ format's specification; two of its rules matter to a test author:
 
 The contract is `docs/api-surface.md`'s, deliberately. Nothing regenerates a golden implicitly.
 A golden test in check mode — the default, and what `check` runs — fails on any difference with the
-diff in its message, so an uncommitted change to a golden fails `./gradlew check` and CI alike.
+diff in its message, so an uncommitted change to a golden fails `(cd android && ./gradlew check)` and CI alike.
 Accepting a change is one command, run on its own and then reviewed:
 
 ```bash
-./gradlew updateGoldenTraces     # rewrite every golden from what the tests now produce
-git diff -- '*.trace'            # the behaviour change, as a reviewable diff
+(cd android && ./gradlew updateGoldenTraces)   # rewrite every golden from what the tests now produce
+git diff -- '*.trace'                          # the behaviour change, as a reviewable diff
 ```
 
 When the diff means "fix the code" and when it means "accept the change" is the reviewer's call,
@@ -1865,16 +2899,60 @@ therefore the *samples* rather than the estimate: each finished transfer's own b
 duration, both on the engine's clock. A device trace loses nothing by it, and a bundle gains the
 dropout the average would have hidden.
 
+### Golden traces on iOS
+
+The iOS recorder (#411) writes the same grammar at the same `FORMAT_VERSION`, and its goldens are
+under the same contract — but **not byte-identical**, because nothing here can drive `AVPlayer`'s
+clock (ADR-0021 rule 4). A golden is compared in its *structural* reading, `SessionTrace.structural()`:
+
+- **Every reading of time is masked** — the `+<ms>` column, the value of every field whose name ends
+  in `Ms`, and the two rates measured on the host's clock (`bitrateBps` on a `bandwidth` line,
+  `throughputEstimateBps`). The field names stay, so a field that appeared or vanished is a diff.
+- **The periodic samples are dropped** — `PlaybackStateSampled`, `LiveLatencySampled`,
+  `VideoFramesDropped`. How many a session has is its length over the cadence, so a start-up a second
+  slower is one more sample; the first golden written, on a just-booted simulator, carried one that
+  the next run did not.
+- **Order is kept within each kind, and the kinds are printed in rank order.** AVFoundation reports
+  through independent paths — key-value observation, notifications, the metric stream, the telemetry
+  queue — and which of two delivers first within a few milliseconds is the host's scheduling. Within
+  a kind the order is causal: a load completes after it starts, `ENDED` follows `READY`.
+
+So **a structural diff shows** a kind that appeared or vanished, a line that appeared, vanished or
+moved within its kind, and a field that was added or whose non-time value changed. **It cannot show**
+a startup that got slower, a stall that got longer, a load that now happens later relative to a fact
+of another kind, or a sample more or fewer — that class of regression is the benchmark's to find or
+nobody's (ADR-0021's *Consequences*).
+
+The goldens are `ios/Tests/Fixtures/golden/*.trace`, compared by testkit's `GoldenFile`, and
+**`ios/check --update-golden` is the only writer**: it hands the test process `SP_UPDATE_GOLDEN=1`
+through `xcodebuild`'s `TEST_RUNNER_` prefix and sets it to `0` otherwise, so a value left in a shell
+cannot rewrite a golden behind a plain check. The first is `hls-vod.trace`, an on-demand session from
+adoption to release (`SessionTraceRecorderPlaybackTests`); it is the iOS 18 reading, since the `load`
+and `bandwidth` kinds come from `AVMetrics` request events, and on an older runtime the test compares
+everything else. Two segments, so the session ends inside the ten-second sampling cadence anyway.
+The trace is taken only once `SessionEnded` and a finished load for every resource the origin
+served have reached it — the metric stream delivers after a request ends, and a challenge answered
+inside one load is one event — and it read the same on consecutive runs on iOS 27.1 before it was
+committed.
+
+The grammar is one: `SessionTraceTests` parses every Kotlin golden in
+`android/superplayer-telemetry/src/test/golden/` with the Swift reader and writes each back byte for byte,
+and reads `hls-vod.trace` structurally. The redaction test drives a session that really carried a
+signed URL, a URL-shaped content id and an `Authorization` header — the credential travels in the
+source URL's user information and the origin answers the first playlist request with a `Basic`
+challenge, since core has no header seam on iOS yet and a cookie in the shared storage was not sent
+by the test host's player — and asserts each present at the origin before absent from the trace.
+
 ### The QoE regression gate
 
 A golden says a session *changed*; it cannot say whether the change was worse. `PRD.md` Part 5 asks
 for that too — replay throughput traces through the selection and buffering logic, score each session
 with the QoE objective, and gate on the score — and `superplayer-abr`'s `QoeRegressionGateTest` is
-that gate. It fails `./gradlew check` when a trace's score drops past its committed floor.
+that gate. It fails `(cd android && ./gradlew check)` when a trace's score drops past its committed floor.
 
 **Where it runs, and why there.** In `superplayer-abr`'s own unit tests, under the harness, because
 that is where the thing it protects is built and because `check` is this repository's definition of
-passing. The full `PRD.md` §6 matrix in `benchmark/` was the other candidate and is the wrong one: it
+passing. The full `PRD.md` §6 matrix in `android/benchmark/` was the other candidate and is the wrong one: it
 is a separate build that `check` cannot reach, twenty runs of ninety cells is a measurement rather
 than a check, and it compares three players where a gate asks one question of one. CI runs the gate
 because it runs `check`, and nothing else.
@@ -1893,7 +2971,7 @@ of starting numbers each argued where it is chosen, and the policy's code it wou
 the on-demand rows already exercise; a per-profile gate would multiply the gate's cost by five to score
 a buffer depth the QoE objective does not reward, since a deeper cushion on a stable link changes no
 term of the score. What `TV_LEANBACK` on Ethernet does differently is forced by `TvLeanbackPlaybackTest`,
-as a fact about media held rather than as a score. The score is not computed twice: `SessionMetrics` and `QoeScore` moved from `benchmark/` into
+as a fact about media held rather than as a score. The score is not computed twice: `SessionMetrics` and `QoeScore` moved from `android/benchmark/` into
 `superplayer-telemetry` for this, so the gate and the benchmark reduce events through the same file.
 
 **Which traces.** Synthetic only, each named by its `NetworkProfile`, and that is a decision rather
@@ -1903,7 +2981,7 @@ a licence to record in `THIRD_PARTY.md`. The profiles are deterministic, cite th
 a regression attributable to a named condition; a recorded trace joins the gate when one is committed
 on those terms, as a row in the floors file like any other.
 
-**The floor and the margin.** `superplayer-abr/src/test/qoe-floors.tsv` holds one row per trace: the
+**The floor and the margin.** `android/superplayer-abr/src/test/qoe-floors.tsv` holds one row per trace: the
 score, its three terms, and why the floor is where it is. A run fails when a trace scores more than
 **0.05** below its row, in the objective's own unit of Mbps-equivalent per second played. The gate
 plays each trace **three times and judges the median run**. Both numbers come from a measurement:
@@ -2001,14 +3079,14 @@ Instrumented tests on real devices are `superplayer-testkit`'s subject and arriv
 fault injector, the throughput trace replay and the golden traces above already have. They extend
 this seam rather than replacing it: they still drive the library through its public API.
 
-Benchmarking is not covered here, because it is not testing either. `benchmark/` runs `PRD.md` §6's
+Benchmarking is not covered here, because it is not testing either. `android/benchmark/` runs `PRD.md` §6's
 fixed matrix across three players and emits a report; it is a separate Gradle build, it is not in
 `check`, and a run of it fails only when it could not measure — never because of *what* it measured.
 Its Robolectric arm honours this document's rules as it happens, needing neither a device nor a
 network, and it still sits outside the suite: twenty runs of ninety cells is a measurement someone
 reads rather than a check a change must pass. Its device arm needs both a device and a network,
 because peak RSS and battery are properties of a process on a device and there is no honest way to
-take either from a JVM. `benchmark/README.md` says all of this from the other side.
+take either from a JVM. `android/benchmark/README.md` says all of this from the other side.
 
 Measurement on a device is not covered here either, because it is not testing. `devicelab/` drives
 the demo on an emulator or a phone and returns a Perfetto trace. A run fails only when it could not

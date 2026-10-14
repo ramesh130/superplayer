@@ -10,7 +10,8 @@ silent. It describes the artifact, not the library: everything below can be read
 editor and `grep`, and nothing in it requires the reader to know Kotlin, Media3 or Android.
 
 A bundle is produced on the viewer's own device by the app that played the content
-(`SessionBundle.Builder`, in `superplayer-diagnostics`), and it is written to be attachable to a
+(`SessionBundle.Builder`, in `superplayer-diagnostics`, or `SessionBundle(trace:)` in the iOS and tvOS
+package's `SuperPlayerDiagnostics`), and it is written to be attachable to a
 ticket without review: **no URL, host, path, query, token, request or response header, exception
 message, session id, wall-clock time, device identity or DRM material can appear in one**, because
 the recorder never holds those things rather than stripping them afterwards. What it does carry is
@@ -85,6 +86,30 @@ Read once when the bundle is built. Four sub-kinds, each on its own line:
 `unknown` means the platform did not answer, which is a different fact from `none`, which means it
 answered and has none of them.
 
+**A bundle from an iPhone, iPad or Apple TV** is the same format and the same version — the header
+lines, the ordering and every other kind read exactly as above — and its `capability` lines answer
+the questions Apple's platforms answer, so three of the sub-kinds carry different fields and the
+fourth is absent:
+
+```
++0 capability device platform=iOS osVersion=18.4 memoryBudgetMb=2048
++0 capability decoder mime=video/avc hardware=true
++0 capability decoder mime=video/hevc hardware=true
++0 capability decoder mime=video/x-vnd.on2.vp9 hardware=false
++0 capability decoder mime=video/av01 hardware=false
++0 capability display shortEdgePx=1179 hdrPlayback=true
+```
+
+| Line | Fields |
+| --- | --- |
+| `capability device` | `platform` (`iOS` or `tvOS`), `osVersion` (the OS's major and minor version, never the patch level or the build), `memoryBudgetMb` (the memory the app has left before the system's limit, which is what the player's own budgets are made against) |
+| `capability decoder` | one per video codec the library names, always the same four in the same order: `mime` (spelled as on Android, so one search reads both) and `hardware` (whether the device decodes that codec in hardware). Apple reports no instance limit, secure decoder or profile ceiling, so those fields are not printed |
+| `capability display` | `shortEdgePx` (the shorter edge of the active display mode, in pixels) and `hdrPlayback` (whether the system will play HDR on this display; Apple reports a yes or a no rather than a list of formats) |
+
+There is no `capability protection` line: FairPlay has no security levels, so there is nothing to
+deliver content at. The same refusals hold, in Apple's terms: no device name, model, model
+identifier, vendor identifier or OS build string appears in an iOS bundle.
+
 **What is not here, and will not be added.** No device make, model, product, board, fingerprint,
 build id or serial; no decoder *component* name (`OMX.…`, `c2.…`), which names a vendor and usually a
 chipset; no DRM identifier of any kind, the device's unique id above all; no display id or name; and
@@ -150,7 +175,7 @@ line below as a `classification`.
 One line per event of SuperPlayer's own telemetry schema, printed as the event's name and its
 fields: `SessionStarted`, `FirstFrameRendered`, `RebufferStarted`, `RebufferEnded`, `TrackSwitched`,
 `SeekRequested`, `SeekCompleted`, `LiveLatencySampled`, `PlaybackStateSampled`,
-`LicenceAcquisitionEnded`, `VideoFramesDropped`, `StartupFailed`, `MidStreamFailed`,
+`LicenceAcquisitionEnded`, `OutputObscuredChanged`, `DisplayModeChanged`, `VideoFramesDropped`, `StartupFailed`, `MidStreamFailed`,
 `DecisionChanged`, `SessionEnded`. **What each number means is
 [`docs/telemetry-schema.md`](telemetry-schema.md)** — the same definitions a data pipeline is held
 to, so a line here and a row in a warehouse are the same measurement. A failure prints its category,

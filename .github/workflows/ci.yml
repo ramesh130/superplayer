@@ -37,6 +37,13 @@ concurrency:
 permissions:
   contents: read
 
+# Where the Gradle builds are, relative to the repository root: the root build with demo/ and benchmark/
+# inside it, and the version catalog. The one place this workflow learns it, so moving the builds
+# changes this line rather than every step below. device-run.yml carries its own, devicelab's scripts
+# theirs in devicelab/lib/common.sh, and the Swift test that reads the Kotlin goldens names it as a path.
+env:
+  GRADLE_DIR: android
+
 jobs:
   build:
     name: Build, test, lint
@@ -56,8 +63,8 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          # Matches `jvmTarget` in gradle/libs.versions.toml, build-logic's toolchain, and the daemon
-          # JVM criteria in gradle/gradle-daemon-jvm.properties (and demo/'s and benchmark/'s copies).
+          # Matches `jvmTarget` in android/gradle/libs.versions.toml, build-logic's toolchain, and the daemon
+          # JVM criteria in android/gradle/gradle-daemon-jvm.properties (and the copies in android/demo/ and android/benchmark/).
           java-version: '17'
 
       # The SDK and the compileSdk platform, looked up from the version catalog. A composite
@@ -65,6 +72,8 @@ jobs:
       # lookup lives with it.
       - name: Set up the Android SDK
         uses: ./.github/actions/setup-android-sdk
+        with:
+          gradle-dir: ${{ env.GRADLE_DIR }}
 
       # Caches the Gradle user home — the dependency cache and the local build cache — so a
       # run reuses the previous one's downloads and task outputs. Only default-branch runs
@@ -78,9 +87,11 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build every module
+        working-directory: ${{ env.GRADLE_DIR }}
         run: ./gradlew assemble
 
       - name: Unit tests
+        working-directory: ${{ env.GRADLE_DIR }}
         run: ./gradlew test
 
       # `check` runs Android Lint, the repo-wide Media3 version verification, the tracked
@@ -93,17 +104,19 @@ jobs:
       # benchmark step below.
       #
       # Spotless is configured by path rather than by project, so this covers the demo's and
-      # build-logic's Kotlin files as well as the library modules'. `./gradlew spotlessApply`
+      # build-logic's Kotlin files as well as the library modules'. `(cd android && ./gradlew spotlessApply)`
       # is the local fix.
       #
       # The API surface checks are why there is no separate step for them: `check` is the whole
       # definition of passing, so a contributor running it locally sees exactly what CI sees.
-      # A public API change that has not been regenerated with `./gradlew updateApiSurface`
+      # A public API change that has not been regenerated with `(cd android && ./gradlew updateApiSurface)`
       # fails here, as does an @UnstableApi Media3 type reaching public API.
       - name: Lint, API surface, and repo verification
+        working-directory: ${{ env.GRADLE_DIR }}
         run: ./gradlew check
 
       - name: Publish to the local Maven repository
+        working-directory: ${{ env.GRADLE_DIR }}
         run: ./gradlew publishToMavenLocal
 
       # The demo is a separate build that resolves SuperPlayer from published coordinates,
@@ -118,7 +131,7 @@ jobs:
       # demo applies Spotless itself, so its sources stay covered even when this step is the
       # only thing running.
       - name: Build and lint the demo against the published artifacts
-        working-directory: demo
+        working-directory: ${{ env.GRADLE_DIR }}/demo
         run: ./gradlew assembleDebug lintDebug spotlessCheck
 
       # The benchmark is a third separate build, and it resolves SuperPlayer from published
@@ -128,13 +141,13 @@ jobs:
       # `test` rather than a matrix run: it is the harness's own tests plus the matrix at one run per
       # cell, which is what keeps the runner working between baselines without costing CI the
       # three quarters of an hour a real baseline takes. A benchmark is a measurement somebody reads
-      # rather than a check a change must pass — `benchmark/README.md` says why — so nothing here
+      # rather than a check a change must pass — `android/benchmark/README.md` says why — so nothing here
       # gates on a number.
       #
       # `spotlessCheck` for the same reason as the demo's: this build applies Spotless itself and CI
       # runs it with none of the root build running.
       - name: Build and smoke-run the benchmark against the published artifacts
-        working-directory: benchmark
+        working-directory: ${{ env.GRADLE_DIR }}/benchmark
         run: ./gradlew assembleDebug test spotlessCheck
 
       - name: Upload reports
@@ -145,5 +158,88 @@ jobs:
           path: |
             **/build/reports/
             **/build/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # Whether the iOS job below has anything to check. GitHub-hosted macOS minutes cost ten times
+  # Linux's, so that job runs only for a change that touches what it reads (docs/ios-plan.md §2):
+  # the Swift package, the documents both platforms share, the corpus generators the Swift fixtures
+  # are to be held equal to, and this file. (Swift licence headers are the Linux job's, in `check`.)
+  #
+  # A job rather than a workflow-level `paths:` filter, because that would skip the Linux job too
+  # and leave a pull request with no check at all; and a `git diff` rather than a third-party
+  # path-filter action, because it is four lines and adds nothing to THIRD_PARTY.md. A manual
+  # dispatch, and a push whose previous head is unknown, run the job rather than guess.
+  ios-changes:
+    name: Does this change touch iOS?
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      ios: ${{ steps.diff.outputs.ios }}
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Compare with the base
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ "$EVENT" = workflow_dispatch ] || ! git fetch --no-tags --depth=1 origin "$BASE"; then
+            echo "ios=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # The corpus generators are in the Gradle build, wherever GRADLE_DIR puts it.
+          testmedia="$GRADLE_DIR/superplayer-testmedia/"
+          testmedia="${testmedia#./}"
+          paths="^(ios/|Package\\.swift\$|third-party/moq/swift/|docs/|$testmedia|\\.github/workflows/ci\\.yml\$)"
+          if git diff --name-only "$BASE" HEAD | grep -qE "$paths"; then
+            echo "ios=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ios=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # The iOS and tvOS Swift package. `ios/check` is the whole step, as `./gradlew check` is above:
+  # swift-format, every test target on an iOS simulator, a tvOS build, and the API baselines under
+  # ios/api. ios/CLAUDE.md says what each needs, and ADR-0021 why it is a script rather than a
+  # Gradle task.
+  ios:
+    name: iOS package
+    needs: ios-changes
+    if: needs.ios-changes.outputs.ios == 'true'
+    runs-on: macos-26
+    # The empty package's run is a few minutes, most of it booting a simulator; 30 leaves room for a
+    # cold runner and a first simulator creation, and stops a hung simulator well before macOS
+    # minutes add up. It grows when the products have tests worth the time: 40 since #426, whose
+    # tvOS run boots a second simulator beside a run that was already twenty minutes.
+    timeout-minutes: 40
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      # Pinned rather than the image's default, which moves under the job when the image is updated:
+      # the API baselines are the digester's reading, and a printed type name is the compiler's, so
+      # an Xcode that changed between two runs could move a baseline nobody changed. 26.6 is the
+      # newest release (not beta) on the image, and builds Swift 6 for the iOS 17 floor. Moving it is
+      # a one-line change here and, if a baseline moves with it, an `ios/check --update-api` diff.
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app
+
+      - name: ios/check
+        run: ios/check
+        # The tvOS run of SuperPlayerTVTests is required here, so an image without the runtime
+        # fails rather than skips it (ios/check's header).
+        env:
+          SP_REQUIRE_TVOS: "1"
+
+      - name: Upload the test result bundle
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-check
+          path: .build/ios-check/
           retention-days: 7
           if-no-files-found: ignore

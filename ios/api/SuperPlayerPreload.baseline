@@ -1,0 +1,7 @@
+// SuperPlayerPreload: public API as ios/check reads it. Regenerate with ios/check --update-api.
+Class PreloadCoordinator : PoolAttachment, Sendable
+Constructor PreloadCoordinator.init(pool:) : SuperPlayerPreload.PreloadCoordinator, SuperPlayerCore.PlayerPool
+Func PreloadCoordinator.release() : ()
+Func PreloadCoordinator.setItems(_:) : (), [SuperPlayerCore.MediaRequest]
+Func PreloadCoordinator.setScrollPosition(index:velocity:) : (), Swift.Int, Swift.Double
+Var PreloadCoordinator.warmDecoderCount : Swift.Int { get }

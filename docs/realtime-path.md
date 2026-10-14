@@ -39,7 +39,7 @@ every other realtime transport, so Phase 15's WHEP changes the first four rows a
 ## What the table does not say
 
 **Which rows are verified, and how.** Everything from the frame-delivery seam downward is exercised
-under `./gradlew check` against fakes; everything above it is exercised by **one instrumented test
+under `(cd android && ./gradlew check)` against fakes; everything above it is exercised by **one instrumented test
 on a device** and by nothing else. `testing.md`'s *The first real MoQ session* is the carve-out and
 says what that run proves, and `superplayer-moq`'s own `FrameSourceConformance` run proves the
 bridge while proving nothing about MoQ.

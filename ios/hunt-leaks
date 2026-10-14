@@ -1,0 +1,384 @@
+#!/usr/bin/env bash
+# Copyright 2026 The SuperPlayer Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# ios/hunt-leaks: the iOS leak hunt, `(cd android && ./gradlew huntLeaks)`' analog. Records an xctrace with the Leaks
+# template (Leaks and Allocations) over the demo's feed scrolling itself, on a simulator, and writes
+# a report naming the leaks and the memory high-water mark. NOT in ios/check: it needs a network,
+# real streams and minutes, and nothing here gates a change (devicelab/leak/README.md, *Why it sits
+# outside the test suite*, for both platforms). ios/Demo/README.md, *The feed and the
+# leak hunt*, is the manual.
+#
+#   ios/hunt-leaks
+#
+#   SP_SIMULATOR        the simulator, by name (default superplayer-leak-hunt); made if absent
+#   LEAK_FEED_ROWS      rows in the feed (default 200, the PRD's Phase 4 figure)
+#   LEAK_FEED_PASSES    passes down the feed and back (default 2: a baseline, then one measured)
+#   LEAK_FEED_DWELL_MS  how long the feed rests on each row (default 1000, FeedScroll's own)
+#   LEAK_SETTLE_S       how long to keep recording once the scroll is over (default 15)
+#   LEAK_OUT            where the run goes (default .build/leak-hunt/<timestamp>)
+#   LEAK_KEEP_TRACE     1 to keep the .trace for Instruments (default: deleted once exported)
+#
+# Output: report.md, the exported tables, the footprint samples and the demo's log.
+set -euo pipefail
+
+case "${1:-}" in
+    "") ;;
+    -h | --help) sed -n '5,22p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 0 ;;
+    *) sed -n '5,22p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+esac
+
+root="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$root"
+
+simulator="${SP_SIMULATOR:-superplayer-leak-hunt}"
+rows="${LEAK_FEED_ROWS:-200}"
+passes="${LEAK_FEED_PASSES:-2}"
+dwell_ms="${LEAK_FEED_DWELL_MS:-1000}"
+# Longer than the Leaks instrument's snapshot interval, ten seconds by default, so at least one
+# snapshot is taken of the feed at rest after the last row was recycled — the state in which
+# everything the scroll made should be gone.
+settle_s="${LEAK_SETTLE_S:-15}"
+out="${LEAK_OUT:-$root/.build/leak-hunt/$(date +%Y%m%d-%H%M%S)}"
+derived_data="$root/.build/DerivedData-demo"
+bundle_id=com.superplayer.demo
+step() { printf '\n== %s\n' "$*"; }
+fail() {
+    printf 'ios/hunt-leaks: %s\n' "$*" >&2
+    exit 1
+}
+mkdir -p "$out"
+# A trace is written while it records and runs to gigabytes, and a full disk takes the rest of the
+# host with it. So the hunt refuses to start under three gigabytes free, and stops recording early
+# — saying so in its output — if the disk falls under one while it runs.
+free_kib() { df -k "$out" | awk 'NR == 2 { print $4 }'; }
+[ "$(free_kib)" -ge $((3 * 1024 * 1024)) ] ||
+    fail "under 3 GB free at $out; free some first"
+
+# Release, as the Android hunt measures the demo's release-like `benchmark` build: an unoptimised
+# build allocates in ways no adopter's app does, and its growth would be the compiler's.
+step "Build: the demo, Release, iOS simulator"
+xcodebuild build -quiet \
+    -project ios/Demo/SuperPlayerDemo.xcodeproj \
+    -scheme SuperPlayerDemo \
+    -configuration Release \
+    -destination 'generic/platform=iOS Simulator' \
+    -derivedDataPath "$derived_data"
+app="$derived_data/Build/Products/Release-iphonesimulator/SuperPlayerDemo.app"
+[ -d "$app" ] || fail "no app at $app"
+
+# ios/check's choice of device, for its reason: the newest iOS runtime, its first iPhone, under a
+# name nobody else is using.
+step "Simulator: $simulator"
+udid="$(xcrun simctl list -j | python3 -I -c '
+import json, sys
+name = sys.argv[1]
+listing = json.load(sys.stdin)
+ios = [r for r in listing["runtimes"] if r["platform"] == "iOS" and r["isAvailable"]]
+for runtime in ios:
+    for device in listing["devices"].get(runtime["identifier"], []):
+        if device["name"] == name and device["isAvailable"]:
+            print(device["udid"])
+            sys.exit()
+if not ios:
+    sys.exit("no iOS simulator runtime is installed")
+newest = max(ios, key=lambda r: [int(p) for p in r["version"].split(".")])
+iphones = [t for t in newest["supportedDeviceTypes"] if t.get("productFamily") == "iPhone"]
+if not iphones:
+    sys.exit("iOS " + newest["version"] + " supports no iPhone device type")
+print("create", newest["identifier"], iphones[0]["identifier"])
+' "$simulator")"
+case "$udid" in
+    create\ *)
+        read -r _ runtime device_type <<<"$udid"
+        udid="$(xcrun simctl create "$simulator" "$device_type" "$runtime")"
+        echo "created $udid ($device_type, $runtime)"
+        ;;
+    *) echo "using $udid" ;;
+esac
+# Seeded with a no-op, because the bash macOS ships (3.2) calls an empty array unbound under set -u.
+cleanup=(:)
+on_exit() {
+    local job
+    for job in "${cleanup[@]}"; do eval "$job" >/dev/null 2>&1 || true; done
+}
+trap on_exit EXIT
+if xcrun simctl list devices | grep -q "$udid) (Shutdown)"; then
+    xcrun simctl boot "$udid"
+    cleanup+=("xcrun simctl shutdown $udid")
+fi
+xcrun simctl bootstatus "$udid" -b >/dev/null
+xcrun simctl terminate "$udid" "$bundle_id" >/dev/null 2>&1 || true
+xcrun simctl install "$udid" "$app"
+
+# The demo's log and telemetry, from before launch, so the first row's first frame is in it: the
+# launch waits for the stream's own opening line, which it prints once it is filtering.
+xcrun simctl spawn "$udid" log stream --style compact --level info \
+    --predicate 'subsystem == "com.superplayer.demo" OR (subsystem == "com.superplayer" AND category == "SuperPlayerQoE")' \
+    >"$out/demo.log" 2>/dev/null &
+cleanup+=("kill $!")
+# Each wait below is bounded at a minute, a ceiling rather than an expectation: the step it waits
+# for takes seconds, and a minute is long enough that only something broken outlasts it.
+wait_for() { # <what> <command...>
+    local what=$1 waited=0
+    shift
+    until "$@"; do
+        [ "$waited" -lt 60 ] || fail "$what did not happen within 60 s ($out)"
+        sleep 1
+        waited=$((waited + 1))
+    done
+}
+wait_for "the log stream starting" grep -q "Filtering the log data" "$out/demo.log"
+
+# Launched by simctl and attached to, rather than launched by xctrace: a launch by xctrace on a
+# simulator fails the Leaks instrument ("the target's libmalloc hasn't been initialized"), and an
+# attach succeeds. MallocStackLogging, set in the app's environment through simctl's SIMCTL_CHILD_
+# prefix, is what lets a leak name the frame that allocated it; without it every stack reads "call
+# stack limit reached".
+step "Launch: the feed, $rows rows, $passes pass(es), ${dwell_ms} ms a row"
+pid="$(SIMCTL_CHILD_MallocStackLogging=1 xcrun simctl launch "$udid" "$bundle_id" \
+    -SPDemoScreen feed -SPFeedRows "$rows" -SPFeedScroll "$passes" -SPFeedDwellMs "$dwell_ms" |
+    sed -n 's/.*: \([0-9][0-9]*\)$/\1/p')"
+[ -n "$pid" ] || fail "simctl launch printed no pid"
+echo "pid $pid"
+cleanup+=("xcrun simctl terminate $udid $bundle_id")
+# Attached once the feed says it has started scrolling, not as soon as simctl answers: an attach in
+# the first moments of a launch is refused ("cannot find process") often enough to fail a run, and
+# what it would have recorded is the app's launch rather than the feed.
+scrolling_or_gone() { grep -q "scroll started" "$out/demo.log" || ! kill -0 "$pid" 2>/dev/null; }
+wait_for "the feed starting to scroll" scrolling_or_gone
+kill -0 "$pid" 2>/dev/null || fail "the demo exited before the feed scrolled ($out/demo.log)"
+
+# A ceiling on the recording, never an expected duration: two dwells a row a pass, doubled, plus
+# ten minutes for the slowest CDN. The scroll's end is what stops it.
+limit_s=$(((rows * 2 * passes * dwell_ms / 1000) * 2 + 600 + settle_s))
+step "Record: xctrace, Leaks template, attached (ceiling ${limit_s} s)"
+# Two of Allocations' defaults are switched off, because over a long scroll they cost gigabytes of
+# trace and answer nothing this report asks: the events of blocks already freed (the report reads
+# the live set and the leaks, and a leak is never a freed block) and every retain and release.
+# Edited from the template's own options rather than written out, since xctrace refuses a file that
+# leaves any of them out.
+xcrun xctrace record --template Leaks --show-recording-options | python3 -I -c '
+import json, sys
+options = json.load(sys.stdin)
+options["Allocations"]["discardEventsForFreedMemory"] = True
+options["Allocations"]["recordReferenceCounts"] = False
+json.dump(options, sys.stdout, indent=2)
+' >"$out/recording-options.json"
+xcrun xctrace record --template Leaks --device "$udid" --attach "$pid" --no-prompt \
+    --recording-options "$out/recording-options.json" \
+    --time-limit "${limit_s}s" --output "$out/feed.trace" >"$out/xctrace.log" 2>&1 &
+xctrace_pid=$!
+cleanup+=("kill -INT $xctrace_pid")
+
+# The process's footprint as the kernel accounts it: the simulator's app is a host process, so
+# `footprint` reads it directly. Three numbers a sample — the footprint, the kernel's own peak of it
+# (the high-water mark the report leads with, since Allocations' exportable tables give only the
+# live set at the recording's end), and Instruments' own buffers inside it (`Performance Tool
+# Data`), which grow with the recording and are subtracted to leave the app's.
+sample_footprint() {
+    footprint -p "$pid" -f bytes 2>/dev/null | awk '
+        /Performance Tool Data/ { tool = $1 }
+        /phys_footprint:/ { now = $2 }
+        /phys_footprint_peak:/ { peak = $2 }
+        END { if (now != "") printf "%s\t%s\t%s", now, peak, tool + 0 }'
+}
+record_sample() { # <label>
+    local reading
+    # A refused reading is a gap in the curve rather than the end of a run that is still recording.
+    reading="$(sample_footprint || true)"
+    [ -z "$reading" ] || printf '%s\t%s\t%s\n' "$((SECONDS - started))" "$1" "$reading" >>"$out/footprint.tsv"
+    # The whole breakdown by region category too, except mid-scroll, so the report can say what grew
+    # between two samples of the same state rather than only that something did.
+    [ "$1" = scrolling ] || footprint -p "$pid" -f bytes >"$out/footprint-$1.txt" 2>/dev/null || true
+}
+# Every two seconds while the feed scrolls — twice a row at the default dwell, so every row is
+# sampled while it plays, and a few hundred samples a pass, enough for a pass's spread to mean
+# something — and once at each pass's end, with the whole breakdown by category.
+printf 'elapsed_s\tlabel\tphys_footprint_bytes\tphys_footprint_peak_bytes\tperformance_tool_data_bytes\n' \
+    >"$out/footprint.tsv"
+started=$SECONDS
+passes_ended=0
+while :; do
+    kill -0 "$xctrace_pid" 2>/dev/null || fail "xctrace stopped before the scroll finished ($out/xctrace.log)"
+    kill -0 "$pid" 2>/dev/null || fail "the demo exited before the scroll finished ($out/demo.log)"
+    ended="$(grep -c "scroll pass=.* ended" "$out/demo.log" || true)"
+    if [ "$ended" -gt "$passes_ended" ]; then
+        passes_ended=$ended
+        record_sample "pass-$ended-end"
+        echo "pass $ended of $passes ended after $((SECONDS - started)) s"
+    else
+        record_sample scrolling
+    fi
+    grep -q "scroll finished" "$out/demo.log" && break
+    if [ "$(free_kib)" -lt $((1024 * 1024)) ]; then
+        echo "under 1 GB free: stopping the recording before the scroll finished" >&2
+        echo "stopped early: under 1 GB free" >>"$out/demo.log"
+        break
+    fi
+    sleep 2
+done
+echo "the scroll finished after $((SECONDS - started)) s; settling ${settle_s} s"
+sleep "$settle_s"
+record_sample settled
+
+# xctrace stops on SIGINT as it does on Ctrl-C, and then writes the trace.
+kill -INT "$xctrace_pid"
+wait "$xctrace_pid" || true
+[ -d "$out/feed.trace" ] || fail "xctrace wrote no trace ($out/xctrace.log)"
+
+step "Export"
+detail() {
+    xcrun xctrace export --input "$out/feed.trace" \
+        --xpath "/trace-toc/run[@number=\"1\"]/tracks/track[@name=\"$1\"]/details/detail[@name=\"$2\"]"
+}
+detail Leaks Leaks >"$out/leaks.xml"
+detail Allocations Statistics >"$out/allocations-statistics.xml"
+# A leak's own row names no frame when the block was allocated before the recording attached, so
+# each leaked address is looked up in the live allocations list too: found, it carries the frame
+# that allocated it and when; not found, it is older than the recording. The list is filtered by
+# address as it streams out, because whole it runs to hundreds of megabytes over a long scroll.
+: >"$out/leaked-allocations.xml"
+addresses="$(sed -n 's/.* address="\(0x[0-9a-f]*\)".*/address="\1"/p' "$out/leaks.xml")"
+if [ -n "$addresses" ]; then
+    detail Allocations "Allocations List" | grep -F "$addresses" >"$out/leaked-allocations.xml" || true
+fi
+
+# The trace runs to gigabytes even so, and is kept only when asked for: the tables above are what
+# the report reads, and opening the stacks in Instruments is the only thing the trace adds.
+if [ "${LEAK_KEEP_TRACE:-0}" != 1 ]; then
+    rm -rf "$out/feed.trace"
+fi
+
+python3 -I - "$out" "$rows" "$passes" "$dwell_ms" <<'PY' >"$out/report.md"
+import re, statistics, sys, xml.etree.ElementTree as ET
+
+out, rows, passes, dwell_ms = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4])
+mib = lambda n: f"{n / 1048576:.1f} MiB"
+cell = lambda s: (s or "—").replace("|", "\\|")
+
+leaks = [r.attrib for r in ET.parse(f"{out}/leaks.xml").iter("row")]
+stats = {r.get("category"): r.attrib for r in ET.parse(f"{out}/allocations-statistics.xml").iter("row")}
+origins = {}
+for line in open(f"{out}/leaked-allocations.xml", errors="replace"):
+    row = re.search(r"<row [^>]*>", line)
+    if row:
+        attrs = dict(re.findall(r'([\w-]+)="([^"]*)"', row.group(0)))
+        origins[attrs.get("address")] = attrs
+samples = []
+for line in open(f"{out}/footprint.tsv").read().splitlines()[1:]:
+    elapsed, label, now, peak, tool = line.split("\t")
+    samples.append((int(elapsed), label, int(now), int(peak), int(tool)))
+log = open(f"{out}/demo.log", errors="replace").read()
+ttff = {}
+for cid, ms, boundary in re.findall(r'evt=first_frame .*?cid="([^"]*)".*?ttffMs=(\d+) from=(\w+)', log):
+    ttff.setdefault(cid, []).append((int(ms), boundary))
+watched = set(re.findall(r"\] row=(\d+) contentId=", log))
+no_player = len(re.findall(r"no player: the pool is at its bound", log))
+from_intent = sorted(ms for frames in ttff.values() for ms, b in frames if b == "USER_INTENT")
+
+print("# Leak hunt: the iOS feed\n")
+leaked_bytes = sum(int(l["size"]) * int(l.get("count", "1")) for l in leaks)
+verdict = "**no leak found**" if not leaks else f"**{len(leaks)} leaked block(s), {leaked_bytes} bytes**"
+print(f"Verdict: {verdict}, over a {rows}-row feed scrolled down and back {passes} time(s) at")
+print(f"{dwell_ms} ms a row, on a simulator. A simulator's memory is the host's, so these numbers say")
+print("whether the app retains what a scroll made, not what a phone would report: \"memory flat over")
+print("200 rows\" on a device is #435's.\n")
+if "stopped early: under 1 GB free" in log:
+    print("**The recording stopped before the scroll finished**, because the disk fell under 1 GB")
+    print("free. Everything below covers the part of the scroll that was recorded.\n")
+
+print("## The scroll\n")
+print(f"- Rows that became the watched row: {len(watched)} of {rows}")
+print(f"- Rows that reached a first frame: {len(ttff)}; first frames reported: {sum(map(len, ttff.values()))}")
+if from_intent:
+    p90 = from_intent[int(0.9 * (len(from_intent) - 1))]
+    print(f"- Time to first frame from declared intent: median {statistics.median(from_intent):.0f} ms, "
+          f"p90 {p90} ms, n={len(from_intent)} (real time over a real CDN: a reading, not a claim)")
+print(f"- Watched rows that found the pool at its bound: {no_player}\n")
+
+print("## Memory\n")
+if samples:
+    print(f"- High-water mark (the kernel's `phys_footprint_peak`): **{mib(max(s[3] for s in samples))}**,")
+    print(f"  of which Instruments' own buffers at most {mib(max(s[4] for s in samples))};")
+    print(f"  the app's own at most {mib(max(s[2] - s[4] for s in samples))} at any sample, the settled one included")
+    ends = [s for s in samples if s[1].endswith("-end")]
+    # Each sample's pass is the number of pass ends before it, and the settled sample is left out:
+    # by then the first row has buffered its whole forward window, which no scrolling sample has.
+    by_pass = {}
+    for elapsed, label, now, _, tool in samples:
+        if label == "settled":
+            continue
+        n = sum(1 for e in ends if e[0] < elapsed) + 1
+        by_pass.setdefault(min(n, passes), []).append((now - tool) / 1048576)
+    if by_pass:
+        print("- The app's footprint (less Instruments' buffers) while the feed scrolled, per pass:\n")
+        print("  | Pass | Samples | Median | p10 | p90 | Max |")
+        print("  | --- | ---: | ---: | ---: | ---: | ---: |")
+        for n, values in sorted(by_pass.items()):
+            q = sorted(values)
+            print(f"  | {n} | {len(q)} | {statistics.median(q):.1f} MiB | {q[len(q) // 10]:.1f} MiB | "
+                  f"{q[9 * len(q) // 10]:.1f} MiB | {q[-1]:.1f} MiB |")
+        print()
+        print("  The first pass is the baseline, as the Android hunt's untimed first run is: what a first")
+        print("  scroll builds once and keeps — the pool grown to its bound, classes and caches — is in it.")
+        print("  A later pass whose spread sits above it is growth the scroll caused. A pass is compared as")
+        print("  a spread and never by one sample, because the footprint at any moment is mostly how much")
+        print("  the watched row has buffered, which a sample's timing decides.")
+def categories_of(label):
+    try:
+        text = open(f"{out}/footprint-{label}.txt").read()
+    except OSError:
+        return {}
+    found = {}
+    for m in re.finditer(r"^\s*(\d+) B\s+\d+ B\s+\d+ B\s+\d+\s+(.+?)\s*$", text, re.M):
+        if m.group(2) != "TOTAL":
+            found[m.group(2)] = int(m.group(1))
+    return found
+
+if samples and len(ends) > 1:
+    first, last = categories_of(ends[0][1]), categories_of(ends[-1][1])
+    grew = sorted(((last.get(c, 0) - first.get(c, 0), c) for c in set(first) | set(last)), reverse=True)
+    grew = [(d, c) for d, c in grew if d > 0][:8]  # the few that matter; the files hold the rest
+    if grew:
+        print(f"- What differs between the {ends[0][1]} and {ends[-1][1]} samples, by region category")
+        print("  (dirty bytes). Two single samples, so read it beside the spreads above, never alone:\n")
+        print("  | Category | Growth |")
+        print("  | --- | ---: |")
+        for d, c in grew:
+            print(f"  | {cell(c)} | {d / 1048576:+.1f} MiB |")
+        print()
+heap = stats.get("All Heap Allocations")
+both = stats.get("All Heap & Anonymous VM")
+if heap and both:
+    print(f"- Live heap at the recording's end (Allocations, persistent): {mib(int(heap['persistent-bytes']))} in "
+          f"{int(heap['count-persistent'])} blocks; with anonymous VM, {mib(int(both['persistent-bytes']))}")
+print("- `footprint.tsv` is the whole curve, a sample every two seconds.\n")
+
+print("## Leaks\n")
+if not leaks:
+    print("None at any of the Leaks instrument's snapshots.\n")
+else:
+    print("| Leaked object | Bytes | Allocated by | Library | When |")
+    print("| --- | ---: | --- | --- | --- |")
+    for l in leaks:
+        origin = origins.get(l.get("address"))
+        if origin:
+            frame, library, when = origin.get("responsible-caller"), origin.get("responsible-library"), origin.get("timestamp")
+        else:
+            frame, library, when = l.get("responsible-frame"), l.get("responsible-library"), "before the recording attached"
+        frame = None if frame in ("(null)", "") else frame
+        library = None if library in ("(null)", "") else library
+        print(f"| {cell(l.get('leaked-object'))} | {int(l['size']) * int(l.get('count', '1'))} | {cell(frame)} | {cell(library)} | {cell(when)} |")
+    print()
+
+print("## Largest live categories at the recording's end\n")
+print("| Category | Live bytes | Live blocks |")
+print("| --- | ---: | ---: |")
+categories = [s for c, s in stats.items() if not c.startswith("All ")]
+# The largest fifteen, which hold most of the live bytes; the exported table holds every category.
+for s in sorted(categories, key=lambda s: -int(s["persistent-bytes"]))[:15]:
+    print(f"| {cell(s['category'])} | {int(s['persistent-bytes'])} | {s['count-persistent']} |")
+PY
+echo "wrote $out/report.md"
+cat "$out/report.md"

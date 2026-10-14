@@ -20,7 +20,7 @@ shippable without a later one, and modules sharing a phase ship together — so 
 peers costs nothing the rule protects. A cycle between two of them is a real problem, but it is one
 Gradle already refuses to build; it is not this rule's to catch.
 
-`./gradlew verifyModulePhaseRule` reads the phase column below and fails the build if any module's
+`(cd android && ./gradlew verifyModulePhaseRule)` reads the phase column below and fails the build if any module's
 `project(...)` dependencies break the rule. It runs as part of `check`, so this is enforced rather
 than remembered. The task parses this table, which makes the document the single source of the phase
 numbers; the cost is that the table's shape — a backticked module name in the first cell, the phase
@@ -43,6 +43,7 @@ than to wave the dependency through.
 | `superplayer-drm` | 6 | WidevineSessionManager, provisioning, offline licenses, fallback ladder | core; testkit, resilience and telemetry (tests only) |
 | `superplayer-offline` | 7 | Downloads into the ContentCache the consumer opened, on the one chain: a store over Media3's download stack, WorkManager scheduling under unmetered, battery-not-low and storage-not-low, download track selection, and the licence bound to the download (ADR-0013) | core; testkit, testmedia, cache, drm and resilience (tests only) |
 | `superplayer-tv` | 8 | CTV behind one output slot: frame-rate matching, the display as a live reading, tunneling where the policy asks, and Compose-for-TV controls on a `SurfaceView` (ADR-0014) | core; testkit, testmedia, abr, drm, resilience and telemetry (tests only) |
+| `superplayer-effects` | 8 | The frame-output seam's Android half: a consumer's `FrameOutput` laid on Media3's GL effect pipeline (`setVideoEffects`) through core's second output slot, carrying `media3-effect` so that core does not. Off with a typed reason on a protected or realtime player (ADR-0022) | core; testkit and drm (tests only) |
 | `superplayer-diagnostics` | 9 | MediaSourceDoctor — a manifest's pathologies named over the chain a player of that request would load through, as one report for preflight and postmortem — the session trace bundle with its capability snapshot, and the on-device debug HUD (ADR-0015) | core and telemetry (ADR-0015 rule 1); testkit, testmedia, abr, cache, drm and resilience (tests only) |
 | `superplayer-realtime` | 13 | The Media3 half of the push-based source seam: the `MediaSource`/`MediaPeriod` that writes a `FrameSource`'s frames into Media3 `SampleQueue`s under a live unseekable timeline, codec-string mapping and codec-specific-data conversion. The seam itself — the public `FrameSource`, naming no Media3 type — is core's, so that its conformance suite can be testkit's (ADR-0018 rule 2's #356 addendum) | core; testkit and telemetry (tests only) |
 | `superplayer-moq` | 14 | Sub-second live over Media over QUIC: `moq-dev/moq`'s Kotlin bindings behind a `FrameSource` (ADR-0018). The bindings are **built here** rather than resolved from Maven, so this module is deliberately not published (`third-party/moq/README.md`, #364) | core, realtime; testkit (tests only) |
@@ -50,9 +51,9 @@ than to wave the dependency through.
 
 `superplayer-testkit`, `superplayer-abr`, `superplayer-cache`, `superplayer-preload`,
 `superplayer-resilience`, `superplayer-drm`, `superplayer-offline`, `superplayer-tv`,
-`superplayer-diagnostics` and `superplayer-realtime` also compile as Kotlin *friends* of core (`docs/testing.md`'s *Reaching that seam from another module*,
+`superplayer-diagnostics`, `superplayer-realtime` and `superplayer-effects` also compile as Kotlin *friends* of core (`docs/testing.md`'s *Reaching that seam from another module*,
 ADR-0009 rule 7, ADR-0010 rules 3 and 6, ADR-0011 rule 13, ADR-0012 rule 4, ADR-0013 rule 4, ADR-0014
-rule 3, ADR-0015 rule 3, ADR-0018 rule 11). A friend path is a compiler flag rather than a Gradle
+rule 3, ADR-0015 rule 3, ADR-0018 rule 11, ADR-0022 rule 3). A friend path is a compiler flag rather than a Gradle
 dependency, which is why it does not appear in the column above and why it is not what the rule
 measures.
 
@@ -76,6 +77,17 @@ real. The friendship does **not** carry a closed list
 of seams in ADR-0015 rule 3's sense: what this module reaches is the one slot and the engine
 configurator its own tests use.
 
+ADR-0022 rule 3 admits `superplayer-effects` as the **eleventh**, of the first shape: it fills one
+slot core declared, `EngineConfiguration.frameOutput`, the second output slot beside ADR-0014's
+`videoOutput`, and it exists as a module at all so that `media3-effect` is carried by the apps that
+lay a frame output and by no other. **Its phase is 8, and it is the second number not read off
+`PRD.md` Part 4**, because the roadmap schedules no Android frame output (`docs/ios-plan.md` §3.11
+says so: "no Android phase yet"). Eight is the phase the decision refines rather than a phase it
+invents: ADR-0022 is an amendment of ADR-0014 rule 3, Phase 8's output slot, and the module is that
+slot's sibling. The number constrains nothing today — the module depends on core alone, and nothing
+depends on it — and it ties with `superplayer-tv` deliberately, so a later change that lets the two
+outputs meet in a test needs no exception to the rule.
+
 **Phase 10 added no module, deliberately**, and the sentence that follows is superseded on its
 tenth-friendship half by ADR-0018 rule 11 above rather than contradicted. The HTTP stack (ADR-0004,
 ADR-0016) is a seam in core and
@@ -98,8 +110,8 @@ nothing else.
 synthetic HLS and DASH streams are played by `superplayer-core`'s tests *and* by
 `superplayer-testkit`'s main source set, and core cannot depend on testkit — a later phase, and a
 cycle besides — so the one home both can see has to sit below both. Phase 1, therefore: a phase-1
-module's tests may reach it, which is the constraint that fixes the number. **That number is the one
-exception to the rule below that phases come from `PRD.md`** — the roadmap does not schedule this
+module's tests may reach it, which is the constraint that fixes the number. **That number is the first
+exception to the rule below that phases come from `PRD.md`** (`superplayer-effects`' is the second) — the roadmap does not schedule this
 module, because it is not a capability anyone ships but the fixture the other modules' tests share,
 so it is the dependency rule rather than the roadmap that decides where it sits. It names no Media3 type
 either, which is what keeps `verifyNoUnstableMedia3InPublicApi` satisfied without an `@UnstableApi`
@@ -115,9 +127,63 @@ does not merely mislead, it changes which dependencies the rule above permits.
 Only `superplayer-core` is required by a consumer. Every other module is additive: an app depends on
 what it uses and its APK does not grow for features it does not need.
 
+## iOS products
+
+The iOS and tvOS half is one Swift package whose manifest is the repository's root `Package.swift`
+and whose sources are under `ios/` (`docs/ios-plan.md` §2 and §4). The rule above binds it
+unchanged: each product takes the **phase of the Android module it ports**, because the phase is
+what the dependency constraint is about, and the iOS phase it is built in is a column beside it
+for a reader rather than a number anything compares. A test target takes its product's phase.
+
+`(cd android && ./gradlew verifyModulePhaseRule)` reads this table too, and holds the targets' dependencies in
+`Package.swift` to it — on Linux, as text, so a manifest edit is checked by the job every change
+runs. A target this table does not list fails, as a module the table above does not list does.
+
+| Product | Phase | Android module | iOS phase |
+| --- | --- | --- | --- |
+| `SuperPlayerCore` | 1 | `superplayer-core` | i1 |
+| `SuperPlayerTestMedia` | 1 | `superplayer-testmedia` | i2 |
+| `SuperPlayerTelemetry` | 2 | `superplayer-telemetry` | i2 |
+| `SuperPlayerTestkit` | 2 | `superplayer-testkit` | i2 |
+| `SuperPlayerABR` | 3 | `superplayer-abr` | i3 |
+| `SuperPlayerPreload` | 4 | `superplayer-preload` | i4 |
+| `SuperPlayerResilience` | 5 | `superplayer-resilience` | i5 |
+| `SuperPlayerDRM` | 6 | `superplayer-drm` | i6 |
+| `SuperPlayerOffline` | 7 | `superplayer-offline` | i6 |
+| `SuperPlayerTV` | 8 | `superplayer-tv` | i7 |
+| `SuperPlayerDiagnostics` | 9 | `superplayer-diagnostics` | i8 |
+| `SuperPlayerRealtime` | 13 | `superplayer-realtime` | i9 |
+| `SuperPlayerMoQ` | 14 | `superplayer-moq`, in `ios/MoQ/Package.swift` and not the root manifest | i9 |
+| `SuperPlayerBenchmark` | 3 | `android/benchmark/`, a separate build | i2 |
+
+Two Android modules have no row. `superplayer-cache` does not port as a product of its own, since
+its content is the offline store's (`docs/ios-plan.md` §4); and `superplayer-whep` is contingent on
+both platforms.
+
+`SuperPlayerMoQ` has a row and is **not** a target of the root manifest (#434). It is a package of
+its own under `ios/MoQ/`, because a product of the root `Package.swift` is resolvable by anyone who
+names this repository's URL, and the Kotlin module it ports is deliberately unpublished
+(`ios/MoQ/Package.swift` and `CONTRIBUTING.md`'s #364 amendment argue it). So
+`verifyModulePhaseRule`, which reads the root manifest, does not read it, and the rule is held by
+what it can reach rather than by the check: it depends on the root package's `SuperPlayerCore`
+(phase 1), its tests on `SuperPlayerTestkit` (phase 2), and both on `third-party/moq/swift/`'s
+`MoqFFI` bindings, which are a third-party package rather than a phase.
+
+Kotlin friend modules have no Swift analog — a seam a later product reaches is `package`-scoped
+rather than `internal` — so nothing above the table's dependency column needs a Swift counterpart. Every product was empty until its phase, and each now carries its phase's code.
+
+`SuperPlayerBenchmark` is a target and not a product — nothing ships it — porting `android/benchmark/`,
+which on Android is a build of its own and stands outside the phases. Here it is a target of the
+root manifest, only because a `SuperPlayer` playing video in `xctest` needs core's `package`-scoped
+lifecycle seam (`ios/Benchmark/README.md`), so it takes a phase like any target: the latest of the
+products it measures with: 2 at first — the telemetry vocabulary over the phase 2 harness — and 3
+since i3's adaptive arm brought in `SuperPlayerABR` (#416). It cannot be unscheduled, because
+its own test target depends on it and nothing may depend on an unscheduled row; and nothing else
+does.
+
 ## Two separate builds beside this one
 
-`demo/` and `benchmark/` are **not** modules of the root build. It is a standalone Gradle build that resolves
+`android/demo/` and `android/benchmark/` are **not** modules of the library build. Each is a standalone Gradle build that resolves
 SuperPlayer through published Maven coordinates:
 
 ```kotlin
@@ -132,16 +198,16 @@ those failures happen here, during development, rather than in someone else's ap
 The cost is one extra step: the library must be published locally before either will build.
 
 ```bash
-./gradlew publishToMavenLocal        # from the repo root
-cd demo && ./gradlew assembleDebug
-benchmark/bench                      # publishes first, then runs the matrix
+(cd android && ./gradlew publishToMavenLocal)        # from the repo root
+(cd android/demo && ./gradlew assembleDebug)
+android/benchmark/bench                              # publishes first, then runs the matrix
 ```
 
-`benchmark/` is the same arrangement for the same reason, and one more: `PRD.md` §0.2 says every
+`android/benchmark/` is the same arrangement for the same reason, and one more: `PRD.md` §0.2 says every
 performance number this project publishes comes from its own harness, so the harness had better be
 measuring the artifact a consumer would actually get rather than a source dependency that skips half
 of what shipping means. It also resolves `superplayer-telemetry` and, for its Robolectric arm,
-`superplayer-testkit`. [`benchmark/README.md`](../benchmark/README.md) is its manual, including why a
+`superplayer-testkit`. [`android/benchmark/README.md`](../android/benchmark/README.md) is its manual, including why a
 benchmark sits outside [`docs/testing.md`](testing.md)'s no-device, no-network rule rather than
 against it.
 
@@ -149,23 +215,23 @@ against it.
 
 A clean checkout needs a JDK 17 or newer and an Android SDK with the platform named by
 `compileSdk` in the version catalog. Point `ANDROID_HOME` at the SDK, or write `sdk.dir` into a
-`local.properties` file — that file is machine-specific and gitignored. Gradle itself does not need
+`android/local.properties` file — that file is machine-specific and gitignored. Gradle itself does not need
 to be installed; the checked-in wrapper fetches the pinned version.
 
 ```bash
 export ANDROID_HOME=/path/to/android/sdk
-./gradlew build check                # compiles all 13 modules, runs lint and tests
-./gradlew publishToMavenLocal        # publishes all 12 to ~/.m2
+(cd android && ./gradlew build check)                # compiles all 13 modules, runs lint and tests
+(cd android && ./gradlew publishToMavenLocal)        # publishes all 12 to ~/.m2
 ```
 
 ## The version catalog
 
-`gradle/libs.versions.toml` is the single source of truth for every dependency version, and both
+`android/gradle/libs.versions.toml` is the single source of truth for every dependency version, and both
 builds — the library and the demo — read from that one file. Media3's version in particular is
 declared there and nowhere else, per ADR-0001 rule 3, so no consumer can hit a version-skew crash
 between transitively resolved media modules.
 
-`./gradlew verifyNoHardcodedMedia3Versions` fails the build if any build script pins a Media3
+`(cd android && ./gradlew verifyNoHardcodedMedia3Versions)` fails the build if any build script pins a Media3
 version directly. It runs as part of `check`, so the rule is enforced rather than remembered.
 
 ### Supported Media3 versions
@@ -179,7 +245,7 @@ claiming compatibility nobody has tested. It widens when there is a compatibilit
 not before. A module that comes to support a different range from the rest states so in its own
 build file, and this table gains a column.
 
-`./gradlew verifyMedia3SupportedVersion` fails the build when the catalog pins a Media3 outside the
+`(cd android && ./gradlew verifyMedia3SupportedVersion)` fails the build when the catalog pins a Media3 outside the
 minor version stated above. A Media3 bump therefore cannot land with this section left behind: a
 patch release inside 1.11.x passes, and anything else fails until the section is rewritten. It
 reads the bold **Media3 X.Y.x** in this section, so a rewording has to keep that form or teach
@@ -189,5 +255,5 @@ the check the new one. It runs as part of `check`.
 
 The 12 library modules share one definition of what a SuperPlayer module is — Android library setup,
 SDK levels, Java and Kotlin target, lint configuration, and publishing — in the
-`superplayer.android.library` convention plugin under `build-logic/`. A module's own build file
+`superplayer.android.library` convention plugin under `android/build-logic/`. A module's own build file
 therefore contains only what is genuinely specific to it: its dependencies.

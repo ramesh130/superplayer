@@ -1,6 +1,6 @@
 # The trace processor devicelab analyses traces with, by the sha256 of each release archive.
 #
-# The version is the catalog's `perfetto` (gradle/libs.versions.toml), which is where it is changed.
+# The version is the catalog's `perfetto` (android/gradle/libs.versions.toml), which is where it is changed.
 # These are the digests GitHub publishes for the assets of that release; lib/trace_processor.sh
 # refuses an archive that does not match, so a version bump without its hashes fails loudly rather
 # than running something unchecked. One line per host platform devicelab runs on:

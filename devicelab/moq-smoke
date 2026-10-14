@@ -14,7 +14,7 @@
 # borrows devicelab's device half (boot or adopt, wait for boot, confirm it answers) because that is
 # the part the two genuinely share, and nothing else.
 #
-# Not part of `./gradlew check`: it needs a device and a network, both of which docs/testing.md bars.
+# Not part of `(cd android && ./gradlew check)`: it needs a device and a network, both of which docs/testing.md bars.
 # *The first real MoQ session* in that document is the carve-out and says what this proves.
 set -euo pipefail
 
@@ -84,7 +84,7 @@ GRADLE_ARGS=(
 # contributor has plugged in.
 set +e
 (
-    cd "$REPO_ROOT" &&
+    cd "$GRADLE_ROOT" &&
         JAVA_HOME="$(/usr/libexec/java_home -v 17 2>/dev/null || printf '%s' "${JAVA_HOME:-}")" \
         ANDROID_SERIAL="$SERIAL" \
         ./gradlew "${GRADLE_ARGS[@]}"

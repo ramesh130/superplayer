@@ -1,0 +1,125 @@
+Test Suite 'Selected tests' started at 2026-10-12 22:14:23.961.
+Test Suite 'SuperPlayerDemoUITests.xctest' started at 2026-10-12 22:14:23.962.
+Test Suite 'MoqLiveSessionSmokeTests' started at 2026-10-12 22:14:23.962.
+Test Case '-[SuperPlayerDemoUITests.MoqLiveSessionSmokeTests testALiveBroadcastDeclaresTracksDeliversFramesAndStopsWhenCancelled]' started.
+    t =     0.00s Start Test at 2026-10-12 22:14:23.967
+    t =     0.02s Set Up
+/repo/ios/Demo/SuperPlayerDemoUITests/MoqLiveSessionSmokeTests.swift:73: warning: -[SuperPlayerDemoUITests.MoqLiveSessionSmokeTests testALiveBroadcastDeclaresTracksDeliversFramesAndStopsWhenCancelled] : Thread running at User-initiated quality-of-service class waiting on a lower QoS thread running at Default quality-of-service class. Investigate ways to avoid priority inversions
+--- moq-smoke begin ---
+test = transport
+broadcast = moq://cdn.moq.dev/demo/bbb.hang
+relay.authority = cdn.moq.dev
+broadcast.namespace = demo
+broadcast.name = bbb.hang
+device = iPhone18,2, Version 27.0 (Build 24A437)
+tracks.declared = yes
+track[0].codec = avc3.64001f
+track[0].configuration = in-band (no description; parameter sets in the payload)
+track[0].codedSize = 1280x720
+track[1].codec = mp4a.40.2
+track[1].configuration = out-of-band record, 2 B, opening 12 10
+track[1].codedSize = -
+tracks.count = 2
+frames.atFirstReading = 0
+frames.afterWindow = 30
+frames.windowSeconds = 10.0
+frames.bytesTotal = 342527
+frames.keyFrames = 3
+frames.perTrack = track0=28 track1=2
+session.statistics = rttUs=5831 bytesReceived=7996 packetsReceived=37 receiveRateBps=9175884
+frames.afterCancel = 30 then 30
+relay.announcedUnder[demo] = 5 announced: bbb.hang, boy/big2small.hang, boy/dangan.hang, boy/gb-run.hang, boy/opossum.hang
+mapping.candidates = asking the relay which one routes
+mapping[authority-only].announced = connect=https://cdn.moq.dev -> the relay answered and is publishing nothing under this prefix
+mapping[authority-only].requested(immediate) = broadcast=demo/bbb.hang -> connected, but requestBroadcast refused: MoqError: Protocol(message: "unroutable")
+mapping[authority-only].requested(settling) = broadcast=demo/bbb.hang -> connected, but requestBroadcast refused: MoqError: Protocol(message: "unroutable")
+mapping[authority-only].requested(listening) = broadcast=demo/bbb.hang -> connected, but requestBroadcast refused: MoqError: Protocol(message: "unroutable")
+mapping[authority-plus-first-segment].announced = connect=https://cdn.moq.dev/demo -> 5 announced: bbb.hang, boy/big2small.hang, boy/dangan.hang, boy/gb-run.hang, boy/opossum.hang
+mapping[authority-plus-first-segment].requested(immediate) = broadcast=bbb.hang -> connected, but requestBroadcast refused: MoqError: Protocol(message: "unroutable")
+mapping[authority-plus-first-segment].requested(settling) = broadcast=bbb.hang -> catalog read: 2 video, 1 audio (video=0.avc3|1.avc3 audio=2.aac)
+mapping[authority-plus-first-segment].requested(listening) = broadcast=bbb.hang -> catalog read: 2 video, 1 audio (video=0.avc3|1.avc3 audio=2.aac)
+--- moq-smoke end ---
+    t =    23.54s Tear Down
+Test Case '-[SuperPlayerDemoUITests.MoqLiveSessionSmokeTests testALiveBroadcastDeclaresTracksDeliversFramesAndStopsWhenCancelled]' passed (23.563 seconds).
+Test Case '-[SuperPlayerDemoUITests.MoqLiveSessionSmokeTests testTheDemoPlaysTheBroadcast]' started.
+    t =     0.00s Start Test at 2026-10-12 22:14:47.531
+    t =     0.02s Set Up
+    t =     0.02s Open com.superplayer.demo
+    t =     0.02s     Launch com.superplayer.demo
+2026-10-12 22:14:47.727 xcodebuild[66537:10463314] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-10-12 22:14:47.727 xcodebuild[66537:10463314] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-10-12 22:14:48.583 xcodebuild[66537:10463314] [MT] IDESchemeActionSDKRecord: operatingSystemBuild = <DVTBuildVersion 24A94232>, error = invalidDigitCount(94232).
+    t =     1.39s         Setting up automation session
+    t =     1.52s         Wait for com.superplayer.demo to idle
+Resolve Package Graph
+
+    t =     2.62s Waiting 15.0s for "moq.reading" StaticText to exist
+    t =     3.65s     Checking `Expect predicate `existsNoRetry == 1` for object "moq.reading" StaticText`
+    t =     3.65s         Checking existence of `"moq.reading" StaticText`
+    t =     3.66s             Requesting snapshot of accessibility hierarchy for app with pid 1197
+    t =     3.71s             Find: Descendants matching type StaticText
+    t =     3.71s             Find: Elements matching predicate '"moq.reading" IN identifiers'
+    t =     3.72s Find the "moq.reading" StaticText
+    t =     3.72s     Requesting snapshot of accessibility hierarchy for app with pid 1197
+    t =     3.73s     Find: Descendants matching type StaticText
+    t =     3.73s     Find: Elements matching predicate '"moq.reading" IN identifiers'
+<unknown>:0: warning: -[SuperPlayerDemoUITests.MoqLiveSessionSmokeTests testTheDemoPlaysTheBroadcast] :     AVAudioSession_iOS.mm:978   This method can lead to UI unresponsiveness if called on the main thread. Consider using the asynchronous activate/deactivate API instead for calls from the main thread.
+    t =     4.25s Find the "moq.reading" StaticText
+    t =     4.26s     Requesting snapshot of accessibility hierarchy for app with pid 1197
+    t =     4.28s     Find: Descendants matching type StaticText
+    t =     4.28s     Find: Elements matching predicate '"moq.reading" IN identifiers'
+    t =     4.79s Find the "moq.reading" StaticText
+    t =     4.79s     Requesting snapshot of accessibility hierarchy for app with pid 1197
+    t =     4.81s     Find: Descendants matching type StaticText
+    t =     4.81s     Find: Elements matching predicate '"moq.reading" IN identifiers'
+    t =     5.32s Find the "moq.reading" StaticText
+    t =     5.32s     Requesting snapshot of accessibility hierarchy for app with pid 1197
+    t =     5.34s     Find: Descendants matching type StaticText
+    t =     5.34s     Find: Elements matching predicate '"moq.reading" IN identifiers'
+    t =     5.86s Find the "moq.reading" StaticText
+    t =     5.86s     Requesting snapshot of accessibility hierarchy for app with pid 1197
+    t =     5.88s     Find: Descendants matching type StaticText
+    t =     5.88s     Find: Elements matching predicate '"moq.reading" IN identifiers'
+    t =     6.40s Find the "moq.reading" StaticText
+    t =     6.40s     Requesting snapshot of accessibility hierarchy for app with pid 1197
+    t =     6.42s     Find: Descendants matching type StaticText
+    t =     6.42s     Find: Elements matching predicate '"moq.reading" IN identifiers'
+    t =     6.94s Find the "moq.reading" StaticText
+    t =     6.95s     Requesting snapshot of accessibility hierarchy for app with pid 1197
+    t =     6.96s     Find: Descendants matching type StaticText
+    t =     6.96s     Find: Elements matching predicate '"moq.reading" IN identifiers'
+    t =     7.48s Find the "moq.reading" StaticText
+    t =     7.48s     Requesting snapshot of accessibility hierarchy for app with pid 1197
+    t =     7.50s     Find: Descendants matching type StaticText
+    t =     7.50s     Find: Elements matching predicate '"moq.reading" IN identifiers'
+    t =     8.00s Find the "moq.reading" StaticText
+    t =     8.01s     Requesting snapshot of accessibility hierarchy for app with pid 1197
+    t =     8.02s     Find: Descendants matching type StaticText
+    t =     8.03s     Find: Elements matching predicate '"moq.reading" IN identifiers'
+    t =     8.53s Find the "moq.reading" StaticText
+    t =     8.54s     Requesting snapshot of accessibility hierarchy for app with pid 1197
+    t =     8.56s     Find: Descendants matching type StaticText
+    t =     8.56s     Find: Elements matching predicate '"moq.reading" IN identifiers'
+    t =     9.08s Find the "moq.reading" StaticText
+    t =     9.09s     Requesting snapshot of accessibility hierarchy for app with pid 1197
+    t =     9.11s     Find: Descendants matching type StaticText
+    t =     9.11s     Find: Elements matching predicate '"moq.reading" IN identifiers'
+--- moq-smoke begin ---
+test = demo
+broadcast = moq://cdn.moq.dev/demo/bbb.hang
+reading.first = content=demo:moq-live position=235 rendering=true received=7838 rtt=7
+reading.second = content=demo:moq-live position=5233 rendering=true received=1022858 rtt=6
+played = yes
+demo.position = 5233
+--- moq-smoke end ---
+    t =     9.12s Terminate com.superplayer.demo:1197
+2026-10-12 22:14:56.645 xcodebuild[66537:10463314] [MT] IDESchemeActionSDKRecord: operatingSystemBuild = <DVTBuildVersion 24A94232>, error = invalidDigitCount(94232).
+2026-10-12 22:14:56.645 xcodebuild[66537:10463314] [MT] IDESchemeActionSDKRecord: operatingSystemBuild = <DVTBuildVersion 24A94232>, error = invalidDigitCount(94232).
+2026-10-12 22:14:56.647 xcodebuild[66537:10463314] [MT] IDESchemeActionSDKRecord: operatingSystemBuild = <DVTBuildVersion 24A94232>, error = invalidDigitCount(94232).
+    t =    10.13s Tear Down
+Test Case '-[SuperPlayerDemoUITests.MoqLiveSessionSmokeTests testTheDemoPlaysTheBroadcast]' passed (10.212 seconds).
+Test Suite 'MoqLiveSessionSmokeTests' passed at 2026-10-12 22:14:57.743.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 33.775 (33.781) seconds
+Test Suite 'SuperPlayerDemoUITests.xctest' passed at 2026-10-12 22:14:57.748.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 33.775 (33.786) seconds
+Test Suite 'Selected tests' passed at 2026-10-12 22:14:57.750.

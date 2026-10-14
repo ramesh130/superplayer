@@ -1,0 +1,436 @@
+public final class com/superplayer/testkit/ChainBottom : java/lang/Enum {
+	public static final field CONSUMERS_HTTP_TRANSPORT Lcom/superplayer/testkit/ChainBottom;
+	public static final field HARNESS_TRANSPORT_SLOT Lcom/superplayer/testkit/ChainBottom;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/testkit/ChainBottom;
+	public static fun values ()[Lcom/superplayer/testkit/ChainBottom;
+}
+
+public final class com/superplayer/testkit/DeviceStatement {
+	public static final field DEFAULT_DISPLAY_HEIGHT_PX I
+	public static final field DEFAULT_DISPLAY_WIDTH_PX I
+	public static final field INSTANCE Lcom/superplayer/testkit/DeviceStatement;
+	public static final fun declareAppHeap (I)V
+	public static final fun declareAudioOutput ([I)V
+	public static final fun declareBatteryLow (Z)V
+	public static final fun declareDataSaverOn ()V
+	public static final fun declareDisplay (II)V
+	public static final fun declareDisplayDisconnected ()V
+	public static final fun declareDisplayHdrTypes ([I)V
+	public static final fun declareDisplayModes (Ljava/util/List;)V
+	public static final fun declareDisplayModes (Ljava/util/List;Lcom/superplayer/testkit/DisplayMode;)V
+	public static synthetic fun declareDisplayModes$default (Ljava/util/List;Lcom/superplayer/testkit/DisplayMode;ILjava/lang/Object;)V
+	public static final fun declareLowRamDevice ()V
+	public static final fun declareNetworkMetered (Z)V
+	public static final fun declareOfflineLicence (Ljava/lang/Long;Ljava/lang/Long;)V
+	public static final fun declareSecureVideoDecoder (Ljava/lang/String;I[Lkotlin/Pair;)V
+	public static final fun declareStorageFree (J)V
+	public static final fun declareStorageLow (Z)V
+	public static final fun declareTelevision ()V
+	public static final fun declareTunnelingVideoDecoder (Ljava/lang/String;)V
+	public static final fun declareTunnelingVideoDecoder (Ljava/lang/String;Z)V
+	public static synthetic fun declareTunnelingVideoDecoder$default (Ljava/lang/String;ZILjava/lang/Object;)V
+	public static final fun declareVideoDecoder (Ljava/lang/String;I[Lkotlin/Pair;)V
+	public static final fun declareVideoDecoder (Ljava/lang/String;[Lkotlin/Pair;)V
+	public static final fun declareWidevine ()V
+	public static final fun declareWidevine (Lcom/superplayer/testkit/SecurityLevel;)V
+	public static final fun declareWidevine (Lcom/superplayer/testkit/SecurityLevel;I)V
+	public static final fun declareWidevine (Lcom/superplayer/testkit/SecurityLevel;IZ)V
+	public static synthetic fun declareWidevine$default (Lcom/superplayer/testkit/SecurityLevel;IZILjava/lang/Object;)V
+	public static final fun declareWidevineProvisioningFailure ()V
+	public static final fun declareWidevineProvisioningFailure (Lcom/superplayer/testkit/SecurityLevel;)V
+	public static synthetic fun declareWidevineProvisioningFailure$default (Lcom/superplayer/testkit/SecurityLevel;ILjava/lang/Object;)V
+	public static final fun signalKeyRotation ()V
+}
+
+public final class com/superplayer/testkit/DisplayMode {
+	public fun <init> (IIF)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()F
+	public final fun copy (IIF)Lcom/superplayer/testkit/DisplayMode;
+	public static synthetic fun copy$default (Lcom/superplayer/testkit/DisplayMode;IIFILjava/lang/Object;)Lcom/superplayer/testkit/DisplayMode;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHeightPx ()I
+	public final fun getRefreshRateHz ()F
+	public final fun getWidthPx ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/testkit/FakeLicenceServer {
+	public static final field HOST Ljava/lang/String;
+	public static final field INSTANCE Lcom/superplayer/testkit/FakeLicenceServer;
+	public static final field LICENCE_URI Ljava/lang/String;
+	public static final field PROVISION_URI Ljava/lang/String;
+}
+
+public final class com/superplayer/testkit/FaultScript {
+	public static final field Companion Lcom/superplayer/testkit/FaultScript$Companion;
+	public static final field HTTP_FORBIDDEN I
+	public static final field HTTP_NOT_FOUND I
+	public static final field HTTP_SERVER_ERROR I
+	public static final field NONE Lcom/superplayer/testkit/FaultScript;
+	public synthetic fun <init> (Ljava/util/List;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class com/superplayer/testkit/FaultScript$Builder {
+	public fun <init> ()V
+	public final fun addLatencyMs (JLcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public static synthetic fun addLatencyMs$default (Lcom/superplayer/testkit/FaultScript$Builder;JLcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public final fun build ()Lcom/superplayer/testkit/FaultScript;
+	public final fun capThroughputBps (JLcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public static synthetic fun capThroughputBps$default (Lcom/superplayer/testkit/FaultScript$Builder;JLcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public final fun expireTokenAtSegment (IZ)Lcom/superplayer/testkit/FaultScript$Builder;
+	public static synthetic fun expireTokenAtSegment$default (Lcom/superplayer/testkit/FaultScript$Builder;IZILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public final fun failDnsResolution (Lcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public static synthetic fun failDnsResolution$default (Lcom/superplayer/testkit/FaultScript$Builder;Lcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public final fun failTlsHandshake (Lcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public static synthetic fun failTlsHandshake$default (Lcom/superplayer/testkit/FaultScript$Builder;Lcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public final fun failWithHttpStatus (ILcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public static synthetic fun failWithHttpStatus$default (Lcom/superplayer/testkit/FaultScript$Builder;ILcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public final fun resetConnection (Lcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public static synthetic fun resetConnection$default (Lcom/superplayer/testkit/FaultScript$Builder;Lcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public final fun serveThroughCache (JZLcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/String;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public static synthetic fun serveThroughCache$default (Lcom/superplayer/testkit/FaultScript$Builder;JZLcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/String;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public final fun timeOutConnection (Lcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public static synthetic fun timeOutConnection$default (Lcom/superplayer/testkit/FaultScript$Builder;Lcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public final fun truncateAfterBytes (JLcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;)Lcom/superplayer/testkit/FaultScript$Builder;
+	public static synthetic fun truncateAfterBytes$default (Lcom/superplayer/testkit/FaultScript$Builder;JLcom/superplayer/testkit/ResourceKind;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;ILjava/lang/Object;)Lcom/superplayer/testkit/FaultScript$Builder;
+}
+
+public final class com/superplayer/testkit/FaultScript$Companion {
+}
+
+public final class com/superplayer/testkit/FrameRateRequest {
+	public fun <init> (FILjava/lang/Integer;)V
+	public final fun component1 ()F
+	public final fun component2 ()I
+	public final fun component3 ()Ljava/lang/Integer;
+	public final fun copy (FILjava/lang/Integer;)Lcom/superplayer/testkit/FrameRateRequest;
+	public static synthetic fun copy$default (Lcom/superplayer/testkit/FrameRateRequest;FILjava/lang/Integer;ILjava/lang/Object;)Lcom/superplayer/testkit/FrameRateRequest;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getChangeFrameRateStrategy ()Ljava/lang/Integer;
+	public final fun getCompatibility ()I
+	public final fun getFramesPerSecond ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/testkit/FrameSourceConformance {
+	public fun <init> (Lcom/superplayer/core/FrameSourceFactory;Landroid/net/Uri;)V
+	public final fun verifyAll ()V
+	public final fun verifyCancellationStopsDelivery ()V
+	public final fun verifyCodecConfigurationFollowsTheFourcc ()V
+	public final fun verifyCodecStringsAreMapped ()V
+	public final fun verifyDeliveriesDoNotOverlap ()V
+	public final fun verifyEachTrackStartsWithAKeyframe ()V
+	public final fun verifyEveryFrameNamesADeclaredTrack ()V
+	public final fun verifyPayloadsAreNeitherReusedNorTouchedAgain ()V
+	public final fun verifySamplesAreFramedAsTheFourccRequires ()V
+	public final fun verifyTerminationIsFinal ()V
+	public final fun verifyTimestampsAreMonotonicPerTrack ()V
+	public final fun verifyTracksAreDeclaredOnceBeforeTheFirstFrame ()V
+}
+
+public final class com/superplayer/testkit/FrameSourceConformanceException : java/lang/AssertionError {
+}
+
+public final class com/superplayer/testkit/GoldenFile {
+	public static final field DIRECTORY_PROPERTY Ljava/lang/String;
+	public static final field INSTANCE Lcom/superplayer/testkit/GoldenFile;
+	public static final field MODE_PROPERTY Ljava/lang/String;
+	public static final field UPDATE_COMMAND Ljava/lang/String;
+	public static final fun check (Ljava/lang/String;Ljava/lang/String;)V
+	public static final fun check (Ljava/lang/String;Ljava/lang/String;Ljava/io/File;Lcom/superplayer/testkit/GoldenFile$Mode;)V
+}
+
+public final class com/superplayer/testkit/GoldenFile$Mode : java/lang/Enum {
+	public static final field CHECK Lcom/superplayer/testkit/GoldenFile$Mode;
+	public static final field UPDATE Lcom/superplayer/testkit/GoldenFile$Mode;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/testkit/GoldenFile$Mode;
+	public static fun values ()[Lcom/superplayer/testkit/GoldenFile$Mode;
+}
+
+public final class com/superplayer/testkit/HostileObservation {
+	public static final field INSTANCE Lcom/superplayer/testkit/HostileObservation;
+	public static final field OBSERVATION_MS J
+	public static final field READY_WINDOW_MS J
+	public static final field STEP_MS J
+	public static final fun observe (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/testmedia/HostileStream;)Lcom/superplayer/testkit/HostileOutcome;
+	public static final fun observe (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/testmedia/HostileStream;Lcom/superplayer/core/PlaybackResilience;)Lcom/superplayer/testkit/HostileOutcome;
+	public static synthetic fun observe$default (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/testmedia/HostileStream;Lcom/superplayer/core/PlaybackResilience;ILjava/lang/Object;)Lcom/superplayer/testkit/HostileOutcome;
+}
+
+public final class com/superplayer/testkit/HostileOutcome : java/lang/Enum {
+	public static final field DEGRADES Lcom/superplayer/testkit/HostileOutcome;
+	public static final field FAILS Lcom/superplayer/testkit/HostileOutcome;
+	public static final field FAILS_TYPED Lcom/superplayer/testkit/HostileOutcome;
+	public static final field NEVER_STARTS Lcom/superplayer/testkit/HostileOutcome;
+	public static final field PLAYS_TO_END Lcom/superplayer/testkit/HostileOutcome;
+	public static final field STALLS Lcom/superplayer/testkit/HostileOutcome;
+	public static final field STILL_PLAYING Lcom/superplayer/testkit/HostileOutcome;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/testkit/HostileOutcome;
+	public static fun values ()[Lcom/superplayer/testkit/HostileOutcome;
+}
+
+public final class com/superplayer/testkit/HttpTransportConformance {
+	public fun <init> (Lcom/superplayer/core/HttpTransport;)V
+	public final fun verifyAll ()V
+	public final fun verifyByteRangeIsHonoured ()V
+	public final fun verifyCancelledRequestReturns ()V
+	public final fun verifyNoContentCodingIsAdded ()V
+	public final fun verifyRedirectedUriIsReported ()V
+	public final fun verifyStatusIsReportedRatherThanRaised ()V
+}
+
+public final class com/superplayer/testkit/HttpTransportConformanceException : java/lang/AssertionError {
+}
+
+public final class com/superplayer/testkit/NetworkProfile : java/lang/Enum {
+	public static final field CONGESTED_WIFI Lcom/superplayer/testkit/NetworkProfile;
+	public static final field Companion Lcom/superplayer/testkit/NetworkProfile$Companion;
+	public static final field ETHERNET Lcom/superplayer/testkit/NetworkProfile;
+	public static final field HANDOVER_AT_MS J
+	public static final field HIGH_LATENCY Lcom/superplayer/testkit/NetworkProfile;
+	public static final field LTE_DROPOUT_PERIOD_MS J
+	public static final field LTE_WITH_DROPOUTS Lcom/superplayer/testkit/NetworkProfile;
+	public static final field STABLE_WIFI Lcom/superplayer/testkit/NetworkProfile;
+	public static final field THREE_G Lcom/superplayer/testkit/NetworkProfile;
+	public static final field WIFI_TO_CELLULAR_HANDOVER Lcom/superplayer/testkit/NetworkProfile;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getTrace ()Lcom/superplayer/testkit/ThroughputTrace;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/testkit/NetworkProfile;
+	public static fun values ()[Lcom/superplayer/testkit/NetworkProfile;
+}
+
+public final class com/superplayer/testkit/NetworkProfile$Companion {
+}
+
+public final class com/superplayer/testkit/NetworkRequest {
+	public final fun getHeaders ()Ljava/util/Map;
+	public final fun getKind ()Lcom/superplayer/testkit/ResourceKind;
+	public final fun getUri ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/testkit/NetworkTransport : java/lang/Enum {
+	public static final field CELLULAR Lcom/superplayer/testkit/NetworkTransport;
+	public static final field ETHERNET Lcom/superplayer/testkit/NetworkTransport;
+	public static final field UNKNOWN Lcom/superplayer/testkit/NetworkTransport;
+	public static final field WIFI Lcom/superplayer/testkit/NetworkTransport;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/testkit/NetworkTransport;
+	public static fun values ()[Lcom/superplayer/testkit/NetworkTransport;
+}
+
+public final class com/superplayer/testkit/PlaybackHarness : org/junit/rules/ExternalResource {
+	public static final field Companion Lcom/superplayer/testkit/PlaybackHarness$Companion;
+	public static final field RENDER_PASS_MS J
+	public static final field WAIT_STEP_MS J
+	public fun <init> ()V
+	public final fun advanceTimeInStepsMs (Landroidx/media3/common/Player;J)V
+	public final fun advanceTimeMs (Landroidx/media3/common/Player;J)V
+	public final fun advanceUntil (Landroidx/media3/common/Player;Ljava/lang/String;JLkotlin/jvm/functions/Function1;)V
+	public final fun advanceUntil (Landroidx/media3/common/Player;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public final fun advanceUntil (Lcom/superplayer/core/DownloadEnvironment;Ljava/lang/String;JLkotlin/jvm/functions/Function0;)V
+	public static synthetic fun advanceUntil$default (Lcom/superplayer/testkit/PlaybackHarness;Landroidx/media3/common/Player;Ljava/lang/String;JLkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public static synthetic fun advanceUntil$default (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/core/DownloadEnvironment;Ljava/lang/String;JLkotlin/jvm/functions/Function0;ILjava/lang/Object;)V
+	public final fun attachVideoOutput (Landroidx/media3/common/Player;)V
+	public final fun buildPlayer (Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;Lcom/superplayer/core/PlaybackPolicy;Lcom/superplayer/core/ContentCache;Lcom/superplayer/core/PlaybackResilience;Lcom/superplayer/core/PlaybackDrm;Lcom/superplayer/core/PlaybackOutput;Lcom/superplayer/testkit/ChainBottom;Lcom/superplayer/core/HttpStack;Lcom/superplayer/core/PlaybackFrameOutput;)Lcom/superplayer/core/SuperPlayer;
+	public static synthetic fun buildPlayer$default (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/core/TelemetryCollector;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;Lcom/superplayer/core/PlaybackPolicy;Lcom/superplayer/core/ContentCache;Lcom/superplayer/core/PlaybackResilience;Lcom/superplayer/core/PlaybackDrm;Lcom/superplayer/core/PlaybackOutput;Lcom/superplayer/testkit/ChainBottom;Lcom/superplayer/core/HttpStack;Lcom/superplayer/core/PlaybackFrameOutput;ILjava/lang/Object;)Lcom/superplayer/core/SuperPlayer;
+	public final fun buildPool (Ljava/lang/Integer;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/testkit/TestContent;Lkotlin/jvm/functions/Function0;Lcom/superplayer/testkit/ThroughputTrace;Lcom/superplayer/core/ContentCache;Lcom/superplayer/core/PlaybackPolicy;Lcom/superplayer/core/PlaybackResilience;Lcom/superplayer/testkit/ChainBottom;)Lcom/superplayer/core/PlayerPool;
+	public static synthetic fun buildPool$default (Lcom/superplayer/testkit/PlaybackHarness;Ljava/lang/Integer;Lcom/superplayer/core/PlaybackProfile;Lcom/superplayer/testkit/TestContent;Lkotlin/jvm/functions/Function0;Lcom/superplayer/testkit/ThroughputTrace;Lcom/superplayer/core/ContentCache;Lcom/superplayer/core/PlaybackPolicy;Lcom/superplayer/core/PlaybackResilience;Lcom/superplayer/testkit/ChainBottom;ILjava/lang/Object;)Lcom/superplayer/core/PlayerPool;
+	public final fun buildStockPlayer (Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;)Landroidx/media3/exoplayer/ExoPlayer;
+	public static synthetic fun buildStockPlayer$default (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/testkit/TestContent;Lcom/superplayer/core/BufferPolicy;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;ILjava/lang/Object;)Landroidx/media3/exoplayer/ExoPlayer;
+	public final fun consumersHttpStack (Lcom/superplayer/core/DiagnosticEnvironment;)Lcom/superplayer/core/HttpStack;
+	public final fun consumersHttpStack (Lcom/superplayer/core/DownloadEnvironment;)Lcom/superplayer/core/HttpStack;
+	public final fun diagnosticEnvironment (Lcom/superplayer/testkit/TestContent;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ChainBottom;)Lcom/superplayer/core/DiagnosticEnvironment;
+	public static synthetic fun diagnosticEnvironment$default (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/testkit/TestContent;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ChainBottom;ILjava/lang/Object;)Lcom/superplayer/core/DiagnosticEnvironment;
+	public final fun downloadEnvironment (Lcom/superplayer/testkit/TestContent;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;Lcom/superplayer/testkit/ChainBottom;)Lcom/superplayer/core/DownloadEnvironment;
+	public static synthetic fun downloadEnvironment$default (Lcom/superplayer/testkit/PlaybackHarness;Lcom/superplayer/testkit/TestContent;Lcom/superplayer/testkit/FaultScript;Lcom/superplayer/testkit/ThroughputTrace;Lcom/superplayer/testkit/ChainBottom;ILjava/lang/Object;)Lcom/superplayer/core/DownloadEnvironment;
+	public final fun elapsedRealtimeMs ()J
+	public final fun failDecoderInitialization (Landroidx/media3/common/Player;Z)V
+	public final fun failRendering (Landroidx/media3/common/Player;)V
+	public final fun frameRateRequests (Landroidx/media3/common/Player;)Ljava/util/List;
+	public final fun loseNetwork (Lcom/superplayer/core/DownloadEnvironment;)V
+	public final fun networkRequests (Landroidx/media3/common/Player;)Ljava/util/List;
+	public final fun networkRequests (Lcom/superplayer/core/DiagnosticEnvironment;)Ljava/util/List;
+	public final fun networkRequests (Lcom/superplayer/core/DownloadEnvironment;)Ljava/util/List;
+	public final fun networkRequests (Lcom/superplayer/core/PlayerPool;)Ljava/util/List;
+	public final fun playToFailure (Landroidx/media3/common/Player;)V
+	public final fun playToReady (Landroidx/media3/common/Player;)V
+	public final fun processDeath (Lcom/superplayer/core/DownloadEnvironment;Ljava/io/File;)Ljava/io/File;
+	public final fun release (Landroidx/media3/common/Player;)V
+	public final fun reportDroppedFrames (Landroidx/media3/common/Player;IJ)V
+	public final fun restoreNetwork (Lcom/superplayer/core/DownloadEnvironment;)V
+	public final fun resumeRendering (Landroidx/media3/common/Player;)V
+	public final fun runScheduledWork ()I
+	public final fun scheduleDeviceChange (JLkotlin/jvm/functions/Function0;)V
+	public final fun settle (Landroidx/media3/common/Player;)V
+	public final fun stallRendering (Landroidx/media3/common/Player;)V
+	public final fun useScheduledWork ()V
+	public final fun videoDecodersHeld (Lcom/superplayer/core/PlayerPool;)I
+	public final fun videoEffectsDeliveries (Landroidx/media3/common/Player;)Ljava/util/List;
+	public final fun videoRendererTunneled (Landroidx/media3/common/Player;)Ljava/lang/Boolean;
+}
+
+public final class com/superplayer/testkit/PlaybackHarness$Companion {
+}
+
+public final class com/superplayer/testkit/ResourceKind : java/lang/Enum {
+	public static final field INITIALIZATION Lcom/superplayer/testkit/ResourceKind;
+	public static final field LICENCE Lcom/superplayer/testkit/ResourceKind;
+	public static final field MANIFEST Lcom/superplayer/testkit/ResourceKind;
+	public static final field MEDIA_SEGMENT Lcom/superplayer/testkit/ResourceKind;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/testkit/ResourceKind;
+	public static fun values ()[Lcom/superplayer/testkit/ResourceKind;
+}
+
+public final class com/superplayer/testkit/SecurityLevel : java/lang/Enum {
+	public static final field L1 Lcom/superplayer/testkit/SecurityLevel;
+	public static final field L3 Lcom/superplayer/testkit/SecurityLevel;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/superplayer/testkit/SecurityLevel;
+	public static fun values ()[Lcom/superplayer/testkit/SecurityLevel;
+}
+
+public final class com/superplayer/testkit/TestContent {
+	public static final field Companion Lcom/superplayer/testkit/TestContent$Companion;
+	public static final field DEFAULT_BITRATE_BPS I
+	public static final field DEFAULT_DURATION_MS J
+	public static final field DEFAULT_SEGMENT_COUNT I
+	public final fun alsoServing (Lcom/superplayer/testkit/TestContent;)Lcom/superplayer/testkit/TestContent;
+	public static final fun dash (ILjava/lang/String;)Lcom/superplayer/testkit/TestContent;
+	public static final fun dashWithChoice (Ljava/util/List;Ljava/util/List;I)Lcom/superplayer/testkit/TestContent;
+	public static final fun dashWithPassthroughAudio ()Lcom/superplayer/testkit/TestContent;
+	public static final fun dashWithPassthroughAudio (I)Lcom/superplayer/testkit/TestContent;
+	public final fun getSourceUri ()Ljava/lang/String;
+	public static final fun hls (IILjava/lang/String;)Lcom/superplayer/testkit/TestContent;
+	public static final fun hostile (Lcom/superplayer/testmedia/HostileStream;)Lcom/superplayer/testkit/TestContent;
+	public static final fun ladder (Ljava/util/List;J)Lcom/superplayer/testkit/TestContent;
+	public static final fun liveDash ()Lcom/superplayer/testkit/TestContent;
+	public static final fun liveHls ()Lcom/superplayer/testkit/TestContent;
+	public static final fun liveHls (Z)Lcom/superplayer/testkit/TestContent;
+	public static final fun liveVideo (IJ)Lcom/superplayer/testkit/TestContent;
+	public static final fun liveVideoLadder (Ljava/util/List;J)Lcom/superplayer/testkit/TestContent;
+	public static final fun protectedDash ()Lcom/superplayer/testkit/TestContent;
+	public static final fun protectedDash (I)Lcom/superplayer/testkit/TestContent;
+	public static final fun protectedDash (ILcom/superplayer/testmedia/WidevineProtection$ContentKey;)Lcom/superplayer/testkit/TestContent;
+	public static final fun protectedHls (I)Lcom/superplayer/testkit/TestContent;
+	public static final fun protectedLiveHls ()Lcom/superplayer/testkit/TestContent;
+	public final fun servedFrom (Ljava/lang/String;)Lcom/superplayer/testkit/TestContent;
+	public final fun servedWithResponseHeaders (Ljava/util/Map;)Lcom/superplayer/testkit/TestContent;
+	public static final fun video (IJ)Lcom/superplayer/testkit/TestContent;
+	public static final fun videoLadder (Ljava/util/List;J)Lcom/superplayer/testkit/TestContent;
+	public static final fun videoWithAudio (IJ)Lcom/superplayer/testkit/TestContent;
+}
+
+public final class com/superplayer/testkit/TestContent$Companion {
+	public final fun dash (ILjava/lang/String;)Lcom/superplayer/testkit/TestContent;
+	public static synthetic fun dash$default (Lcom/superplayer/testkit/TestContent$Companion;ILjava/lang/String;ILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
+	public final fun dashWithChoice (Ljava/util/List;Ljava/util/List;I)Lcom/superplayer/testkit/TestContent;
+	public static synthetic fun dashWithChoice$default (Lcom/superplayer/testkit/TestContent$Companion;Ljava/util/List;Ljava/util/List;IILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
+	public final fun dashWithPassthroughAudio ()Lcom/superplayer/testkit/TestContent;
+	public final fun dashWithPassthroughAudio (I)Lcom/superplayer/testkit/TestContent;
+	public static synthetic fun dashWithPassthroughAudio$default (Lcom/superplayer/testkit/TestContent$Companion;IILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
+	public final fun hls (IILjava/lang/String;)Lcom/superplayer/testkit/TestContent;
+	public static synthetic fun hls$default (Lcom/superplayer/testkit/TestContent$Companion;IILjava/lang/String;ILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
+	public final fun hostile (Lcom/superplayer/testmedia/HostileStream;)Lcom/superplayer/testkit/TestContent;
+	public final fun ladder (Ljava/util/List;J)Lcom/superplayer/testkit/TestContent;
+	public static synthetic fun ladder$default (Lcom/superplayer/testkit/TestContent$Companion;Ljava/util/List;JILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
+	public final fun liveDash ()Lcom/superplayer/testkit/TestContent;
+	public final fun liveHls ()Lcom/superplayer/testkit/TestContent;
+	public final fun liveHls (Z)Lcom/superplayer/testkit/TestContent;
+	public static synthetic fun liveHls$default (Lcom/superplayer/testkit/TestContent$Companion;ZILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
+	public final fun liveVideo (IJ)Lcom/superplayer/testkit/TestContent;
+	public static synthetic fun liveVideo$default (Lcom/superplayer/testkit/TestContent$Companion;IJILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
+	public final fun liveVideoLadder (Ljava/util/List;J)Lcom/superplayer/testkit/TestContent;
+	public static synthetic fun liveVideoLadder$default (Lcom/superplayer/testkit/TestContent$Companion;Ljava/util/List;JILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
+	public final fun protectedDash ()Lcom/superplayer/testkit/TestContent;
+	public final fun protectedDash (I)Lcom/superplayer/testkit/TestContent;
+	public final fun protectedDash (ILcom/superplayer/testmedia/WidevineProtection$ContentKey;)Lcom/superplayer/testkit/TestContent;
+	public static synthetic fun protectedDash$default (Lcom/superplayer/testkit/TestContent$Companion;ILcom/superplayer/testmedia/WidevineProtection$ContentKey;ILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
+	public final fun protectedHls (I)Lcom/superplayer/testkit/TestContent;
+	public static synthetic fun protectedHls$default (Lcom/superplayer/testkit/TestContent$Companion;IILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
+	public final fun protectedLiveHls ()Lcom/superplayer/testkit/TestContent;
+	public final fun video (IJ)Lcom/superplayer/testkit/TestContent;
+	public static synthetic fun video$default (Lcom/superplayer/testkit/TestContent$Companion;IJILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
+	public final fun videoLadder (Ljava/util/List;J)Lcom/superplayer/testkit/TestContent;
+	public static synthetic fun videoLadder$default (Lcom/superplayer/testkit/TestContent$Companion;Ljava/util/List;JILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
+	public final fun videoWithAudio (IJ)Lcom/superplayer/testkit/TestContent;
+	public static synthetic fun videoWithAudio$default (Lcom/superplayer/testkit/TestContent$Companion;IJILjava/lang/Object;)Lcom/superplayer/testkit/TestContent;
+}
+
+public final class com/superplayer/testkit/TestContent$Rung {
+	public static final field Companion Lcom/superplayer/testkit/TestContent$Rung$Companion;
+	public static final field DEFAULT_FRAME_RATE F
+	public fun <init> (IILjava/lang/String;Ljava/lang/Float;Z)V
+	public synthetic fun <init> (IILjava/lang/String;Ljava/lang/Float;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/Float;
+	public final fun component5 ()Z
+	public final fun copy (IILjava/lang/String;Ljava/lang/Float;Z)Lcom/superplayer/testkit/TestContent$Rung;
+	public static synthetic fun copy$default (Lcom/superplayer/testkit/TestContent$Rung;IILjava/lang/String;Ljava/lang/Float;ZILjava/lang/Object;)Lcom/superplayer/testkit/TestContent$Rung;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBitrateBps ()I
+	public final fun getCodecs ()Ljava/lang/String;
+	public final fun getFrameRate ()Ljava/lang/Float;
+	public final fun getHdr ()Z
+	public final fun getHeightPx ()I
+	public fun hashCode ()I
+	public static final fun of (I)Lcom/superplayer/testkit/TestContent$Rung;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/superplayer/testkit/TestContent$Rung$Companion {
+	public final fun of (I)Lcom/superplayer/testkit/TestContent$Rung;
+}
+
+public final class com/superplayer/testkit/ThroughputTrace {
+	public static final field Companion Lcom/superplayer/testkit/ThroughputTrace$Companion;
+	public static final field FORMAT_HEADER Ljava/lang/String;
+	public synthetic fun <init> (Ljava/util/List;ZLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun bandwidthBpsAt (J)J
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun format ()Ljava/lang/String;
+	public final fun getDurationMs ()J
+	public final fun getLoops ()Z
+	public fun hashCode ()I
+	public static final fun parse (Ljava/lang/String;)Lcom/superplayer/testkit/ThroughputTrace;
+	public final fun rttMsAt (J)J
+	public fun toString ()Ljava/lang/String;
+	public final fun transportAt (J)Lcom/superplayer/testkit/NetworkTransport;
+}
+
+public final class com/superplayer/testkit/ThroughputTrace$Builder {
+	public fun <init> ()V
+	public final fun add (JJLcom/superplayer/testkit/NetworkTransport;)Lcom/superplayer/testkit/ThroughputTrace$Builder;
+	public final fun add (JJLcom/superplayer/testkit/NetworkTransport;J)Lcom/superplayer/testkit/ThroughputTrace$Builder;
+	public static synthetic fun add$default (Lcom/superplayer/testkit/ThroughputTrace$Builder;JJLcom/superplayer/testkit/NetworkTransport;JILjava/lang/Object;)Lcom/superplayer/testkit/ThroughputTrace$Builder;
+	public final fun build ()Lcom/superplayer/testkit/ThroughputTrace;
+	public final fun holdAtEnd ()Lcom/superplayer/testkit/ThroughputTrace$Builder;
+}
+
+public final class com/superplayer/testkit/ThroughputTrace$Companion {
+	public final fun parse (Ljava/lang/String;)Lcom/superplayer/testkit/ThroughputTrace;
+}
+
+public final class com/superplayer/testkit/VideoEffectsDelivery {
+	public fun <init> (IZ)V
+	public final fun component1 ()I
+	public final fun component2 ()Z
+	public final fun copy (IZ)Lcom/superplayer/testkit/VideoEffectsDelivery;
+	public static synthetic fun copy$default (Lcom/superplayer/testkit/VideoEffectsDelivery;IZILjava/lang/Object;)Lcom/superplayer/testkit/VideoEffectsDelivery;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBeforeRendererEnabled ()Z
+	public final fun getEffectCount ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+

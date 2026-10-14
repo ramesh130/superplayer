@@ -62,6 +62,12 @@ on:
 permissions:
   contents: read
 
+# Where the Gradle builds are, relative to the repository root, as ci.yml's own copy says. Gradle itself
+# is reached through devicelab, which reads its location from devicelab/lib/common.sh; this is the
+# catalog the SDK's platform is read from.
+env:
+  GRADLE_DIR: android
+
 jobs:
   run:
     name: devicelab ${{ inputs.scenario }}
@@ -83,6 +89,8 @@ jobs:
 
       - name: Set up the Android SDK
         uses: ./.github/actions/setup-android-sdk
+        with:
+          gradle-dir: ${{ env.GRADLE_DIR }}
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4

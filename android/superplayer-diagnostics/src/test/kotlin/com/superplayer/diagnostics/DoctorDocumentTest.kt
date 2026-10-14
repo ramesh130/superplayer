@@ -1,0 +1,163 @@
+/*
+ * Copyright 2026 The SuperPlayer Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.superplayer.diagnostics
+
+import com.google.common.truth.Truth.assertWithMessage
+import org.junit.Test
+import java.io.File
+
+/**
+ * `docs/media-source-doctor.md` against the vocabulary it documents.
+ *
+ * The doctor's manual is written for a reader with no copy of this repository (#295), which is
+ * exactly the reader who cannot tell a defect the document forgot from a defect the doctor cannot
+ * name. So the pathology list is *checked* against [Pathology] rather than hand-assembled: a
+ * twenty-first defect added to the enum fails here the day it is added, with a message saying what
+ * to write.
+ *
+ * `CorpusRegisterTest`'s model, narrowed to what a document can be held to. It asserts nothing about
+ * playback and nothing about prose — what a section *says* is review's business, and a test that
+ * graded wording would be a test nobody could keep passing. What it holds is the two facts a reader
+ * navigates by: that every defect has a section of its own, in the enum's own order, and that *that
+ * section* carries the citation the code carries.
+ *
+ * The citation is read **per section** rather than over the whole document, which is
+ * `CorpusRegisterTest`'s "exactly rather than contains" taken at its word: four pathologies cite
+ * RFC 8216 §4.3.4.2 and two cite ISO/IEC 23009-1 §5.3.1.2, so a document-wide search would let a
+ * section lose its own citation and still pass on a sibling's.
+ *
+ * What it does **not** hold is the corpus: a pathology the corpus carries and the doctor cannot yet
+ * name has no entry here to fail on, and is `CorpusRegisterTest`'s to catch.
+ *
+ * Since #430 the document is both platforms' (ADR-0021 rule 6), so every section carries a
+ * **platform line** — `- **Platforms:** Android`, `iOS and tvOS`, or `Android, iOS and tvOS` — and
+ * this test reads the sections naming Android, while the Swift `DoctorDocumentTests` holds the iOS
+ * doctor's enum to the sections naming iOS and tvOS, by the same rule over the same file. A section
+ * whose line claims Android for a defect this enum lacks fails here as an unexpected id, and a
+ * section with no line, or one outside the three readings, fails on both platforms.
+ */
+class DoctorDocumentTest {
+
+    @Test
+    fun everyPathologyHasItsOwnSectionInTheDoctorsDocument() {
+        // The enum is the authority, and the order is asserted too: the document's sections are
+        // grouped by protocol because the enum is, and a defect appended to one group belongs in
+        // that group's prose rather than at the end of the file.
+        assertWithMessage(
+            "Every Pathology needs a `#### `<id>`` section in $DOCUMENT whose platform line names " +
+                "Android, saying what it means, what causes it, what to change and its citation — in " +
+                "the enum's own order. Add the section in the change that adds the pathology: a " +
+                "reader outside this repository has no other way to learn what a finding means.",
+        ).that(androidIds()).containsExactlyElementsIn(Pathology.entries.map { it.id }).inOrder()
+    }
+
+    @Test
+    fun everySectionNamesItsPlatformsInOneOfTheThreeReadings() {
+        val platforms = platformLines()
+        // A guard on the parser rather than a second authority on the count: a document it read no
+        // section of would pass the other assertions vacuously.
+        assertWithMessage("no sections read from $DOCUMENT").that(platforms.size)
+            .isAtLeast(Pathology.entries.size)
+        platforms.forEach { (id, lines) ->
+            assertWithMessage(
+                "$id's section in $DOCUMENT needs exactly one line reading `$PLATFORM_PREFIX ` and " +
+                    "then one of: ${PLATFORM_READINGS.joinToString("; ")}",
+            ).that(lines.size == 1 && lines.single() in PLATFORM_READINGS).isTrue()
+        }
+    }
+
+    @Test
+    fun everyPathologysOwnSectionCarriesTheCitationTheCodeCarries() {
+        // One citation, in two places, and neither is allowed to drift: a document citing a clause
+        // the code does not is a reader sent to the wrong paragraph of the wrong specification.
+        val sections = sections()
+        Pathology.entries.forEach { pathology ->
+            val section = sections[pathology.id]
+            assertWithMessage("${pathology.id} has no section in $DOCUMENT").that(section).isNotNull()
+            assertWithMessage(
+                "${pathology.id}'s own section in $DOCUMENT must carry its `specCitation`, verbatim: " +
+                    "\"${pathology.specCitation}\". A sibling section citing the same clause does not " +
+                    "count — several pathologies share one.",
+            ).that(section).contains(pathology.specCitation)
+        }
+    }
+
+    /** The ids whose section's platform line names Android, in the order the document gives them. */
+    private fun androidIds(): List<String> = platformLines()
+        .filterValues { lines -> lines.size == 1 && lines.single() in ANDROID_READINGS }
+        .keys.toList()
+
+    /** Each section's platform lines, the text after the prefix, keyed by id in document order. */
+    private fun platformLines(): Map<String, List<String>> = sections().mapValues { (_, text) ->
+        text.lines().map { it.trim() }
+            .filter { it.startsWith(PLATFORM_PREFIX) }
+            .map { it.removePrefix(PLATFORM_PREFIX).trim() }
+    }
+
+    /**
+     * The document's defect sections, keyed by the id each is headed with.
+     *
+     * A section runs from its own heading to the next heading of any level, which is what makes the
+     * citation assertion above a reading of one section rather than of the file.
+     */
+    private fun sections(): Map<String, String> {
+        val sections = mutableMapOf<String, StringBuilder>()
+        var current: StringBuilder? = null
+        document().readLines().forEach { line ->
+            val id = SECTION.matchEntire(line.trim())?.groupValues?.get(1)
+            when {
+                id != null -> current = StringBuilder().also { sections[id] = it }
+                line.trimStart().startsWith("#") -> current = null
+                else -> current?.appendLine(line)
+            }
+        }
+        return sections.mapValues { (_, text) -> text.toString() }
+    }
+
+    private fun document(): File = File(DOCUMENT).also {
+        check(it.isFile) { "No document at ${it.absolutePath}" }
+    }
+
+    private companion object {
+
+        /**
+         * Under the repository root the build hands every test, relative to this module's directory —
+         * which is where Gradle runs a test from — and not necessarily one level up (#519).
+         */
+        val REPOSITORY: String = checkNotNull(System.getProperty("superplayer.repository.dir")) {
+            "superplayer.repository.dir is unset; the convention plugin sets it on every unit test"
+        }
+
+        val DOCUMENT = "$REPOSITORY/docs/media-source-doctor.md"
+
+        /** One defect's heading: a fourth-level heading whose whole text is the defect's id. */
+        val SECTION = Regex("""#### `([a-z0-9-]+)`""")
+
+        /** What a section's platform line opens with. */
+        const val PLATFORM_PREFIX = "- **Platforms:**"
+
+        /**
+         * The three readings a platform line may carry, the Swift test's list too. A fixed
+         * vocabulary rather than a parse of a list, so a misspelt platform fails naming itself
+         * rather than silently counting on neither side.
+         */
+        val PLATFORM_READINGS = listOf("Android", "iOS and tvOS", "Android, iOS and tvOS")
+
+        /** The readings that make a section this platform's. */
+        val ANDROID_READINGS = setOf("Android", "Android, iOS and tvOS")
+    }
+}

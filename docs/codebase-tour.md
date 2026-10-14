@@ -131,7 +131,7 @@ recipe across 200 rows, and its KDoc is the lifecycle a consumer copies: cache, 
 `setTelemetry { QoeCollector(sink) }` (a collector per player), then a `PreloadCoordinator` attached
 before the first player, released in reverse. Its header samples `inUseCount`, `size`,
 `PreloadCoordinator.warmDecoderCount` and `ContentKeyedCache.hitCount`, and each row shows its time
-to first frame from `declarePlaybackIntent()` — the scroll `./gradlew huntLeaks` measures.
+to first frame from `declarePlaybackIntent()` — the scroll `(cd android && ./gradlew huntLeaks)` measures.
 
 Everything below `MediaSource` loads through one `DataSource.Factory` chain, and `TransferChain` is
 the single internal place it and the `MediaSource.Factory` over it are assembled — reached from
@@ -376,15 +376,15 @@ the engine can see them: a finished `load` line carries its `durationMs`, and a 
 carries each transfer's own throughput — the *sample* and never Media3's smoothed estimate, which is
 measured on Media3's default clock and therefore reads how fast the host ran (`docs/testing.md` says
 what that cost). Both are additions of shape, so `SessionTrace.FORMAT_VERSION` stays **1**. Its purpose is the golden traces in
-`superplayer-telemetry/src/test/golden/`: a behaviour change appears in review as a readable diff
-rather than as a metric that moved, `./gradlew updateGoldenTraces` is the one command that
+`android/superplayer-telemetry/src/test/golden/`: a behaviour change appears in review as a readable diff
+rather than as a metric that moved, `(cd android && ./gradlew updateGoldenTraces)` is the one command that
 regenerates them on the same contract as `updateApiSurface`, and `docs/testing.md`'s *Golden traces*
 section says what a diff means and what may go into one. It also holds `SessionMetrics` and
 `QoeScore`, the reduction of a session's events to `PRD.md` §6's numbers and to the QoE objective.
 They were the benchmark's, and they moved here so the benchmark and the QoE regression gate share one
 implementation rather than two. The gate is `superplayer-abr`'s `QoeRegressionGateTest`, in
 `check`. It plays every `NetworkProfile` three times through `AdaptivePolicy` and judges the median
-against `superplayer-abr/src/test/qoe-floors.tsv`, and nothing writes that file: a floor moves only
+against `android/superplayer-abr/src/test/qoe-floors.tsv`, and nothing writes that file: a floor moves only
 in a commit that says why in the row. `docs/testing.md`'s *The QoE regression gate* argues the margin
 and the median. `superplayer-testkit` holds
 `PlaybackHarness` — the deterministic playback harness every module from phase 2 onward tests
@@ -442,7 +442,7 @@ of the fault injector so a trace and a `FaultScript` are one player. `NetworkPro
 Part 6's six profiles plus `ETHERNET` (#267, `STABLE_WIFI`'s rate on a wired transport), each constant
 with its public source; the benchmark's matrix keeps the six, and the QoE gate plays all seven. `docs/throughput-traces.md` is the
 format's specification and the replay's limits — notably that concurrent transfers each see the whole
-link — and says how a public dataset comes in: `./gradlew convertThroughputTrace`, whose conversions
+link — and says how a public dataset comes in: `(cd android && ./gradlew convertThroughputTrace)`, whose conversions
 live in `build-logic`, run locally, because no dataset is vendored. The harness owns the loading
 threads of the players it builds (`HarnessLoadThreads`, through core's internal engine seam) and
 advances its clock only once the engine has nothing left to do at the current time, which is what
@@ -864,8 +864,8 @@ which `ErrorClassifier` names `FailureClass.Storage.Full` — its own branch, a 
 a later enqueue. `DownloadStorageFullTest` states the disk with `DeviceStatement.declareStorageFree`. Two things
 are easy to get wrong. Robolectric's `StatFs` describes no volume, which refuses nothing. Every download test
 calls `useScheduledWork()`, because an earlier class's installation is what made them pass together. And a
-harness download's segment loads run on the download's own thread, so two items in one store are independent. Since #245
- a protected download carries its offline licence (rule 13 and its addendum). `Downloads.Builder.setDrm(drm,
+harness download's segment loads run on the download's own thread, so two items in one store are independent. Since
+#245 a protected download carries its offline licence (rule 13 and its addendum). `Downloads.Builder.setDrm(drm,
 licences)` takes a `PlaybackDrm` and core's new `LicenceStore`, which `OfflineLicenceStore` extends, so the module
 still depends on core alone. After the manifest read and before the manager holds the item, the licence for the
 selected protected format is acquired on a thread of the store's own, through core's `DownloadDrmExtension`. A
@@ -1092,7 +1092,7 @@ seventh redaction rule is stated in `SessionTraceRecorder`'s KDoc beside the six
 credential in a header, a licence, a session id on the wire and a failure whose message names the host,
 every one asserted present before it is asserted absent, beside the `Build` strings and decoder component
 names a stated codec table makes leakable. `SessionBundleGoldenTraceTest` pins the format in this module's
-own `src/test/golden/`, regenerated by `./gradlew updateGoldenTraces` and by nothing else.
+own `src/test/golden/`, regenerated by `(cd android && ./gradlew updateGoldenTraces)` and by nothing else.
 Since #294 it also holds the **debug HUD**, which makes this the second library module with Compose
 (ADR-0015 rule 11): `DebugHud(player, telemetry)` is an overlay the *app* places over its own surface,
 six rows — the source of the numbers, the rendition, the buffer, the dropped frames, **the estimate
@@ -1153,7 +1153,7 @@ core's public `RealtimeSources`, which `SuperPlayer.Builder.setRealtime` takes, 
 implements is `FrameSource` — subscribe, receive encoded frames carrying a timestamp, a codec, a
 keyframe flag and optional codec-specific data, cancel — which names **no Media3 type**, for
 `HttpTransport`'s reason and for one more: it is the only boundary at which either transport is
-testable, since neither QUIC nor WebRTC runs under `check`. Its KDoc carries **nine obligations, each
+testable, since neither QUIC nor WebRTC runs under `check`. Its KDoc carries **ten obligations, each
 with what getting it wrong costs**, in `HttpTransport`'s register, because every one of them fails
 silently — a wrong length-field size produces a decoder that configures cleanly and renders nothing.
 Since #356 that seam — `FrameSource`, `FrameSink`, `RealtimeTrack`, `EncodedFrame` and
@@ -1280,7 +1280,7 @@ one import.
 
 `superplayer-moq` has the first of Phase 14. #364 was the prefactor — the module, MoQ's UniFFI
 bindings linked from `third-party/moq/m2`, and the one "not published" fact declared in
-`settings.gradle.kts`. Since #365 it has the half of the transport that `check` can test honestly:
+`android/settings.gradle.kts`. Since #365 it has the half of the transport that `check` can test honestly:
 `MoqCatalogTracks.declaredTracksOf(catalog)` turns what a publisher *declared* into a list of
 `MoqDeclaredTrack`, each carrying the `RealtimeTrack` the Phase 13 seam accepts, and this is where Phase 14's "both
 codec-description shapes are covered by a test" criterion is discharged, because a pure mapping
@@ -1305,13 +1305,16 @@ as received (`assertSame`, not equal bytes), absent is `InBand`. Two promises #3
 `subscribeMedia` takes and the **only** thing that container is for — the bindings strip framing
 below the FFI boundary, so it must not enter a decoding decision (#340). And the order is **video
 first, then audio**, because `EncodedFrame.trackIndex` is a position in that list. One rendition per
-kind is taken, and it is the *first* the catalog declared — not a preference but the absence of one,
-with `MoqVideo.stalled` read by nothing for exactly that reason (ADR-0018 rule 7 defers selection,
-and a phase adding it amends that record). `MoqCatalogTracksTest` drives all of it, and
-`DeclaredCatalogs` says per fixture what #340 observed and what was written here: the codec strings
-and the `avcC` prefix are observed, the `hvcC` is synthesized and labelled so, and no `MoqCatalog`
-anywhere was ever received from a broadcast, because that spike's caveat 4 says the catalog path was
-never exercised.
+kind is taken, and it is the one whose **track name sorts first** — not a preference but the absence
+of one, with `MoqVideo.stalled` read by nothing for exactly that reason (ADR-0018 rule 7 defers
+selection, and a phase adding it amends that record). Name order and not the catalog's declaration
+order, because that order does not survive the FFI: upstream's `convert_catalog` collects each kind
+into a Rust `HashMap`, so "first declared" was a hash order that could change between processes
+(#484), and the iOS port takes the same rendition for the same reason. `MoqCatalogTracksTest`
+drives all of it, and `DeclaredCatalogs` says per fixture what #340 observed and what was written
+here: the codec strings and the `avcC` prefix are observed, the `hvcC` is synthesized and labelled
+so, and no `MoqCatalog` anywhere was ever received from a broadcast, because that spike's caveat 4
+says the catalog path was never exercised.
 Since #366 the module has its substance, the bridge: `MoqFrameSource` is core's public `FrameSource`
 over MoQ, opened as `MoqFrameSource(uri)` and handed to a player through
 `Realtime.transport(MoqFrameSource.SCHEME) { … }`. **No signature in the module names a Media3
@@ -1350,15 +1353,15 @@ Since #353 the phase's **exit criterion** is met and it is the demo's: `MoqScree
 through a real `SuperPlayer` on a stock `PlayerView`, reached with
 `--es com.superplayer.demo.extra.SCREEN MOQ` and pointed elsewhere with `…extra.MOQ_BROADCAST`.
 What made that possible is a **third publication state** rather than a change of mind about
-publishing: `ModulePublication.LOCAL_ONLY`, declared in `settings.gradle.kts`'s
+publishing: `ModulePublication.LOCAL_ONLY`, declared in `android/settings.gradle.kts`'s
 `locallyPublishedModules`, registers a Maven publication so `publishToMavenLocal` produces an
-artifact `demo/` can resolve, and tracks no API surface, and still reads **Not published** in
+artifact `android/demo/` can resolve, and tracks no API surface, and still reads **Not published** in
 `docs/compatibility.md` — because what an adopter can resolve is unchanged and #369's licence and
 ABI questions are about *distribution*, which a coordinate in one machine's local repository does
 not do. The convention plugin now asks two questions where it asked one: *does an artifact exist*
-registers the publication, *can an adopter resolve it* tracks the surface. `demo/settings.gradle.kts`
+registers the publication, *can an adopter resolve it* tracks the surface. `android/demo/settings.gradle.kts`
 carries its own `exclusiveContent` copy of the `dev.moq` repository, which matters more there than
-in the root build: Maven Central carries that coordinate built **with** the codec features #351
+in the library build: Maven Central carries that coordinate built **with** the codec features #351
 subtracted, and an ordinary repository would let it answer, silently installing the artifact #351
 exists to avoid.
 These tests load no native library, so unlike `MoqFfiLinkageTest` they run on every host.
@@ -1394,9 +1397,33 @@ statistics are not events. `MoqSessionStatisticsTest` drives all seven claims th
 assertable, with `noStatistics`, `statisticsMissingTheReceiveRate` and `statisticsThatFail` the
 controls. #354 reports the missing counters upstream and blocks nothing.
 
-## benchmark/
+## superplayer-effects
 
-`benchmark/` is the fourth build and the phases' exit criteria: `PRD.md` §6's fixed matrix — six
+`superplayer-effects` is ADR-0022's Android half (#406), and phase 8 by argument rather than by
+`PRD.md` — the roadmap schedules no Android frame output, and the record it implements amends Phase 8's
+output slot, which `docs/modules.md` says where the number is. A consumer implements core's public
+`FrameOutput` — handed a `VideoFrame` (a GL texture name and its size) and a presentation time, it
+returns the frame to show at that time, so Media3's refusal of timestamp-changing effects is the
+signature's — and hands `VideoEffects.frameOutput(output)` to `SuperPlayer.Builder.setFrameOutput` or
+`PlayerPool.Builder.setFrameOutput`. The module is core's **eleventh** Kotlin friend and carries
+`media3-effect`, so core does not: it fills the **second** output slot, `EngineConfiguration.frameOutput`,
+with one `GlEffect` whose shader program hands each frame to the consumer and copies back what it
+returns, and core calls `setVideoEffects` once, as the engine is built and before anything can prepare
+it. Three things are core's and not the module's. **Tunneling yields**: the decision's half is not laid
+where a frame output runs, and `playbackDecision` keeps saying what was asked. **A player built with
+`setDrm` or `setRealtime` has the output off for its lifetime** — the extension is never asked, an effect
+filled by any other hand is not laid, the player plays exactly as it would without it, and
+`player.frameOutputOffReason` is `PROTECTED_CONTENT` or `REALTIME`, never an error; protection is named
+where both apply, and it covers a protected player's clear items too. And **pays nothing** is counted by
+`SuperPlayerFrameOutputSeamTest` across both slots. The observation is `PlaybackHarness.videoEffectsDeliveries`,
+read at the video renderer Media3 delivers the list to, with whether it arrived before the renderer was
+first enabled; `FrameOutputPlaybackTest` plays clear video and protected content to the end through it.
+**Nothing under `check` runs a GL pipeline**, so a frame processed, on time, and what the surface then
+shows are a device's, which `docs/testing.md`'s *A frame output* says.
+
+## android/benchmark/
+
+`android/benchmark/` is the fourth build and the phases' exit criteria: `PRD.md` §6's fixed matrix — six
 network profiles × four scenarios × four players × twenty runs — emitting a report with the raw
 traces beside it. The four players are `Arm.kt`: stock `ExoPlayer` with defaults, stock plus the
 buffer config an app writes from intuition, a SuperPlayer profile, and the same profile under
@@ -1412,9 +1439,9 @@ the same events; delete that test and the benchmark's central claim goes with it
 honesty rules are enforced where the numbers are made rather than where the table is printed —
 `Distribution` has no mean without a spread, `ReportWriter` prints losses before wins and has no
 filter, and a difference inside two standard errors is neutral rather than a small win.
-`benchmark/README.md` is the manual, including why it sits outside `docs/testing.md`'s rules rather
-than against them. `benchmark/baseline/` is the frozen Phase 1 report Phase 3 was graded against, and
-`benchmark/phase3/` is the Phase 3 report (issue #103) — the current reference, the one
+`android/benchmark/README.md` is the manual, including why it sits outside `docs/testing.md`'s rules rather
+than against them. `android/benchmark/baseline/` is the frozen Phase 1 report Phase 3 was graded against, and
+`android/benchmark/phase3/` is the Phase 3 report (issue #103) — the current reference, the one
 `bench --baseline` writes, and where Phase 11 starts from. Its opening section is
 `ExitCriterion`'s verdict: adaptive against the static profile, a QoE win and no QoE loss on each
 shaped profile, and nothing worse on stable WiFi, by the two-standard-error rule. **That verdict is
@@ -1429,36 +1456,36 @@ not built, which the README and the report both say rather than leaving a reader
 
 A paragraph per record, longer than `docs/adr/README.md`'s one line. The record binds; this is a reading aid.
 
-- **[ADR-0001](docs/adr/0001-compose-dont-fork.md)** — compose on Media3, do not fork it. Its rule 3
-  puts Media3's version in `gradle/libs.versions.toml` and nowhere else, enforced mechanically by
-  `./gradlew verifyNoHardcodedMedia3Versions`.
-- **[ADR-0002](docs/adr/0002-no-local-http-proxy.md)** — no local HTTP proxy.
-- **[ADR-0003](docs/adr/0003-implement-player-by-delegation.md)** — the facade implements `Player`
+- **[ADR-0001](adr/0001-compose-dont-fork.md)** — compose on Media3, do not fork it. Its rule 3
+  puts Media3's version in `android/gradle/libs.versions.toml` and nowhere else, enforced mechanically by
+  `(cd android && ./gradlew verifyNoHardcodedMedia3Versions)`.
+- **[ADR-0002](adr/0002-no-local-http-proxy.md)** — no local HTTP proxy.
+- **[ADR-0003](adr/0003-implement-player-by-delegation.md)** — the facade implements `Player`
   by Kotlin delegation and extends no Media3 class. Every Media3 `Player` base class is
   `@UnstableApi`; extending one puts that marker on every method a consumer calls. Its rule 3 — a
   wrapper of a Media3 interface forwards every callback — has exactly one argued exception, at that
   rule's addendum: a failure the fallback ladder repaired (ADR-0011 rule 10).
-- **[ADR-0005](docs/adr/0005-decide-playback-policy-behind-an-engine-agnostic-boundary.md)** — all
+- **[ADR-0005](adr/0005-decide-playback-policy-behind-an-engine-agnostic-boundary.md)** — all
   buffering and track-selection policy is decided behind `PlaybackPolicy`, in types that name no
   Media3 class. A policy constant at a Media3 call site, in a listener, or in a builder is a bug
   against this ADR whatever it is worth.
-- **[ADR-0006](docs/adr/0006-own-the-platform-rules-and-hand-back-the-state.md)** — Android's
+- **[ADR-0006](adr/0006-own-the-platform-rules-and-hand-back-the-state.md)** — Android's
   lifecycle rules are on by default and are not a profile's to vary, and state that outlives a
   player travels as a `PlaybackSnapshot` the consumer stores. SuperPlayer chooses no storage on a
   consumer's behalf: no preferences, no database, no file.
-- **[ADR-0007](docs/adr/0007-publish-the-player-as-a-session-and-resolve-content-by-id.md)** — a
+- **[ADR-0007](adr/0007-publish-the-player-as-a-session-and-resolve-content-by-id.md)** — a
   session is created by a consumer rather than owned by every player; a `PlaybackSession` and its
   player share one lifetime and one `release()`; content named from outside the app is resolved
   back into a `MediaRequest` rather than reinterpreted as a URL; and the service's manifest entry
   and foreground-service permissions are the app's, not the library's.
-- **[ADR-0008](docs/adr/0008-measure-behind-an-engine-agnostic-sink-boundary.md)** — telemetry
+- **[ADR-0008](adr/0008-measure-behind-an-engine-agnostic-sink-boundary.md)** — telemetry
   leaves the library through a sink that names no Media3 type; the sink interface and the event
   vocabulary are `superplayer-core`'s while the collector is `superplayer-telemetry`'s; delivery is
   at-most-once, bounded, and lossy under pressure, with every drop counted and reported; a sink is
   never called on a thread the engine needs; the events are one sealed, versioned hierarchy whose
   version tracks a metric's *meaning* rather than its shape; and CMCD is a separate seam joined to
   telemetry by a shared session id.
-- **[ADR-0009](docs/adr/0009-observe-conditions-re-apply-decisions-and-remember-per-transport.md)** —
+- **[ADR-0009](adr/0009-observe-conditions-re-apply-decisions-and-remember-per-transport.md)** —
   extends ADR-0005 for the adaptive policy: `PlaybackConditions` carries exactly the enumerated
   observations, each a SuperPlayer type, translated from Android and Media3 in one internal core
   file; the policy is re-consulted on named triggers only, and only where the engine can honour a
@@ -1466,7 +1493,7 @@ A paragraph per record, longer than `docs/adr/README.md`'s one line. The record 
   core's engine construction as its second Kotlin friend through an extension interface on the
   policy object, and a player built without it pays nothing; and a throughput estimate is remembered
   per transport, in process memory, and nowhere else.
-- **[ADR-0010](docs/adr/0010-cache-in-consumer-chosen-storage-and-preload-on-the-one-chain.md)** —
+- **[ADR-0010](adr/0010-cache-in-consumer-chosen-storage-and-preload-on-the-one-chain.md)** —
   refines ADR-0006 rule 2 for Phase 4: a content cache is storage the consumer opened, naming the
   directory and the budget, everything it writes lands inside that directory, and SuperPlayer never
   creates a cache it was not handed; preload builds its sources through the `MediaSource.Factory`
@@ -1476,7 +1503,7 @@ A paragraph per record, longer than `docs/adr/README.md`'s one line. The record 
   device again; prefetch depth is a third half of `PlaybackDecision`, the memory guard and the
   data-saver rule are platform rules on for everyone, and cache size is the consumer's; and a
   player built with neither module registers and allocates nothing for them, which a test counts.
-- **[ADR-0011](docs/adr/0011-classify-every-failure-once-and-keep-the-rungs-behind-the-boundary.md)** —
+- **[ADR-0011](adr/0011-classify-every-failure-once-and-keep-the-rungs-behind-the-boundary.md)** —
   decides Phase 5's shape: a failure acquires a meaning in exactly one place,
   `superplayer-resilience`'s `ErrorClassifier`, whose taxonomy is public, total and names no Media3
   type, and telemetry reports that classification rather than keeping a second one; core detects
@@ -1493,7 +1520,7 @@ A paragraph per record, longer than `docs/adr/README.md`'s one line. The record 
   a rung repairs is withheld from the consumer's listeners,
   which rule 10's addendum decides and which is the one deliberate exception to ADR-0003 rule 3;
   and a player built without it pays nothing, which a test counts.
-- **[ADR-0012](docs/adr/0012-acquire-licences-behind-the-boundary-in-storage-the-consumer-opened.md)** —
+- **[ADR-0012](adr/0012-acquire-licences-behind-the-boundary-in-storage-the-consumer-opened.md)** —
   decides Phase 6's shape: protection is declared once per player on the builder and fixed for its
   lifetime, so `MediaRequest.sources` stays a list of locations for one piece of content and
   `FailureClass.Drm.Unsupported`'s rung-4 reason is rewritten to the narrower fact that survives — a
@@ -1508,7 +1535,7 @@ A paragraph per record, longer than `docs/adr/README.md`'s one line. The record 
   the licence server permitted it, which is a mechanism beside the fallback ladder and not a seventh
   rung; and a player built without `setDrm` allocates nothing — a provider set and answering
   `DRM_UNSUPPORTED` is not nothing — which a test counts.
-- **[ADR-0013](docs/adr/0013-download-into-the-cache-the-consumer-opened-on-the-one-chain.md)** —
+- **[ADR-0013](adr/0013-download-into-the-cache-the-consumer-opened-on-the-one-chain.md)** —
   decides Phase 7's shape: `superplayer-offline` depends on core alone and takes the cache, the
   protection, a core `LicenceStore` and the resilience as core types, so a clear-only app carries no
   DRM module; a download writes into the `ContentCache` the consumer opened under the keys a player
@@ -1524,7 +1551,7 @@ A paragraph per record, longer than `docs/adr/README.md`'s one line. The record 
   fifth half of `PlaybackDecision` and the languages the consumer's argument; a protected download
   acquires its licence before its first media byte and releases it as part of its removal; and
   nothing that opens no download store pays for one, which a test counts.
-- **[ADR-0014](docs/adr/0014-match-the-display-and-watch-it-change-behind-one-output-slot.md)** —
+- **[ADR-0014](adr/0014-match-the-display-and-watch-it-change-behind-one-output-slot.md)** —
   decides Phase 8's shape: `superplayer-tv` depends on core alone and is core's eighth Kotlin friend,
   filling one slot, `EngineConfiguration.videoOutput`, from the `PlaybackOutput` a consumer passes to
   `setOutput`; frame-rate matching (`Surface.setFrameRate` with `CHANGE_FRAME_RATE_ALWAYS`, the
@@ -1537,7 +1564,7 @@ A paragraph per record, longer than `docs/adr/README.md`'s one line. The record 
   player's surface a `SurfaceView`, with Leanback rejected; #213's `TextureView` refusal is core's,
   `FLAG_SECURE` the app's, and its display-change half this module's; and a player built without
   `setOutput` registers and allocates nothing for it, which a test counts.
-- **[ADR-0015](docs/adr/0015-name-a-pathology-over-the-players-own-chain-and-redact-the-bundle-by-construction.md)** —
+- **[ADR-0015](adr/0015-name-a-pathology-over-the-players-own-chain-and-redact-the-bundle-by-construction.md)** —
   decides Phase 9's shape: `superplayer-diagnostics` depends on core and telemetry and is core's
   ninth Kotlin friend — built from core's seam, filling no engine slot, ADR-0013 rule 4's second
   shape — over a **closed list** of internal seams, all but the first reaching past that shape and
@@ -1557,8 +1584,8 @@ A paragraph per record, longer than `docs/adr/README.md`'s one line. The record 
   against the curated corpus with false positives counted, so a flagged `BENIGN` entry fails the
   build; and an app that opens neither doctor nor HUD registers and allocates nothing, which a test
   counts.
-- **[ADR-0004](docs/adr/0004-select-the-http-stack-through-a-superplayer-type.md)** and
-  **[ADR-0016](docs/adr/0016-take-the-consumers-transport-through-one-superplayer-interface-and-adapt-it-to-media3.md)** —
+- **[ADR-0004](adr/0004-select-the-http-stack-through-a-superplayer-type.md)** and
+  **[ADR-0016](adr/0016-take-the-consumers-transport-through-one-superplayer-interface-and-adapt-it-to-media3.md)** —
   decide Phase 10's shape, the bottom of the chain: HTTP-stack selection is a SuperPlayer type that
   no Media3 type crosses, and what a consumer supplies is an implementation of `HttpTransport` —
   open a request, answer a status, headers and a byte stream, cancel — over whatever client their
@@ -1575,7 +1602,7 @@ A paragraph per record, longer than `docs/adr/README.md`'s one line. The record 
   implementer by a conformance test in `superplayer-testkit` rather than by KDoc alone; a stack that
   cannot be honoured fails at `build()` with a typed error; and a consumer who names none pays
   nothing, which a test counts.
-- **[ADR-0017](docs/adr/0017-version-the-library-by-semver-in-lockstep-with-the-tracked-api-surface-as-the-arbiter.md)** —
+- **[ADR-0017](adr/0017-version-the-library-by-semver-in-lockstep-with-the-tracked-api-surface-as-the-arbiter.md)** —
   the library is versioned `MAJOR.MINOR.PATCH` by semver, every published module carries the same
   version and is released with the others (a mixed set is not expressible: the convention plugin
   reads one catalog entry, and nine modules reach core as Kotlin friends, a mechanism with no ABI
@@ -1594,7 +1621,7 @@ A paragraph per record, longer than `docs/adr/README.md`'s one line. The record 
   Four of its nine rules are enforced by nothing in `check` today, which the record says at each
   rule rather than in a summary: #327 checks the version and changelog, #328 gates the surface
   against the bump. #330 is built and is the adopter's half:
-  [`docs/compatibility.md`](docs/compatibility.md) answers seven questions an integrator asks —
+  [`docs/compatibility.md`](compatibility.md) answers seven questions an integrator asks —
   which coordinate and whether versions must match, what a major, minor and patch each mean, which
   modules are stable, the Media3 relationship and its one exception, the two format versions that
   are not this one, how much warning a removal carries, and what a release does **not** promise
@@ -1602,21 +1629,21 @@ A paragraph per record, longer than `docs/adr/README.md`'s one line. The record 
   **cites ADR-0017's rules by number** and says what each means for an adopter without reproducing
   the record's reasoning — where the two ever read differently the ADR binds — and it says plainly
   that nothing is resolvable by anyone else today. Its stability table is held to
-  `settings.gradle.kts` by `./gradlew verifyCompatibilityDocument`, a root-only check in
+  `android/settings.gradle.kts` by `(cd android && ./gradlew verifyCompatibilityDocument)`, a root-only check in
   `build-logic` beside `verifyModulePhaseRule` — a **set** comparison and deliberately not an order,
   since the include list is in neither phase nor alphabetical order; everything else in that
   document is prose and says so. Rule 8 is #329's, and it is built:
-  `./gradlew release --release-version=<x.y.z>` is the one supported way to cut a release. It
+  `(cd android && ./gradlew release --release-version=<x.y.z>)` is the one supported way to cut a release. It
   depends on the root's `check` **and every module's**, since a dependency on the root's alone
-  reaches none of the fourteen. It then refuses before it writes a byte: a dirty tree, a version
+  reaches none of the fifteen. It then refuses before it writes a byte: a dirty tree, a version
   that is not a successor of the last release or is smaller than the surface diff requires, an
   empty `Unreleased`, a tag that exists. Only then does it move the catalog, stamp `CHANGELOG.md`,
-  re-record `api/released/`, publish, tag and open the next snapshot. It **commits and tags
+  re-record `android/api/released/`, publish, tag and open the next snapshot. It **commits and tags
   locally and never pushes**, because the released version has to exist as a commit for a tag to
   name while the tree has to end on the next snapshot, and one working tree cannot be both.
-  [`docs/releasing.md`](docs/releasing.md) is the manual and says plainly that a cut release lands
+  [`docs/releasing.md`](releasing.md) is the manual and says plainly that a cut release lands
   in the local Maven repository and is resolvable by nobody else.
-- **[ADR-0018](docs/adr/0018-push-encoded-frames-through-one-framesource-into-media3s-own-sample-queues.md)** —
+- **[ADR-0018](adr/0018-push-encoded-frames-through-one-framesource-into-media3s-own-sample-queues.md)** —
   decides the shape of phases 13–15, the realtime transports. A transport hands over **encoded**
   frames through one public `FrameSource` naming no Media3 type, and an internal
   `MediaSource`/`MediaPeriod` writes them into Media3's own `SampleQueue`s under a live, unseekable
@@ -1636,3 +1663,43 @@ A paragraph per record, longer than `docs/adr/README.md`'s one line. The record 
   metrics, loses bandwidth samples, and reports **no upstream loss at all**, with `SCHEMA_VERSION`
   unmoved. Signalling does **not** travel `HttpTransport`. Nine of its thirteen rules are enforced by
   nothing in `check`, which the record says at each rule and then sums.
+- **[ADR-0020](adr/0020-compose-on-avfoundations-avplayer-and-bring-no-other-engine.md)** —
+  decides the iOS and tvOS port's shape (`docs/ios-plan.md`): ADR-0001 restated for Apple platforms.
+  The engine is AVFoundation's `AVPlayer` and no other is brought — no third-party player, no port of
+  Media3, no VideoToolbox decode on the HLS path. The facade **owns** an `AVPlayer`, subclasses no
+  AVFoundation class, and exposes it as `player.avPlayer`, the one escape hatch, outside the
+  compatibility promise as `player.exoPlayer` is. What the platforms share is **the documents and the
+  fixtures, never the code**, so there is no Kotlin Multiplatform. What does not port is **not ported, by rule** — the chain and its stamps, `HttpStack`/`HttpTransport`, the
+  streaming cache, rungs 1–3, per-transfer bandwidth sampling, token refresh inside a transfer, DASH,
+  provisioning, `NetworkAwareTrackSelection`/`SelectionPace`, `TvPlaybackControls` — and none may be
+  reopened by intercepting segments through `AVAssetResourceLoaderDelegate`, which is ADR-0002's proxy
+  in-process. A player is configured by a value (`SuperPlayer(configuration:)`) rather than built,
+  Swift 6 strict concurrency is on, the floor is iOS 17 and tvOS 17 with iOS 18 features gated and
+  refused typed below it, CMCD on iOS ports from iOS 18 on #413's positive spike finding (rule 7's
+  addenda), and the doctor's HLS lint
+  parser is ADR-0015 rule 6's one argued departure. The Swift products ride ADR-0017's version line
+  in lockstep with the API digester as their arbiter, and `RealtimePlayer` is the one place the "one
+  player" claim splits.
+- **[ADR-0021](adr/0021-test-ios-against-a-loopback-origin-and-run-its-checks-in-one-script.md)** —
+  decides testing on iOS. Tests drive the public API with XCTest on the simulator, and the harness is
+  a **loopback HTTP origin** started per test — `docs/testing.md`'s carve-out widened to every iOS
+  test, because `AVPlayer` takes no fake transport and there is no narrower option — with faults and
+  shaping applied at the socket in the Android harness's vocabulary. Time is real, so no test asserts
+  a duration and golden traces are **structural**. What needs a device is listed and not faked
+  (FairPlay, background download resumption across process death, tvOS display criteria, HDCP, MoQ
+  over QUIC), with the logic around each covered at one package-scoped protocol per feature, and the
+  shared documents are tested on both platforms. Every file-reading check is in Gradle's `check`; the
+  Swift build, tests, format and digester run in **`ios/check`**, which the macOS CI job and a
+  contributor both run — the one departure from "a check that can be a Gradle task belongs in
+  `check`", and only because the Swift products cannot be built where `check` runs.
+- **[ADR-0022](adr/0022-give-an-effect-the-decoded-frame-through-a-second-output-slot.md)** —
+  decides the frame-output seam: one `FrameOutput` type a consumer implements, handed a decoded frame
+  and its presentation time, fixed at build time and naming no engine effect API. On Android it fills
+  a **second** core slot, `EngineConfiguration.frameOutput`, beside ADR-0014's `videoOutput` (which
+  is amended at rule 3), from its own module over `setVideoEffects` as core's eleventh friend, because
+  a filled slot is the whole signal and an effects player must not pay for TV correctness; tunneling
+  yields to it. On iOS frames are pulled from `AVPlayerItemVideoOutput` and enqueued to an
+  **`AVSampleBufferDisplayLayer`**, not a bare Metal layer, so Picture in Picture survives and the
+  realtime path shares the layer; `AVPlayerViewController` is lost either way. A player built with
+  protection or for realtime has its output off for its lifetime, reported as a typed reason and
+  never as a playback failure; a player built without one pays nothing, which a test counts.

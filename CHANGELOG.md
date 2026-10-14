@@ -5,12 +5,12 @@ Every notable change to SuperPlayer, for someone deciding whether to take a new 
 The format is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions are
 [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html) as
 [ADR-0017](docs/adr/0017-version-the-library-by-semver-in-lockstep-with-the-tracked-api-surface-as-the-arbiter.md)
-reads it here: one version for all fourteen published modules, moved in lockstep (rule 1), with the
-tracked API surface in `<module>/api/<module>.api` as the arbiter of how far it moves (rule 2). A
+reads it here: one version for all fifteen published modules, moved in lockstep (rule 1), with the
+tracked API surface in `android/<module>/api/<module>.api` as the arbiter of how far it moves (rule 2). A
 behaviour change that moves no declaration still moves the version, and this file is where that
 judgement is written down rather than made silently (rule 3).
 
-`./gradlew verifyVersion` holds this file and `gradle/libs.versions.toml` to each other.
+`(cd android && ./gradlew verifyVersion)` holds this file and `android/gradle/libs.versions.toml` to each other.
 
 ## [Unreleased]
 
@@ -30,10 +30,10 @@ Two things this section does not say, because Keep a Changelog has no heading fo
 them under `Added` would be worse than stating them here:
 
 - Phase 11 — tuning — is open, and its three exit criteria stand in three different states.
-  `benchmark/phase3/`'s `ExitCriterion` measured the adaptive policy against the static profile and
+  `android/benchmark/phase3/`'s `ExitCriterion` measured the adaptive policy against the static profile and
   reports **not met**. The feed demo's p50 TTFF target is one `PRD.md` Part 4 has that phase *set
   and argue*, so there is no number yet to be met. Peak RSS and battery need the benchmark's device
-  arm, which is not built (`benchmark/README.md`), so those columns are dashes rather than
+  arm, which is not built (`android/benchmark/README.md`), so those columns are dashes rather than
   measurements.
 - The library is `0.x` and, under ADR-0017 rule 7, a minor release may remove or change public
   declarations. What takes it to `1.0.0` is listed in that rule.
@@ -71,6 +71,200 @@ them under `Added` would be worse than stating them here:
   `DownloadsService`.
 - **Phase 8 — TV.** `TvOutput`: frame-rate matching, display hotplug re-selection, audio-capability
   re-selection, tunneling as a decision half, and `TvPlaybackControls` for Compose for TV.
+- **The frame output (ADR-0022, #406).** `superplayer-core`'s `FrameOutput` — handed a decoded
+  `VideoFrame` and its presentation time, it returns the frame to show at that time — laid on
+  Media3's GL effect pipeline by a new module, `superplayer-effects`, through
+  `SuperPlayer.Builder.setFrameOutput(VideoEffects.frameOutput(output))` and the pool's twin. Tunneling
+  yields where it runs, and a player built with `setDrm` or `setRealtime` has it off for its lifetime,
+  read as `player.frameOutputOffReason` and never as an error. A player built without it pays
+  nothing, and the effect artifact is the module's dependency rather than core's.
+- **One synthetic HLS corpus on both platforms (#398).** `superplayer-testmedia`'s
+  `SyntheticHlsStream` frames now carry a silent AAC-LC `raw_data_block` where they carried zeros:
+  AVFoundation's decoder refuses an all-zero payload, and nothing on Android decodes one, so no byte
+  count and no Android behaviour moved. Its output is committed under `ios/Tests/Fixtures/synthetic/`,
+  `check` holds it to those files and `ios/check` holds the Swift port to the same bytes
+  (`(cd android && ./gradlew updateIosFixtures)` rewrites them).
+- **The iOS test harness (#399).** `SuperPlayerTestkit`'s `PlaybackHarness` serves a `TestContent`
+  — the synthetic HLS stream, or `liveHls()`, which keeps publishing on real time — from a
+  `LoopbackOrigin` of its own on `127.0.0.1`, counts every request by path and `ResourceKind`, and
+  waits on a condition with a bound rather than sleeping. `SuperPlayerTestMedia` gains the live
+  window, `SyntheticHlsStream.liveFiles(publishedSegmentCount:)`, committed beside the on-demand
+  fixtures as `hls-live`; no Kotlin generator's output moved.
+- **Faults and network shaping in the iOS harness (#410).** `PlaybackHarness.serve(_:faults:network:)`
+  takes a `FaultScript` — every fault a server can produce (a status, a latency, a throughput cap, a
+  truncation, a dropped connection, a token's expiry, a shared cache, a header set), addressed by
+  kind, index, attempt and host as the Kotlin builder addresses them, with the kinds enumerable — and
+  a `ThroughputTrace` paced at the socket, with `NetworkProfile`'s seven profiles ported constant for
+  constant. Content served on several hosts is several listeners of one origin on one publication
+  clock, and `LoopbackOrigin.responses()` records how each request was answered. A trace's transport
+  is reported on iOS, not switched. Every profile and a hand-written sample trace are committed under
+  `ios/Tests/Fixtures/throughput-traces/` with what `superplayer-testkit`'s reader makes of each, so
+  both readers are held to one reading (`(cd android && ./gradlew updateIosFixtures)` rewrites them); no Kotlin
+  behaviour moved.
+- **The iOS CMCD finding (#413).** `docs/ios-cmcd-finding.md`, which records that AVFoundation
+  emits CMCD (CTA-5004) itself from iOS 18 once `AVAssetResourceLoader.sendsCommonMediaClientDataAsHTTPHeaders`
+  is set, with the asset's `httpSessionIdentifier` as `sid` — so `docs/telemetry-schema.md` keeps the
+  `sid` join on Apple platforms rather than marking it Android-only. `CmcdFindingTests` pins what a
+  stock `AVPlayer` sent with and without each candidate; the implementation is #446.
+- **The HLS hostile corpus on iOS (#412).** `SuperPlayerTestMedia` gains `HostileManifests` and
+  `HostileStream`: every HLS entry of the Kotlin corpus at every severity, each with its id,
+  citation, cause, magnitude and declared response headers, and the DASH entries not ported
+  (ADR-0020). The Kotlin generator's HLS entries are committed under `ios/Tests/Fixtures/hostile/`
+  with an index of their fields and a table of their headers, and each platform's check holds its
+  generator to them (`(cd android && ./gradlew updateIosFixtures)` rewrites them); the Kotlin token entries take the
+  instant they are minted at internally so a fixture of them is stable, and no Kotlin output moved.
+  `SuperPlayerTestkit` serves an entry with `TestContent.hostile(_:)` and its headers with
+  `FaultScript.Builder.addDeclaredResponseHeaders(of:)`, and `HostileManifestCorpusTests` records
+  what a stock `AVPlayer` does with each entry rather than asserting it handled.
+- **The iOS telemetry vocabulary (#408).** `SuperPlayerCore` gains `TelemetryEvent` — the fifteen
+  events of `docs/telemetry-schema.md`, field for field, at `schemaVersion` 2, held to the document
+  by a test on each platform — with `TelemetrySink`, `.composite(...)`, `TelemetryCollector`, made
+  per player by `Configuration.telemetry`, core-minted session ids, and `SuperPlayer.release()`.
+  `SuperPlayer.Configuration` is no longer `Hashable`, because it now carries a function.
+  `SuperPlayerTelemetry` gains the bounded delivery queue: 256 events per player, the newest refused,
+  every refusal stamped on `SessionEnded`. No Android behaviour moved.
+- **CMCD on iOS (#446).** Every `SuperPlayer` sends CMCD (CTA-5004) v1 as request headers from iOS
+  18 and tvOS 18, through AVFoundation's own `sendsCommonMediaClientDataAsHTTPHeaders`, set on a
+  fresh `AVURLAsset` per adoption; below 18 nothing is sent and nothing is refused. The telemetry
+  `sessionId` is now *read* from that asset's `httpSessionIdentifier` rather than minted, so it is
+  the `sid` on every request and the `X-Playback-Session-Id` on every request at any version.
+  `SuperPlayer.Configuration.setCmcdMode(_:)` takes `CmcdMode.requestHeaders` (every profile's
+  default) or `.disabled`, and refuses `.queryParameter` with `CmcdModeUnsupportedError`, since the
+  SDK has no query mode. Content from `setMediaURL` is sent none. No Android behaviour moved.
+- **The iOS policy boundary (#415).** `SuperPlayerCore` gains `PlaybackPolicy`,
+  `PlaybackConditions` (the six observations and their types) and every half of `PlaybackDecision` —
+  the selection pace, the manifest and segment retry budgets and tunneling present and ignored on
+  iOS — with `Configuration.policy`, `PlaybackProfile.policy` (the static lookup, still the default)
+  and `SuperPlayer.playbackDecision`. Any policy but a profile's static one is re-consulted on the
+  five triggers and its decision laid on the playing item in place. **`TelemetryCollector` gains a
+  requirement, `decisionChanged(_:trigger:)`**, so a consumer's own collector no longer compiles
+  until it adds one; `QoeCollector` emits `DecisionChanged` from it, and `SessionStarted.decision` is
+  the decision in force. ADR-0009 rule 5 gains a #415 addendum. No Android behaviour moved.
+- **The iOS benchmark (#414).** `SuperPlayerTelemetry` gains `SessionMetrics` and `QoeScore`, the
+  Kotlin reduction and objective ported definition for definition and held to the Kotlin test's
+  numbers. `SuperPlayerTestMedia` gains `SyntheticVideoLadder` and `SuperPlayerTestkit`
+  `TestContent.videoLadder(bitratesBps:segmentCount:)` and `liveVideoLadder(bitratesBps:)`: the
+  decodable video as a rendition ladder whose every segment is padded to the bitrate its rung
+  declares, at the Kotlin `Rung.of` frame sizes. `PRD.md` §6's matrix runs on the simulator from
+  `ios/Benchmark/bench`, outside `ios/check` — stock `AVPlayer`, stock with intuitive settings and
+  the static profile, the adaptive arm an empty slot until i3 — with `StockTelemetryAgreementTests`
+  in `ios/check`, and the baseline is committed under `ios/Benchmark/baseline/`. No Android
+  behaviour moved.
+- **Preload on iOS (#417).** `SuperPlayerPreload` gains `PreloadCoordinator(pool:)` —
+  `setItems(_:)`, `setScrollPosition(index:velocity:)`, `release()` and `warmDecoderCount` —
+  attached to a `PlayerPool` before its first player. A row ahead is prefetched as an asset whose
+  playlists are loaded, and played from it through `setMediaRequest`; at a loaded depth the nearest
+  rows are held on the pool's idle players and, at `shortForm`'s, prerolled, and `acquire()` hands
+  the row the player holding it. A memory warning releases everything nobody is playing, the window
+  is admitted against a quarter of the memory left, and Low Data Mode prefetches nothing. A pool
+  without a coordinator pays nothing for it. No Android behaviour moved.
+- **The iOS failure taxonomy (#419).** `SuperPlayerResilience` gains `FailureClass` and
+  `FallbackRung` — the Kotlin taxonomy leaf for leaf, with the same stable names, answers, categories
+  and message keys — `ErrorClassifier` over the `NSError` chain and the error log's `LoggedFailure`,
+  and `Resilience.standard()`, which `SuperPlayer.Configuration.resilience` takes. `SuperPlayerCore`
+  gains `SuperPlayerError`, `PlaybackResilience`, `SuperPlayer.errors` (a Combine publisher),
+  `playerError` and `classify(_:)`; a player configured with resilience delivers a `SuperPlayerError`
+  when an item fails and telemetry reports its `classification`, `schemaVersion` still 2. **Every**
+  `SuperPlayer` now refuses a source whose scheme is not `http`, `https` or `file` with
+  `UnplayableSourceSchemeError` on `errors`, leaving the player as it was, where it used to fail the
+  item as an unplayable URL. No Android behaviour moved.
+- **iOS rungs 4 and 5 and the credential repair (#420).** `SuperPlayerResilience` gains
+  `HeaderProvider` and `CredentialRefusal`, and `Resilience.standard()` becomes
+  `standard(headers:)`, its argument defaulted. A player configured with resilience now repairs
+  three failures before rung 6, each by re-adopting the content at the position held with the same
+  identity and measurement session. A 401 or 403 is re-adopted with what the provider returns, once
+  per refused request, at the cost of fetching every playlist again. A failure the class lets climb
+  opens the next of `MediaRequest.sources`. A media services reset rebuilds the item, at most twice
+  at one position. A repaired failure is not delivered on `errors`. `SuperPlayerCore`'s
+  `TelemetryCollector` gains `contentReopened(after:)`, which has a default that does nothing so a
+  consumer's collector still compiles, and `QoeCollector` follows the new item with it.
+  `schemaVersion` stays 2. On the wire the CMCD `sid` changes at a repair. No Android behaviour
+  moved.
+- **The iOS fault sweep, rung register and stale live playlist (#421).** `SuperPlayerCore` gains
+  `StaleLivePlaylistError`, with the Kotlin exception's fields and likely causes, and
+  `SuperPlayerError.likelyCause`. A player configured with resilience now ends a session whose live
+  playlist stopped advancing on that error, delivered on `errors`, and pauses the player. Before,
+  `AVPlayer` waited at the frozen edge with no error. It is judged from iOS 18's playlist request
+  events and the item's live edge, and below 18 from AVFoundation's own error log, which carries
+  fewer fields. The classifier maps the error by its likely cause, and `TelemetryCollector` gains
+  `sessionFailed(_:)`, defaulted to nothing, through which `QoeCollector` reports the ending. A
+  player without resilience is
+  unchanged. `FaultSweepTests` and `FallbackRungCoverageTests` are i5's exit. No Android behaviour
+  moved.
+- **FairPlay on iOS (#422).** `SuperPlayerDRM` gains `Drm.fairPlay(_:)` and `FairPlayConfig`, which
+  `SuperPlayerCore`'s new `Configuration.drm` takes: one `AVContentKeySession` per player, every
+  asset a recipient, and the licence exchange the library's own — the certificate once, the key
+  request `POST`ed to the configured server only, asked again on `RetryPolicy.licence` with
+  equal-jitter backoff, one 401 or 403 repaired by the `HeaderProvider`. A failure is core's new
+  `LicenceExchangeError`, which `ErrorClassifier` names `Drm.LicenceAcquisition` or `Drm.SystemError`.
+  **Breaking for the iOS Resilience product**: `HeaderProvider` and `CredentialRefusal` moved from
+  `SuperPlayerResilience` to `SuperPlayerCore`, as the Kotlin type lives in core (ADR-0012 rule 2),
+  so an app that names them imports core. `TelemetryCollector` gains `licenceAcquisitionEnded`, with a
+  default. Both platforms' vocabulary gains **`TelemetryEvent.OutputObscuredChanged`** — the
+  `superplayer-core` declaration is new public API on Android — emitted on iOS and tvOS from
+  `isOutputObscuredDueToInsufficientExternalProtection` on a protected player, and by nothing on
+  Android, which has no such reading; `schemaVersion` stays 2, a new event being shape. An exhaustive
+  `when` over `TelemetryEvent` needs a branch for it. No Android behaviour moved.
+- **Offline FairPlay licences on iOS (#423).** `SuperPlayerDRM` gains `OfflineLicences.store(directory:)`
+  and `OfflineLicenceStore` — one SQLite file through the system `libsqlite3`, inside the directory
+  the consumer named and nowhere else — with `licence(for:)` answering an `OfflineLicence`'s two
+  durations, `isExpired` and `renewalDue` (a day) with no player and no network; `store.over(player)`'s
+  `OfflineLicenceExchange` acquiring, renewing and releasing persistable keys over the player's
+  exchange, a refused release kept in `contentIdsAwaitingRelease()` with its proof of deletion; `Drm.fairPlay(_:licence:)`, which plays from the stored keys with no licence request and
+  reports `SERVED_FROM_OFFLINE_STORE`; and `OfflineLicenceStoreError`. `SuperPlayerCore` gains the
+  `LicenceStore` marker and `OfflineLicenceExpiredError`, which `ErrorClassifier` names
+  `Drm.LicenceExpired`. Unlike Android's, the two durations are stated by the app, because FairPlay
+  reports neither to the client. Additive; `schemaVersion` stays 2.
+- **A protected download carries its licence on iOS (#425).** `SuperPlayerOffline` gains
+  `Downloads.Configuration.protection`, a `DownloadProtection` of the `PlaybackDrm`, the
+  `LicenceStore` and the two durations FairPlay does not report. Content whose multivariant playlist
+  declares a FairPlay `EXT-X-SESSION-KEY` acquires its persistable keys before the first media byte; a
+  refusal fails the item named with nothing written; `DownloadItem.licence`, a `DownloadLicence`,
+  reports `isExpired`, `renewalDue` and the expiry as the typed error; and `remove` deletes the
+  package, owes the licence at once, deletes the key on the device and tells the key server once the
+  store's network is there. The offline licence store's file gains a table for owed releases, made
+  as it opens. Additive.
+- **Display criteria on tvOS (#426).** `SuperPlayerTV` gains `TvOutput.standard()`, which
+  `SuperPlayerCore`'s new `Configuration.output` takes (a `PlaybackOutput`, the Kotlin `setOutput`):
+  each item a player makes current asks the key window's `AVDisplayManager` for the asset's
+  `preferredDisplayCriteria`, withdrawn at the item's end, on a pool's recycle and on release, and
+  only by the player whose request is in force; on iOS it makes nothing. The display's mode is
+  reported and never acted on: `TelemetryCollector` gains `displayModeChanged`, with a default, and
+  both platforms' vocabulary gains **`TelemetryEvent.DisplayModeChanged`** — new public API in
+  `superplayer-core` on Android, emitted by nothing there — so an exhaustive `when` or `switch` over
+  `TelemetryEvent` needs a branch for it; `schemaVersion` stays 2. The demo opens a tvOS screen on
+  `AVPlayerViewController`'s system controls. No Android behaviour moved.
+- **Delivery pathologies and the postmortem on iOS (#428).** `SuperPlayerDiagnostics`' `Pathology`
+  gains the four delivery defects — `hlsCachedLivePlaylist`, `hlsTokenScopedToManifest`,
+  `hlsTokenExpiringInWindow`, `hlsCorsRefusesCredentials` — read off the response headers of the
+  playlists the doctor fetches, with one `HEAD` of a segment spent only where a live playlist is held
+  past its update bound; the cache rule asks core's own judgement rather than restating it.
+  `MediaSourceDoctor.examine(_:)` becomes `examine(_:classification:)` with a default, and
+  `DiagnosticReport` gains `classification`, the `SuperPlayerError` a failed session ended on, read
+  and never re-derived. **Breaking for the iOS Diagnostics product**: `DiagnosticReport` is no longer
+  `Equatable` or `Hashable`, because the error it now carries holds the engine's `NSError`; and an
+  exhaustive `switch` over `Pathology` needs four more cases. No Android behaviour moved.
+- **The session bundle and the debug HUD on iOS (#429).** `SuperPlayerDiagnostics` gains
+  `SessionBundle(trace:)` — `docs/session-bundle.md`'s format, version 1, over the recorder's trace —
+  whose `capability` lines on Apple's platforms are the platform and the OS's `major.minor`, the
+  memory budget, a hardware-decode yes or no for H.264, HEVC, VP9 and AV1, and the display's short
+  edge and HDR eligibility, with no device name, model, identifier or OS build, and no protection
+  line, FairPlay having no level. It gains `DebugHud`, a SwiftUI overlay over a `SuperPlayer` or a
+  stock `AVPlayer`, `DebugHudTelemetry`, its sink, and `isDebugHudAvailable()`, true only in a Debug
+  build signed for development. `SuperPlayerTestkit` gains `GoldenFile` and `GoldenFileMismatchError`.
+  Additive; `schemaVersion` and the trace's `formatVersion` stay where they were. No Android
+  behaviour moved.
+- **A realtime stream measured, published and governed on iOS (#461).** `RealtimePlayer` gains
+  `Configuration.telemetry` and `declarePlaybackIntent()`, and `QoeCollector` measures it from the
+  stream's clock and renderers. That gives a first frame, a rebuffer when a renderer runs dry, a
+  failure split at the first frame, samples, and dropped frames from iOS 17.4, with
+  `SCHEMA_VERSION` still 2. `PlaybackSession(player:)` publishes a `RealtimePlayer` as live, with no
+  seek command. The lifecycle's interruption, route-change and resume rules reach it, and Picture in
+  Picture works from its display layer. **Breaking for Swift callers:** `PlaybackSession.player` is now
+  optional, nil on a session publishing a `RealtimePlayer` (`session.realtimePlayer`), which ADR-0017
+  rule 7 allows under `0.x`; and `RealtimePlayer.Configuration.init(sources:)` became
+  `init(sources:telemetry:)`, which a call naming `sources:` alone still compiles against but the
+  digester records as a removal. No Android behaviour moved.
 - **Phase 9 — Diagnostics and docs.** `MediaSourceDoctor`, which names twenty pathologies over the
   chain a player would load through; the postmortem reading; `SessionBundle`; the debug HUD; and
   the documents in `docs/`.

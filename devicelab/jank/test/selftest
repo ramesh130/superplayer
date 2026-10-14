@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # The jank scenario's device-free half: the plan of gestures, and the report's Markdown. Pure functions
-# over text, run by devicelab/test/selftest and therefore by `./gradlew check`. The queries need a trace
+# over text, run by devicelab/test/selftest and therefore by `(cd android && ./gradlew check)`. The queries need a trace
 # and the trace processor, so they are exercised by a run, not here.
 set -euo pipefail
 

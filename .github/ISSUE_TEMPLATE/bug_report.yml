@@ -88,6 +88,7 @@ body:
         - label: "`superplayer-drm` — `setDrm`"
         - label: "`superplayer-offline` — a download store"
         - label: "`superplayer-tv` — `setOutput`"
+        - label: "`superplayer-effects` — `setFrameOutput`"
         - label: "`superplayer-telemetry` — `setTelemetry`"
         - label: "`superplayer-diagnostics` — the doctor or the debug HUD"
         - label: "`superplayer-realtime` / `superplayer-moq` — `setRealtime`"

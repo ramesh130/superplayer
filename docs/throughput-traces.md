@@ -114,6 +114,25 @@ session did — which segments, in which order, failing where — rather than on
 finished or the state at one instant, which `NetworkShapingTest` asserts at the transfer level
 instead.
 
+### On iOS
+
+The same files replay on iOS (#410, ADR-0021 rule 3), at the socket rather than in a `DataSource`:
+`SuperPlayerTestkit`'s loopback origin, served with `network:`, holds each response for the round
+trip and then sends its body chunk by chunk, each chunk when `arrivalMs` — ported line for line —
+says its last byte is due. Three things differ, and each follows from `AVPlayer` running on real
+time. **Time is the host's**, so a test asserts what was fetched and in what order, and the one test
+that measures a rate holds it to a bound (never faster, exactly; a stated slack slower) rather than
+to a millisecond. **Time zero is the first media segment asked for** (#474), since no harness sees an
+`AVPlayer` built and the origin's own start would count the host's start-up as link time: a freshly
+booted simulator was seen to spend nine seconds between the two playlists, which was a scripted fast
+stretch spent before the session had fetched any media. Playlists asked for before it are paced as at
+the trace's start.
+**The transport is reported, not replayed**: nothing in the simulator can move the host's interface,
+so each response records the transport its request arrived on and no player observes a handover.
+Each connection still sees the whole link. `ios/Tests/Fixtures/throughput-traces/` holds every
+profile and a hand-written trace with what the Kotlin reader makes of each, and both readers are
+held to those readings (`docs/testing.md`, *The iOS harness*).
+
 ## The seven profiles
 
 `NetworkProfile` holds the six `PRD.md` Part 6 names, and `ETHERNET`, which `PRD.md` §3.8's
@@ -144,11 +163,11 @@ No dataset is vendored into this repository. A public dataset carries its own te
 converter, and small traces this project generated itself. Convert a dataset locally:
 
 ```bash
-./gradlew convertThroughputTrace --from=bandwidth-log --transport=CELLULAR \
-    --input=/path/to/report.log --output=/path/to/report.trace
+(cd android && ./gradlew convertThroughputTrace --from=bandwidth-log --transport=CELLULAR \
+    --input=/path/to/report.log --output=/path/to/report.trace)
 
-./gradlew convertThroughputTrace --from=mahimahi --transport=CELLULAR --bin-ms=1000 \
-    --input=/path/to/trace.down --output=/path/to/trace.trace
+(cd android && ./gradlew convertThroughputTrace --from=mahimahi --transport=CELLULAR --bin-ms=1000 \
+    --input=/path/to/trace.down --output=/path/to/trace.trace)
 ```
 
 A relative path is relative to the repository root. `--transport` is required: the datasets say what
@@ -181,7 +200,7 @@ with the dataset's citation in the trace's own comment header.
 
 The converter is plain functions in `build-logic` (`ConvertThroughputTrace.kt`), unit-tested there.
 Its output for the two project-generated fixtures under
-`superplayer-testkit/src/test/resources/traces/` is checked in beside them; `build-logic`'s test
+`android/superplayer-testkit/src/test/resources/traces/` is checked in beside them; `build-logic`'s test
 holds the converter to those files byte for byte, and `superplayer-testkit`'s `ThroughputTraceTest`
 reads the same files and asserts what they mean — which is what keeps a writer in one build and a
 reader in another agreeing on one format.

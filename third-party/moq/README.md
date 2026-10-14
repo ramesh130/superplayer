@@ -5,7 +5,7 @@
 
 This directory exists because the artifact is **built on one machine and is nobody else's to
 resolve**. That is not a shortcut — it is the result of issue #351, and the reason
-`superplayer-moq` is kept out of the published set (`settings.gradle.kts`'s `unpublishedModules`,
+`superplayer-moq` is kept out of the published set (`android/settings.gradle.kts`'s `unpublishedModules`,
 ADR-0017 rule 1). Issue #369 tracks what publishing it would take.
 
 ## Why not the artifact on Maven Central
@@ -26,7 +26,7 @@ llvm-nm -a libmoq_ffi.so | grep -ci openh264                                    
 llvm-nm -D --defined-only libmoq_ffi.so | grep -ciE "uniffi_moq_ffi_fn_.*(en|de)coder"  → 0
 ```
 
-That is why Maven Central must not be able to answer for this group. `settings.gradle.kts`
+That is why Maven Central must not be able to answer for this group. `android/settings.gradle.kts`
 declares this directory with `exclusiveContent` filtered to `dev.moq`, so Central is not asked at
 all; `MoqBindingsResolutionTest` asserts what was resolved rather than trusting the declaration.
 
@@ -137,6 +137,69 @@ rm -rf /tmp/moq-dist/maven-local
 # 8. Copy dev/moq/** into this directory's m2/, leaving out the -sources and -javadoc jars.
 ```
 
-A rebuild at a different version means moving `moqFfi` in `gradle/libs.versions.toml` and nothing
+A rebuild at a different version means moving `moqFfi` in `android/gradle/libs.versions.toml` and nothing
 else: that is the only place the version is written down (ADR-0001 rule 3), and the test that
 reads it is handed it from there.
+
+## The Swift bindings
+
+`swift/` is the iOS half (#434): a Swift package named `MoqFFI` — UniFFI's generated Swift in
+`Sources/MoqFFI/moq.swift` over `MoqFFI.xcframework`, a static library per slice — and
+`build-xcframework.sh`, the script that writes both. `ios/MoQ/`'s `SuperPlayerMoQ` is the only
+package that resolves it, by path.
+
+**The same source, the same subtraction.** The script refuses a checkout that is not at `4e419f9`,
+the commit `m2/` was built from, so the two platforms' bindings are generated from one revision and
+cannot disagree about which functions exist. It builds `--no-default-features` for #351's reason, and
+then checks the libraries it is about to write rather than trusting the flag: no `symphonia` and no
+`openh264` in either slice's symbol table **or its raw bytes** (Xcode's `nm` cannot read the LLVM
+bitcode in Rust's own std objects, says "Unknown attribute kind" and skips them, so a symbol-table
+count alone would be blind to exactly those objects), and no encoder or decoder export. As built:
+`uniffi_core` appears 131 times in the device slice's symbol table, so the MPL-2.0 runtime is linked
+here exactly as it is into the `.so` — the same fact, the same admission (`CONTRIBUTING.md`'s #364
+amendment and its #434 reading).
+
+**Committed, not built in CI, and why.** The macOS CI job has no Rust toolchain and `ios/check` must
+be what a contributor and that job both run (ADR-0021), so the alternatives were committing the
+binary or teaching CI to build a Rust workspace from source on every run. The first is what `m2/`
+already does for Android, and it keeps `ios/check` a pure Xcode run. The cost is bytes, and they are
+stated: **58 MB on disk, about 20 MB in Git's compressed objects** — two slices of about 30 MB each,
+against `m2/`'s 15 MB. What was done to keep it there:
+
+- **Two slices, iOS device and the arm64 iOS simulator.** tvOS builds — the targets are in rustup —
+  but two more slices would double the bytes for a platform with no MoQ device ticket and no demo
+  screen, so `SuperPlayerMoQ` declares iOS alone and the demo links it on iOS only. The x86_64
+  simulator is left out for the same reason, and the demo excludes that architecture from its
+  simulator builds, which is the one thing it costs: the demo no longer builds for an Intel Mac's
+  simulator.
+- **Thin LTO and one codegen unit**, upstream's own size settings for this staticlib
+  (`rs/moq-ffi/build.sh`), which take a slice from 80 MB to 30 MB.
+- **Not stripped.** Partly for `m2/`'s reason — the evidence above has to be re-checkable against the
+  committed library — and partly because stripping does not work: `strip -S` leaves aws-lc's
+  hand-written assembly objects with relocations into removed sections, and Xcode's linker then
+  refuses the archive ("address … not in any section", `p384_montjscalarmul.o` among others). `llvm-objcopy
+  --strip-debug` does link, and would save a quarter; it was not taken, because it needs a tool from
+  outside Xcode in the recipe for 4 MB a slice.
+- **A static library, not a dynamic framework.** A `.dylib` slice is about half the size, but a
+  dynamic framework is a second packaging format to get right — install names, embedding, an
+  `Info.plist` per slice — for an artifact upstream itself ships static.
+
+**What the Swift package links beyond the library**: `Security`, for rustls' platform verifier
+(`SecTrust…`), which a static library cannot declare for itself; upstream's own template also names
+the codec frameworks and `libc++`, which #351's build removed. The iOS dependency graph is the
+Android one with six crates exchanged for Apple's platform equivalents — `CRATES.md`'s *The iOS
+graph*.
+
+### Rebuilding
+
+Needs rustup, Xcode, and several gigabytes of room for cargo's target directory. About twenty
+minutes from cold on an M-series laptop, most of it the host build the bindings are generated from.
+
+```bash
+git clone https://github.com/moq-dev/moq /tmp/moq && git -C /tmp/moq checkout 4e419f9
+third-party/moq/swift/build-xcframework.sh /tmp/moq /tmp/moq-target
+rm -rf /tmp/moq-target    # the target directory is several gigabytes
+```
+
+The script adds the two Apple targets to the workspace's pinned toolchain by name — the trap step 1
+above describes — and leaves everything else as it found it. Run `ios/check` after it.

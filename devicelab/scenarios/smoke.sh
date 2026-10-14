@@ -14,6 +14,10 @@ SCENARIO_DESCRIPTION="Plays the demo's default stream for SMOKE_SECONDS (default
 SCENARIO_TRACE_FROM=launch
 SCENARIO_TRACE_MS=120000
 
+# And on iOS (`--platform ios`), where the demo's playback screen is the one launched and the
+# readiness probe reads the demo's own position lines (lib/ios.sh).
+SCENARIO_PLATFORMS="android ios"
+
 scenario_drive() {
     SMOKE_START_MS="$RUN_PLAYBACK_POSITION_MS"
     sleep "${SMOKE_SECONDS:-10}"
@@ -21,6 +25,6 @@ scenario_drive() {
 }
 
 scenario_report() {
-    printf 'Played for %ss after playback was confirmed; the session position went from %s ms to %s ms.\n' \
+    printf 'Played for %ss after playback was confirmed; the position went from %s ms to %s ms.\n' \
         "${SMOKE_SECONDS:-10}" "$SMOKE_START_MS" "$SMOKE_END_MS"
 }

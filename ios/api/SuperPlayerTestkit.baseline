@@ -1,0 +1,201 @@
+// SuperPlayerTestkit: public API as ios/check reads it. Regenerate with ios/check --update-api.
+Class LoopbackOrigin : Sendable
+Class PassThroughFrameOutput : FrameOutput, Sendable
+Class PlaybackHarness : Sendable
+Constructor FaultScript.Builder.init() : SuperPlayerTestkit.FaultScript.Builder
+Constructor FaultScript.Kind.init(rawValue:) : SuperPlayerTestkit.FaultScript.Kind?, Swift.String
+Constructor FrameSourceConformance.Check.init(rawValue:) : SuperPlayerTestkit.FrameSourceConformance.Check?, Swift.String
+Constructor FrameSourceConformance.init(sources:url:) : SuperPlayerTestkit.FrameSourceConformance, any SuperPlayerCore.FrameSourceFactory, Foundation.URL
+Constructor GoldenFile.init(directory:) : SuperPlayerTestkit.GoldenFile, Foundation.URL
+Constructor NetworkProfile.init(rawValue:) : SuperPlayerTestkit.NetworkProfile?, Swift.String
+Constructor NetworkTransport.init(rawValue:) : SuperPlayerTestkit.NetworkTransport?, Swift.String
+Constructor PassThroughFrameOutput.init() : SuperPlayerTestkit.PassThroughFrameOutput
+Constructor PlaybackHarness.init() : SuperPlayerTestkit.PlaybackHarness
+Constructor ThroughputTrace.Builder.init() : SuperPlayerTestkit.ThroughputTrace.Builder
+Enum FaultScript.Kind : CaseIterable, Equatable, Hashable, RawRepresentable, Sendable
+Enum FrameSourceConformance.Check : CaseIterable, Equatable, Hashable, RawRepresentable, Sendable
+Enum NetworkProfile : CaseIterable, Equatable, Hashable, RawRepresentable, Sendable
+Enum NetworkTransport : CaseIterable, Equatable, Hashable, RawRepresentable, Sendable
+Enum ResourceKind : CaseIterable, Equatable, Hashable, Sendable
+EnumElement FaultScript.Kind.connectionReset : (SuperPlayerTestkit.FaultScript.Kind.Type) -> SuperPlayerTestkit.FaultScript.Kind
+EnumElement FaultScript.Kind.httpStatus : (SuperPlayerTestkit.FaultScript.Kind.Type) -> SuperPlayerTestkit.FaultScript.Kind
+EnumElement FaultScript.Kind.intermediaryCache : (SuperPlayerTestkit.FaultScript.Kind.Type) -> SuperPlayerTestkit.FaultScript.Kind
+EnumElement FaultScript.Kind.latency : (SuperPlayerTestkit.FaultScript.Kind.Type) -> SuperPlayerTestkit.FaultScript.Kind
+EnumElement FaultScript.Kind.responseHeaders : (SuperPlayerTestkit.FaultScript.Kind.Type) -> SuperPlayerTestkit.FaultScript.Kind
+EnumElement FaultScript.Kind.throughputCap : (SuperPlayerTestkit.FaultScript.Kind.Type) -> SuperPlayerTestkit.FaultScript.Kind
+EnumElement FaultScript.Kind.tokenExpiry : (SuperPlayerTestkit.FaultScript.Kind.Type) -> SuperPlayerTestkit.FaultScript.Kind
+EnumElement FaultScript.Kind.truncation : (SuperPlayerTestkit.FaultScript.Kind.Type) -> SuperPlayerTestkit.FaultScript.Kind
+EnumElement FrameSourceConformance.Check.cancellationStopsDelivery : (SuperPlayerTestkit.FrameSourceConformance.Check.Type) -> SuperPlayerTestkit.FrameSourceConformance.Check
+EnumElement FrameSourceConformance.Check.codecConfigurationFollowsTheFourcc : (SuperPlayerTestkit.FrameSourceConformance.Check.Type) -> SuperPlayerTestkit.FrameSourceConformance.Check
+EnumElement FrameSourceConformance.Check.codecStringsAreMapped : (SuperPlayerTestkit.FrameSourceConformance.Check.Type) -> SuperPlayerTestkit.FrameSourceConformance.Check
+EnumElement FrameSourceConformance.Check.deliveriesDoNotOverlap : (SuperPlayerTestkit.FrameSourceConformance.Check.Type) -> SuperPlayerTestkit.FrameSourceConformance.Check
+EnumElement FrameSourceConformance.Check.eachTrackStartsWithAKeyframe : (SuperPlayerTestkit.FrameSourceConformance.Check.Type) -> SuperPlayerTestkit.FrameSourceConformance.Check
+EnumElement FrameSourceConformance.Check.everyFrameNamesADeclaredTrack : (SuperPlayerTestkit.FrameSourceConformance.Check.Type) -> SuperPlayerTestkit.FrameSourceConformance.Check
+EnumElement FrameSourceConformance.Check.payloadsAreNeitherReusedNorTouchedAgain : (SuperPlayerTestkit.FrameSourceConformance.Check.Type) -> SuperPlayerTestkit.FrameSourceConformance.Check
+EnumElement FrameSourceConformance.Check.samplesAreFramedAsTheFourccRequires : (SuperPlayerTestkit.FrameSourceConformance.Check.Type) -> SuperPlayerTestkit.FrameSourceConformance.Check
+EnumElement FrameSourceConformance.Check.terminationIsFinal : (SuperPlayerTestkit.FrameSourceConformance.Check.Type) -> SuperPlayerTestkit.FrameSourceConformance.Check
+EnumElement FrameSourceConformance.Check.timestampsAreMonotonicPerTrack : (SuperPlayerTestkit.FrameSourceConformance.Check.Type) -> SuperPlayerTestkit.FrameSourceConformance.Check
+EnumElement FrameSourceConformance.Check.tracksAreDeclaredOnceBeforeTheFirstFrame : (SuperPlayerTestkit.FrameSourceConformance.Check.Type) -> SuperPlayerTestkit.FrameSourceConformance.Check
+EnumElement NetworkProfile.congestedWifi : (SuperPlayerTestkit.NetworkProfile.Type) -> SuperPlayerTestkit.NetworkProfile
+EnumElement NetworkProfile.ethernet : (SuperPlayerTestkit.NetworkProfile.Type) -> SuperPlayerTestkit.NetworkProfile
+EnumElement NetworkProfile.highLatency : (SuperPlayerTestkit.NetworkProfile.Type) -> SuperPlayerTestkit.NetworkProfile
+EnumElement NetworkProfile.lteWithDropouts : (SuperPlayerTestkit.NetworkProfile.Type) -> SuperPlayerTestkit.NetworkProfile
+EnumElement NetworkProfile.stableWifi : (SuperPlayerTestkit.NetworkProfile.Type) -> SuperPlayerTestkit.NetworkProfile
+EnumElement NetworkProfile.threeG : (SuperPlayerTestkit.NetworkProfile.Type) -> SuperPlayerTestkit.NetworkProfile
+EnumElement NetworkProfile.wifiToCellularHandover : (SuperPlayerTestkit.NetworkProfile.Type) -> SuperPlayerTestkit.NetworkProfile
+EnumElement NetworkTransport.cellular : (SuperPlayerTestkit.NetworkTransport.Type) -> SuperPlayerTestkit.NetworkTransport
+EnumElement NetworkTransport.ethernet : (SuperPlayerTestkit.NetworkTransport.Type) -> SuperPlayerTestkit.NetworkTransport
+EnumElement NetworkTransport.unknown : (SuperPlayerTestkit.NetworkTransport.Type) -> SuperPlayerTestkit.NetworkTransport
+EnumElement NetworkTransport.wifi : (SuperPlayerTestkit.NetworkTransport.Type) -> SuperPlayerTestkit.NetworkTransport
+EnumElement ResourceKind.initialization : (SuperPlayerTestkit.ResourceKind.Type) -> SuperPlayerTestkit.ResourceKind
+EnumElement ResourceKind.licence : (SuperPlayerTestkit.ResourceKind.Type) -> SuperPlayerTestkit.ResourceKind
+EnumElement ResourceKind.manifest : (SuperPlayerTestkit.ResourceKind.Type) -> SuperPlayerTestkit.ResourceKind
+EnumElement ResourceKind.mediaSegment : (SuperPlayerTestkit.ResourceKind.Type) -> SuperPlayerTestkit.ResourceKind
+Func FaultScript.Builder.addDeclaredResponseHeaders(of:) : SuperPlayerTestkit.FaultScript.Builder, SuperPlayerTestMedia.HostileStream
+Func FaultScript.Builder.addLatencyMs(_:kind:index:firstAttempts:host:) : SuperPlayerTestkit.FaultScript.Builder, Swift.Int64, SuperPlayerTestkit.ResourceKind?, Swift.Int?, Swift.Int?, Swift.Int?
+Func FaultScript.Builder.addResponseHeaders(_:kind:index:host:) : SuperPlayerTestkit.FaultScript.Builder, [Swift.String : Swift.String], SuperPlayerTestkit.ResourceKind?, Swift.Int?, Swift.Int?
+Func FaultScript.Builder.build() : SuperPlayerTestkit.FaultScript
+Func FaultScript.Builder.capThroughputBps(_:kind:index:firstAttempts:host:) : SuperPlayerTestkit.FaultScript.Builder, Swift.Int64, SuperPlayerTestkit.ResourceKind?, Swift.Int?, Swift.Int?, Swift.Int?
+Func FaultScript.Builder.expireTokenAtSegment(_:refreshable:) : SuperPlayerTestkit.FaultScript.Builder, Swift.Int, Swift.Bool
+Func FaultScript.Builder.failWithHttpStatus(_:kind:index:firstAttempts:afterAttempts:host:) : SuperPlayerTestkit.FaultScript.Builder, Swift.Int, SuperPlayerTestkit.ResourceKind?, Swift.Int?, Swift.Int?, Swift.Int?, Swift.Int?
+Func FaultScript.Builder.resetConnection(kind:index:firstAttempts:host:) : SuperPlayerTestkit.FaultScript.Builder, SuperPlayerTestkit.ResourceKind?, Swift.Int?, Swift.Int?, Swift.Int?
+Func FaultScript.Builder.serveThroughCache(maxAgeSeconds:honoursNoCache:kind:index:host:) : SuperPlayerTestkit.FaultScript.Builder, Swift.Int64, Swift.Bool, SuperPlayerTestkit.ResourceKind?, Swift.Int?, Swift.Int?
+Func FaultScript.Builder.truncateAfterBytes(_:kind:index:firstAttempts:host:) : SuperPlayerTestkit.FaultScript.Builder, Swift.Int, SuperPlayerTestkit.ResourceKind?, Swift.Int?, Swift.Int?, Swift.Int?
+Func FrameSourceConformance.verify(_:) : (), SuperPlayerTestkit.FrameSourceConformance.Check [throwing]
+Func FrameSourceConformance.verifyAll() : () [throwing]
+Func GoldenFile.check(_:_:) : (), Swift.String, Swift.String [throwing]
+Func GoldenFile.url(of:) : Foundation.URL, Swift.String
+Func LoopbackOrigin.networkRequests() : [SuperPlayerTestkit.NetworkRequest]
+Func LoopbackOrigin.responses() : [SuperPlayerTestkit.OriginResponse]
+Func LoopbackOrigin.sourceURL(host:) : Foundation.URL, Swift.Int
+Func LoopbackOrigin.transport() : SuperPlayerTestkit.NetworkTransport?
+Func LoopbackOrigin.url(path:host:) : Foundation.URL, Swift.String, Swift.Int
+Func NetworkRequest.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerTestkit.NetworkRequest, SuperPlayerTestkit.NetworkRequest [static]
+Func NetworkRequest.hash(into:) : (), Swift.Hasher
+Func OriginResponse.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerTestkit.OriginResponse, SuperPlayerTestkit.OriginResponse [static]
+Func OriginResponse.hash(into:) : (), Swift.Hasher
+Func PassThroughFrameOutput.process(_:presentationTime:) : CoreVideo.CVPixelBuffer, CoreVideo.CVPixelBuffer, CoreMedia.CMTime
+Func PlaybackHarness.serve(_:faults:network:) : SuperPlayerTestkit.LoopbackOrigin, SuperPlayerTestkit.TestContent, SuperPlayerTestkit.FaultScript, SuperPlayerTestkit.ThroughputTrace? [throwing]
+Func PlaybackHarness.stop() : ()
+Func PlaybackHarness.until(_:timeout:_:) : (), Swift.String, Swift.Duration, () async throws -> Swift.Bool [throwing]
+Func PlaybackHarness.until(_:timeout:isolation:_:) : (), Swift.String, Swift.Duration, (any _Concurrency.Actor)?, () throws -> Swift.Bool [throwing]
+Func ResourceKind.__derived_enum_equals(_:_:) : Swift.Bool, SuperPlayerTestkit.ResourceKind, SuperPlayerTestkit.ResourceKind [static]
+Func ResourceKind.hash(into:) : (), Swift.Hasher
+Func TestContent.choiceAudioDirectory(_:) : Swift.String, Swift.String [static]
+Func TestContent.choiceSubtitlesDirectory(_:) : Swift.String, Swift.String [static]
+Func TestContent.hls(segmentCount:variantCount:hosts:) : SuperPlayerTestkit.TestContent, Swift.Int, Swift.Int, Swift.Int [static]
+Func TestContent.hlsWithChoice(audioLanguages:subtitleLanguages:segmentCount:) : SuperPlayerTestkit.TestContent, [Swift.String], [Swift.String], Swift.Int [static]
+Func TestContent.hostile(_:) : SuperPlayerTestkit.TestContent, SuperPlayerTestMedia.HostileStream [static]
+Func TestContent.licence(for:) : [Swift.UInt8], [Swift.UInt8] [static]
+Func TestContent.licenceServer() : SuperPlayerTestkit.TestContent [static]
+Func TestContent.liveHls(hosts:) : SuperPlayerTestkit.TestContent, Swift.Int [static]
+Func TestContent.liveHls(windowSegmentCount:) : SuperPlayerTestkit.TestContent, Swift.Int [static]
+Func TestContent.liveVideoLadder(bitratesBps:) : SuperPlayerTestkit.TestContent, [Swift.Int] [static]
+Func TestContent.protectedHls(keyIdentifiers:segmentCount:) : SuperPlayerTestkit.TestContent, [Swift.String], Swift.Int [static]
+Func TestContent.videoHls(segmentCount:) : SuperPlayerTestkit.TestContent, Swift.Int [static]
+Func TestContent.videoLadder(bitratesBps:segmentCount:) : SuperPlayerTestkit.TestContent, [Swift.Int], Swift.Int [static]
+Func ThroughputTrace.Builder.add(durationMs:bandwidthBps:transport:rttMs:) : SuperPlayerTestkit.ThroughputTrace.Builder, Swift.Int64, Swift.Int64, SuperPlayerTestkit.NetworkTransport, Swift.Int64
+Func ThroughputTrace.Builder.build() : SuperPlayerTestkit.ThroughputTrace [throwing]
+Func ThroughputTrace.Builder.holdAtEnd() : SuperPlayerTestkit.ThroughputTrace.Builder
+Func ThroughputTrace.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerTestkit.ThroughputTrace, SuperPlayerTestkit.ThroughputTrace [static]
+Func ThroughputTrace.bandwidthBps(at:) : Swift.Int64, Swift.Int64
+Func ThroughputTrace.format() : Swift.String
+Func ThroughputTrace.hash(into:) : (), Swift.Hasher
+Func ThroughputTrace.parse(_:) : SuperPlayerTestkit.ThroughputTrace, Swift.String [static] [throwing]
+Func ThroughputTrace.rttMs(at:) : Swift.Int64, Swift.Int64
+Func ThroughputTrace.transport(at:) : SuperPlayerTestkit.NetworkTransport, Swift.Int64
+Func ThroughputTraceError.__derived_struct_equals(_:_:) : Swift.Bool, SuperPlayerTestkit.ThroughputTraceError, SuperPlayerTestkit.ThroughputTraceError [static]
+Struct ConditionTimeout : CustomStringConvertible, Error, Sendable
+Struct FaultScript : Sendable
+Struct FaultScript.Builder : Sendable
+Struct FrameSourceConformance : Sendable
+Struct FrameSourceConformanceError : CustomStringConvertible, Error, LocalizedError, Sendable
+Struct GoldenFile : Sendable
+Struct GoldenFileMismatchError : CustomStringConvertible, Error, LocalizedError, Sendable
+Struct NetworkRequest : CustomStringConvertible, Equatable, Hashable, Sendable
+Struct OriginResponse : CustomStringConvertible, Equatable, Hashable, Sendable
+Struct TestContent : Sendable
+Struct ThroughputTrace : CustomStringConvertible, Equatable, Hashable, Sendable
+Struct ThroughputTrace.Builder : Sendable
+Struct ThroughputTraceError : CustomStringConvertible, Equatable, Error, Sendable
+TypeAlias FaultScript.Kind.AllCases : [SuperPlayerTestkit.FaultScript.Kind]
+TypeAlias FaultScript.Kind.RawValue : Swift.String
+TypeAlias FrameSourceConformance.Check.AllCases : [SuperPlayerTestkit.FrameSourceConformance.Check]
+TypeAlias FrameSourceConformance.Check.RawValue : Swift.String
+TypeAlias NetworkProfile.AllCases : [SuperPlayerTestkit.NetworkProfile]
+TypeAlias NetworkProfile.RawValue : Swift.String
+TypeAlias NetworkTransport.AllCases : [SuperPlayerTestkit.NetworkTransport]
+TypeAlias NetworkTransport.RawValue : Swift.String
+TypeAlias ResourceKind.AllCases : [SuperPlayerTestkit.ResourceKind]
+Var ConditionTimeout.condition : Swift.String { get }
+Var ConditionTimeout.description : Swift.String { get }
+Var ConditionTimeout.timeout : Swift.Duration { get }
+Var FaultScript.Kind.allCases : [SuperPlayerTestkit.FaultScript.Kind] [static] { get }
+Var FaultScript.Kind.rawValue : Swift.String { get }
+Var FaultScript.httpForbidden : Swift.Int [static] { get }
+Var FaultScript.httpNotFound : Swift.Int [static] { get }
+Var FaultScript.httpServerError : Swift.Int [static] { get }
+Var FaultScript.kinds : [SuperPlayerTestkit.FaultScript.Kind] { get }
+Var FaultScript.none : SuperPlayerTestkit.FaultScript [static] { get }
+Var FrameSourceConformance.Check.allCases : [SuperPlayerTestkit.FrameSourceConformance.Check] [static] { get }
+Var FrameSourceConformance.Check.rawValue : Swift.String { get }
+Var FrameSourceConformanceError.description : Swift.String { get }
+Var FrameSourceConformanceError.errorDescription : Swift.String? { get }
+Var FrameSourceConformanceError.message : Swift.String { get }
+Var FrameSourceConformanceError.rule : Swift.String { get }
+Var GoldenFile.directory : Foundation.URL { get }
+Var GoldenFile.isUpdating : Swift.Bool [static] { get }
+Var GoldenFileMismatchError.description : Swift.String { get }
+Var GoldenFileMismatchError.errorDescription : Swift.String? { get }
+Var GoldenFileMismatchError.message : Swift.String { get }
+Var LoopbackOrigin.hosts : Swift.Int { get }
+Var LoopbackOrigin.network : SuperPlayerTestkit.ThroughputTrace? { get }
+Var LoopbackOrigin.port : Swift.UInt16 { get }
+Var LoopbackOrigin.sourceURL : Foundation.URL { get }
+Var NetworkProfile.allCases : [SuperPlayerTestkit.NetworkProfile] [static] { get }
+Var NetworkProfile.handoverAtMs : Swift.Int64 [static] { get }
+Var NetworkProfile.lteDropoutPeriodMs : Swift.Int64 [static] { get }
+Var NetworkProfile.rawValue : Swift.String { get }
+Var NetworkProfile.trace : SuperPlayerTestkit.ThroughputTrace { get }
+Var NetworkRequest.body : [Swift.UInt8] { get }
+Var NetworkRequest.connection : Swift.Int { get }
+Var NetworkRequest.description : Swift.String { get }
+Var NetworkRequest.hashValue : Swift.Int { get }
+Var NetworkRequest.headers : [Swift.String : Swift.String] { get }
+Var NetworkRequest.host : Swift.Int { get }
+Var NetworkRequest.kind : SuperPlayerTestkit.ResourceKind { get }
+Var NetworkRequest.method : Swift.String { get }
+Var NetworkRequest.path : Swift.String { get }
+Var NetworkRequest.query : Swift.String? { get }
+Var NetworkTransport.allCases : [SuperPlayerTestkit.NetworkTransport] [static] { get }
+Var NetworkTransport.rawValue : Swift.String { get }
+Var OriginResponse.bodyBytesSent : Swift.Int { get }
+Var OriginResponse.description : Swift.String { get }
+Var OriginResponse.faults : [SuperPlayerTestkit.FaultScript.Kind] { get }
+Var OriginResponse.hashValue : Swift.Int { get }
+Var OriginResponse.headers : [Swift.String : Swift.String] { get }
+Var OriginResponse.request : SuperPlayerTestkit.NetworkRequest { get }
+Var OriginResponse.servedFromCache : Swift.Bool { get }
+Var OriginResponse.status : Swift.Int? { get }
+Var OriginResponse.transport : SuperPlayerTestkit.NetworkTransport? { get }
+Var PassThroughFrameOutput.framesOnMainThread : Swift.Int { get }
+Var PassThroughFrameOutput.presentationTimes : [CoreMedia.CMTime] { get }
+Var PlaybackHarness.pollInterval : Swift.Duration [static] { get }
+Var ResourceKind.allCases : [SuperPlayerTestkit.ResourceKind] [static] { get }
+Var ResourceKind.hashValue : Swift.Int { get }
+Var TestContent.choiceDirectory : Swift.String [static] { get }
+Var TestContent.choiceHighDirectory : Swift.String [static] { get }
+Var TestContent.choiceLowDirectory : Swift.String [static] { get }
+Var TestContent.defaultKeyIdentifier : Swift.String [static] { get }
+Var TestContent.defaultSegmentCount : Swift.Int [static] { get }
+Var TestContent.hosts : Swift.Int { get }
+Var TestContent.isLive : Swift.Bool { get }
+Var TestContent.licenceCertificate : [Swift.UInt8] [static] { get }
+Var TestContent.licenceCertificatePath : Swift.String [static] { get }
+Var TestContent.licencePath : Swift.String [static] { get }
+Var ThroughputTrace.description : Swift.String { get }
+Var ThroughputTrace.durationMs : Swift.Int64 { get }
+Var ThroughputTrace.formatHeader : Swift.String [static] { get }
+Var ThroughputTrace.hashValue : Swift.Int { get }
+Var ThroughputTrace.loops : Swift.Bool { get }
+Var ThroughputTraceError.description : Swift.String { get }

@@ -124,11 +124,53 @@ describe the whole session rather than a moment in it, and
 they are usually what settles "is it just this handset?": the API level, whether the platform calls
 it a low-memory device, the heap the app was allowed, the video decoders it declares with their
 instance counts and profile levels, the display's short edge and HDR formats, and the security level
-protected content was delivered at.
+protected content was delivered at. A bundle from an Apple device says less, in different fields:
+the OS's major and minor version, the memory the app had left, a hardware yes or no for each of four
+codecs, the display's short edge and whether it plays HDR — `docs/session-bundle.md` lists them.
 
 One trap: the words that are not values. `unknown` and `none` are different facts, and so is the
 security level's `not-negotiated`; `docs/session-bundle.md` says what each means, and confusing the
 first two sends a reader after the wrong device.
+
+## A bundle from an iPhone, iPad or Apple TV
+
+The header names the same format and the same versions, and the readings above work unchanged. What
+differs is which lines can appear at all, because AVFoundation reports less than Media3 does and
+reports it differently. Check the `capability device` line's `platform` and `osVersion` first, then
+read with these in mind.
+
+- **No `load` or `bandwidth` line below iOS 18 is not "no loads".** Both kinds come from the
+  per-request events AVFoundation first reports in iOS and tvOS 18. On 17 they are absent rather than
+  approximated, so "It would not start" is read off `item`, `state`, `error` and `telemetry` lines
+  alone there, and "It froze" has no transfer timeline to look at.
+- **A `load` line says less.** Each request is a `started` line and a `completed` or `error` line,
+  with the duration between them, and no media time span or rendition bitrate, because the event
+  names neither. A request whose event never arrived leaves no line, so there is no `canceled` line
+  on iOS.
+- **There are no `tracks` or `discontinuity` lines.** For a rendition change read the `telemetry
+  TrackSwitched` lines, which carry the video rendition's bitrate. For a jump in position read the
+  `telemetry SeekRequested` and `SeekCompleted` lines. AVFoundation's time-jump notification carries no reason and no positions,
+  so a trace line built from it would be an inference printed as a fact.
+- **An `error` line is `code=<domain>:<code>`**, the `NSError`'s domain and code, where Android
+  prints Media3's error code name. The message is withheld on both platforms, for the same reason.
+- **The estimate on a `telemetry PlaybackStateSampled` line is Apple's.** On iOS the throughput estimate comes from
+  the access log's `observedBitrate`, Apple's smoothed figure, where a `bandwidth` line is still one
+  transfer's own bytes over its own duration. Two numbers that disagree are not a bug; the telemetry
+  schema says whose each is.
+- **There is no `capability protection` line**, because FairPlay has no security levels.
+- **A bundle from a simulator, or from a test, describes no device.** Three of the `capability`
+  readings are the host's or the test runner's:
+  - `memoryBudgetMb=unknown` where the platform reports no limit, as it does to an `xctest` runner.
+  - `shortEdgePx=unknown` in a process with no window scene, which an `xctest` runner has.
+  - `hardware=false` for every codec on a simulator, H.264 included, because a simulator decodes in
+    software.
+
+  A bundle attached to a ticket from a simulator is evidence about the stream and the library, and
+  none about a phone.
+
+`docs/session-bundle.md` lists the iOS `capability` fields, and `SessionTraceRecorder`'s
+documentation in the `SuperPlayerTelemetry` product says which kind comes from which AVFoundation
+signal.
 
 ## What a bundle cannot tell you, and what to ask for instead
 
@@ -165,6 +207,18 @@ recorder.attach(player)
 // ... play; take the trace once the sink has seen SessionEnded ...
 val bundle = SessionBundle.Builder(context).setTrace(recorder.trace()).setPlayer(player).build()
 bugReport.attach(bundle.format())
+```
+
+On iOS and tvOS the recipe is the same and shorter, because the bundle reads nothing of a player:
+
+```swift
+let recorder = SessionTraceRecorder()
+var configuration = SuperPlayer.Configuration()
+configuration.telemetry = { QoeCollector(sink: .composite(appSink, recorder)) }
+let player = SuperPlayer(configuration: configuration)
+recorder.attach(to: player)
+// ... play; take the trace once the sink has seen SessionEnded ...
+bugReport.attach(SessionBundle(trace: recorder.trace()).format())
 ```
 
 A trace taken before the delivery queue has drained lacks the tail of the telemetry, which is why

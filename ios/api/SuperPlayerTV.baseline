@@ -1,0 +1,3 @@
+// SuperPlayerTV: public API as ios/check reads it. Regenerate with ios/check --update-api.
+Enum TvOutput
+Func TvOutput.standard() : any SuperPlayerCore.PlaybackOutput [static]

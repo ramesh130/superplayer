@@ -1622,10 +1622,10 @@ public class PlaybackHarness : ExternalResource() {
      * picks the highest rung fitting inside 70% of that — the bottom of any realistic ladder — and
      * never moves off it, whatever the [ThroughputTrace] underneath is doing.
      *
-     * The failure mode is silent, and it is the one `CLAUDE.md` warns about: a layer that drops the
-     * measurement blinds ABR without failing anything. Everything still plays. A benchmark of it
-     * reports the same bitrate on a 1 Mbit/s link and on a 20 Mbit/s one, which reads as a finding
-     * rather than as an unplugged instrument — which is how this was found.
+     * The failure mode is silent, and it is the one `docs/codebase-tour.md` warns about: a layer
+     * that drops the measurement blinds ABR without failing anything. Everything still plays. A
+     * benchmark of it reports the same bitrate on a 1 Mbit/s link and on a 20 Mbit/s one, which
+     * reads as a finding rather than as an unplugged instrument — which is how this was found.
      *
      * The timing the meter then sees is the shaper's, and that is correct: the wrappers forward
      * `addTransferListener` down to this source rather than re-raising the callbacks themselves

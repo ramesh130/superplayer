@@ -23,7 +23,7 @@
  * `PlaybackSession`, `PlaybackService` and `PlayerPool`. Everything public here is tracked in
  * `api/superplayer-core.api` and enforced on every build.
  *
- * For what the module is for and how it fits the others, read `CLAUDE.md` and `docs/modules.md`
- * rather than a third copy of them here.
+ * For what the module is for and how it fits the others, read `docs/codebase-tour.md` and
+ * `docs/modules.md` rather than a third copy of them here.
  */
 package com.superplayer.core

@@ -64,7 +64,7 @@ jobs:
         with:
           distribution: temurin
           # Matches `jvmTarget` in android/gradle/libs.versions.toml, build-logic's toolchain, and the daemon
-          # JVM criteria in android/gradle/gradle-daemon-jvm.properties (and android/demo/'s and android/benchmark/'s).
+          # JVM criteria in android/gradle/gradle-daemon-jvm.properties (and the copies in android/demo/ and android/benchmark/).
           java-version: '17'
 
       # The SDK and the compileSdk platform, looked up from the version catalog. A composite
@@ -104,12 +104,12 @@ jobs:
       # benchmark step below.
       #
       # Spotless is configured by path rather than by project, so this covers the demo's and
-      # build-logic's Kotlin files as well as the library modules'. `./gradlew spotlessApply`
+      # build-logic's Kotlin files as well as the library modules'. `(cd android && ./gradlew spotlessApply)`
       # is the local fix.
       #
       # The API surface checks are why there is no separate step for them: `check` is the whole
       # definition of passing, so a contributor running it locally sees exactly what CI sees.
-      # A public API change that has not been regenerated with `./gradlew updateApiSurface`
+      # A public API change that has not been regenerated with `(cd android && ./gradlew updateApiSurface)`
       # fails here, as does an @UnstableApi Media3 type reaching public API.
       - name: Lint, API surface, and repo verification
         working-directory: ${{ env.GRADLE_DIR }}

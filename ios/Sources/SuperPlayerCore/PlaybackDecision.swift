@@ -381,7 +381,8 @@ public struct RetryBudget: Sendable, Hashable {
     /// Media3 exists, so that a policy saying nothing about retries decides the same budget on both
     /// platforms; the reason for each number is the Kotlin constant's.
     ///
-    /// ref: `android/superplayer-core/src/main/kotlin/com/superplayer/core/PlaybackPolicy.kt`, `RetryBudget.MEDIA3_DEFAULT`
+    /// ref: `android/superplayer-core/src/main/kotlin/com/superplayer/core/PlaybackPolicy.kt`,
+    /// `RetryBudget.MEDIA3_DEFAULT`
     public static let standard = RetryBudget(
         maxRetries: 3, initialBackoffMs: 1_000, maxBackoffMs: 5_000)
 }

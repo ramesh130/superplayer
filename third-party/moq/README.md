@@ -5,7 +5,7 @@
 
 This directory exists because the artifact is **built on one machine and is nobody else's to
 resolve**. That is not a shortcut — it is the result of issue #351, and the reason
-`superplayer-moq` is kept out of the published set (`settings.gradle.kts`'s `unpublishedModules`,
+`superplayer-moq` is kept out of the published set (`android/settings.gradle.kts`'s `unpublishedModules`,
 ADR-0017 rule 1). Issue #369 tracks what publishing it would take.
 
 ## Why not the artifact on Maven Central
@@ -26,7 +26,7 @@ llvm-nm -a libmoq_ffi.so | grep -ci openh264                                    
 llvm-nm -D --defined-only libmoq_ffi.so | grep -ciE "uniffi_moq_ffi_fn_.*(en|de)coder"  → 0
 ```
 
-That is why Maven Central must not be able to answer for this group. `settings.gradle.kts`
+That is why Maven Central must not be able to answer for this group. `android/settings.gradle.kts`
 declares this directory with `exclusiveContent` filtered to `dev.moq`, so Central is not asked at
 all; `MoqBindingsResolutionTest` asserts what was resolved rather than trusting the declaration.
 
@@ -137,7 +137,7 @@ rm -rf /tmp/moq-dist/maven-local
 # 8. Copy dev/moq/** into this directory's m2/, leaving out the -sources and -javadoc jars.
 ```
 
-A rebuild at a different version means moving `moqFfi` in `gradle/libs.versions.toml` and nothing
+A rebuild at a different version means moving `moqFfi` in `android/gradle/libs.versions.toml` and nothing
 else: that is the only place the version is written down (ADR-0001 rule 3), and the test that
 reads it is handed it from there.
 

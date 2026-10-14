@@ -16,7 +16,7 @@ Apache-2.0 · Kotlin · JDK 17 · `minSdk` 24 · Media3 1.11.0
 Read this before the feature list, because the feature list is longer than the guarantees.
 
 - **Nothing is published.** There is no remote repository and no credentials anywhere in this
-  build. `./gradlew publishToMavenLocal` writes to your own `~/.m2`, which is how the demo
+  build. `(cd android && ./gradlew publishToMavenLocal)` writes to your own `~/.m2`, which is how the demo
   resolves it and the only way anyone resolves it. A cut release is a commit and a local tag.
 - **`0.x`, and under `0.x` a minor may break you.** What counts as breaking is the tracked API
   surface rather than anyone's judgement —
@@ -27,7 +27,7 @@ Read this before the feature list, because the feature list is longer than the g
   survival across a reboot, the feed's time-to-first-frame, and the diagnostics bundle from a
   device. Everything the test suite *cannot* show is written down in
   [`docs/testing.md`](docs/testing.md) rather than left to be assumed.
-- **The benchmark's Phase 3 verdict is a committed finding, not a win.** `benchmark/phase3/`
+- **The benchmark's Phase 3 verdict is a committed finding, not a win.** `android/benchmark/phase3/`
   reports what the adaptive policy did against three other arms on a fixed matrix, including
   where it lost. Moving those numbers is Phase 11 and is open.
 - **`superplayer-moq` is local-only on purpose.** It links a native library built on one machine
@@ -111,22 +111,22 @@ depend on one from a later phase ([`docs/modules.md`](docs/modules.md)).
 
 ## Building it
 
-Needs JDK 17 and an Android SDK (`ANDROID_HOME`, or `sdk.dir` in `local.properties`). The Gradle
+Needs JDK 17 and an Android SDK (`ANDROID_HOME`, or `sdk.dir` in `android/local.properties`). The Gradle
 wrapper fetches everything else.
 
 ```bash
-./gradlew assemble check        # build, tests, lint, API surface, format, repo verification
+(cd android && ./gradlew assemble check)    # build, tests, lint, API surface, format, repo verification
 ```
 
 `check` is the complete definition of passing — the same command CI runs. There are four Gradle
-builds here, not one: the library, `build-logic/` (an included build of convention plugins),
+builds under `android/`, not one: the library, `build-logic/` (an included build of convention plugins),
 `demo/` and `benchmark/`. The last two are **separate builds that resolve the library from Maven
 coordinates**, exactly as an adopter would, so a malformed POM or a missing transitive dependency
 fails here instead of in someone else's app:
 
 ```bash
-./gradlew publishToMavenLocal
-(cd demo && ./gradlew assembleDebug lintDebug spotlessCheck)
+(cd android && ./gradlew publishToMavenLocal)
+(cd android/demo && ./gradlew assembleDebug lintDebug spotlessCheck)
 ```
 
 ## How it is tested
@@ -172,7 +172,7 @@ Read [`CONTRIBUTING.md`](CONTRIBUTING.md) first — it is short and two of its r
 - **A change that contradicts an ADR says so and argues the case.** Winning that argument produces
   a superseding record, not an undocumented exception.
 
-`./gradlew assemble check` must pass, `./gradlew spotlessApply` formats, and a public API change
+`(cd android && ./gradlew assemble check)` must pass, `(cd android && ./gradlew spotlessApply)` formats, and a public API change
 is committed together with its regenerated `api/` diff.
 
 ## Licence

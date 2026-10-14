@@ -1,12 +1,12 @@
 # The tracked public API surface
 
 Every published module's consumer-facing API is checked into this repository, as
-`<module>/api/<module>.api`, and validated on every build. Widening the surface is therefore an
+`android/<module>/api/<module>.api`, and validated on every build. Widening the surface is therefore an
 explicit, reviewed edit rather than something noticed after a release.
 
 **"Every published module" is the whole of the rule, and since #364 it excludes one.**
 `superplayer-moq` is in the build and is deliberately not released with the others
-(`settings.gradle.kts`'s `unpublishedModules` list, ADR-0017 rule 1), so it has **no** tracked file
+(`android/settings.gradle.kts`'s `unpublishedModules` list, ADR-0017 rule 1), so it has **no** tracked file
 and neither `checkApiSurface` nor `verifyNoUnstableMedia3InPublicApi` runs for it. That is the same
 declaration deciding all three things rather than three switches that happen to agree — the
 convention plugin reads it once, and a module that file accounts for in neither list fails the build
@@ -17,14 +17,14 @@ can resolve this module. An empty file here would be a promise to a consumer who
 ## The commands
 
 ```bash
-./gradlew check                                # includes checkApiSurface for every module,
-                                               # and verifyVersionBump once at the root
-./gradlew updateApiSurface                     # regenerate every module's tracked surface
-./gradlew :superplayer-core:updateApiSurface   # regenerate one
-./gradlew release --release-version=x.y.z      # cuts a release, and re-records api/released/ as
-                                               # one of its steps (docs/releasing.md)
-./gradlew recordReleasedApiSurface             # that step alone, for a record that has to be
-                                               # retaken by hand; not a contributor's step
+(cd android && ./gradlew check)                                # includes checkApiSurface for every module,
+                                                               # and verifyVersionBump once at the root
+(cd android && ./gradlew updateApiSurface)                     # regenerate every module's tracked surface
+(cd android && ./gradlew :superplayer-core:updateApiSurface)   # regenerate one
+(cd android && ./gradlew release --release-version=x.y.z)      # cuts a release, and re-records android/api/released/
+                                                               # as one of its steps (docs/releasing.md)
+(cd android && ./gradlew recordReleasedApiSurface)             # that step alone, for a record that has to be
+                                                               # retaken by hand; not a contributor's step
 ```
 
 `updateApiSurface` is the deliberate step. Nothing regenerates the tracked file implicitly, because
@@ -72,13 +72,13 @@ lambda that lost its capture.
 **`verifyVersionBump`** is the third task, and it is the *root*'s rather than a module's. It
 answers a different question from the other two: not "does the tracked file match the code" but
 "does the version match the difference between two tracked files". What it compares each module's
-tracked surface against is `api/released/`, the surface recorded at the last release, and it fails
-when `gradle/libs.versions.toml`'s `superplayer` version is too small for that difference —
+tracked surface against is `android/api/released/`, the surface recorded at the last release, and it fails
+when `android/gradle/libs.versions.toml`'s `superplayer` version is too small for that difference —
 [ADR-0017](adr/0017-version-the-library-by-semver-in-lockstep-with-the-tracked-api-surface-as-the-arbiter.md)
 rule 2's arbitration, made mechanical. It reads no compiled class at all. It is the root's because
 rule 1 releases all fifteen modules at one number, so the verdict is fifteen surfaces against one
 catalog entry rather than fifteen independent answers, and
-[`api/released/README.md`](../api/released/README.md) says what writes that record (the release
+[`android/api/released/README.md`](../android/api/released/README.md) says what writes that record (the release
 command, issue #329) and why an absent one — today's state, nothing having been released — passes
 rather than fails.
 
@@ -108,7 +108,7 @@ signature that can only change where someone wrote a type is a signature `api/<m
 trusted to track.
 
 It is a library-authoring switch and applies where library code is: main source sets of the modules
-using the convention plugin. Test source sets are exempt by Kotlin's own rule, and `demo/` — a
+using the convention plugin. Test source sets are exempt by Kotlin's own rule, and `android/demo/` — a
 consumer, in a separate build — does not apply the plugin and is unaffected.
 
 ## Two things the unstable check permits, and why

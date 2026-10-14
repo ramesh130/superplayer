@@ -8,7 +8,7 @@ rule 1). Cutting one is six things that have to happen in one order, and there i
 supported way to do it:
 
 ```bash
-./gradlew release --release-version=<x.y.z>
+(cd android && ./gradlew release --release-version=<x.y.z>)
 ```
 
 The option is `--release-version` rather than `--version` because Gradle parses `--version` as its
@@ -31,7 +31,7 @@ and passes whatever it says.
   under `Unreleased` and is nonsense the moment it is dated. The command moves what it is given and
   writes no release notes of its own.
 - Know the version. It is derived rather than chosen: a declaration removed from or incompatibly
-  changed in any `<module>/api/<module>.api` since the last release is a major — a **minor** while
+  changed in any `android/<module>/api/<module>.api` since the last release is a major — a **minor** while
   the library is `0.x` (rule 7) — one added is a minor, and an unmoved surface is a patch (rule 2).
   If you are wrong the command tells you the smallest version that describes the change, in
   `verifyVersionBump`'s own words.
@@ -39,21 +39,21 @@ and passes whatever it says.
   rule 9 has one survive at least one minor release annotated `@Deprecated` with its replacement
   named. No tool can see this — `checkApiSurface` compares declarations and a deprecation cycle is a
   fact about two releases — so it is a reviewer's, and the changelog row is where it is recorded.
-- Optionally run `./gradlew check` first. The release command depends on it, so it runs anyway; a
+- Optionally run `(cd android && ./gradlew check)` first. The release command depends on it, so it runs anyway; a
   check that has already passed is up to date and the release run's is quick. Doing it first is how
   you find out about a failing test before you have thought about a version number.
 
 ## What the command does, in order
 
 1. **Runs the full `check`** — the root project's and every module's, which is what a plain
-   `./gradlew check` means. This is a task dependency, not a claim: Gradle runs them before the
+   `(cd android && ./gradlew check)` means. This is a task dependency, not a claim: Gradle runs them before the
    release action starts, so a red tree stops the release where it stands. It is neither trusting
    your word nor starting a second build.
 2. **Refuses, or plans.** The tree is clean, the version parses, it is a legal successor of the last
    release, it is no smaller than the surface diff requires, the `Unreleased` section is not empty,
    the tag is free. Every refusal happens **before anything is written**.
-3. **Writes.** `gradle/libs.versions.toml` drops its `-SNAPSHOT`; `CHANGELOG.md`'s `Unreleased`
-   section becomes `## [<x.y.z>] - <today>` with a fresh empty `Unreleased` above it; `api/released/`
+3. **Writes.** `android/gradle/libs.versions.toml` drops its `-SNAPSHOT`; `CHANGELOG.md`'s `Unreleased`
+   section becomes `## [<x.y.z>] - <today>` with a fresh empty `Unreleased` above it; `android/api/released/`
    is re-recorded from the surfaces tracked today, under that version.
 4. **Commits** those three as `Release <x.y.z>`.
 5. **Publishes** the fifteen modules at that version — see
@@ -109,7 +109,7 @@ A refusal at any of these leaves the tree untouched.
 
 **It is not resolvable by anyone else.** There is no publish `repositories { }` block in this
 repository, no credentials and no release workflow, and publishing to a remote repository is
-deliberately out of scope. `demo/` and `benchmark/` resolve the library from `mavenLocal()` after a
+deliberately out of scope. `android/demo/` and `android/benchmark/` resolve the library from `mavenLocal()` after a
 prior publish, and they are the only consumers a cut release has today. A version that has been cut
 is a version this repository can *state* — a tag, a changelog row, a recorded API surface — not one
 an adopter can add to their build.
@@ -119,7 +119,7 @@ cuts a release, and `ModulePublication.LOCAL_ONLY` modules are published by that
 `superplayer-moq` lands in `~/.m2` at the release version like everything else. It is *not* part of
 the release: no API surface is recorded for it, `CHANGELOG.md` does not describe it,
 `docs/compatibility.md` reads **Not published** for it, and ADR-0017 rule 1's "every published
-module at one version" does not reach it. It is there because `demo/` resolves it, on this machine,
+module at one version" does not reach it. It is there because `android/demo/` resolves it, on this machine,
 to play a MoQ broadcast (#353). Do not read a version number on such an artifact as a promise about
 it; the version is the catalog's, and it is the only thing the two share.
 
@@ -154,9 +154,9 @@ row saying what the previous one got wrong.
 
 ## What reads what this writes
 
-- `./gradlew verifyVersion` holds `gradle/libs.versions.toml` and `CHANGELOG.md` to each other, in
+- `(cd android && ./gradlew verifyVersion)` holds `android/gradle/libs.versions.toml` and `CHANGELOG.md` to each other, in
   both states — the released one and the snapshot the cut leaves behind.
-- `./gradlew verifyVersionBump` compares `api/released/` against the tracked surfaces and refuses a
+- `(cd android && ./gradlew verifyVersionBump)` compares `android/api/released/` against the tracked surfaces and refuses a
   version too small for the difference. Re-recording that directory is step 3, which is what arms it
-  for the next cycle. [`api/released/README.md`](../api/released/README.md) describes it.
+  for the next cycle. [`android/api/released/README.md`](../android/api/released/README.md) describes it.
 - [`api-surface.md`](api-surface.md) is the tracked surface itself and the two checks over it.

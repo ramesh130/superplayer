@@ -8,7 +8,7 @@ UI jank measurement (#51), and whatever comes after them.
 ```bash
 devicelab/lab run smoke                                   # boot or adopt a device, build, install, play, trace
 devicelab/lab run smoke --data-sources java_hprof,heapprofd
-devicelab/lab run leak-hunt                               # the leak hunt; also ./gradlew huntLeaks
+devicelab/lab run leak-hunt                               # the leak hunt; also (cd android && ./gradlew huntLeaks)
 devicelab/lab run startup                                 # twenty cold starts in one trace
 devicelab/lab run startup --plant startup-main-thread-io  # the same, built with a known regression
 devicelab/lab run jank                                    # the feed scrolled and tapped, one trace
@@ -36,14 +36,14 @@ that rule governs: it does not run in the suite, gate a change, or run without a
 *measures*, and its output is a trace someone reads. A scenario may judge what it measured — the
 leak hunt does — and then a run with a failing verdict still writes everything and exits 3, apart
 from every other failure, but it is still a measurement someone reads, on a schedule, rather than a
-check a change must pass. So it sits beside the build rather than in it. `./gradlew check` does not run it, does
-not know it exists, and passes with no device attached. `benchmark/` sits outside `check` for the
-same reason and has its own entry point, `benchmark/bench` — see
-[`benchmark/README.md`](../benchmark/README.md), which makes the same argument from its side.
+check a change must pass. So it sits beside the build rather than in it. `(cd android && ./gradlew check)` does not run it, does
+not know it exists, and passes with no device attached. `android/benchmark/` sits outside `check` for the
+same reason and has its own entry point, `android/benchmark/bench` — see
+[`android/benchmark/README.md`](../android/benchmark/README.md), which makes the same argument from its side.
 
 The device half of that benchmark is **not yet a scenario here**, and the gap is worth naming: this
 harness is currently shaped around the demo throughout — the package, the activity, the APK path, and
-a readiness probe that reads a media session `benchmark/`'s app does not publish. `BenchmarkActivity`
+a readiness probe that reads a media session `android/benchmark/`'s app does not publish. `BenchmarkActivity`
 exists and plays a 30-minute session on a device; taking peak RSS and battery off that process means
 teaching `lab` to drive a second app, which is a change to a harness whose whole value is that it is
 reliable, and it is tracked as #95 rather than half-done.
@@ -113,7 +113,7 @@ fails. The APK builds, installs and plays, and it is measured as the previous ve
 
 So the demo records what it was built against. Its build writes `assets/superplayer-artifacts.txt`
 into the APK: every `com.superplayer` AAR on its runtime classpath, with its sha256 (see
-`RecordSuperPlayerArtifacts` in [`demo/build.gradle.kts`](../demo/build.gradle.kts)). After
+`RecordSuperPlayerArtifacts` in [`android/demo/build.gradle.kts`](../android/demo/build.gradle.kts)). After
 installing, the harness pulls the APK back off the device. First it checks that the APK is the one
 just built, which catches an install that silently kept the old one. Then it compares the recorded
 hashes with the AARs in Maven local, which the run has just published. Any difference stops the run

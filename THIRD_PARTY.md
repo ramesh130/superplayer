@@ -4,7 +4,7 @@ Every third-party dependency SuperPlayer resolves, with its license. `CONTRIBUTI
 policy: permissive licenses only, no copyleft, no field-of-use restriction, and no dependency whose
 license cannot be identified. Adding a dependency means adding its row here in the same change.
 
-Versions are not listed here — they live in `gradle/libs.versions.toml`, which is the single source
+Versions are not listed here — they live in `android/gradle/libs.versions.toml`, which is the single source
 of truth. This file records *what* is depended on and under *what license*.
 
 ## Runtime and compile dependencies
@@ -44,7 +44,7 @@ of truth. This file records *what* is depended on and under *what license*.
 names on Maven Central**. It is built from `moq-dev/moq` at commit `4e419f9` with
 `--no-default-features` and committed to `third-party/moq/m2`, because the published build carries
 MPL-2.0 code this project's policy does not accept. `third-party/moq/README.md` is the recipe, the
-evidence and the list of what publishing it would need (#369); `settings.gradle.kts` scopes the
+evidence and the list of what publishing it would need (#369); `android/settings.gradle.kts` scopes the
 whole `dev.moq` group to that directory so Central cannot answer for it.
 
 The crates in that build are enumerated **one row per crate** in
@@ -78,7 +78,7 @@ in #351's reasoning about `symphonia`; it is a second fact that ticket's enumera
 It is admitted by **`CONTRIBUTING.md`'s #364 amendment**, and by that amendment alone. The weak
 copyleft carve-out always rested on *never distributed in a published artifact*, and it named
 test-only and build-time dependencies as the two kinds that satisfy it. A dependency of a module in
-`settings.gradle.kts`'s `unpublishedModules` list is a third, and it is written into the policy
+`android/settings.gradle.kts`'s `unpublishedModules` list is a third, and it is written into the policy
 rather than read into it — the literal wording covered test-only and build-time dependencies and
 this is neither, and stretching it in prose here would have been an undocumented exception.
 
@@ -153,8 +153,8 @@ admits weak copyleft for test-only and build-time dependencies specifically: JUn
 distributed in any published artifact, and its copyleft reaches only modifications to JUnit's own
 files, which this project does not make. No EPL-licensed code ships to consumers.
 
-`benchmark/` appears in the rows above because it is a separate build that resolves SuperPlayer from
-published Maven coordinates and declares its own dependencies, exactly as `demo/` does. It brings no
+`android/benchmark/` appears in the rows above because it is a separate build that resolves SuperPlayer from
+published Maven coordinates and declares its own dependencies, exactly as `android/demo/` does. It brings no
 third-party dependency this project did not already have: its arms are Media3's own `ExoPlayer` and
 `DefaultLoadControl`, its metrics come off Media3's `AnalyticsListener`, and its Robolectric arm runs
 on the same test infrastructure the library's own tests do. Its report generator writes JSON by hand

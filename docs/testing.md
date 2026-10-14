@@ -94,7 +94,7 @@ release of an owed licence runs on the store's own thread, and a test that goes 
 given up proves nothing about what stays owed. It waits and asserts nothing, and is `internal` for the reason
 above.
 
-`superplayer-core/src/test/kotlin/com/superplayer/core/` is the worked example.
+`android/superplayer-core/src/test/kotlin/com/superplayer/core/` is the worked example.
 
 ## What the seam is
 
@@ -213,7 +213,7 @@ engine was genuinely asked for, because a stack quietly exchanged for `DefaultHt
 have produced a working player and said nothing at all.
 
 That class is also **the repository's first user of `@Config(sdk = [...])`**, which
-`superplayer-core/src/test/resources/robolectric.properties` has pointed at since it was written.
+`android/superplayer-core/src/test/resources/robolectric.properties` has pointed at since it was written.
 An API level is deliberately not a `DeviceStatement`: that type states what a device *can do* —
 decoders, display, heap, protection — while a platform level is `Build.VERSION.SDK_INT`, which
 Robolectric's own annotation already sets, and a second way to say it would be a second thing to keep
@@ -590,7 +590,7 @@ evening — dated, relay-specific readings go on #438, not here.
 `superplayer-moq` links a native library, and everything unusual about testing it follows from where
 that library comes from: it is **built on this machine** and committed to `third-party/moq/m2`,
 rather than resolved from Maven (issue #364, and `third-party/moq/README.md` is the recipe and the
-licence evidence). So the module is not published at all — `settings.gradle.kts`'s
+licence evidence). So the module is not published at all — `android/settings.gradle.kts`'s
 `unpublishedModules` list, ADR-0017 rule 1 — and what a test here can show is bounded by that.
 
 `MoqFfiLinkageTest` calls across the FFI boundary for real, and the library it loads is the **host**
@@ -844,7 +844,7 @@ The Swift products play the same streams, and ADR-0021 rule 6 makes that **one c
 two generators that agree today. `SuperPlayerTestMedia`'s `SyntheticHlsStream` is a port of the
 Kotlin one, and the two are held to one set of committed files under `ios/Tests/Fixtures/synthetic/`:
 
-- **The Kotlin generator writes them.** `./gradlew updateIosFixtures` runs
+- **The Kotlin generator writes them.** `(cd android && ./gradlew updateIosFixtures)` runs
   `superplayer-testmedia`'s `SyntheticHlsFixturesTest` in update mode and rewrites the directory,
   on the golden traces' contract: run it alone, then `check`, and commit the diff with the change
   that caused it. Nothing else writes there.
@@ -896,11 +896,11 @@ drift from without failing anything.
 (ADR-0021 rule 7). **A check that needs a platform's own types runs on that platform**, Kotlin's in
 `check` and Swift's in `ios/check`, and the two read the same file.
 
-| Shared document or fixture | Android, in `./gradlew check` | iOS and tvOS, in `ios/check` |
+| Shared document or fixture | Android, in `(cd android && ./gradlew check)` | iOS and tvOS, in `ios/check` |
 | --- | --- | --- |
 | `docs/telemetry-schema.md`: every event and field, and none it does not name | `superplayer-core`'s `TelemetrySchemaDocumentTest` | `SuperPlayerCoreTests`' `TelemetrySchemaDocumentTests` |
 | `docs/media-source-doctor.md`: a section per defect, naming its platforms and carrying its citation (#430) | `superplayer-diagnostics`' `DoctorDocumentTest`, over the sections naming Android | `SuperPlayerDiagnosticsTests`' `DoctorDocumentTests`, over the sections naming iOS and tvOS |
-| `docs/compatibility.md`: a stability row per module and per Swift product (#430) | `verifyCompatibilityDocument`, against `settings.gradle.kts` | the same task, against `Package.swift` and `ios/MoQ/Package.swift`: text, so on Linux |
+| `docs/compatibility.md`: a stability row per module and per Swift product (#430) | `verifyCompatibilityDocument`, against `android/settings.gradle.kts` | the same task, against `Package.swift` and `ios/MoQ/Package.swift`: text, so on Linux |
 | `docs/modules.md`: the phase rule | `verifyModulePhaseRule`, against the module build files | the same task, against `Package.swift`'s targets: text, so on Linux |
 | The session trace grammar (`docs/session-bundle.md`'s lines) | `superplayer-telemetry`'s `GoldenTraceTest` and `superplayer-diagnostics`' `SessionBundleGoldenTraceTest`, byte-identical goldens | `SuperPlayerTelemetryTests`' `SessionTraceTests`, which parses every Kotlin trace golden and writes it back byte for byte, and the structural goldens under `ios/Tests/Fixtures/golden/` |
 | The synthetic HLS streams, `ios/Tests/Fixtures/synthetic/` | `superplayer-testmedia`'s `SyntheticHlsFixturesTest` | `SuperPlayerTestMediaTests`' `SyntheticHlsFixturesTests` |
@@ -1005,7 +1005,7 @@ see a request.
   back, its conditions at fixed times, and when fixed transfers arrive. The Swift
   `ThroughputTraceFixturesTests` computes the same lines and compares them as text, so the grammar,
   the profiles (`CONGESTED_WIFI` draws `java.util.Random`'s specified sequence, ported) and the
-  replay's integer arithmetic are held to each other. `./gradlew updateIosFixtures` rewrites them, as
+  replay's integer arithmetic are held to each other. `(cd android && ./gradlew updateIosFixtures)` rewrites them, as
   it does the streams.
 - **Core's playback tests are in testkit's target.** `SuperPlayerPlaybackTests` (#400) plays a
   `SuperPlayer` from the origin, and lives in `SuperPlayerTestkitTests` for the reason
@@ -1310,8 +1310,8 @@ corpus, and the test checks that it plays on, which is what makes a failing live
    defect means, what produces it and what to change. `DoctorDocumentTest` fails without it. This
    step is owed for **every** entry of the doctor's vocabulary and not only for a corpus one: the two
    defects of the *fetch* that no corpus can carry each have a section too.
-9. For an **HLS** entry, its iOS half (#412, *The hostile corpus on iOS*): `./gradlew
-   updateIosFixtures` to commit its fixtures, the same entry in `HostileManifests.swift` until
+9. For an **HLS** entry, its iOS half (#412, *The hostile corpus on iOS*): `(cd android && ./gradlew
+   updateIosFixtures)` to commit its fixtures, the same entry in `HostileManifests.swift` until
    `HostileManifestsFixturesTests` passes, and its row in `HostileManifestCorpusTests.recorded`.
    `ios/check` names the entry until all three are done.
 
@@ -1355,8 +1355,8 @@ headers; the DASH entries are not, because DASH is not (ADR-0020). It is **one c
   tokens were minted at, duration, source, magnitude (`-` for none), citation and cause — and
   **`headers.tsv`** one row per declared header, against the file it is declared on.
 
-`superplayer-testmedia`'s `HostileManifestsFixturesTest` writes them under `./gradlew
-updateIosFixtures` and holds the Kotlin generator to them in `check`; `HostileManifestsFixturesTests`
+`superplayer-testmedia`'s `HostileManifestsFixturesTest` writes them under `(cd android && ./gradlew
+updateIosFixtures)` and holds the Kotlin generator to them in `check`; `HostileManifestsFixturesTests`
 holds the Swift generator to the same files, fields and headers, reading which entries exist from the
 index, so an entry on one side and not the other fails **naming it**. The token entries are why the
 Kotlin generator gained an internal overload taking the minting instant: a token's `expires` is in
@@ -2813,9 +2813,9 @@ state transition, track selection, load by kind and media time, error and teleme
 line in a fixed order — and holds it to a committed file, so a change in behaviour that no assertion
 names still appears in review, as a diff. "This change also moves the first segment load a step
 later on 3G" is a sentence a diff can say and a test suite cannot. The goldens live in
-`superplayer-telemetry/src/test/golden/`, one whole session each, played by `GoldenTraceTest` through
+`android/superplayer-telemetry/src/test/golden/`, one whole session each, played by `GoldenTraceTest` through
 the harness: each protocol on demand, and each over a shaped network. Since #292 there are goldens in
-a second module — `superplayer-diagnostics/src/test/golden/`, played by `SessionBundleGoldenTraceTest`
+a second module — `android/superplayer-diagnostics/src/test/golden/`, played by `SessionBundleGoldenTraceTest`
 — which pin the *bundle* that trace becomes one layer out, header lines and capability snapshot
 included. One command regenerates both, because the task is wired into every module.
 
@@ -2848,12 +2848,12 @@ format's specification; two of its rules matter to a test author:
 
 The contract is `docs/api-surface.md`'s, deliberately. Nothing regenerates a golden implicitly.
 A golden test in check mode — the default, and what `check` runs — fails on any difference with the
-diff in its message, so an uncommitted change to a golden fails `./gradlew check` and CI alike.
+diff in its message, so an uncommitted change to a golden fails `(cd android && ./gradlew check)` and CI alike.
 Accepting a change is one command, run on its own and then reviewed:
 
 ```bash
-./gradlew updateGoldenTraces     # rewrite every golden from what the tests now produce
-git diff -- '*.trace'            # the behaviour change, as a reviewable diff
+(cd android && ./gradlew updateGoldenTraces)   # rewrite every golden from what the tests now produce
+git diff -- '*.trace'                          # the behaviour change, as a reviewable diff
 ```
 
 When the diff means "fix the code" and when it means "accept the change" is the reviewer's call,
@@ -2936,7 +2936,7 @@ inside one load is one event — and it read the same on consecutive runs on iOS
 committed.
 
 The grammar is one: `SessionTraceTests` parses every Kotlin golden in
-`superplayer-telemetry/src/test/golden/` with the Swift reader and writes each back byte for byte,
+`android/superplayer-telemetry/src/test/golden/` with the Swift reader and writes each back byte for byte,
 and reads `hls-vod.trace` structurally. The redaction test drives a session that really carried a
 signed URL, a URL-shaped content id and an `Authorization` header — the credential travels in the
 source URL's user information and the origin answers the first playlist request with a `Basic`
@@ -2948,11 +2948,11 @@ by the test host's player — and asserts each present at the origin before abse
 A golden says a session *changed*; it cannot say whether the change was worse. `PRD.md` Part 5 asks
 for that too — replay throughput traces through the selection and buffering logic, score each session
 with the QoE objective, and gate on the score — and `superplayer-abr`'s `QoeRegressionGateTest` is
-that gate. It fails `./gradlew check` when a trace's score drops past its committed floor.
+that gate. It fails `(cd android && ./gradlew check)` when a trace's score drops past its committed floor.
 
 **Where it runs, and why there.** In `superplayer-abr`'s own unit tests, under the harness, because
 that is where the thing it protects is built and because `check` is this repository's definition of
-passing. The full `PRD.md` §6 matrix in `benchmark/` was the other candidate and is the wrong one: it
+passing. The full `PRD.md` §6 matrix in `android/benchmark/` was the other candidate and is the wrong one: it
 is a separate build that `check` cannot reach, twenty runs of ninety cells is a measurement rather
 than a check, and it compares three players where a gate asks one question of one. CI runs the gate
 because it runs `check`, and nothing else.
@@ -2971,7 +2971,7 @@ of starting numbers each argued where it is chosen, and the policy's code it wou
 the on-demand rows already exercise; a per-profile gate would multiply the gate's cost by five to score
 a buffer depth the QoE objective does not reward, since a deeper cushion on a stable link changes no
 term of the score. What `TV_LEANBACK` on Ethernet does differently is forced by `TvLeanbackPlaybackTest`,
-as a fact about media held rather than as a score. The score is not computed twice: `SessionMetrics` and `QoeScore` moved from `benchmark/` into
+as a fact about media held rather than as a score. The score is not computed twice: `SessionMetrics` and `QoeScore` moved from `android/benchmark/` into
 `superplayer-telemetry` for this, so the gate and the benchmark reduce events through the same file.
 
 **Which traces.** Synthetic only, each named by its `NetworkProfile`, and that is a decision rather
@@ -2981,7 +2981,7 @@ a licence to record in `THIRD_PARTY.md`. The profiles are deterministic, cite th
 a regression attributable to a named condition; a recorded trace joins the gate when one is committed
 on those terms, as a row in the floors file like any other.
 
-**The floor and the margin.** `superplayer-abr/src/test/qoe-floors.tsv` holds one row per trace: the
+**The floor and the margin.** `android/superplayer-abr/src/test/qoe-floors.tsv` holds one row per trace: the
 score, its three terms, and why the floor is where it is. A run fails when a trace scores more than
 **0.05** below its row, in the objective's own unit of Mbps-equivalent per second played. The gate
 plays each trace **three times and judges the median run**. Both numbers come from a measurement:
@@ -3079,14 +3079,14 @@ Instrumented tests on real devices are `superplayer-testkit`'s subject and arriv
 fault injector, the throughput trace replay and the golden traces above already have. They extend
 this seam rather than replacing it: they still drive the library through its public API.
 
-Benchmarking is not covered here, because it is not testing either. `benchmark/` runs `PRD.md` §6's
+Benchmarking is not covered here, because it is not testing either. `android/benchmark/` runs `PRD.md` §6's
 fixed matrix across three players and emits a report; it is a separate Gradle build, it is not in
 `check`, and a run of it fails only when it could not measure — never because of *what* it measured.
 Its Robolectric arm honours this document's rules as it happens, needing neither a device nor a
 network, and it still sits outside the suite: twenty runs of ninety cells is a measurement someone
 reads rather than a check a change must pass. Its device arm needs both a device and a network,
 because peak RSS and battery are properties of a process on a device and there is no honest way to
-take either from a JVM. `benchmark/README.md` says all of this from the other side.
+take either from a JVM. `android/benchmark/README.md` says all of this from the other side.
 
 Measurement on a device is not covered here either, because it is not testing. `devicelab/` drives
 the demo on an emulator or a phone and returns a Perfetto trace. A run fails only when it could not

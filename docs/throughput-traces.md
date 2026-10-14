@@ -163,11 +163,11 @@ No dataset is vendored into this repository. A public dataset carries its own te
 converter, and small traces this project generated itself. Convert a dataset locally:
 
 ```bash
-./gradlew convertThroughputTrace --from=bandwidth-log --transport=CELLULAR \
-    --input=/path/to/report.log --output=/path/to/report.trace
+(cd android && ./gradlew convertThroughputTrace --from=bandwidth-log --transport=CELLULAR \
+    --input=/path/to/report.log --output=/path/to/report.trace)
 
-./gradlew convertThroughputTrace --from=mahimahi --transport=CELLULAR --bin-ms=1000 \
-    --input=/path/to/trace.down --output=/path/to/trace.trace
+(cd android && ./gradlew convertThroughputTrace --from=mahimahi --transport=CELLULAR --bin-ms=1000 \
+    --input=/path/to/trace.down --output=/path/to/trace.trace)
 ```
 
 A relative path is relative to the repository root. `--transport` is required: the datasets say what
@@ -200,7 +200,7 @@ with the dataset's citation in the trace's own comment header.
 
 The converter is plain functions in `build-logic` (`ConvertThroughputTrace.kt`), unit-tested there.
 Its output for the two project-generated fixtures under
-`superplayer-testkit/src/test/resources/traces/` is checked in beside them; `build-logic`'s test
+`android/superplayer-testkit/src/test/resources/traces/` is checked in beside them; `build-logic`'s test
 holds the converter to those files byte for byte, and `superplayer-testkit`'s `ThroughputTraceTest`
 reads the same files and asserts what they mean — which is what keeps a writer in one build and a
 reader in another agreeing on one format.

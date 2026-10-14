@@ -20,7 +20,7 @@ shippable without a later one, and modules sharing a phase ship together — so 
 peers costs nothing the rule protects. A cycle between two of them is a real problem, but it is one
 Gradle already refuses to build; it is not this rule's to catch.
 
-`./gradlew verifyModulePhaseRule` reads the phase column below and fails the build if any module's
+`(cd android && ./gradlew verifyModulePhaseRule)` reads the phase column below and fails the build if any module's
 `project(...)` dependencies break the rule. It runs as part of `check`, so this is enforced rather
 than remembered. The task parses this table, which makes the document the single source of the phase
 numbers; the cost is that the table's shape — a backticked module name in the first cell, the phase
@@ -135,7 +135,7 @@ unchanged: each product takes the **phase of the Android module it ports**, beca
 what the dependency constraint is about, and the iOS phase it is built in is a column beside it
 for a reader rather than a number anything compares. A test target takes its product's phase.
 
-`./gradlew verifyModulePhaseRule` reads this table too, and holds the targets' dependencies in
+`(cd android && ./gradlew verifyModulePhaseRule)` reads this table too, and holds the targets' dependencies in
 `Package.swift` to it — on Linux, as text, so a manifest edit is checked by the job every change
 runs. A target this table does not list fails, as a module the table above does not list does.
 
@@ -154,7 +154,7 @@ runs. A target this table does not list fails, as a module the table above does 
 | `SuperPlayerDiagnostics` | 9 | `superplayer-diagnostics` | i8 |
 | `SuperPlayerRealtime` | 13 | `superplayer-realtime` | i9 |
 | `SuperPlayerMoQ` | 14 | `superplayer-moq`, in `ios/MoQ/Package.swift` and not the root manifest | i9 |
-| `SuperPlayerBenchmark` | 3 | `benchmark/`, a separate build | i2 |
+| `SuperPlayerBenchmark` | 3 | `android/benchmark/`, a separate build | i2 |
 
 Two Android modules have no row. `superplayer-cache` does not port as a product of its own, since
 its content is the offline store's (`docs/ios-plan.md` §4); and `superplayer-whep` is contingent on
@@ -172,7 +172,7 @@ what it can reach rather than by the check: it depends on the root package's `Su
 Kotlin friend modules have no Swift analog — a seam a later product reaches is `package`-scoped
 rather than `internal` — so nothing above the table's dependency column needs a Swift counterpart. Every product was empty until its phase, and each now carries its phase's code.
 
-`SuperPlayerBenchmark` is a target and not a product — nothing ships it — porting `benchmark/`,
+`SuperPlayerBenchmark` is a target and not a product — nothing ships it — porting `android/benchmark/`,
 which on Android is a build of its own and stands outside the phases. Here it is a target of the
 root manifest, only because a `SuperPlayer` playing video in `xctest` needs core's `package`-scoped
 lifecycle seam (`ios/Benchmark/README.md`), so it takes a phase like any target: the latest of the
@@ -183,7 +183,7 @@ does.
 
 ## Two separate builds beside this one
 
-`demo/` and `benchmark/` are **not** modules of the root build. It is a standalone Gradle build that resolves
+`android/demo/` and `android/benchmark/` are **not** modules of the library build. Each is a standalone Gradle build that resolves
 SuperPlayer through published Maven coordinates:
 
 ```kotlin
@@ -198,16 +198,16 @@ those failures happen here, during development, rather than in someone else's ap
 The cost is one extra step: the library must be published locally before either will build.
 
 ```bash
-./gradlew publishToMavenLocal        # from the repo root
-cd demo && ./gradlew assembleDebug
-benchmark/bench                      # publishes first, then runs the matrix
+(cd android && ./gradlew publishToMavenLocal)        # from the repo root
+(cd android/demo && ./gradlew assembleDebug)
+android/benchmark/bench                              # publishes first, then runs the matrix
 ```
 
-`benchmark/` is the same arrangement for the same reason, and one more: `PRD.md` §0.2 says every
+`android/benchmark/` is the same arrangement for the same reason, and one more: `PRD.md` §0.2 says every
 performance number this project publishes comes from its own harness, so the harness had better be
 measuring the artifact a consumer would actually get rather than a source dependency that skips half
 of what shipping means. It also resolves `superplayer-telemetry` and, for its Robolectric arm,
-`superplayer-testkit`. [`benchmark/README.md`](../benchmark/README.md) is its manual, including why a
+`superplayer-testkit`. [`android/benchmark/README.md`](../android/benchmark/README.md) is its manual, including why a
 benchmark sits outside [`docs/testing.md`](testing.md)'s no-device, no-network rule rather than
 against it.
 
@@ -215,23 +215,23 @@ against it.
 
 A clean checkout needs a JDK 17 or newer and an Android SDK with the platform named by
 `compileSdk` in the version catalog. Point `ANDROID_HOME` at the SDK, or write `sdk.dir` into a
-`local.properties` file — that file is machine-specific and gitignored. Gradle itself does not need
+`android/local.properties` file — that file is machine-specific and gitignored. Gradle itself does not need
 to be installed; the checked-in wrapper fetches the pinned version.
 
 ```bash
 export ANDROID_HOME=/path/to/android/sdk
-./gradlew build check                # compiles all 13 modules, runs lint and tests
-./gradlew publishToMavenLocal        # publishes all 12 to ~/.m2
+(cd android && ./gradlew build check)                # compiles all 13 modules, runs lint and tests
+(cd android && ./gradlew publishToMavenLocal)        # publishes all 12 to ~/.m2
 ```
 
 ## The version catalog
 
-`gradle/libs.versions.toml` is the single source of truth for every dependency version, and both
+`android/gradle/libs.versions.toml` is the single source of truth for every dependency version, and both
 builds — the library and the demo — read from that one file. Media3's version in particular is
 declared there and nowhere else, per ADR-0001 rule 3, so no consumer can hit a version-skew crash
 between transitively resolved media modules.
 
-`./gradlew verifyNoHardcodedMedia3Versions` fails the build if any build script pins a Media3
+`(cd android && ./gradlew verifyNoHardcodedMedia3Versions)` fails the build if any build script pins a Media3
 version directly. It runs as part of `check`, so the rule is enforced rather than remembered.
 
 ### Supported Media3 versions
@@ -245,7 +245,7 @@ claiming compatibility nobody has tested. It widens when there is a compatibilit
 not before. A module that comes to support a different range from the rest states so in its own
 build file, and this table gains a column.
 
-`./gradlew verifyMedia3SupportedVersion` fails the build when the catalog pins a Media3 outside the
+`(cd android && ./gradlew verifyMedia3SupportedVersion)` fails the build when the catalog pins a Media3 outside the
 minor version stated above. A Media3 bump therefore cannot land with this section left behind: a
 patch release inside 1.11.x passes, and anything else fails until the section is rewritten. It
 reads the bold **Media3 X.Y.x** in this section, so a rewording has to keep that form or teach
@@ -255,5 +255,5 @@ the check the new one. It runs as part of `check`.
 
 The 12 library modules share one definition of what a SuperPlayer module is — Android library setup,
 SDK levels, Java and Kotlin target, lint configuration, and publishing — in the
-`superplayer.android.library` convention plugin under `build-logic/`. A module's own build file
+`superplayer.android.library` convention plugin under `android/build-logic/`. A module's own build file
 therefore contains only what is genuinely specific to it: its dependencies.

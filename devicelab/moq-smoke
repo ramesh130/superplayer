@@ -84,7 +84,7 @@ GRADLE_ARGS=(
 # contributor has plugged in.
 set +e
 (
-    cd "$REPO_ROOT" &&
+    cd "$GRADLE_ROOT" &&
         JAVA_HOME="$(/usr/libexec/java_home -v 17 2>/dev/null || printf '%s' "${JAVA_HOME:-}")" \
         ANDROID_SERIAL="$SERIAL" \
         ./gradlew "${GRADLE_ARGS[@]}"

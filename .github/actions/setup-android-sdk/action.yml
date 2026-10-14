@@ -4,11 +4,11 @@
 # builds the demo to measure it. It was a pair of steps in ci.yml; a second copy of the platform
 # lookup below would be a second answer to "which platform", free to drift from the first.
 name: Set up the Android SDK
-description: The Android SDK plus the compileSdk platform read from gradle/libs.versions.toml.
+description: The Android SDK plus the compileSdk platform read from the Gradle build's version catalog.
 
 inputs:
-  # Required rather than defaulted to the root, so a caller that forgets it fails here by name instead
-  # of reading a catalog that is no longer where the default says.
+  # No default, so a caller that forgets it fails below naming the input, rather than reading a catalog
+  # that is no longer where a default would say. GitHub does not enforce `required` on a composite.
   gradle-dir:
     description: Where the Gradle build is, relative to the repository root; its catalog names the platform.
     required: true
@@ -37,8 +37,10 @@ runs:
     - name: Install the pinned compileSdk platform
       shell: bash
       env:
+        GRADLE_DIR: ${{ inputs.gradle-dir }}
         CATALOG: ${{ inputs.gradle-dir }}/gradle/libs.versions.toml
       run: |
+        test -n "$GRADLE_DIR" || { echo "setup-android-sdk needs gradle-dir, the Gradle build's directory"; exit 1; }
         test -f "$CATALOG" || { echo "no version catalog at $CATALOG"; exit 1; }
         compile_sdk="$(sed -n 's/^compileSdk = "\(.*\)"$/\1/p' "$CATALOG")"
         test -n "$compile_sdk" || { echo "compileSdk not found in $CATALOG"; exit 1; }

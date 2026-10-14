@@ -66,7 +66,7 @@ permissions:
 # is reached through devicelab, which reads its location from devicelab/lib/common.sh; this is the
 # catalog the SDK's platform is read from.
 env:
-  GRADLE_DIR: .
+  GRADLE_DIR: android
 
 jobs:
   run:

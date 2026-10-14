@@ -11,11 +11,11 @@
 
 DEVICELAB_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_ROOT="$(dirname "$DEVICELAB_HOME")"
-# Where the Gradle builds are, relative to the repository root, empty for the root itself: the root
-# build with demo/ and benchmark/ beside it, the version catalog, local.properties and the wrapper. The
+# Where the Gradle builds are, relative to the repository root (empty would mean the root itself): the
+# root build with demo/ and benchmark/ inside it, the version catalog, local.properties and the wrapper. The
 # one place a script here learns it, so moving the builds changes this line and nothing else. Git
 # operations stay at REPO_ROOT, since the tree a run records is the whole repository.
-GRADLE_DIR=""
+GRADLE_DIR="android"
 GRADLE_ROOT="$REPO_ROOT${GRADLE_DIR:+/$GRADLE_DIR}"
 
 log() { printf '[devicelab] %s\n' "$*" >&2; }

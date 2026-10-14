@@ -113,7 +113,7 @@ class ThroughputTraceFixturesTest {
     private companion object {
         const val DIRECTORY_PROPERTY = "superplayer.traceFixtures.dir"
         const val MODE_PROPERTY = "superplayer.iosFixtures.mode"
-        const val UPDATE_COMMAND = "./gradlew updateIosFixtures"
+        const val UPDATE_COMMAND = "(cd android && ./gradlew updateIosFixtures)"
         const val TRACE = ".trace"
         const val READINGS = ".readings"
         const val SAMPLE = "sample$TRACE"

@@ -10,19 +10,19 @@ local.properties
 # matches any Kotlin package directory named `build`, which silently untracks source.
 .gradle/
 .kotlin/
-/build/
-/build-logic/build/
-/demo/build/
-/benchmark/build/
-/superplayer-*/build/
+/android/build/
+/android/build-logic/build/
+/android/demo/build/
+/android/benchmark/build/
+/android/superplayer-*/build/
 
 # Device measurement runs: traces, reports and run metadata. See devicelab/README.md.
 /devicelab/out/
 
-# Benchmark runs that are not the committed baseline. `benchmark/baseline/` is tracked on purpose —
-# it is what Phase 3 is graded against, and a baseline nobody can find is not one. See
-# benchmark/README.md.
-/benchmark/out/
+# Benchmark runs that are not the committed baseline. `android/benchmark/baseline/` is tracked on
+# purpose — it is what Phase 3 is graded against, and a baseline nobody can find is not one. See
+# android/benchmark/README.md.
+/android/benchmark/out/
 /ios/Benchmark/out/
 
 # The Swift package (Package.swift, ios/). SwiftPM writes .build/ and .swiftpm/ beside the manifest,

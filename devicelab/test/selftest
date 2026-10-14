@@ -447,7 +447,8 @@ fi
 #
 # Against a scratch repository with a plants directory of its own, so that applying and reverting is
 # exercised for real — `git apply` on a tree — without touching this one. Each case runs in a subshell,
-# since `die` exits.
+# since `die` exits. The scratch repository is its own Gradle build, so the cases against it set
+# GRADLE_DIR empty over the `android` common.sh names; the nested case below is this repository's shape.
 
 plant_lab="$scratch/plant-lab"
 plant_repo="$scratch/plant-repo"
@@ -476,7 +477,7 @@ assert_eq "plants are listed by name, from the plants directory" "rotten slow" \
     "$(in_plant_lab plants_available | tr '\n' ' ' | sed 's/ $//')"
 
 planted="$(in_plant_lab bash -c '
-    . "$1/lib/common.sh"; . "$1/lib/plants.sh"; DEVICELAB_HOME="$2"
+    . "$1/lib/common.sh"; . "$1/lib/plants.sh"; DEVICELAB_HOME="$2"; GRADLE_DIR=
     plant_apply slow "$3" 2>/dev/null
     printf "applied=%s base=%s sha=%s\n" "$PLANT_APPLIED" "$PLANT_BASE_COMMIT" "$PLANT_PATCH_SHA256"
     grep -c readEverything "$3/src/App.kt"
@@ -504,7 +505,7 @@ null" "$reverted_nothing"
 assert_eq "and leaves the tree as clean as it found it" "" "$(git -C "$plant_repo" status --porcelain)"
 
 printf 'uncommitted\n' >> "$plant_repo/src/App.kt"
-if dirty="$(in_plant_lab bash -c '. "$1/lib/common.sh"; . "$1/lib/plants.sh"; DEVICELAB_HOME="$2"; plant_apply slow "$3"' \
+if dirty="$(in_plant_lab bash -c '. "$1/lib/common.sh"; . "$1/lib/plants.sh"; DEVICELAB_HOME="$2"; GRADLE_DIR=; plant_apply slow "$3"' \
     plant "$lab" "$plant_lab" "$plant_repo")"; then
     fail "a plant is refused on a dirty tree"
 else
@@ -512,7 +513,7 @@ else
 fi
 git -C "$plant_repo" checkout -q -- .
 
-if rotten="$(in_plant_lab bash -c '. "$1/lib/common.sh"; . "$1/lib/plants.sh"; DEVICELAB_HOME="$2"; plant_apply rotten "$3"' \
+if rotten="$(in_plant_lab bash -c '. "$1/lib/common.sh"; . "$1/lib/plants.sh"; DEVICELAB_HOME="$2"; GRADLE_DIR=; plant_apply rotten "$3"' \
     plant "$lab" "$plant_lab" "$plant_repo")"; then
     fail "a patch that does not apply fails the check"
 else
@@ -549,7 +550,7 @@ added=App.kt
 Read.kt"
 assert_contains "and reverting it leaves that tree exactly clean" "$nested" "reverted=0
 status=[]"
-if unnested="$(in_plant_lab bash -c '. "$1/lib/common.sh"; . "$1/lib/plants.sh"; DEVICELAB_HOME="$2"; plant_check slow "$3"' \
+if unnested="$(in_plant_lab bash -c '. "$1/lib/common.sh"; . "$1/lib/plants.sh"; DEVICELAB_HOME="$2"; GRADLE_DIR=; plant_check slow "$3"' \
     plant "$lab" "$plant_lab" "$nested_repo")"; then
     fail "with GRADLE_DIR empty the same plant does not apply to the nested tree"
 else

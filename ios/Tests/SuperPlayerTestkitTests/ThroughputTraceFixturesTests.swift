@@ -89,7 +89,7 @@ final class ThroughputTraceFixturesTests: XCTestCase {
         let d = trace.durationMs
         var out =
             "# What ThroughputTrace.parse reads. Written by ThroughputTraceFixturesTest; "
-            + "./gradlew updateIosFixtures.\n"
+            + "(cd android && ./gradlew updateIosFixtures).\n"
         for line in trace.format().split(separator: "\n") where !line.isEmpty {
             out += "format \(line)\n"
         }

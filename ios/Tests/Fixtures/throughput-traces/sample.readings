@@ -1,4 +1,4 @@
-# What ThroughputTrace.parse reads. Written by ThroughputTraceFixturesTest; ./gradlew updateIosFixtures.
+# What ThroughputTrace.parse reads. Written by ThroughputTraceFixturesTest; (cd android && ./gradlew updateIosFixtures).
 format superplayer-throughput-trace 1
 format at-end hold
 format 2000 5000000 WIFI

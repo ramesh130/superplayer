@@ -32,7 +32,7 @@ import java.io.File
 internal object IosFixtures {
 
     /** The one command that rewrites every iOS fixture, as a failure names it. */
-    const val UPDATE_COMMAND = "./gradlew updateIosFixtures"
+    const val UPDATE_COMMAND = "(cd android && ./gradlew updateIosFixtures)"
 
     private const val MODE_PROPERTY = "superplayer.iosFixtures.mode"
 

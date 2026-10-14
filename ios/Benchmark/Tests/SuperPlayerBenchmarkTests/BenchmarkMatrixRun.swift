@@ -27,7 +27,7 @@ import XCTest
 ///
 /// It fails only when it could not measure — a session that threw, a report that could not be
 /// written, a cell with no session at all — and never because of *what* it measured, the Kotlin
-/// runner's rule (`benchmark/README.md`, *Why this is not a test*).
+/// runner's rule (`android/benchmark/README.md`, *Why this is not a test*).
 @MainActor
 final class BenchmarkMatrixRun: XCTestCase {
 

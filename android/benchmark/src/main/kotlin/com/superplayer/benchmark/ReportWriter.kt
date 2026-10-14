@@ -65,7 +65,8 @@ internal object ReportWriter {
         appendLine("# SuperPlayer benchmark — Phase 3 report")
         appendLine()
         appendLine(
-            "The fixed matrix of [`PRD.md`](../PRD.md) §6, run by `benchmark/`, with `superplayer-abr`'s " +
+            "The fixed matrix of [`PRD.md`](../../../PRD.md) §6, run by `android/benchmark/`, with " +
+                "`superplayer-abr`'s " +
                 "adaptive policy as the arm under test and the Phase 1 baseline's three players re-run " +
                 "beside it. Every number here is produced by this harness against content this " +
                 "repository generates or public streams it names (§0.2); none is carried in from " +
@@ -155,7 +156,7 @@ internal object ReportWriter {
                 "> **This is a smoke run at ${conditions.runsPerCell} run(s) per cell, not a baseline.** " +
                     "`PRD.md` §6 requires at least $MINIMUM_RUNS runs per cell before a number is worth " +
                     "reporting, and the variance columns below are meaningless at this sample size. " +
-                    "The full matrix is `benchmark/bench`.",
+                    "The full matrix is `android/benchmark/bench`.",
             )
             appendLine()
         }
@@ -204,7 +205,7 @@ internal object ReportWriter {
         )
         appendLine()
         appendLine(
-            "**The metric definitions are [`docs/telemetry-schema.md`](../docs/telemetry-schema.md)**, " +
+            "**The metric definitions are [`docs/telemetry-schema.md`](../../../docs/telemetry-schema.md)**, " +
                 "not this document and not the source. Every metric below is computed by one function, " +
                 "`SessionMetrics`, from one event vocabulary, for all four arms — which is what makes " +
                 "the columns comparable at all. Arms (c) and (d)'s events come from the shipped " +
@@ -514,7 +515,7 @@ internal object ReportWriter {
         )
         appendLine()
         appendLine(
-            "The device arm is `benchmark/`'s own app, `BenchmarkActivity`: given an arm, one of the " +
+            "The device arm is `android/benchmark/`'s own app, `BenchmarkActivity`: given an arm, one of the " +
                 "public streams below and a duration, it plays a 30-minute session on a real device " +
                 "over a real network and writes its telemetry in the same trace format as the rows " +
                 "above. It measures neither number itself — an app measuring its own memory would be " +
@@ -525,7 +526,7 @@ internal object ReportWriter {
         appendLine(
             "**The harness around that app is not built yet.** `devicelab/` is this repository's entry " +
                 "point for device measurement and is currently shaped around the demo; wiring a second " +
-                "app through it is issue #95. `benchmark/README.md` has the manual `adb` " +
+                "app through it is issue #95. `android/benchmark/README.md` has the manual `adb` " +
                 "recipe in the meantime, and says why a benchmark sits outside `docs/testing.md`'s " +
                 "no-device rule rather than against it.",
         )

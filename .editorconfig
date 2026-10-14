@@ -1,6 +1,6 @@
 # Formatting rules for this repository. One file, read by three consumers.
 #
-# There is a single .editorconfig for all three Gradle builds. `demo/` and `build-logic/` are
+# There is a single .editorconfig for all three Gradle builds. `android/demo/` and `android/build-logic/` are
 # separate builds but they are directories under this one, and .editorconfig resolution walks up
 # the filesystem, so a file in any of the three finds these settings.
 #

@@ -2,7 +2,7 @@
 # Copyright 2026 The SuperPlayer Authors
 # SPDX-License-Identifier: Apache-2.0
 #
-# ios/hunt-leaks: the iOS leak hunt, `./gradlew huntLeaks`' analog. Records an xctrace with the Leaks
+# ios/hunt-leaks: the iOS leak hunt, `(cd android && ./gradlew huntLeaks)`' analog. Records an xctrace with the Leaks
 # template (Leaks and Allocations) over the demo's feed scrolling itself, on a simulator, and writes
 # a report naming the leaks and the memory high-water mark. NOT in ios/check: it needs a network,
 # real streams and minutes, and nothing here gates a change (devicelab/leak/README.md, *Why it sits

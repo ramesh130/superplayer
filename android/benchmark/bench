@@ -4,13 +4,13 @@
 #
 # benchmark: runs PRD.md §6's matrix and writes the report.
 #
-#   benchmark/bench                     the full matrix, 20 runs a cell, into benchmark/out
-#   benchmark/bench --runs 5            fewer runs; the report says it is not a baseline
-#   benchmark/bench --out DIR           somewhere other than benchmark/out
-#   benchmark/bench --cells "VOD / 3G"  a substring filter, for working on the harness
-#   benchmark/bench --baseline          write into benchmark/phase3, the committed reference
+#   android/benchmark/bench                     the full matrix, 20 runs a cell, into android/benchmark/out
+#   android/benchmark/bench --runs 5            fewer runs; the report says it is not a baseline
+#   android/benchmark/bench --out DIR           somewhere other than android/benchmark/out
+#   android/benchmark/bench --cells "VOD / 3G"  a substring filter, for working on the harness
+#   android/benchmark/bench --baseline          write into android/benchmark/phase3, the committed reference
 #
-# Not a test, and not part of `./gradlew check`: a benchmark is a measurement someone reads rather
+# Not a test, and not part of `check`: a benchmark is a measurement someone reads rather
 # than a check a change must pass. README.md says why that sits outside docs/testing.md's rules
 # rather than against them.
 set -euo pipefail

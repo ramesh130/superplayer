@@ -38,8 +38,8 @@ import java.io.File
  * with the Swift reader and compares them line for line, so "parses identically" is an equality of
  * text, including the replay's integer arithmetic.
  *
- * `./gradlew updateIosFixtures` rewrites the generated files, on the golden traces' contract: run it
- * alone, then `check`, and commit the diff with its cause.
+ * `(cd android && ./gradlew updateIosFixtures)` rewrites the generated files, on the golden traces'
+ * contract: run it alone, then `check`, and commit the diff with its cause.
  */
 class ThroughputTraceFixturesTest {
 

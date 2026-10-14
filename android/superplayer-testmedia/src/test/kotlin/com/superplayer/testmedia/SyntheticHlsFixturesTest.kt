@@ -29,8 +29,9 @@ import java.io.File
  *
  * The Swift half is `SyntheticHlsFixturesTests` in `SuperPlayerTestMediaTests`, which holds the Swift
  * port to the same files. Neither side needs the other's toolchain, and either generator drifting
- * fails its own build: a change here fails this test until `./gradlew updateIosFixtures` rewrites the
- * files, and the rewritten files then fail `ios/check` until the Swift port follows.
+ * fails its own build: a change here fails this test until
+ * `(cd android && ./gradlew updateIosFixtures)` rewrites the files, and the rewritten files then
+ * fail `ios/check` until the Swift port follows.
  *
  * [FIXTURES] is the table, and it is written into the directory as `index.tsv` so the Swift test reads
  * which fixtures exist and with what arguments rather than keeping a second copy of this list.

@@ -42,7 +42,7 @@ import SuperPlayerCore
 /// carrying numbers nothing on this platform reads (`docs/ios-plan.md` §3.3, the
 /// `NetworkAwareTrackSelection` row). The display and the decoder are Apple's to refuse, as there.
 ///
-/// ref: `superplayer-abr/src/main/kotlin/com/superplayer/abr/AdaptiveSelectionPolicy.kt`
+/// ref: `android/superplayer-abr/src/main/kotlin/com/superplayer/abr/AdaptiveSelectionPolicy.kt`
 public struct AdaptiveSelectionPolicy: PlaybackPolicy {
 
     /// The profile whose static ceiling every rule starts from.

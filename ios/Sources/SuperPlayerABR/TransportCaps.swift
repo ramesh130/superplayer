@@ -22,7 +22,7 @@ import SuperPlayerCore
 /// The rungs are Apple's, each a height paired with the highest average bitrate the HLS authoring
 /// specification recommends at it, doubled for the peak its `BANDWIDTH` may declare.
 /// ref: https://developer.apple.com/documentation/http-live-streaming/hls-authoring-specification-for-apple-devices
-/// ref: `superplayer-abr/src/main/kotlin/com/superplayer/abr/TransportCaps.kt`
+/// ref: `android/superplayer-abr/src/main/kotlin/com/superplayer/abr/TransportCaps.kt`
 ///
 /// **Where it lands differs on iOS**: on the expensive-network pair rather than the plain ceiling
 /// (``AdaptiveSelectionPolicy`` says why). A ``TrackSelectionPolicy`` with a nil field is uncapped on

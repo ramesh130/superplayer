@@ -4,7 +4,7 @@
 #
 # The leak hunt's device-free half: reading what the platform says is alive, the heap diff and the
 # verdict drawn from it, and the Markdown the report is written in. Pure functions over text, run by
-# devicelab/test/selftest and therefore by `./gradlew check`. The queries themselves need a trace and
+# devicelab/test/selftest and therefore by `(cd android && ./gradlew check)`. The queries themselves need a trace and
 # the trace processor, so they are exercised by a run, not here — ../README.md says what a run proves.
 set -euo pipefail
 

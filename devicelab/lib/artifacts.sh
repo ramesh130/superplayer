@@ -11,7 +11,7 @@
 #
 # So the demo records what it was built against. Its build writes `assets/superplayer-artifacts.txt`
 # into the APK: one line per `com.superplayer` artifact on its runtime classpath, as
-# "<group>:<module>:<version> <sha256 of the AAR>" (see demo/build.gradle.kts). The harness pulls the
+# "<group>:<module>:<version> <sha256 of the AAR>" (see android/demo/build.gradle.kts). The harness pulls the
 # APK back off the device — the installed one, so an install that silently failed is caught too —
 # and compares that against the same hash recomputed from Maven local after its own publish.
 

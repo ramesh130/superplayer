@@ -29,7 +29,7 @@ import SuperPlayerCore
 /// cold default is what a policy is handed — with a ``ThroughputEstimate/sampleCount`` of zero, which
 /// both adaptive halves read as nothing measured — and nothing more.
 ///
-/// ref: `superplayer-abr/src/main/kotlin/com/superplayer/abr/ColdDefaults.kt`
+/// ref: `android/superplayer-abr/src/main/kotlin/com/superplayer/abr/ColdDefaults.kt`
 package enum ColdDefaults {
 
     /// The cold default for `transport`, in bits per second.

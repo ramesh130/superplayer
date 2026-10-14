@@ -1,20 +1,20 @@
 # The iOS benchmark
 
 `PRD.md` §6's matrix on the iOS simulator: four players, six network profiles, four content
-scenarios, with the raw traces beside the summary. The port of [`benchmark/`](../../benchmark/README.md),
+scenarios, with the raw traces beside the summary. The port of [`android/benchmark/`](../../android/benchmark/README.md),
 whose rules it keeps and whose reasoning this page does not repeat; what is here is what differs on
 iOS, and why.
 
 ```bash
 ios/Benchmark/bench                          # the matrix, 3 runs a cell, into ios/Benchmark/out (~2 h 40 min)
-ios/Benchmark/bench --baseline               # into benchmark/ios-phase3, the committed reference
+ios/Benchmark/bench --baseline               # into ios/Benchmark/phase3, the committed reference
 ios/Benchmark/bench --runs 1 --cells "VOD / 3G"   # a filtered smoke run, for working on the harness
 ```
 
-The committed reports sit beside the Android reports and not among them: they measure a different
+The committed reports sit here and not among the Android reports: they measure a different
 engine, on a fake clock, and no cell of one is comparable to a cell of the other.
-[`benchmark/ios-baseline/`](../../benchmark/ios-baseline/baseline-report.md) is i2's, frozen, run
-with arm (d) an empty slot; [`benchmark/ios-phase3/`](../../benchmark/ios-phase3/baseline-report.md)
+[`baseline/`](baseline/baseline-report.md) is i2's, frozen, run
+with arm (d) an empty slot; [`phase3/`](phase3/baseline-report.md)
 is i3's (#416), with all four arms, and is what `--baseline` writes now — the Android `phase3/`'s
 place. The two are on different time zeros: i3's ran on #479's, where a trace starts at the first
 media segment requested, and i2's predates it, when a trace started with the origin.

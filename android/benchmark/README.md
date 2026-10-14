@@ -14,7 +14,7 @@ adb shell am start -n com.superplayer.benchmark/.BenchmarkActivity \
 ```
 
 The iOS half is [`ios/Benchmark/`](../ios/Benchmark/README.md): the same matrix and honesty rules on
-the simulator against `AVPlayer`, on real time, with its committed report in `ios-baseline/` here.
+the simulator against `AVPlayer`, on real time, with its committed reports beside it.
 It is not comparable to these reports cell for cell, since the engine and the clock both differ.
 
 `bench` publishes the library to Maven local first, always, because this build resolves SuperPlayer

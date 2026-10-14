@@ -1,6 +1,6 @@
 # SuperPlayer benchmark — iOS baseline (simulator)
 
-The fixed matrix of [`PRD.md`](../../PRD.md) §6 on the iOS simulator, run by `ios/Benchmark/bench` over testkit's loopback origin and network shaper, with **SuperPlayer** as the arm under test. Every number is produced by this harness against content this repository generates (§0.2); none is carried in from anywhere else, and none is copied from the Android reports under `benchmark/`, which measure a different engine on a fake clock and are not comparable to these cell for cell.
+The fixed matrix of [`PRD.md`](../../../PRD.md) §6 on the iOS simulator, run by `ios/Benchmark/bench` over testkit's loopback origin and network shaper, with **SuperPlayer** as the arm under test. Every number is produced by this harness against content this repository generates (§0.2); none is carried in from anywhere else, and none is copied from the Android reports under `android/benchmark/`, which measure a different engine on a fake clock and are not comparable to these cell for cell.
 
 ## Exit criterion
 
@@ -42,7 +42,7 @@ Phase 11's criterion — *measured improvement of the adaptive policy over the s
 
 **SuperPlayer is the arm graded**, against each built arm before it. From i3 on the candidate is arm (d), with nothing in the runner to change.
 
-**The definitions are [`docs/telemetry-schema.md`](../../docs/telemetry-schema.md)**, and every metric is reduced from one event vocabulary by one function, `SuperPlayerTelemetry`'s `SessionMetrics` — Android's, ported definition for definition. Arm (c)'s events come from the shipped `QoeCollector`; the stock arms have no `SuperPlayer`, so theirs come from `StockTelemetry`, which mirrors that collector handler for handler and is held to it by `StockTelemetryAgreementTests`, in `ios/check`.
+**The definitions are [`docs/telemetry-schema.md`](../../../docs/telemetry-schema.md)**, and every metric is reduced from one event vocabulary by one function, `SuperPlayerTelemetry`'s `SessionMetrics` — Android's, ported definition for definition. Arm (c)'s events come from the shipped `QoeCollector`; the stock arms have no `SuperPlayer`, so theirs come from `StockTelemetry`, which mirrors that collector handler for handler and is held to it by `StockTelemetryAgreementTests`, in `ios/check`.
 
 - **Every mean carries its spread**, as `mean ± sd (p50, p95, n)`.
 - **A difference inside two standard errors is neutral, not a small win**, by a rule fixed in advance and applied identically in both directions.

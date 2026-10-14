@@ -288,7 +288,7 @@ branches move start floors iOS has no knob for and so move nothing here; the hea
 decided `preferredForwardBufferDuration` and never to Apple's automatic one; the cellular cap lands on
 the expensive-network pair. `AdaptivePolicy.forProfile(_:rebufferCooldownMs:memory:)` is the
 `package` seam `AdaptivePolicyPlaybackTests` shortens the cooldown through. The benchmark's arm (d) is
-it, every session starting from a forgotten memory, and `benchmark/ios-phase3/` is its report.
+it, every session starting from a forgotten memory, and `ios/Benchmark/phase3/` is its report.
 #427 is the first of i8: `SuperPlayerDiagnostics`' `MediaSourceDoctor(configuration:)`, whose
 `examine(_:)` is `async` and **not** `throws` — a playlist that cannot be fetched or read is a
 `manifest-unreachable` or `manifest-unreadable` finding — and answers a `DiagnosticReport` of

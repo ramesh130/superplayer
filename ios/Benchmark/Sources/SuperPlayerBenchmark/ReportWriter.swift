@@ -52,12 +52,13 @@ enum ReportWriter {
         out += """
             # SuperPlayer benchmark — iOS (simulator)
 
-            The fixed matrix of [`PRD.md`](../../PRD.md) §6 on the iOS simulator, run by \
+            The fixed matrix of [`PRD.md`](../../../PRD.md) §6 on the iOS simulator, run by \
             `ios/Benchmark/bench` over testkit's loopback origin and network shaper, with \
             **\(Arm.candidate.label)** as the arm under test. Every number is produced by this \
             harness against content this repository generates (§0.2); none is carried in from \
-            anywhere else, and none is copied from the Android reports under `benchmark/`, which \
-            measure a different engine on a fake clock and are not comparable to these cell for cell.
+            anywhere else, and none is copied from the Android reports under \
+            `android/benchmark/`, which measure a different engine on a fake clock and are not \
+            comparable to these cell for cell.
 
 
             """
@@ -183,7 +184,7 @@ enum ReportWriter {
 
             **\(Arm.candidate.label) is the arm graded**, against each arm before it.
 
-            **The definitions are [`docs/telemetry-schema.md`](../../docs/telemetry-schema.md)**, \
+            **The definitions are [`docs/telemetry-schema.md`](../../../docs/telemetry-schema.md)**, \
             and every metric is reduced from one event vocabulary by one function, \
             `SuperPlayerTelemetry`'s `SessionMetrics` — Android's, ported definition for \
             definition. Arm (c)'s events come from the shipped `QoeCollector`; the stock arms have \

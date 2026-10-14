@@ -11,6 +11,12 @@
 
 DEVICELAB_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_ROOT="$(dirname "$DEVICELAB_HOME")"
+# Where the Gradle builds are, relative to the repository root, empty for the root itself: the root
+# build with demo/ and benchmark/ beside it, the version catalog, local.properties and the wrapper. The
+# one place a script here learns it, so moving the builds changes this line and nothing else. Git
+# operations stay at REPO_ROOT, since the tree a run records is the whole repository.
+GRADLE_DIR=""
+GRADLE_ROOT="$REPO_ROOT${GRADLE_DIR:+/$GRADLE_DIR}"
 
 log() { printf '[devicelab] %s\n' "$*" >&2; }
 
@@ -43,12 +49,12 @@ json_str() {
         $_ = "\"$_\"";'
 }
 
-# Reads `[versions]` key `$1` from the catalog at `$2` (default: the repository's own).
+# Reads `[versions]` key `$1` from the catalog at `$2` (default: the Gradle build's own).
 #
 # The same anchored pattern `.github/actions/setup-android-sdk`'s platform install uses, so a
 # commented-out line never wins and `media3` is never read out of `media3Foo`.
 catalog_version() {
-    local key="$1" catalog="${2:-$REPO_ROOT/gradle/libs.versions.toml}" value
+    local key="$1" catalog="${2:-$GRADLE_ROOT/gradle/libs.versions.toml}" value
     value="$(sed -n "s/^$key = \"\(.*\)\"\$/\1/p" "$catalog" | head -1)"
     [ -n "$value" ] || die "no version '$key' in $catalog"
     printf '%s\n' "$value"
@@ -65,8 +71,8 @@ sha256_of() {
 # The Android SDK, found the way Gradle finds it: the environment first, then `local.properties`.
 sdk_root() {
     local dir="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-    if [ -z "$dir" ] && [ -f "$REPO_ROOT/local.properties" ]; then
-        dir="$(sed -n 's/^sdk\.dir=//p' "$REPO_ROOT/local.properties" | head -1)"
+    if [ -z "$dir" ] && [ -f "$GRADLE_ROOT/local.properties" ]; then
+        dir="$(sed -n 's/^sdk\.dir=//p' "$GRADLE_ROOT/local.properties" | head -1)"
     fi
     [ -n "$dir" ] && [ -d "$dir" ] ||
         die "no Android SDK: set ANDROID_HOME, or write sdk.dir into local.properties"

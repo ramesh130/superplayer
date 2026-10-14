@@ -16,13 +16,18 @@
 set -euo pipefail
 
 BENCH_HOME="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(dirname "$BENCH_HOME")"
+# Two places that are one today and need not stay so: the root Gradle build, which this build sits
+# beside and moves with, and the repository, whose whole tree a report's cleanliness is a claim about.
+GRADLE_ROOT="$(dirname "$BENCH_HOME")"
 
 log() { printf '[benchmark] %s\n' "$*" >&2; }
 die() {
     printf '[benchmark] error: %s\n' "$*" >&2
     exit 1
 }
+
+REPO_ROOT="$(git -C "$BENCH_HOME" rev-parse --show-toplevel)" ||
+    die "benchmark/ is not inside a git checkout, and a report records the commit it measured"
 
 usage() {
     sed -n '4,14p' "$0" | sed 's/^# \{0,1\}//' >&2
@@ -57,7 +62,7 @@ case "$RUNS" in '' | *[!0-9]*) die "--runs takes a whole number, not '$RUNS'" ;;
 # perfectly plausible report, and record a commit that did not make it. The same trap
 # `CLAUDE.md` describes for the demo, and the reason it is one command rather than two.
 log "publishing the library to Maven local"
-(cd "$REPO_ROOT" && ./gradlew --console=plain --quiet publishToMavenLocal) ||
+(cd "$GRADLE_ROOT" && ./gradlew --console=plain --quiet publishToMavenLocal) ||
     die "publishToMavenLocal failed; the matrix would have measured whatever was already there"
 
 if [ -n "$(git -C "$REPO_ROOT" status --porcelain)" ]; then
